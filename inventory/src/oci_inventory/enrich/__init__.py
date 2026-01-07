@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 
+from ..auth.providers import AuthContext
 from .base import Enricher
 
 EnricherFactory = Callable[[], Enricher]
@@ -29,6 +30,7 @@ class EnricherRegistry:
 
 
 _global_registry = EnricherRegistry()
+_enrich_context: Optional[AuthContext] = None
 
 
 def register_enricher(resource_type: str, factory: EnricherFactory) -> None:
@@ -37,3 +39,22 @@ def register_enricher(resource_type: str, factory: EnricherFactory) -> None:
 
 def get_enricher_for(resource_type: str) -> Enricher:
     return _global_registry.get(resource_type)
+
+
+def set_enrich_context(ctx: AuthContext) -> None:
+    global _enrich_context
+    _enrich_context = ctx
+
+
+def get_enrich_context() -> AuthContext:
+    if _enrich_context is None:
+        raise RuntimeError("Enrichment context is not set")
+    return _enrich_context
+
+
+try:
+    from .oci_metadata import register_metadata_enrichers
+    register_metadata_enrichers()
+except Exception:
+    # Enrichment registration is best-effort; default enricher remains available.
+    pass

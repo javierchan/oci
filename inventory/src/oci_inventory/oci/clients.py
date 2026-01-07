@@ -7,8 +7,13 @@ from ..util.errors import map_oci_error
 
 try:
     import oci  # type: ignore
+    import oci.bastion  # type: ignore
+    import oci.cloud_guard  # type: ignore
+    import oci.core  # type: ignore
     import oci.identity  # type: ignore
+    import oci.key_management  # type: ignore
     import oci.resource_search  # type: ignore
+    import oci.secrets  # type: ignore
 except Exception:  # pragma: no cover - surfaced in CLI validate
     oci = None  # type: ignore
 
@@ -29,6 +34,78 @@ def get_resource_search_client(ctx: AuthContext, region: str) -> Any:
     if oci is None:  # pragma: no cover
         raise AuthError("oci Python SDK not installed.")
     return make_client(oci.resource_search.ResourceSearchClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_compute_client(ctx: AuthContext, region: str) -> Any:
+    """
+    Create ComputeClient in the specified region.
+    """
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.core.ComputeClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_compute_management_client(ctx: AuthContext, region: str) -> Any:
+    """
+    Create ComputeManagementClient in the specified region.
+    """
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.core.ComputeManagementClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_blockstorage_client(ctx: AuthContext, region: str) -> Any:
+    """
+    Create BlockstorageClient in the specified region.
+    """
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.core.BlockstorageClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_virtual_network_client(ctx: AuthContext, region: str) -> Any:
+    """
+    Create VirtualNetworkClient in the specified region.
+    """
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.core.VirtualNetworkClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_bastion_client(ctx: AuthContext, region: str) -> Any:
+    """
+    Create BastionClient in the specified region.
+    """
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.bastion.BastionClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_vault_client(ctx: AuthContext, region: str) -> Any:
+    """
+    Create KmsVaultClient in the specified region.
+    """
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.key_management.KmsVaultClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_secrets_client(ctx: AuthContext, region: str) -> Any:
+    """
+    Create SecretsClient in the specified region.
+    """
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.secrets.SecretsClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_cloud_guard_client(ctx: AuthContext, region: str) -> Any:
+    """
+    Create CloudGuardClient in the specified region.
+    """
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.cloud_guard.CloudGuardClient, ctx, region=region)  # type: ignore[attr-defined]
 
 
 def list_region_subscriptions(ctx: AuthContext) -> List[str]:

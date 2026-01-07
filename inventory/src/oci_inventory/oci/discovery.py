@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..auth.providers import AuthContext
 from ..normalize.transform import normalize_from_search_summary
 from ..util.errors import map_oci_error
 from ..util.pagination import paginate
+from ..util.serialization import sanitize_for_json
 from .clients import get_resource_search_client
 
 try:
@@ -21,21 +21,10 @@ def _to_dict(obj: Any) -> Dict[str, Any]:
     """
     if obj is None:
         return {}
-    def _json_safe(value: Any) -> Any:
-        if isinstance(value, datetime):
-            return value.isoformat()
-        if isinstance(value, dict):
-            return {k: _json_safe(v) for k, v in value.items()}
-        if isinstance(value, list):
-            return [_json_safe(v) for v in value]
-        if isinstance(value, tuple):
-            return [_json_safe(v) for v in value]
-        return value
-
     to_dict = getattr(obj, "to_dict", None)
     if callable(to_dict):
         try:
-            return _json_safe(to_dict())
+            return sanitize_for_json(to_dict())
         except Exception:
             pass
     # Fallback: best-effort shallow conversion
@@ -52,7 +41,7 @@ def _to_dict(obj: Any) -> Dict[str, Any]:
         # Avoid including class descriptors / metadata
         if k in ("swagger_types", "attribute_map"):
             continue
-        out[k] = _json_safe(v)
+        out[k] = sanitize_for_json(v)
     return out
 
 

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .auth.providers import AuthContext, AuthError, resolve_auth
 from .config import RunConfig, load_run_config
 from .diff.diff import diff_files, write_diff
-from .enrich import get_enricher_for
+from .enrich import get_enricher_for, set_enrich_context
 from .export.csv import write_csv
 from .export.jsonl import write_jsonl
 from .export.parquet import ParquetNotAvailable, write_parquet
@@ -112,6 +112,7 @@ def _write_relationships(outdir: Path, relationships: List[Dict[str, str]]) -> O
 def cmd_run(cfg: RunConfig) -> int:
     LOG.info("Starting inventory run", extra={"outdir": str(cfg.outdir)})
     ctx = _resolve_auth(cfg)
+    set_enrich_context(ctx)
 
     # Discover regions
     regions = get_subscribed_regions(ctx)
