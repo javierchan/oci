@@ -46,8 +46,15 @@ ok "python3 detected: $(python3 --version 2>/dev/null | tr -d '\n')"
 
 # pip (module for current python)
 if ! python3 -m pip --version >/dev/null 2>&1; then
-  err "pip is required (for python3). Try: python3 -m ensurepip --upgrade or install pip for Python 3."
-  exit 1
+  info "pip not found for python3; attempting to bootstrap with ensurepip..."
+  if python3 -m ensurepip --upgrade >/dev/null 2>&1; then
+    ok "ensurepip succeeded"
+  else
+    err "pip is required (for python3) and could not be bootstrapped automatically."
+    warn "On Debian/Ubuntu: sudo apt-get update && sudo apt-get install -y python3-pip"
+    warn "On macOS with Homebrew: brew install python (includes pip)"
+    exit 1
+  fi
 fi
 ok "pip detected: $(python3 -m pip --version | tr -d '\n')"
 
@@ -55,11 +62,21 @@ ok "pip detected: $(python3 -m pip --version | tr -d '\n')"
 need_cmd git || { err "git is required"; exit 1; }
 ok "git detected: $(git --version | tr -d '\n')"
 
-# oci CLI (optional)
+
+# oci CLI (install if missing, non-interactive)
 if command -v oci >/dev/null 2>&1; then
   ok "oci CLI detected: $(oci --version 2>/dev/null | tr -d '\n')"
 else
-  warn "oci CLI not found. Optional but recommended for local workflows (https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm)."
+  info "oci CLI not found; installing non-interactively (no sudo)..."
+  # Accept defaults (installs under $HOME and updates PATH in rc files). Avoid prompts.
+  if bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults >/dev/null 2>&1; then
+    export PATH="$HOME/bin:$PATH"
+    ok "oci CLI installed: $(oci --version 2>/dev/null | tr -d '\n')"
+  else
+    err "oci CLI installation failed. Please install manually if needed:"
+    err '  bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults'
+    exit 1
+  fi
 fi
 
 # 2) Python virtual environment
@@ -68,8 +85,13 @@ if [ -d "${VENV_DIR}" ]; then
   info "Using existing virtual environment: ${VENV_DIR}"
 else
   info "Creating virtual environment: ${VENV_DIR}"
-  python3 -m venv "${VENV_DIR}"
-  ok "Virtual environment created"
+  if python3 -m venv "${VENV_DIR}"; then
+    ok "Virtual environment created"
+  else
+    err "Failed to create virtual environment. The venv module may be missing."
+    warn "On Debian/Ubuntu: sudo apt-get install -y python3-venv"
+    exit 1
+  fi
 fi
 
 # shellcheck source=/dev/null
@@ -124,3 +146,4 @@ Common issues:
   - Missing git -> Install git for your OS
   - Missing oci CLI -> Optional; install if needed for manual CLI workflows
 OUT
+
