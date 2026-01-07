@@ -117,6 +117,8 @@ def cmd_run(cfg: RunConfig) -> int:
     regions = get_subscribed_regions(ctx)
     if not regions:
         raise ConfigError("No subscribed regions found for the tenancy/profile provided")
+    if cfg.regions:
+        regions = [r for r in cfg.regions if r]
     LOG.info("Discovered subscribed regions", extra={"regions": regions})
 
     # Per-region discovery in parallel (ordered by region for determinism)

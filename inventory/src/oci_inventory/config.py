@@ -7,7 +7,7 @@ import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import yaml
 
@@ -29,6 +29,7 @@ ALLOWED_CONFIG_KEYS = {
     "log_level",
     "workers_region",
     "workers_enrich",
+    "regions",
     "auth",
     "profile",
     "tenancy_ocid",
@@ -54,6 +55,7 @@ class RunConfig:
     # Performance
     workers_region: int = DEFAULT_WORKERS_REGION
     workers_enrich: int = DEFAULT_WORKERS_ENRICH
+    regions: Optional[List[str]] = None
 
     # Auth
     auth: str = "auto"  # auto|config|instance|resource|security_token
@@ -152,7 +154,15 @@ def _normalize_config_file(data: Dict[str, Any]) -> Dict[str, Any]:
         if value is None:
             normalized[key] = None
             continue
-        if key in BOOL_CONFIG_KEYS:
+        if key == "regions":
+            if isinstance(value, str):
+                regions = [r.strip() for r in value.split(",") if r.strip()]
+                normalized[key] = regions
+            elif isinstance(value, list) and all(isinstance(r, str) for r in value):
+                normalized[key] = [r.strip() for r in value if r.strip()]
+            else:
+                raise ValueError("Config field 'regions' must be a list of strings or comma-separated string")
+        elif key in BOOL_CONFIG_KEYS:
             normalized[key] = _coerce_bool(key, value)
         elif key in INT_CONFIG_KEYS:
             normalized[key] = _coerce_int(key, value)
@@ -263,6 +273,11 @@ def load_run_config(
         "--workers-enrich", type=int, default=None, help=f"Max enricher workers (default {DEFAULT_WORKERS_ENRICH})"
     )
     p_run.add_argument(
+        "--regions",
+        default=None,
+        help="Comma-separated list of regions to query (overrides subscriptions)",
+    )
+    p_run.add_argument(
         "--include-terminated",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -326,6 +341,7 @@ def load_run_config(
             "log_level": _env_str("OCI_INV_LOG_LEVEL"),
             "workers_region": _env_int("OCI_INV_WORKERS_REGION"),
             "workers_enrich": _env_int("OCI_INV_WORKERS_ENRICH"),
+            "regions": _env_str("OCI_INV_REGIONS"),
             "auth": _env_str("OCI_INV_AUTH"),
             "profile": _env_str("OCI_INV_PROFILE"),
             "tenancy_ocid": _env_str("OCI_TENANCY_OCID"),
@@ -345,6 +361,7 @@ def load_run_config(
             "log_level": getattr(ns, "log_level", None),
             "workers_region": getattr(ns, "workers_region", None),
             "workers_enrich": getattr(ns, "workers_enrich", None),
+            "regions": getattr(ns, "regions", None),
             "auth": getattr(ns, "auth", None),
             "profile": getattr(ns, "profile", None),
             "tenancy_ocid": getattr(ns, "tenancy_ocid", None),
@@ -361,6 +378,12 @@ def load_run_config(
     profile = merged.get("profile")
     tenancy = merged.get("tenancy_ocid")
     log_level = (merged.get("log_level") or "INFO").upper()
+    regions_raw = merged.get("regions")
+    regions: Optional[List[str]] = None
+    if isinstance(regions_raw, list):
+        regions = [str(r).strip() for r in regions_raw if str(r).strip()]
+    elif isinstance(regions_raw, str):
+        regions = [r.strip() for r in regions_raw.split(",") if r.strip()]
 
     # default workers if None
     workers_region = int(merged["workers_region"] or DEFAULT_WORKERS_REGION)
@@ -377,6 +400,7 @@ def load_run_config(
         log_level=log_level,
         workers_region=workers_region,
         workers_enrich=workers_enrich,
+        regions=regions or None,
         auth=str(merged["auth"] or "auto"),
         profile=str(profile) if profile else None,
         tenancy_ocid=str(tenancy) if tenancy else None,
@@ -396,6 +420,7 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "log_level": cfg.log_level,
         "workers_region": cfg.workers_region,
         "workers_enrich": cfg.workers_enrich,
+        "regions": cfg.regions,
         "auth": cfg.auth,
         "profile": cfg.profile,
         "tenancy_ocid": cfg.tenancy_ocid,
