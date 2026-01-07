@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..auth.providers import AuthContext
 from ..normalize.transform import normalize_from_search_summary
+from ..util.errors import map_oci_error
 from ..util.pagination import paginate
 from .clients import get_resource_search_client
-from ..auth.providers import AuthContext
-from ..util.errors import map_oci_error
 
 try:
     import oci  # type: ignore

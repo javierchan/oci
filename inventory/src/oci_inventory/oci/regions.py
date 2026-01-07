@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import List
 
-from .clients import list_region_subscriptions
 from ..auth.providers import AuthContext
+from .clients import list_region_subscriptions
 
 
 def get_subscribed_regions(ctx: AuthContext) -> List[str]:

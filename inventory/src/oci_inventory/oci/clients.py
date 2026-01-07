@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from ..auth.providers import AuthContext, AuthError, get_tenancy_ocid, make_client
 from ..util.errors import map_oci_error
 
-
 try:
     import oci  # type: ignore
-except Exception as e:  # pragma: no cover - surfaced in CLI validate
+except Exception:  # pragma: no cover - surfaced in CLI validate
     oci = None  # type: ignore
 
 

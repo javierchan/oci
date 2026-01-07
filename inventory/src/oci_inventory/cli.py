@@ -3,27 +3,24 @@ from __future__ import annotations
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from .config import RunConfig, dump_config, load_run_config
-from .logging import LogConfig, get_logger, setup_logging
 from .auth.providers import AuthContext, AuthError, resolve_auth
-from .oci.regions import get_subscribed_regions
+from .config import RunConfig, load_run_config
+from .diff.diff import diff_files, write_diff
+from .enrich import get_enricher_for
+from .export.csv import write_csv
+from .export.jsonl import write_jsonl
+from .export.parquet import ParquetNotAvailable, write_parquet
+from .logging import LogConfig, get_logger, setup_logging
+from .normalize.transform import sort_relationships, stable_json_dumps
 from .oci.compartments import list_compartments as oci_list_compartments
 from .oci.discovery import discover_in_region
-from .enrich import get_enricher_for
-from .export.jsonl import write_jsonl
-from .export.csv import write_csv
-from .export.parquet import ParquetNotAvailable, write_parquet
-from .diff.diff import diff_files, write_diff
-from .normalize.transform import sort_relationships, stable_json_dumps
+from .oci.regions import get_subscribed_regions
 from .util.concurrency import parallel_map_ordered
 from .util.errors import (
     AuthResolutionError,
     ConfigError,
-    DiffError,
-    ExportError,
-    InventoryError,
     as_exit_code,
 )
 
@@ -168,7 +165,7 @@ def cmd_run(cfg: RunConfig) -> int:
         except ParquetNotAvailable as e:
             LOG.warning(str(e))
 
-    rel_path = _write_relationships(cfg.outdir, all_relationships)
+    _write_relationships(cfg.outdir, all_relationships)
 
     # Coverage metrics and summary
     metrics = _coverage_metrics(enriched)

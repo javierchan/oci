@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Dict, List
 
 from oci_inventory.diff.diff import compute_diff

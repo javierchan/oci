@@ -6,7 +6,6 @@ from typing import Any, Dict
 
 from ..normalize.transform import normalize_relationships
 
-
 EXCLUDED_FROM_HASH = {"collectedAt"}
 
 

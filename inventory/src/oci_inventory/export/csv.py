@@ -4,8 +4,8 @@ import csv
 from pathlib import Path
 from typing import Iterable, List
 
-from ..normalize.transform import report_rows
 from ..normalize.schema import NormalizedRecord
+from ..normalize.transform import report_rows
 
 
 def write_csv(records: Iterable[NormalizedRecord], path: Path) -> None:

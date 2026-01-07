@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
-from .base import EnrichResult, Enricher
+from .base import Enricher, EnrichResult
 
 
 class DefaultEnricher(Enricher):

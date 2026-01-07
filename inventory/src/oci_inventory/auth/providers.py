@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional
 
 from ..util.errors import OCIClientError, map_oci_error
 
 try:
     import oci  # type: ignore
-except Exception as e:  # pragma: no cover - import error surfaced at runtime/CI
+except Exception:  # pragma: no cover - import error surfaced at runtime/CI
     oci = None  # type: ignore
 
 

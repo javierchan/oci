@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Iterable, List, Tuple
 
-from .schema import CANONICAL_FIELD_ORDER, CSV_REPORT_FIELDS, NormalizedRecord
 from ..util.time import utc_now_iso
+from .schema import CANONICAL_FIELD_ORDER, CSV_REPORT_FIELDS, NormalizedRecord
 
 
 def _get(d: Dict[str, Any], *keys: str) -> Any:
