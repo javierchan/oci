@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from oci_inventory.enrich import get_enricher_for, register_enricher
-from oci_inventory.enrich.base import EnrichResult, Enricher
+from oci_inventory.enrich.base import EnrichResult
 
 
 class _DummyEnricher:

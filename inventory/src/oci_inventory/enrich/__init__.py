@@ -4,7 +4,6 @@ from typing import Callable, Dict
 
 from .base import Enricher
 
-
 EnricherFactory = Callable[[], Enricher]
 
 

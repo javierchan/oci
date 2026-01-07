@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Protocol, runtime_checkable
 
-
 EnrichDetails = Dict[str, Any]
 Relationship = Dict[str, str]
 

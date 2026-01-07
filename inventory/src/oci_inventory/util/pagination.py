@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Generator, Iterable, List, Sequence, Tuple, TypeVar
+from typing import Callable, Generator, Sequence, Tuple, TypeVar
 
 T = TypeVar("T")
 

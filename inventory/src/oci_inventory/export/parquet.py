@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, List
 
-from ..normalize.transform import canonicalize_record, normalize_relationships
 from ..normalize.schema import NormalizedRecord
+from ..normalize.transform import canonicalize_record, normalize_relationships
 
 
 class ParquetNotAvailable(RuntimeError):
