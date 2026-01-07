@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "oci-inventory"
+version = "0.1.0"
+description = "OCI Inventory pipeline: discovery via Resource Search, enrichment framework, exports, diffs"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "OCI Inventory Authors" }
+]
+keywords = ["oci", "oracle", "cloud", "inventory", "resource search", "diff", "jsonl", "csv", "parquet"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: System :: Systems Administration",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "oci>=2.131.0",
+  "PyYAML>=6.0.1",
+]
+
+[project.optional-dependencies]
+parquet = [
+  "pyarrow>=14.0.0",
+]
+
+[project.scripts]
+oci-inv = "oci_inventory.cli:main"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oci_inventory"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = [
+  "E",  # pycodestyle errors
+  "F",  # pyflakes
+  "I",  # isort
+]
+ignore = [
+  "E501",  # handled by formatter/line-length
+]
+src = ["src", "tests"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+warn_return_any = true
+warn_redundant_casts = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+check_untyped_defs = true
+no_implicit_optional = true

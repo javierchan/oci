@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+.python-version
+.venv/
+venv/
+.env
+.env.*
+.mypy_cache/
+.pytype/
+.pytest_cache/
+.coverage
+htmlcov/
+.coverage.*
+coverage.xml
+
+# Editors/IDEs
+.vscode/
+.idea/
+
+# Project outputs
+out/
+*.parquet
+
+# Logs
+*.log
+logs/
+
+# Ruff cache
+.ruff_cache/
