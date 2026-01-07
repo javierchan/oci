@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from oci_inventory.config import DEFAULT_QUERY, RunConfig, load_run_config
 
 
@@ -32,6 +34,7 @@ def test_diff_command_requires_prev_and_curr(monkeypatch) -> None:
     command, cfg = load_run_config(argv=["diff", "--prev", "prev.jsonl", "--curr", "curr.jsonl"])
     assert command == "diff"
     assert str(cfg.prev) == "prev.jsonl"
+    assert str(cfg.curr) == "curr.jsonl"
 
 
 def test_config_file_used_when_env_and_cli_missing(tmp_path, monkeypatch) -> None:
@@ -81,3 +84,28 @@ def test_env_boolean_overrides_config_boolean(monkeypatch, tmp_path) -> None:
 
     _, cfg = load_run_config(argv=["run", "--config", str(cfg_path)])
     assert cfg.parquet is False
+
+
+def test_cli_can_disable_config_boolean(tmp_path) -> None:
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text("parquet: true\n", encoding="utf-8")
+
+    _, cfg = load_run_config(argv=["run", "--config", str(cfg_path), "--no-parquet"])
+    assert cfg.parquet is False
+
+
+def test_unknown_config_keys_warn(tmp_path) -> None:
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text("query: from-config\nunknown_key: value\n", encoding="utf-8")
+
+    with pytest.warns(UserWarning):
+        _, cfg = load_run_config(argv=["run", "--config", str(cfg_path)])
+    assert cfg.query == "from-config"
+
+
+def test_invalid_config_type_raises(tmp_path) -> None:
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text("workers_region: not-a-number\n", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        load_run_config(argv=["run", "--config", str(cfg_path)])

@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, Union
 
+from ..util.errors import OCIClientError, map_oci_error
+
 try:
     import oci  # type: ignore
 except Exception as e:  # pragma: no cover - import error surfaced at runtime/CI
@@ -60,17 +62,35 @@ def resolve_auth(method: str, profile: Optional[str], tenancy_ocid: Optional[str
 
     # Helpers to build contexts
     def ctx_from_config() -> AuthContext:
-        cfg = oci.config.from_file(profile_name=profile)  # type: ignore[attr-defined]
+        try:
+            cfg = oci.config.from_file(profile_name=profile)  # type: ignore[attr-defined]
+        except Exception as e:
+            mapped = map_oci_error(e, "OCI SDK error while loading config profile")
+            if mapped:
+                raise mapped from e
+            raise AuthError(f"Failed to load OCI config profile: {e}") from e
         ten = tenancy_ocid or cfg.get("tenancy")
         return AuthContext(method="config", config_dict=cfg, signer=None, profile=profile, tenancy_ocid=ten)
 
     def ctx_from_ip() -> AuthContext:
-        signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()  # type: ignore[attr-defined]
+        try:
+            signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()  # type: ignore[attr-defined]
+        except Exception as e:
+            mapped = map_oci_error(e, "OCI SDK error while resolving instance principals")
+            if mapped:
+                raise mapped from e
+            raise AuthError(f"Failed to resolve instance principals: {e}") from e
         # For signer-based clients, pass {"region": "..."} per-client on creation
         return AuthContext(method="instance", config_dict=None, signer=signer, profile=None, tenancy_ocid=tenancy_ocid)
 
     def ctx_from_rp() -> AuthContext:
-        signer = oci.auth.signers.get_resource_principals_signer()  # type: ignore[attr-defined]
+        try:
+            signer = oci.auth.signers.get_resource_principals_signer()  # type: ignore[attr-defined]
+        except Exception as e:
+            mapped = map_oci_error(e, "OCI SDK error while resolving resource principals")
+            if mapped:
+                raise mapped from e
+            raise AuthError(f"Failed to resolve resource principals: {e}") from e
         return AuthContext(method="resource", config_dict=None, signer=signer, profile=None, tenancy_ocid=tenancy_ocid)
 
     if method == "config" or method == "security_token":
@@ -96,6 +116,8 @@ def resolve_auth(method: str, profile: Optional[str], tenancy_ocid: Optional[str
     # Config
     try:
         return ctx_from_config()
+    except OCIClientError:
+        raise
     except Exception as e:
         raise AuthError(
             "Failed to resolve auth in 'auto' mode. Tried resource principals, instance principals, then config.\n"
