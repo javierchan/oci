@@ -1,0 +1,122 @@
+# OCI Inventory (Phase 1)
+Production-ready Python CLI to inventory Oracle Cloud Infrastructure (OCI) resources using Resource Search, with an enrichment framework, deterministic exports, and diffs.
+
+Phase 1 implements:
+- Tenancy-wide discovery using Resource Search (Structured Search) with default query: "query all resources"
+- Enricher registry + DefaultEnricher (no per-service enrichers yet)
+- Exports: JSONL (default) and CSV; Parquet optional via pyarrow
+- Diffs and stable hashing (excluding collectedAt)
+- Coverage metrics
+- Tests, docs, CI (ruff + pytest)
+
+Repository scope for this package is strictly local under this directory.
+
+## Install
+- Python 3.11+
+- Recommended in a virtualenv
+
+```
+pip install -U pip
+pip install .
+# Optional Parquet support
+pip install .[parquet]
+```
+
+## CLI
+Entrypoint: `oci-inv`
+
+Commands:
+- Run inventory:
+  ```
+  oci-inv run --outdir out --auth auto --profile DEFAULT --parquet --prev out/20240101T000000Z/inventory.jsonl \
+              --workers-region 6 --workers-enrich 24 --include-terminated \
+              --query "query all resources"
+  ```
+- Diff two inventories:
+  ```
+  oci-inv diff --prev out/prev-run/inventory.jsonl --curr out/curr-run/inventory.jsonl --outdir out/diff
+  ```
+- Validate authentication:
+  ```
+  oci-inv validate-auth --auth auto --profile DEFAULT
+  ```
+- List subscribed regions:
+  ```
+  oci-inv list-regions --auth auto --profile DEFAULT
+  ```
+- List compartments:
+  ```
+  oci-inv list-compartments --auth auto --profile DEFAULT --tenancy ocid1.tenancy.oc1..xxxx
+  ```
+
+Flags and config precedence: defaults < config file < environment < CLI  
+- Default search query: "query all resources" (MUST)
+- Workers defaults: regions=6, enrich=24
+- Output: creates a timestamped directory under `--outdir` (default `out/TS`) for run
+
+## Output Contract
+Each run writes to: `out/<timestamp>/`
+- inventory.jsonl (canonicalized, stable JSON lines)
+- inventory.csv (report fields)
+- inventory.parquet (optional; pyarrow required)
+- relationships.jsonl (optional; when relationships exist)
+- diff.json + diff_summary.json (when --prev provided)
+- run_summary.json (coverage metrics)
+
+JSONL stability notes:
+- Keys sorted; deterministic line ordering by ocid then resourceType
+- Hash excludes `collectedAt` to enable meaningful diffs
+
+## Auth
+Supported methods:
+- auto (default): Resource Principals -> Instance Principals -> Config file
+- config: `~/.oci/config` profile
+- instance: Instance Principals
+- resource: Resource Principals
+- security_token: session profile via config
+
+Do not print or commit secrets. See docs/auth.md for guidance.
+
+Common flags:
+- `--auth [auto|config|instance|resource|security_token]`
+- `--profile PROFILE` (config-file auth)
+- `--tenancy OCID` (some calls require explicit tenancy OCID when not available from config)
+
+## Environment Variables
+- OCI_INV_QUERY
+- OCI_INV_OUTDIR
+- OCI_INV_PREV
+- OCI_INV_PARQUET
+- OCI_INV_INCLUDE_TERMINATED
+- OCI_INV_JSON_LOGS
+- OCI_INV_LOG_LEVEL (INFO, DEBUG, ...)
+- OCI_INV_WORKERS_REGION
+- OCI_INV_WORKERS_ENRICH
+- OCI_INV_AUTH
+- OCI_INV_PROFILE
+- OCI_TENANCY_OCID
+
+## Logging
+- Std logging, INFO by default
+- Structured JSON logs toggled with `--json-logs` or `OCI_INV_JSON_LOGS=1`
+
+## Development
+- Linting: ruff
+- Tests: pytest
+- Build backend: hatchling
+
+Run locally:
+```
+pip install -e .[parquet]
+pip install ruff pytest
+ruff check .
+pytest
+```
+
+## Docs
+- docs/quickstart.md: minimal getting started
+- docs/architecture.md: layout and design
+- docs/auth.md: authentication options and safety
+
+## License
+Apache-2.0 (see LICENSE)
