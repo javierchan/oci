@@ -29,6 +29,14 @@ coverage.xml
 .vscode/
 .idea/
 
+# Keys/certs
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+
 # Project outputs
 out/
 *.parquet

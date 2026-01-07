@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, List
 
-from ..normalize.transform import canonicalize_record, stable_json_dumps
+from ..normalize.transform import canonicalize_record, normalize_relationships, stable_json_dumps
 from ..normalize.schema import NormalizedRecord
 
 
@@ -22,6 +22,6 @@ def write_jsonl(records: Iterable[NormalizedRecord], path: Path) -> None:
 
     with path.open("w", encoding="utf-8") as f:
         for rec in sorted_records:
-            obj = canonicalize_record(dict(rec))
+            obj = canonicalize_record(normalize_relationships(dict(rec)))
             f.write(stable_json_dumps(obj))
             f.write("\n")

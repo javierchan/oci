@@ -16,7 +16,7 @@ from .export.jsonl import write_jsonl
 from .export.csv import write_csv
 from .export.parquet import ParquetNotAvailable, write_parquet
 from .diff.diff import diff_files, write_diff
-from .normalize.transform import stable_json_dumps
+from .normalize.transform import sort_relationships, stable_json_dumps
 from .util.concurrency import parallel_map_ordered
 from .util.errors import (
     AuthResolutionError,
@@ -49,10 +49,10 @@ def _enrich_record(record: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[st
     try:
         res = enricher.enrich(dict(record))  # pass a copy to be safe
         record["details"] = res.details
-        record["relationships"] = res.relationships or []
+        relationships = sort_relationships(res.relationships or [])
+        record["relationships"] = relationships
         record["enrichStatus"] = res.enrichStatus
         record["enrichError"] = res.enrichError
-        relationships = res.relationships or []
     except BaseException as e:
         record["details"] = {}
         record["relationships"] = []
@@ -106,7 +106,7 @@ def _write_relationships(outdir: Path, relationships: List[Dict[str, str]]) -> O
     p = _relationships_path(outdir)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w", encoding="utf-8") as f:
-        for rel in relationships:
+        for rel in sort_relationships(relationships):
             f.write(stable_json_dumps(rel))
             f.write("\n")
     return p

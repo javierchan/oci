@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, List
 
-from ..normalize.transform import canonicalize_record
+from ..normalize.transform import canonicalize_record, normalize_relationships
 from ..normalize.schema import NormalizedRecord
 
 
@@ -36,7 +36,7 @@ def write_parquet(records: Iterable[NormalizedRecord], path: Path) -> None:
 
     sorted_records: List[NormalizedRecord] = sorted(records, key=_key)
     # Canonicalize field order for stable schema
-    rows = [canonicalize_record(dict(r)) for r in sorted_records]
+    rows = [canonicalize_record(normalize_relationships(dict(r))) for r in sorted_records]
 
     table = pa.Table.from_pylist(rows)
     pq.write_table(table, path)

@@ -57,19 +57,30 @@ need_cmd git || { err "git is required"; exit 1; }
 ok "git detected: $(git --version | tr -d '\n')"
 
 
-# oci CLI (install if missing, non-interactive)
+should_install_oci_cli() {
+  case "${OCI_INV_INSTALL_OCI_CLI:-}" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# oci CLI (opt-in install; avoids changes outside .venv by default)
 if command -v oci >/dev/null 2>&1; then
   ok "oci CLI detected: $(oci --version 2>/dev/null | tr -d '\n')"
 else
-  info "oci CLI not found; installing non-interactively (no sudo)..."
-  # Accept defaults (installs under $HOME and updates PATH in rc files). Avoid prompts.
-  if bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults >/dev/null 2>&1; then
-    export PATH="$HOME/bin:$PATH"
-    ok "oci CLI installed: $(oci --version 2>/dev/null | tr -d '\n')"
+  if should_install_oci_cli; then
+    info "oci CLI not found; installing non-interactively (no sudo)..."
+    # Accept defaults (installs under $HOME and updates PATH in rc files). Avoid prompts.
+    if bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults >/dev/null 2>&1; then
+      export PATH="$HOME/bin:$PATH"
+      ok "oci CLI installed: $(oci --version 2>/dev/null | tr -d '\n')"
+    else
+      err "oci CLI installation failed. Please install manually if needed:"
+      err '  bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults'
+      exit 1
+    fi
   else
-    err "oci CLI installation failed. Please install manually if needed:"
-    err '  bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults'
-    exit 1
+    warn "oci CLI not found; skipping install (set OCI_INV_INSTALL_OCI_CLI=1 to install)"
   fi
 fi
 
@@ -148,6 +159,8 @@ Optional:
       INVENTORY_EXTRAS=parquet ./preflight.sh
   - Install dev extras (if defined later):
       INVENTORY_EXTRAS=dev ./preflight.sh
+  - Install OCI CLI (opt-in):
+      OCI_INV_INSTALL_OCI_CLI=1 ./preflight.sh
 
 Common issues:
   - Python version < 3.11 -> Install Python 3.11+ and re-run
@@ -155,4 +168,3 @@ Common issues:
   - Missing git -> Install git for your OS
   - Missing oci CLI -> Optional; install if needed for manual CLI workflows
 OUT
-
