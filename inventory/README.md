@@ -92,6 +92,7 @@ Flags and config precedence: defaults < config file < environment < CLI
 - Workers defaults: regions=6, enrich=24
 - Output: creates a timestamped directory under `--outdir` (default `out/TS`) for run
 - Boolean flags accept `--no-<flag>` to override config/env (e.g., `--no-parquet`, `--no-json-logs`)
+- Limit discovery regions with `--regions` (comma-separated) or `OCI_INV_REGIONS`
 
 ## Output Contract
 Each run writes to: `out/<timestamp>/`
@@ -132,6 +133,7 @@ Common flags:
 - OCI_INV_LOG_LEVEL (INFO, DEBUG, ...)
 - OCI_INV_WORKERS_REGION
 - OCI_INV_WORKERS_ENRICH
+- OCI_INV_REGIONS
 - OCI_INV_AUTH
 - OCI_INV_PROFILE
 - OCI_TENANCY_OCID

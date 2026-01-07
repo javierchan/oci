@@ -7,6 +7,8 @@ from ..util.errors import map_oci_error
 
 try:
     import oci  # type: ignore
+    import oci.identity  # type: ignore
+    import oci.resource_search  # type: ignore
 except Exception:  # pragma: no cover - surfaced in CLI validate
     oci = None  # type: ignore
 
