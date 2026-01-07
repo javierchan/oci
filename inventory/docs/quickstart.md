@@ -108,6 +108,7 @@ Common environment variables that influence behavior:
 - OCI_INV_QUERY
 - OCI_INV_OUTDIR
 - OCI_INV_PREV
+- OCI_INV_CURR
 - OCI_INV_PARQUET
 - OCI_INV_INCLUDE_TERMINATED
 - OCI_INV_JSON_LOGS

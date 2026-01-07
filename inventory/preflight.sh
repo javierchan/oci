@@ -64,20 +64,37 @@ should_install_oci_cli() {
   esac
 }
 
+is_offline() {
+  case "${OCI_INV_OFFLINE:-}" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if is_offline; then
+  export PIP_NO_INDEX=1
+  export PIP_DISABLE_PIP_VERSION_CHECK=1
+  info "Offline mode enabled; network operations will be skipped when possible."
+fi
+
 # oci CLI (opt-in install; avoids changes outside .venv by default)
 if command -v oci >/dev/null 2>&1; then
   ok "oci CLI detected: $(oci --version 2>/dev/null | tr -d '\n')"
 else
   if should_install_oci_cli; then
-    info "oci CLI not found; installing non-interactively (no sudo)..."
-    # Accept defaults (installs under $HOME and updates PATH in rc files). Avoid prompts.
-    if bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults >/dev/null 2>&1; then
-      export PATH="$HOME/bin:$PATH"
-      ok "oci CLI installed: $(oci --version 2>/dev/null | tr -d '\n')"
+    if is_offline; then
+      warn "Offline mode enabled; skipping OCI CLI install."
     else
-      err "oci CLI installation failed. Please install manually if needed:"
-      err '  bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults'
-      exit 1
+      info "oci CLI not found; installing non-interactively (no sudo)..."
+      # Accept defaults (installs under $HOME and updates PATH in rc files). Avoid prompts.
+      if bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults >/dev/null 2>&1; then
+        export PATH="$HOME/bin:$PATH"
+        ok "oci CLI installed: $(oci --version 2>/dev/null | tr -d '\n')"
+      else
+        err "oci CLI installation failed. Please install manually if needed:"
+        err '  bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults'
+        exit 1
+      fi
     fi
   else
     warn "oci CLI not found; skipping install (set OCI_INV_INSTALL_OCI_CLI=1 to install)"
@@ -111,18 +128,27 @@ if ! command -v pip >/dev/null 2>&1; then
   if python -m ensurepip --upgrade >/dev/null 2>&1; then
     ok "ensurepip in venv succeeded"
   else
-    info "ensurepip unavailable; fetching get-pip.py to bootstrap pip in venv..."
-    if curl -sSfL https://bootstrap.pypa.io/get-pip.py | python - >/dev/null 2>&1; then
-      ok "get-pip.py succeeded"
-    else
-      err "Failed to bootstrap pip inside the virtual environment. Install python3-venv or python3-pip and retry."
+    if is_offline; then
+      err "Offline mode enabled and ensurepip unavailable; cannot bootstrap pip in venv."
       exit 1
+    else
+      info "ensurepip unavailable; fetching get-pip.py to bootstrap pip in venv..."
+      if curl -sSfL https://bootstrap.pypa.io/get-pip.py | python - >/dev/null 2>&1; then
+        ok "get-pip.py succeeded"
+      else
+        err "Failed to bootstrap pip inside the virtual environment. Install python3-venv or python3-pip and retry."
+        exit 1
+      fi
     fi
   fi
 fi
-info "Upgrading pip, setuptools, wheel..."
-python -m pip install --upgrade pip setuptools wheel >/dev/null
-ok "Tooling upgraded: $(pip --version | tr -d '\n')"
+if is_offline; then
+  warn "Offline mode enabled; skipping pip/setuptools/wheel upgrade."
+else
+  info "Upgrading pip, setuptools, wheel..."
+  python -m pip install --upgrade pip setuptools wheel >/dev/null
+  ok "Tooling upgraded: $(pip --version | tr -d '\n')"
+fi
 
 # 4) Install project (editable), supporting optional extras via INVENTORY_EXTRAS
 EXTRAS_SPEC=""
@@ -161,6 +187,8 @@ Optional:
       INVENTORY_EXTRAS=dev ./preflight.sh
   - Install OCI CLI (opt-in):
       OCI_INV_INSTALL_OCI_CLI=1 ./preflight.sh
+  - Offline mode (skip network actions):
+      OCI_INV_OFFLINE=1 ./preflight.sh
 
 Common issues:
   - Python version < 3.11 -> Install Python 3.11+ and re-run

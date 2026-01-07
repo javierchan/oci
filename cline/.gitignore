@@ -1,0 +1,3 @@
+# Keep this directory local: ignore all files in cline/
+*
+!.gitignore

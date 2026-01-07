@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +18,26 @@ import yaml
 DEFAULT_QUERY = "query all resources"
 DEFAULT_WORKERS_REGION = 6
 DEFAULT_WORKERS_ENRICH = 24
+AUTH_METHODS = {"auto", "config", "instance", "resource", "security_token"}
+ALLOWED_CONFIG_KEYS = {
+    "outdir",
+    "parquet",
+    "prev",
+    "curr",
+    "query",
+    "include_terminated",
+    "json_logs",
+    "log_level",
+    "workers_region",
+    "workers_enrich",
+    "auth",
+    "profile",
+    "tenancy_ocid",
+}
+BOOL_CONFIG_KEYS = {"parquet", "include_terminated", "json_logs"}
+INT_CONFIG_KEYS = {"workers_region", "workers_enrich"}
+PATH_CONFIG_KEYS = {"outdir", "prev", "curr"}
+STR_CONFIG_KEYS = {"query", "log_level", "auth", "profile", "tenancy_ocid"}
 
 
 @dataclass(frozen=True)
@@ -26,6 +46,7 @@ class RunConfig:
     outdir: Path
     parquet: bool = False
     prev: Optional[Path] = None
+    curr: Optional[Path] = None
     query: str = DEFAULT_QUERY
     include_terminated: bool = False  # reserved for future use of filters
     json_logs: bool = False
@@ -98,6 +119,65 @@ def _env_int(name: str) -> Optional[int]:
         return None
 
 
+def _coerce_bool(key: str, value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        raw = value.strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            return True
+        if raw in {"0", "false", "no", "off"}:
+            return False
+    raise ValueError(f"Config field '{key}' must be a boolean")
+
+
+def _coerce_int(key: str, value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return int(value)
+        except Exception:
+            pass
+    raise ValueError(f"Config field '{key}' must be an integer")
+
+
+def _normalize_config_file(data: Dict[str, Any]) -> Dict[str, Any]:
+    unknown = sorted(set(data.keys()) - ALLOWED_CONFIG_KEYS)
+    if unknown:
+        warnings.warn(f"Unknown config keys ignored: {', '.join(unknown)}")
+    normalized: Dict[str, Any] = {}
+    for key, value in data.items():
+        if key not in ALLOWED_CONFIG_KEYS:
+            continue
+        if value is None:
+            normalized[key] = None
+            continue
+        if key in BOOL_CONFIG_KEYS:
+            normalized[key] = _coerce_bool(key, value)
+        elif key in INT_CONFIG_KEYS:
+            normalized[key] = _coerce_int(key, value)
+        elif key in PATH_CONFIG_KEYS:
+            if isinstance(value, (str, Path)):
+                normalized[key] = value
+            else:
+                raise ValueError(f"Config field '{key}' must be a string path")
+        elif key in STR_CONFIG_KEYS:
+            if isinstance(value, str):
+                normalized[key] = value
+            else:
+                raise ValueError(f"Config field '{key}' must be a string")
+        else:
+            normalized[key] = value
+    auth = normalized.get("auth")
+    if auth is not None:
+        auth = str(auth).lower()
+        if auth not in AUTH_METHODS:
+            raise ValueError(f"Config field 'auth' must be one of: {', '.join(sorted(AUTH_METHODS))}")
+        normalized["auth"] = auth
+    return _compact_dict(normalized)
+
+
 def _compact_dict(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Drop keys with None values so they don't override lower-precedence config.
@@ -139,7 +219,12 @@ def load_run_config(
     # common flags builder
     def add_common(p: argparse.ArgumentParser) -> None:
         p.add_argument("--config", type=Path, help="Optional YAML/JSON config file")
-        p.add_argument("--json-logs", action="store_true", default=None, help="Enable JSON logs")
+        p.add_argument(
+            "--json-logs",
+            action=argparse.BooleanOptionalAction,
+            default=None,
+            help="Enable JSON logs",
+        )
         p.add_argument("--log-level", default=None, help="Log level (INFO, DEBUG, ...)")
         # Auth
         p.add_argument(
@@ -160,7 +245,12 @@ def load_run_config(
     p_run = subparsers.add_parser("run", help="Run inventory collection")
     add_common(p_run)
     p_run.add_argument("--outdir", type=Path, default=None, help="Output base directory (out/TS)")
-    p_run.add_argument("--parquet", action="store_true", default=None, help="Also write Parquet (pyarrow)")
+    p_run.add_argument(
+        "--parquet",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Also write Parquet (pyarrow)",
+    )
     p_run.add_argument("--prev", type=Path, default=None, help="Previous inventory.jsonl for diff")
     p_run.add_argument(
         "--query",
@@ -174,14 +264,17 @@ def load_run_config(
         "--workers-enrich", type=int, default=None, help=f"Max enricher workers (default {DEFAULT_WORKERS_ENRICH})"
     )
     p_run.add_argument(
-        "--include-terminated", action="store_true", default=None, help="Include terminated resources (future use)"
+        "--include-terminated",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Include terminated resources (future use)",
     )
 
     # diff
     p_diff = subparsers.add_parser("diff", help="Diff two inventory JSONL files")
     add_common(p_diff)
-    p_diff.add_argument("--prev", type=Path, required=True, help="Previous inventory.jsonl")
-    p_diff.add_argument("--curr", type=Path, required=True, help="Current inventory.jsonl")
+    p_diff.add_argument("--prev", type=Path, required=False, help="Previous inventory.jsonl")
+    p_diff.add_argument("--curr", type=Path, required=False, help="Current inventory.jsonl")
     p_diff.add_argument("--outdir", type=Path, default=None, help="Output dir for diff files")
 
     # validate-auth
@@ -204,6 +297,7 @@ def load_run_config(
         "outdir": None,
         "parquet": False,
         "prev": None,
+        "curr": None,
         "query": DEFAULT_QUERY,
         "include_terminated": False,
         "json_logs": False,
@@ -218,7 +312,7 @@ def load_run_config(
     # config file
     file_cfg: Dict[str, Any] = {}
     if getattr(ns, "config", None):
-        file_cfg = _parse_config_file(Path(ns.config))
+        file_cfg = _normalize_config_file(_parse_config_file(Path(ns.config)))
 
     # env
     env_cfg: Dict[str, Any] = _compact_dict(
@@ -226,6 +320,7 @@ def load_run_config(
             "outdir": _env_str("OCI_INV_OUTDIR"),
             "parquet": _env_bool("OCI_INV_PARQUET"),
             "prev": _env_str("OCI_INV_PREV"),
+            "curr": _env_str("OCI_INV_CURR"),
             "query": _env_str("OCI_INV_QUERY"),
             "include_terminated": _env_bool("OCI_INV_INCLUDE_TERMINATED"),
             "json_logs": _env_bool("OCI_INV_JSON_LOGS"),
@@ -244,6 +339,7 @@ def load_run_config(
             "outdir": getattr(ns, "outdir", None),
             "parquet": getattr(ns, "parquet", None),
             "prev": getattr(ns, "prev", None),
+            "curr": getattr(ns, "curr", None),
             "query": getattr(ns, "query", None),
             "include_terminated": getattr(ns, "include_terminated", None),
             "json_logs": getattr(ns, "json_logs", None),
@@ -262,6 +358,7 @@ def load_run_config(
     outdir_raw = merged.get("outdir")
     outdir = _timestamp_dir(outdir_raw) if command == "run" else Path(outdir_raw) if outdir_raw else Path.cwd()
     prev = Path(merged["prev"]) if merged.get("prev") else None
+    curr = Path(merged["curr"]) if merged.get("curr") else None
     profile = merged.get("profile")
     tenancy = merged.get("tenancy_ocid")
     log_level = (merged.get("log_level") or "INFO").upper()
@@ -274,6 +371,7 @@ def load_run_config(
         outdir=outdir,
         parquet=bool(merged["parquet"]),
         prev=prev,
+        curr=curr,
         query=str(merged.get("query") or DEFAULT_QUERY),
         include_terminated=bool(merged["include_terminated"]),
         json_logs=bool(merged["json_logs"]),
@@ -292,6 +390,7 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "outdir": str(cfg.outdir),
         "parquet": cfg.parquet,
         "prev": str(cfg.prev) if cfg.prev else None,
+        "curr": str(cfg.curr) if cfg.curr else None,
         "query": cfg.query,
         "include_terminated": cfg.include_terminated,
         "json_logs": cfg.json_logs,

@@ -187,27 +187,13 @@ def cmd_run(cfg: RunConfig) -> int:
     return 0
 
 
-def _parse_arg_value(name: str) -> Optional[str]:
-    """
-    Minimal parser to extract values for flags like --curr and --prev from sys.argv.
-    Supports '--flag value' and '--flag=value'.
-    """
-    args = sys.argv[1:]
-    for i, tok in enumerate(args):
-        if tok == name and i + 1 < len(args):
-            return args[i + 1]
-        if tok.startswith(name + "="):
-            return tok.split("=", 1)[1]
-    return None
-
-
 def cmd_diff(cfg: RunConfig) -> int:
     prev = cfg.prev
-    curr_raw = _parse_arg_value("--curr")
-    if not prev or not curr_raw:
+    curr = cfg.curr
+    if not prev or not curr:
         raise ConfigError("Both --prev and --curr must be provided for diff")
     prev_p = Path(prev)
-    curr_p = Path(curr_raw)
+    curr_p = Path(curr)
     diff_obj = diff_files(prev_p, curr_p)
     write_diff(cfg.outdir, diff_obj)
     LOG.info("Diff complete", extra={"outdir": str(cfg.outdir)})

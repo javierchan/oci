@@ -28,6 +28,7 @@ Use the preflight script to prepare a local or CI environment (macOS/Linux, no s
 - Creates or reuses a .venv virtual environment and upgrades pip/setuptools/wheel
 - Installs the project in editable mode, respecting pyproject.toml
 - Supports optional extras via INVENTORY_EXTRAS (e.g., parquet)
+- Uses network access for pip upgrades and dependency installs (and OCI CLI if enabled)
 
 Run:
 ```
@@ -43,6 +44,11 @@ INVENTORY_EXTRAS=parquet,dev ./preflight.sh
 Install OCI CLI (opt-in):
 ```
 OCI_INV_INSTALL_OCI_CLI=1 ./preflight.sh
+```
+
+Offline mode (skip network actions; requires deps already available):
+```
+OCI_INV_OFFLINE=1 ./preflight.sh
 ```
 
 Next steps after running:
@@ -85,6 +91,7 @@ Flags and config precedence: defaults < config file < environment < CLI
 - Default search query: "query all resources" (MUST)
 - Workers defaults: regions=6, enrich=24
 - Output: creates a timestamped directory under `--outdir` (default `out/TS`) for run
+- Boolean flags accept `--no-<flag>` to override config/env (e.g., `--no-parquet`, `--no-json-logs`)
 
 ## Output Contract
 Each run writes to: `out/<timestamp>/`
@@ -118,6 +125,7 @@ Common flags:
 - OCI_INV_QUERY
 - OCI_INV_OUTDIR
 - OCI_INV_PREV
+- OCI_INV_CURR
 - OCI_INV_PARQUET
 - OCI_INV_INCLUDE_TERMINATED
 - OCI_INV_JSON_LOGS
