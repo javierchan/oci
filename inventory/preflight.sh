@@ -45,18 +45,12 @@ fi
 ok "python3 detected: $(python3 --version 2>/dev/null | tr -d '\n')"
 
 # pip (module for current python)
+# System pip is not strictly required; we will ensure pip inside the virtualenv.
 if ! python3 -m pip --version >/dev/null 2>&1; then
-  info "pip not found for python3; attempting to bootstrap with ensurepip..."
-  if python3 -m ensurepip --upgrade >/dev/null 2>&1; then
-    ok "ensurepip succeeded"
-  else
-    err "pip is required (for python3) and could not be bootstrapped automatically."
-    warn "On Debian/Ubuntu: sudo apt-get update && sudo apt-get install -y python3-pip"
-    warn "On macOS with Homebrew: brew install python (includes pip)"
-    exit 1
-  fi
+  warn "System pip for python3 not found; will bootstrap pip inside the virtual environment."
+else
+  ok "pip detected: $(python3 -m pip --version | tr -d '\n')"
 fi
-ok "pip detected: $(python3 -m pip --version | tr -d '\n')"
 
 # git
 need_cmd git || { err "git is required"; exit 1; }
@@ -99,7 +93,22 @@ fi
 . "${VENV_DIR}/bin/activate"
 ok "Activated virtual environment: ${VENV_DIR}"
 
-# 3) Upgrade pip/setuptools/wheel inside venv
+# 3) Ensure/upgrade pip/setuptools/wheel inside venv
+# Ensure pip present in venv
+if ! command -v pip >/dev/null 2>&1; then
+  info "Bootstrapping pip inside virtual environment..."
+  if python -m ensurepip --upgrade >/dev/null 2>&1; then
+    ok "ensurepip in venv succeeded"
+  else
+    info "ensurepip unavailable; fetching get-pip.py to bootstrap pip in venv..."
+    if curl -sSfL https://bootstrap.pypa.io/get-pip.py | python - >/dev/null 2>&1; then
+      ok "get-pip.py succeeded"
+    else
+      err "Failed to bootstrap pip inside the virtual environment. Install python3-venv or python3-pip and retry."
+      exit 1
+    fi
+  fi
+fi
 info "Upgrading pip, setuptools, wheel..."
 python -m pip install --upgrade pip setuptools wheel >/dev/null
 ok "Tooling upgraded: $(pip --version | tr -d '\n')"
