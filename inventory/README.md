@@ -107,6 +107,16 @@ JSONL stability notes:
 - Keys sorted; deterministic line ordering by ocid then resourceType
 - Hash excludes `collectedAt` to enable meaningful diffs
 
+## Enrichment
+Enrichers use **read-only** OCI SDK calls to fetch full metadata for supported resource types.
+Metadata is stored under `details.metadata` as the SDK `to_dict()` output, with sensitive fields
+redacted by key substring (e.g., private_key, passphrase, password, secret, token, ssh, content).
+
+Supported resource types (initial set):
+- Compute: Instance, Image, BootVolume, BlockVolume, InstanceConfiguration, InstancePool
+- Networking: Vcn, Subnet, Vnic, NetworkSecurityGroup, SecurityList, RouteTable, InternetGateway, NatGateway, ServiceGateway, DhcpOptions
+- Security: Bastion, Vault, Secret, CloudGuardTarget
+
 ## Auth
 Supported methods:
 - auto (default): Resource Principals -> Instance Principals -> Config file

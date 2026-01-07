@@ -86,6 +86,17 @@ def test_env_boolean_overrides_config_boolean(monkeypatch, tmp_path) -> None:
     assert cfg.parquet is False
 
 
+def test_regions_from_cli() -> None:
+    _, cfg = load_run_config(argv=["run", "--regions", "mx-queretaro-1,us-ashburn-1"])
+    assert cfg.regions == ["mx-queretaro-1", "us-ashburn-1"]
+
+
+def test_regions_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("OCI_INV_REGIONS", "mx-queretaro-1")
+    _, cfg = load_run_config(argv=["run"])
+    assert cfg.regions == ["mx-queretaro-1"]
+
+
 def test_cli_can_disable_config_boolean(tmp_path) -> None:
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text("parquet: true\n", encoding="utf-8")
