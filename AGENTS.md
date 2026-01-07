@@ -24,6 +24,13 @@ must live in the agent prompt.
 - Do not add or modify files that could expose sensitive data.
 - If a command requires network access, request explicit approval.
 
+## OCI Safety Guardrails
+- This codebase is for inventory/discovery only and must not mutate OCI resources.
+- Only read-only OCI SDK/CLI/API calls are allowed (for example: list, search, get).
+- Explicitly forbidden: create, update, delete, patch, move, enable/disable,
+  attach/detach, or any action that changes OCI state or policies.
+- Rationale: inventory is read-only by design.
+
 ## Quality Standards
 - Maintain clear module boundaries and cohesive responsibilities.
 - Keep naming consistent and aligned with existing conventions.
