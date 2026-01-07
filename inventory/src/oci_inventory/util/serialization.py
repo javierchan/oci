@@ -46,4 +46,24 @@ def sanitize_for_json(value: Any) -> Any:
             return sanitize_for_json(to_dict())
         except Exception:
             return str(value)
+    attribute_map = getattr(value, "attribute_map", None)
+    swagger_types = getattr(value, "swagger_types", None)
+    if isinstance(attribute_map, dict):
+        out = {}
+        for attr, json_key in attribute_map.items():
+            if _is_sensitive_key(json_key):
+                out[json_key] = REDACTED_VALUE
+                continue
+            out[json_key] = sanitize_for_json(getattr(value, attr, None))
+        return out
+    if isinstance(swagger_types, dict):
+        out = {}
+        for attr in swagger_types.keys():
+            if _is_sensitive_key(attr):
+                out[attr] = REDACTED_VALUE
+                continue
+            out[attr] = sanitize_for_json(getattr(value, attr, None))
+        return out
+    if hasattr(value, "__dict__"):
+        return sanitize_for_json(vars(value))
     return value
