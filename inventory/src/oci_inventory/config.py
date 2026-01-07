@@ -68,21 +68,41 @@ def _parse_config_file(path: Path) -> Dict[str, Any]:
     return data
 
 
-def _env_bool(name: str, default: bool) -> bool:
+def _env_str(name: str) -> Optional[str]:
     raw = os.getenv(name)
     if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+        return None
+    raw = raw.strip()
+    if not raw:
+        return None
+    return raw
 
 
-def _env_int(name: str, default: int) -> int:
+def _env_bool(name: str) -> Optional[bool]:
     raw = os.getenv(name)
     if raw is None:
-        return default
+        return None
+    raw = raw.strip().lower()
+    if not raw:
+        return None
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str) -> Optional[int]:
+    raw = os.getenv(name)
+    if raw is None:
+        return None
     try:
         return int(raw)
     except Exception:
-        return default
+        return None
+
+
+def _compact_dict(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Drop keys with None values so they don't override lower-precedence config.
+    """
+    return {k: v for k, v in data.items() if v is not None}
 
 
 def _merge_dicts(a: Dict[str, Any], b: Dict[str, Any]) -> Dict[str, Any]:
@@ -119,7 +139,7 @@ def load_run_config(
     # common flags builder
     def add_common(p: argparse.ArgumentParser) -> None:
         p.add_argument("--config", type=Path, help="Optional YAML/JSON config file")
-        p.add_argument("--json-logs", action="store_true", help="Enable JSON logs")
+        p.add_argument("--json-logs", action="store_true", default=None, help="Enable JSON logs")
         p.add_argument("--log-level", default=None, help="Log level (INFO, DEBUG, ...)")
         # Auth
         p.add_argument(
@@ -140,7 +160,7 @@ def load_run_config(
     p_run = subparsers.add_parser("run", help="Run inventory collection")
     add_common(p_run)
     p_run.add_argument("--outdir", type=Path, default=None, help="Output base directory (out/TS)")
-    p_run.add_argument("--parquet", action="store_true", help="Also write Parquet (pyarrow)")
+    p_run.add_argument("--parquet", action="store_true", default=None, help="Also write Parquet (pyarrow)")
     p_run.add_argument("--prev", type=Path, default=None, help="Previous inventory.jsonl for diff")
     p_run.add_argument(
         "--query",
@@ -154,7 +174,7 @@ def load_run_config(
         "--workers-enrich", type=int, default=None, help=f"Max enricher workers (default {DEFAULT_WORKERS_ENRICH})"
     )
     p_run.add_argument(
-        "--include-terminated", action="store_true", help="Include terminated resources (future use)"
+        "--include-terminated", action="store_true", default=None, help="Include terminated resources (future use)"
     )
 
     # diff
@@ -201,36 +221,40 @@ def load_run_config(
         file_cfg = _parse_config_file(Path(ns.config))
 
     # env
-    env_cfg: Dict[str, Any] = {
-        "outdir": os.getenv("OCI_INV_OUTDIR"),
-        "parquet": _env_bool("OCI_INV_PARQUET", False),
-        "prev": os.getenv("OCI_INV_PREV"),
-        "query": os.getenv("OCI_INV_QUERY") or DEFAULT_QUERY,
-        "include_terminated": _env_bool("OCI_INV_INCLUDE_TERMINATED", False),
-        "json_logs": _env_bool("OCI_INV_JSON_LOGS", False),
-        "log_level": os.getenv("OCI_INV_LOG_LEVEL") or "INFO",
-        "workers_region": _env_int("OCI_INV_WORKERS_REGION", DEFAULT_WORKERS_REGION),
-        "workers_enrich": _env_int("OCI_INV_WORKERS_ENRICH", DEFAULT_WORKERS_ENRICH),
-        "auth": os.getenv("OCI_INV_AUTH") or "auto",
-        "profile": os.getenv("OCI_INV_PROFILE"),
-        "tenancy_ocid": os.getenv("OCI_TENANCY_OCID"),
-    }
+    env_cfg: Dict[str, Any] = _compact_dict(
+        {
+            "outdir": _env_str("OCI_INV_OUTDIR"),
+            "parquet": _env_bool("OCI_INV_PARQUET"),
+            "prev": _env_str("OCI_INV_PREV"),
+            "query": _env_str("OCI_INV_QUERY"),
+            "include_terminated": _env_bool("OCI_INV_INCLUDE_TERMINATED"),
+            "json_logs": _env_bool("OCI_INV_JSON_LOGS"),
+            "log_level": _env_str("OCI_INV_LOG_LEVEL"),
+            "workers_region": _env_int("OCI_INV_WORKERS_REGION"),
+            "workers_enrich": _env_int("OCI_INV_WORKERS_ENRICH"),
+            "auth": _env_str("OCI_INV_AUTH"),
+            "profile": _env_str("OCI_INV_PROFILE"),
+            "tenancy_ocid": _env_str("OCI_TENANCY_OCID"),
+        }
+    )
 
     # CLI
-    cli_cfg: Dict[str, Any] = {
-        "outdir": getattr(ns, "outdir", None),
-        "parquet": bool(getattr(ns, "parquet", False)),
-        "prev": getattr(ns, "prev", None),
-        "query": getattr(ns, "query", None) or DEFAULT_QUERY,
-        "include_terminated": bool(getattr(ns, "include_terminated", False)),
-        "json_logs": bool(getattr(ns, "json_logs", False)),
-        "log_level": getattr(ns, "log_level", None) or None,
-        "workers_region": getattr(ns, "workers_region", None),
-        "workers_enrich": getattr(ns, "workers_enrich", None),
-        "auth": getattr(ns, "auth", None),
-        "profile": getattr(ns, "profile", None),
-        "tenancy_ocid": getattr(ns, "tenancy_ocid", None),
-    }
+    cli_cfg: Dict[str, Any] = _compact_dict(
+        {
+            "outdir": getattr(ns, "outdir", None),
+            "parquet": getattr(ns, "parquet", None),
+            "prev": getattr(ns, "prev", None),
+            "query": getattr(ns, "query", None),
+            "include_terminated": getattr(ns, "include_terminated", None),
+            "json_logs": getattr(ns, "json_logs", None),
+            "log_level": getattr(ns, "log_level", None),
+            "workers_region": getattr(ns, "workers_region", None),
+            "workers_enrich": getattr(ns, "workers_enrich", None),
+            "auth": getattr(ns, "auth", None),
+            "profile": getattr(ns, "profile", None),
+            "tenancy_ocid": getattr(ns, "tenancy_ocid", None),
+        }
+    )
 
     merged = _merge_dicts(base, _merge_dicts(file_cfg, _merge_dicts(env_cfg, cli_cfg)))
 

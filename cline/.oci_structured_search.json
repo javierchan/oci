@@ -1,0 +1,5 @@
+{
+  "queryText": "query all resources where compartmentId = 'ocid1.compartment.oc1..aaaaaaaamalavqua227kqzhwh6rqmvmx6aj3zyca7turhgimmor37azpcggq'",
+  "limit": 1000,
+  "matchingContextType": "NONE"
+}

@@ -6,6 +6,7 @@ from ..normalize.transform import normalize_from_search_summary
 from ..util.pagination import paginate
 from .clients import get_resource_search_client
 from ..auth.providers import AuthContext
+from ..util.errors import map_oci_error
 
 try:
     import oci  # type: ignore
@@ -55,7 +56,13 @@ def discover_in_region(ctx: AuthContext, region: str, query: str) -> List[Dict[s
     details = oci.resource_search.models.StructuredSearchDetails(query=query)  # type: ignore[attr-defined]
 
     def fetch(page: Optional[str]) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        resp = client.search_resources(details=details, page=page, limit=1000)  # type: ignore[attr-defined]
+        try:
+            resp = client.search_resources(details=details, page=page, limit=1000)  # type: ignore[attr-defined]
+        except Exception as e:
+            mapped = map_oci_error(e, f"OCI SDK error while searching resources in {region}")
+            if mapped:
+                raise mapped from e
+            raise
         items = getattr(resp, "data", None)
         summaries = []
         if items and getattr(items, "items", None) is not None:

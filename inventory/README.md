@@ -24,7 +24,7 @@ pip install .[parquet]
 
 ## Preflight setup
 Use the preflight script to prepare a local or CI environment (macOS/Linux, no sudo required). It:
-- Verifies prerequisites (python3 ≥ 3.11, pip, git; warns if oci CLI missing)
+- Verifies prerequisites (python3 ≥ 3.11, pip, git; oci CLI is optional and opt-in)
 - Creates or reuses a .venv virtual environment and upgrades pip/setuptools/wheel
 - Installs the project in editable mode, respecting pyproject.toml
 - Supports optional extras via INVENTORY_EXTRAS (e.g., parquet)
@@ -38,6 +38,11 @@ With extras:
 ```
 INVENTORY_EXTRAS=parquet ./preflight.sh
 INVENTORY_EXTRAS=parquet,dev ./preflight.sh
+```
+
+Install OCI CLI (opt-in):
+```
+OCI_INV_INSTALL_OCI_CLI=1 ./preflight.sh
 ```
 
 Next steps after running:

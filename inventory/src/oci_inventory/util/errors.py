@@ -45,3 +45,30 @@ def as_exit_code(exc: BaseException) -> int:
     if isinstance(exc, (ExportError, DiffError, InventoryError)):
         return int(ExitCode.RUNTIME_ERROR)
     return 1
+
+
+def _oci_error_types() -> tuple[type[BaseException], ...]:
+    try:
+        from oci.exceptions import RequestException, ServiceError  # type: ignore
+    except Exception:
+        return ()
+    return (ServiceError, RequestException)
+
+
+def is_oci_error(exc: BaseException) -> bool:
+    """
+    Return True if the exception looks like an OCI SDK error.
+    """
+    oci_types = _oci_error_types()
+    if oci_types and isinstance(exc, oci_types):
+        return True
+    return exc.__class__.__module__.startswith("oci.")
+
+
+def map_oci_error(exc: BaseException, context: str) -> OCIClientError | None:
+    """
+    Wrap OCI SDK errors with OCIClientError for consistent exit codes.
+    """
+    if not is_oci_error(exc):
+        return None
+    return OCIClientError(f"{context}: {exc}")

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ..auth.providers import AuthContext
+from ..util.errors import map_oci_error
 from .clients import get_identity_client
 
 
@@ -29,18 +30,30 @@ def list_compartments(ctx: AuthContext, tenancy_ocid: Optional[str] = None) -> L
     results: List[Dict[str, str]] = []
 
     # Root tenancy
-    ten_detail = identity.get_tenancy(ten).data  # type: ignore[attr-defined]
+    try:
+        ten_detail = identity.get_tenancy(ten).data  # type: ignore[attr-defined]
+    except Exception as e:
+        mapped = map_oci_error(e, "OCI SDK error while fetching tenancy details")
+        if mapped:
+            raise mapped from e
+        raise
     results.append({"ocid": ten_detail.id, "name": ten_detail.name})
 
     page: Optional[str] = None
     while True:
-        resp = identity.list_compartments(
-            ten,
-            compartment_id_in_subtree=True,
-            access_level="ANY",
-            page=page,
-            limit=1000,
-        )  # type: ignore[attr-defined]
+        try:
+            resp = identity.list_compartments(
+                ten,
+                compartment_id_in_subtree=True,
+                access_level="ANY",
+                page=page,
+                limit=1000,
+            )  # type: ignore[attr-defined]
+        except Exception as e:
+            mapped = map_oci_error(e, "OCI SDK error while listing compartments")
+            if mapped:
+                raise mapped from e
+            raise
         for item in getattr(resp, "data", []):
             results.append({"ocid": item.id, "name": item.name})
         # pagination via header

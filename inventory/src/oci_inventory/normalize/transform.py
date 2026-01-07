@@ -68,6 +68,31 @@ def canonicalize_record(record: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def sort_relationships(relationships: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Sort relationships deterministically by (source_ocid, relation_type, target_ocid).
+    """
+    def _key(rel: Dict[str, Any]) -> Tuple[str, str, str]:
+        return (
+            str(rel.get("source_ocid") or ""),
+            str(rel.get("relation_type") or ""),
+            str(rel.get("target_ocid") or ""),
+        )
+
+    return sorted((dict(r) for r in relationships), key=_key)
+
+
+def normalize_relationships(record: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Return a shallow copy with relationships sorted deterministically, if present.
+    """
+    out = dict(record)
+    rels = out.get("relationships")
+    if isinstance(rels, list):
+        out["relationships"] = sort_relationships(rels)
+    return out
+
+
 def stable_json_dumps(obj: Any) -> str:
     """
     Dump JSON with sort_keys=True and separators to ensure stable output.
