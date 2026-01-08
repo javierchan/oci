@@ -270,7 +270,7 @@ def cmd_run(cfg: RunConfig) -> int:
         regions = sorted([r for r in regions if r])
 
         def _disc(r: str) -> List[Dict[str, Any]]:
-            return discover_in_region(ctx, r, cfg.query)
+            return discover_in_region(ctx, r, cfg.query, collected_at=cfg.collected_at)
 
         with ThreadPoolExecutor(max_workers=max(1, cfg.workers_region)) as pool:
             futures_by_region = {r: pool.submit(_disc, r) for r in regions}

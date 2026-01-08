@@ -45,7 +45,13 @@ def _to_dict(obj: Any) -> Dict[str, Any]:
     return out
 
 
-def discover_in_region(ctx: AuthContext, region: str, query: str) -> List[Dict[str, Any]]:
+def discover_in_region(
+    ctx: AuthContext,
+    region: str,
+    query: str,
+    *,
+    collected_at: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """
     Perform Structured Search in a single region and return a list of normalized records.
     - Default query should be 'query all resources' unless caller overrides.
@@ -75,7 +81,7 @@ def discover_in_region(ctx: AuthContext, region: str, query: str) -> List[Dict[s
 
     records: List[Dict[str, Any]] = []
     for summary in paginate(fetch):
-        rec = normalize_from_search_summary(summary, region=region)
+        rec = normalize_from_search_summary(summary, region=region, collected_at=collected_at)
         # Attach raw summary for enricher use; will be removed before export
         rec["searchSummary"] = summary  # type: ignore[index]
         records.append(rec)  # type: ignore[arg-type]

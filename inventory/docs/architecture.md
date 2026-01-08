@@ -81,6 +81,44 @@ src/oci_inventory/
    - Hash excludes `collectedAt`, enabling meaningful changes detection.
    - Writes `diff.json` and `diff_summary.json`.
 
+## Output Artifacts (out/<timestamp>/)
+
+Each `run` writes a deterministic set of artifacts. Fields below are the stable schema contract consumed by reports and diagrams.
+
+- `inventory.jsonl`
+  - One JSON object per resource record.
+  - Required fields: `ocid`, `resourceType`, `region`, `collectedAt`, `enrichStatus`, `details`, `relationships`.
+  - Common fields: `displayName`, `compartmentId`, `lifecycleState`, `timeCreated`, `definedTags`, `freeformTags`, `enrichError`.
+  - `relationships` is a list of `{source_ocid, relation_type, target_ocid}` sorted by `(source_ocid, relation_type, target_ocid)`.
+  - `collectedAt` is a run-level UTC timestamp applied consistently to all records.
+
+- `inventory.csv`
+  - Report fields only (see `CSV_REPORT_FIELDS` in `src/oci_inventory/normalize/schema.py`).
+
+- `relationships.jsonl`
+  - Derived + enricher relationships (graph edges), one per line.
+  - Required fields: `source_ocid`, `relation_type`, `target_ocid`.
+
+- `run_summary.json`
+  - Coverage metrics for the run.
+  - Required fields: `total_discovered`, `enriched_ok`, `not_implemented`, `errors`,
+    `counts_by_resource_type`, `counts_by_enrich_status`.
+
+- `graph_nodes.jsonl`
+  - Node projection of inventory records.
+  - Required fields: `nodeId`, `nodeType`, `nodeCategory`, `name`, `region`, `compartmentId`,
+    `metadata`, `tags`, `enrichStatus`, `enrichError`.
+
+- `graph_edges.jsonl`
+  - Graph edges (relationships) with node typing hints.
+  - Required fields: `source_ocid`, `target_ocid`, `relation_type`, `source_type`, `target_type`, `region`.
+
+- `diagram_raw.mmd`
+  - Raw Mermaid graph export (full graph, intended for debugging).
+
+- `diagram.tenancy.mmd`, `diagram.network.*.mmd`, `diagram.workload.*.mmd`, `diagram.consolidated.mmd`
+  - Mermaid projections derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
+
 ## CLI Commands
 
 - `run`: executes the pipeline, writes outputs under timestamped `out/TS/`.

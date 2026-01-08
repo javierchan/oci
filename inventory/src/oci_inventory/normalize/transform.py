@@ -1,10 +1,37 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Sequence, Tuple
 
 from ..util.time import utc_now_iso
 from .schema import CANONICAL_FIELD_ORDER, CSV_REPORT_FIELDS, NormalizedRecord
+
+WORKLOAD_TAG_KEYS: Tuple[str, ...] = (
+    "app",
+    "application",
+    "service",
+    "workload",
+    "project",
+    "stack",
+)
+
+WORKLOAD_NAME_KEYWORDS: Tuple[str, ...] = (
+    "media",
+    "stream",
+    "cdn",
+    "edge",
+    "demo",
+    "sandbox",
+)
+
+WORKLOAD_PREFIX_EXCLUDE: Tuple[str, ...] = (
+    "prod",
+    "production",
+    "dev",
+    "test",
+    "stage",
+    "staging",
+)
 
 
 def _get(d: Dict[str, Any], *keys: str) -> Any:
@@ -12,6 +39,141 @@ def _get(d: Dict[str, Any], *keys: str) -> Any:
         if k in d:
             return d[k]
     return None
+
+
+def _record_name_for_workload(record: Mapping[str, Any]) -> str:
+    name = str(record.get("displayName") or record.get("name") or "").strip()
+    if name:
+        return name
+    details = record.get("details")
+    if not isinstance(details, Mapping):
+        return ""
+    metadata = details.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return ""
+    for key in ("display_name", "displayName", "name"):
+        val = metadata.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return ""
+
+
+def _workload_tag_values(record: Mapping[str, Any]) -> Dict[str, str]:
+    values: Dict[str, str] = {}
+
+    def _collect(tag_map: Mapping[str, Any]) -> None:
+        for k, v in tag_map.items():
+            ks = str(k or "").strip().lower()
+            vs = str(v or "").strip()
+            if not ks or not vs:
+                continue
+            if ks in WORKLOAD_TAG_KEYS:
+                values.setdefault(ks, vs)
+
+    freeform = record.get("freeformTags")
+    defined = record.get("definedTags")
+
+    if not isinstance(freeform, Mapping) or not isinstance(defined, Mapping):
+        tags = record.get("tags")
+        if isinstance(tags, Mapping):
+            if not isinstance(freeform, Mapping):
+                freeform = tags.get("freeformTags")
+            if not isinstance(defined, Mapping):
+                defined = tags.get("definedTags")
+
+    if isinstance(freeform, Mapping):
+        _collect(freeform)
+
+    if isinstance(defined, Mapping):
+        for ns_val in defined.values():
+            if isinstance(ns_val, Mapping):
+                _collect(ns_val)
+
+    return values
+
+
+def _prefix_token(name: str) -> str:
+    s = (name or "").strip()
+    if not s:
+        return ""
+    for sep in ("-", "_", "."):
+        if sep in s:
+            token = s.split(sep, 1)[0].strip()
+            if len(token) >= 3:
+                return token
+    return ""
+
+
+def _workload_key_candidates(record: Mapping[str, Any]) -> List[str]:
+    name = _record_name_for_workload(record)
+    tags = _workload_tag_values(record)
+
+    candidates: List[str] = []
+
+    for k in WORKLOAD_TAG_KEYS:
+        v = tags.get(k)
+        if v:
+            candidates.append(v)
+
+    nlow = (name or "").lower()
+    for kw in WORKLOAD_NAME_KEYWORDS:
+        if kw in nlow:
+            candidates.append(kw)
+
+    pt = _prefix_token(name)
+    if pt:
+        candidates.append(pt)
+
+    out: List[str] = []
+    seen: set[str] = set()
+    for c in candidates:
+        c2 = (c or "").strip()
+        if not c2:
+            continue
+        key = c2.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(c2)
+    return out
+
+
+def group_workloads(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    min_size: int = 3,
+) -> Dict[str, List[Mapping[str, Any]]]:
+    prefix_counts: Dict[str, int] = {}
+    for r in records:
+        t = _prefix_token(_record_name_for_workload(r))
+        if t:
+            prefix_counts[t.lower()] = prefix_counts.get(t.lower(), 0) + 1
+
+    def _is_eligible_prefix(token: str) -> bool:
+        return prefix_counts.get(token.lower(), 0) >= 3
+
+    groups: Dict[str, List[Mapping[str, Any]]] = {}
+    for r in records:
+        cands = _workload_key_candidates(r)
+        chosen = ""
+        for c in cands:
+            cl = c.lower()
+            if cl in WORKLOAD_NAME_KEYWORDS:
+                chosen = c
+                break
+            if _is_eligible_prefix(c):
+                chosen = c
+                break
+            if " " in c or len(c) >= 4:
+                if cl not in WORKLOAD_PREFIX_EXCLUDE:
+                    chosen = c
+                    break
+        if not chosen:
+            continue
+        groups.setdefault(chosen, []).append(r)
+
+    out = {k: v for k, v in groups.items() if len(v) >= min_size}
+    return dict(sorted(out.items(), key=lambda kv: (-len(kv[1]), kv[0].lower())))
 
 
 def normalize_from_search_summary(

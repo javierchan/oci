@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from .normalize.transform import group_workloads
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -58,31 +60,6 @@ def _record_metadata(record: Dict[str, Any]) -> Dict[str, Any]:
     details = record.get("details") or {}
     md = details.get("metadata") or {}
     return md if isinstance(md, dict) else {}
-
-
-def _flatten_tags(record: Dict[str, Any]) -> Dict[str, str]:
-    out: Dict[str, str] = {}
-    ff = record.get("freeformTags")
-    if isinstance(ff, dict):
-        for k, v in ff.items():
-            ks = str(k or "").strip()
-            vs = str(v or "").strip()
-            if ks and vs:
-                out[ks] = vs
-
-    dt = record.get("definedTags")
-    if isinstance(dt, dict):
-        for ns, inner in dt.items():
-            if not isinstance(inner, dict):
-                continue
-            for k, v in inner.items():
-                ks = str(k or "").strip()
-                if not ks:
-                    continue
-                vs = str(v or "").strip()
-                if vs:
-                    out[f"{ns}.{ks}"] = vs
-    return out
 
 
 def _compartment_name_map(records: Sequence[Dict[str, Any]]) -> Dict[str, str]:
@@ -335,106 +312,8 @@ def _pct(n: int, d: int) -> str:
     return f"{int(round((n / d) * 100.0))}%"
 
 
-def _prefix_token(name: str) -> str:
-    s = (name or "").strip()
-    if not s:
-        return ""
-    for sep in ("-", "_", "."):
-        if sep in s:
-            token = s.split(sep, 1)[0].strip()
-            if len(token) >= 3:
-                return token
-    return ""
-
-
-def _workload_key_candidates(record: Dict[str, Any]) -> List[str]:
-    name = _record_name(record)
-    tags = _flatten_tags(record)
-
-    candidates: List[str] = []
-
-    # Prefer explicit app/service/workload-like tags.
-    preferred_keys = (
-        "app",
-        "application",
-        "service",
-        "workload",
-        "project",
-        "stack",
-        "App",
-        "Application",
-        "Service",
-        "Workload",
-        "Project",
-        "Stack",
-    )
-    for k in preferred_keys:
-        v = tags.get(k)
-        if v:
-            candidates.append(v)
-
-    # Heuristic keywords in name for common demo/workload patterns.
-    nlow = (name or "").lower()
-    for kw in ("media", "stream", "cdn", "edge", "demo", "sandbox"):
-        if kw in nlow:
-            candidates.append(kw)
-
-    # Fallback: stable prefix token (filtered later by frequency threshold).
-    pt = _prefix_token(name)
-    if pt:
-        candidates.append(pt)
-
-    # Normalize and dedupe while preserving order.
-    out: List[str] = []
-    seen: set[str] = set()
-    for c in candidates:
-        c2 = (c or "").strip()
-        if not c2:
-            continue
-        key = c2.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(c2)
-    return out
-
-
-def group_workloads(records: Sequence[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-    # Two-pass: decide which prefix tokens are frequent enough to be meaningful.
-    prefix_counts: Dict[str, int] = {}
-    for r in records:
-        t = _prefix_token(_record_name(r))
-        if t:
-            prefix_counts[t.lower()] = prefix_counts.get(t.lower(), 0) + 1
-
-    def _is_eligible_prefix(token: str) -> bool:
-        return prefix_counts.get(token.lower(), 0) >= 3
-
-    groups: Dict[str, List[Dict[str, Any]]] = {}
-    for r in records:
-        cands = _workload_key_candidates(r)
-        chosen = ""
-        for c in cands:
-            # Keep tag/keyword candidates; allow prefix token only if frequent.
-            if c.lower() in {"media", "stream", "cdn", "edge", "demo", "sandbox"}:
-                chosen = c
-                break
-            if _is_eligible_prefix(c):
-                chosen = c
-                break
-            # If this candidate looks like an explicit tag value, keep it.
-            if " " in c or len(c) >= 4:
-                # Still conservative: avoid grouping everything into "prod"/"dev".
-                if c.lower() not in {"prod", "production", "dev", "test", "stage", "staging"}:
-                    chosen = c
-                    break
-        if not chosen:
-            continue
-        groups.setdefault(chosen, []).append(r)
-
-    # Keep only meaningful groups: at least 3 resources.
-    out = {k: v for k, v in groups.items() if len(v) >= 3}
-    return dict(sorted(out.items(), key=lambda kv: (-len(kv[1]), kv[0].lower())))
+def _record_workload_groups(records: Sequence[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    return {k: list(v) for k, v in group_workloads(records).items()}
 
 
 def build_architecture_facts(
@@ -466,7 +345,7 @@ def build_architecture_facts(
         for cid, count in top_comp
     ]
 
-    workloads = group_workloads(discovered_records)
+    workloads = _record_workload_groups(discovered_records)
 
     facts: Dict[str, Any] = {
         "Scope": "queried resources only (see Execution Metadata for query)",
@@ -539,7 +418,7 @@ def render_run_report_md(
     alias_by_comp = _compartment_alias_map(list(comp_counts.keys()))
 
     # Workload clustering (best-effort)
-    workloads = group_workloads(discovered_records)
+    workloads = _record_workload_groups(discovered_records)
 
     # Core resource counts
     vcn_recs = [r for r in discovered_records if _record_type(r) == "Vcn"]
