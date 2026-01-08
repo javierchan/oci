@@ -143,6 +143,13 @@ def build_diff_plan(
     return WizardPlan(argv=argv)
 
 
+def build_coverage_plan(*, inventory: Path, top: Optional[int] = None) -> WizardPlan:
+    argv: List[str] = ["enrich-coverage", "--inventory", str(inventory)]
+    if top is not None:
+        argv.extend(["--top", str(int(top))])
+    return WizardPlan(argv=argv)
+
+
 def build_simple_plan(
     *,
     subcommand: str,

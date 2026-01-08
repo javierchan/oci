@@ -9,6 +9,7 @@ import yaml
 from .plan import (
     WizardPlan,
     build_diff_plan,
+    build_coverage_plan,
     build_run_plan,
     build_simple_plan,
 )
@@ -74,8 +75,8 @@ def _load_data(path: Path) -> Dict[str, Any]:
 def load_wizard_plan_from_file(path: Path) -> WizardPlan:
     """Load a non-interactive wizard plan from a YAML/JSON file.
 
-    Schema (minimal):
-      mode: run|diff|validate-auth|list-regions|list-compartments
+        Schema (minimal):
+            mode: run|diff|validate-auth|list-regions|list-compartments|enrich-coverage
       auth: auto|config|instance|resource|security_token
       profile: optional
       tenancy_ocid: optional
@@ -138,6 +139,16 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             outdir=Path(outdir),
             json_logs=json_logs,
             log_level=log_level,
+        )
+
+    if mode == "enrich-coverage":
+        inventory = _as_str(cfg.get("inventory"))
+        top = _as_int(cfg.get("top"))
+        if not inventory:
+            raise ValueError("Wizard enrich-coverage config requires: inventory")
+        return build_coverage_plan(
+            inventory=Path(inventory),
+            top=top,
         )
 
     if mode == "run":

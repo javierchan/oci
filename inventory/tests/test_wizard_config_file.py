@@ -52,3 +52,21 @@ def test_load_wizard_plan_from_json(tmp_path: Path) -> None:
     plan = load_wizard_plan_from_file(p)
     assert plan.argv[0] == "validate-auth"
     assert "--auth" in plan.argv and "auto" in plan.argv
+
+
+def test_load_wizard_plan_coverage(tmp_path: Path) -> None:
+    p = tmp_path / "plan.yaml"
+    p.write_text(
+        """
+mode: enrich-coverage
+auth: auto
+inventory: out/latest/inventory.jsonl
+top: 7
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    plan = load_wizard_plan_from_file(p)
+    assert plan.argv[0] == "enrich-coverage"
+    assert "--inventory" in plan.argv and "out/latest/inventory.jsonl" in plan.argv
+    assert "--top" in plan.argv and "7" in plan.argv
