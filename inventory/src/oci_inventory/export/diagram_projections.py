@@ -203,6 +203,135 @@ def _summarize_many(nodes: Sequence[Node], *, title: str, keep: int = 2) -> Tupl
     return kept, f"{title}... and {remaining} more"
 
 
+def _keep_and_omitted(nodes: Sequence[Node], *, keep: int) -> Tuple[List[Node], List[Node]]:
+    if keep <= 0:
+        return [], list(nodes)
+    if len(nodes) <= keep:
+        return list(nodes), []
+    return list(nodes[:keep]), list(nodes[keep:])
+
+
+def _top_types(nodes: Sequence[Node]) -> List[Tuple[str, int]]:
+    counts: Dict[str, int] = {}
+    for n in nodes:
+        t = str(n.get("nodeType") or "Unknown")
+        counts[t] = counts.get(t, 0) + 1
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def _stable_example_nodes_by_type(nodes: Sequence[Node], *, max_per_type: int = 1) -> Dict[str, List[Node]]:
+    by_type: Dict[str, List[Node]] = {}
+    for n in nodes:
+        t = str(n.get("nodeType") or "Unknown")
+        by_type.setdefault(t, []).append(n)
+    out: Dict[str, List[Node]] = {}
+    for t, items in by_type.items():
+        items_sorted = sorted(items, key=lambda n: (str(n.get("name") or ""), str(n.get("nodeId") or "")))
+        out[t] = items_sorted[: max(0, max_per_type)]
+    return out
+
+
+def _render_omitted_type_summaries(
+    lines: List[str],
+    *,
+    prefix: str,
+    omitted_nodes: Sequence[Node],
+    max_types: int = 8,
+    example_types: int = 3,
+    examples_per_type: int = 1,
+) -> None:
+    if not omitted_nodes:
+        return
+
+    lines.append(f"  %% Omitted resources (by type) [{prefix}]")
+    types = _top_types(omitted_nodes)
+    shown_types = types[:max_types]
+    remainder = sum(c for _, c in types[max_types:])
+
+    example_map = _stable_example_nodes_by_type(omitted_nodes, max_per_type=examples_per_type)
+
+    for idx, (t, c) in enumerate(shown_types):
+        sid = _mermaid_id(f"{prefix}:type:{t}")
+        lines.extend(_render_node_with_class(sid, f"{t}<br>{c} items", cls="summary", shape="rect"))
+        if idx < example_types:
+            for ex in example_map.get(t, []):
+                ex_ocid = str(ex.get("nodeId") or "")
+                if not ex_ocid:
+                    continue
+                ex_id = _mermaid_id(ex_ocid)
+                lines.extend(
+                    _render_node_with_class(ex_id, _mermaid_label_for(ex), cls=_node_class(ex), shape=_node_shape(ex))
+                )
+                lines.append(_render_edge(sid, ex_id, "example", dotted=True))
+
+    if remainder:
+        rid = _mermaid_id(f"{prefix}:type:remainder")
+        lines.extend(_render_node_with_class(rid, f"Other types... and {remainder} more", cls="summary", shape="rect"))
+
+
+def _render_omitted_by_compartment_summary(
+    lines: List[str],
+    *,
+    prefix: str,
+    omitted_nodes: Sequence[Node],
+    node_by_id: Mapping[str, Node],
+    max_compartments: int = 4,
+    max_types_per_compartment: int = 4,
+) -> None:
+    if not omitted_nodes:
+        return
+
+    # Group omitted nodes by compartmentId.
+    by_comp: Dict[str, List[Node]] = {}
+    for n in omitted_nodes:
+        cid = str(n.get("compartmentId") or "") or "UNKNOWN"
+        by_comp.setdefault(cid, []).append(n)
+
+    # Select top compartments by omitted volume.
+    comp_ranked = sorted(by_comp.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:max_compartments]
+    if not comp_ranked:
+        return
+
+    lines.append(f"  %% Omitted resources (top compartments) [{prefix}]")
+
+    for cid, comp_nodes in comp_ranked:
+        if cid == "UNKNOWN":
+            comp_label = "Compartment: Unknown"
+        else:
+            comp_label = _compartment_label(node_by_id.get(cid, {"name": cid}))
+
+        comp_id = _mermaid_id(f"{prefix}:comp:{cid}")
+        lines.extend(
+            _render_node_with_class(
+                comp_id,
+                f"{comp_label}<br>omitted: {len(comp_nodes)}",
+                cls="summary",
+                shape="rect",
+            )
+        )
+
+        # Within compartment: show top omitted types.
+        types = _top_types(comp_nodes)
+        shown = types[:max_types_per_compartment]
+        remainder = sum(c for _, c in types[max_types_per_compartment:])
+        for t, c in shown:
+            tid = _mermaid_id(f"{prefix}:comp:{cid}:type:{t}")
+            lines.extend(_render_node_with_class(tid, f"{t}<br>{c} items", cls="summary", shape="rect"))
+            lines.append(_render_edge(comp_id, tid, "", dotted=True))
+
+        if remainder:
+            rid = _mermaid_id(f"{prefix}:comp:{cid}:type:remainder")
+            lines.extend(
+                _render_node_with_class(
+                    rid,
+                    f"Other types... and {remainder} more",
+                    cls="summary",
+                    shape="rect",
+                )
+            )
+            lines.append(_render_edge(comp_id, rid, "", dotted=True))
+
+
 def _instance_first_sort_key(node: Node) -> Tuple[int, str, str, str]:
     return (
         0 if _is_node_type(node, "Instance") else 1,
@@ -403,16 +532,22 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
     shown_nodes = _tenancy_nodes_to_show(nodes)
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
 
-    # Group by compartmentId (or unknown).
-    comps: Dict[str, List[Node]] = {}
+    # Group by compartmentId (or unknown). Keep both "shown" and "all" sets.
+    comps_shown: Dict[str, List[Node]] = {}
+    comps_all: Dict[str, List[Node]] = {}
+    for n in nodes:
+        cid = str(n.get("compartmentId") or "")
+        if not cid and _is_node_type(n, "Compartment"):
+            cid = str(n.get("nodeId") or "")
+        comps_all.setdefault(cid or "UNKNOWN", []).append(n)
     for n in shown_nodes:
         cid = str(n.get("compartmentId") or "")
         if not cid and _is_node_type(n, "Compartment"):
             cid = str(n.get("nodeId") or "")
-        comps.setdefault(cid or "UNKNOWN", []).append(n)
+        comps_shown.setdefault(cid or "UNKNOWN", []).append(n)
 
     # Stable order.
-    comp_ids = sorted(comps.keys())
+    comp_ids = sorted(comps_all.keys())
 
     lines: List[str] = ["flowchart TD"]
     lines.extend(_style_block_lines())
@@ -429,7 +564,7 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
 
         # Within compartment, keep only a high-signal subset.
         comp_nodes = sorted(
-            comps[cid],
+            comps_shown.get(cid, []),
             key=lambda n: (
                 str(n.get("nodeCategory") or ""),
                 str(n.get("nodeType") or ""),
@@ -437,6 +572,7 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
             ),
         )
         # Cap the number of nodes per compartment to avoid unreadable diagrams.
+        rendered_ocids: Set[str] = set()
         rendered = 0
         cap = 18
         for n in comp_nodes:
@@ -446,20 +582,30 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
             if rendered >= cap:
                 break
             nid = _mermaid_id(str(n.get("nodeId") or ""))
+            if n.get("nodeId"):
+                rendered_ocids.add(str(n.get("nodeId") or ""))
             cls = _node_class(n)
             shape = _node_shape(n)
             lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=cls, shape=shape))
             rendered += 1
 
-        if len([n for n in comp_nodes if not _is_node_type(n, "Compartment")]) > cap:
-            summary_id = _mermaid_id(f"comp:{cid}:summary")
+        # Summarize everything else in the compartment, including leaf/control-plane resources.
+        all_nodes = [n for n in comps_all.get(cid, []) if not _is_node_type(n, "Compartment")]
+        omitted = [
+            n
+            for n in all_nodes
+            if str(n.get("nodeId") or "") and str(n.get("nodeId") or "") not in rendered_ocids
+        ]
+        if omitted:
+            total_id = _mermaid_id(f"comp:{cid}:omitted_total")
             lines.extend(
                 _render_node_with_class(
-                    summary_id,
-                    f"Other resources... and {len([n for n in comp_nodes if not _is_node_type(n, 'Compartment')]) - cap} more",
+                    total_id,
+                    f"Other resources (not shown): {len(omitted)}",
                     cls="summary",
                 )
             )
+            _render_omitted_type_summaries(lines, prefix=f"comp:{cid}", omitted_nodes=omitted, max_types=6)
         lines.append("  end")
 
     # Minimal flow hints across major roles.
@@ -555,6 +701,32 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
             gid = _mermaid_id(str(g.get("nodeId") or ""))
             lines.extend(_render_node_with_class(gid, _mermaid_label_for(g), cls=_node_class(g), shape=_node_shape(g)))
 
+        # Network control-plane primitives (route tables, security lists, NSGs, DHCP).
+        control = []
+        for n in nodes:
+            nt = str(n.get("nodeType") or "")
+            if nt not in _NETWORK_CONTROL_NODETYPES:
+                continue
+            meta = _node_metadata(n)
+            vcn_ref = _get_meta(meta, "vcn_id", "vcnId")
+            if isinstance(vcn_ref, str) and vcn_ref == vcn_ocid:
+                control.append(n)
+
+        control_sorted = sorted(control, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
+        kept_control, omitted_control = _keep_and_omitted(control_sorted, keep=4)
+        for n in kept_control:
+            nid = _mermaid_id(str(n.get("nodeId") or ""))
+            lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls="network", shape="rect"))
+        if omitted_control:
+            sid = _mermaid_id(f"vcn:{vcn_ocid}:control_summary")
+            lines.extend(
+                _render_node_with_class(
+                    sid,
+                    f"Other network controls... and {len(omitted_control)} more",
+                    cls="summary",
+                )
+            )
+
         # Subnets inside VCN.
         vcn_subnets = [sn for sn in subnets if subnet_to_vcn.get(str(sn.get("nodeId") or "")) == vcn_ocid]
         for sn in sorted(vcn_subnets, key=lambda n: str(n.get("name") or "")):
@@ -615,6 +787,29 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
                 if summary:
                     sid = _mermaid_id(f"subnet:{sn_ocid}:leaf_summary")
                     lines.extend(_render_node_with_class(sid, summary, cls="summary"))
+
+            # Always include a compact IP/VNIC summary if present (these are often filtered out).
+            ip_vnic_counts: Dict[str, int] = {"Vnic": 0, "PrivateIp": 0, "PublicIp": 0}
+            for n in nodes:
+                if not (_is_node_type(n, "Vnic") or _is_node_type(n, "PrivateIp") or _is_node_type(n, "PublicIp")):
+                    continue
+                att = res_to_attach.get(str(n.get("nodeId") or ""))
+                if att and att.subnet_ocid == sn_ocid:
+                    if _is_node_type(n, "Vnic"):
+                        ip_vnic_counts["Vnic"] += 1
+                    elif _is_node_type(n, "PrivateIp"):
+                        ip_vnic_counts["PrivateIp"] += 1
+                    elif _is_node_type(n, "PublicIp"):
+                        ip_vnic_counts["PublicIp"] += 1
+
+            if any(ip_vnic_counts.values()):
+                sid = _mermaid_id(f"subnet:{sn_ocid}:ip_vnic")
+                label = (
+                    f"IPs / VNICs<br>VNICs: {ip_vnic_counts['Vnic']}, "
+                    f"Private IPs: {ip_vnic_counts['PrivateIp']}, "
+                    f"Public IPs: {ip_vnic_counts['PublicIp']}"
+                )
+                lines.extend(_render_node_with_class(sid, label, cls="summary", shape="rect"))
 
             lines.append("    end")
 
@@ -1008,6 +1203,67 @@ def _write_consolidated_mermaid(
         if lane in lanes:
             lanes[lane].append(n)
 
+    # Precompute which OCIDs are explicitly represented on the landing page so that the
+    # coverage summary doesn't double-count resources rendered in other swimlanes.
+    represented_ocids: Set[str] = set()
+
+    for c in comp_nodes_sorted[:8]:
+        cid = str(c.get("nodeId") or "")
+        if cid:
+            represented_ocids.add(cid)
+
+    iam_nodes = sorted(lanes["iam"], key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
+    iam_kept, _ = _keep_and_omitted(iam_nodes, keep=6)
+    for n in iam_kept:
+        if n.get("nodeId"):
+            represented_ocids.add(str(n.get("nodeId") or ""))
+
+    sec_nodes = sorted(lanes["security"], key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
+    sec_kept, _ = _keep_and_omitted(sec_nodes, keep=6)
+    for n in sec_kept:
+        if n.get("nodeId"):
+            represented_ocids.add(str(n.get("nodeId") or ""))
+
+    app_nodes = sorted(lanes["app"], key=_instance_first_sort_key)
+    app_kept, _ = _keep_and_omitted(app_nodes, keep=8)
+    for n in app_kept:
+        if n.get("nodeId"):
+            represented_ocids.add(str(n.get("nodeId") or ""))
+
+    data_nodes = sorted(lanes["data"], key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
+    data_kept, _ = _keep_and_omitted(data_nodes, keep=8)
+    for n in data_kept:
+        if n.get("nodeId"):
+            represented_ocids.add(str(n.get("nodeId") or ""))
+
+    obs_nodes = sorted(lanes["observability"], key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
+    obs_kept, _ = _keep_and_omitted(obs_nodes, keep=6)
+    for n in obs_kept:
+        if n.get("nodeId"):
+            represented_ocids.add(str(n.get("nodeId") or ""))
+
+    # Network lane represents VCNs even when they only appear as a subgraph label.
+    vcn_nodes = [n for n in nodes if _is_node_type(n, "Vcn")]
+    vcn_sorted = sorted(vcn_nodes, key=lambda n: str(n.get("name") or ""))
+    for vcn in vcn_sorted[:4]:
+        vcn_ocid = str(vcn.get("nodeId") or "")
+        if vcn_ocid:
+            represented_ocids.add(vcn_ocid)
+        for gtype in ("InternetGateway", "NatGateway", "ServiceGateway"):
+            gws = [
+                n
+                for n in nodes
+                if _is_node_type(n, gtype) and str(n.get("compartmentId") or "") == str(vcn.get("compartmentId") or "")
+            ]
+            if gws and gws[0].get("nodeId"):
+                represented_ocids.add(str(gws[0].get("nodeId") or ""))
+        subs = [n for n in nodes if _is_node_type(n, "Subnet") and str(_get_meta(_node_metadata(n), "vcn_id") or "") == vcn_ocid]
+        subs_sorted = sorted(subs, key=lambda n: str(n.get("name") or ""))
+        kept_subs, _ = _keep_and_omitted(subs_sorted, keep=2)
+        for sn in kept_subs:
+            if sn.get("nodeId"):
+                represented_ocids.add(str(sn.get("nodeId") or ""))
+
     # Stable, small external anchors.
     internet_id = _mermaid_id("external:internet")
     users_id = _mermaid_id("external:users")
@@ -1035,15 +1291,43 @@ def _write_consolidated_mermaid(
     lines.append("  direction TB")
     lines.append("  TEN_ROOT((Tenancy))")
     lines.append("  class TEN_ROOT boundary")
+
+    # Track which concrete resources we explicitly render in the landing page.
+    rendered_ocids: Set[str] = set()
+
     for c in comp_nodes_sorted[:8]:
         cid = str(c.get("nodeId") or "")
         nid = _mermaid_id(f"comp:{cid}")
         lines.extend(_render_node_with_class(nid, _mermaid_label_for(c), cls="boundary", shape="rect"))
         lines.append(_render_edge("TEN_ROOT", nid, "contains", dotted=True))
+        if cid:
+            rendered_ocids.add(cid)
     if len(comp_nodes_sorted) > 8:
         sid = _mermaid_id("compartments:more")
         lines.extend(_render_node_with_class(sid, f"Other compartments... and {len(comp_nodes_sorted) - 8} more", cls="summary"))
         lines.append(_render_edge("TEN_ROOT", sid, "contains", dotted=True))
+
+    # Coverage summary: show which resource types are present but not explicitly rendered.
+    # This keeps the landing page readable while ensuring no resource type disappears entirely.
+    lines.append("  COV_ROOT((Inventory Coverage))")
+    lines.append("  class COV_ROOT summary")
+    omitted_for_coverage = [
+        n
+        for n in nodes
+        if str(n.get("nodeId") or "")
+        and str(n.get("nodeId") or "") not in represented_ocids
+        and not _is_node_type(n, "Compartment")
+    ]
+    _render_omitted_type_summaries(lines, prefix="consolidated", omitted_nodes=omitted_for_coverage, max_types=8)
+    _render_omitted_by_compartment_summary(
+        lines,
+        prefix="consolidated",
+        omitted_nodes=omitted_for_coverage,
+        node_by_id=node_by_id,
+        max_compartments=4,
+        max_types_per_compartment=4,
+    )
+    lines.append(_render_edge("TEN_ROOT", "COV_ROOT", "coverage", dotted=True))
     lines.append("end")
 
     # IAM lane (key IAM primitives only)
@@ -1052,14 +1336,16 @@ def _write_consolidated_mermaid(
     lines.append("  IAM_ROOT((IAM))")
     lines.append("  class IAM_ROOT boundary")
     iam_nodes = sorted(lanes["iam"], key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
-    kept, summary = _summarize_many(iam_nodes, title="Other IAM resources", keep=6)
+    kept, omitted = _keep_and_omitted(iam_nodes, keep=6)
     for n in kept:
         nid = _mermaid_id(str(n.get("nodeId") or ""))
+        if n.get("nodeId"):
+            rendered_ocids.add(str(n.get("nodeId") or ""))
         lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls="policy", shape="rect"))
         lines.append(_render_edge("IAM_ROOT", nid, "", dotted=True))
-    if summary:
+    if omitted:
         sid = _mermaid_id("iam:summary")
-        lines.extend(_render_node_with_class(sid, summary, cls="summary"))
+        lines.extend(_render_node_with_class(sid, f"Other IAM resources... and {len(omitted)} more", cls="summary"))
         lines.append(_render_edge("IAM_ROOT", sid, "", dotted=True))
     lines.append("end")
 
@@ -1078,6 +1364,8 @@ def _write_consolidated_mermaid(
         lines.append(f'  {vcn_root}(("Network View: {vcn_slug}"))')
         lines.append(f"  class {vcn_root} boundary")
         vcn_block = _mermaid_id(f"vcn:{vcn_ocid}")
+        if vcn_ocid:
+            rendered_ocids.add(vcn_ocid)
         lines.append(f'  subgraph {vcn_block}["{vcn_label.replace("\"", "'")}"]')
         lines.append("    direction TB")
         # Gateways
@@ -1085,6 +1373,8 @@ def _write_consolidated_mermaid(
             gws = [n for n in nodes if _is_node_type(n, gtype) and str(n.get("compartmentId") or "") == str(vcn.get("compartmentId") or "")]
             if gws:
                 gid = _mermaid_id(str(gws[0].get("nodeId") or f"{vcn_ocid}:{gtype}"))
+                if gws[0].get("nodeId"):
+                    rendered_ocids.add(str(gws[0].get("nodeId") or ""))
                 lines.extend(_render_node_with_class(gid, f"{lab}<br>{gtype}", cls="network", shape="rect"))
         # Subnets for this VCN
         subs = [n for n in nodes if _is_node_type(n, "Subnet") and str(_get_meta(_node_metadata(n), "vcn_id") or "") == vcn_ocid]
@@ -1092,6 +1382,8 @@ def _write_consolidated_mermaid(
         kept_subs, subs_summary = _summarize_many(subs_sorted, title="Other subnets", keep=2)
         for sn in kept_subs:
             sid = _mermaid_id(str(sn.get("nodeId") or ""))
+            if sn.get("nodeId"):
+                rendered_ocids.add(str(sn.get("nodeId") or ""))
             lines.extend(_render_node_with_class(sid, _subnet_label(sn).replace('"', "'"), cls="network", shape="rect"))
         if subs_summary:
             sid = _mermaid_id(f"subnets:{vcn_ocid}:summary")
@@ -1110,14 +1402,16 @@ def _write_consolidated_mermaid(
     lines.append("  SEC_ROOT((Security))")
     lines.append("  class SEC_ROOT boundary")
     sec_nodes = sorted(lanes["security"], key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
-    kept, summary = _summarize_many(sec_nodes, title="Other security resources", keep=6)
+    kept, omitted = _keep_and_omitted(sec_nodes, keep=6)
     for n in kept:
         nid = _mermaid_id(str(n.get("nodeId") or ""))
+        if n.get("nodeId"):
+            rendered_ocids.add(str(n.get("nodeId") or ""))
         lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls="boundary", shape="rect"))
         lines.append(_render_edge("SEC_ROOT", nid, "", dotted=True))
-    if summary:
+    if omitted:
         sid = _mermaid_id("security:summary")
-        lines.extend(_render_node_with_class(sid, summary, cls="summary"))
+        lines.extend(_render_node_with_class(sid, f"Other security resources... and {len(omitted)} more", cls="summary"))
         lines.append(_render_edge("SEC_ROOT", sid, "", dotted=True))
     lines.append("end")
 
@@ -1127,11 +1421,13 @@ def _write_consolidated_mermaid(
     lines.append("  APP_ROOT((App))")
     lines.append("  class APP_ROOT boundary")
     app_nodes = sorted(lanes["app"], key=_instance_first_sort_key)
-    kept, summary = _summarize_many(app_nodes, title="Other app/compute resources", keep=8)
+    kept, omitted = _keep_and_omitted(app_nodes, keep=8)
     app_entry_first: Optional[str] = None
     app_entry_preferred: Optional[str] = None
     for n in kept:
         nid = _mermaid_id(str(n.get("nodeId") or ""))
+        if n.get("nodeId"):
+            rendered_ocids.add(str(n.get("nodeId") or ""))
         if app_entry_first is None:
             app_entry_first = nid
         if app_entry_preferred is None and _is_node_type(n, "Instance"):
@@ -1139,9 +1435,9 @@ def _write_consolidated_mermaid(
         lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n)))
         lines.append(_render_edge("APP_ROOT", nid, "", dotted=True))
     app_entry = app_entry_preferred or app_entry_first
-    if summary:
+    if omitted:
         sid = _mermaid_id("app:summary")
-        lines.extend(_render_node_with_class(sid, summary, cls="summary"))
+        lines.extend(_render_node_with_class(sid, f"Other app/compute resources... and {len(omitted)} more", cls="summary"))
         lines.append(_render_edge("APP_ROOT", sid, "", dotted=True))
     lines.append("end")
 
@@ -1151,17 +1447,19 @@ def _write_consolidated_mermaid(
     lines.append("  DATA_ROOT((Data))")
     lines.append("  class DATA_ROOT boundary")
     data_nodes = sorted(lanes["data"], key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
-    kept, summary = _summarize_many(data_nodes, title="Other data resources", keep=8)
+    kept, omitted = _keep_and_omitted(data_nodes, keep=8)
     first_data: Optional[str] = None
     for n in kept:
         nid = _mermaid_id(str(n.get("nodeId") or ""))
+        if n.get("nodeId"):
+            rendered_ocids.add(str(n.get("nodeId") or ""))
         if first_data is None:
             first_data = nid
         lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls="storage", shape="db"))
         lines.append(_render_edge("DATA_ROOT", nid, "", dotted=True))
-    if summary:
+    if omitted:
         sid = _mermaid_id("data:summary")
-        lines.extend(_render_node_with_class(sid, summary, cls="summary"))
+        lines.extend(_render_node_with_class(sid, f"Other data resources... and {len(omitted)} more", cls="summary"))
         lines.append(_render_edge("DATA_ROOT", sid, "", dotted=True))
     lines.append("end")
 
@@ -1171,14 +1469,16 @@ def _write_consolidated_mermaid(
     lines.append("  OBS_ROOT((Observability))")
     lines.append("  class OBS_ROOT boundary")
     obs_nodes = sorted(lanes["observability"], key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
-    kept, summary = _summarize_many(obs_nodes, title="Other observability resources", keep=6)
+    kept, omitted = _keep_and_omitted(obs_nodes, keep=6)
     for n in kept:
         nid = _mermaid_id(str(n.get("nodeId") or ""))
+        if n.get("nodeId"):
+            rendered_ocids.add(str(n.get("nodeId") or ""))
         lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls="boundary", shape="rect"))
         lines.append(_render_edge("OBS_ROOT", nid, "", dotted=True))
-    if summary:
+    if omitted:
         sid = _mermaid_id("obs:summary")
-        lines.extend(_render_node_with_class(sid, summary, cls="summary"))
+        lines.extend(_render_node_with_class(sid, f"Other observability resources... and {len(omitted)} more", cls="summary"))
         lines.append(_render_edge("OBS_ROOT", sid, "", dotted=True))
     lines.append("end")
 
