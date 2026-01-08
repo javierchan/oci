@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from oci_inventory.wizard.plan import (
+    build_coverage_plan,
     build_diff_plan,
     build_run_plan,
     build_simple_plan,
@@ -22,7 +23,7 @@ def test_build_run_plan_contains_expected_flags() -> None:
         prev=Path("out/prev/inventory.jsonl"),
         workers_region=3,
         workers_enrich=9,
-        include_terminated=None,
+        include_terminated=True,
         json_logs=False,
         log_level="INFO",
     )
@@ -44,6 +45,7 @@ def test_build_run_plan_contains_expected_flags() -> None:
     assert "3" in plan.argv
     assert "--workers-enrich" in plan.argv
     assert "9" in plan.argv
+    assert "--include-terminated" in plan.argv
     assert "--no-json-logs" in plan.argv
 
 
@@ -79,3 +81,12 @@ def test_build_simple_plan_rejects_unknown_subcommand() -> None:
         pass
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_build_coverage_plan() -> None:
+    plan = build_coverage_plan(inventory=Path("out/run/inventory.jsonl"), top=5)
+    assert plan.argv[0] == "enrich-coverage"
+    assert "--inventory" in plan.argv
+    assert "out/run/inventory.jsonl" in plan.argv
+    assert "--top" in plan.argv
+    assert "5" in plan.argv

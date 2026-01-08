@@ -8,6 +8,7 @@ from typing import Optional, Tuple
 
 from ..cli import (
     cmd_diff,
+    cmd_enrich_coverage,
     cmd_list_compartments,
     cmd_list_regions,
     cmd_run,
@@ -82,6 +83,9 @@ def execute_plan(plan: WizardPlan) -> Tuple[int, Optional[Path], str, str]:
         if command == "diff":
             code = cmd_diff(cfg)
             return code, cfg.outdir, stdout_buf.getvalue(), log_buf.getvalue()
+        if command == "enrich-coverage":
+            code = cmd_enrich_coverage(cfg)
+            return code, None, stdout_buf.getvalue(), log_buf.getvalue()
         if command == "validate-auth":
             code = cmd_validate_auth(cfg)
             return code, None, stdout_buf.getvalue(), log_buf.getvalue()

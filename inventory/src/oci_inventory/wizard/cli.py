@@ -8,6 +8,7 @@ from typing import List, Optional
 from .plan import (
     WizardPlan,
     build_diff_plan,
+    build_coverage_plan,
     build_run_plan,
     build_simple_plan,
 )
@@ -185,6 +186,7 @@ def main() -> None:
             "Validate auth",
             "List regions",
             "List compartments",
+            "Enrichment coverage",
             "Exit",
         ],
         default="Run inventory",
@@ -237,6 +239,15 @@ def main() -> None:
         )
         raise SystemExit(_confirm_and_run(plan))
 
+    if mode == "Enrichment coverage":
+        inventory_path = _ask_existing_file("inventory.jsonl path")
+        top_n = _ask_int("Top missing types to show", default=10, min_value=1)
+        plan = build_coverage_plan(
+            inventory=inventory_path,
+            top=top_n,
+        )
+        raise SystemExit(_confirm_and_run(plan))
+
     if mode == "Diff inventories":
         prev = _ask_existing_file("Prev inventory.jsonl path")
         curr = _ask_existing_file("Curr inventory.jsonl path")
@@ -269,6 +280,8 @@ def main() -> None:
 
     parquet = _ask_bool("Write Parquet (requires pyarrow)?", default=False)
 
+    include_terminated = _ask_bool("Include terminated resources?", default=False)
+
     prev_raw = _ask_str("Prev inventory.jsonl (optional)", default="", allow_blank=True).strip()
     prev = Path(prev_raw) if prev_raw else None
     if prev and (not prev.exists() or not prev.is_file()):
@@ -289,7 +302,7 @@ def main() -> None:
         prev=prev,
         workers_region=workers_region,
         workers_enrich=workers_enrich,
-        include_terminated=None,
+        include_terminated=include_terminated,
         json_logs=json_logs,
         log_level=log_level,
     )
