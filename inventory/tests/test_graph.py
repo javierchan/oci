@@ -27,3 +27,4 @@ def test_build_graph_adds_compartment_edges(tmp_path) -> None:
 
     mmd_path = write_mermaid(tmp_path, nodes, edges)
     assert mmd_path.read_text(encoding="utf-8").startswith("graph TD")
+    assert mmd_path.name == "diagram_raw.mmd"

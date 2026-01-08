@@ -21,16 +21,23 @@ def _endpoint_region(endpoint: str) -> Optional[str]:
     return m.group("region")
 
 
-def _build_prompt(*, run_facts: Dict[str, Any], report_md: Optional[str] = None) -> str:
+def _build_prompt(
+    *,
+    run_facts: Dict[str, Any],
+    architecture_facts: Optional[Dict[str, Any]] = None,
+    report_md: Optional[str] = None,
+) -> str:
     # Keep it short and structured; the model should output Markdown text only.
-    # Note: run_facts is already redacted.
+    # Note: run_facts and architecture_facts are already redacted.
     lines: List[str] = []
-    lines.append("You are an SRE/Cloud inventory assistant.")
-    lines.append("Write an Executive Summary for an OCI inventory run report.")
+    lines.append("You are a Cloud Architect and SRE.")
+    lines.append("Write an Executive Summary for an OCI inventory report.")
     lines.append("Constraints:")
     lines.append("- Output Markdown text ONLY (no code fences).")
-    lines.append("- 4-8 bullet points max.")
-    lines.append("- Focus on status, scope, coverage, notable failures/exclusions, and next actions.")
+    lines.append("- 1-2 short sentences, then 4-8 bullet points max.")
+    lines.append("- Describe tenancy structure, network layout, workload/service groupings, and data/stores when possible.")
+    lines.append("- Include run coverage notes (scope, exclusions, enrichment gaps) as non-blocking observations.")
+    lines.append("- No speculation; phrase as observations (e.g., 'appears to', 'suggests') and only when supported by facts.")
     lines.append("- Do not include secrets, OCIDs, URLs, or raw error dumps.")
     lines.append("")
     if report_md:
@@ -47,6 +54,11 @@ def _build_prompt(*, run_facts: Dict[str, Any], report_md: Optional[str] = None)
         lines.append("Facts:")
         for k in sorted(run_facts.keys()):
             lines.append(f"- {k}: {run_facts[k]}")
+        if architecture_facts:
+            lines.append("")
+            lines.append("Architecture Facts:")
+            for k in sorted(architecture_facts.keys()):
+                lines.append(f"- {k}: {architecture_facts[k]}")
     lines.append("")
     lines.append("Now write the Executive Summary.")
     return "\n".join(lines)
@@ -62,6 +74,7 @@ def generate_executive_summary(
     requested_regions: Optional[List[str]],
     excluded_regions: List[Dict[str, str]],
     metrics: Optional[Dict[str, Any]],
+    architecture_facts: Optional[Dict[str, Any]] = None,
     report_md: Optional[str] = None,
 ) -> str:
     """
@@ -138,9 +151,13 @@ def generate_executive_summary(
     # Redact aggressively before sending to GenAI.
     run_facts = {k: redact_text(str(v)) for k, v in run_facts.items()}
 
+    arch_facts_red: Optional[Dict[str, Any]] = None
+    if architecture_facts:
+        arch_facts_red = {k: redact_text(str(v)) for k, v in architecture_facts.items()}
+
     # Redact any report.md content before sending to GenAI.
     report_md_red = redact_text(report_md).strip() if report_md else None
-    prompt = _build_prompt(run_facts=run_facts, report_md=report_md_red)
+    prompt = _build_prompt(run_facts=run_facts, architecture_facts=arch_facts_red, report_md=report_md_red)
 
     def _extract_text(value: Any, *, max_depth: int = 2, _seen: Optional[set[int]] = None) -> str:
         """Best-effort extraction of human-readable text.

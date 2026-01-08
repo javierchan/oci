@@ -11,6 +11,7 @@ from .config import RunConfig, load_run_config
 from .diff.diff import diff_files, write_diff
 from .enrich import get_enricher_for, set_enrich_context
 from .export.csv import write_csv
+from .export.diagram_projections import write_diagram_projections
 from .export.graph import build_graph, write_graph, write_mermaid
 from .export.jsonl import write_jsonl
 from .export.parquet import ParquetNotAvailable, write_parquet
@@ -327,6 +328,7 @@ def cmd_run(cfg: RunConfig) -> int:
         nodes, edges = build_graph(enriched, all_relationships)
         write_graph(cfg.outdir, nodes, edges)
         write_mermaid(cfg.outdir, nodes, edges)
+        write_diagram_projections(cfg.outdir, nodes, edges)
 
         # Optional diff against previous
         if cfg.prev:
@@ -350,6 +352,15 @@ def cmd_run(cfg: RunConfig) -> int:
         if cfg.genai_summary and status == "OK":
             try:
                 from .genai import generate_executive_summary  # lazy import
+                from .report import build_architecture_facts  # lazy import
+
+                arch_facts = build_architecture_facts(
+                    discovered_records=enriched or discovered,
+                    subscribed_regions=subscribed_regions,
+                    requested_regions=requested_regions,
+                    excluded_regions=excluded_regions,
+                    metrics=metrics,
+                )
 
                 executive_summary = generate_executive_summary(
                     status=status,
@@ -359,6 +370,7 @@ def cmd_run(cfg: RunConfig) -> int:
                     requested_regions=requested_regions,
                     excluded_regions=excluded_regions,
                     metrics=metrics,
+                    architecture_facts=arch_facts,
                 )
             except Exception as e:
                 executive_summary_error = str(e)

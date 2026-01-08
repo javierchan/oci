@@ -229,7 +229,11 @@ Each run writes to: `out/<timestamp>/`
 - relationships.jsonl (optional; when relationships exist)
 - graph_nodes.jsonl (diagram-ready nodes)
 - graph_edges.jsonl (diagram-ready edges)
-- diagram.mmd (Mermaid diagram)
+- diagram_raw.mmd (Mermaid diagram; raw graph)
+- diagram.tenancy.mmd (Mermaid diagram; tenancy/compartment view)
+- diagram.network.<vcn>.mmd (Mermaid diagram; per-VCN topology view)
+- diagram.workload.<workload>.mmd (Mermaid diagram; workload/application view)
+- diagram.consolidated.mmd (Mermaid diagram; all projections consolidated)
 - diff.json + diff_summary.json (when --prev provided)
 - run_summary.json (coverage metrics)
 
@@ -238,7 +242,8 @@ Quick reference (artifacts → purpose):
 - inventory.jsonl: canonical per-resource records for downstream processing/diffing.
 - inventory.csv: tabular view aligned to report fields.
 - inventory.parquet: analytics-friendly columnar export (requires parquet extras).
-- graph_nodes.jsonl / graph_edges.jsonl / diagram.mmd: topology/visualization outputs.
+- graph_nodes.jsonl / graph_edges.jsonl / diagram_raw.mmd: raw topology outputs.
+- diagram.*.mmd: architecture-focused projected views.
 - diff.json / diff_summary.json: change set when `--prev` is used.
 - run_summary.json: coverage/metrics snapshot for automation.
 
