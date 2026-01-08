@@ -299,7 +299,10 @@ def load_run_config(
         "--genai-summary",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Generate a GenAI Executive Summary and embed it into report.md (requires ~/.config/oci-inv/genai.yaml)",
+        help=(
+            "Generate a GenAI Executive Summary and embed it into report.md "
+            "(uses OCI_INV_GENAI_CONFIG, else ~/.config/oci-inv/genai.yaml, else inventory/.local/genai.yaml)"
+        ),
     )
 
     # diff
@@ -322,10 +325,13 @@ def load_run_config(
     add_common(p_lc)
 
     # list-genai-models
-    # Uses ~/.config/oci-inv/genai.yaml (profile, compartment_id, endpoint region).
+    # Uses OCI_INV_GENAI_CONFIG, else ~/.config/oci-inv/genai.yaml, else inventory/.local/genai.yaml.
     p_lgm = subparsers.add_parser(
         "list-genai-models",
-        help="List OCI GenAI models and capabilities (uses ~/.config/oci-inv/genai.yaml)",
+        help=(
+            "List OCI GenAI models and capabilities "
+            "(uses OCI_INV_GENAI_CONFIG, else ~/.config/oci-inv/genai.yaml, else inventory/.local/genai.yaml)"
+        ),
     )
     add_common(p_lgm)
 
@@ -333,7 +339,10 @@ def load_run_config(
     # One-off chat probe for debugging the configured GenAI model/endpoint.
     p_gc = subparsers.add_parser(
         "genai-chat",
-        help="Send a one-off GenAI chat request (uses ~/.config/oci-inv/genai.yaml)",
+        help=(
+            "Send a one-off GenAI chat request "
+            "(uses OCI_INV_GENAI_CONFIG, else ~/.config/oci-inv/genai.yaml, else inventory/.local/genai.yaml)"
+        ),
     )
     add_common(p_gc)
     p_gc.add_argument(

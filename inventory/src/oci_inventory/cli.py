@@ -56,19 +56,43 @@ def cmd_genai_chat(cfg: RunConfig) -> int:
 
     api = (cfg.genai_api_format or "AUTO").strip().upper()
     max_tokens = int(cfg.genai_max_tokens or 300)
+    temperature = float(cfg.genai_temperature) if cfg.genai_temperature is not None else None
 
-    if api == "AUTO":
-        out, hint = run_genai_chat(message=message, api_format="GENERIC", system=system, max_tokens=max_tokens)
-        if not out.strip():
-            out, hint = run_genai_chat(message=message, api_format="COHERE", system=system, max_tokens=max_tokens)
-    else:
-        out, hint = run_genai_chat(message=message, api_format=api, system=system, max_tokens=max_tokens)
+    try:
+        if api == "AUTO":
+            out, hint = run_genai_chat(
+                message=message,
+                api_format="GENERIC",
+                system=system,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            if not out.strip():
+                out, hint = run_genai_chat(
+                    message=message,
+                    api_format="COHERE",
+                    system=system,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+        else:
+            out, hint = run_genai_chat(
+                message=message,
+                api_format=api,
+                system=system,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+    except Exception as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
 
-    if out.strip():
-        print(out)
-        return 0
+    if not out.strip():
+        print(f"ERROR: GenAI chat returned empty text (hint={hint})", file=sys.stderr)
+        return 1
 
-    raise RuntimeError(f"GenAI chat returned empty text (hint={hint})")
+    print(out)
+    return 0
 
     api_format = (cfg.genai_api_format or "AUTO").upper()
     max_tokens = int(cfg.genai_max_tokens or 256)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -16,9 +17,31 @@ class GenAIConfig:
     vision_model_id: Optional[str] = None
 
 
+def local_genai_config_path() -> Path:
+    # Repo-local dev convenience (ignored by git).
+    # This is intentionally a fallback behind the user-scoped config.
+    inventory_root = Path(__file__).resolve().parents[3]
+    return inventory_root / ".local" / "genai.yaml"
+
+
 def default_genai_config_path() -> Path:
     # Intentionally outside the repo so this stays safe for public repos.
     return Path.home() / ".config" / "oci-inv" / "genai.yaml"
+
+
+def resolve_genai_config_path(explicit_path: Optional[Path] = None) -> Path:
+    if explicit_path is not None:
+        return explicit_path
+
+    env_path = os.environ.get("OCI_INV_GENAI_CONFIG")
+    if env_path:
+        return Path(env_path).expanduser()
+
+    default_path = default_genai_config_path()
+    if default_path.exists():
+        return default_path
+
+    return local_genai_config_path()
 
 
 def _require_str(data: Dict[str, Any], key: str) -> str:
@@ -29,10 +52,23 @@ def _require_str(data: Dict[str, Any], key: str) -> str:
 
 
 def load_genai_config(path: Optional[Path] = None) -> GenAIConfig:
-    p = path or default_genai_config_path()
+    p = resolve_genai_config_path(path)
     if not p.exists():
+        searched = [
+            f"explicit={path}" if path is not None else None,
+            (
+                f"OCI_INV_GENAI_CONFIG={os.environ.get('OCI_INV_GENAI_CONFIG')}"
+                if os.environ.get("OCI_INV_GENAI_CONFIG")
+                else None
+            ),
+            str(default_genai_config_path()),
+            str(local_genai_config_path()),
+        ]
+        searched_s = "\n".join([f"- {s}" for s in searched if s])
         raise FileNotFoundError(
-            f"GenAI config file not found: {p}. Create it first (see inventory/README.md)."
+            "GenAI config file not found. Searched:\n"
+            f"{searched_s}\n\n"
+            "Create one (see inventory/README.md), or set OCI_INV_GENAI_CONFIG to point to a YAML file."
         )
 
     raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
