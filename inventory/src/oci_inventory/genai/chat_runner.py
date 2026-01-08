@@ -16,6 +16,7 @@ def run_genai_chat(
     api_format: str = "GENERIC",
     system: Optional[str] = None,
     max_tokens: int = 300,
+    temperature: Optional[float] = None,
     genai_cfg: Optional[GenAIConfig] = None,
 ) -> Tuple[str, Dict[str, Any]]:
     """Run a single OCI GenAI Inference chat() call.
@@ -60,15 +61,18 @@ def run_genai_chat(
     message_red = redact_text(message or "").strip()
 
     if api_format_u == BaseChatRequest.API_FORMAT_COHERE:
-        chat_req = CohereChatRequest(
-            api_format=BaseChatRequest.API_FORMAT_COHERE,
-            message=message_red,
-            is_stream=False,
-            max_tokens=max_tokens,
-            temperature=0.2,
-            top_p=0.9,
-            preamble_override=system_red or None,
-        )
+        kwargs: Dict[str, Any] = {
+            "api_format": BaseChatRequest.API_FORMAT_COHERE,
+            "message": message_red,
+            "is_stream": False,
+            "max_tokens": max_tokens,
+            "top_p": 0.9,
+            "preamble_override": system_red or None,
+        }
+        if temperature is not None:
+            kwargs["temperature"] = float(temperature)
+
+        chat_req = CohereChatRequest(**kwargs)
     else:
         messages = []
         if system_red:
@@ -76,13 +80,17 @@ def run_genai_chat(
         messages.append(UserMessage(content=[TextContent(text=message_red)]))
 
         # Prefer maxCompletionTokens and fall back to maxTokens if required.
-        chat_req = GenericChatRequest(
-            api_format=BaseChatRequest.API_FORMAT_GENERIC,
-            messages=messages,
-            is_stream=False,
-            max_completion_tokens=max_tokens,
-            verbosity="LOW",
-        )
+        kwargs2: Dict[str, Any] = {
+            "api_format": BaseChatRequest.API_FORMAT_GENERIC,
+            "messages": messages,
+            "is_stream": False,
+            "max_completion_tokens": max_tokens,
+            "verbosity": "LOW",
+        }
+        if temperature is not None:
+            kwargs2["temperature"] = float(temperature)
+
+        chat_req = GenericChatRequest(**kwargs2)
 
     chat_details = ChatDetails(
         compartment_id=cfg.compartment_id,
@@ -140,12 +148,20 @@ def run_genai_chat(
     if not out and isinstance(refusal, str) and refusal.strip():
         out = refusal.strip()
 
+    content_item_types = []
+    content0_text_len = None
+    if isinstance(content, list) and content:
+        content_item_types = [type(x).__name__ for x in content[:3]]
+        content0_text_len = len(str(getattr(content[0], "text", "") or ""))
+
     hint.update(
         {
             "choices": len(choices) if choices else 0,
             "message_type": type(msg).__name__ if msg is not None else "None",
             "content_type": type(content).__name__ if content is not None else "None",
             "content_len": len(content) if isinstance(content, list) else None,
+            "content_item_types": "+".join(content_item_types) if content_item_types else "",
+            "content0_text_len": content0_text_len,
             "out_len": len(out),
             "refusal_len": len(refusal.strip()) if isinstance(refusal, str) else 0,
         }

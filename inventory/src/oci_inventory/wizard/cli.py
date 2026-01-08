@@ -258,7 +258,7 @@ def main() -> None:
     regions = _parse_regions(_ask_str("Regions (comma-separated, blank = subscribed)", default="", allow_blank=True))
 
     genai_summary = _ask_bool(
-        "Generate GenAI Executive Summary in report.md? (requires ~/.config/oci-inv/genai.yaml)",
+        "Generate GenAI Executive Summary in report.md? (uses OCI_INV_GENAI_CONFIG, else ~/.config/oci-inv/genai.yaml, else inventory/.local/genai.yaml)",
         default=False,
     )
 
