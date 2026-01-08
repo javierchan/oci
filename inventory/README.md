@@ -1,4 +1,4 @@
-# OCI Inventory (Phase 1)
+# OCI Inventory
 Production-ready Python CLI to inventory Oracle Cloud Infrastructure (OCI) resources using Resource Search, with an enrichment framework, deterministic exports, and diffs.
 
 Phase 1 implements:
@@ -209,6 +209,9 @@ This section is a quick map of every user-facing component in the CLI, what it d
 - **Enrichment coverage**: reports which resource types in an inventory lack enrichers.
   - Example: `oci-inv enrich-coverage --inventory out/<timestamp>/inventory.jsonl --top 10`
   - Current known gap: `MediaAsset` remains `NOT_IMPLEMENTED`; others are covered.
+- **Interactive wizard (optional)**: guided, preview-first UX that builds/executes the same `oci-inv` commands; safe defaults and copy/pasteable outputs.
+  - Install extra: `pip install .[wizard]`
+  - Run: `oci-inv-wizard`
 - **Outputs**: deterministic artifacts per run under `out/<timestamp>/` (JSONL, CSV, optional Parquet, report.md, graph files, optional diff files when `--prev` is provided).
   - Hashing excludes `collectedAt` to keep diffs stable.
 
@@ -305,26 +308,28 @@ pytest
 
 ## Interactive Wizard (Optional)
 
-If you prefer a guided, copy/paste-friendly UX (with command previews and safer defaults), install the optional wizard extra and run:
+If you prefer a guided, preview-first UX with safer defaults, install the optional wizard extra and run:
 
 ```
 pip install .[wizard]
 oci-inv-wizard
 ```
 
-The wizard does not replace `oci-inv`; it generates and executes the same underlying commands and writes the same outputs.
+What it does:
+- Walks you through run/diff options, shows the exact `oci-inv` command before execution.
+- Writes the same outputs as the CLI (`out/<timestamp>/`), so artifacts remain consistent.
+- Supports plan files for non-interactive use (see below for an example).
 
-## GenAI Configuration (Future)
+## GenAI Configuration
 
-This repository is public. Do not commit tenant-specific configuration, OCIDs, or any credentials.
+GenAI features are available today for `genai-chat` and `--genai-summary`. The tool redacts OCIDs/URLs in prompts and responses; if GenAI is misconfigured, main runs still complete and record the failure in report.md.
 
-For local development, keep real GenAI values in a user-owned config file outside the repo, for example:
+Config precedence (first found wins):
+- `OCI_INV_GENAI_CONFIG` (env path)
+- `~/.config/oci-inv/genai.yaml`
+- `inventory/.local/genai.yaml` (gitignored; for local dev only)
 
-```
-~/.config/oci-inv/genai.yaml
-```
-
-This repo provides a git-ignored local file under `inventory/.local/genai.yaml` that you can copy to your home directory:
+Sample local setup (do not commit real values):
 
 ```
 mkdir -p ~/.config/oci-inv
