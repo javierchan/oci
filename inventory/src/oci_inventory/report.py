@@ -215,13 +215,25 @@ def _top_n(d: Dict[str, int], n: int) -> List[Tuple[str, int]]:
     return sorted(((k, int(v)) for k, v in d.items()), key=lambda kv: (-kv[1], kv[0]))[:n]
 
 
+def _md_cell(value: str) -> str:
+    # Keep tables robust across Markdown renderers (Obsidian/CommonMark).
+    # - Escape pipe characters to avoid accidental column splits.
+    # - Replace newlines with <br> to keep rows intact.
+    # - Strip outer whitespace for stability.
+    v = (value or "").replace("\n", "<br>").strip()
+    v = v.replace("|", "\\|")
+    return v
+
+
 def _md_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> List[str]:
     # Minimal Markdown table helper (deterministic; no alignment tricks).
+    hdr = [_md_cell(str(h)) for h in headers]
     out: List[str] = []
-    out.append("| " + " | ".join(headers) + " |")
+    out.append("| " + " | ".join(hdr) + " |")
     out.append("| " + " | ".join(["---"] * len(headers)) + " |")
     for r in rows:
-        out.append("| " + " | ".join(r) + " |")
+        rr = [_md_cell(str(c)) for c in r]
+        out.append("| " + " | ".join(rr) + " |")
     return out
 
 
@@ -491,6 +503,7 @@ def render_run_report_md(
             unknown_subnets += 1
 
     lines.append("## At a Glance")
+    lines.append("")
     lines.extend(
         _md_table(
             ["Metric", "Value"],
@@ -543,6 +556,7 @@ def render_run_report_md(
     lines.append("## Tenancy & Compartment Overview")
     if comp_counts:
         lines.append("Observed resource distribution by compartment (best-effort; based on `compartmentId` in results).")
+        lines.append("")
 
         # Build per-compartment top types
         types_by_comp: Dict[str, Dict[str, int]] = {}
@@ -637,6 +651,7 @@ def render_run_report_md(
 
         if rows:
             lines.append("VCN summary (best-effort; subnet-to-VCN mapping requires subnet metadata):")
+            lines.append("")
             lines.extend(_md_table(["VCN", "Region", "CIDR(s)", "Subnets", "Gateways"], rows))
             lines.append("")
 
@@ -660,6 +675,7 @@ def render_run_report_md(
                     vcn_name or "(unknown)",
                 ])
             lines.append("Subnet summary:")
+            lines.append("")
             lines.extend(_md_table(["Subnet", "Region", "Exposure", "VCN"], sub_rows[:20]))
             if len(sub_rows) > 20:
                 lines.append(f"(Truncated: {len(sub_rows) - 20} more subnets not shown.)")
@@ -676,6 +692,7 @@ def render_run_report_md(
         lines.append("")
     else:
         lines.append("Workload candidates (grouped by naming and/or tags; only groups with ≥3 resources are shown).")
+        lines.append("")
 
         rows: List[List[str]] = []
         flows: List[str] = []
@@ -752,6 +769,7 @@ def render_run_report_md(
             ds_rows.append([_record_type(r) or "Datastore", name, _record_region(r) or "(unknown)", comp, "(n/a)"])
 
     if ds_rows:
+        lines.append("")
         lines.extend(_md_table(["Type", "Name", "Region", "Compartment", "Purpose hint"], ds_rows[:40]))
         if len(ds_rows) > 40:
             lines.append(f"(Truncated: {len(ds_rows) - 40} more items not shown.)")
@@ -771,6 +789,7 @@ def render_run_report_md(
             pname = _record_name(r) or "(unnamed)"
             hint = _summarize_policy_name(pname) or "(not inferred)"
             rows.append([pname, comp_label, stmt_count, hint])
+        lines.append("")
         lines.extend(_md_table(["Policy", "Compartment", "Statements", "Summary (name-derived)"], rows))
     else:
         lines.append("- No IAM Policy resources were observed in this scope.")
@@ -787,6 +806,7 @@ def render_run_report_md(
         obs_rows.append(["LogAnalyticsEntity", _record_name(r) or "(unnamed)", _record_region(r) or "(unknown)", comp])
 
     if obs_rows:
+        lines.append("")
         lines.extend(_md_table(["Type", "Name", "Region", "Compartment"], obs_rows[:40]))
         if len(obs_rows) > 40:
             lines.append(f"(Truncated: {len(obs_rows) - 40} more items not shown.)")
