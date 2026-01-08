@@ -139,6 +139,40 @@ When making claims or decisions:
 
 ---
 
+# Shell & Execution Safety
+
+To avoid breaking the integrated terminal in VSCode or other execution environments, agents must follow these rules:
+
+1. **Do Not Use Inline Here-Docs for Python or Shell Execution**
+   - Forbidden patterns: `python - <<EOF`, `cat <<EOF`, or similar constructs.
+   - These can break the terminal if the here-doc is not closed properly or if the shell does not support the syntax.
+
+2. **Preferred Execution Methods**
+   Agents must choose one of the following instead:
+   - Create a temporary script file and execute it.
+   - Create a script within `inventory/` when explicitly requested.
+   - Use `python <file.py>` or `bash <file.sh>` directly.
+
+3. **Command Construction Rules**
+   - Do not chain multiple commands with `&&` if it risks leaving the terminal in an inconsistent state.
+   - Avoid commands that alter the shell state or environment unintentionally (e.g., `source` without context).
+   - When activation of a virtual environment is required, prefer:
+     ```
+     source /Users/javierchan/Documents/GitHub/oci/inventory/.venv/bin/activate
+     ```
+     and do not create new virtual environments.
+
+4. **Terminal Stability**
+   - Commands must not leave the terminal waiting for additional input.
+   - Commands must not rely on multi-line paste behavior.
+   - Commands must not change the user's shell or configuration.
+
+5. **If Execution Is Uncertain**
+   - Do not execute.
+   - Ask for clarification or output the script to be reviewed manually.
+
+---
+
 # State & Context Management
 
 - Carry forward relevant decisions and assumptions within a task.
