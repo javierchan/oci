@@ -3,7 +3,7 @@ Production-ready Python CLI to inventory Oracle Cloud Infrastructure (OCI) resou
 
 Phase 1 implements:
 - Tenancy-wide discovery using Resource Search (Structured Search) with default query: "query all resources"
-- Enricher registry + DefaultEnricher (no per-service enrichers yet)
+- Enricher registry + DefaultEnricher with per-service metadata enrichers for selected resource types
 - Exports: JSONL (default) and CSV; Parquet optional via pyarrow
 - Diffs and stable hashing (excluding collectedAt)
 - Coverage metrics
@@ -114,6 +114,8 @@ JSONL stability notes:
 Enrichers use **read-only** OCI SDK calls to fetch full metadata for supported resource types.
 Metadata is stored under `details.metadata` as the SDK `to_dict()` output, with sensitive fields
 redacted by key substring (e.g., private_key, passphrase, password, secret, token, ssh, content).
+For resource types without a registered enricher, DefaultEnricher returns `NOT_IMPLEMENTED` and
+stores the raw search summary under `details.searchSummary`.
 
 Supported resource types (initial set):
 - Compute: Instance, Image, BootVolume, BlockVolume, InstanceConfiguration, InstancePool
