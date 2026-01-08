@@ -15,7 +15,7 @@ def _set_dummy_ctx() -> None:
             config_dict={},
             signer=None,
             profile=None,
-            tenancy_ocid=None,
+            tenancy_ocid="ocid1.tenancy.oc1..aaaa",
         )
     )
 
@@ -120,13 +120,24 @@ def test_log_analytics_entity_enricher(monkeypatch: Any) -> None:
     _set_dummy_ctx()
 
     class _LaClient:
-        def get_log_analytics_entity(self, ocid: str) -> Any:
-            return SimpleNamespace(data={"id": ocid})
+        def list_namespaces(self, compartment_id: str) -> Any:
+            assert compartment_id == "ocid1.tenancy.oc1..aaaa"
+            return SimpleNamespace(data=SimpleNamespace(items=[SimpleNamespace(namespace_name="myns")]))
+
+        def get_log_analytics_entity(self, namespace_name: str, log_analytics_entity_id: str) -> Any:
+            assert namespace_name == "myns"
+            return SimpleNamespace(data={"id": log_analytics_entity_id, "namespace": namespace_name})
 
     monkeypatch.setattr(meta.oci_clients, "get_log_analytics_client", lambda ctx, region: _LaClient())
 
     enricher = get_enricher_for("LogAnalyticsEntity")
-    res = enricher.enrich({"region": "mx-queretaro-1", "ocid": "ocid1.loganalyticsentity.oc1..aaaa"})
+    res = enricher.enrich(
+        {
+            "region": "mx-queretaro-1",
+            "ocid": "ocid1.loganalyticsentity.oc1..aaaa",
+            "compartmentId": "ocid1.compartment.oc1..aaaa",
+        }
+    )
     assert res.enrichStatus == "OK"
 
 

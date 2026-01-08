@@ -31,6 +31,13 @@ def _record_ocid(record: Dict[str, Any]) -> str:
     return ocid
 
 
+def _record_compartment_id(record: Dict[str, Any]) -> str:
+    compartment_id = str(record.get("compartmentId") or "")
+    if not compartment_id:
+        raise ValueError("Record is missing compartmentId")
+    return compartment_id
+
+
 def _metadata_details(record: Dict[str, Any], metadata: Dict[str, Any]) -> Dict[str, Any]:
     details: Dict[str, Any] = {"metadata": metadata}
     if "searchSummary" in record:
@@ -205,7 +212,40 @@ def _fetch_log_group(record: Dict[str, Any]) -> Dict[str, Any]:
 def _fetch_log_analytics_entity(record: Dict[str, Any]) -> Dict[str, Any]:
     ctx = get_enrich_context()
     client = oci_clients.get_log_analytics_client(ctx, _record_region(record))
-    return _sdk_data_to_dict(client.get_log_analytics_entity(_record_ocid(record)))
+    from ..auth.providers import get_tenancy_ocid
+
+    tenancy_ocid = get_tenancy_ocid(ctx)
+    if not tenancy_ocid:
+        raise ValueError("Unable to resolve tenancy OCID for Log Analytics")
+
+    namespaces_resp = client.list_namespaces(tenancy_ocid)
+    namespaces_data = getattr(namespaces_resp, "data", namespaces_resp)
+    namespaces_items: list[Any]
+    if isinstance(namespaces_data, list):
+        namespaces_items = namespaces_data
+    elif hasattr(namespaces_data, "items") and isinstance(getattr(namespaces_data, "items"), list):
+        namespaces_items = getattr(namespaces_data, "items")
+    elif isinstance(namespaces_data, dict) and isinstance(namespaces_data.get("items"), list):
+        namespaces_items = namespaces_data["items"]
+    else:
+        raise ValueError("Log Analytics namespaces response is invalid")
+
+    namespace_names: list[str] = []
+    for item in namespaces_items:
+        if isinstance(item, str) and item:
+            namespace_names.append(item)
+            continue
+
+        name = getattr(item, "namespace_name", None)
+        if isinstance(name, str) and name:
+            namespace_names.append(name)
+
+    namespace_names = sorted(set(namespace_names))
+    if len(namespace_names) != 1:
+        raise ValueError(f"Unable to resolve Log Analytics namespace (count={len(namespace_names)})")
+
+    namespace_name = namespace_names[0]
+    return _sdk_data_to_dict(client.get_log_analytics_entity(namespace_name, _record_ocid(record)))
 
 
 def _fetch_media_workflow(record: Dict[str, Any]) -> Dict[str, Any]:
