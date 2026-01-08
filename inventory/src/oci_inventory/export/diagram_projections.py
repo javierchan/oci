@@ -917,7 +917,11 @@ def _write_consolidated_mermaid(outdir: Path, diagram_paths: Sequence[Path]) -> 
     for p in mmds_sorted:
         title = _diagram_title(p).replace('"', "'")
         prefix = _view_prefix(p)
-        sg_id = f"{prefix}ROOT"
+        # IMPORTANT: the embedded views already contain their own root node IDs
+        # (e.g., TEN_ROOT, NET_<vcn>_ROOT, WL_<wl>_ROOT). If we also name the
+        # *wrapper* subgraph with that same ID, Mermaid will try to set the node
+        # as its own parent and error with a cycle.
+        sg_id = f"{prefix}VIEW"
         lines.append(f"  %% ---- {title} ----")
         lines.append(f"  subgraph {sg_id}[\"{title}\"]")
 
