@@ -112,11 +112,15 @@ def summarize_outdir(outdir: Path) -> str:
         "run_summary.json",
         "diff.json",
         "diff_summary.json",
-        "diagram.mmd",
+        "diagram_raw.mmd",
+        "diagram.consolidated.mmd",
         "graph_nodes.jsonl",
         "graph_edges.jsonl",
         "relationships.jsonl",
     ]
+
+    # Include any architectural projection diagrams.
+    key_files.extend(sorted(p.name for p in outdir.glob("diagram.*.mmd")))
 
     present = [name for name in key_files if (outdir / name).exists()]
     if not present:

@@ -33,9 +33,15 @@ def test_render_run_report_includes_excluded_regions_and_query(tmp_path: Path) -
         },
     )
 
+    # Still preserves run metadata (now under Execution Metadata)
+    assert "## Execution Metadata" in text
     assert "Excluded regions" in text
     assert "us-dallas-1" in text
     assert "query all resources" in text
+
+    # New architecture-oriented sections exist
+    assert "## Network Architecture" in text
+    assert "## Workloads & Services" in text
 
 
 def test_render_run_report_includes_executive_summary_when_provided(tmp_path: Path) -> None:

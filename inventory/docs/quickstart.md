@@ -82,7 +82,11 @@ out/<timestamp>/
   relationships.jsonl      # when relationships are emitted
   graph_nodes.jsonl        # diagram-ready nodes
   graph_edges.jsonl        # diagram-ready edges
-  diagram.mmd              # Mermaid diagram
+  diagram_raw.mmd          # Mermaid diagram (raw graph)
+  diagram.tenancy.mmd      # Mermaid diagram (tenancy/compartment view)
+  diagram.network.<vcn>.mmd # Mermaid diagram (per-VCN topology view)
+  diagram.workload.<workload>.mmd # Mermaid diagram (workload/application view)
+  diagram.consolidated.mmd # Mermaid diagram (all projections consolidated)
   diff.json                # when --prev provided
   diff_summary.json        # when --prev provided
   run_summary.json         # coverage metrics

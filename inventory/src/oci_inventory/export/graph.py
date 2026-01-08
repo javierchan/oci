@@ -189,7 +189,9 @@ def _mermaid_label(node: Node) -> str:
 
 
 def write_mermaid(outdir: Path, nodes: List[Node], edges: List[Edge]) -> Path:
-    path = outdir / "diagram.mmd"
+    # Raw graph export is intentionally noisy and intended for debugging.
+    # Keep it as a separate artifact from any architectural projections.
+    path = outdir / "diagram_raw.mmd"
     lines: List[str] = ["graph TD"]
     for node in nodes:
         node_id = _mermaid_id(str(node.get("nodeId") or ""))
