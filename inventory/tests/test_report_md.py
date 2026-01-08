@@ -126,3 +126,62 @@ def test_render_run_report_includes_complete_inventory_listing(tmp_path: Path) -
     assert "## Inventory Listing (Complete)" in text
     assert "my-bucket" in text
     assert "output/file.m3u8" in text
+
+
+def test_render_run_report_includes_workload_group_from_tags(tmp_path: Path) -> None:
+    cfg = RunConfig(outdir=tmp_path, auth="config", profile="DEFAULT", query="query all resources")
+
+    discovered = [
+        {
+            "resourceType": "Instance",
+            "displayName": "edge-api-01",
+            "compartmentId": "ocid1.compartment.oc1..exampleuniqueID",
+            "region": "mx-queretaro-1",
+            "lifecycleState": "RUNNING",
+            "freeformTags": {"app": "EdgeApp"},
+            "enrichStatus": "OK",
+        },
+        {
+            "resourceType": "Bucket",
+            "displayName": "edge-content",
+            "compartmentId": "ocid1.compartment.oc1..exampleuniqueID",
+            "region": "mx-queretaro-1",
+            "lifecycleState": "ACTIVE",
+            "freeformTags": {"app": "EdgeApp"},
+            "enrichStatus": "OK",
+        },
+        {
+            "resourceType": "Subnet",
+            "displayName": "edge-subnet",
+            "compartmentId": "ocid1.compartment.oc1..exampleuniqueID",
+            "region": "mx-queretaro-1",
+            "lifecycleState": "AVAILABLE",
+            "freeformTags": {"app": "EdgeApp"},
+            "enrichStatus": "OK",
+        },
+    ]
+
+    text = render_run_report_md(
+        status="OK",
+        cfg_dict={
+            "auth": cfg.auth,
+            "profile": cfg.profile,
+            "tenancy_ocid": cfg.tenancy_ocid,
+            "query": cfg.query,
+            "outdir": str(cfg.outdir),
+            "parquet": cfg.parquet,
+            "prev": None,
+            "workers_region": cfg.workers_region,
+            "workers_enrich": cfg.workers_enrich,
+        },
+        started_at="2026-01-01T00:00:00+00:00",
+        finished_at="2026-01-01T00:01:00+00:00",
+        subscribed_regions=["mx-queretaro-1"],
+        requested_regions=None,
+        excluded_regions=[],
+        discovered_records=discovered,
+        metrics=None,
+    )
+
+    assert "## Workloads & Services" in text
+    assert "EdgeApp" in text

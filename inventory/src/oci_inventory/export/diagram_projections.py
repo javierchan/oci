@@ -9,6 +9,7 @@ from shutil import which
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .graph import Edge, Node
+from ..normalize.transform import group_workloads
 from ..util.errors import ExportError
 
 
@@ -86,11 +87,6 @@ def _get_meta(metadata: Mapping[str, Any], *keys: str) -> Any:
 def _node_metadata(node: Node) -> Mapping[str, Any]:
     meta = node.get("metadata")
     return meta if isinstance(meta, Mapping) else {}
-
-
-def _node_tags(node: Node) -> Mapping[str, Any]:
-    tags = node.get("tags")
-    return tags if isinstance(tags, Mapping) else {}
 
 
 def _is_node_type(node: Node, *suffixes: str) -> bool:
@@ -439,80 +435,6 @@ def _subnet_label(node: Node) -> str:
     return f"Subnet: {name} ({vis})"
 
 
-def _workload_keys_from_tags(node: Node) -> List[str]:
-    tags = _node_tags(node)
-    freeform = tags.get("freeformTags")
-    defined = tags.get("definedTags")
-
-    candidates: List[str] = []
-
-    if isinstance(freeform, Mapping):
-        for k in ("workload", "application", "app", "service", "domain", "project", "team"):
-            v = freeform.get(k)
-            if isinstance(v, str) and v.strip():
-                candidates.append(v.strip())
-
-    # definedTags is usually {namespace: {key: value}}
-    if isinstance(defined, Mapping):
-        for ns_val in defined.values():
-            if not isinstance(ns_val, Mapping):
-                continue
-            for k in ("workload", "application", "app", "service", "domain", "project", "team"):
-                v = ns_val.get(k)
-                if isinstance(v, str) and v.strip():
-                    candidates.append(v.strip())
-
-    # Normalize to unique, stable order
-    out: List[str] = []
-    seen: Set[str] = set()
-    for c in candidates:
-        key = c.strip()
-        if not key:
-            continue
-        if key.lower() in seen:
-            continue
-        seen.add(key.lower())
-        out.append(key)
-    return out
-
-
-def _workload_keys_from_name(node: Node) -> List[str]:
-    name = str(node.get("name") or "").strip()
-    if not name:
-        return []
-
-    lowered = name.lower()
-
-    # Explicit workload keywords.
-    known: List[Tuple[str, str]] = [
-        ("mediaflow", "MediaFlow"),
-        ("streamdistributionchannel", "StreamDistributionChannel"),
-        ("stream_distribution", "StreamDistributionChannel"),
-        ("stream-distribution", "StreamDistributionChannel"),
-        ("contentbucket", "ContentDelivery"),
-        ("content-bucket", "ContentDelivery"),
-    ]
-    for needle, wl in known:
-        if needle in lowered:
-            return [wl]
-
-    # Heuristic: common prefix token before separator.
-    token = re.split(r"[-_.:/\\s]+", name)[0].strip()
-    if token and len(token) >= 3 and not token.lower().startswith("ocid"):
-        # Title-case the token to be human readable.
-        return [token[:1].upper() + token[1:]]
-
-    return []
-
-
-def _infer_workload_keys(node: Node) -> List[str]:
-    # Prefer explicit tags, then fallback to name heuristics.
-    keys = _workload_keys_from_tags(node)
-    if keys:
-        return keys
-    return _workload_keys_from_name(node)
-
-
 def _derived_attachments(nodes: Sequence[Node], edges: Sequence[Edge] | None = None) -> List[_DerivedAttachment]:
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
 
@@ -609,6 +531,8 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
 
     shown_nodes = _tenancy_nodes_to_show(nodes)
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
+    rendered_node_ids: Set[str] = set()
+    edge_node_id_map: Dict[str, str] = {}
 
     # Group by compartmentId (or unknown). Keep both "shown" and "all" sets.
     comps_shown: Dict[str, List[Node]] = {}
@@ -665,6 +589,10 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
             cls = _node_class(n)
             shape = _node_shape(n)
             lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=cls, shape=shape))
+            if n.get("nodeId"):
+                raw_id = str(n.get("nodeId") or "")
+                rendered_node_ids.add(raw_id)
+                edge_node_id_map.setdefault(raw_id, nid)
             rendered += 1
 
         # Summarize everything else in the compartment, including leaf/control-plane resources.
@@ -718,6 +646,14 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
             for b in bucket_nodes:
                 b_id = _mermaid_id(str(b.get("nodeId") or ""))
                 lines.append(_render_edge(c_id, b_id, "reads/writes"))
+
+    rel_lines = _render_relationship_edges(
+        edges,
+        node_ids=rendered_node_ids,
+        node_id_map=edge_node_id_map,
+        allowlist=_EDGE_RELATIONS_FOR_PROJECTIONS,
+    )
+    lines.extend(rel_lines)
 
     # Context links (root -> compartments)
     for cid in comp_ids:
@@ -961,20 +897,17 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
 
 
 def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edge]) -> List[Path]:
-    # Identify candidate workloads.
-    wl_to_nodes: Dict[str, List[Node]] = {}
+    # Identify candidate workloads using shared grouping logic.
+    candidates: List[Node] = []
     for n in nodes:
         nt = str(n.get("nodeType") or "")
         if nt in _NON_ARCH_LEAF_NODETYPES:
             continue
         if _is_node_type(n, "Compartment"):
             continue
+        candidates.append(n)
 
-        for wl in _infer_workload_keys(n):
-            wl_to_nodes.setdefault(wl, []).append(n)
-
-    # Keep only meaningful groups.
-    wl_to_nodes = {k: v for k, v in wl_to_nodes.items() if len(v) >= 2}
+    wl_to_nodes = {k: list(v) for k, v in group_workloads(candidates).items()}
 
     if not wl_to_nodes:
         return []
@@ -1326,6 +1259,13 @@ def _write_consolidated_mermaid(
 
     # Index nodes for selection.
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if str(n.get("nodeId") or "")}
+    edge_vcn_by_src = _edge_single_target_map(edges, "IN_VCN")
+
+    def _vcn_ref_for(node: Node) -> str:
+        nid = str(node.get("nodeId") or "")
+        meta = _node_metadata(node)
+        ref = edge_vcn_by_src.get(nid) or _get_meta(meta, "vcn_id")
+        return str(ref or "")
     comp_nodes = [n for n in nodes if _is_node_type(n, "Compartment")]
     comp_nodes_sorted = sorted(comp_nodes, key=lambda n: str(n.get("nodeId") or ""))
 
@@ -1383,14 +1323,20 @@ def _write_consolidated_mermaid(
         if vcn_ocid:
             represented_ocids.add(vcn_ocid)
         for gtype in ("InternetGateway", "NatGateway", "ServiceGateway"):
-            gws = [
-                n
-                for n in nodes
-                if _is_node_type(n, gtype) and str(n.get("compartmentId") or "") == str(vcn.get("compartmentId") or "")
-            ]
+            gws = []
+            for n in nodes:
+                if not _is_node_type(n, gtype):
+                    continue
+                vcn_ref = _vcn_ref_for(n)
+                if vcn_ref:
+                    if vcn_ref == vcn_ocid:
+                        gws.append(n)
+                    continue
+                if str(n.get("compartmentId") or "") == str(vcn.get("compartmentId") or ""):
+                    gws.append(n)
             if gws and gws[0].get("nodeId"):
                 represented_ocids.add(str(gws[0].get("nodeId") or ""))
-        subs = [n for n in nodes if _is_node_type(n, "Subnet") and str(_get_meta(_node_metadata(n), "vcn_id") or "") == vcn_ocid]
+        subs = [n for n in nodes if _is_node_type(n, "Subnet") and _vcn_ref_for(n) == vcn_ocid]
         subs_sorted = sorted(subs, key=lambda n: str(n.get("name") or ""))
         kept_subs, _ = _keep_and_omitted(subs_sorted, keep=2)
         for sn in kept_subs:
@@ -1503,14 +1449,24 @@ def _write_consolidated_mermaid(
         lines.append("    direction TB")
         # Gateways
         for gtype, lab in (("InternetGateway", "IGW"), ("NatGateway", "NAT"), ("ServiceGateway", "Service GW")):
-            gws = [n for n in nodes if _is_node_type(n, gtype) and str(n.get("compartmentId") or "") == str(vcn.get("compartmentId") or "")]
+            gws = []
+            for n in nodes:
+                if not _is_node_type(n, gtype):
+                    continue
+                vcn_ref = _vcn_ref_for(n)
+                if vcn_ref:
+                    if vcn_ref == vcn_ocid:
+                        gws.append(n)
+                    continue
+                if str(n.get("compartmentId") or "") == str(vcn.get("compartmentId") or ""):
+                    gws.append(n)
             if gws:
                 gid = _mermaid_id(str(gws[0].get("nodeId") or f"{vcn_ocid}:{gtype}"))
                 if gws[0].get("nodeId"):
                     rendered_ocids.add(str(gws[0].get("nodeId") or ""))
                 lines.extend(_render_node_with_class(gid, f"{lab}<br>{gtype}", cls="network", shape="rect"))
         # Subnets for this VCN
-        subs = [n for n in nodes if _is_node_type(n, "Subnet") and str(_get_meta(_node_metadata(n), "vcn_id") or "") == vcn_ocid]
+        subs = [n for n in nodes if _is_node_type(n, "Subnet") and _vcn_ref_for(n) == vcn_ocid]
         subs_sorted = sorted(subs, key=lambda n: str(n.get("name") or ""))
         kept_subs, subs_summary = _summarize_many(subs_sorted, title="Other subnets", keep=2)
         for sn in kept_subs:
