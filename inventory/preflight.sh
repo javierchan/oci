@@ -169,6 +169,43 @@ if ! python -m pip install -e "${SETUP_TARGET}${EXTRAS_SPEC}"; then
 fi
 ok "Project installed (editable) ${EXTRAS_SPEC}"
 
+# 5) Optional sanity checks for extras/config
+if printf "%s" "${EXTRAS_SPEC}" | grep -q "parquet"; then
+  if ! python - <<'PY'
+try:
+    import pyarrow  # noqa: F401
+except Exception as exc:
+    raise SystemExit(1)
+PY
+  then
+    warn "pyarrow not importable; Parquet export may fail. Install extras with INVENTORY_EXTRAS=parquet."
+  else
+    ok "pyarrow import check passed"
+  fi
+fi
+
+find_genai_config() {
+  if [ -n "${OCI_INV_GENAI_CONFIG:-}" ] && [ -f "${OCI_INV_GENAI_CONFIG}" ]; then
+    printf "%s" "${OCI_INV_GENAI_CONFIG}"
+    return 0
+  fi
+  if [ -f "$HOME/.config/oci-inv/genai.yaml" ]; then
+    printf "%s" "$HOME/.config/oci-inv/genai.yaml"
+    return 0
+  fi
+  if [ -f "${SCRIPT_DIR}/.local/genai.yaml" ]; then
+    printf "%s" "${SCRIPT_DIR}/.local/genai.yaml"
+    return 0
+  fi
+  return 1
+}
+
+if GENAI_PATH="$(find_genai_config)"; then
+  ok "GenAI config detected: ${GENAI_PATH}"
+else
+  warn "GenAI config not found; GenAI features (genai-chat, --genai-summary) will be skipped. Set OCI_INV_GENAI_CONFIG or place ~/.config/oci-inv/genai.yaml."
+fi
+
 # 5) Final summary and next steps
 cat <<'OUT'
 [OK] Preflight complete.
