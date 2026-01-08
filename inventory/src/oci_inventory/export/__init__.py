@@ -1,3 +1,3 @@
 from __future__ import annotations
 
-__all__ = ["jsonl", "csv", "parquet"]
+__all__ = ["jsonl", "csv", "parquet", "graph"]

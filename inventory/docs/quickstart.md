@@ -80,6 +80,9 @@ out/<timestamp>/
   inventory.csv
   inventory.parquet        # when --parquet and pyarrow installed
   relationships.jsonl      # when relationships are emitted
+  graph_nodes.jsonl        # diagram-ready nodes
+  graph_edges.jsonl        # diagram-ready edges
+  diagram.mmd              # Mermaid diagram
   diff.json                # when --prev provided
   diff_summary.json        # when --prev provided
   run_summary.json         # coverage metrics
