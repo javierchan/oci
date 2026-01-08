@@ -318,6 +318,12 @@ def cmd_run(cfg: RunConfig) -> int:
                 parquet_warning = str(e)
                 LOG.warning(str(e))
 
+        # Derive additional relationships from record metadata (offline; no new OCI calls)
+        # to improve graph/report fidelity when enrichers did not emit relationships.
+        from .export.graph import derive_relationships_from_metadata
+
+        all_relationships.extend(derive_relationships_from_metadata(enriched))
+
         _write_relationships(cfg.outdir, all_relationships)
 
         # Coverage metrics and summary

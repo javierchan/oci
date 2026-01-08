@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import json
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -255,6 +256,77 @@ def _count_csv_rows(path: Path) -> Optional[int]:
             return sum(1 for _ in reader)
     except Exception:
         return None
+
+
+def _read_jsonl(path: Path, *, max_rows: int = 50_000) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for i, line in enumerate(f):
+                if i >= max_rows:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    out.append(obj)
+    except Exception:
+        return []
+    return out
+
+
+def _graph_artifact_summary(outdir: Optional[Path]) -> Optional[Dict[str, Any]]:
+    if not outdir:
+        return None
+    nodes_path = outdir / "graph_nodes.jsonl"
+    edges_path = outdir / "graph_edges.jsonl"
+    if not nodes_path.is_file() or not edges_path.is_file():
+        return None
+
+    nodes = _read_jsonl(nodes_path)
+    edges = _read_jsonl(edges_path)
+    if not nodes and not edges:
+        return None
+
+    node_ids = {str(n.get("nodeId") or "") for n in nodes if str(n.get("nodeId") or "")}
+
+    node_type_counts: Dict[str, int] = {}
+    node_cat_counts: Dict[str, int] = {}
+    for n in nodes:
+        nt = str(n.get("nodeType") or "")
+        nc = str(n.get("nodeCategory") or "")
+        if nt:
+            node_type_counts[nt] = node_type_counts.get(nt, 0) + 1
+        if nc:
+            node_cat_counts[nc] = node_cat_counts.get(nc, 0) + 1
+
+    rel_counts: Dict[str, int] = {}
+    endpoints_ok = 0
+    total_edges = 0
+    for e in edges:
+        rt = str(e.get("relation_type") or "")
+        if rt:
+            rel_counts[rt] = rel_counts.get(rt, 0) + 1
+        src = str(e.get("source_ocid") or "")
+        dst = str(e.get("target_ocid") or "")
+        total_edges += 1
+        if src in node_ids and dst in node_ids:
+            endpoints_ok += 1
+
+    return {
+        "nodes_path": str(nodes_path),
+        "edges_path": str(edges_path),
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "node_type_counts": node_type_counts,
+        "node_category_counts": node_cat_counts,
+        "relation_type_counts": rel_counts,
+        "endpoints_ok": endpoints_ok,
+        "total_edges": total_edges,
+        "nodes": nodes,
+        "edges": edges,
+    }
 
 
 def _pct(n: int, d: int) -> str:
@@ -543,6 +615,46 @@ def render_run_report_md(
     )
     lines.append("")
 
+    # Graph artifacts (nodes/edges) summary, if present.
+    outdir = Path(str(cfg_dict.get("outdir") or "")).expanduser() if cfg_dict.get("outdir") else None
+    graph_summary = _graph_artifact_summary(outdir)
+    if graph_summary:
+        lines.append("## Graph Artifacts (Summary)")
+        lines.append("This section summarizes `graph_nodes.jsonl` and `graph_edges.jsonl` generated for this run.")
+        lines.append("")
+
+        node_rows: List[List[str]] = []
+        for k, v in _top_n(graph_summary.get("node_category_counts", {}), 10):
+            node_rows.append([k or "(unknown)", str(v)])
+        if node_rows:
+            lines.append("Node categories:")
+            lines.append("")
+            lines.extend(_md_table(["Category", "Count"], node_rows))
+            lines.append("")
+
+        type_rows: List[List[str]] = []
+        for k, v in _top_n(graph_summary.get("node_type_counts", {}), 10):
+            type_rows.append([k or "(unknown)", str(v)])
+        if type_rows:
+            lines.append("Top node types:")
+            lines.append("")
+            lines.extend(_md_table(["Node type", "Count"], type_rows))
+            lines.append("")
+
+        rel_rows: List[List[str]] = []
+        for k, v in _top_n(graph_summary.get("relation_type_counts", {}), 20):
+            rel_rows.append([k or "(unknown)", str(v)])
+        if rel_rows:
+            lines.append("Edge relation types:")
+            lines.append("")
+            lines.extend(_md_table(["Relation", "Count"], rel_rows))
+            lines.append("")
+
+        endpoints_ok = int(graph_summary.get("endpoints_ok") or 0)
+        total_edges = int(graph_summary.get("total_edges") or 0)
+        lines.append(f"Graph integrity: {endpoints_ok}/{total_edges} edges reference known node IDs.")
+        lines.append("")
+
     # Executive Summary (architecture)
     lines.append("## Executive Summary")
     if executive_summary:
@@ -616,6 +728,60 @@ def render_run_report_md(
     lines.append("- `graph_nodes.jsonl` / `graph_edges.jsonl` (graph data)")
     lines.append("- `diagram*.mmd` (architectural projections, if enabled)")
     lines.append("")
+
+    # Graph-derived connectivity (only if edges include relationships beyond IN_COMPARTMENT)
+    if graph_summary:
+        rel_counts = graph_summary.get("relation_type_counts") or {}
+        if isinstance(rel_counts, dict):
+            non_membership = sorted([k for k in rel_counts.keys() if k and k != "IN_COMPARTMENT"])
+        else:
+            non_membership = []
+
+        if non_membership:
+            # Build a lookup for labeling without printing OCIDs.
+            nodes = graph_summary.get("nodes") or []
+            node_by_id: Dict[str, Dict[str, Any]] = {}
+            for n in nodes:
+                nid = str(n.get("nodeId") or "")
+                if nid:
+                    node_by_id[nid] = n
+
+            def _label_for(nid: str) -> str:
+                n = node_by_id.get(nid, {})
+                name = str(n.get("name") or "")
+                nt = str(n.get("nodeType") or "")
+                sid = _short_id_from_ocid(nid)
+                if name and nt:
+                    return f"{name} ({nt}, {sid})"
+                if name:
+                    return f"{name} ({sid})"
+                return sid or "(unknown)"
+
+            conn_rows: List[List[str]] = []
+            edges = graph_summary.get("edges") or []
+            shown = 0
+            for e in edges:
+                rt = str(e.get("relation_type") or "")
+                if not rt or rt == "IN_COMPARTMENT":
+                    continue
+                src = str(e.get("source_ocid") or "")
+                dst = str(e.get("target_ocid") or "")
+                conn_rows.append([rt, _label_for(src), _label_for(dst)])
+                shown += 1
+                if shown >= 25:
+                    break
+
+            if conn_rows:
+                lines.append("Graph-derived connectivity (sample; OCIDs omitted):")
+                lines.append("")
+                lines.extend(_md_table(["Relation", "Source", "Target"], conn_rows))
+                if len(edges) > shown:
+                    lines.append("(Truncated.)")
+                lines.append("")
+        else:
+            # Keep it as a single, clear statement to avoid noise.
+            lines.append("Graph-derived connectivity: not available (only IN_COMPARTMENT edges were generated for this run).")
+            lines.append("")
 
     if not vcn_recs and not subnet_recs and not (igw_recs or nat_recs or sgw_recs):
         lines.append("No core networking resources were observed in this inventory scope.")
@@ -923,7 +1089,6 @@ def render_run_report_md(
         "Complete list of resources discovered in scope (matches the exported `inventory.csv`; OCIDs omitted)."
     )
 
-    outdir = Path(str(cfg_dict.get("outdir") or "")).expanduser() if cfg_dict.get("outdir") else None
     csv_rows: Optional[int] = None
     if outdir:
         csv_rows = _count_csv_rows(outdir / "inventory.csv")

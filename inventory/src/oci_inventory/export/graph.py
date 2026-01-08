@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from ..normalize.transform import stable_json_dumps
 from ..util.serialization import sanitize_for_json
@@ -63,6 +63,120 @@ def _node_label(record: Dict[str, Any]) -> str:
     if not name:
         name = record.get("resourceType") or record.get("nodeType") or record.get("ocid")
     return str(name)
+
+
+def _record_metadata(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    details = record.get("details") if isinstance(record, Mapping) else None
+    if not isinstance(details, Mapping):
+        return {}
+    md = details.get("metadata")
+    return md if isinstance(md, Mapping) else {}
+
+
+def _get_meta(metadata: Mapping[str, Any], *keys: str) -> Any:
+    for k in keys:
+        if k in metadata:
+            return metadata[k]
+        # Accept camelCase vs snake_case interchangeably.
+        camel = "".join([w[:1].upper() + w[1:] if i > 0 else w for i, w in enumerate(k.split("_"))])
+        snake = "".join([("_" + ch.lower()) if ch.isupper() else ch for ch in k]).lstrip("_")
+        if camel in metadata:
+            return metadata[camel]
+        if snake in metadata:
+            return metadata[snake]
+    return None
+
+
+def derive_relationships_from_metadata(records: Iterable[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Derive additional relationships from existing record metadata.
+
+    This is deterministic and offline (no new OCI calls). It is intended to enrich
+    the graph with architecture-relevant edges when enrichers did not provide any.
+
+    Only emits edges when both source and target OCIDs exist in the provided
+    records to avoid creating dangling references.
+    """
+
+    recs = list(records)
+    ocids: Set[str] = {str(r.get("ocid") or "") for r in recs if str(r.get("ocid") or "")}
+
+    out: List[Dict[str, str]] = []
+    seen: Set[Tuple[str, str, str]] = set()
+
+    def _emit(src: str, rel: str, dst: str) -> None:
+        if not src or not dst or not rel:
+            return
+        if src not in ocids or dst not in ocids:
+            return
+        key = (src, rel, dst)
+        if key in seen:
+            return
+        seen.add(key)
+        out.append({"source_ocid": src, "relation_type": rel, "target_ocid": dst})
+
+    network_child_types = {
+        "Subnet",
+        "RouteTable",
+        "SecurityList",
+        "NetworkSecurityGroup",
+        "DhcpOptions",
+        "InternetGateway",
+        "NatGateway",
+        "ServiceGateway",
+    }
+
+    for r in recs:
+        src = str(r.get("ocid") or "")
+        if not src:
+            continue
+        rt = str(r.get("resourceType") or "")
+        md = _record_metadata(r)
+
+        # Network object placement
+        if rt in network_child_types:
+            vcn_id = _get_meta(md, "vcn_id", "vcnId")
+            if isinstance(vcn_id, str) and vcn_id:
+                _emit(src, "IN_VCN", vcn_id)
+
+        # Subnet wiring
+        if rt == "Subnet":
+            route_table_id = _get_meta(md, "route_table_id", "routeTableId")
+            if isinstance(route_table_id, str) and route_table_id:
+                _emit(src, "USES_ROUTE_TABLE", route_table_id)
+
+            sl_ids = _get_meta(md, "security_list_ids", "securityListIds")
+            if isinstance(sl_ids, list):
+                for sid in sl_ids:
+                    if isinstance(sid, str) and sid:
+                        _emit(src, "USES_SECURITY_LIST", sid)
+
+            nsg_ids = _get_meta(md, "nsg_ids", "nsgIds")
+            if isinstance(nsg_ids, list):
+                for nid in nsg_ids:
+                    if isinstance(nid, str) and nid:
+                        _emit(src, "USES_NSG", nid)
+
+        # VNIC wiring
+        if rt == "Vnic":
+            subnet_id = _get_meta(md, "subnet_id", "subnetId")
+            if isinstance(subnet_id, str) and subnet_id:
+                _emit(src, "IN_SUBNET", subnet_id)
+            nsg_ids = _get_meta(md, "nsg_ids", "nsgIds")
+            if isinstance(nsg_ids, list):
+                for nid in nsg_ids:
+                    if isinstance(nid, str) and nid:
+                        _emit(src, "USES_NSG", nid)
+
+        # Private IP wiring
+        if rt == "PrivateIp":
+            vnic_id = _get_meta(md, "vnic_id", "vnicId")
+            if isinstance(vnic_id, str) and vnic_id:
+                _emit(src, "IN_VNIC", vnic_id)
+            subnet_id = _get_meta(md, "subnet_id", "subnetId")
+            if isinstance(subnet_id, str) and subnet_id:
+                _emit(src, "IN_SUBNET", subnet_id)
+
+    return sorted(out, key=lambda r: (r.get("source_ocid", ""), r.get("relation_type", ""), r.get("target_ocid", "")))
 
 
 def _compartment_node(ocid: str) -> Node:
