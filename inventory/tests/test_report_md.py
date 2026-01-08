@@ -33,6 +33,11 @@ def test_render_run_report_includes_excluded_regions_and_query(tmp_path: Path) -
         },
     )
 
+    # Narrative intro + At-a-Glance table exist
+    assert "This report summarizes the OCI resources" in text
+    assert "## At a Glance" in text
+    assert "| Metric | Value |" in text
+
     # Still preserves run metadata (now under Execution Metadata)
     assert "## Execution Metadata" in text
     assert "Excluded regions" in text

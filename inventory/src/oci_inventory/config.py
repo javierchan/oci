@@ -30,6 +30,7 @@ ALLOWED_CONFIG_KEYS = {
     "workers_region",
     "workers_enrich",
     "genai_summary",
+    "validate_diagrams",
     "regions",
     "auth",
     "profile",
@@ -38,7 +39,7 @@ ALLOWED_CONFIG_KEYS = {
     "inventory",
     "top",
 }
-BOOL_CONFIG_KEYS = {"parquet", "include_terminated", "json_logs", "genai_summary"}
+BOOL_CONFIG_KEYS = {"parquet", "include_terminated", "json_logs", "genai_summary", "validate_diagrams"}
 INT_CONFIG_KEYS = {"workers_region", "workers_enrich", "top"}
 PATH_CONFIG_KEYS = {"outdir", "prev", "curr", "inventory"}
 STR_CONFIG_KEYS = {"query", "log_level", "auth", "profile", "tenancy_ocid"}
@@ -63,6 +64,7 @@ class RunConfig:
 
     # Optional features
     genai_summary: bool = False
+    validate_diagrams: bool = False
 
     # GenAI (used by genai-chat)
     genai_api_format: Optional[str] = None  # AUTO|GENERIC|COHERE
@@ -313,6 +315,17 @@ def load_run_config(
         ),
     )
 
+    p_run.add_argument(
+        "--validate-diagrams",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Require Mermaid diagram validation using the external 'mmdc' command "
+            "(@mermaid-js/mermaid-cli). Fails the run if mmdc is missing or validation fails. "
+            "(If mmdc is present, diagrams are validated automatically even without this flag.)"
+        ),
+    )
+
     # diff
     p_diff = subparsers.add_parser("diff", help="Diff two inventory JSONL files")
     add_common(p_diff)
@@ -404,6 +417,7 @@ def load_run_config(
         "workers_region": DEFAULT_WORKERS_REGION,
         "workers_enrich": DEFAULT_WORKERS_ENRICH,
         "genai_summary": False,
+        "validate_diagrams": False,
         "genai_api_format": None,
         "genai_message": None,
         "genai_report": None,
@@ -435,6 +449,7 @@ def load_run_config(
             "workers_region": _env_int("OCI_INV_WORKERS_REGION"),
             "workers_enrich": _env_int("OCI_INV_WORKERS_ENRICH"),
             "genai_summary": _env_bool("OCI_INV_GENAI_SUMMARY"),
+            "validate_diagrams": _env_bool("OCI_INV_VALIDATE_DIAGRAMS"),
             "regions": _env_str("OCI_INV_REGIONS"),
             "auth": _env_str("OCI_INV_AUTH"),
             "profile": _env_str("OCI_INV_PROFILE"),
@@ -456,6 +471,7 @@ def load_run_config(
             "workers_region": getattr(ns, "workers_region", None),
             "workers_enrich": getattr(ns, "workers_enrich", None),
             "genai_summary": getattr(ns, "genai_summary", None),
+            "validate_diagrams": getattr(ns, "validate_diagrams", None),
             "genai_api_format": getattr(ns, "api_format", None),
             "genai_message": getattr(ns, "message", None),
             "genai_report": getattr(ns, "report", None),
@@ -503,6 +519,7 @@ def load_run_config(
         workers_region=workers_region,
         workers_enrich=workers_enrich,
         genai_summary=bool(merged.get("genai_summary")),
+        validate_diagrams=bool(merged.get("validate_diagrams")),
         genai_api_format=str(merged.get("genai_api_format")) if merged.get("genai_api_format") else None,
         genai_message=str(merged.get("genai_message")) if merged.get("genai_message") else None,
         genai_report=Path(merged.get("genai_report")) if merged.get("genai_report") else None,
@@ -531,6 +548,7 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "workers_region": cfg.workers_region,
         "workers_enrich": cfg.workers_enrich,
         "genai_summary": cfg.genai_summary,
+        "validate_diagrams": cfg.validate_diagrams,
         "regions": cfg.regions,
         "auth": cfg.auth,
         "profile": cfg.profile,

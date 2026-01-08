@@ -215,6 +215,22 @@ def _top_n(d: Dict[str, int], n: int) -> List[Tuple[str, int]]:
     return sorted(((k, int(v)) for k, v in d.items()), key=lambda kv: (-kv[1], kv[0]))[:n]
 
 
+def _md_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> List[str]:
+    # Minimal Markdown table helper (deterministic; no alignment tricks).
+    out: List[str] = []
+    out.append("| " + " | ".join(headers) + " |")
+    out.append("| " + " | ".join(["---"] * len(headers)) + " |")
+    for r in rows:
+        out.append("| " + " | ".join(r) + " |")
+    return out
+
+
+def _pct(n: int, d: int) -> str:
+    if d <= 0:
+        return "0%"
+    return f"{int(round((n / d) * 100.0))}%"
+
+
 def _prefix_token(name: str) -> str:
     s = (name or "").strip()
     if not s:
@@ -398,6 +414,14 @@ def render_run_report_md(
     lines.append("# OCI Inventory Architectural Assessment")
     lines.append("")
 
+    # Audience note: keep it short, formal, and factual.
+    lines.append(
+        "This report summarizes the OCI resources **observed in scope** by a read-only inventory run and presents a lightweight architectural view "
+        "(tenancy partitioning, network layout, workload/service groupings, data stores, and governance signals). "
+        "It concludes with an **Execution Metadata** appendix containing the original run details."
+    )
+    lines.append("")
+
     types_in_scope = {_record_type(r) for r in discovered_records if _record_type(r)}
     counts_by_region = _counts_by_key(discovered_records, "region")
     regions_observed = [r for r in counts_by_region.keys() if r]
@@ -435,6 +459,57 @@ def render_run_report_md(
     }
     media_recs = [r for r in discovered_records if _record_type(r) in media_types]
 
+    # At-a-glance table (CIO-friendly, deterministic)
+    ok = 0
+    not_impl = 0
+    err = 0
+    if metrics and isinstance(metrics, dict):
+        cbes = metrics.get("counts_by_enrich_status") or {}
+        if isinstance(cbes, dict):
+            ok = int(cbes.get("OK", 0) or 0)
+            not_impl = int(cbes.get("NOT_IMPLEMENTED", 0) or 0)
+            err = int(cbes.get("ERROR", 0) or 0)
+    total_cov = ok + not_impl + err
+
+    scope_regions = regions_observed or (list(requested_regions) if requested_regions else list(subscribed_regions))
+    scope_regions_txt = ", ".join(scope_regions) if scope_regions else "(none)"
+
+    public_subnets = 0
+    private_subnets = 0
+    unknown_subnets = 0
+    for sn in subnet_recs:
+        md = _record_metadata(sn)
+        exposure = _infer_subnet_exposure(md)
+        if exposure == "Unknown":
+            by_name = _infer_subnet_exposure_from_name(_record_name(sn))
+            exposure = by_name or "Unknown"
+        if exposure.startswith("Public"):
+            public_subnets += 1
+        elif exposure.startswith("Private"):
+            private_subnets += 1
+        else:
+            unknown_subnets += 1
+
+    lines.append("## At a Glance")
+    lines.extend(
+        _md_table(
+            ["Metric", "Value"],
+            [
+                ["Status", f"**{status}**"],
+                ["Regions in scope", scope_regions_txt],
+                ["Resources discovered", str(len(discovered_records))],
+                ["Compartments observed", str(len(comp_counts))],
+                ["Network", f"VCNs={len(vcn_recs)}, Subnets={len(subnet_recs)} (Public={public_subnets}, Private={private_subnets}, Unknown={unknown_subnets})"],
+                ["Compute", f"Instances={len(inst_recs)}"],
+                ["Data", f"Buckets={len(bucket_recs)}, Volumes={len(vol_recs)}"],
+                ["Governance", f"Policies={len(policy_recs)}"],
+                ["Observability", f"Log Groups={len(log_group_recs)}, Log Analytics Entities={len(loga_entity_recs)}"],
+                ["Enrichment coverage", f"OK={ok}, NOT_IMPLEMENTED={not_impl}, ERROR={err} (OK%={_pct(ok, total_cov)})"],
+            ],
+        )
+    )
+    lines.append("")
+
     # Executive Summary (architecture)
     lines.append("## Executive Summary")
     if executive_summary:
@@ -467,68 +542,131 @@ def render_run_report_md(
     # Tenancy & Compartment Overview
     lines.append("## Tenancy & Compartment Overview")
     if comp_counts:
-        lines.append("- Observed resource distribution by compartment (best-effort; based on `compartmentId` in results):")
-        for cid, count in _top_n(comp_counts, 12):
+        lines.append("Observed resource distribution by compartment (best-effort; based on `compartmentId` in results).")
+
+        # Build per-compartment top types
+        types_by_comp: Dict[str, Dict[str, int]] = {}
+        for r in discovered_records:
+            cid = _record_compartment_id(r)
+            if not cid:
+                continue
+            rt = _record_type(r)
+            if not rt:
+                continue
+            bucket = types_by_comp.setdefault(cid, {})
+            bucket[rt] = bucket.get(rt, 0) + 1
+
+        rows: List[List[str]] = []
+        for cid, count in _top_n(comp_counts, 20):
+            name = name_by_comp.get(cid, "")
+            role = _infer_compartment_role_hint(name)
             label = _compartment_label(cid, alias_by_id=alias_by_comp, name_by_id=name_by_comp)
-            role = _infer_compartment_role_hint(name_by_comp.get(cid, ""))
-            role_note = f" ({role})" if role else ""
-            lines.append(f"  - {label}{role_note}: **{count}**")
+            top_types = ", ".join([f"{k}={v}" for k, v in _top_n(types_by_comp.get(cid, {}), 5)])
+            rows.append([label, role or "(not inferred)", str(count), top_types or "(none)"])
+
+        lines.extend(_md_table(["Compartment", "Role hint", "Resources", "Top resource types"], rows))
     else:
         lines.append("- No compartment IDs were present in the discovered records.")
     lines.append("")
 
     # Network Architecture
     lines.append("## Network Architecture")
-    lines.append("- Diagrams (generated in the output directory):")
-    lines.append("  - `diagram_raw.mmd` (full graph export; intentionally noisy)")
-    lines.append("  - `graph_nodes.jsonl` / `graph_edges.jsonl` (graph data)")
-    lines.append("  - Any `diagram*.mmd` files (if architectural projections are enabled)")
+    lines.append("Diagram artifacts (generated in the output directory):")
+    lines.append("- `diagram_raw.mmd` (full graph export; intentionally noisy)")
+    lines.append("- `graph_nodes.jsonl` / `graph_edges.jsonl` (graph data)")
+    lines.append("- `diagram*.mmd` (architectural projections, if enabled)")
+    lines.append("")
 
-    if vcn_recs:
-        lines.append("- VCNs:")
-        for r in sorted(vcn_recs, key=lambda x: (_record_region(x), _record_name(x))):
-            md = _record_metadata(r)
+    if not vcn_recs and not subnet_recs and not (igw_recs or nat_recs or sgw_recs):
+        lines.append("No core networking resources were observed in this inventory scope.")
+        lines.append("")
+    else:
+        # Build per-VCN summary
+        vcn_by_id: Dict[str, Dict[str, Any]] = {str(r.get("ocid") or ""): r for r in vcn_recs if str(r.get("ocid") or "")}
+
+        subnets_by_vcn: Dict[str, List[Dict[str, Any]]] = {}
+        for sn in subnet_recs:
+            md = _record_metadata(sn)
+            vcn_id = str(md.get("vcn_id") or md.get("vcnId") or "")
+            subnets_by_vcn.setdefault(vcn_id, []).append(sn)
+
+        rows: List[List[str]] = []
+        for vcn in sorted(vcn_recs, key=lambda x: (_record_region(x), _record_name(x))):
+            md = _record_metadata(vcn)
+            vcn_id = str(vcn.get("ocid") or "")
             cidr = md.get("cidr_block") or md.get("cidrBlock")
             cidrs = md.get("cidr_blocks") or md.get("cidrBlocks")
-            cidr_note = ""
+            cidr_txt = ""
             if isinstance(cidr, str) and cidr:
-                cidr_note = f" (CIDR: {cidr})"
+                cidr_txt = cidr
             elif isinstance(cidrs, list) and cidrs:
-                cidr_note = f" (CIDRs: {', '.join([str(x) for x in cidrs if x])})"
-            lines.append(f"  - {_record_name(r) or '(unnamed)'} — region `{_record_region(r)}`{cidr_note}")
-    else:
-        lines.append("- VCNs: none observed in scope")
+                cidr_txt = ", ".join([str(x) for x in cidrs if x])
 
-    if subnet_recs:
-        vcn_name_by_id = {str(r.get('ocid') or ''): _record_name(r) for r in vcn_recs if str(r.get('ocid') or '')}
-        lines.append("- Subnets:")
-        for r in sorted(subnet_recs, key=lambda x: (_record_region(x), _record_name(x))):
-            md = _record_metadata(r)
-            exposure = _infer_subnet_exposure(md)
-            if exposure == "Unknown":
-                by_name = _infer_subnet_exposure_from_name(_record_name(r))
-                if by_name:
-                    exposure = f"{by_name} (by name)"
-            vcn_id = str(md.get("vcn_id") or md.get("vcnId") or "")
-            vcn_name = vcn_name_by_id.get(vcn_id, "")
-            vcn_note = f" (VCN: {vcn_name})" if vcn_name else ""
-            lines.append(f"  - {_record_name(r) or '(unnamed)'} — {exposure}{vcn_note}")
-    else:
-        lines.append("- Subnets: none observed in scope")
+            subs = subnets_by_vcn.get(vcn_id, [])
+            pub = 0
+            priv = 0
+            unk = 0
+            for sn in subs:
+                md_sn = _record_metadata(sn)
+                exposure = _infer_subnet_exposure(md_sn)
+                if exposure == "Unknown":
+                    by_name = _infer_subnet_exposure_from_name(_record_name(sn))
+                    exposure = by_name or "Unknown"
+                if exposure.startswith("Public"):
+                    pub += 1
+                elif exposure.startswith("Private"):
+                    priv += 1
+                else:
+                    unk += 1
 
-    if igw_recs or nat_recs or sgw_recs:
-        lines.append("- Gateways:")
-        if igw_recs:
-            lines.append(f"  - Internet Gateways: {len(igw_recs)} (public ingress/egress for VCN)")
-        if nat_recs:
-            lines.append(f"  - NAT Gateways: {len(nat_recs)} (private subnet egress without inbound exposure)")
-        if sgw_recs:
-            lines.append(f"  - Service Gateways: {len(sgw_recs)} (private access to OCI services)")
-    else:
-        lines.append("- Gateways: none observed in scope")
+            gws = []
+            if igw_recs:
+                gws.append("IGW")
+            if nat_recs:
+                gws.append("NAT")
+            if sgw_recs:
+                gws.append("ServiceGW")
+            gw_txt = ", ".join(gws) if gws else "(none observed)"
+            rows.append([
+                _record_name(vcn) or "(unnamed)",
+                _record_region(vcn) or "(unknown)",
+                cidr_txt or "(unknown)",
+                f"{len(subs)} (Public={pub}, Private={priv}, Unknown={unk})",
+                gw_txt,
+            ])
 
-    if nsg_recs:
-        lines.append(f"- Network Security Groups: {len(nsg_recs)}")
+        if rows:
+            lines.append("VCN summary (best-effort; subnet-to-VCN mapping requires subnet metadata):")
+            lines.extend(_md_table(["VCN", "Region", "CIDR(s)", "Subnets", "Gateways"], rows))
+            lines.append("")
+
+        if subnet_recs:
+            # Provide a short subnet list for quick validation.
+            vcn_name_by_id = {vid: _record_name(vcn_by_id.get(vid, {})) for vid in vcn_by_id.keys()}
+            sub_rows: List[List[str]] = []
+            for sn in sorted(subnet_recs, key=lambda x: (_record_region(x), _record_name(x))):
+                md = _record_metadata(sn)
+                exposure = _infer_subnet_exposure(md)
+                if exposure == "Unknown":
+                    by_name = _infer_subnet_exposure_from_name(_record_name(sn))
+                    if by_name:
+                        exposure = by_name
+                vcn_id = str(md.get("vcn_id") or md.get("vcnId") or "")
+                vcn_name = vcn_name_by_id.get(vcn_id, "")
+                sub_rows.append([
+                    _record_name(sn) or "(unnamed)",
+                    _record_region(sn) or "(unknown)",
+                    exposure,
+                    vcn_name or "(unknown)",
+                ])
+            lines.append("Subnet summary:")
+            lines.extend(_md_table(["Subnet", "Region", "Exposure", "VCN"], sub_rows[:20]))
+            if len(sub_rows) > 20:
+                lines.append(f"(Truncated: {len(sub_rows) - 20} more subnets not shown.)")
+            lines.append("")
+
+        if nsg_recs:
+            lines.append(f"Network Security Groups observed: **{len(nsg_recs)}**")
     lines.append("")
 
     # Workloads & Services
@@ -537,52 +675,66 @@ def render_run_report_md(
         lines.append("- No workload clusters could be confidently inferred from names/tags in this scope.")
         lines.append("")
     else:
-        lines.append("- Workload candidates (grouped by naming and/or tags):")
+        lines.append("Workload candidates (grouped by naming and/or tags; only groups with ≥3 resources are shown).")
+
+        rows: List[List[str]] = []
+        flows: List[str] = []
         shown = 0
         for wname, recs in workloads.items():
             shown += 1
-            if shown > 8:
+            if shown > 10:
                 break
+
             type_counts: Dict[str, int] = {}
+            comp_set: set[str] = set()
+            region_set: set[str] = set()
             for rr in recs:
                 rt = _record_type(rr)
                 if rt:
                     type_counts[rt] = type_counts.get(rt, 0) + 1
+                cid = _record_compartment_id(rr)
+                if cid:
+                    comp_set.add(_compartment_label(cid, alias_by_id=alias_by_comp, name_by_id=name_by_comp))
+                reg = _record_region(rr)
+                if reg:
+                    region_set.add(reg)
+
             top_types = ", ".join([f"{k}={v}" for k, v in _top_n(type_counts, 6)])
             desc = _describe_workload(wname, recs)
-            lines.append(f"  - **{wname}** — {desc} ({len(recs)} resources): {top_types}")
+            rows.append([
+                wname,
+                desc,
+                str(len(recs)),
+                ", ".join(sorted(region_set)) or "(unknown)",
+                ", ".join(sorted(comp_set)) or "(unknown)",
+                top_types or "(none)",
+            ])
 
-            # Known, low-risk dataflow inference for Media Services.
             rt_set = set(type_counts.keys())
             if "Bucket" in rt_set and rt_set.intersection(media_types):
-                flow = "Object Storage (buckets) → Media Services (workflow/packaging) → Streaming distribution/CDN"
-                lines.append(f"    - Inferred data flow (by resource types present): {flow}")
+                flows.append(f"- {wname}: Object Storage (buckets) → Media Services (workflow/packaging) → Streaming distribution/CDN")
+
+        lines.extend(_md_table(["Workload", "Description", "Resources", "Regions", "Compartments", "Top resource types"], rows))
+        if flows:
+            lines.append("")
+            lines.append("Observed data flow patterns (type-based; best-effort):")
+            lines.extend(flows[:6])
         lines.append("")
 
     # Data & Storage
     lines.append("## Data & Storage")
+    ds_rows: List[List[str]] = []
     if bucket_recs:
-        lines.append(f"- Object Storage buckets ({len(bucket_recs)}):")
-        buckets_sorted = sorted({_record_name(r) for r in bucket_recs if _record_name(r)})
-        # Show up to 20 to keep it lightweight.
-        for b in buckets_sorted[:20]:
-            purpose = _infer_bucket_purpose(b)
-            if purpose:
-                lines.append(f"  - {b} (hint: {purpose})")
-            else:
-                lines.append(f"  - {b}")
-        if len(buckets_sorted) > 20:
-            lines.append(f"  - ... ({len(buckets_sorted) - 20} more)")
-    else:
-        lines.append("- Object Storage buckets: none observed in scope")
-
+        for r in sorted(bucket_recs, key=lambda x: (_record_region(x), _record_name(x))):
+            name = _record_name(r) or "(unnamed)"
+            comp = _compartment_label(_record_compartment_id(r), alias_by_id=alias_by_comp, name_by_id=name_by_comp)
+            hint = _infer_bucket_purpose(name) or "(not inferred)"
+            ds_rows.append(["Bucket", name, _record_region(r) or "(unknown)", comp, hint])
     if vol_recs:
-        lines.append(f"- Block/boot volumes ({len(vol_recs)}):")
-        vol_names = sorted({_record_name(r) for r in vol_recs if _record_name(r)})
-        for v in vol_names[:20]:
-            lines.append(f"  - {v}")
-        if len(vol_names) > 20:
-            lines.append(f"  - ... ({len(vol_names) - 20} more)")
+        for r in sorted(vol_recs, key=lambda x: (_record_region(x), _record_name(x))):
+            name = _record_name(r) or "(unnamed)"
+            comp = _compartment_label(_record_compartment_id(r), alias_by_id=alias_by_comp, name_by_id=name_by_comp)
+            ds_rows.append([_record_type(r) or "Volume", name, _record_region(r) or "(unknown)", comp, "(n/a)"])
 
     datastore_types = {
         "AutonomousDatabase",
@@ -594,67 +746,71 @@ def render_run_report_md(
     }
     datastore_recs = [r for r in discovered_records if _record_type(r) in datastore_types]
     if datastore_recs:
-        type_counts: Dict[str, int] = {}
-        for r in datastore_recs:
-            rt = _record_type(r)
-            type_counts[rt] = type_counts.get(rt, 0) + 1
-        lines.append(f"- Data stores (observed types): {', '.join([f'{k}={v}' for k, v in _top_n(type_counts, 10)])}")
+        for r in sorted(datastore_recs, key=lambda x: (_record_region(x), _record_type(x), _record_name(x))):
+            name = _record_name(r) or "(unnamed)"
+            comp = _compartment_label(_record_compartment_id(r), alias_by_id=alias_by_comp, name_by_id=name_by_comp)
+            ds_rows.append([_record_type(r) or "Datastore", name, _record_region(r) or "(unknown)", comp, "(n/a)"])
+
+    if ds_rows:
+        lines.extend(_md_table(["Type", "Name", "Region", "Compartment", "Purpose hint"], ds_rows[:40]))
+        if len(ds_rows) > 40:
+            lines.append(f"(Truncated: {len(ds_rows) - 40} more items not shown.)")
+    else:
+        lines.append("No data/storage resources were observed in this inventory scope.")
     lines.append("")
 
     # IAM / Policies
     lines.append("## IAM / Policies (Visible)")
     if policy_recs:
-        lines.append(f"- Policies ({len(policy_recs)}):")
+        rows: List[List[str]] = []
         for r in sorted(policy_recs, key=lambda x: (_record_compartment_id(x), _record_name(x))):
             md = _record_metadata(r)
             stmts = md.get("statements")
-            stmt_count = len(stmts) if isinstance(stmts, list) else None
+            stmt_count = str(len(stmts)) if isinstance(stmts, list) else "(unknown)"
             comp_label = _compartment_label(_record_compartment_id(r), alias_by_id=alias_by_comp, name_by_id=name_by_comp)
-            extra = f" ({stmt_count} statement(s))" if stmt_count is not None else ""
             pname = _record_name(r) or "(unnamed)"
-            hint = _summarize_policy_name(pname)
-            hint_note = f" — {hint}" if hint else ""
-            lines.append(f"  - {pname} — {comp_label}{extra}{hint_note}")
+            hint = _summarize_policy_name(pname) or "(not inferred)"
+            rows.append([pname, comp_label, stmt_count, hint])
+        lines.extend(_md_table(["Policy", "Compartment", "Statements", "Summary (name-derived)"], rows))
     else:
         lines.append("- No IAM Policy resources were observed in this scope.")
     lines.append("")
 
     # Observability / Logging
     lines.append("## Observability / Logging")
-    if log_group_recs:
-        names = sorted({_record_name(r) for r in log_group_recs if _record_name(r)})
-        lines.append(f"- Log Groups ({len(log_group_recs)}):")
-        for n in names[:20]:
-            lines.append(f"  - {n}")
-        if len(names) > 20:
-            lines.append(f"  - ... ({len(names) - 20} more)")
-    else:
-        lines.append("- Log Groups: none observed in scope")
+    obs_rows: List[List[str]] = []
+    for r in sorted(log_group_recs, key=lambda x: (_record_region(x), _record_name(x))):
+        comp = _compartment_label(_record_compartment_id(r), alias_by_id=alias_by_comp, name_by_id=name_by_comp)
+        obs_rows.append(["LogGroup", _record_name(r) or "(unnamed)", _record_region(r) or "(unknown)", comp])
+    for r in sorted(loga_entity_recs, key=lambda x: (_record_region(x), _record_name(x))):
+        comp = _compartment_label(_record_compartment_id(r), alias_by_id=alias_by_comp, name_by_id=name_by_comp)
+        obs_rows.append(["LogAnalyticsEntity", _record_name(r) or "(unnamed)", _record_region(r) or "(unknown)", comp])
 
-    if loga_entity_recs:
-        names = sorted({_record_name(r) for r in loga_entity_recs if _record_name(r)})
-        lines.append(f"- Log Analytics entities ({len(loga_entity_recs)}):")
-        for n in names[:20]:
-            lines.append(f"  - {n}")
-        if len(names) > 20:
-            lines.append(f"  - ... ({len(names) - 20} more)")
+    if obs_rows:
+        lines.extend(_md_table(["Type", "Name", "Region", "Compartment"], obs_rows[:40]))
+        if len(obs_rows) > 40:
+            lines.append(f"(Truncated: {len(obs_rows) - 40} more items not shown.)")
+    else:
+        lines.append("No observability/logging resources were observed in this inventory scope.")
     lines.append("")
 
     # Risks & Gaps
     lines.append("## Risks & Gaps (Non-blocking)")
     gaps: List[str] = []
     if excluded_regions:
-        gaps.append("One or more regions were excluded due to errors during Resource Search; results may be partial.")
+        gaps.append("One or more regions were excluded due to errors during Resource Search; results may be partial. (Evidence: excluded regions list in Execution Metadata)")
     if metrics:
         cbes = metrics.get("counts_by_enrich_status") or {}
         if isinstance(cbes, dict):
             errors = int(cbes.get("ERROR", 0) or 0)
             not_impl = int(cbes.get("NOT_IMPLEMENTED", 0) or 0)
             if errors:
-                gaps.append(f"{errors} record(s) failed enrichment (enrichStatus=ERROR); details are preserved in the exported JSONL.")
+                gaps.append(
+                    f"{errors} record(s) failed enrichment (enrichStatus=ERROR); details are preserved in the exported JSONL. (Evidence: metrics counts_by_enrich_status)"
+                )
             if not_impl:
                 gaps.append(
-                    f"{not_impl} record(s) are present without metadata enrichment (enrichStatus=NOT_IMPLEMENTED); architectural detail may be incomplete for those resource types."
+                    f"{not_impl} record(s) are present without metadata enrichment (enrichStatus=NOT_IMPLEMENTED); architectural detail may be incomplete for those resource types. (Evidence: metrics counts_by_enrich_status)"
                 )
 
         cbrt = metrics.get("counts_by_resource_type") or {}
@@ -669,15 +825,15 @@ def render_run_report_md(
                     not_impl_types[rt] = not_impl_types.get(rt, 0) + 1
             if not_impl_types:
                 tops = ", ".join([f"{k}={v}" for k, v in _top_n(not_impl_types, 6)])
-                gaps.append(f"Top non-enriched resource types (count): {tops}.")
+                gaps.append(f"Top non-enriched resource types (count): {tops}. (Evidence: enrichStatus=NOT_IMPLEMENTED records)")
 
     # Simple, observation-only checks (scoped to the queried inventory).
     if "LoadBalancer" not in types_in_scope:
-        gaps.append("No Load Balancer resources were observed in this inventory scope.")
+        gaps.append("No Load Balancer resources were observed in this inventory scope. (Evidence: resource type absent in discovered records)")
     if "Waf" not in types_in_scope and "WebAppFirewall" not in types_in_scope:
-        gaps.append("No WAF resources were observed in this inventory scope.")
+        gaps.append("No WAF resources were observed in this inventory scope. (Evidence: resource type absent in discovered records)")
     if inst_recs and "Bastion" not in types_in_scope:
-        gaps.append("Compute instances are present but no Bastion resources were observed in this inventory scope.")
+        gaps.append("Compute instances are present but no Bastion resources were observed in this inventory scope. (Evidence: Instance present; Bastion absent)")
 
     # De-dup and render
     seen_gap: set[str] = set()
@@ -693,6 +849,26 @@ def render_run_report_md(
             break
     if rendered == 0:
         lines.append("- No non-blocking gaps were detected from the available inventory signals.")
+    lines.append("")
+
+    lines.append("### Coverage Notes")
+    lines.append("- This assessment is limited to the query scope and the discovered resource types; missing types may be out of scope or not returned by the search query.")
+    if metrics and total_cov:
+        lines.append(f"- Enrichment coverage (OK%): {_pct(ok, total_cov)}. Records with NOT_IMPLEMENTED or ERROR may lack architectural metadata details.")
+    lines.append("")
+
+    lines.append("### Recommendations (Non-binding)")
+    recs: List[str] = []
+    if public_subnets > 0 and ("Waf" not in types_in_scope and "WebAppFirewall" not in types_in_scope):
+        recs.append("If this VCN hosts internet-facing services, consider adding WAF controls appropriate to the exposure model.")
+    if inst_recs and "Bastion" not in types_in_scope:
+        recs.append("If SSH/RDP access is required, consider using Bastion or other controlled access patterns instead of direct public administration.")
+    if not_impl > 0:
+        recs.append("Consider implementing additional enrichers for the most common NOT_IMPLEMENTED resource types to improve architectural fidelity.")
+    if not recs:
+        recs.append("No non-binding recommendations were derived from the current inventory signals.")
+    for r in recs[:6]:
+        lines.append(f"- {r}")
     lines.append("")
 
     # ---------- Execution metadata (preserved run-log details) ----------
