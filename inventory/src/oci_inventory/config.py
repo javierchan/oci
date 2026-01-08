@@ -29,12 +29,13 @@ ALLOWED_CONFIG_KEYS = {
     "log_level",
     "workers_region",
     "workers_enrich",
+    "genai_summary",
     "regions",
     "auth",
     "profile",
     "tenancy_ocid",
 }
-BOOL_CONFIG_KEYS = {"parquet", "include_terminated", "json_logs"}
+BOOL_CONFIG_KEYS = {"parquet", "include_terminated", "json_logs", "genai_summary"}
 INT_CONFIG_KEYS = {"workers_region", "workers_enrich"}
 PATH_CONFIG_KEYS = {"outdir", "prev", "curr"}
 STR_CONFIG_KEYS = {"query", "log_level", "auth", "profile", "tenancy_ocid"}
@@ -56,6 +57,16 @@ class RunConfig:
     workers_region: int = DEFAULT_WORKERS_REGION
     workers_enrich: int = DEFAULT_WORKERS_ENRICH
     regions: Optional[List[str]] = None
+
+    # Optional features
+    genai_summary: bool = False
+
+    # GenAI (used by genai-chat)
+    genai_api_format: Optional[str] = None  # AUTO|GENERIC|COHERE
+    genai_message: Optional[str] = None
+    genai_report: Optional[Path] = None
+    genai_max_tokens: Optional[int] = None
+    genai_temperature: Optional[float] = None
 
     # Auth
     auth: str = "auto"  # auto|config|instance|resource|security_token
@@ -220,7 +231,7 @@ def load_run_config(
     Precedence (low -> high): defaults < config file < env < CLI.
 
     Returns:
-      (command, RunConfig) where command is the subcommand selected: run|diff|validate-auth|list-regions|list-compartments
+            (command, RunConfig) where command is the subcommand selected: run|diff|validate-auth|list-regions|list-compartments|list-genai-models|genai-chat
     """
     parser = argparse.ArgumentParser(prog="oci-inv", description="OCI Inventory CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -284,6 +295,13 @@ def load_run_config(
         help="Include terminated resources (future use)",
     )
 
+    p_run.add_argument(
+        "--genai-summary",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Generate a GenAI Executive Summary and embed it into report.md (requires ~/.config/oci-inv/genai.yaml)",
+    )
+
     # diff
     p_diff = subparsers.add_parser("diff", help="Diff two inventory JSONL files")
     add_common(p_diff)
@@ -303,6 +321,37 @@ def load_run_config(
     p_lc = subparsers.add_parser("list-compartments", help="List compartments in tenancy")
     add_common(p_lc)
 
+    # list-genai-models
+    # Uses ~/.config/oci-inv/genai.yaml (profile, compartment_id, endpoint region).
+    p_lgm = subparsers.add_parser(
+        "list-genai-models",
+        help="List OCI GenAI models and capabilities (uses ~/.config/oci-inv/genai.yaml)",
+    )
+    add_common(p_lgm)
+
+    # genai-chat
+    # One-off chat probe for debugging the configured GenAI model/endpoint.
+    p_gc = subparsers.add_parser(
+        "genai-chat",
+        help="Send a one-off GenAI chat request (uses ~/.config/oci-inv/genai.yaml)",
+    )
+    add_common(p_gc)
+    p_gc.add_argument(
+        "--api-format",
+        default=None,
+        choices=["AUTO", "GENERIC", "COHERE"],
+        help="Chat request format (default: AUTO)",
+    )
+    p_gc.add_argument("--message", default=None, help="Message to send (will be redacted)")
+    p_gc.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        help="Path to a report.md to use as context (will be redacted)",
+    )
+    p_gc.add_argument("--max-tokens", type=int, default=None, help="Max output tokens")
+    p_gc.add_argument("--temperature", type=float, default=None, help="Sampling temperature")
+
     ns = args if args is not None else parser.parse_args(argv)
     command = ns.command if subcommand is None else subcommand
 
@@ -318,6 +367,12 @@ def load_run_config(
         "log_level": "INFO",
         "workers_region": DEFAULT_WORKERS_REGION,
         "workers_enrich": DEFAULT_WORKERS_ENRICH,
+        "genai_summary": False,
+        "genai_api_format": None,
+        "genai_message": None,
+        "genai_report": None,
+        "genai_max_tokens": None,
+        "genai_temperature": None,
         "auth": "auto",
         "profile": None,
         "tenancy_ocid": None,
@@ -341,6 +396,7 @@ def load_run_config(
             "log_level": _env_str("OCI_INV_LOG_LEVEL"),
             "workers_region": _env_int("OCI_INV_WORKERS_REGION"),
             "workers_enrich": _env_int("OCI_INV_WORKERS_ENRICH"),
+            "genai_summary": _env_bool("OCI_INV_GENAI_SUMMARY"),
             "regions": _env_str("OCI_INV_REGIONS"),
             "auth": _env_str("OCI_INV_AUTH"),
             "profile": _env_str("OCI_INV_PROFILE"),
@@ -361,6 +417,12 @@ def load_run_config(
             "log_level": getattr(ns, "log_level", None),
             "workers_region": getattr(ns, "workers_region", None),
             "workers_enrich": getattr(ns, "workers_enrich", None),
+            "genai_summary": getattr(ns, "genai_summary", None),
+            "genai_api_format": getattr(ns, "api_format", None),
+            "genai_message": getattr(ns, "message", None),
+            "genai_report": getattr(ns, "report", None),
+            "genai_max_tokens": getattr(ns, "max_tokens", None),
+            "genai_temperature": getattr(ns, "temperature", None),
             "regions": getattr(ns, "regions", None),
             "auth": getattr(ns, "auth", None),
             "profile": getattr(ns, "profile", None),
@@ -400,6 +462,12 @@ def load_run_config(
         log_level=log_level,
         workers_region=workers_region,
         workers_enrich=workers_enrich,
+        genai_summary=bool(merged.get("genai_summary")),
+        genai_api_format=str(merged.get("genai_api_format")) if merged.get("genai_api_format") else None,
+        genai_message=str(merged.get("genai_message")) if merged.get("genai_message") else None,
+        genai_report=Path(merged.get("genai_report")) if merged.get("genai_report") else None,
+        genai_max_tokens=int(merged.get("genai_max_tokens")) if merged.get("genai_max_tokens") else None,
+        genai_temperature=float(merged.get("genai_temperature")) if merged.get("genai_temperature") else None,
         regions=regions or None,
         auth=str(merged["auth"] or "auto"),
         profile=str(profile) if profile else None,
@@ -420,9 +488,15 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "log_level": cfg.log_level,
         "workers_region": cfg.workers_region,
         "workers_enrich": cfg.workers_enrich,
+        "genai_summary": cfg.genai_summary,
         "regions": cfg.regions,
         "auth": cfg.auth,
         "profile": cfg.profile,
         "tenancy_ocid": cfg.tenancy_ocid,
+        "genai_api_format": cfg.genai_api_format,
+        "genai_message": cfg.genai_message,
+        "genai_report": str(cfg.genai_report) if cfg.genai_report else None,
+        "genai_max_tokens": cfg.genai_max_tokens,
+        "genai_temperature": cfg.genai_temperature,
         "collected_at": cfg.collected_at,
     }

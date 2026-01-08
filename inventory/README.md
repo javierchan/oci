@@ -188,6 +188,7 @@ Flags and config precedence: defaults < config file < environment < CLI
 
 ## Output Contract
 Each run writes to: `out/<timestamp>/`
+- report.md (execution steps, exclusions, and findings)
 - inventory.jsonl (canonicalized, stable JSON lines)
 - inventory.csv (report fields)
 - inventory.parquet (optional; pyarrow required)
@@ -260,6 +261,56 @@ pip install -e .[parquet]
 pip install ruff pytest
 ruff check .
 pytest
+```
+
+## Interactive Wizard (Optional)
+
+If you prefer a guided, copy/paste-friendly UX (with command previews and safer defaults), install the optional wizard extra and run:
+
+```
+pip install .[wizard]
+oci-inv-wizard
+```
+
+The wizard does not replace `oci-inv`; it generates and executes the same underlying commands and writes the same outputs.
+
+## GenAI Configuration (Future)
+
+This repository is public. Do not commit tenant-specific configuration, OCIDs, or any credentials.
+
+For local development, keep real GenAI values in a user-owned config file outside the repo, for example:
+
+```
+~/.config/oci-inv/genai.yaml
+```
+
+This repo provides a git-ignored local file under `inventory/.local/genai.yaml` that you can copy to your home directory:
+
+```
+mkdir -p ~/.config/oci-inv
+cp inventory/.local/genai.yaml ~/.config/oci-inv/genai.yaml
+chmod 600 ~/.config/oci-inv/genai.yaml
+```
+
+Non-interactive usage (scriptable) is supported via a plan file:
+
+```
+cat > wizard-run.yaml <<'YAML'
+mode: run
+auth: config
+profile: DEFAULT
+log_level: INFO
+json_logs: false
+outdir: out
+regions: [mx-queretaro-1]
+query: "query all resources"
+parquet: false
+workers_region: 6
+workers_enrich: 24
+YAML
+
+oci-inv-wizard --from wizard-run.yaml --dry-run
+oci-inv-wizard --from wizard-run.yaml --yes
 ```
 
 ## Docs

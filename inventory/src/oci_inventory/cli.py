@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,6 +19,7 @@ from .normalize.transform import sort_relationships, stable_json_dumps
 from .oci.compartments import list_compartments as oci_list_compartments
 from .oci.discovery import discover_in_region
 from .oci.regions import get_subscribed_regions
+from .report import write_run_report_md
 from .util.concurrency import parallel_map_ordered
 from .util.errors import (
     AuthResolutionError,
@@ -26,6 +28,77 @@ from .util.errors import (
 )
 
 LOG = get_logger(__name__)
+
+
+def cmd_genai_chat(cfg: RunConfig) -> int:
+    from .genai.chat_probe import chat_probe
+    from .genai.redact import redact_text
+def cmd_genai_chat(cfg: RunConfig) -> int:
+    from .genai.chat_runner import run_genai_chat
+
+    if cfg.genai_report:
+        report_text = cfg.genai_report.read_text(encoding="utf-8")
+        message = (
+            "Use the following OCI inventory report as context. "
+            "Reply with a short Markdown response.\n\n"
+            + report_text
+        )
+    else:
+        message = cfg.genai_message or ""
+
+    if not message.strip():
+        raise ConfigError("genai-chat requires either --message or --report")
+
+    system = (
+        "You are an SRE/Cloud inventory assistant. "
+        "Output Markdown text only. Do not include secrets, OCIDs, or URLs."
+    )
+
+    api = (cfg.genai_api_format or "AUTO").strip().upper()
+    max_tokens = int(cfg.genai_max_tokens or 300)
+
+    if api == "AUTO":
+        out, hint = run_genai_chat(message=message, api_format="GENERIC", system=system, max_tokens=max_tokens)
+        if not out.strip():
+            out, hint = run_genai_chat(message=message, api_format="COHERE", system=system, max_tokens=max_tokens)
+    else:
+        out, hint = run_genai_chat(message=message, api_format=api, system=system, max_tokens=max_tokens)
+
+    if out.strip():
+        print(out)
+        return 0
+
+    raise RuntimeError(f"GenAI chat returned empty text (hint={hint})")
+
+    api_format = (cfg.genai_api_format or "AUTO").upper()
+    max_tokens = int(cfg.genai_max_tokens or 256)
+    temperature = float(cfg.genai_temperature if cfg.genai_temperature is not None else 0.2)
+
+    msg = cfg.genai_message
+    if cfg.genai_report:
+        text = cfg.genai_report.read_text(encoding="utf-8")
+        # The report may contain OCIDs/URLs (for example in the query); redact before use.
+        msg = (
+            "Write an Executive Summary (4-8 bullets) for the following OCI inventory report.\n\n"
+            + redact_text(text)
+        )
+    if not msg:
+        raise ConfigError("genai-chat requires --message or --report")
+
+    res = chat_probe(
+        message=msg,
+        api_format=api_format,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+
+    out = (res.text or "").strip()
+    if out:
+        print(out)
+        return 0
+
+    print(f"(no text returned; {res.hint})")
+    return 2
 
 
 def _resolve_auth(cfg: RunConfig) -> AuthContext:
@@ -111,86 +184,161 @@ def _write_relationships(outdir: Path, relationships: List[Dict[str, str]]) -> O
 
 
 def cmd_run(cfg: RunConfig) -> int:
-    LOG.info("Starting inventory run", extra={"outdir": str(cfg.outdir)})
-    ctx = _resolve_auth(cfg)
-    set_enrich_context(ctx)
-
-    # Discover regions
-    regions = get_subscribed_regions(ctx)
-    if not regions:
-        raise ConfigError("No subscribed regions found for the tenancy/profile provided")
-    if cfg.regions:
-        regions = [r for r in cfg.regions if r]
-    LOG.info("Discovered subscribed regions", extra={"regions": regions})
-
-    # Per-region discovery in parallel (ordered by region for determinism)
-    regions = sorted(regions)
-    def _disc(r: str) -> List[Dict[str, Any]]:
-        return discover_in_region(ctx, r, cfg.query)
-
-    with ThreadPoolExecutor(max_workers=max(1, cfg.workers_region)) as pool:
-        futures = [pool.submit(_disc, r) for r in regions]
-        region_results: List[List[Dict[str, Any]]] = [f.result() for f in futures]
-
-    # Flatten discovered records
-    discovered: List[Dict[str, Any]] = [rec for sub in region_results for rec in sub]
-    LOG.info("Discovery complete", extra={"count": len(discovered)})
-
-    # Enrichment in parallel
-    enriched: List[Dict[str, Any]] = []
-    all_relationships: List[Dict[str, str]] = []
-
-    def _enrich_and_collect(rec: Dict[str, Any]) -> Dict[str, Any]:
-        updated, rels = _enrich_record(rec)
-        if rels:
-            # side-effect append is safe post-future completion aggregation only; collect via return
-            pass
-        return {"record": updated, "rels": rels}
-
-    worker_results = parallel_map_ordered(_enrich_and_collect, discovered, max_workers=max(1, cfg.workers_enrich))
-    for item in worker_results:
-        enriched.append(item["record"])
-        all_relationships.extend(item["rels"] or [])
-
-    LOG.info("Enrichment complete", extra={"count": len(enriched)})
-
-    # Exports
+    # Ensure the run directory exists early so we can always emit a report.
     cfg.outdir.mkdir(parents=True, exist_ok=True)
-    inventory_jsonl = cfg.outdir / "inventory.jsonl"
-    inventory_csv = cfg.outdir / "inventory.csv"
-    write_jsonl(enriched, inventory_jsonl)
-    write_csv(enriched, inventory_csv)
+    started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    parquet_path: Optional[Path] = None
-    if cfg.parquet:
+    status = "OK"
+    fatal_error: Optional[str] = None
+
+    subscribed_regions: List[str] = []
+    requested_regions: Optional[List[str]] = None
+    excluded_regions: List[Dict[str, str]] = []
+    discovered: List[Dict[str, Any]] = []
+    enriched: List[Dict[str, Any]] = []
+    metrics: Optional[Dict[str, Any]] = None
+    parquet_warning: Optional[str] = None
+    diff_warning: Optional[str] = None
+
+    executive_summary: Optional[str] = None
+    executive_summary_error: Optional[str] = None
+
+    LOG.info("Starting inventory run", extra={"outdir": str(cfg.outdir)})
+
+    try:
+        ctx = _resolve_auth(cfg)
+        set_enrich_context(ctx)
+
+        # Discover regions
+        regions = get_subscribed_regions(ctx)
+        subscribed_regions = list(regions)
+        if not regions:
+            raise ConfigError("No subscribed regions found for the tenancy/profile provided")
+        if cfg.regions:
+            requested_regions = [r for r in cfg.regions if r]
+            regions = requested_regions
+        LOG.info("Discovered subscribed regions", extra={"regions": regions})
+
+        # Per-region discovery in parallel (ordered by region for determinism)
+        regions = sorted([r for r in regions if r])
+
+        def _disc(r: str) -> List[Dict[str, Any]]:
+            return discover_in_region(ctx, r, cfg.query)
+
+        with ThreadPoolExecutor(max_workers=max(1, cfg.workers_region)) as pool:
+            futures_by_region = {r: pool.submit(_disc, r) for r in regions}
+
+            region_results: List[List[Dict[str, Any]]] = []
+            for r in regions:
+                try:
+                    region_results.append(futures_by_region[r].result())
+                except Exception as e:
+                    excluded_regions.append({"region": r, "reason": str(e)})
+                    LOG.warning("Region discovery failed; skipping region", extra={"region": r, "error": str(e)})
+                    region_results.append([])
+
+        # Flatten discovered records
+        discovered = [rec for sub in region_results for rec in sub]
+        LOG.info("Discovery complete", extra={"count": len(discovered), "excluded_regions": len(excluded_regions)})
+
+        # Enrichment in parallel
+        all_relationships: List[Dict[str, str]] = []
+
+        def _enrich_and_collect(rec: Dict[str, Any]) -> Dict[str, Any]:
+            updated, rels = _enrich_record(rec)
+            return {"record": updated, "rels": rels}
+
+        worker_results = parallel_map_ordered(
+            _enrich_and_collect, discovered, max_workers=max(1, cfg.workers_enrich)
+        )
+        for item in worker_results:
+            enriched.append(item["record"])
+            all_relationships.extend(item["rels"] or [])
+
+        LOG.info("Enrichment complete", extra={"count": len(enriched)})
+
+        # Exports
+        inventory_jsonl = cfg.outdir / "inventory.jsonl"
+        inventory_csv = cfg.outdir / "inventory.csv"
+        write_jsonl(enriched, inventory_jsonl)
+        write_csv(enriched, inventory_csv)
+
+        if cfg.parquet:
+            try:
+                parquet_path = cfg.outdir / "inventory.parquet"
+                write_parquet(enriched, parquet_path)
+            except ParquetNotAvailable as e:
+                parquet_warning = str(e)
+                LOG.warning(str(e))
+
+        _write_relationships(cfg.outdir, all_relationships)
+
+        # Coverage metrics and summary
+        metrics = _coverage_metrics(enriched)
+        _write_run_summary(cfg.outdir, metrics, cfg)
+
+        # Graph artifacts (nodes/edges + Mermaid)
+        nodes, edges = build_graph(enriched, all_relationships)
+        write_graph(cfg.outdir, nodes, edges)
+        write_mermaid(cfg.outdir, nodes, edges)
+
+        # Optional diff against previous
+        if cfg.prev:
+            try:
+                diff_obj = diff_files(Path(cfg.prev), inventory_jsonl)
+                write_diff(cfg.outdir, diff_obj)
+            except Exception as e:
+                diff_warning = str(e)
+                LOG.warning("Diff failed", extra={"error": str(e)})
+
+        LOG.info("Run complete", extra={"outdir": str(cfg.outdir), "excluded_regions": len(excluded_regions)})
+        return 0
+    except Exception as e:
+        status = "FAILED"
+        fatal_error = str(e)
+        raise
+    finally:
+        # Always attempt to write a report for transparency.
+        finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+        if cfg.genai_summary and status == "OK":
+            try:
+                from .genai import generate_executive_summary  # lazy import
+
+                executive_summary = generate_executive_summary(
+                    status=status,
+                    started_at=started_at,
+                    finished_at=finished_at,
+                    subscribed_regions=subscribed_regions,
+                    requested_regions=requested_regions,
+                    excluded_regions=excluded_regions,
+                    metrics=metrics,
+                )
+            except Exception as e:
+                executive_summary_error = str(e)
+                LOG.warning("GenAI executive summary failed", extra={"error": str(e)})
+
         try:
-            parquet_path = cfg.outdir / "inventory.parquet"
-            write_parquet(enriched, parquet_path)
-        except ParquetNotAvailable as e:
-            LOG.warning(str(e))
-
-    _write_relationships(cfg.outdir, all_relationships)
-
-    # Coverage metrics and summary
-    metrics = _coverage_metrics(enriched)
-    _write_run_summary(cfg.outdir, metrics, cfg)
-
-    # Graph artifacts (nodes/edges + Mermaid)
-    nodes, edges = build_graph(enriched, all_relationships)
-    write_graph(cfg.outdir, nodes, edges)
-    write_mermaid(cfg.outdir, nodes, edges)
-
-    # Optional diff against previous
-    if cfg.prev:
-        try:
-            diff_obj = diff_files(Path(cfg.prev), inventory_jsonl)
-            write_diff(cfg.outdir, diff_obj)
-        except Exception as e:
-            LOG.warning("Diff failed", extra={"error": str(e)})
-            # Not fatal for run; continue
-
-    LOG.info("Run complete", extra={"outdir": str(cfg.outdir)})
-    return 0
+            write_run_report_md(
+                outdir=cfg.outdir,
+                status=status,
+                cfg=cfg,
+                subscribed_regions=subscribed_regions,
+                requested_regions=requested_regions,
+                excluded_regions=excluded_regions,
+                discovered_records=enriched or discovered,
+                metrics=metrics,
+                parquet_warning=parquet_warning,
+                diff_warning=diff_warning,
+                fatal_error=fatal_error,
+                executive_summary=executive_summary,
+                executive_summary_error=executive_summary_error,
+                started_at=started_at,
+                finished_at=finished_at,
+            )
+        except Exception:
+            # Report generation must never affect the run outcome.
+            pass
 
 
 def cmd_diff(cfg: RunConfig) -> int:
@@ -232,6 +380,17 @@ def cmd_list_compartments(cfg: RunConfig) -> int:
     return 0
 
 
+def cmd_list_genai_models(cfg: RunConfig) -> int:
+    # Intentionally uses the out-of-repo GenAI config file to avoid committing secrets.
+    from .genai.config import load_genai_config
+    from .genai.list_models import list_genai_models, write_genai_models_csv
+
+    genai_cfg = load_genai_config()
+    rows = list_genai_models(genai_cfg=genai_cfg)
+    write_genai_models_csv(rows, sys.stdout)
+    return 0
+
+
 def main() -> None:
     try:
         command, cfg = load_run_config()
@@ -247,12 +406,23 @@ def main() -> None:
             code = cmd_list_regions(cfg)
         elif command == "list-compartments":
             code = cmd_list_compartments(cfg)
+        elif command == "list-genai-models":
+            code = cmd_list_genai_models(cfg)
+        elif command == "genai-chat":
+            code = cmd_genai_chat(cfg)
         else:
             raise ConfigError(f"Unknown command: {command}")
 
         sys.exit(code)
     except SystemExit:
         raise
+    except BrokenPipeError:
+        # Common when users pipe to `head` or similar tools.
+        # Treat as a normal early-exit and avoid logging after stdout is closed.
+        try:
+            sys.exit(0)
+        except SystemExit:
+            raise
     except Exception as e:
         # Map to consistent exit code and log
         try:

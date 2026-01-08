@@ -34,8 +34,13 @@ parquet = [
   "pyarrow>=14.0.0",
 ]
 
+wizard = [
+  "rich>=13.7.0",
+]
+
 [project.scripts]
 oci-inv = "oci_inventory.cli:main"
+oci-inv-wizard = "oci_inventory.wizard.cli:main"
 
 [tool.hatch.metadata]
 allow-direct-references = true
