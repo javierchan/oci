@@ -63,6 +63,12 @@ Common failure modes:
 ## CLI
 Entrypoint: `oci-inv`
 
+Quick help:
+```
+oci-inv --help
+oci-inv <subcommand> --help
+```
+
 Commands:
 - Run inventory:
   ```
@@ -186,9 +192,34 @@ Flags and config precedence: defaults < config file < environment < CLI
 - Boolean flags accept `--no-<flag>` to override config/env (e.g., `--no-parquet`, `--no-json-logs`)
 - Limit discovery regions with `--regions` (comma-separated) or `OCI_INV_REGIONS`
 
+## Components and Usage
+This section is a quick map of every user-facing component in the CLI, what it does, and a copy/paste example.
+
+- **Inventory run** (core): discover + enrich, always writes JSONL/CSV and report.md; optional Parquet.
+  - Example: `oci-inv run --auth config --profile DEFAULT --regions mx-queretaro-1 --outdir out --query "query all resources where compartmentId = '<compartment_ocid>'" --genai-summary`
+- **Diff**: compare two inventories; writes diff artifacts into an out directory.
+  - Example: `oci-inv diff --prev out/old/inventory.jsonl --curr out/new/inventory.jsonl --outdir out/diff`
+- **Auth validation and discovery helpers**: validate credentials and list tenancy-scoped data.
+  - Examples: `oci-inv validate-auth --auth auto --profile DEFAULT`; `oci-inv list-regions --auth auto`; `oci-inv list-compartments --auth auto --tenancy <tenancy_ocid>`
+- **GenAI chat (one-off prompt tester)**: send a prompt using the configured GenAI endpoint/model; redacts OCIDs/URLs in requests/responses.
+  - Example: `oci-inv genai-chat --message "Summarize the latest inventory run"`
+  - Config precedence: `OCI_INV_GENAI_CONFIG` env → `~/.config/oci-inv/genai.yaml` → `.local/genai.yaml` (gitignored). Missing config disables GenAI features gracefully.
+- **GenAI report summary**: optional second pass during `run` that appends an executive summary into report.md using the run’s own findings as context.
+  - Enable with `--genai-summary` on `run`. If GenAI fails, report.md is still written with an error note.
+- **Enrichment coverage**: reports which resource types in an inventory lack enrichers.
+  - Example: `oci-inv enrich-coverage --inventory out/<timestamp>/inventory.jsonl --top 10`
+  - Current known gap: `MediaAsset` remains `NOT_IMPLEMENTED`; others are covered.
+- **Outputs**: deterministic artifacts per run under `out/<timestamp>/` (JSONL, CSV, optional Parquet, report.md, graph files, optional diff files when `--prev` is provided).
+  - Hashing excludes `collectedAt` to keep diffs stable.
+
+Notes for developers:
+- The CLI is read-only; all SDK calls are list/get style. No mutations are performed.
+- Region failures are tolerated and captured in report.md; GenAI is optional and isolated from the main run.
+- For parquet support, install with extras: `INVENTORY_EXTRAS=parquet ./preflight.sh`.
+
 ## Output Contract
 Each run writes to: `out/<timestamp>/`
-- report.md (execution steps, exclusions, and findings)
+- report.md (execution steps, exclusions, findings, and optional GenAI summary)
 - inventory.jsonl (canonicalized, stable JSON lines)
 - inventory.csv (report fields)
 - inventory.parquet (optional; pyarrow required)
@@ -198,6 +229,15 @@ Each run writes to: `out/<timestamp>/`
 - diagram.mmd (Mermaid diagram)
 - diff.json + diff_summary.json (when --prev provided)
 - run_summary.json (coverage metrics)
+
+Quick reference (artifacts → purpose):
+- report.md: human-readable run log + findings; holds GenAI summary when enabled.
+- inventory.jsonl: canonical per-resource records for downstream processing/diffing.
+- inventory.csv: tabular view aligned to report fields.
+- inventory.parquet: analytics-friendly columnar export (requires parquet extras).
+- graph_nodes.jsonl / graph_edges.jsonl / diagram.mmd: topology/visualization outputs.
+- diff.json / diff_summary.json: change set when `--prev` is used.
+- run_summary.json: coverage/metrics snapshot for automation.
 
 JSONL stability notes:
 - Keys sorted; deterministic line ordering by ocid then resourceType
