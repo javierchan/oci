@@ -46,3 +46,4 @@ logs/
 
 # Ruff cache
 .ruff_cache/
+.DS_Store
