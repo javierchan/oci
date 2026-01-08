@@ -36,6 +36,15 @@ _NETWORK_CONTROL_NODETYPES: Set[str] = {
     "DhcpOptions",
 }
 
+_EDGE_RELATIONS_FOR_PROJECTIONS: Set[str] = {
+    "IN_VCN",
+    "IN_SUBNET",
+    "IN_VNIC",
+    "USES_ROUTE_TABLE",
+    "USES_SECURITY_LIST",
+    "USES_NSG",
+}
+
 
 @dataclass(frozen=True)
 class _DerivedAttachment:
@@ -189,6 +198,56 @@ def _render_edge(src: str, dst: str, label: str | None = None, *, dotted: bool =
         safe = str(label).replace('"', "'")
         return f"  {src} {arrow}|{safe}| {dst}"
     return f"  {src} {arrow} {dst}"
+
+
+def _edge_sort_key(edge: Edge) -> Tuple[str, str, str]:
+    return (
+        str(edge.get("relation_type") or ""),
+        str(edge.get("source_ocid") or ""),
+        str(edge.get("target_ocid") or ""),
+    )
+
+
+def _edge_single_target_map(edges: Sequence[Edge], relation_type: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    for edge in sorted(edges, key=_edge_sort_key):
+        if str(edge.get("relation_type") or "") != relation_type:
+            continue
+        src = str(edge.get("source_ocid") or "")
+        dst = str(edge.get("target_ocid") or "")
+        if not src or not dst:
+            continue
+        out.setdefault(src, dst)
+    return out
+
+
+def _render_relationship_edges(
+    edges: Sequence[Edge],
+    *,
+    node_ids: Set[str],
+    node_id_map: Mapping[str, str],
+    allowlist: Set[str],
+) -> List[str]:
+    out: List[str] = []
+    seen: Set[Tuple[str, str, str]] = set()
+    for edge in sorted(edges, key=_edge_sort_key):
+        rel = str(edge.get("relation_type") or "")
+        if rel not in allowlist:
+            continue
+        src = str(edge.get("source_ocid") or "")
+        dst = str(edge.get("target_ocid") or "")
+        if not src or not dst:
+            continue
+        if src not in node_ids or dst not in node_ids:
+            continue
+        src_id = node_id_map.get(src, _mermaid_id(src))
+        dst_id = node_id_map.get(dst, _mermaid_id(dst))
+        key = (src_id, rel, dst_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(_render_edge(src_id, dst_id, rel))
+    return out
 
 
 def _render_node_with_class(node_id: str, label: str, *, cls: str, shape: str = "rect") -> List[str]:
@@ -454,7 +513,7 @@ def _infer_workload_keys(node: Node) -> List[str]:
     return _workload_keys_from_name(node)
 
 
-def _derived_attachments(nodes: Sequence[Node]) -> List[_DerivedAttachment]:
+def _derived_attachments(nodes: Sequence[Node], edges: Sequence[Edge] | None = None) -> List[_DerivedAttachment]:
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
 
     # Index VNICs to help attach instances -> subnet/vcn.
@@ -462,6 +521,20 @@ def _derived_attachments(nodes: Sequence[Node]) -> List[_DerivedAttachment]:
     for n in nodes:
         if _is_node_type(n, "Vnic"):
             vnic_meta_by_id[str(n.get("nodeId") or "")] = _node_metadata(n)
+
+    edge_vcn_by_src: Dict[str, str] = {}
+    edge_subnet_by_src: Dict[str, str] = {}
+    if edges:
+        for edge in sorted(edges, key=_edge_sort_key):
+            rel = str(edge.get("relation_type") or "")
+            src = str(edge.get("source_ocid") or "")
+            dst = str(edge.get("target_ocid") or "")
+            if not src or not dst:
+                continue
+            if rel == "IN_VCN":
+                edge_vcn_by_src.setdefault(src, dst)
+            elif rel == "IN_SUBNET":
+                edge_subnet_by_src.setdefault(src, dst)
 
     out: List[_DerivedAttachment] = []
 
@@ -472,8 +545,13 @@ def _derived_attachments(nodes: Sequence[Node]) -> List[_DerivedAttachment]:
 
         meta = _node_metadata(n)
 
-        vcn_id = _get_meta(meta, "vcn_id")
-        subnet_id = _get_meta(meta, "subnet_id")
+        vcn_id = edge_vcn_by_src.get(ocid)
+        subnet_id = edge_subnet_by_src.get(ocid)
+
+        if not vcn_id:
+            vcn_id = _get_meta(meta, "vcn_id")
+        if not subnet_id:
+            subnet_id = _get_meta(meta, "subnet_id")
 
         # Some resources reference multiple subnets.
         subnet_ids = _get_meta(meta, "subnet_ids")
@@ -650,22 +728,25 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
     return path
 
 
-def _write_network_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
+def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edge]) -> List[Path]:
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
 
     vcns = [n for n in nodes if _is_node_type(n, "Vcn")]
     subnets = [n for n in nodes if _is_node_type(n, "Subnet")]
 
+    edge_vcn_by_src = _edge_single_target_map(edges, "IN_VCN")
+
     # Map subnet -> vcn.
     subnet_to_vcn: Dict[str, str] = {}
     for sn in subnets:
         meta = _node_metadata(sn)
-        vcn_id = _get_meta(meta, "vcn_id")
+        sn_id = str(sn.get("nodeId") or "")
+        vcn_id = edge_vcn_by_src.get(sn_id) or _get_meta(meta, "vcn_id")
         if isinstance(vcn_id, str) and vcn_id:
-            subnet_to_vcn[str(sn.get("nodeId") or "")] = vcn_id
+            subnet_to_vcn[sn_id] = vcn_id
 
     # Attach resources to vcn/subnet.
-    attachments = _derived_attachments(nodes)
+    attachments = _derived_attachments(nodes, edges)
     res_to_attach: Dict[str, _DerivedAttachment] = {a.resource_ocid: a for a in attachments}
 
     out_paths: List[Path] = []
@@ -687,19 +768,29 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
         lines.extend(_render_node_with_class(internet_id, "Internet", cls="external", shape="round"))
 
         vcn_id = _mermaid_id(vcn_ocid)
+        rendered_node_ids: Set[str] = set()
+        edge_node_id_map: Dict[str, str] = {}
+        if vcn_ocid:
+            rendered_node_ids.add(vcn_ocid)
+            edge_node_id_map[vcn_ocid] = vcn_id
         lines.append(f"  subgraph {vcn_id}[\"{_vcn_label(vcn).replace('"', "'")}\"]")
         lines.append("    direction TB")
 
         # Gateways inside VCN.
-        gateways = [
-            n
-            for n in nodes
-            if _is_node_type(n, "InternetGateway", "NatGateway", "ServiceGateway")
-            and str(_get_meta(_node_metadata(n), "vcn_id") or "") == vcn_ocid
-        ]
+        gateways = []
+        for n in nodes:
+            if not _is_node_type(n, "InternetGateway", "NatGateway", "ServiceGateway"):
+                continue
+            meta = _node_metadata(n)
+            nid = str(n.get("nodeId") or "")
+            vcn_ref = edge_vcn_by_src.get(nid) or _get_meta(meta, "vcn_id")
+            if isinstance(vcn_ref, str) and vcn_ref == vcn_ocid:
+                gateways.append(n)
         for g in sorted(gateways, key=lambda n: str(n.get("name") or "")):
             gid = _mermaid_id(str(g.get("nodeId") or ""))
             lines.extend(_render_node_with_class(gid, _mermaid_label_for(g), cls=_node_class(g), shape=_node_shape(g)))
+            if g.get("nodeId"):
+                rendered_node_ids.add(str(g.get("nodeId") or ""))
 
         # Network control-plane primitives (route tables, security lists, NSGs, DHCP).
         control = []
@@ -708,7 +799,8 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
             if nt not in _NETWORK_CONTROL_NODETYPES:
                 continue
             meta = _node_metadata(n)
-            vcn_ref = _get_meta(meta, "vcn_id", "vcnId")
+            nid = str(n.get("nodeId") or "")
+            vcn_ref = edge_vcn_by_src.get(nid) or _get_meta(meta, "vcn_id")
             if isinstance(vcn_ref, str) and vcn_ref == vcn_ocid:
                 control.append(n)
 
@@ -717,6 +809,8 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
         for n in kept_control:
             nid = _mermaid_id(str(n.get("nodeId") or ""))
             lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls="network", shape="rect"))
+            if n.get("nodeId"):
+                rendered_node_ids.add(str(n.get("nodeId") or ""))
         if omitted_control:
             sid = _mermaid_id(f"vcn:{vcn_ocid}:control_summary")
             lines.extend(
@@ -732,6 +826,9 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
         for sn in sorted(vcn_subnets, key=lambda n: str(n.get("name") or "")):
             sn_ocid = str(sn.get("nodeId") or "")
             sn_id = _mermaid_id(sn_ocid)
+            if sn_ocid:
+                rendered_node_ids.add(sn_ocid)
+                edge_node_id_map.setdefault(sn_ocid, sn_id)
             lines.append(f"    subgraph {sn_id}[\"{_subnet_label(sn).replace('"', "'")}\"]")
             lines.append("      direction TB")
 
@@ -767,6 +864,8 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
             for a in key_nodes[:cap]:
                 aid = _mermaid_id(str(a.get("nodeId") or ""))
                 lines.extend(_render_node_with_class(aid, _mermaid_label_for(a), cls=_node_class(a), shape=_node_shape(a)))
+                if a.get("nodeId"):
+                    rendered_node_ids.add(str(a.get("nodeId") or ""))
 
             if len(key_nodes) > cap:
                 summary_id = _mermaid_id(f"subnet:{sn_ocid}:key_summary")
@@ -784,6 +883,8 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
                 for a in kept:
                     aid = _mermaid_id(str(a.get("nodeId") or ""))
                     lines.extend(_render_node_with_class(aid, _mermaid_label_for(a), cls="boundary", shape="rect"))
+                    if a.get("nodeId"):
+                        rendered_node_ids.add(str(a.get("nodeId") or ""))
                 if summary:
                     sid = _mermaid_id(f"subnet:{sn_ocid}:leaf_summary")
                     lines.extend(_render_node_with_class(sid, summary, cls="summary"))
@@ -814,6 +915,14 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
             lines.append("    end")
 
         lines.append("  end")
+
+        rel_lines = _render_relationship_edges(
+            edges,
+            node_ids=rendered_node_ids,
+            node_id_map=edge_node_id_map,
+            allowlist=_EDGE_RELATIONS_FOR_PROJECTIONS,
+        )
+        lines.extend(rel_lines)
 
         # Flows: Internet -> IGW -> public subnets; private subnets -> NAT; private -> SGW.
         igw = next((g for g in gateways if _is_node_type(g, "InternetGateway")), None)
@@ -851,7 +960,7 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
     return out_paths
 
 
-def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
+def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edge]) -> List[Path]:
     # Identify candidate workloads.
     wl_to_nodes: Dict[str, List[Node]] = {}
     for n in nodes:
@@ -871,7 +980,7 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
         return []
 
     # Build attachments for optional network context.
-    attachments = _derived_attachments(nodes)
+    attachments = _derived_attachments(nodes, edges)
     attach_by_res: Dict[str, _DerivedAttachment] = {a.resource_ocid: a for a in attachments}
 
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
@@ -896,6 +1005,9 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
 
         services_id = _mermaid_id(f"external:oci_services:{wl_name}")
         lines.extend(_render_node_with_class(services_id, "OCI Services", cls="external", shape="round"))
+
+        rendered_node_ids: Set[str] = set()
+        edge_node_id_map: Dict[str, str] = {}
 
         # Group by compartment.
         comps: Dict[str, List[Node]] = {}
@@ -940,6 +1052,8 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
             for u in untied_key[:10]:
                 uid = _mermaid_id(str(u.get("nodeId") or ""))
                 lines.extend(_render_node_with_class(uid, _mermaid_label_for(u), cls=_node_class(u), shape=_node_shape(u)))
+                if u.get("nodeId"):
+                    rendered_node_ids.add(str(u.get("nodeId") or ""))
 
             if len(untied_key) > 10:
                 sid = _mermaid_id(f"workload:{wl_name}:comp:{cid}:untied_key_summary")
@@ -956,6 +1070,8 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
                 for u in kept:
                     uid = _mermaid_id(str(u.get("nodeId") or ""))
                     lines.extend(_render_node_with_class(uid, _mermaid_label_for(u), cls="boundary", shape="rect"))
+                    if u.get("nodeId"):
+                        rendered_node_ids.add(str(u.get("nodeId") or ""))
                 if summary:
                     sid = _mermaid_id(f"workload:{wl_name}:comp:{cid}:untied_leaf_summary")
                     lines.extend(_render_node_with_class(sid, summary, cls="summary"))
@@ -964,6 +1080,9 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
                 vcn = node_by_id.get(vcn_ocid)
                 vcn_label = _vcn_label(vcn) if vcn else f"VCN {_short_ocid(vcn_ocid)}"
                 vcn_id = _mermaid_id(f"workload:{wl_name}:vcn:{vcn_ocid}")
+                if vcn_ocid:
+                    rendered_node_ids.add(vcn_ocid)
+                    edge_node_id_map.setdefault(vcn_ocid, vcn_id)
                 lines.append(f"    subgraph {vcn_id}[\"{vcn_label.replace('"', "'")}\"]")
                 lines.append("      direction TB")
 
@@ -971,6 +1090,9 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
                     sn = node_by_id.get(sn_ocid)
                     sn_label = _subnet_label(sn) if sn else f"Subnet {_short_ocid(sn_ocid)}"
                     sn_id = _mermaid_id(f"workload:{wl_name}:subnet:{sn_ocid}")
+                    if sn_ocid:
+                        rendered_node_ids.add(sn_ocid)
+                        edge_node_id_map.setdefault(sn_ocid, sn_id)
                     lines.append(f"      subgraph {sn_id}[\"{sn_label.replace('"', "'")}\"]")
                     lines.append("        direction TB")
 
@@ -1003,6 +1125,8 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
                     for a in key_nodes_sorted[:8]:
                         aid = _mermaid_id(str(a.get("nodeId") or ""))
                         lines.extend(_render_node_with_class(aid, _mermaid_label_for(a), cls=_node_class(a), shape=_node_shape(a)))
+                        if a.get("nodeId"):
+                            rendered_node_ids.add(str(a.get("nodeId") or ""))
 
                     if len(key_nodes_sorted) > 8:
                         sid = _mermaid_id(f"workload:{wl_name}:comp:{cid}:subnet:{sn_ocid}:key_summary")
@@ -1019,6 +1143,8 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
                         for a in kept:
                             aid = _mermaid_id(str(a.get("nodeId") or ""))
                             lines.extend(_render_node_with_class(aid, _mermaid_label_for(a), cls="boundary", shape="rect"))
+                            if a.get("nodeId"):
+                                rendered_node_ids.add(str(a.get("nodeId") or ""))
                         if summary:
                             sid = _mermaid_id(f"workload:{wl_name}:comp:{cid}:subnet:{sn_ocid}:leaf_summary")
                             lines.extend(_render_node_with_class(sid, summary, cls="summary"))
@@ -1059,6 +1185,14 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
             b_id = _mermaid_id(str(b.get("nodeId") or ""))
             lines.append(_render_edge(b_id, services_id, "Object Storage"))
 
+        rel_lines = _render_relationship_edges(
+            edges,
+            node_ids=rendered_node_ids,
+            node_id_map=edge_node_id_map,
+            allowlist=_EDGE_RELATIONS_FOR_PROJECTIONS,
+        )
+        lines.extend(rel_lines)
+
         # Context links
         lines.append(f"{wl_root} -.-> {users_id}")
         lines.append(f"{wl_root} -.-> {services_id}")
@@ -1070,12 +1204,11 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
 
 
 def write_diagram_projections(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edge]) -> List[Path]:
-    # edges are currently unused for projections, but intentionally accepted to keep the API stable
-    # for future relationship-driven rendering.
+    # Edges drive placement and relationship hints in projections.
     out: List[Path] = []
     out.append(_write_tenancy_view(outdir, nodes, edges))
-    out.extend(_write_network_views(outdir, nodes))
-    out.extend(_write_workload_views(outdir, nodes))
+    out.extend(_write_network_views(outdir, nodes, edges))
+    out.extend(_write_workload_views(outdir, nodes, edges))
 
     # Consolidated, end-user-friendly artifact: one Mermaid diagram that contains all the views.
     out.append(_write_consolidated_mermaid(outdir, nodes, edges, out))

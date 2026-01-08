@@ -63,3 +63,55 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
     assert "subgraph LEGEND" in consolidated
     assert "subgraph NETWORK" in consolidated
     assert "TEN_ROOT" in consolidated
+
+
+def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
+    vcn_id = "ocid1.vcn.oc1..edge"
+    subnet_id = "ocid1.subnet.oc1..edge"
+    rtb_id = "ocid1.routetable.oc1..edge"
+
+    records = [
+        {
+            "ocid": vcn_id,
+            "resourceType": "Vcn",
+            "displayName": "Edge-VCN",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": subnet_id,
+            "resourceType": "Subnet",
+            "displayName": "Public-Subnet-1",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {"cidr_block": "10.0.1.0/24"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": rtb_id,
+            "resourceType": "RouteTable",
+            "displayName": "rt-1",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+    ]
+
+    relationships = [
+        {"source_ocid": subnet_id, "relation_type": "IN_VCN", "target_ocid": vcn_id},
+        {"source_ocid": subnet_id, "relation_type": "USES_ROUTE_TABLE", "target_ocid": rtb_id},
+        {"source_ocid": rtb_id, "relation_type": "IN_VCN", "target_ocid": vcn_id},
+    ]
+
+    nodes, edges = build_graph(records, relationships)
+    write_diagram_projections(tmp_path, nodes, edges)
+
+    diagram = (tmp_path / "diagram.network.edge_vcn.mmd").read_text(encoding="utf-8")
+    assert "Subnet: Public-Subnet-1" in diagram
+    assert "USES_ROUTE_TABLE" in diagram
