@@ -34,10 +34,13 @@ ALLOWED_CONFIG_KEYS = {
     "auth",
     "profile",
     "tenancy_ocid",
+    # enrich-coverage
+    "inventory",
+    "top",
 }
 BOOL_CONFIG_KEYS = {"parquet", "include_terminated", "json_logs", "genai_summary"}
-INT_CONFIG_KEYS = {"workers_region", "workers_enrich"}
-PATH_CONFIG_KEYS = {"outdir", "prev", "curr"}
+INT_CONFIG_KEYS = {"workers_region", "workers_enrich", "top"}
+PATH_CONFIG_KEYS = {"outdir", "prev", "curr", "inventory"}
 STR_CONFIG_KEYS = {"query", "log_level", "auth", "profile", "tenancy_ocid"}
 
 
@@ -67,6 +70,10 @@ class RunConfig:
     genai_report: Optional[Path] = None
     genai_max_tokens: Optional[int] = None
     genai_temperature: Optional[float] = None
+
+    # Enrichment coverage (used by enrich-coverage)
+    inventory: Optional[Path] = None
+    top: Optional[int] = None
 
     # Auth
     auth: str = "auto"  # auto|config|instance|resource|security_token
@@ -231,7 +238,8 @@ def load_run_config(
     Precedence (low -> high): defaults < config file < env < CLI.
 
     Returns:
-            (command, RunConfig) where command is the subcommand selected: run|diff|validate-auth|list-regions|list-compartments|list-genai-models|genai-chat
+            (command, RunConfig) where command is the subcommand selected:
+            run|diff|validate-auth|list-regions|list-compartments|list-genai-models|genai-chat|enrich-coverage
     """
     parser = argparse.ArgumentParser(prog="oci-inv", description="OCI Inventory CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -361,6 +369,25 @@ def load_run_config(
     p_gc.add_argument("--max-tokens", type=int, default=None, help="Max output tokens")
     p_gc.add_argument("--temperature", type=float, default=None, help="Sampling temperature")
 
+    # enrich-coverage
+    p_ec = subparsers.add_parser(
+        "enrich-coverage",
+        help="Show which resource types are missing enrichers for a given inventory.jsonl",
+    )
+    add_common(p_ec)
+    p_ec.add_argument(
+        "--inventory",
+        type=Path,
+        required=True,
+        help="Path to an inventory.jsonl file",
+    )
+    p_ec.add_argument(
+        "--top",
+        type=int,
+        default=20,
+        help="Show top N missing resource types (default: 20)",
+    )
+
     ns = args if args is not None else parser.parse_args(argv)
     command = ns.command if subcommand is None else subcommand
 
@@ -382,6 +409,8 @@ def load_run_config(
         "genai_report": None,
         "genai_max_tokens": None,
         "genai_temperature": None,
+        "inventory": None,
+        "top": None,
         "auth": "auto",
         "profile": None,
         "tenancy_ocid": None,
@@ -432,6 +461,8 @@ def load_run_config(
             "genai_report": getattr(ns, "report", None),
             "genai_max_tokens": getattr(ns, "max_tokens", None),
             "genai_temperature": getattr(ns, "temperature", None),
+            "inventory": getattr(ns, "inventory", None),
+            "top": getattr(ns, "top", None),
             "regions": getattr(ns, "regions", None),
             "auth": getattr(ns, "auth", None),
             "profile": getattr(ns, "profile", None),
@@ -477,6 +508,8 @@ def load_run_config(
         genai_report=Path(merged.get("genai_report")) if merged.get("genai_report") else None,
         genai_max_tokens=int(merged.get("genai_max_tokens")) if merged.get("genai_max_tokens") else None,
         genai_temperature=float(merged.get("genai_temperature")) if merged.get("genai_temperature") else None,
+        inventory=Path(merged.get("inventory")) if merged.get("inventory") else None,
+        top=int(merged.get("top")) if merged.get("top") is not None else None,
         regions=regions or None,
         auth=str(merged["auth"] or "auto"),
         profile=str(profile) if profile else None,
@@ -507,5 +540,7 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "genai_report": str(cfg.genai_report) if cfg.genai_report else None,
         "genai_max_tokens": cfg.genai_max_tokens,
         "genai_temperature": cfg.genai_temperature,
+        "inventory": str(cfg.inventory) if cfg.inventory else None,
+        "top": cfg.top,
         "collected_at": cfg.collected_at,
     }

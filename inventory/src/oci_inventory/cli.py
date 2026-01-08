@@ -30,6 +30,28 @@ from .util.errors import (
 LOG = get_logger(__name__)
 
 
+def cmd_enrich_coverage(cfg: RunConfig) -> int:
+    from .enrich.coverage import compute_enrichment_coverage, top_missing_types
+
+    inv = getattr(cfg, "inventory", None)
+    top_n = int(getattr(cfg, "top", 20) or 20)
+    if inv is None:
+        raise ConfigError("enrich-coverage requires --inventory")
+    coverage = compute_enrichment_coverage(inv)
+
+    print(f"Total records: {coverage.total_records}")
+    print(f"Total resource types: {coverage.total_resource_types}")
+    print(f"Resource types with enrichers: {coverage.registered_resource_types}")
+    print(f"Resource types missing enrichers: {coverage.missing_resource_types}")
+
+    if coverage.missing_resource_types:
+        print("")
+        print(f"Top missing resource types (max {top_n}):")
+        for rtype, count in top_missing_types(coverage, limit=top_n):
+            print(f"- {rtype}: {count}")
+    return 0
+
+
 def cmd_genai_chat(cfg: RunConfig) -> int:
     from .genai.chat_probe import chat_probe
     from .genai.redact import redact_text
@@ -434,6 +456,8 @@ def main() -> None:
             code = cmd_list_genai_models(cfg)
         elif command == "genai-chat":
             code = cmd_genai_chat(cfg)
+        elif command == "enrich-coverage":
+            code = cmd_enrich_coverage(cfg)
         else:
             raise ConfigError(f"Unknown command: {command}")
 

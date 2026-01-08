@@ -20,6 +20,12 @@ class EnricherRegistry:
     def register(self, resource_type: str, factory: EnricherFactory) -> None:
         self._map[resource_type] = factory
 
+    def is_registered(self, resource_type: str) -> bool:
+        return resource_type in self._map
+
+    def registered_resource_types(self) -> list[str]:
+        return sorted(self._map.keys())
+
     def get(self, resource_type: str) -> Enricher:
         factory = self._map.get(resource_type)
         if factory is not None:
@@ -39,6 +45,14 @@ def register_enricher(resource_type: str, factory: EnricherFactory) -> None:
 
 def get_enricher_for(resource_type: str) -> Enricher:
     return _global_registry.get(resource_type)
+
+
+def is_enricher_registered(resource_type: str) -> bool:
+    return _global_registry.is_registered(resource_type)
+
+
+def list_registered_enricher_resource_types() -> list[str]:
+    return _global_registry.registered_resource_types()
 
 
 def set_enrich_context(ctx: AuthContext) -> None:

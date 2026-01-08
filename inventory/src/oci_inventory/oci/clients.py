@@ -10,8 +10,13 @@ try:
     import oci.bastion  # type: ignore
     import oci.cloud_guard  # type: ignore
     import oci.core  # type: ignore
+    import oci.dns  # type: ignore
     import oci.identity  # type: ignore
     import oci.key_management  # type: ignore
+    import oci.log_analytics  # type: ignore
+    import oci.logging  # type: ignore
+    import oci.media_services  # type: ignore
+    import oci.object_storage  # type: ignore
     import oci.resource_search  # type: ignore
     import oci.secrets  # type: ignore
 except Exception:  # pragma: no cover - surfaced in CLI validate
@@ -106,6 +111,43 @@ def get_cloud_guard_client(ctx: AuthContext, region: str) -> Any:
     if oci is None:  # pragma: no cover
         raise AuthError("oci Python SDK not installed.")
     return make_client(oci.cloud_guard.CloudGuardClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_dns_client(ctx: AuthContext, region: str) -> Any:
+    """
+    Create DnsClient in the specified region.
+    """
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.dns.DnsClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_object_storage_client(ctx: AuthContext, region: str) -> Any:
+    """Create ObjectStorageClient in the specified region."""
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.object_storage.ObjectStorageClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_logging_management_client(ctx: AuthContext, region: str) -> Any:
+    """Create LoggingManagementClient in the specified region."""
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.logging.LoggingManagementClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_log_analytics_client(ctx: AuthContext, region: str) -> Any:
+    """Create LogAnalyticsClient in the specified region."""
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.log_analytics.LogAnalyticsClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_media_services_client(ctx: AuthContext, region: str) -> Any:
+    """Create MediaServicesClient in the specified region."""
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.media_services.MediaServicesClient, ctx, region=region)  # type: ignore[attr-defined]
 
 
 def list_region_subscriptions(ctx: AuthContext) -> List[str]:
