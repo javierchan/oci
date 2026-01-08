@@ -120,3 +120,24 @@ def test_invalid_config_type_raises(tmp_path) -> None:
 
     with pytest.raises(ValueError):
         load_run_config(argv=["run", "--config", str(cfg_path)])
+
+
+def test_genai_chat_parses_message_args() -> None:
+    command, cfg = load_run_config(
+        argv=[
+            "genai-chat",
+            "--api-format",
+            "GENERIC",
+            "--message",
+            "hello",
+            "--max-tokens",
+            "42",
+            "--temperature",
+            "0.3",
+        ]
+    )
+    assert command == "genai-chat"
+    assert cfg.genai_api_format == "GENERIC"
+    assert cfg.genai_message == "hello"
+    assert cfg.genai_max_tokens == 42
+    assert abs((cfg.genai_temperature or 0.0) - 0.3) < 1e-9
