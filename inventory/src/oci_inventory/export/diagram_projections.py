@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import re
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from shutil import which
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .graph import Edge, Node
+from ..util.errors import ExportError
 
 
 _NON_ARCH_LEAF_NODETYPES: Set[str] = {
@@ -162,6 +166,14 @@ def _node_shape(node: Node, *, fallback: str = "rect") -> str:
 
 def _render_node(node_id: str, label: str, *, shape: str = "rect") -> str:
     safe = str(label).replace('"', "'")
+    # Mermaid flowchart node syntax uses bracket/paren pairs to denote shapes.
+    # If the label contains those same delimiter characters, Mermaid can mis-parse
+    # the node definition (e.g., label containing ")" inside a ((...)) node).
+    # Use HTML entities so rendered output still reads naturally.
+    if shape in {"round", "db"}:
+        safe = safe.replace("(", "&#40;").replace(")", "&#41;")
+    if shape == "hex":
+        safe = safe.replace("{", "&#123;").replace("}", "&#125;")
     if shape == "round":
         return f"  {node_id}(({safe}))"
     if shape == "db":
@@ -171,11 +183,12 @@ def _render_node(node_id: str, label: str, *, shape: str = "rect") -> str:
     return f'  {node_id}["{safe}"]'
 
 
-def _render_edge(src: str, dst: str, label: str | None = None) -> str:
+def _render_edge(src: str, dst: str, label: str | None = None, *, dotted: bool = False) -> str:
+    arrow = "-.->" if dotted else "-->"
     if label:
         safe = str(label).replace('"', "'")
-        return f"  {src} -->|{safe}| {dst}"
-    return f"  {src} --> {dst}"
+        return f"  {src} {arrow}|{safe}| {dst}"
+    return f"  {src} {arrow} {dst}"
 
 
 def _render_node_with_class(node_id: str, label: str, *, cls: str, shape: str = "rect") -> List[str]:
@@ -188,6 +201,15 @@ def _summarize_many(nodes: Sequence[Node], *, title: str, keep: int = 2) -> Tupl
     kept = list(nodes[:keep])
     remaining = len(nodes) - keep
     return kept, f"{title}... and {remaining} more"
+
+
+def _instance_first_sort_key(node: Node) -> Tuple[int, str, str, str]:
+    return (
+        0 if _is_node_type(node, "Instance") else 1,
+        str(node.get("nodeCategory") or ""),
+        str(node.get("nodeType") or ""),
+        str(node.get("name") or ""),
+    )
 
 
 def _is_media_like(node: Node) -> bool:
@@ -711,7 +733,7 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
                     untied.append(n)
 
             # Split untied resources into key nodes and repetitive leaf nodes.
-            untied_sorted = sorted(untied, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
+            untied_sorted = sorted(untied, key=_instance_first_sort_key)
             untied_key: List[Node] = []
             untied_leaf: List[Node] = []
             for u in untied_sorted:
@@ -781,16 +803,18 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
                         else:
                             key_nodes.append(a)
 
-                    for a in key_nodes[:8]:
+                    key_nodes_sorted = sorted(key_nodes, key=_instance_first_sort_key)
+
+                    for a in key_nodes_sorted[:8]:
                         aid = _mermaid_id(str(a.get("nodeId") or ""))
                         lines.extend(_render_node_with_class(aid, _mermaid_label_for(a), cls=_node_class(a), shape=_node_shape(a)))
 
-                    if len(key_nodes) > 8:
+                    if len(key_nodes_sorted) > 8:
                         sid = _mermaid_id(f"workload:{wl_name}:comp:{cid}:subnet:{sn_ocid}:key_summary")
                         lines.extend(
                             _render_node_with_class(
                                 sid,
-                                f"Other key resources... and {len(key_nodes) - 8} more",
+                                f"Other key resources... and {len(key_nodes_sorted) - 8} more",
                                 cls="summary",
                             )
                         )
@@ -818,16 +842,17 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node]) -> List[Path]:
             if "loadbalancer" in str(n.get("nodeType") or "").lower() or "loadbalancer" in str(n.get("name") or "").lower()
         ]
         computes = [n for n in wl_nodes if str(n.get("nodeCategory") or "") == "compute" or _is_node_type(n, "Instance")]
+        computes_sorted = sorted(computes, key=_instance_first_sort_key)
         buckets = [n for n in wl_nodes if _is_node_type(n, "Bucket") or "bucket" in str(n.get("nodeType") or "").lower()]
 
         for lb in lbs:
             lb_id = _mermaid_id(str(lb.get("nodeId") or ""))
             lines.append(_render_edge(users_id, lb_id, "requests"))
-            for c in computes:
+            for c in computes_sorted:
                 c_id = _mermaid_id(str(c.get("nodeId") or ""))
                 lines.append(_render_edge(lb_id, c_id, "forwards"))
 
-        for c in computes:
+        for c in computes_sorted:
             c_id = _mermaid_id(str(c.get("nodeId") or ""))
             if not buckets:
                 continue
@@ -858,8 +883,50 @@ def write_diagram_projections(outdir: Path, nodes: Sequence[Node], edges: Sequen
     out.extend(_write_workload_views(outdir, nodes))
 
     # Consolidated, end-user-friendly artifact: one Mermaid diagram that contains all the views.
-    out.append(_write_consolidated_mermaid(outdir, out))
+    out.append(_write_consolidated_mermaid(outdir, nodes, edges, out))
     return out
+
+
+def is_mmdc_available() -> bool:
+    return which("mmdc") is not None
+
+
+def validate_mermaid_diagrams_with_mmdc(outdir: Path, *, glob_pattern: str = "diagram*.mmd") -> List[Path]:
+    """Validate Mermaid diagrams by rendering each one with `mmdc`.
+
+    Mermaid CLI doesn't provide a pure "parse-only" mode; rendering is used as a
+    deterministic syntax validation step.
+
+    Returns the validated input paths (sorted).
+    """
+
+    mmdc = which("mmdc")
+    if not mmdc:
+        raise ExportError(
+            "Mermaid diagram validation requested but 'mmdc' was not found on PATH. "
+            "Install Mermaid CLI and retry: npm install -g @mermaid-js/mermaid-cli"
+        )
+
+    paths = sorted([p for p in outdir.glob(glob_pattern) if p.is_file()])
+    if not paths:
+        return []
+
+    with tempfile.TemporaryDirectory(prefix="oci-inv-mmdc-") as td:
+        tmp_dir = Path(td)
+        for p in paths:
+            out_svg = tmp_dir / f"{p.stem}.svg"
+            proc = subprocess.run(
+                [mmdc, "-i", str(p), "-o", str(out_svg)],
+                text=True,
+                capture_output=True,
+            )
+            if proc.returncode != 0:
+                stderr = (proc.stderr or "").strip()
+                stdout = (proc.stdout or "").strip()
+                detail = stderr or stdout or f"mmdc exited with code {proc.returncode}"
+                raise ExportError(f"Mermaid validation failed for {p.name}: {detail}")
+
+    return paths
 
 
 def _diagram_title(path: Path) -> str:
@@ -877,10 +944,45 @@ def _diagram_title(path: Path) -> str:
     return name
 
 
-def _write_consolidated_mermaid(outdir: Path, diagram_paths: Sequence[Path]) -> Path:
+def _lane_for_node(node: Node) -> str:
+    if _is_node_type(node, "Compartment"):
+        return "tenancy"
+
+    t = str(node.get("nodeType") or "")
+    cat = str(node.get("nodeCategory") or "")
+
+    if cat == "network" or t.startswith("network."):
+        return "network"
+    if cat == "security" or _is_node_type(node, "Vault", "Secret", "CloudGuardTarget", "Bastion"):
+        return "security"
+    if cat == "compute" or _is_node_type(node, "Instance", "OkeCluster", "Function"):
+        return "app"
+
+    # Heuristic lane classification for "other" types.
+    low = t.lower()
+    if any(k in low for k in ("policy", "dynamicgroup", "dynamic_group", "group", "user", "identity")):
+        return "iam"
+    if any(k in low for k in ("bucket", "database", "dbsystem", "stream", "queue", "topic")):
+        return "data"
+    if any(k in low for k in ("alarm", "event", "notification", "log", "metric")):
+        return "observability"
+
+    return "other"
+
+
+def _write_consolidated_mermaid(
+    outdir: Path,
+    nodes: Sequence[Node],
+    edges: Sequence[Edge],
+    diagram_paths: Sequence[Path],
+) -> Path:
     consolidated = outdir / "diagram.consolidated.mmd"
 
-    # Deterministic ordering: tenancy first, then networks, then workloads.
+    # Landing-page consolidated diagram (swimlanes). This does NOT attempt to show all
+    # resources; it shows key resources + summaries and points to detailed per-view
+    # diagrams (network/workload) via stable anchor nodes.
+
+    # Deterministic ordering of view artifacts.
     def _order_key(p: Path) -> Tuple[int, str]:
         n = p.name
         if n == "diagram.tenancy.mmd":
@@ -894,67 +996,206 @@ def _write_consolidated_mermaid(outdir: Path, diagram_paths: Sequence[Path]) -> 
     mmds = [p for p in diagram_paths if p.suffix == ".mmd" and p.exists() and p.name != consolidated.name]
     mmds_sorted = sorted(mmds, key=_order_key)
 
-    # Mermaid IDs used by our generators are stable 12-hex hashes like Nxxxxxxxxxxxx.
-    # When combining diagrams into a single Mermaid graph, prefix IDs per view to avoid collisions.
-    id_pat = re.compile(r"\bN[0-9a-f]{12}\b")
+    # Index nodes for selection.
+    node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if str(n.get("nodeId") or "")}
+    comp_nodes = [n for n in nodes if _is_node_type(n, "Compartment")]
+    comp_nodes_sorted = sorted(comp_nodes, key=lambda n: str(n.get("nodeId") or ""))
 
-    def _view_prefix(p: Path) -> str:
-        n = p.name
-        if n == "diagram.tenancy.mmd":
-            return "TEN_"
-        if n.startswith("diagram.network.") and n.endswith(".mmd"):
-            vcn = n[len("diagram.network.") : -len(".mmd")]
-            return f"NET_{_slugify(vcn)}_"
-        if n.startswith("diagram.workload.") and n.endswith(".mmd"):
-            wl = n[len("diagram.workload.") : -len(".mmd")]
-            return f"WL_{_slugify(wl)}_"
-        return "VIEW_"
+    # Lane buckets.
+    lanes: Dict[str, List[Node]] = {"iam": [], "network": [], "security": [], "app": [], "data": [], "observability": [], "other": []}
+    for n in nodes:
+        lane = _lane_for_node(n)
+        if lane in lanes:
+            lanes[lane].append(n)
 
-    lines: List[str] = ["flowchart TD"]
+    # Stable, small external anchors.
+    internet_id = _mermaid_id("external:internet")
+    users_id = _mermaid_id("external:users")
+
+    lines: List[str] = ["flowchart LR"]
     lines.extend(_style_block_lines())
-    lines.append("%% ------------------ Consolidated Architecture Views ------------------")
+    lines.append("%% ------------------ Consolidated Landing Page (Swimlanes) ------------------")
 
-    for p in mmds_sorted:
-        title = _diagram_title(p).replace('"', "'")
-        prefix = _view_prefix(p)
-        # IMPORTANT: the embedded views already contain their own root node IDs
-        # (e.g., TEN_ROOT, NET_<vcn>_ROOT, WL_<wl>_ROOT). If we also name the
-        # *wrapper* subgraph with that same ID, Mermaid will try to set the node
-        # as its own parent and error with a cycle.
-        sg_id = f"{prefix}VIEW"
-        lines.append(f"  %% ---- {title} ----")
-        lines.append(f"  subgraph {sg_id}[\"{title}\"]")
+    # Legend lane
+    lines.append('subgraph LEGEND["Legend"]')
+    lines.append("  direction TB")
+    lines.extend(_render_node_with_class(users_id, "Users", cls="external", shape="round"))
+    lines.extend(_render_node_with_class(internet_id, "Internet", cls="external", shape="round"))
+    leg_app = _mermaid_id("legend:app")
+    leg_data = _mermaid_id("legend:data")
+    lines.extend(_render_node_with_class(leg_app, "App / Compute", cls="compute", shape="round"))
+    lines.extend(_render_node_with_class(leg_data, "Data Store", cls="storage", shape="db"))
+    lines.append(_render_edge(users_id, leg_app, "requests"))
+    lines.append(_render_edge(leg_app, leg_data, "reads/writes"))
+    lines.append(_render_edge(users_id, internet_id, "context", dotted=True))
+    lines.append("end")
 
-        raw = p.read_text(encoding="utf-8").splitlines()
-        # Drop leading diagram header if present.
-        if raw and (raw[0].strip().startswith("graph") or raw[0].strip().startswith("flowchart")):
-            raw = raw[1:]
+    # Tenancy lane
+    lines.append('subgraph TENANCY["Tenancy"]')
+    lines.append("  direction TB")
+    lines.append("  TEN_ROOT((Tenancy))")
+    lines.append("  class TEN_ROOT boundary")
+    for c in comp_nodes_sorted[:8]:
+        cid = str(c.get("nodeId") or "")
+        nid = _mermaid_id(f"comp:{cid}")
+        lines.extend(_render_node_with_class(nid, _mermaid_label_for(c), cls="boundary", shape="rect"))
+        lines.append(_render_edge("TEN_ROOT", nid, "contains", dotted=True))
+    if len(comp_nodes_sorted) > 8:
+        sid = _mermaid_id("compartments:more")
+        lines.extend(_render_node_with_class(sid, f"Other compartments... and {len(comp_nodes_sorted) - 8} more", cls="summary"))
+        lines.append(_render_edge("TEN_ROOT", sid, "contains", dotted=True))
+    lines.append("end")
 
-        for line in raw:
-            stripped = line.strip()
-            # Drop style definitions from embedded views; consolidated defines them once.
-            if stripped.startswith("classDef") or stripped.startswith("%% Styles"):
-                continue
-            # Preserve blank lines for readability.
-            if not stripped:
-                lines.append("")
-                continue
+    # IAM lane (key IAM primitives only)
+    lines.append('subgraph IAM["IAM"]')
+    lines.append("  direction TB")
+    lines.append("  IAM_ROOT((IAM))")
+    lines.append("  class IAM_ROOT boundary")
+    iam_nodes = sorted(lanes["iam"], key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
+    kept, summary = _summarize_many(iam_nodes, title="Other IAM resources", keep=6)
+    for n in kept:
+        nid = _mermaid_id(str(n.get("nodeId") or ""))
+        lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls="policy", shape="rect"))
+        lines.append(_render_edge("IAM_ROOT", nid, "", dotted=True))
+    if summary:
+        sid = _mermaid_id("iam:summary")
+        lines.extend(_render_node_with_class(sid, summary, cls="summary"))
+        lines.append(_render_edge("IAM_ROOT", sid, "", dotted=True))
+    lines.append("end")
 
-            # Prefix all generated IDs (nodes/subgraphs) for collision safety.
-            lines.append(id_pat.sub(lambda m: prefix + m.group(0), line))
-
+    # Network lane (VCNs + gateways + top subnets)
+    lines.append('subgraph NETWORK["Network"]')
+    lines.append("  direction TB")
+    lines.append("  NET_ROOT((Network))")
+    lines.append("  class NET_ROOT boundary")
+    vcn_nodes = [n for n in nodes if _is_node_type(n, "Vcn")]
+    vcn_sorted = sorted(vcn_nodes, key=lambda n: str(n.get("name") or ""))
+    for vcn in vcn_sorted[:4]:
+        vcn_ocid = str(vcn.get("nodeId") or "")
+        vcn_slug = _slugify(str(vcn.get("name") or _short_ocid(vcn_ocid)))
+        vcn_root = f"NET_{vcn_slug}_ROOT"
+        vcn_label = _vcn_label(vcn)
+        lines.append(f'  {vcn_root}(("Network View: {vcn_slug}"))')
+        lines.append(f"  class {vcn_root} boundary")
+        vcn_block = _mermaid_id(f"vcn:{vcn_ocid}")
+        lines.append(f'  subgraph {vcn_block}["{vcn_label.replace("\"", "'")}"]')
+        lines.append("    direction TB")
+        # Gateways
+        for gtype, lab in (("InternetGateway", "IGW"), ("NatGateway", "NAT"), ("ServiceGateway", "Service GW")):
+            gws = [n for n in nodes if _is_node_type(n, gtype) and str(n.get("compartmentId") or "") == str(vcn.get("compartmentId") or "")]
+            if gws:
+                gid = _mermaid_id(str(gws[0].get("nodeId") or f"{vcn_ocid}:{gtype}"))
+                lines.extend(_render_node_with_class(gid, f"{lab}<br>{gtype}", cls="network", shape="rect"))
+        # Subnets for this VCN
+        subs = [n for n in nodes if _is_node_type(n, "Subnet") and str(_get_meta(_node_metadata(n), "vcn_id") or "") == vcn_ocid]
+        subs_sorted = sorted(subs, key=lambda n: str(n.get("name") or ""))
+        kept_subs, subs_summary = _summarize_many(subs_sorted, title="Other subnets", keep=2)
+        for sn in kept_subs:
+            sid = _mermaid_id(str(sn.get("nodeId") or ""))
+            lines.extend(_render_node_with_class(sid, _subnet_label(sn).replace('"', "'"), cls="network", shape="rect"))
+        if subs_summary:
+            sid = _mermaid_id(f"subnets:{vcn_ocid}:summary")
+            lines.extend(_render_node_with_class(sid, subs_summary, cls="summary"))
         lines.append("  end")
+        lines.append(_render_edge("NET_ROOT", vcn_root, "", dotted=True))
+    if len(vcn_sorted) > 4:
+        sid = _mermaid_id("vcn:summary")
+        lines.extend(_render_node_with_class(sid, f"Other VCNs... and {len(vcn_sorted) - 4} more", cls="summary"))
+        lines.append(_render_edge("NET_ROOT", sid, "", dotted=True))
+    lines.append("end")
 
-    # High-level context links (Tenancy -> each view root), if tenancy root exists.
-    has_tenancy = any(p.name == "diagram.tenancy.mmd" for p in mmds_sorted)
-    if has_tenancy:
-        for p in mmds_sorted:
-            if p.name.startswith("diagram.network."):
-                vcn = p.name[len("diagram.network.") : -len(".mmd")]
-                lines.append(f"TEN_ROOT -.-> NET_{_slugify(vcn)}_ROOT")
-            if p.name.startswith("diagram.workload."):
-                wl = p.name[len("diagram.workload.") : -len(".mmd")]
-                lines.append(f"TEN_ROOT -.-> WL_{_slugify(wl)}_ROOT")
+    # Security lane
+    lines.append('subgraph SECURITY["Security"]')
+    lines.append("  direction TB")
+    lines.append("  SEC_ROOT((Security))")
+    lines.append("  class SEC_ROOT boundary")
+    sec_nodes = sorted(lanes["security"], key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
+    kept, summary = _summarize_many(sec_nodes, title="Other security resources", keep=6)
+    for n in kept:
+        nid = _mermaid_id(str(n.get("nodeId") or ""))
+        lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls="boundary", shape="rect"))
+        lines.append(_render_edge("SEC_ROOT", nid, "", dotted=True))
+    if summary:
+        sid = _mermaid_id("security:summary")
+        lines.extend(_render_node_with_class(sid, summary, cls="summary"))
+        lines.append(_render_edge("SEC_ROOT", sid, "", dotted=True))
+    lines.append("end")
+
+    # App lane
+    lines.append('subgraph APP["App"]')
+    lines.append("  direction TB")
+    lines.append("  APP_ROOT((App))")
+    lines.append("  class APP_ROOT boundary")
+    app_nodes = sorted(lanes["app"], key=_instance_first_sort_key)
+    kept, summary = _summarize_many(app_nodes, title="Other app/compute resources", keep=8)
+    app_entry_first: Optional[str] = None
+    app_entry_preferred: Optional[str] = None
+    for n in kept:
+        nid = _mermaid_id(str(n.get("nodeId") or ""))
+        if app_entry_first is None:
+            app_entry_first = nid
+        if app_entry_preferred is None and _is_node_type(n, "Instance"):
+            app_entry_preferred = nid
+        lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n)))
+        lines.append(_render_edge("APP_ROOT", nid, "", dotted=True))
+    app_entry = app_entry_preferred or app_entry_first
+    if summary:
+        sid = _mermaid_id("app:summary")
+        lines.extend(_render_node_with_class(sid, summary, cls="summary"))
+        lines.append(_render_edge("APP_ROOT", sid, "", dotted=True))
+    lines.append("end")
+
+    # Data lane
+    lines.append('subgraph DATA["Data"]')
+    lines.append("  direction TB")
+    lines.append("  DATA_ROOT((Data))")
+    lines.append("  class DATA_ROOT boundary")
+    data_nodes = sorted(lanes["data"], key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
+    kept, summary = _summarize_many(data_nodes, title="Other data resources", keep=8)
+    first_data: Optional[str] = None
+    for n in kept:
+        nid = _mermaid_id(str(n.get("nodeId") or ""))
+        if first_data is None:
+            first_data = nid
+        lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls="storage", shape="db"))
+        lines.append(_render_edge("DATA_ROOT", nid, "", dotted=True))
+    if summary:
+        sid = _mermaid_id("data:summary")
+        lines.extend(_render_node_with_class(sid, summary, cls="summary"))
+        lines.append(_render_edge("DATA_ROOT", sid, "", dotted=True))
+    lines.append("end")
+
+    # Observability lane
+    lines.append('subgraph OBS["Observability"]')
+    lines.append("  direction TB")
+    lines.append("  OBS_ROOT((Observability))")
+    lines.append("  class OBS_ROOT boundary")
+    obs_nodes = sorted(lanes["observability"], key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
+    kept, summary = _summarize_many(obs_nodes, title="Other observability resources", keep=6)
+    for n in kept:
+        nid = _mermaid_id(str(n.get("nodeId") or ""))
+        lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls="boundary", shape="rect"))
+        lines.append(_render_edge("OBS_ROOT", nid, "", dotted=True))
+    if summary:
+        sid = _mermaid_id("obs:summary")
+        lines.extend(_render_node_with_class(sid, summary, cls="summary"))
+        lines.append(_render_edge("OBS_ROOT", sid, "", dotted=True))
+    lines.append("end")
+
+    # Minimal cross-lane story flows.
+    if app_entry:
+        lines.append(_render_edge(users_id, app_entry, "requests"))
+    if app_entry and first_data:
+        lines.append(_render_edge(app_entry, first_data, "reads/writes"))
+
+    # Keep prior-style context links to detailed view anchors.
+    for p in mmds_sorted:
+        if p.name.startswith("diagram.network."):
+            vcn = p.name[len("diagram.network.") : -len(".mmd")]
+            lines.append(f"TEN_ROOT -.-> NET_{_slugify(vcn)}_ROOT")
+        if p.name.startswith("diagram.workload."):
+            wl = p.name[len("diagram.workload.") : -len(".mmd")]
+            lines.append(f"TEN_ROOT -.-> WL_{_slugify(wl)}_ROOT")
 
     consolidated.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return consolidated

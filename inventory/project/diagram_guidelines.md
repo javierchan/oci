@@ -196,9 +196,149 @@ Phase 4 — Optional views (only if requested)
 
 ---
 
+## “OCI Core Landing Zone” Style (Enterprise Layout)
+
+The reference image (OCI Core Landing Zone) is effective because it uses strict visual structure:
+- Domains as swimlanes (columns)
+- Clear boundaries (compartments/security zones)
+- Repeated patterns summarized (e.g., “VCN x3”)
+- Minimal, labeled cross-lane flows
+
+To mirror that clarity with Mermaid, we adopt the following design decisions.
+
+### 1) Domains as Swimlanes (Columns)
+
+Use a left-to-right top-level structure (`flowchart LR`) for the consolidated diagram so each major domain reads as a “lane”.
+
+Required top-level lanes (subgraphs):
+- `IAM` lane: users/groups/policies/dynamic groups (identity + authorization)
+- `Network` lane: VCNs/subnets/gateways/DRG (+ security constructs close to network)
+- `Security` lane: vault/keys/logging/scan, “security zone” boundary overlays
+- `App` lane: compute, OKE, functions, API gateway, LB
+- `Data` lane: buckets, databases, streams/topics (where applicable)
+- `Observability` lane: alarms/events/notifications (optional unless present)
+
+Notes:
+- Per-view diagrams may keep TD/LR as appropriate (network = LR, tenancy/workload = TD). The consolidated “landing page” should be LR to mimic swimlanes.
+
+### 2) Nested Subgraphs (Compartment → VCN → Subnet)
+
+Within lanes, use nested subgraphs to create the “blocks” seen in the landing zone diagram:
+- Compartment blocks are dashed/boundary styled.
+- VCN blocks contain subnet blocks.
+- Subnet blocks contain only the top N placed resources (compute/LB), with summaries.
+
+### 3) Security Overlays (Zones / Guardrails)
+
+We represent overlays as *dashed boundary subgraphs* that group affected components:
+- `Security Zone` is a dashed subgraph that can wrap compartments or specific resource sets.
+- If we cannot reliably infer security zone membership, label it explicitly as “inferred/unknown” and prefer leaving it out.
+
+### 4) Consistent Shapes per Resource Role
+
+Use a consistent “shape language” across all diagrams:
+- People/actors: stadium/circle (e.g., `((Users))`)
+- IAM primitives: rectangles (e.g., `[Policy]`, `[Group]`, `[Dynamic Group]`)
+- Networks: rectangles (e.g., `[VCN]`, `[Subnet]`, `[NAT GW]`)
+- Compute: circles/stadiums (e.g., `((Instance))`, `((OKE))`)
+- Data stores: cylinders (e.g., `[(Bucket)]`, `[(Database)]`)
+- Summaries: dashed rectangles
+
+### 5) Explicit, Minimal Cross-Lane Flows
+
+The landing zone diagram’s strength is *few but meaningful* cross-domain connections.
+
+Rules:
+- Solid arrows (`-->`) only for “primary story” flows:
+  - Users → entry points (LB/API)
+  - Compute → data stores (Bucket/DB)
+  - Subnet → gateways (routing intent)
+- Dotted edges (`-.->`) for:
+  - membership/context
+  - policy attachment (e.g., dynamic group → policy)
+
+Keep edge labels short and consistent (`requests`, `routes`, `reads/writes`, `policy`).
+
+### 6) Pattern Compression (xN)
+
+When multiple instances of a repeated architecture pattern exist:
+- Prefer a single “pattern block” with a multiplicity label (e.g., `3-Tier VCN x3`).
+- Only expand the most representative one unless the user explicitly asks for all.
+
+This applies strongly to:
+- multiple VCNs with identical topology
+- multiple subnets with identical placement
+- many assets/outputs
+
+### 7) Legend (Required)
+
+Include a `Legend` subgraph in the consolidated diagram describing:
+- class meanings (external/boundary/network/compute/storage/policy/summary)
+- edge meanings (solid vs dotted)
+
+Keep the legend small and stable.
+
+---
+
+## Implementation Plan to Reach Landing Zone Quality
+
+This plan focuses on generator changes under `src/oci_inventory/export/diagram_projections.py`.
+
+Step 1 — Consolidated becomes a true “landing page” (highest impact)
+- Switch consolidated orientation to `flowchart LR`.
+- Wrap embedded views into *domain lanes* rather than “one subgraph per view”.
+- Keep the existing per-view diagrams as the source of detail; consolidated shows only anchors + a few key nodes per lane.
+
+Step 2 — Add a stable Legend lane
+- Emit a dedicated `Legend` subgraph with representative shapes/classes and edge examples.
+
+Step 3 — Normalize labels and reduce noise further
+- Enforce label policy: `<name><br><type>` and truncate long names.
+- Increase aggregation in tenancy/workload views for noisy types (media assets, logs/metrics, etc.).
+
+Step 4 — Improve placement with stronger metadata-derived relationships
+- Emit explicit placement relationships (Instance/LB/OKE → Subnet/VCN) only when subnet/vcn IDs exist.
+- Use these relationships to place compute into subnet blocks in network views.
+
+Step 5 — Optional overlays (security/observability)
+- Add security/observability lanes only when a minimum viable set of resources exists.
+- Avoid “empty lanes” that create clutter.
+
+---
+
 ## Mermaid References
 
 Mermaid Flowcharts Official Docs: https://mermaid.js.org/syntax/flowchart.html
+
+### External best-practice takeaways (fetched)
+
+From Mermaid docs (Flowchart + Layouts + Config):
+- Prefer `flowchart TD` or `flowchart LR` explicitly and use `direction` inside subgraphs for local layout control.
+- Use `subgraph <id> ["title"] ... end` for grouping; Mermaid supports edges to/from subgraphs, but be mindful that subgraph direction can be ignored when nodes are linked outside the subgraph.
+- Use dotted links `-.->` for context/navigation edges to keep the data-plane story uncluttered.
+- Use node shapes intentionally (rectangles, circles, cylinders, etc.) to add semantic meaning and improve scanability.
+- For very large diagrams, Mermaid supports alternative layout engines such as ELK.
+  - In practice, some `.mmd` preview renderers/extensions crash or mis-parse frontmatter/directives.
+  - Design decision for this repo: keep emitted `.mmd` files as plain `flowchart ...` for maximum compatibility.
+  - If you want ELK, enable it in the renderer/viewer (or re-render via a Mermaid CLI/tool that supports `layout: elk`).
+
+Sources:
+- Mermaid Flowchart: https://mermaid.js.org/syntax/flowchart.html
+- Mermaid Layouts: https://mermaid.js.org/config/layouts.html
+- Mermaid Directives/Config guidance: https://mermaid.js.org/config/directives.html
+
+From the C4 model (architecture communication):
+- Use “levels of zoom” / hierarchical views to tell different stories to different audiences; you don’t need every level, only those that add value.
+- Separate a high-level context/landscape view from more detailed container/component views.
+
+How it maps to our OCI outputs:
+- `diagram.consolidated.mmd` is primarily a *context/landscape* map.
+- `diagram.workload.<workload>.mmd` is closest to a *container* view (what runs, what it talks to, where data goes).
+- `diagram.network.<vcn>.mmd` is closest to a *deployment/network* view (where things live and how traffic flows).
+
+Sources:
+- C4 model (diagrams): https://c4model.com/diagrams
+- C4 model (abstractions): https://c4model.com/abstractions
 
 ---
 
@@ -360,3 +500,47 @@ flowchart TD
   TEN_ROOT -.-> WL_edge_ROOT
   TEN_ROOT -.-> WL_mediaservice_ROOT
   TEN_ROOT -.-> WL_output_ROOT
+
+  OCI Style:
+
+   Creating clarity-rich, enterprise-scale diagrams like the "OCI Core Landing Zone" layout with Mermaid requires a disciplined approach. The image you provided is a well-structured cloud reference architecture with logical domains, swimlanes, subnet blocks, security overlays, and role separation. Here’s how to mirror such clarity and professionalism using Mermaid:
+
+Guidelines for Mermaid Diagrams Mirroring "OCI Core Landing Zone" Style 1. Plan Your Layers and Swimlanes
+Use Subgraphs as Swimlanes
+Map each domain (e.g., IAM, Network, Security, Apps, DB, Exadata) as a subgraph, representing columns.
+Nest subgraphs for subcompartments (e.g., VCNs, Subnets).
+Clearly Label Each Lane/Layer
+Use descriptive subgraph titles. Number or name multiples (e.g., “3-Tier VCN 1”, “App Compartment”).
+2. Use Consistent Node Shapes for Resource Types
+Replica Icons/Shapes:
+User, Group, and Policy = stadium/pill (([User]))
+Network elements (VCN, Subnet, NSG, Gateway) = rectangles/rounded ([VCN])
+Storage = database shape ((Bucket))
+App/Compute = circle/ellipse/stadium
+Alarms/Events/Topics = custom icon/label ([Alarm])
+Optionally, use Mermaid v11 icons if supported.
+3. Domain Boundaries and Context
+Use double-circles or dashed boundaries for compartments and security zones.
+For "not provisioned" or external, use shaded or dashed borders (classDef external, classDef boundary).
+4. Explicit, Labeled Flows
+Use directional solid arrows (-->) for provisioning, data, or access flows.
+Use dotted lines (-.->) for context, policy, or logical membership.
+Label links consistently (e.g., --> |NAT gateway|, -.-> |Assigned to|).
+5. Group and Summarize
+Don’t overload by showing every possible node—use ellipsis/summarized nodes (e.g., [Other Databases...]) for more.
+Show “xN” when a pattern repeats (e.g., subgraph VCNx3 to indicate 3 VCNs of the same pattern).
+6. Inter-Subgraph Connectivity
+Structure so that inter-compartment or inter-domain links go over or under the main swimlanes for clarity. Arrange vertical or horizontal depending on the main data/dependency flows.
+7. Structure and Readability
+Use direction LR for left-to-right swimlanes, or direction TB for top-down, but use it per subgraph, not globally, for maximum control.
+Place key boundary/entry points (like Internet, Data Center) at the edges of the diagram.
+8. Maintain a Legend
+Include a small legend section in Mermaid source or comments to define edge types, highlights, or special icons.
+9. Class Styling
+Define and use classDef for easy distinction:
+
+Assign classes to resource nodes.
+
+10. Section with Comments
+Use comments (%% SECTION) to break up Mermaid code for maintainability, especially in complex, multi-subgraph diagrams.
+Example Skeleton Summary Table for Your OCI Landing Zone Diagram in Mermaid IAM/Groups/Policies Stadium or rectangle classDef boundary, external Dynamic Groups Rectangle or labeled node classDef external Compartment Subgraph or double-circle classDef boundary VCN/Subnet/NSG/Gateway Nested subgraphs & rectangles classDef network Compute, Bastion, etc. Circle, stadium, or labeled node classDef compute Storage/Buckets/DB Database shape ( ) classDef storage Apps, LB, LB Policy Circle/stadium or rectangle classDef compute Alarms/Events/Topics Labeled nodes, use icons if possible classDef external/summary Connections (Flows) Solid for active, dashed for context

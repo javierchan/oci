@@ -56,6 +56,15 @@ fi
 need_cmd git || { err "git is required"; exit 1; }
 ok "git detected: $(git --version | tr -d '\n')"
 
+# Mermaid CLI (optional; used for --validate-diagrams)
+if command -v mmdc >/dev/null 2>&1; then
+  ok "mmdc detected: $(mmdc --version 2>/dev/null | tr -d '\n')"
+else
+  warn "mmdc not found; Mermaid diagram syntax validation will be skipped."
+  warn "(When mmdc is installed, oci-inv will validate all diagram*.mmd outputs automatically.)"
+  warn "Install (macOS): npm install -g @mermaid-js/mermaid-cli"
+fi
+
 
 should_install_oci_cli() {
   case "${OCI_INV_INSTALL_OCI_CLI:-}" in

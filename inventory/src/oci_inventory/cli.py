@@ -11,7 +11,7 @@ from .config import RunConfig, load_run_config
 from .diff.diff import diff_files, write_diff
 from .enrich import get_enricher_for, set_enrich_context
 from .export.csv import write_csv
-from .export.diagram_projections import write_diagram_projections
+from .export.diagram_projections import is_mmdc_available, validate_mermaid_diagrams_with_mmdc, write_diagram_projections
 from .export.graph import build_graph, write_graph, write_mermaid
 from .export.jsonl import write_jsonl
 from .export.parquet import ParquetNotAvailable, write_parquet
@@ -329,6 +329,14 @@ def cmd_run(cfg: RunConfig) -> int:
         write_graph(cfg.outdir, nodes, edges)
         write_mermaid(cfg.outdir, nodes, edges)
         write_diagram_projections(cfg.outdir, nodes, edges)
+
+        # Diagram syntax policy:
+        # - If --validate-diagrams is enabled, require mmdc and fail if missing.
+        # - Otherwise, if mmdc is available, validate all diagram*.mmd outputs and fail
+        #   on invalid Mermaid so we don't ship broken artifacts.
+        if cfg.validate_diagrams or is_mmdc_available():
+            validated = validate_mermaid_diagrams_with_mmdc(cfg.outdir)
+            LOG.info("Mermaid diagrams validated", extra={"count": len(validated)})
 
         # Optional diff against previous
         if cfg.prev:

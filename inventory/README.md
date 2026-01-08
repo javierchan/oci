@@ -219,6 +219,10 @@ Notes for developers:
 - The CLI is read-only; all SDK calls are list/get style. No mutations are performed.
 - Region failures are tolerated and captured in report.md; GenAI is optional and isolated from the main run.
 - For parquet support, install with extras: `INVENTORY_EXTRAS=parquet ./preflight.sh`.
+- Mermaid diagrams are generated as `.mmd` files. If `mmdc` (Mermaid CLI) is installed,
+  `oci-inv run` will validate all `diagram*.mmd` artifacts automatically and fail the run on invalid Mermaid.
+  To require validation even when `mmdc` may not be present, use `--validate-diagrams`.
+  (During installation you may see npm warnings about Puppeteer deprecations; those are typically non-fatal.)
 
 ## Output Contract
 Each run writes to: `out/<timestamp>/`

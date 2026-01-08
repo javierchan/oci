@@ -59,6 +59,7 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
     assert any(p.name == "diagram.network.prod_vcn.mmd" for p in paths)
 
     consolidated = (tmp_path / "diagram.consolidated.mmd").read_text(encoding="utf-8")
-    assert consolidated.startswith("flowchart")
-    assert "subgraph" in consolidated
+    assert consolidated.startswith("flowchart LR")
+    assert "subgraph LEGEND" in consolidated
+    assert "subgraph NETWORK" in consolidated
     assert "TEN_ROOT" in consolidated
