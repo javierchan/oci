@@ -75,3 +75,8 @@ From now on, you are responsible for keeping this file accurate and up to date w
 Respond with: "Maintainer initialized and ready."
 
 -------------------------------------------------------------------------------------------------------------
+
+Here is a git diff, apply your maintainer role:
+
+```diff
+<PASTE DIFF>
