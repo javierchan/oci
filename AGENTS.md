@@ -1,9 +1,8 @@
-```md
 # AGENTS.md
 
 Senior-level guidance for AI Agents working in this repository. This file defines
-best practices, safety boundaries, and execution discipline. Task-specific solution
-instructions must live in the agent prompt.
+best practices, safety boundaries, execution discipline, research practices, and
+operational policies. Task-specific solution instructions must live in the agent prompt.
 
 ---
 
@@ -16,13 +15,14 @@ instructions must live in the agent prompt.
   - The file resides under `inventory/`, AND
   - It follows naming conventions (snake_case for Python), AND
   - It is referenced by existing modules or tests.
+- Do not modify build, CI/CD, infrastructure, or external repository areas unless asked.
 
 ---
 
 # Session Language Rule
 
 - User instructions: **Spanish (Mexico)**.
-- All agent outputs, actions, code, and documentation: **English (US)**.
+- All agent outputs, actions, code, docs: **English (US)**.
 
 ---
 
@@ -34,17 +34,20 @@ instructions must live in the agent prompt.
 - Be explicit about assumptions and unknowns.
 - Avoid speculative changes; anchor decisions in evidence.
 - Follow established patterns in `src/oci_inventory/**` where applicable.
-- Respect module boundaries and avoid leaking responsibilities across layers.
-- Minimize mutation; prefer pure/immutable transformations where reasonable.
+- Respect module boundaries and avoid cross-layer leaks.
+- Prefer pure/immutable transformations when feasible.
+- Produce code and docs that humans can read without AI assistance.
+- Explicitly avoid “clever” solutions; clarity first.
 
 ---
 
 # Safety & Security
 
-- Never log or introduce secrets or credentials.
-- Do not add or modify files that could expose sensitive data.
+- Never log or introduce credentials or secrets.
+- Do not add or modify files that expose sensitive data.
 - If a command requires network access, request explicit approval.
-- Do not generate content that manipulates private keys, tokens, or auth configs.
+- Do not manipulate private keys, tokens, or auth configs.
+- Avoid writing logs containing OCIDs, user info, or tenancy details unless redacted.
 
 ---
 
@@ -53,7 +56,7 @@ instructions must live in the agent prompt.
 This codebase is for **inventory/discovery only**.
 
 Allowed (read-only):
-- `list`, `search`, `get` operations via SDK/CLI/API.
+- `list`, `search`, `get` SDK/CLI/API calls.
 
 Forbidden (mutating):
 - `create`, `update`, `delete`, `patch`, `move`,
@@ -67,82 +70,153 @@ Forbidden (mutating):
 # Quality Standards
 
 - Maintain clear module boundaries and cohesive responsibilities.
-- Keep naming consistent with existing conventions (snake_case for Python modules).
-- Add comments only when code is not self-explanatory.
+- Keep naming consistent with snake_case for Python modules.
+- Add comments only where code is not self-explanatory.
 - Prefer stable ordering for outputs, hashing, and diffs.
-- Avoid unnecessary abstraction layers; keep architecture practical.
+- Avoid unnecessary abstraction layers.
+- Use existing project patterns for graph, export, enrichment, diff logic.
 
 ---
 
 # Testing Discipline
 
 - Add tests for any behavior change or bug fix.
-- Keep tests offline, deterministic, and fast.
-- Run the smallest relevant subset of tests; expand only if necessary.
-- Avoid external dependencies in tests (network, OCI, real services).
+- Tests must be offline, deterministic, and fast.
+- Avoid network calls, real OCI access, or external dependencies.
+- Run smallest relevant subset of tests; expand only if needed.
 
 ---
 
 # Evidence & Reporting
 
-When asserting or justifying decisions:
+When making claims or decisions:
 
 - Cite file paths and line numbers.
-- Document command outcomes and failures with exact error messages.
-- If verification is not possible, mark as `NOT VERIFIED` and explain why.
-- Prefer factual evidence over assumptions.
+- Document command outcomes and errors verbatim.
+- If verification is not possible, mark `NOT VERIFIED` and explain.
+- Use factual observations over assumptions.
 
 ---
 
 # Change Hygiene
 
 - Avoid touching unrelated files.
-- Do not refactor or reformat unrelated code.
-- Keep diffs small, focused, and logically grouped.
+- Do not reformat or refactor unrelated areas.
+- Keep diffs small, focused, logically grouped.
 - Separate refactors from functional changes.
 - Always re-use the existing `.venv` located at:
   `/Users/javierchan/Documents/GitHub/oci/inventory/.venv`
-  Update this only if actually required.
+- Only update the venv if strictly necessary.
+
+---
+
+# Dependencies & Tooling Discipline
+
+- Do not introduce new dependencies unless explicitly requested.
+- Justify any required dependency (purpose, maturity, footprint).
+- Prefer Python standard library and existing deps first.
+- Follow existing lint/format/type tooling without modification.
+- Do not reformat entire files unless requested.
+- Maintain existing import ordering and spacing.
+
+---
+
+# Version Awareness & Compatibility
+
+- Acknowledge OCI SDK, Python, and dependency versions.
+- If decisions depend on versions, mention them.
+- Do not upgrade dependencies unless asked.
+- Do not change Python version unless asked.
+
+---
+
+# Determinism & Reproducibility
+
+- Avoid non-deterministic ordering, timestamps, random values.
+- Avoid floating behavior from concurrency.
+- Do not introduce non-deterministic tests.
+- Use stable hashing and sorting for inventory/diff/export flows.
+
+---
+
+# State & Context Management
+
+- Carry forward relevant decisions and assumptions within a task.
+- Reconstruct context from:
+  - Current prompt
+  - Codebase
+  - Tests
+  - Documentation
+  - Provided history (if any)
+- Do not assume historical memory if not present.
+
+---
+
+# External Research & Strategy Enhancement
+
+If the problem cannot be solved with local context:
+
+1. **Consult Reputable Sources**
+   - OCI official docs, Python docs, SDK docs, RFCs, durable OSS docs.
+
+2. **Synthesize, Don’t Copy**
+   - Do not paste verbatim.
+   - Extract insight and rewrite in project’s style.
+
+3. **Align With This Codebase**
+   - Validate that solutions:
+     - Fit architecture,
+     - Respect read-only OCI model,
+     - Match conventions and tooling,
+     - Do not add unnecessary frameworks.
+
+4. **Document the Enhancement**
+   Include:
+   - Insight gained,
+   - Source type (e.g. “OCI official docs”),
+   - How it was adapted safely.
+
+5. **Handle Unsolvable Cases**
+   - Mark as `BLOCKED`,
+   - List attempts,
+   - State what is missing,
+   - Suggest next steps if useful.
 
 ---
 
 # Collaboration Expectations
 
-- If the prompt is ambiguous, ask for clarification before proceeding.
-- Summarize planned changes before executing them.
-- Summarize final changes and next steps clearly and concisely.
-- Avoid proposing future work unless explicitly requested.
+- Ask for clarification when risky, ambiguous, or incomplete.
+- Summarize planned changes before executing.
+- Summarize final changes and next steps clearly.
 
 ---
 
 # Interaction Loop (Required)
 
-Agents must follow this loop for every task:
-
-1. **Restate the task** in English (US) including assumptions.
-2. **Plan** the minimal set of changes (1–4 steps).
-3. **Ask clarifying questions** *only if the task cannot be executed safely*.
-4. **Execute changes** according to plan.
-5. **Verify** behavior via evidence (tests, file inspection, errors).
-6. **Report results** with:
+1. Restate the task with assumptions.
+2. Plan minimal change steps (1–4 steps).
+3. Ask clarifying questions if unsafe or under-specified.
+4. Execute changes.
+5. Verify with evidence (tests, inspection).
+6. Report results with:
    - Changed files
-   - Observations and evidence
-   - Any remaining uncertainties
+   - Evidence
+   - Remaining uncertainties
 
 ---
 
 # Non-Goals / Failure Modes
 
-Agents must NOT:
+Agents MUST NOT:
 
-- Introduce architectural refactors unless explicitly requested.
-- Convert frameworks/tools “just because”.
-- Suggest future enhancements not requested.
-- Create parallel utilities (e.g. `utils2.py`) unless justified.
-- Expand scope beyond the user prompt.
-- Produce non-deterministic output without strong reasoning.
+- Introduce architectural refactors unless requested.
+- Suggest future improvements unless prompted.
+- Change frameworks/tools without instruction.
+- Create parallel utilities (e.g. `utils2.py`) without justification.
+- Expand scope beyond the prompt.
+- Produce non-deterministic output without justification.
 
 ---
 
 # End of AGENTS.md
-```
