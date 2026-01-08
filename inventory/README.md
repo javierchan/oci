@@ -100,6 +100,9 @@ Each run writes to: `out/<timestamp>/`
 - inventory.csv (report fields)
 - inventory.parquet (optional; pyarrow required)
 - relationships.jsonl (optional; when relationships exist)
+- graph_nodes.jsonl (diagram-ready nodes)
+- graph_edges.jsonl (diagram-ready edges)
+- diagram.mmd (Mermaid diagram)
 - diff.json + diff_summary.json (when --prev provided)
 - run_summary.json (coverage metrics)
 

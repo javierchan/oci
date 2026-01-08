@@ -10,6 +10,7 @@ from .config import RunConfig, load_run_config
 from .diff.diff import diff_files, write_diff
 from .enrich import get_enricher_for, set_enrich_context
 from .export.csv import write_csv
+from .export.graph import build_graph, write_graph, write_mermaid
 from .export.jsonl import write_jsonl
 from .export.parquet import ParquetNotAvailable, write_parquet
 from .logging import LogConfig, get_logger, setup_logging
@@ -173,6 +174,11 @@ def cmd_run(cfg: RunConfig) -> int:
     # Coverage metrics and summary
     metrics = _coverage_metrics(enriched)
     _write_run_summary(cfg.outdir, metrics, cfg)
+
+    # Graph artifacts (nodes/edges + Mermaid)
+    nodes, edges = build_graph(enriched, all_relationships)
+    write_graph(cfg.outdir, nodes, edges)
+    write_mermaid(cfg.outdir, nodes, edges)
 
     # Optional diff against previous
     if cfg.prev:
