@@ -92,3 +92,213 @@ Document history
 - Author: Senior product + engineering agent (generated).
 - Date: 2026-01-08
 
+-----
+
+WORKSPACE SCOPE (HARD CONSTRAINT)
+
+This task is strictly scoped to the directory:
+
+/Users/javierchan/Documents/GitHub/oci/inventory
+
+Rules:
+- You MUST treat this directory as the repository root for this task.
+- You MUST NOT read, list, modify, refactor, import from, or reference any files outside this directory.
+- You MUST NOT assume any shared code, configuration, or utilities exist outside this directory.
+- All paths in documentation, imports, tooling, and examples must be relative to this directory.
+- If a dependency would normally be shared at repo root, recreate it locally inside this directory.
+
+Violation of these rules is considered an error.
+
+You are CLINE. Create a production-ready Python repository for an Oracle Cloud Infrastructure (OCI) inventory pipeline.
+
+PROJECT VISION (Target End-State)
+Build a CLI tool that:
+1) Discovers resources across an OCI tenancy using Resource Search (Structured Search).
+2) Enriches discovered resources with deep per-service SDK calls (Compute, Networking, Database, etc.).
+3) Exports inventory as JSONL (default), CSV, and Parquet (optional).
+4) Produces diffs between executions (added/removed/changed/unchanged) by OCID + stable hash.
+5) Supports performance controls: parallelism by region and by enrichment workers, with retry/backoff and safe rate-limit handling.
+
+PHASE 1 SCOPE (Implement Now)
+Implement ONLY:
+- Tenancy-wide discovery using Resource Search with the default query: "query all resources"
+- Enricher registry + DefaultEnricher (no per-service enrichers yet)
+- Exports (JSONL + CSV; Parquet optional)
+- Diffs + hashing
+- Coverage metrics
+- Tests, docs, CI, tooling
+
+NON-FUNCTIONAL REQUIREMENTS (Senior Dev Best Practices)
+- Clear package structure, typed code (mypy-friendly), docs, tests.
+- Secrets/auth handled safely (no creds in repo).
+- Configurable via CLI flags + env vars + optional YAML/JSON config file.
+- Structured logging, consistent error handling, and exit codes.
+- Deterministic output ordering where possible; stable hashing for diffs.
+- CI-ready (lint + unit tests).
+- Provide examples and a minimal “quickstart”.
+
+AUTH REQUIREMENTS
+Support multiple OCI auth methods:
+A) API Key via ~/.oci/config (profile selection)
+B) Instance Principals (when running in OCI)
+C) Resource Principals (Functions, OKE workloads, etc.)
+D) Security Token session profile (if configured)
+The tool should auto-detect when possible, but allow explicit selection.
+Never print secrets. Include guidance in docs.
+
+DESIGN / ARCHITECTURE
+Use a modular, extensible design:
+- Discovery layer: uses ResourceSearchClient structured search per region.
+- Enrichment layer: pluggable “enrichers” keyed by resourceType; each enricher returns:
+  - details: full SDK object dict (or selected normalized fields)
+  - relationships: optional graph edges (source_ocid, target_ocid, relation_type)
+- Normalization layer: canonical record schema:
+  - ocid, resourceType, displayName, compartmentId, region, lifecycleState, timeCreated,
+    definedTags, freeformTags, collectedAt, enrichStatus, enrichError, details, relationships
+- Export layer: JSONL, CSV (report fields), Parquet (pyarrow optional).
+- Diff layer: compare current vs previous run JSONL to create diff.json and diff_summary.
+
+PERFORMANCE / RELIABILITY
+- Parallelize discovery by region (ThreadPoolExecutor).
+- Parallelize enrichment by batches (ThreadPoolExecutor), with max workers configurable.
+- Use OCI SDK retry strategy (DEFAULT_RETRY_STRATEGY) plus local safeguards.
+- Ensure pagination for Search (opc-next-page).
+
+OUTPUT / DATA CONTRACT
+- Output directory structure per run:
+  out/<timestamp>/
+    inventory.jsonl
+    inventory.csv
+    inventory.parquet (optional)
+    relationships.jsonl (optional)
+    diff.json (optional, if previous run provided)
+    run_summary.json
+- Ensure JSONL lines are stable JSON (sorted keys) for reproducibility.
+
+CLI
+Provide a top-level command, e.g.:
+  oci-inv run --outdir ... --auth auto --profile DEFAULT --parquet --prev out/<prev>/inventory.jsonl \
+              --workers-region 6 --workers-enrich 24 --include-terminated \
+              --query "query all resources"
+
+Also support:
+  oci-inv diff --prev ... --curr ...
+  oci-inv validate-auth
+  oci-inv list-regions
+  oci-inv list-compartments
+
+TECH STACK
+- Python 3.11+
+- oci SDK
+- pyarrow optional extra: `pip install .[parquet]`
+- logging: standard logging module with optional JSON logs
+
+REPO STRUCTURE (CREATE THIS)
+- pyproject.toml (PEP 621) using hatch or poetry (prefer hatch)
+- src/oci_inventory/
+    __init__.py
+    cli.py
+    config.py
+    logging.py
+    auth/
+      __init__.py
+      providers.py
+    oci/
+      __init__.py
+      clients.py
+      discovery.py
+      compartments.py
+      regions.py
+    enrich/
+      __init__.py
+      base.py
+      default.py
+      # placeholders for future: compute.py, network.py, database.py, oke.py, storage.py, iam.py, lb.py
+    normalize/
+      __init__.py
+      schema.py
+      transform.py
+    export/
+      __init__.py
+      jsonl.py
+      csv.py
+      parquet.py
+    diff/
+      __init__.py
+      diff.py
+      hash.py
+    util/
+      __init__.py
+      concurrency.py
+      pagination.py
+      time.py
+      errors.py
+- tests/
+    test_hash.py
+    test_diff.py
+    test_default_enricher.py
+    test_registry.py
+    test_config.py
+- docs/
+    quickstart.md
+    architecture.md
+    auth.md
+- .github/workflows/ci.yml (pytest + ruff)
+- .gitignore
+- README.md
+- LICENSE (Apache-2.0 unless already set)
+- pre-commit config (ruff)
+
+PHASE 1 IMPLEMENTATION DETAILS (MUST)
+1) Discovery (default query)
+- Default query MUST be: "query all resources"
+- Support custom query flag, but default must be the above.
+- Run discovery per region (list_region_subscriptions).
+- Inject the discovery region into each discovered record explicitly (record["region"]=<region_loop_value>).
+- Support pagination until opc-next-page is empty.
+- Store a minimal normalized record for each result.
+
+2) Enrichment registry
+- Implement an Enricher registry keyed by Search resourceType string.
+- Implement a DefaultEnricher used when no specific enricher exists.
+
+3) DefaultEnricher behavior (MUST)
+- Must never call any per-service API.
+- Must never raise; it returns the record with:
+    enrichStatus = "NOT_IMPLEMENTED"
+    enrichError = None
+    details = {"searchSummary": <the Search summary dict>}
+    relationships = []
+- This ensures the output contains ALL resources returned by "query all resources".
+
+4) Coverage metrics (MUST)
+- run_summary.json must include:
+  - total_discovered
+  - enriched_ok
+  - not_implemented
+  - errors
+  - counts_by_resource_type (discovered counts per resourceType)
+  - counts_by_enrich_status
+
+5) Exports (MUST)
+- Always produce inventory.jsonl.
+- Produce inventory.csv with report fields only.
+- Parquet is optional behind a flag; if pyarrow missing, show actionable error.
+
+6) Stability (MUST)
+- JSONL lines must be stable JSON (sorted keys).
+- Hashing for diffs must exclude collectedAt.
+
+7) Tests (MUST)
+- Unit tests for:
+  - default enricher behavior
+  - registry selection (specific vs default)
+  - stable hashing excluding collectedAt
+  - diff logic basics
+
+IMPORTANT
+- Do not hardcode tenancy OCID or any secrets.
+- Keep code clean, typed, documented.
+- If something is ambiguous, choose sensible defaults and document them rather than asking questions.
+
+Proceed to generate the repository accordingly.
