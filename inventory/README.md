@@ -87,6 +87,98 @@ Commands:
   oci-inv list-compartments --auth auto --profile DEFAULT --tenancy ocid1.tenancy.oc1..xxxx
   ```
 
+## Common Use Cases (Copy/Paste)
+
+These examples focus on day-to-day workflows a cloud architect typically needs: tenancy-wide snapshots, scoped inventories (region/compartment/type), repeatable diffs, and auth validation.
+
+### 1) Validate auth + discover subscribed regions
+
+Use this first to confirm credentials and see what regions the tool will query by default.
+
+```
+oci-inv validate-auth --auth auto --profile DEFAULT
+oci-inv list-regions --auth auto --profile DEFAULT
+```
+
+### 2) Tenancy-wide inventory (all subscribed regions)
+
+This is the canonical baseline snapshot.
+
+```
+oci-inv run --auth auto --profile DEFAULT --outdir out --query "query all resources"
+```
+
+### 3) Inventory in a single region (limit blast radius)
+
+Useful for troubleshooting, performance checks, and focused reviews.
+
+```
+oci-inv run --auth auto --profile DEFAULT --regions mx-queretaro-1 --outdir out --query "query all resources"
+```
+
+### 4) Inventory a specific compartment (by OCID)
+
+OCI Resource Search filtering is OCID-based for compartments. First, list compartments to find the OCID for the target compartment name:
+
+```
+oci-inv list-compartments --auth auto --profile DEFAULT --tenancy ocid1.tenancy.oc1..xxxx
+```
+
+Then run a compartment-scoped search:
+
+```
+oci-inv run --auth auto --profile DEFAULT --regions mx-queretaro-1 --outdir out \
+  --query "query all resources where compartmentId = 'ocid1.compartment.oc1..xxxx'"
+```
+
+### 5) Inventory a resource type (tenancy-wide or compartment-scoped)
+
+Common examples: instances, VCNs, subnets, vaults, secrets.
+
+Tenancy-wide (all subscribed regions):
+
+```
+oci-inv run --auth auto --profile DEFAULT --outdir out \
+  --query "query all resources where resourceType = 'Instance'"
+```
+
+Compartment + type + region:
+
+```
+oci-inv run --auth auto --profile DEFAULT --regions mx-queretaro-1 --outdir out \
+  --query "query all resources where compartmentId = 'ocid1.compartment.oc1..xxxx' and resourceType = 'Vcn'"
+```
+
+### 6) Produce a diff between two inventories
+
+Option A: Run a new inventory and diff against a previous `inventory.jsonl` in one command:
+
+```
+oci-inv run --auth auto --profile DEFAULT --outdir out \
+  --prev out/prev-run/inventory.jsonl \
+  --query "query all resources"
+```
+
+Option B: Diff any two saved inventories:
+
+```
+oci-inv diff --prev out/prev-run/inventory.jsonl --curr out/curr-run/inventory.jsonl --outdir out/diff
+```
+
+### 7) Export formats used in reporting pipelines
+
+JSONL + CSV are always written. Parquet is optional and recommended for analytics.
+
+```
+oci-inv run --auth auto --profile DEFAULT --outdir out --parquet --query "query all resources"
+```
+
+### Notes
+
+- `--regions` limits execution to a comma-separated list (e.g., `--regions mx-queretaro-1,us-phoenix-1`).
+- For consistent diffs, compare `inventory.jsonl` files. The stable hash excludes `collectedAt` by design.
+- Queries are OCI Resource Search Structured Search strings. Keep the default query exactly `query all resources` unless you intentionally scope it.
+
 Flags and config precedence: defaults < config file < environment < CLI  
 - Default search query: "query all resources" (MUST)
 - Workers defaults: regions=6, enrich=24
