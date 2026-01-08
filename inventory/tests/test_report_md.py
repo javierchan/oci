@@ -77,3 +77,52 @@ def test_render_run_report_includes_executive_summary_when_provided(tmp_path: Pa
 
     assert "## Executive Summary" in text
     assert "Summary line 1" in text
+
+
+def test_render_run_report_includes_complete_inventory_listing(tmp_path: Path) -> None:
+    cfg = RunConfig(outdir=tmp_path, auth="config", profile="DEFAULT", query="query all resources")
+
+    discovered = [
+        {
+            "resourceType": "Bucket",
+            "displayName": "my-bucket",
+            "compartmentId": "ocid1.compartment.oc1..exampleuniqueID",
+            "region": "mx-queretaro-1",
+            "lifecycleState": "ACTIVE",
+            "enrichStatus": "OK",
+        },
+        {
+            "resourceType": "MediaAsset",
+            "displayName": "output/file.m3u8",
+            "compartmentId": "ocid1.compartment.oc1..exampleuniqueID",
+            "region": "mx-queretaro-1",
+            "lifecycleState": "ACTIVE",
+            "enrichStatus": "NOT_IMPLEMENTED",
+        },
+    ]
+
+    text = render_run_report_md(
+        status="OK",
+        cfg_dict={
+            "auth": cfg.auth,
+            "profile": cfg.profile,
+            "tenancy_ocid": cfg.tenancy_ocid,
+            "query": cfg.query,
+            "outdir": str(cfg.outdir),
+            "parquet": cfg.parquet,
+            "prev": None,
+            "workers_region": cfg.workers_region,
+            "workers_enrich": cfg.workers_enrich,
+        },
+        started_at="2026-01-01T00:00:00+00:00",
+        finished_at="2026-01-01T00:01:00+00:00",
+        subscribed_regions=["mx-queretaro-1"],
+        requested_regions=None,
+        excluded_regions=[],
+        discovered_records=discovered,
+        metrics=None,
+    )
+
+    assert "## Inventory Listing (Complete)" in text
+    assert "my-bucket" in text
+    assert "output/file.m3u8" in text

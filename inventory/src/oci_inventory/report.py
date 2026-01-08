@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import hashlib
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -235,6 +237,24 @@ def _md_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> List[str
         rr = [_md_cell(str(c)) for c in r]
         out.append("| " + " | ".join(rr) + " |")
     return out
+
+
+def _short_id_from_ocid(ocid: str) -> str:
+    # Stable, non-reversible identifier to help correlate report rows with CSV rows
+    # without printing raw OCIDs.
+    v = (ocid or "").strip()
+    if not v:
+        return ""
+    return hashlib.sha1(v.encode("utf-8")).hexdigest()[:8]
+
+
+def _count_csv_rows(path: Path) -> Optional[int]:
+    try:
+        with path.open("r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            return sum(1 for _ in reader)
+    except Exception:
+        return None
 
 
 def _pct(n: int, d: int) -> str:
@@ -527,7 +547,13 @@ def render_run_report_md(
     lines.append("## Executive Summary")
     if executive_summary:
         # When enabled, GenAI summary is expected to be architecture-focused and redacted.
-        lines.append(executive_summary.strip())
+        summary = executive_summary.strip()
+        # Avoid duplicated headings when the model includes its own section header.
+        for prefix in ("## Executive Summary", "# Executive Summary"):
+            if summary.startswith(prefix):
+                summary = summary[len(prefix) :].lstrip("\n ")
+                break
+        lines.append(summary)
     else:
         region_phrase = (
             ", ".join(regions_observed)
@@ -889,6 +915,60 @@ def render_run_report_md(
         recs.append("No non-binding recommendations were derived from the current inventory signals.")
     for r in recs[:6]:
         lines.append(f"- {r}")
+    lines.append("")
+
+    # Complete inventory listing (for parity with inventory.csv)
+    lines.append("## Inventory Listing (Complete)")
+    lines.append(
+        "Complete list of resources discovered in scope (matches the exported `inventory.csv`; OCIDs omitted)."
+    )
+
+    outdir = Path(str(cfg_dict.get("outdir") or "")).expanduser() if cfg_dict.get("outdir") else None
+    csv_rows: Optional[int] = None
+    if outdir:
+        csv_rows = _count_csv_rows(outdir / "inventory.csv")
+    if csv_rows is not None:
+        if csv_rows == len(discovered_records):
+            lines.append(f"Rows: {len(discovered_records)} (matches inventory.csv)")
+        else:
+            lines.append(
+                f"Rows: {len(discovered_records)} (inventory.csv has {csv_rows}; investigate export/inputs mismatch)"
+            )
+    else:
+        lines.append(f"Rows: {len(discovered_records)}")
+
+    if discovered_records:
+        inv_rows: List[List[str]] = []
+        for r in sorted(
+            discovered_records,
+            key=lambda x: (
+                _record_type(x) or "",
+                _record_name(x) or "",
+                _record_region(x) or "",
+                _record_compartment_id(x) or "",
+            ),
+        ):
+            comp = _compartment_label(_record_compartment_id(r), alias_by_id=alias_by_comp, name_by_id=name_by_comp)
+            inv_rows.append(
+                [
+                    _short_id_from_ocid(str(r.get("ocid") or "")),
+                    _record_type(r) or "(unknown)",
+                    _record_name(r) or "(unnamed)",
+                    _record_region(r) or "(unknown)",
+                    comp,
+                    str(r.get("lifecycleState") or "(unknown)"),
+                    str(r.get("enrichStatus") or "(unknown)"),
+                ]
+            )
+        lines.append("")
+        lines.extend(
+            _md_table(
+                ["ID", "Type", "Name", "Region", "Compartment", "Lifecycle", "Enrichment"],
+                inv_rows,
+            )
+        )
+    else:
+        lines.append("No resources were discovered in this inventory scope.")
     lines.append("")
 
     # ---------- Execution metadata (preserved run-log details) ----------
