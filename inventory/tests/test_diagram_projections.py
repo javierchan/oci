@@ -55,6 +55,12 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
     tenancy = (tmp_path / "diagram.tenancy.mmd").read_text(encoding="utf-8")
     assert tenancy.startswith("flowchart")
     assert "subgraph" in tenancy
+    assert "Functional Overlays" in tenancy
+    assert "IN_COMPARTMENT" in tenancy
+    tenancy_lines = [line.strip() for line in tenancy.splitlines()]
+    assert sum(1 for line in tenancy_lines if line.startswith("subgraph ")) == sum(
+        1 for line in tenancy_lines if line == "end"
+    )
 
     assert any(p.name == "diagram.network.prod_vcn.mmd" for p in paths)
 
@@ -62,12 +68,18 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
     assert consolidated.startswith("architecture-beta")
     assert "group comp_" in consolidated
     assert "service" in consolidated
+    assert "|IN_COMPARTMENT|" not in consolidated
+    assert "-.->" not in consolidated
+    for line in consolidated.splitlines():
+        if "-->" in line or "<--" in line:
+            assert ":" not in line
 
 
 def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
     vcn_id = "ocid1.vcn.oc1..edge"
     subnet_id = "ocid1.subnet.oc1..edge"
     rtb_id = "ocid1.routetable.oc1..edge"
+    drg_id = "ocid1.drg.oc1..edge"
 
     records = [
         {
@@ -100,12 +112,23 @@ def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
             "enrichStatus": "OK",
             "enrichError": None,
         },
+        {
+            "ocid": drg_id,
+            "resourceType": "Drg",
+            "displayName": "edge-drg",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {"vcn_id": vcn_id}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
     ]
 
     relationships = [
         {"source_ocid": subnet_id, "relation_type": "IN_VCN", "target_ocid": vcn_id},
         {"source_ocid": subnet_id, "relation_type": "USES_ROUTE_TABLE", "target_ocid": rtb_id},
         {"source_ocid": rtb_id, "relation_type": "IN_VCN", "target_ocid": vcn_id},
+        {"source_ocid": drg_id, "relation_type": "IN_VCN", "target_ocid": vcn_id},
     ]
 
     nodes, edges = build_graph(records, relationships)
@@ -114,6 +137,7 @@ def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
     diagram = (tmp_path / "diagram.network.edge_vcn.mmd").read_text(encoding="utf-8")
     assert "Subnet: Public-Subnet-1" in diagram
     assert "USES_ROUTE_TABLE" in diagram
+    assert "Customer Network" in diagram
 
 
 def test_consolidated_defines_workload_anchor_nodes(tmp_path) -> None:

@@ -30,12 +30,29 @@ NETWORK_TYPES = {
     "NatGateway",
     "ServiceGateway",
     "DhcpOptions",
+    "DHCPOptions",
+    "Drg",
+    "DrgAttachment",
+    "IPSecConnection",
+    "IpSecConnection",
+    "VirtualCircuit",
+    "Cpe",
+    "LocalPeeringGateway",
+    "RemotePeeringConnection",
+    "CrossConnect",
+    "CrossConnectGroup",
+    "LoadBalancer",
+    "PublicIp",
 }
 SECURITY_TYPES = {
     "Bastion",
     "Vault",
     "Secret",
     "CloudGuardTarget",
+    "NetworkFirewall",
+    "NetworkFirewallPolicy",
+    "WebAppFirewall",
+    "WebAppFirewallPolicy",
 }
 
 
@@ -114,16 +131,65 @@ def derive_relationships_from_metadata(records: Iterable[Dict[str, Any]]) -> Lis
         seen.add(key)
         out.append({"source_ocid": src, "relation_type": rel, "target_ocid": dst})
 
+    def _collect_ids(value: Any) -> List[str]:
+        if isinstance(value, (list, tuple, set)):
+            return [v for v in value if isinstance(v, str) and v]
+        if isinstance(value, str) and value:
+            return [value]
+        return []
+
     network_child_types = {
         "Subnet",
         "RouteTable",
         "SecurityList",
         "NetworkSecurityGroup",
         "DhcpOptions",
+        "DHCPOptions",
         "InternetGateway",
         "NatGateway",
         "ServiceGateway",
+        "Drg",
+        "DrgAttachment",
+        "IPSecConnection",
+        "IpSecConnection",
+        "VirtualCircuit",
+        "Cpe",
+        "LocalPeeringGateway",
+        "RemotePeeringConnection",
+        "CrossConnect",
+        "CrossConnectGroup",
+        "LoadBalancer",
     }
+
+    firewall_types = {
+        "NetworkFirewall",
+        "NetworkFirewallPolicy",
+        "WebAppFirewall",
+        "WebAppFirewallPolicy",
+        "Firewall",
+    }
+
+    subnet_to_vnics: Dict[str, Set[str]] = {}
+    for r in recs:
+        if str(r.get("resourceType") or "") != "Vnic":
+            continue
+        vnic_id = str(r.get("ocid") or "")
+        if not vnic_id:
+            continue
+        md = _record_metadata(r)
+        subnet_id = _get_meta(md, "subnet_id", "subnetId")
+        if isinstance(subnet_id, str) and subnet_id:
+            subnet_to_vnics.setdefault(subnet_id, set()).add(vnic_id)
+
+    drg_to_vcns: Dict[str, Set[str]] = {}
+    for r in recs:
+        if str(r.get("resourceType") or "") != "DrgAttachment":
+            continue
+        md = _record_metadata(r)
+        drg_id = _get_meta(md, "drg_id", "drgId")
+        vcn_id = _get_meta(md, "vcn_id", "vcnId", "network_id", "networkId")
+        if isinstance(drg_id, str) and drg_id and isinstance(vcn_id, str) and vcn_id:
+            drg_to_vcns.setdefault(drg_id, set()).add(vcn_id)
 
     for r in recs:
         src = str(r.get("ocid") or "")
@@ -131,6 +197,60 @@ def derive_relationships_from_metadata(records: Iterable[Dict[str, Any]]) -> Lis
             continue
         rt = str(r.get("resourceType") or "")
         md = _record_metadata(r)
+
+        vcn_ids = _collect_ids(_get_meta(md, "vcn_id", "vcnId", "vcn_ids", "vcnIds"))
+        for vcn_id in vcn_ids:
+            _emit(src, "IN_VCN", vcn_id)
+
+        subnet_ids = _collect_ids(_get_meta(md, "subnet_id", "subnetId", "subnet_ids", "subnetIds"))
+        for subnet_id in subnet_ids:
+            _emit(src, "IN_SUBNET", subnet_id)
+
+        vnic_ids = _collect_ids(_get_meta(md, "vnic_id", "vnicId", "vnic_ids", "vnicIds"))
+        for vnic_id in vnic_ids:
+            _emit(src, "IN_VNIC", vnic_id)
+
+        rt_id = _get_meta(md, "route_table_id", "routeTableId")
+        if isinstance(rt_id, str) and rt_id:
+            _emit(src, "USES_ROUTE_TABLE", rt_id)
+
+        sl_ids = _get_meta(md, "security_list_ids", "securityListIds")
+        for sl_id in _collect_ids(sl_ids):
+            _emit(src, "USES_SECURITY_LIST", sl_id)
+
+        nsg_ids = _get_meta(md, "nsg_ids", "nsgIds", "network_security_group_ids", "networkSecurityGroupIds")
+        for nsg_id in _collect_ids(nsg_ids):
+            _emit(src, "USES_NSG", nsg_id)
+
+        dhcp_id = _get_meta(md, "dhcp_options_id", "dhcpOptionsId")
+        if isinstance(dhcp_id, str) and dhcp_id:
+            _emit(src, "USES_DHCP_OPTIONS", dhcp_id)
+
+        drg_id = _get_meta(md, "drg_id", "drgId", "gateway_id", "gatewayId")
+        if isinstance(drg_id, str) and drg_id:
+            _emit(src, "USES_DRG", drg_id)
+            for vcn_id in sorted(drg_to_vcns.get(drg_id, set())):
+                _emit(src, "IN_VCN", vcn_id)
+
+        if rt == "Drg" and src in drg_to_vcns:
+            for vcn_id in sorted(drg_to_vcns.get(src, set())):
+                _emit(src, "IN_VCN", vcn_id)
+
+        if rt == "DrgAttachment":
+            drg_id = _get_meta(md, "drg_id", "drgId")
+            if isinstance(drg_id, str) and drg_id:
+                _emit(src, "ATTACHED_TO_DRG", drg_id)
+            vcn_id = _get_meta(md, "vcn_id", "vcnId", "network_id", "networkId")
+            if isinstance(vcn_id, str) and vcn_id:
+                _emit(src, "ATTACHED_TO_VCN", vcn_id)
+
+        assigned_id = _get_meta(md, "assigned_entity_id", "assignedEntityId")
+        for target_id in _collect_ids(assigned_id):
+            _emit(src, "ASSIGNED_TO", target_id)
+
+        private_ip_id = _get_meta(md, "private_ip_id", "privateIpId")
+        for target_id in _collect_ids(private_ip_id):
+            _emit(src, "ASSIGNED_TO", target_id)
 
         # Network object placement
         if rt in network_child_types:
@@ -167,14 +287,10 @@ def derive_relationships_from_metadata(records: Iterable[Dict[str, Any]]) -> Lis
                     if isinstance(nid, str) and nid:
                         _emit(src, "USES_NSG", nid)
 
-        # Private IP wiring
-        if rt == "PrivateIp":
-            vnic_id = _get_meta(md, "vnic_id", "vnicId")
-            if isinstance(vnic_id, str) and vnic_id:
-                _emit(src, "IN_VNIC", vnic_id)
-            subnet_id = _get_meta(md, "subnet_id", "subnetId")
-            if isinstance(subnet_id, str) and subnet_id:
-                _emit(src, "IN_SUBNET", subnet_id)
+        if rt in firewall_types:
+            for subnet_id in subnet_ids:
+                for vnic_id in sorted(subnet_to_vnics.get(subnet_id, set())):
+                    _emit(src, "PROTECTS_VNIC", vnic_id)
 
     return sorted(out, key=lambda r: (r.get("source_ocid", ""), r.get("relation_type", ""), r.get("target_ocid", "")))
 

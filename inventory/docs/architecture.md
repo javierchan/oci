@@ -96,6 +96,10 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
 - `inventory.csv`
   - Report fields only (see `CSV_REPORT_FIELDS` in `src/oci_inventory/normalize/schema.py`).
 
+- `cost_report.md`
+  - Optional cost and usage assessment report when cost reporting is enabled.
+  - Must follow `docs/cost_guidelines.md`.
+
 - `relationships.jsonl`
   - Derived + enricher relationships (graph edges), one per line.
   - Required fields: `source_ocid`, `relation_type`, `target_ocid`.
@@ -120,6 +124,7 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
 - `diagram.tenancy.mmd`, `diagram.network.*.mmd`, `diagram.workload.*.mmd`, `diagram.consolidated.mmd`
   - Mermaid projections derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
   - `diagram.consolidated.mmd` uses Mermaid `architecture-beta` syntax for the high-level architecture view.
+  - Projections render full detail without aggregation; grouping and layout manage density.
 
 ## CLI Commands
 

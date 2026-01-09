@@ -163,6 +163,60 @@ def _fetch_service_gateway(record: Dict[str, Any]) -> Dict[str, Any]:
     return _sdk_data_to_dict(client.get_service_gateway(_record_ocid(record)))
 
 
+def _fetch_drg(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_virtual_network_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_drg(_record_ocid(record)))
+
+
+def _fetch_drg_attachment(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_virtual_network_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_drg_attachment(_record_ocid(record)))
+
+
+def _fetch_ip_sec_connection(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_virtual_network_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_ip_sec_connection(_record_ocid(record)))
+
+
+def _fetch_virtual_circuit(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_virtual_network_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_virtual_circuit(_record_ocid(record)))
+
+
+def _fetch_cpe(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_virtual_network_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_cpe(_record_ocid(record)))
+
+
+def _fetch_local_peering_gateway(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_virtual_network_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_local_peering_gateway(_record_ocid(record)))
+
+
+def _fetch_remote_peering_connection(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_virtual_network_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_remote_peering_connection(_record_ocid(record)))
+
+
+def _fetch_cross_connect(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_virtual_network_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_cross_connect(_record_ocid(record)))
+
+
+def _fetch_cross_connect_group(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_virtual_network_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_cross_connect_group(_record_ocid(record)))
+
+
 def _fetch_dhcp_options(record: Dict[str, Any]) -> Dict[str, Any]:
     ctx = get_enrich_context()
     client = oci_clients.get_virtual_network_client(ctx, _record_region(record))
@@ -284,6 +338,12 @@ def _fetch_public_ip(record: Dict[str, Any]) -> Dict[str, Any]:
     return _sdk_data_to_dict(client.get_public_ip(_record_ocid(record)))
 
 
+def _fetch_load_balancer(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_load_balancer_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_load_balancer(_record_ocid(record)))
+
+
 def _fetch_policy(record: Dict[str, Any]) -> Dict[str, Any]:
     ctx = get_enrich_context()
     # Identity is effectively global but the SDK still accepts a region.
@@ -321,6 +381,30 @@ def _fetch_cloud_guard_target(record: Dict[str, Any]) -> Dict[str, Any]:
     return _sdk_data_to_dict(client.get_target(_record_ocid(record)))
 
 
+def _fetch_network_firewall(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_network_firewall_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_network_firewall(_record_ocid(record)))
+
+
+def _fetch_network_firewall_policy(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_network_firewall_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_network_firewall_policy(_record_ocid(record)))
+
+
+def _fetch_web_app_firewall(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_waf_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_web_app_firewall(_record_ocid(record)))
+
+
+def _fetch_web_app_firewall_policy(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_waf_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_web_app_firewall_policy(_record_ocid(record)))
+
+
 def register_metadata_enrichers() -> None:
     mapping: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
         # Compute
@@ -340,12 +424,23 @@ def register_metadata_enrichers() -> None:
         "InternetGateway": _fetch_internet_gateway,
         "NatGateway": _fetch_nat_gateway,
         "ServiceGateway": _fetch_service_gateway,
+        "Drg": _fetch_drg,
+        "DrgAttachment": _fetch_drg_attachment,
+        "IPSecConnection": _fetch_ip_sec_connection,
+        "IpSecConnection": _fetch_ip_sec_connection,
+        "VirtualCircuit": _fetch_virtual_circuit,
+        "Cpe": _fetch_cpe,
+        "LocalPeeringGateway": _fetch_local_peering_gateway,
+        "RemotePeeringConnection": _fetch_remote_peering_connection,
+        "CrossConnect": _fetch_cross_connect,
+        "CrossConnectGroup": _fetch_cross_connect_group,
         "DhcpOptions": _fetch_dhcp_options,
         "DHCPOptions": _fetch_dhcp_options,
         "PrivateIp": _fetch_private_ip,
         # Block Storage
         "Volume": _fetch_volume,
         "PublicIp": _fetch_public_ip,
+        "LoadBalancer": _fetch_load_balancer,
         # Identity
         "Policy": _fetch_policy,
         # DNS (Resource Search can surface this as different type strings)
@@ -370,6 +465,10 @@ def register_metadata_enrichers() -> None:
         "Vault": _fetch_vault,
         "Secret": _fetch_secret,
         "CloudGuardTarget": _fetch_cloud_guard_target,
+        "NetworkFirewall": _fetch_network_firewall,
+        "NetworkFirewallPolicy": _fetch_network_firewall_policy,
+        "WebAppFirewall": _fetch_web_app_firewall,
+        "WebAppFirewallPolicy": _fetch_web_app_firewall_policy,
     }
 
     for resource_type, fetch in mapping.items():

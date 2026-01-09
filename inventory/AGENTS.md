@@ -257,6 +257,7 @@ Agents MUST NOT:
 - docs/quickstart.md: minimal getting started
 - docs/architecture.md: layout and design
 - docs/auth.md: authentication options and safety
+- docs/cost_guidelines.md: cost report structure and FinOps assessment alignment
 - docs/report_guidelines.md: report.md structure and content requirements
 - docs/goals.md: detailed codebase report, risks, and maintainer guidance
 - docs/planned.md: project planning notes
@@ -271,6 +272,12 @@ For any diagram creation or diagram-related task, use:
 For any report.md creation or report-related task, use:
 `docs/report_guidelines.md`
 - Treat it as the source of truth for structure, wording, and redaction rules.
+- If there is any conflict between a request and the guidelines, follow the guidelines and call out the mismatch.
+
+## Cost Guidelines (Required)
+For any cost report creation or cost-related assessment task, use:
+`docs/cost_guidelines.md`
+- Treat it as the source of truth for structure, scoring, and redaction rules.
 - If there is any conflict between a request and the guidelines, follow the guidelines and call out the mismatch.
 
 ---
@@ -336,7 +343,7 @@ The following conditions are considered drift and MUST trigger **Validate → Re
 - Missing required gateways when present in inventory
 - Workloads without at least one meaningful flow
 - Workloads present in inventory but missing in diagrams
-- Diagram counts not matching report counts (aggregation allowed)
+- Diagram counts not matching report counts
 - IAM/security constructs drawn as peer workloads
 - Missing legend when overlays or icons exist
 - Ignoring tags/metadata when relevant overlays are enabled
