@@ -273,66 +273,7 @@ For any report.md creation or report-related task, use:
 - Treat it as the source of truth for structure, wording, and redaction rules.
 - If there is any conflict between a request and the guidelines, follow the guidelines and call out the mismatch.
 
-## Report Operating Contract (Required for Inventory Pipeline)
-
-When generating or validating `report.md`, agents MUST apply the following rules:
-
-### Required Structure
-- Section ordering MUST match `docs/report_guidelines.md` exactly.
-- All required sections MUST appear, even if empty or marked "(none)".
-- `Execution Metadata` MUST appear at the end.
-
-### Data Source Alignment
-- Inventory/graph are authoritative for existence of regions, compartments, services, and workloads.
-- Report is authoritative for workload identity, counts, and classifications.
-- Diagrams MUST visually reflect the report; discrepancies are **drift**.
-
-### Redaction Rules
-- No raw OCIDs in the main body.
-- Compartment aliases MUST be used in the body.
-- Raw OCIDs MAY appear in `Execution Metadata` only.
-- Agents MUST NOT bypass redaction.
-
-### Determinism Requirements
-- Tables and lists MUST be sorted deterministically (region → type → name → compartment).
-- Caps (`top N`) MUST be applied consistently according to `report_guidelines.md`.
-- Wording for missing data MUST be consistent.
-
-### Drift Detection Rules (Report)
-The following conditions are considered **report drift** and MUST trigger Validate → Refactor:
-
-- Missing required sections or incorrect ordering.
-- Missing Execution Metadata or alias map.
-- Raw OCIDs present in main body.
-- Workloads present in inventory but missing in report.
-- Region/compartment mismatches between report and inventory.
-- Counts in report not reconcilable with inventory.
-- Determinism violations (non-sorted tables, inconsistent truncation).
-- Graph artifacts exist but `Graph Artifacts (Summary)` section is missing.
-
-### No-Silence Rule (Report)
-Agents MUST NOT silently:
-- Drop workloads,
-- Remove sections,
-- Hide missing data,
-- Skip redaction,
-- Omit Execution Metadata.
-
-If information is incomplete or missing, agents MUST surface the gap in:
-- `Risks & Gaps`,
-AND include details in:
-- `Execution Metadata`.
-
-### Allowed Fallbacks
-If GenAI summary fails:
-- Insert a short deterministic fallback summary.
-- Document the failure in `Execution Metadata`.
-
-### Guidelines Update Path
-If `report_guidelines.md` is incomplete or incompatible with reality, agents MUST:
-1. Surface evidence of the issue,
-2. Propose minimal guideline updates,
-3. Wait for confirmation before modifying guidelines.
+---
 
 # Diagram & Report Operating Contract (Required for Inventory Pipeline)
 
@@ -425,6 +366,69 @@ Agents MUST NOT silently:
 - Ignore anomalies in graph integrity
 
 If information is missing or unclear, agents MUST surface the gap instead of guessing.
+
+---
+
+## Report Operating Contract (Required for Inventory Pipeline)
+
+When generating or validating `report.md`, agents MUST apply the following rules:
+
+### Required Structure
+- Section ordering MUST match `docs/report_guidelines.md` exactly.
+- All required sections MUST appear, even if empty or marked "(none)".
+- `Execution Metadata` MUST appear at the end.
+
+### Data Source Alignment
+- Inventory/graph are authoritative for existence of regions, compartments, services, and workloads.
+- Report is authoritative for workload identity, counts, and classifications.
+- Diagrams MUST visually reflect the report; discrepancies are **drift**.
+
+### Redaction Rules
+- No raw OCIDs in the main body.
+- Compartment aliases MUST be used in the body.
+- Raw OCIDs MAY appear in `Execution Metadata` only.
+- Agents MUST NOT bypass redaction.
+
+### Determinism Requirements
+- Tables and lists MUST be sorted deterministically (region → type → name → compartment).
+- Caps (`top N`) MUST be applied consistently according to `report_guidelines.md`.
+- Wording for missing data MUST be consistent.
+
+### Drift Detection Rules (Report)
+The following conditions are considered **report drift** and MUST trigger Validate → Refactor:
+
+- Missing required sections or incorrect ordering.
+- Missing Execution Metadata or alias map.
+- Raw OCIDs present in main body.
+- Workloads present in inventory but missing in report.
+- Region/compartment mismatches between report and inventory.
+- Counts in report not reconcilable with inventory.
+- Determinism violations (non-sorted tables, inconsistent truncation).
+- Graph artifacts exist but `Graph Artifacts (Summary)` section is missing.
+
+### No-Silence Rule (Report)
+Agents MUST NOT silently:
+- Drop workloads,
+- Remove sections,
+- Hide missing data,
+- Skip redaction,
+- Omit Execution Metadata.
+
+If information is incomplete or missing, agents MUST surface the gap in:
+- `Risks & Gaps`,
+AND include details in:
+- `Execution Metadata`.
+
+### Allowed Fallbacks
+If GenAI summary fails:
+- Insert a short deterministic fallback summary.
+- Document the failure in `Execution Metadata`.
+
+### Guidelines Update Path
+If `report_guidelines.md` is incomplete or incompatible with reality, agents MUST:
+1. Surface evidence of the issue,
+2. Propose minimal guideline updates,
+3. Wait for confirmation before modifying guidelines.
 
 ---
 
