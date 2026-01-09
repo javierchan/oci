@@ -642,10 +642,10 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
             c_id = _mermaid_id(str(c.get("nodeId") or ""))
             for vcn in vcn_nodes:
                 v_id = _mermaid_id(str(vcn.get("nodeId") or ""))
-                lines.append(_render_edge(c_id, v_id, "uses network"))
+                lines.append(_render_edge(c_id, v_id, "uses network (inferred)", dotted=True))
             for b in bucket_nodes:
                 b_id = _mermaid_id(str(b.get("nodeId") or ""))
-                lines.append(_render_edge(c_id, b_id, "reads/writes"))
+                lines.append(_render_edge(c_id, b_id, "reads/writes (inferred)", dotted=True))
 
     rel_lines = _render_relationship_edges(
         edges,
@@ -867,7 +867,7 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
 
         if igw is not None:
             igw_id = _mermaid_id(str(igw.get("nodeId") or ""))
-            lines.append(_render_edge(internet_id, igw_id, "ingress/egress"))
+            lines.append(_render_edge(internet_id, igw_id, "ingress/egress (inferred)", dotted=True))
 
         # Context link from view root.
         lines.append(f"{net_root} -.-> {vcn_id}")
@@ -880,15 +880,15 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
 
             if prohibit is False and igw is not None:
                 igw_id = _mermaid_id(str(igw.get("nodeId") or ""))
-                lines.append(_render_edge(igw_id, sn_id, "routes"))
+                lines.append(_render_edge(igw_id, sn_id, "routes (inferred)", dotted=True))
 
             if prohibit is True and nat is not None:
                 nat_id = _mermaid_id(str(nat.get("nodeId") or ""))
-                lines.append(_render_edge(sn_id, nat_id, "egress"))
+                lines.append(_render_edge(sn_id, nat_id, "egress (inferred)", dotted=True))
 
             if prohibit is True and sgw is not None:
                 sgw_id = _mermaid_id(str(sgw.get("nodeId") or ""))
-                lines.append(_render_edge(sn_id, sgw_id, "OCI services"))
+                lines.append(_render_edge(sn_id, sgw_id, "OCI services (inferred)", dotted=True))
 
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         out_paths.append(path)
@@ -1101,10 +1101,10 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
 
         for lb in lbs:
             lb_id = _mermaid_id(str(lb.get("nodeId") or ""))
-            lines.append(_render_edge(users_id, lb_id, "requests"))
+            lines.append(_render_edge(users_id, lb_id, "requests (inferred)", dotted=True))
             for c in computes_sorted:
                 c_id = _mermaid_id(str(c.get("nodeId") or ""))
-                lines.append(_render_edge(lb_id, c_id, "forwards"))
+                lines.append(_render_edge(lb_id, c_id, "forwards (inferred)", dotted=True))
 
         for c in computes_sorted:
             c_id = _mermaid_id(str(c.get("nodeId") or ""))
@@ -1112,11 +1112,11 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
                 continue
             for b in buckets:
                 b_id = _mermaid_id(str(b.get("nodeId") or ""))
-                lines.append(_render_edge(c_id, b_id, "reads/writes"))
+                lines.append(_render_edge(c_id, b_id, "reads/writes (inferred)", dotted=True))
 
         for b in buckets:
             b_id = _mermaid_id(str(b.get("nodeId") or ""))
-            lines.append(_render_edge(b_id, services_id, "Object Storage"))
+            lines.append(_render_edge(b_id, services_id, "Object Storage (inferred)", dotted=True))
 
         rel_lines = _render_relationship_edges(
             edges,
@@ -1573,9 +1573,9 @@ def _write_consolidated_mermaid(
 
     # Minimal cross-lane story flows.
     if app_entry:
-        lines.append(_render_edge(users_id, app_entry, "requests"))
+        lines.append(_render_edge(users_id, app_entry, "requests (inferred)", dotted=True))
     if app_entry and first_data:
-        lines.append(_render_edge(app_entry, first_data, "reads/writes"))
+        lines.append(_render_edge(app_entry, first_data, "reads/writes (inferred)", dotted=True))
 
     # Keep prior-style context links to detailed view anchors.
     for p in mmds_sorted:

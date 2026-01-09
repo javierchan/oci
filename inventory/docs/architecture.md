@@ -101,8 +101,8 @@ Each `run` writes a deterministic set of artifacts. Fields below are the stable 
 
 - `run_summary.json`
   - Coverage metrics for the run.
-  - Required fields: `total_discovered`, `enriched_ok`, `not_implemented`, `errors`,
-    `counts_by_resource_type`, `counts_by_enrich_status`.
+  - Required fields: `schema_version`, `total_discovered`, `enriched_ok`, `not_implemented`, `errors`,
+    `counts_by_resource_type`, `counts_by_enrich_status`, `counts_by_resource_type_and_status`.
 
 - `graph_nodes.jsonl`
   - Node projection of inventory records.
