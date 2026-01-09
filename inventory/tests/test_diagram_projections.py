@@ -154,7 +154,7 @@ def test_consolidated_defines_workload_anchor_nodes(tmp_path) -> None:
     write_diagram_projections(tmp_path, nodes, edges)
 
     consolidated = (tmp_path / "diagram.consolidated.mmd").read_text(encoding="utf-8")
-    assert "service WL_edge_ROOT(server)[Workload edge] in workloads" in consolidated
+    assert "edge service 1 Instance" in consolidated
 
 
 def test_render_edge_sanitizes_label() -> None:

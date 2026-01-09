@@ -135,6 +135,21 @@ def _mermaid_label_for(node: Node) -> str:
     return label.replace('"', "'")
 
 
+def _arch_node_label(node: Node) -> str:
+    name = str(node.get("name") or "").strip()
+    node_type = str(node.get("nodeType") or "").strip()
+
+    if not name:
+        name = _short_ocid(str(node.get("nodeId") or ""))
+
+    if _is_node_type(node, "Compartment") and name.startswith("ocid1"):
+        name = f"Compartment {_short_ocid(name)}"
+
+    if node_type and node_type != "Compartment":
+        return f"{name} {_friendly_type(node_type)}"
+    return name
+
+
 def _style_block_lines() -> List[str]:
     # Keep styling subtle and deterministic; do not depend on any theme.
     return [
@@ -469,6 +484,26 @@ def _subnet_label(node: Node) -> str:
     return f"Subnet: {name} ({vis})"
 
 
+def _is_vcn_level_resource(node: Node) -> bool:
+    return _is_node_type(
+        node,
+        "RouteTable",
+        "SecurityList",
+        "NetworkSecurityGroup",
+        "DhcpOptions",
+        "InternetGateway",
+        "NatGateway",
+        "ServiceGateway",
+        "Drg",
+        "DrgAttachment",
+        "VirtualCircuit",
+        "IPSecConnection",
+        "Cpe",
+        "LocalPeeringGateway",
+        "RemotePeeringConnection",
+    )
+
+
 def _tenancy_label(nodes: Sequence[Node]) -> str:
     roots: List[Node] = []
     for n in nodes:
@@ -590,140 +625,234 @@ def _tenancy_nodes_to_show(nodes: Sequence[Node]) -> List[Node]:
 def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edge]) -> Path:
     path = outdir / "diagram.tenancy.mmd"
 
-    shown_nodes = _tenancy_nodes_to_show(nodes)
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
     rendered_node_ids: Set[str] = set()
     edge_node_id_map: Dict[str, str] = {}
-    style_lines: List[str] = []
 
-    # Group by compartmentId (or unknown). Keep both "shown" and "all" sets.
-    comps_shown: Dict[str, List[Node]] = {}
+    # Group by compartmentId (or unknown).
     comps_all: Dict[str, List[Node]] = {}
     for n in nodes:
         cid = str(n.get("compartmentId") or "")
         if not cid and _is_node_type(n, "Compartment"):
             cid = str(n.get("nodeId") or "")
         comps_all.setdefault(cid or "UNKNOWN", []).append(n)
-    for n in shown_nodes:
-        cid = str(n.get("compartmentId") or "")
-        if not cid and _is_node_type(n, "Compartment"):
-            cid = str(n.get("nodeId") or "")
-        comps_shown.setdefault(cid or "UNKNOWN", []).append(n)
 
     # Stable order.
     comp_ids = sorted(comps_all.keys())
 
+    vcns = [n for n in nodes if _is_node_type(n, "Vcn")]
+    subnets = [n for n in nodes if _is_node_type(n, "Subnet")]
+    edge_vcn_by_src = _edge_single_target_map(edges, "IN_VCN") if edges else {}
+
+    subnet_to_vcn: Dict[str, str] = {}
+    for sn in subnets:
+        meta = _node_metadata(sn)
+        sn_id = str(sn.get("nodeId") or "")
+        vcn_id = edge_vcn_by_src.get(sn_id) or _get_meta(meta, "vcn_id")
+        if isinstance(vcn_id, str) and vcn_id:
+            subnet_to_vcn[sn_id] = vcn_id
+
+    attachments = _derived_attachments(nodes, edges)
+    attach_by_res: Dict[str, _DerivedAttachment] = {a.resource_ocid: a for a in attachments}
+
     lines: List[str] = ["flowchart LR"]
     lines.extend(_style_block_lines())
     lines.append("%% ------------------ Tenancy / Compartments ------------------")
-    lines.append("TEN_ROOT((Tenancy / Root Compartment))")
-    lines.append("class TEN_ROOT boundary")
 
-    # Render compartments as subgraphs.
+    tenancy_label = _tenancy_label(nodes)
+    tenancy_id = _mermaid_id("tenancy")
+    lines.append(f"subgraph {tenancy_id}[\"{tenancy_label.replace('\"', \"'\")}\"]")
+    lines.append("  direction TB")
+
     for cid in comp_ids:
-        label = "Compartment: Unknown" if cid == "UNKNOWN" else _compartment_label(node_by_id.get(cid, {"name": cid}))
-        sg_id = _mermaid_id(f"comp:{cid}")
-        lines.append(f"  subgraph {sg_id}[\"{label.replace('"', "'")}\"]")
+        comp_label = (
+            "Compartment: Unknown"
+            if cid == "UNKNOWN"
+            else _compartment_label(node_by_id.get(cid, {"name": cid}))
+        )
+        comp_group_id = _mermaid_id(f"comp:{cid}")
+        lines.append(f"  subgraph {comp_group_id}[\"{comp_label.replace('\"', \"'\")}\"]")
         lines.append("    direction TB")
-        style_lines.append(f"style {sg_id} stroke-dasharray: 6 3,stroke-width:2px;")
 
-        comp_nodes = [n for n in comps_shown.get(cid, []) if not _is_node_type(n, "Compartment")]
-        lane_groups = _group_nodes_by_lane(comp_nodes)
+        comp_nodes = [n for n in comps_all.get(cid, []) if not _is_node_type(n, "Compartment")]
 
-        lane_caps: Dict[str, int] = {
-            "iam": 12,
-            "security": 12,
-            "network": 16,
-            "app": 16,
-            "data": 16,
-            "observability": 12,
-            "other": 10,
+        in_vcn_id = _mermaid_id(f"comp:{cid}:in_vcn")
+        lines.append(f"    subgraph {in_vcn_id}[\"In-VCN\"]")
+        lines.append("      direction TB")
+
+        comp_vcn_ids: Set[str] = {
+            str(n.get("nodeId") or "")
+            for n in comp_nodes
+            if _is_node_type(n, "Vcn") and n.get("nodeId")
         }
+        for n in comp_nodes:
+            att = attach_by_res.get(str(n.get("nodeId") or ""))
+            if att and att.vcn_ocid:
+                comp_vcn_ids.add(att.vcn_ocid)
 
+        for vcn_id in sorted(comp_vcn_ids):
+            if not vcn_id:
+                continue
+            vcn_node = node_by_id.get(vcn_id, {"name": vcn_id, "nodeType": "Vcn"})
+            vcn_group_id = _mermaid_id(f"comp:{cid}:vcn:{vcn_id}:group")
+            lines.append(f"      subgraph {vcn_group_id}[\"{_vcn_label(vcn_node).replace('\"', \"'\")}\"]")
+            lines.append("        direction TB")
+
+            vcn_node_id = _mermaid_id(vcn_id)
+            lines.extend(
+                _render_node_with_class(
+                    vcn_node_id,
+                    _mermaid_label_for(vcn_node),
+                    cls=_node_class(vcn_node),
+                    shape=_node_shape(vcn_node),
+                )
+            )
+            rendered_node_ids.add(vcn_id)
+            edge_node_id_map.setdefault(vcn_id, vcn_node_id)
+
+            vcn_level_nodes: List[Node] = []
+            unknown_subnet_nodes: List[Node] = []
+            for n in comp_nodes:
+                if _is_node_type(n, "Vcn", "Subnet"):
+                    continue
+                ocid = str(n.get("nodeId") or "")
+                att = attach_by_res.get(ocid)
+                if not att or att.vcn_ocid != vcn_id:
+                    continue
+                if att.subnet_ocid:
+                    continue
+                if _is_vcn_level_resource(n):
+                    vcn_level_nodes.append(n)
+                else:
+                    unknown_subnet_nodes.append(n)
+
+            if vcn_level_nodes:
+                vcn_level_id = _mermaid_id(f"comp:{cid}:vcn:{vcn_id}:vcn_level")
+                lines.append(f"        subgraph {vcn_level_id}[\"VCN-level Resources\"]")
+                lines.append("          direction TB")
+                for n in sorted(
+                    vcn_level_nodes,
+                    key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")),
+                ):
+                    nid = _mermaid_id(str(n.get("nodeId") or ""))
+                    lines.extend(
+                        _render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n))
+                    )
+                    if n.get("nodeId"):
+                        raw_id = str(n.get("nodeId") or "")
+                        rendered_node_ids.add(raw_id)
+                        edge_node_id_map.setdefault(raw_id, nid)
+                lines.append("        end")
+
+            vcn_subnets = [sn for sn in subnets if subnet_to_vcn.get(str(sn.get("nodeId") or "")) == vcn_id]
+            for sn in sorted(vcn_subnets, key=lambda n: str(n.get("name") or "")):
+                sn_ocid = str(sn.get("nodeId") or "")
+                sn_group_id = _mermaid_id(f"comp:{cid}:subnet:{sn_ocid}:group")
+                lines.append(f"        subgraph {sn_group_id}[\"{_subnet_label(sn).replace('\"', \"'\")}\"]")
+                lines.append("          direction TB")
+
+                sn_node_id = _mermaid_id(sn_ocid)
+                lines.extend(
+                    _render_node_with_class(
+                        sn_node_id,
+                        _mermaid_label_for(sn),
+                        cls=_node_class(sn),
+                        shape=_node_shape(sn),
+                    )
+                )
+                if sn_ocid:
+                    rendered_node_ids.add(sn_ocid)
+                    edge_node_id_map.setdefault(sn_ocid, sn_node_id)
+
+                attached = [
+                    n
+                    for n in comp_nodes
+                    if attach_by_res.get(str(n.get("nodeId") or ""))
+                    and attach_by_res[str(n.get("nodeId") or "")].subnet_ocid == sn_ocid
+                    and not _is_node_type(n, "Vcn", "Subnet")
+                ]
+                for n in sorted(
+                    attached,
+                    key=lambda n: (
+                        str(n.get("nodeCategory") or ""),
+                        str(n.get("nodeType") or ""),
+                        str(n.get("name") or ""),
+                    ),
+                ):
+                    nid = _mermaid_id(str(n.get("nodeId") or ""))
+                    lines.extend(
+                        _render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n))
+                    )
+                    if n.get("nodeId"):
+                        raw_id = str(n.get("nodeId") or "")
+                        rendered_node_ids.add(raw_id)
+                        edge_node_id_map.setdefault(raw_id, nid)
+                lines.append("        end")
+
+            if unknown_subnet_nodes:
+                unk_id = _mermaid_id(f"comp:{cid}:vcn:{vcn_id}:subnet:unknown")
+                lines.append(f"        subgraph {unk_id}[\"Subnet: Unknown\"]")
+                lines.append("          direction TB")
+                for n in sorted(
+                    unknown_subnet_nodes,
+                    key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")),
+                ):
+                    nid = _mermaid_id(str(n.get("nodeId") or ""))
+                    lines.extend(
+                        _render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n))
+                    )
+                    if n.get("nodeId"):
+                        raw_id = str(n.get("nodeId") or "")
+                        rendered_node_ids.add(raw_id)
+                        edge_node_id_map.setdefault(raw_id, nid)
+                lines.append("        end")
+
+            lines.append("      end")
+
+        lines.append("    end")
+
+        out_id = _mermaid_id(f"comp:{cid}:out_vcn")
+        lines.append(f"    subgraph {out_id}[\"Out-of-VCN Services\"]")
+        lines.append("      direction TB")
+
+        out_nodes = []
+        for n in comp_nodes:
+            if _is_node_type(n, "Vcn", "Subnet"):
+                continue
+            ocid = str(n.get("nodeId") or "")
+            att = attach_by_res.get(ocid)
+            if att and att.vcn_ocid:
+                continue
+            out_nodes.append(n)
+
+        lane_groups = _group_nodes_by_lane(out_nodes)
         for lane, lane_nodes in lane_groups.items():
-            lane_id = _mermaid_id(f"comp:{cid}:lane:{lane}")
-            lines.append(f"    subgraph {lane_id}[\"{_lane_label(lane)}\"]")
-            lines.append("      direction TB")
-
-            kept, omitted = _keep_and_omitted(lane_nodes, keep=lane_caps.get(lane, 12))
-            for n in kept:
+            lane_id = _mermaid_id(f"comp:{cid}:out_vcn:lane:{lane}")
+            lines.append(f"      subgraph {lane_id}[\"{_lane_label(lane)}\"]")
+            lines.append("        direction TB")
+            for n in sorted(
+                lane_nodes,
+                key=lambda n: (str(n.get("nodeCategory") or ""), str(n.get("nodeType") or ""), str(n.get("name") or "")),
+            ):
                 nid = _mermaid_id(str(n.get("nodeId") or ""))
-                cls = _node_class(n)
-                shape = _node_shape(n)
-                lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=cls, shape=shape))
+                lines.extend(
+                    _render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n))
+                )
                 if n.get("nodeId"):
                     raw_id = str(n.get("nodeId") or "")
                     rendered_node_ids.add(raw_id)
                     edge_node_id_map.setdefault(raw_id, nid)
+            lines.append("      end")
 
-            if omitted:
-                summary_id = _mermaid_id(f"comp:{cid}:lane:{lane}:summary")
-                lines.extend(
-                    _render_node_with_class(
-                        summary_id,
-                        f"Other {lane} resources... and {len(omitted)} more",
-                        cls="summary",
-                    )
-                )
-                _render_omitted_type_summaries(
-                    lines,
-                    prefix=f"comp:{cid}:lane:{lane}",
-                    omitted_nodes=omitted,
-                    max_types=5,
-                    example_types=2,
-                    examples_per_type=1,
-                )
-
-            lines.append("    end")
+        lines.append("    end")
         lines.append("  end")
 
-    # Minimal flow hints across major roles.
-    # Connect compute-like things to network and data resources within the same compartment.
-    by_comp: Dict[str, Dict[str, List[Node]]] = {}
-    for n in shown_nodes:
-        cid = str(n.get("compartmentId") or "")
-        by_comp.setdefault(cid or "UNKNOWN", {}).setdefault(str(n.get("nodeType") or ""), []).append(n)
+    lines.extend(_legend_flowchart_lines("tenancy"))
+    lines.append("end")
 
-    for cid, _typed in by_comp.items():
-        compute_nodes = [
-            n
-            for n in shown_nodes
-            if (str(n.get("compartmentId") or "") or "UNKNOWN") == cid and str(n.get("nodeCategory") or "") == "compute"
-        ]
-        vcn_nodes = [
-            n
-            for n in shown_nodes
-            if (str(n.get("compartmentId") or "") or "UNKNOWN") == cid and _is_node_type(n, "Vcn")
-        ]
-        bucket_nodes = [
-            n
-            for n in shown_nodes
-            if (str(n.get("compartmentId") or "") or "UNKNOWN") == cid and _is_node_type(n, "Bucket")
-        ]
-
-        for c in compute_nodes:
-            c_id = _mermaid_id(str(c.get("nodeId") or ""))
-            for vcn in vcn_nodes:
-                v_id = _mermaid_id(str(vcn.get("nodeId") or ""))
-                lines.append(_render_edge(c_id, v_id, "uses network inferred", dotted=True))
-            for b in bucket_nodes:
-                b_id = _mermaid_id(str(b.get("nodeId") or ""))
-                lines.append(_render_edge(c_id, b_id, "reads/writes inferred", dotted=True))
-
-    rel_lines = _render_relationship_edges(
-        edges,
-        node_ids=rendered_node_ids,
-        node_id_map=edge_node_id_map,
-        allowlist=_EDGE_RELATIONS_FOR_PROJECTIONS,
-    )
+    rel_lines = _render_relationship_edges(edges, node_ids=rendered_node_ids, node_id_map=edge_node_id_map)
     lines.extend(rel_lines)
 
-    # Context links (root -> compartments)
-    for cid in comp_ids:
-        sg_id = _mermaid_id(f"comp:{cid}")
-        lines.append(f"TEN_ROOT -.-> {sg_id}")
-
-    lines.extend(style_lines)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 
@@ -757,16 +886,18 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
         fname = f"diagram.network.{_slugify(vcn_name)}.mmd"
         path = outdir / fname
 
+        rendered_node_ids: Set[str] = set()
+        edge_node_id_map: Dict[str, str] = {}
         lines: List[str] = ["flowchart LR"]
         lines.extend(_style_block_lines())
         lines.append("%% ------------------ Network Topology ------------------")
-        net_root = f"NET_{_slugify(vcn_name)}_ROOT"
-        lines.append(f"{net_root}((Network Topology: {vcn_name}))")
-        lines.append(f"class {net_root} boundary")
+
+        internet_id = _mermaid_id(f"external:internet:{vcn_name}")
+        lines.extend(_render_node_with_class(internet_id, "Internet", cls="external", shape="round"))
 
         gateways: List[Node] = []
         for n in nodes:
-            if not _is_node_type(n, "InternetGateway", "NatGateway", "ServiceGateway", "Drg", "DrgAttachment"):
+            if not _is_node_type(n, *_NETWORK_GATEWAY_NODETYPES):
                 continue
             meta = _node_metadata(n)
             nid = str(n.get("nodeId") or "")
@@ -774,233 +905,180 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
             if isinstance(vcn_ref, str) and vcn_ref == vcn_ocid:
                 gateways.append(n)
 
-        control: List[Node] = []
-        for n in nodes:
-            nt = str(n.get("nodeType") or "")
-            if nt not in _NETWORK_CONTROL_NODETYPES:
-                continue
-            meta = _node_metadata(n)
-            nid = str(n.get("nodeId") or "")
-            vcn_ref = edge_vcn_by_src.get(nid) or _get_meta(meta, "vcn_id")
-            if isinstance(vcn_ref, str) and vcn_ref == vcn_ocid:
-                control.append(n)
-
-        internet_id = _mermaid_id(f"external:internet:{vcn_name}")
-        lines.extend(_render_node_with_class(internet_id, "Internet", cls="external", shape="round"))
-
         has_sgw = any(_is_node_type(g, "ServiceGateway") for g in gateways)
         oci_services_id = ""
         if has_sgw:
             oci_services_id = _mermaid_id(f"external:oci_services:{vcn_name}")
             lines.extend(_render_node_with_class(oci_services_id, "OCI Services", cls="external", shape="round"))
 
-        vcn_id = _mermaid_id(vcn_ocid)
-        rendered_node_ids: Set[str] = set()
-        edge_node_id_map: Dict[str, str] = {}
+        tenancy_label = _tenancy_label(nodes)
+        tenancy_id = _mermaid_id(f"tenancy:{vcn_ocid}")
+        lines.append(f"subgraph {tenancy_id}[\"{tenancy_label.replace('\"', \"'\")}\"]")
+        lines.append("  direction TB")
+
+        comp_id = str(vcn.get("compartmentId") or "") or "UNKNOWN"
+        comp_label = (
+            "Compartment: Unknown"
+            if comp_id == "UNKNOWN"
+            else _compartment_label(node_by_id.get(comp_id, {"name": comp_id}))
+        )
+        comp_group_id = _mermaid_id(f"comp:{comp_id}:network:{vcn_ocid}")
+        lines.append(f"  subgraph {comp_group_id}[\"{comp_label.replace('\"', \"'\")}\"]")
+        lines.append("    direction TB")
+
+        in_vcn_id = _mermaid_id(f"comp:{comp_id}:network:{vcn_ocid}:in_vcn")
+        lines.append(f"    subgraph {in_vcn_id}[\"In-VCN\"]")
+        lines.append("      direction TB")
+
+        vcn_group_id = _mermaid_id(f"comp:{comp_id}:vcn:{vcn_ocid}:group")
+        lines.append(f"      subgraph {vcn_group_id}[\"{_vcn_label(vcn).replace('\"', \"'\")}\"]")
+        lines.append("        direction TB")
+
+        vcn_node_id = _mermaid_id(vcn_ocid)
+        lines.extend(
+            _render_node_with_class(
+                vcn_node_id,
+                _mermaid_label_for(vcn),
+                cls=_node_class(vcn),
+                shape=_node_shape(vcn),
+            )
+        )
         if vcn_ocid:
             rendered_node_ids.add(vcn_ocid)
-            edge_node_id_map[vcn_ocid] = vcn_id
-        lines.append(f"  subgraph {vcn_id}[\"{_vcn_label(vcn).replace('"', "'")}\"]")
-        lines.append("    direction TB")
+            edge_node_id_map.setdefault(vcn_ocid, vcn_node_id)
+
         if gateways:
             gw_id = _mermaid_id(f"vcn:{vcn_ocid}:gateways")
-            lines.append(f"    subgraph {gw_id}[\"Gateways\"]")
-            lines.append("      direction TB")
-            for g in sorted(gateways, key=lambda n: str(n.get("name") or "")):
+            lines.append(f"        subgraph {gw_id}[\"Gateways\"]")
+            lines.append("          direction TB")
+            for g in sorted(gateways, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))):
                 gid = _mermaid_id(str(g.get("nodeId") or ""))
                 lines.extend(_render_node_with_class(gid, _mermaid_label_for(g), cls=_node_class(g), shape=_node_shape(g)))
                 if g.get("nodeId"):
-                    rendered_node_ids.add(str(g.get("nodeId") or ""))
-            lines.append("    end")
+                    raw_id = str(g.get("nodeId") or "")
+                    rendered_node_ids.add(raw_id)
+                    edge_node_id_map.setdefault(raw_id, gid)
+            lines.append("        end")
 
-        control_sorted = sorted(control, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")))
-        if control_sorted:
-            ctl_id = _mermaid_id(f"vcn:{vcn_ocid}:controls")
-            lines.append(f"    subgraph {ctl_id}[\"Routing & Security\"]")
-            lines.append("      direction TB")
-            kept_control, omitted_control = _keep_and_omitted(control_sorted, keep=8)
-            for n in kept_control:
-                nid = _mermaid_id(str(n.get("nodeId") or ""))
-                lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls="network", shape="rect"))
-                if n.get("nodeId"):
-                    rendered_node_ids.add(str(n.get("nodeId") or ""))
-            if omitted_control:
-                sid = _mermaid_id(f"vcn:{vcn_ocid}:control_summary")
-                lines.extend(
-                    _render_node_with_class(
-                        sid,
-                        f"Other network controls... and {len(omitted_control)} more",
-                        cls="summary",
-                    )
-                )
-                _render_omitted_type_summaries(
-                    lines,
-                    prefix=f"vcn:{vcn_ocid}:control",
-                    omitted_nodes=omitted_control,
-                    max_types=4,
-                    example_types=2,
-                    examples_per_type=1,
-                )
-            lines.append("    end")
-
-        vcn_subnets = [sn for sn in subnets if subnet_to_vcn.get(str(sn.get("nodeId") or "")) == vcn_ocid]
-
-        def _render_subnet_group(label: str, group_subnets: List[Node]) -> None:
-            if not group_subnets:
-                return
-            group_id = _mermaid_id(f"vcn:{vcn_ocid}:subnets:{label}")
-            lines.append(f"    subgraph {group_id}[\"{label}\"]")
-            lines.append("      direction TB")
-            for sn in sorted(group_subnets, key=lambda n: str(n.get("name") or "")):
-                sn_ocid = str(sn.get("nodeId") or "")
-                sn_id = _mermaid_id(sn_ocid)
-                if sn_ocid:
-                    rendered_node_ids.add(sn_ocid)
-                    edge_node_id_map.setdefault(sn_ocid, sn_id)
-                lines.append(f"      subgraph {sn_id}[\"{_subnet_label(sn).replace('"', "'")}\"]")
-                lines.append("        direction TB")
-
-                attached: List[Node] = []
-                for n in nodes:
-                    nt = str(n.get("nodeType") or "")
-                    if nt in _NON_ARCH_LEAF_NODETYPES:
-                        continue
-                    if _is_node_type(n, "Subnet", "Vcn"):
-                        continue
-                    att = res_to_attach.get(str(n.get("nodeId") or ""))
-                    if att and att.subnet_ocid == sn_ocid:
-                        attached.append(n)
-
-                key_nodes: List[Node] = []
-                leaf_nodes: List[Node] = []
-                for a in sorted(
-                    attached,
-                    key=lambda n: (
-                        str(n.get("nodeCategory") or ""),
-                        str(n.get("nodeType") or ""),
-                        str(n.get("name") or ""),
-                    ),
-                ):
-                    if _is_media_like(a) or str(a.get("nodeCategory") or "") == "other":
-                        leaf_nodes.append(a)
-                    else:
-                        key_nodes.append(a)
-
-                for a in key_nodes[:12]:
-                    aid = _mermaid_id(str(a.get("nodeId") or ""))
-                    lines.extend(_render_node_with_class(aid, _mermaid_label_for(a), cls=_node_class(a), shape=_node_shape(a)))
-                    if a.get("nodeId"):
-                        rendered_node_ids.add(str(a.get("nodeId") or ""))
-
-                if len(key_nodes) > 12:
-                    summary_id = _mermaid_id(f"subnet:{sn_ocid}:key_summary")
-                    lines.extend(
-                        _render_node_with_class(
-                            summary_id,
-                            f"Other key resources... and {len(key_nodes) - 12} more",
-                            cls="summary",
-                        )
-                    )
-
-                if leaf_nodes:
-                    kept, summary = _summarize_many(leaf_nodes, title="Other leaf resources", keep=6)
-                    for a in kept:
-                        aid = _mermaid_id(str(a.get("nodeId") or ""))
-                        lines.extend(_render_node_with_class(aid, _mermaid_label_for(a), cls="boundary", shape="rect"))
-                        if a.get("nodeId"):
-                            rendered_node_ids.add(str(a.get("nodeId") or ""))
-                    if summary:
-                        sid = _mermaid_id(f"subnet:{sn_ocid}:leaf_summary")
-                        lines.extend(_render_node_with_class(sid, summary, cls="summary"))
-
-                ip_vnic_counts: Dict[str, int] = {"Vnic": 0, "PrivateIp": 0, "PublicIp": 0}
-                for n in nodes:
-                    if not (_is_node_type(n, "Vnic") or _is_node_type(n, "PrivateIp") or _is_node_type(n, "PublicIp")):
-                        continue
-                    att = res_to_attach.get(str(n.get("nodeId") or ""))
-                    if att and att.subnet_ocid == sn_ocid:
-                        if _is_node_type(n, "Vnic"):
-                            ip_vnic_counts["Vnic"] += 1
-                        elif _is_node_type(n, "PrivateIp"):
-                            ip_vnic_counts["PrivateIp"] += 1
-                        elif _is_node_type(n, "PublicIp"):
-                            ip_vnic_counts["PublicIp"] += 1
-
-                if any(ip_vnic_counts.values()):
-                    sid = _mermaid_id(f"subnet:{sn_ocid}:ip_vnic")
-                    label = (
-                        f"IPs / VNICs<br>VNICs: {ip_vnic_counts['Vnic']}, "
-                        f"Private IPs: {ip_vnic_counts['PrivateIp']}, "
-                        f"Public IPs: {ip_vnic_counts['PublicIp']}"
-                    )
-                    lines.extend(_render_node_with_class(sid, label, cls="summary", shape="rect"))
-
-                lines.append("      end")
-            lines.append("    end")
-
-        public_subnets: List[Node] = []
-        private_subnets: List[Node] = []
-        other_subnets: List[Node] = []
-        for sn in vcn_subnets:
-            meta = _node_metadata(sn)
-            prohibit = _get_meta(meta, "prohibit_public_ip_on_vnic")
-            if prohibit is False:
-                public_subnets.append(sn)
-            elif prohibit is True:
-                private_subnets.append(sn)
-            else:
-                other_subnets.append(sn)
-
-        _render_subnet_group("Public Subnets", public_subnets)
-        _render_subnet_group("Private Subnets", private_subnets)
-        _render_subnet_group("Subnets (unspecified)", other_subnets)
-
-        vcn_only_nodes: List[Node] = []
+        vcn_level_nodes: List[Node] = []
+        unknown_subnet_nodes: List[Node] = []
         for n in nodes:
-            nt = str(n.get("nodeType") or "")
-            if nt in _NON_ARCH_LEAF_NODETYPES:
+            if _is_node_type(n, "Vcn", "Subnet"):
                 continue
-            if _is_node_type(n, "Subnet", "Vcn", "InternetGateway", "NatGateway", "ServiceGateway", "Drg", "DrgAttachment"):
+            ocid = str(n.get("nodeId") or "")
+            if not ocid:
                 continue
-            att = res_to_attach.get(str(n.get("nodeId") or ""))
-            if att and att.vcn_ocid == vcn_ocid and not att.subnet_ocid:
-                vcn_only_nodes.append(n)
+            att = res_to_attach.get(ocid)
+            if att and att.vcn_ocid == vcn_ocid:
+                if att.subnet_ocid:
+                    continue
+                if _is_node_type(n, *_NETWORK_GATEWAY_NODETYPES):
+                    continue
+                if _is_vcn_level_resource(n):
+                    vcn_level_nodes.append(n)
+                else:
+                    unknown_subnet_nodes.append(n)
+                continue
+            meta = _node_metadata(n)
+            vcn_ref = edge_vcn_by_src.get(ocid) or _get_meta(meta, "vcn_id")
+            if isinstance(vcn_ref, str) and vcn_ref == vcn_ocid:
+                if _is_node_type(n, *_NETWORK_GATEWAY_NODETYPES):
+                    continue
+                if _is_vcn_level_resource(n):
+                    vcn_level_nodes.append(n)
+                else:
+                    unknown_subnet_nodes.append(n)
 
-        if vcn_only_nodes:
-            vcn_only_id = _mermaid_id(f"vcn:{vcn_ocid}:services")
-            lines.append(f"    subgraph {vcn_only_id}[\"VCN Services\"]")
-            lines.append("      direction TB")
-            kept, omitted = _keep_and_omitted(
-                sorted(vcn_only_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))),
-                keep=10,
-            )
-            for n in kept:
+        if vcn_level_nodes:
+            vcn_level_id = _mermaid_id(f"vcn:{vcn_ocid}:vcn_level")
+            lines.append(f"        subgraph {vcn_level_id}[\"VCN-level Resources\"]")
+            lines.append("          direction TB")
+            for n in sorted(
+                vcn_level_nodes,
+                key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")),
+            ):
                 nid = _mermaid_id(str(n.get("nodeId") or ""))
                 lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n)))
                 if n.get("nodeId"):
-                    rendered_node_ids.add(str(n.get("nodeId") or ""))
-            if omitted:
-                sid = _mermaid_id(f"vcn:{vcn_ocid}:services:summary")
-                lines.extend(
-                    _render_node_with_class(
-                        sid,
-                        f"Other VCN services... and {len(omitted)} more",
-                        cls="summary",
-                    )
-                )
-            lines.append("    end")
+                    raw_id = str(n.get("nodeId") or "")
+                    rendered_node_ids.add(raw_id)
+                    edge_node_id_map.setdefault(raw_id, nid)
+            lines.append("        end")
 
+        vcn_subnets = [sn for sn in subnets if subnet_to_vcn.get(str(sn.get("nodeId") or "")) == vcn_ocid]
+        for sn in sorted(vcn_subnets, key=lambda n: str(n.get("name") or "")):
+            sn_ocid = str(sn.get("nodeId") or "")
+            sn_group_id = _mermaid_id(f"vcn:{vcn_ocid}:subnet:{sn_ocid}:group")
+            lines.append(f"        subgraph {sn_group_id}[\"{_subnet_label(sn).replace('\"', \"'\")}\"]")
+            lines.append("          direction TB")
+
+            sn_node_id = _mermaid_id(sn_ocid)
+            lines.extend(
+                _render_node_with_class(
+                    sn_node_id,
+                    _mermaid_label_for(sn),
+                    cls=_node_class(sn),
+                    shape=_node_shape(sn),
+                )
+            )
+            if sn_ocid:
+                rendered_node_ids.add(sn_ocid)
+                edge_node_id_map.setdefault(sn_ocid, sn_node_id)
+
+            attached = [
+                n
+                for n in nodes
+                if attach_by_res.get(str(n.get("nodeId") or ""))
+                and attach_by_res[str(n.get("nodeId") or "")].subnet_ocid == sn_ocid
+                and not _is_node_type(n, "Vcn", "Subnet")
+            ]
+            for n in sorted(
+                attached,
+                key=lambda n: (
+                    str(n.get("nodeCategory") or ""),
+                    str(n.get("nodeType") or ""),
+                    str(n.get("name") or ""),
+                ),
+            ):
+                nid = _mermaid_id(str(n.get("nodeId") or ""))
+                lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n)))
+                if n.get("nodeId"):
+                    raw_id = str(n.get("nodeId") or "")
+                    rendered_node_ids.add(raw_id)
+                    edge_node_id_map.setdefault(raw_id, nid)
+
+            lines.append("        end")
+
+        if unknown_subnet_nodes:
+            unk_id = _mermaid_id(f"vcn:{vcn_ocid}:subnet:unknown")
+            lines.append(f"        subgraph {unk_id}[\"Subnet: Unknown\"]")
+            lines.append("          direction TB")
+            for n in sorted(
+                unknown_subnet_nodes,
+                key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")),
+            ):
+                nid = _mermaid_id(str(n.get("nodeId") or ""))
+                lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n)))
+                if n.get("nodeId"):
+                    raw_id = str(n.get("nodeId") or "")
+                    rendered_node_ids.add(raw_id)
+                    edge_node_id_map.setdefault(raw_id, nid)
+            lines.append("        end")
+
+        lines.append("      end")
+        lines.append("    end")
         lines.append("  end")
+
+        lines.extend(_legend_flowchart_lines(f"network:{vcn_ocid}"))
+        lines.append("end")
 
         rel_lines = _render_relationship_edges(
             edges,
             node_ids=rendered_node_ids,
             node_id_map=edge_node_id_map,
-            allowlist=_EDGE_RELATIONS_FOR_PROJECTIONS,
         )
         lines.extend(rel_lines)
 
-        # Flows: Internet -> IGW -> public subnets; private subnets -> NAT; private -> SGW.
         igw = next((g for g in gateways if _is_node_type(g, "InternetGateway")), None)
         nat = next((g for g in gateways if _is_node_type(g, "NatGateway")), None)
         sgw = next((g for g in gateways if _is_node_type(g, "ServiceGateway")), None)
@@ -1014,9 +1092,6 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
         if sgw is not None and oci_services_id:
             sgw_id = _mermaid_id(str(sgw.get("nodeId") or ""))
             lines.append(_render_edge(sgw_id, oci_services_id, "OCI services inferred", dotted=True))
-
-        # Context link from view root.
-        lines.append(f"{net_root} -.-> {vcn_id}")
 
         for sn in vcn_subnets:
             sn_ocid = str(sn.get("nodeId") or "")
@@ -1063,6 +1138,16 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
     attach_by_res: Dict[str, _DerivedAttachment] = {a.resource_ocid: a for a in attachments}
 
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
+    subnets = [n for n in nodes if _is_node_type(n, "Subnet")]
+    edge_vcn_by_src = _edge_single_target_map(edges, "IN_VCN")
+
+    subnet_to_vcn: Dict[str, str] = {}
+    for sn in subnets:
+        meta = _node_metadata(sn)
+        sn_id = str(sn.get("nodeId") or "")
+        vcn_id = edge_vcn_by_src.get(sn_id) or _get_meta(meta, "vcn_id")
+        if isinstance(vcn_id, str) and vcn_id:
+            subnet_to_vcn[sn_id] = vcn_id
 
     out_paths: List[Path] = []
 
@@ -1075,10 +1160,6 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
         lines.extend(_style_block_lines())
         lines.append("%% ------------------ Workload / Application View ------------------")
 
-        wl_root = f"WL_{_slugify(wl_name)}_ROOT"
-        lines.append(f"{wl_root}((Workload View: {wl_name}))")
-        lines.append(f"class {wl_root} boundary")
-
         users_id = _mermaid_id(f"external:users:{wl_name}")
         lines.extend(_render_node_with_class(users_id, "Users", cls="external", shape="round"))
 
@@ -1088,6 +1169,11 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
         rendered_node_ids: Set[str] = set()
         edge_node_id_map: Dict[str, str] = {}
 
+        tenancy_label = _tenancy_label(nodes)
+        tenancy_id = _mermaid_id(f"tenancy:workload:{wl_name}")
+        lines.append(f"subgraph {tenancy_id}[\"{tenancy_label.replace('\"', \"'\")}\"]")
+        lines.append("  direction TB")
+
         # Group by compartment.
         comps: Dict[str, List[Node]] = {}
         for n in wl_nodes:
@@ -1096,204 +1182,195 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
 
         for cid in sorted(comps.keys()):
             comp_label = "Compartment: Unknown" if cid == "UNKNOWN" else _compartment_label(node_by_id.get(cid, {"name": cid}))
-            sg_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}")
-            lines.append(f"  subgraph {sg_id}[\"{comp_label.replace('"', "'")}\"]")
+            comp_group_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}")
+            lines.append(f"  subgraph {comp_group_id}[\"{comp_label.replace('\"', \"'\")}\"]")
             lines.append("    direction TB")
 
-            # Add optional VCN/subnet boundaries for nodes that have attachments.
-            # Keep it simple: one level of VCN, then subnets.
-            vcn_to_subnets: Dict[str, Set[str]] = {}
-            for n in comps[cid]:
-                att = attach_by_res.get(str(n.get("nodeId") or ""))
-                if att and att.vcn_ocid:
-                    if att.subnet_ocid:
-                        vcn_to_subnets.setdefault(att.vcn_ocid, set()).add(att.subnet_ocid)
-                    else:
-                        vcn_to_subnets.setdefault(att.vcn_ocid, set())
+            comp_nodes = [n for n in comps[cid] if not _is_node_type(n, "Compartment")]
 
-            # Render resources not tied to a VCN/subnet.
-            untied: List[Node] = []
-            for n in comps[cid]:
-                att = attach_by_res.get(str(n.get("nodeId") or ""))
-                if not att or not att.vcn_ocid:
-                    untied.append(n)
-
-            lane_groups = _group_nodes_by_lane(untied)
-            network_lane_nodes = lane_groups.pop("network", [])
-            lane_caps: Dict[str, int] = {
-                "iam": 12,
-                "security": 12,
-                "network": 12,
-                "app": 18,
-                "data": 18,
-                "observability": 12,
-                "other": 12,
-            }
-
-            for lane, lane_nodes in lane_groups.items():
-                lane_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}:lane:{lane}")
-                lines.append(f"    subgraph {lane_id}[\"{_lane_label(lane)}\"]")
-                lines.append("      direction TB")
-
-                if lane == "data":
-                    data_nodes = [n for n in lane_nodes if not _is_media_like(n)]
-                    media_nodes = [n for n in lane_nodes if _is_media_like(n)]
-
-                    kept, omitted = _keep_and_omitted(
-                        sorted(data_nodes, key=_instance_first_sort_key),
-                        keep=lane_caps.get(lane, 12),
-                    )
-                    for n in kept:
-                        nid = _mermaid_id(str(n.get("nodeId") or ""))
-                        lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n)))
-                        if n.get("nodeId"):
-                            rendered_node_ids.add(str(n.get("nodeId") or ""))
-                    if omitted:
-                        sid = _mermaid_id(f"workload:{wl_name}:comp:{cid}:lane:{lane}:summary")
-                        lines.extend(
-                            _render_node_with_class(
-                                sid,
-                                f"Other data resources... and {len(omitted)} more",
-                                cls="summary",
-                            )
-                        )
-
-                    if media_nodes:
-                        kept, summary = _summarize_many(
-                            sorted(media_nodes, key=lambda n: (str(n.get("name") or ""), str(n.get("nodeId") or ""))),
-                            title="Media assets",
-                            keep=10,
-                        )
-                        for n in kept:
-                            nid = _mermaid_id(str(n.get("nodeId") or ""))
-                            lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls="boundary", shape="rect"))
-                            if n.get("nodeId"):
-                                rendered_node_ids.add(str(n.get("nodeId") or ""))
-                        if summary:
-                            sid = _mermaid_id(f"workload:{wl_name}:comp:{cid}:lane:{lane}:media_summary")
-                            lines.extend(_render_node_with_class(sid, summary, cls="summary"))
-                else:
-                    kept, omitted = _keep_and_omitted(
-                        sorted(lane_nodes, key=_instance_first_sort_key),
-                        keep=lane_caps.get(lane, 12),
-                    )
-                    for n in kept:
-                        nid = _mermaid_id(str(n.get("nodeId") or ""))
-                        lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n)))
-                        if n.get("nodeId"):
-                            rendered_node_ids.add(str(n.get("nodeId") or ""))
-                    if omitted:
-                        sid = _mermaid_id(f"workload:{wl_name}:comp:{cid}:lane:{lane}:summary")
-                        lines.extend(
-                            _render_node_with_class(
-                                sid,
-                                f"Other {lane} resources... and {len(omitted)} more",
-                                cls="summary",
-                            )
-                        )
-
-                lines.append("    end")
-
-            net_lane_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}:lane:network")
-            lines.append(f"    subgraph {net_lane_id}[\"Network\"]")
+            in_vcn_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}:in_vcn")
+            lines.append(f"    subgraph {in_vcn_id}[\"In-VCN\"]")
             lines.append("      direction TB")
 
-            if network_lane_nodes:
-                kept, omitted = _keep_and_omitted(
-                    sorted(network_lane_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))),
-                    keep=12,
-                )
-                for n in kept:
-                    nid = _mermaid_id(str(n.get("nodeId") or ""))
-                    lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n)))
-                    if n.get("nodeId"):
-                        rendered_node_ids.add(str(n.get("nodeId") or ""))
-                if omitted:
-                    sid = _mermaid_id(f"workload:{wl_name}:comp:{cid}:lane:network:summary")
-                    lines.extend(
-                        _render_node_with_class(
-                            sid,
-                            f"Other network resources... and {len(omitted)} more",
-                            cls="summary",
-                        )
-                    )
+            comp_vcn_ids: Set[str] = set()
+            for n in comp_nodes:
+                if _is_node_type(n, "Vcn") and n.get("nodeId"):
+                    comp_vcn_ids.add(str(n.get("nodeId") or ""))
+                att = attach_by_res.get(str(n.get("nodeId") or ""))
+                if att and att.vcn_ocid:
+                    comp_vcn_ids.add(att.vcn_ocid)
 
-            for vcn_ocid in sorted(vcn_to_subnets.keys()):
-                vcn = node_by_id.get(vcn_ocid)
-                vcn_label = _vcn_label(vcn) if vcn else f"VCN {_short_ocid(vcn_ocid)}"
-                vcn_id = _mermaid_id(f"workload:{wl_name}:vcn:{vcn_ocid}")
+            for vcn_ocid in sorted(comp_vcn_ids):
+                if not vcn_ocid:
+                    continue
+                vcn_node = node_by_id.get(vcn_ocid, {"name": vcn_ocid, "nodeType": "Vcn"})
+                vcn_group_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}:vcn:{vcn_ocid}:group")
+                lines.append(f"      subgraph {vcn_group_id}[\"{_vcn_label(vcn_node).replace('\"', \"'\")}\"]")
+                lines.append("        direction TB")
+
+                vcn_node_id = _mermaid_id(vcn_ocid)
+                lines.extend(
+                    _render_node_with_class(
+                        vcn_node_id,
+                        _mermaid_label_for(vcn_node),
+                        cls=_node_class(vcn_node),
+                        shape=_node_shape(vcn_node),
+                    )
+                )
                 if vcn_ocid:
                     rendered_node_ids.add(vcn_ocid)
-                    edge_node_id_map.setdefault(vcn_ocid, vcn_id)
-                lines.append(f"    subgraph {vcn_id}[\"{vcn_label.replace('"', "'")}\"]")
-                lines.append("      direction TB")
+                    edge_node_id_map.setdefault(vcn_ocid, vcn_node_id)
 
-                for sn_ocid in sorted(vcn_to_subnets[vcn_ocid]):
-                    sn = node_by_id.get(sn_ocid)
-                    sn_label = _subnet_label(sn) if sn else f"Subnet {_short_ocid(sn_ocid)}"
-                    sn_id = _mermaid_id(f"workload:{wl_name}:subnet:{sn_ocid}")
+                vcn_level_nodes: List[Node] = []
+                unknown_subnet_nodes: List[Node] = []
+                for n in comp_nodes:
+                    if _is_node_type(n, "Vcn", "Subnet"):
+                        continue
+                    ocid = str(n.get("nodeId") or "")
+                    if not ocid:
+                        continue
+                    att = attach_by_res.get(ocid)
+                    if att and att.vcn_ocid == vcn_ocid:
+                        if att.subnet_ocid:
+                            continue
+                        if _is_vcn_level_resource(n):
+                            vcn_level_nodes.append(n)
+                        else:
+                            unknown_subnet_nodes.append(n)
+                        continue
+                    meta = _node_metadata(n)
+                    vcn_ref = edge_vcn_by_src.get(ocid) or _get_meta(meta, "vcn_id")
+                    if isinstance(vcn_ref, str) and vcn_ref == vcn_ocid:
+                        if _is_vcn_level_resource(n):
+                            vcn_level_nodes.append(n)
+                        else:
+                            unknown_subnet_nodes.append(n)
+
+                if vcn_level_nodes:
+                    vcn_level_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}:vcn:{vcn_ocid}:vcn_level")
+                    lines.append(f"        subgraph {vcn_level_id}[\"VCN-level Resources\"]")
+                    lines.append("          direction TB")
+                    for n in sorted(
+                        vcn_level_nodes,
+                        key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")),
+                    ):
+                        nid = _mermaid_id(str(n.get("nodeId") or ""))
+                        lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n)))
+                        if n.get("nodeId"):
+                            raw_id = str(n.get("nodeId") or "")
+                            rendered_node_ids.add(raw_id)
+                            edge_node_id_map.setdefault(raw_id, nid)
+                    lines.append("        end")
+
+                vcn_subnet_ids: Set[str] = set()
+                for n in comp_nodes:
+                    if _is_node_type(n, "Subnet") and n.get("nodeId"):
+                        sn_id = str(n.get("nodeId") or "")
+                        if subnet_to_vcn.get(sn_id) == vcn_ocid:
+                            vcn_subnet_ids.add(sn_id)
+                    att = attach_by_res.get(str(n.get("nodeId") or ""))
+                    if att and att.subnet_ocid:
+                        vcn_subnet_ids.add(att.subnet_ocid)
+
+                for sn_ocid in sorted(vcn_subnet_ids):
+                    sn = node_by_id.get(sn_ocid, {"name": sn_ocid, "nodeType": "Subnet"})
+                    sn_group_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}:subnet:{sn_ocid}:group")
+                    lines.append(f"        subgraph {sn_group_id}[\"{_subnet_label(sn).replace('\"', \"'\")}\"]")
+                    lines.append("          direction TB")
+
+                    sn_node_id = _mermaid_id(sn_ocid)
+                    lines.extend(
+                        _render_node_with_class(
+                            sn_node_id,
+                            _mermaid_label_for(sn),
+                            cls=_node_class(sn),
+                            shape=_node_shape(sn),
+                        )
+                    )
                     if sn_ocid:
                         rendered_node_ids.add(sn_ocid)
-                        edge_node_id_map.setdefault(sn_ocid, sn_id)
-                    lines.append(f"      subgraph {sn_id}[\"{sn_label.replace('"', "'")}\"]")
-                    lines.append("        direction TB")
+                        edge_node_id_map.setdefault(sn_ocid, sn_node_id)
 
                     attached = [
                         n
-                        for n in comps[cid]
+                        for n in comp_nodes
                         if attach_by_res.get(str(n.get("nodeId") or ""))
                         and attach_by_res[str(n.get("nodeId") or "")].subnet_ocid == sn_ocid
+                        and not _is_node_type(n, "Vcn", "Subnet")
                     ]
-
-                    attached_sorted = sorted(
+                    for n in sorted(
                         attached,
                         key=lambda n: (
                             str(n.get("nodeCategory") or ""),
                             str(n.get("nodeType") or ""),
                             str(n.get("name") or ""),
                         ),
-                    )
-
-                    key_nodes: List[Node] = []
-                    leaf_nodes: List[Node] = []
-                    for a in attached_sorted:
-                        if _is_media_like(a):
-                            leaf_nodes.append(a)
-                        else:
-                            key_nodes.append(a)
-
-                    key_nodes_sorted = sorted(key_nodes, key=_instance_first_sort_key)
-
-                    for a in key_nodes_sorted[:20]:
-                        aid = _mermaid_id(str(a.get("nodeId") or ""))
-                        lines.extend(_render_node_with_class(aid, _mermaid_label_for(a), cls=_node_class(a), shape=_node_shape(a)))
-                        if a.get("nodeId"):
-                            rendered_node_ids.add(str(a.get("nodeId") or ""))
-
-                    if len(key_nodes_sorted) > 20:
-                        sid = _mermaid_id(f"workload:{wl_name}:comp:{cid}:subnet:{sn_ocid}:key_summary")
+                    ):
+                        nid = _mermaid_id(str(n.get("nodeId") or ""))
                         lines.extend(
-                            _render_node_with_class(
-                                sid,
-                                f"Other key resources... and {len(key_nodes_sorted) - 20} more",
-                                cls="summary",
-                            )
+                            _render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n))
                         )
+                        if n.get("nodeId"):
+                            raw_id = str(n.get("nodeId") or "")
+                            rendered_node_ids.add(raw_id)
+                            edge_node_id_map.setdefault(raw_id, nid)
 
-                    if leaf_nodes:
-                        kept, summary = _summarize_many(leaf_nodes, title="Other media/leaf items", keep=10)
-                        for a in kept:
-                            aid = _mermaid_id(str(a.get("nodeId") or ""))
-                            lines.extend(_render_node_with_class(aid, _mermaid_label_for(a), cls="boundary", shape="rect"))
-                            if a.get("nodeId"):
-                                rendered_node_ids.add(str(a.get("nodeId") or ""))
-                        if summary:
-                            sid = _mermaid_id(f"workload:{wl_name}:comp:{cid}:subnet:{sn_ocid}:leaf_summary")
-                            lines.extend(_render_node_with_class(sid, summary, cls="summary"))
+                    lines.append("        end")
 
-                    lines.append("      end")
+                if unknown_subnet_nodes:
+                    unk_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}:vcn:{vcn_ocid}:subnet:unknown")
+                    lines.append(f"        subgraph {unk_id}[\"Subnet: Unknown\"]")
+                    lines.append("          direction TB")
+                    for n in sorted(
+                        unknown_subnet_nodes,
+                        key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")),
+                    ):
+                        nid = _mermaid_id(str(n.get("nodeId") or ""))
+                        lines.extend(
+                            _render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n))
+                        )
+                        if n.get("nodeId"):
+                            raw_id = str(n.get("nodeId") or "")
+                            rendered_node_ids.add(raw_id)
+                            edge_node_id_map.setdefault(raw_id, nid)
+                    lines.append("        end")
 
-                lines.append("    end")
+                lines.append("      end")
+
+            lines.append("    end")
+
+            out_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}:out_vcn")
+            lines.append(f"    subgraph {out_id}[\"Out-of-VCN Services\"]")
+            lines.append("      direction TB")
+
+            out_nodes: List[Node] = []
+            for n in comp_nodes:
+                if _is_node_type(n, "Vcn", "Subnet"):
+                    continue
+                ocid = str(n.get("nodeId") or "")
+                att = attach_by_res.get(ocid)
+                if att and att.vcn_ocid:
+                    continue
+                out_nodes.append(n)
+
+            lane_groups = _group_nodes_by_lane(out_nodes)
+            for lane, lane_nodes in lane_groups.items():
+                lane_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}:lane:{lane}")
+                lines.append(f"      subgraph {lane_id}[\"{_lane_label(lane)}\"]")
+                lines.append("        direction TB")
+                for n in sorted(
+                    lane_nodes,
+                    key=lambda n: (str(n.get("nodeCategory") or ""), str(n.get("nodeType") or ""), str(n.get("name") or "")),
+                ):
+                    nid = _mermaid_id(str(n.get("nodeId") or ""))
+                    lines.extend(
+                        _render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n))
+                    )
+                    if n.get("nodeId"):
+                        raw_id = str(n.get("nodeId") or "")
+                        rendered_node_ids.add(raw_id)
+                        edge_node_id_map.setdefault(raw_id, nid)
+                lines.append("      end")
 
             lines.append("    end")
 
@@ -1333,13 +1410,11 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
             edges,
             node_ids=rendered_node_ids,
             node_id_map=edge_node_id_map,
-            allowlist=_EDGE_RELATIONS_FOR_PROJECTIONS,
         )
         lines.extend(rel_lines)
 
-        # Context links
-        lines.append(f"{wl_root} -.-> {users_id}")
-        lines.append(f"{wl_root} -.-> {services_id}")
+        lines.extend(_legend_flowchart_lines(f"workload:{wl_name}"))
+        lines.append("end")
 
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         out_paths.append(path)
@@ -1476,8 +1551,7 @@ def _write_consolidated_mermaid(
     diagram_paths: Sequence[Path],
 ) -> Path:
     consolidated = outdir / "diagram.consolidated.mmd"
-    # Architecture diagram (architecture-beta). This is a high-level, OCI-style view
-    # that favors compartment and lane separation over raw topology.
+    # Architecture diagram (architecture-beta). Full-detail OCI containment view.
 
     def _service_id(prefix: str, value: str) -> str:
         import hashlib
@@ -1485,43 +1559,48 @@ def _write_consolidated_mermaid(
         digest = hashlib.sha1(value.encode("utf-8")).hexdigest()
         return f"{prefix}{digest[:10]}"
 
-    def _lane_icon(lane: str) -> str:
-        if lane == "network":
+    def _service_icon(node: Node) -> str:
+        cls = _node_class(node)
+        if cls in {"network", "external"}:
             return "cloud"
-        if lane == "data":
+        if cls == "storage":
             return "database"
         return "server"
 
-    def _lane_summary(lane: str, lane_nodes: Sequence[Node]) -> str:
-        types = _top_types(lane_nodes)
-        parts = [f"{_friendly_type(t)} x{c}" for t, c in types[:3]]
-        remainder = sum(c for _, c in types[3:])
-        if remainder:
-            parts.append(f"+{remainder} more")
-        summary = ", ".join(parts) if parts else "Resources"
-        return f"{_lane_label(lane)}: {summary}"
-
-    # Deterministic ordering of view artifacts (for workload names only).
-    def _order_key(p: Path) -> Tuple[int, str]:
-        n = p.name
-        if n == "diagram.tenancy.mmd":
-            return (0, n)
-        if n.startswith("diagram.network."):
-            return (1, n)
-        if n.startswith("diagram.workload."):
-            return (2, n)
-        return (9, n)
-
-    mmds = [p for p in diagram_paths if p.suffix == ".mmd" and p.exists() and p.name != consolidated.name]
-    mmds_sorted = sorted(mmds, key=_order_key)
-    workload_views = [
-        p.name[len("diagram.workload.") : -len(".mmd")]
-        for p in mmds_sorted
-        if p.name.startswith("diagram.workload.") and p.name.endswith(".mmd")
-    ]
-
     lines: List[str] = ["architecture-beta"]
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
+    subnets = [n for n in nodes if _is_node_type(n, "Subnet")]
+    edge_vcn_by_src = _edge_single_target_map(edges, "IN_VCN")
+
+    subnet_to_vcn: Dict[str, str] = {}
+    for sn in subnets:
+        meta = _node_metadata(sn)
+        sn_id = str(sn.get("nodeId") or "")
+        vcn_id = edge_vcn_by_src.get(sn_id) or _get_meta(meta, "vcn_id")
+        if isinstance(vcn_id, str) and vcn_id:
+            subnet_to_vcn[sn_id] = vcn_id
+
+    attachments = _derived_attachments(nodes, edges)
+    attach_by_res: Dict[str, _DerivedAttachment] = {a.resource_ocid: a for a in attachments}
+
+    rendered_node_ids: Set[str] = set()
+    node_service_ids: Dict[str, str] = {}
+
+    def _add_service(node: Node, parent_id: str) -> None:
+        ocid = str(node.get("nodeId") or "")
+        if not ocid or ocid in node_service_ids:
+            return
+        sid = _service_id("node_", ocid)
+        label = _arch_label(_arch_node_label(node), max_len=80)
+        icon = _service_icon(node)
+        lines.append(f"    service {sid}({icon})[{label}] in {parent_id}")
+        node_service_ids[ocid] = sid
+        rendered_node_ids.add(ocid)
+
+    tenancy_label = _tenancy_label(nodes)
+    tenancy_id = _service_id("tenancy_", tenancy_label)
+    lines.append(f"    group {tenancy_id}(cloud)[{_arch_label(tenancy_label, max_len=80)}]")
+
     nodes_by_comp: Dict[str, List[Node]] = {}
     for n in nodes:
         cid = str(n.get("compartmentId") or "")
@@ -1532,38 +1611,153 @@ def _write_consolidated_mermaid(
     for cid in sorted(nodes_by_comp.keys()):
         comp_label = "Compartment: Unknown" if cid == "UNKNOWN" else _compartment_label(node_by_id.get(cid, {"name": cid}))
         comp_group_id = _service_id("comp_", cid)
-        lines.append(f"    group {comp_group_id}(cloud)[{_arch_label(comp_label, max_len=48)}]")
+        lines.append(f"    group {comp_group_id}(cloud)[{_arch_label(comp_label, max_len=80)}] in {tenancy_id}")
 
-        comp_nodes = [
-            n
-            for n in nodes_by_comp[cid]
-            if not _is_node_type(n, "Compartment") and str(n.get("nodeType") or "") not in _NON_ARCH_LEAF_NODETYPES
-        ]
-        lane_groups = _group_nodes_by_lane(comp_nodes)
-        lane_service_ids: Dict[str, str] = {}
-        for lane in _LANE_ORDER:
-            lane_nodes = lane_groups.get(lane, [])
-            if not lane_nodes:
+        in_group_id = _service_id("invcn_", cid)
+        out_group_id = _service_id("outvcn_", cid)
+        lines.append(f"    group {in_group_id}(cloud)[{_arch_label('In-VCN', max_len=24)}] in {comp_group_id}")
+        lines.append(f"    group {out_group_id}(cloud)[{_arch_label('Out-of-VCN Services', max_len=48)}] in {comp_group_id}")
+
+        comp_nodes = [n for n in nodes_by_comp[cid] if not _is_node_type(n, "Compartment")]
+
+        comp_vcn_ids: Set[str] = set()
+        for n in comp_nodes:
+            if _is_node_type(n, "Vcn") and n.get("nodeId"):
+                comp_vcn_ids.add(str(n.get("nodeId") or ""))
+            att = attach_by_res.get(str(n.get("nodeId") or ""))
+            if att and att.vcn_ocid:
+                comp_vcn_ids.add(att.vcn_ocid)
+
+        for vcn_ocid in sorted(comp_vcn_ids):
+            if not vcn_ocid:
                 continue
-            summary = _lane_summary(lane, lane_nodes)
-            sid = _service_id(f"{lane}_", f"{cid}:{lane}")
-            lane_service_ids[lane] = sid
-            icon = _lane_icon(lane)
-            lines.append(f"    service {sid}({icon})[{_arch_label(summary, max_len=48)}] in {comp_group_id}")
+            vcn_node = node_by_id.get(vcn_ocid, {"name": vcn_ocid, "nodeType": "Vcn"})
+            vcn_group_id = _service_id("vcn_", vcn_ocid)
+            lines.append(f"    group {vcn_group_id}(cloud)[{_arch_label(_vcn_label(vcn_node), max_len=80)}] in {in_group_id}")
+            _add_service(vcn_node, vcn_group_id)
 
-        net_id = lane_service_ids.get("network")
-        app_id = lane_service_ids.get("app")
-        data_id = lane_service_ids.get("data")
-        if net_id and app_id:
-            lines.append(f"    {net_id}:B --> T:{app_id}")
-        if app_id and data_id:
-            lines.append(f"    {app_id}:R --> L:{data_id}")
+            gateway_nodes: List[Node] = []
+            vcn_level_nodes: List[Node] = []
+            unknown_subnet_nodes: List[Node] = []
+            for n in comp_nodes:
+                if _is_node_type(n, "Vcn", "Subnet"):
+                    continue
+                ocid = str(n.get("nodeId") or "")
+                if not ocid:
+                    continue
+                att = attach_by_res.get(ocid)
+                vcn_match = False
+                if att and att.vcn_ocid == vcn_ocid:
+                    vcn_match = True
+                    if att.subnet_ocid:
+                        continue
+                else:
+                    meta = _node_metadata(n)
+                    vcn_ref = edge_vcn_by_src.get(ocid) or _get_meta(meta, "vcn_id")
+                    if isinstance(vcn_ref, str) and vcn_ref == vcn_ocid:
+                        vcn_match = True
+                if not vcn_match:
+                    continue
+                if _is_node_type(n, *_NETWORK_GATEWAY_NODETYPES):
+                    gateway_nodes.append(n)
+                elif _is_vcn_level_resource(n):
+                    vcn_level_nodes.append(n)
+                else:
+                    unknown_subnet_nodes.append(n)
 
-    if workload_views:
-        lines.append(f"    group workloads(cloud)[{_arch_label('Workloads', max_len=48)}]")
-        for wl in workload_views:
-            wl_id = f"WL_{_slugify(wl)}_ROOT"
-            lines.append(f"    service {wl_id}(server)[{_arch_label(f'Workload {wl}', max_len=48)}] in workloads")
+            if gateway_nodes:
+                gateways_id = _service_id("gateways_", vcn_ocid)
+                lines.append(f"    group {gateways_id}(cloud)[{_arch_label('Gateways', max_len=24)}] in {vcn_group_id}")
+                for n in sorted(gateway_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))):
+                    _add_service(n, gateways_id)
+
+            if vcn_level_nodes:
+                vcn_level_id = _service_id("vcn_level_", vcn_ocid)
+                lines.append(
+                    f"    group {vcn_level_id}(cloud)[{_arch_label('VCN-level Resources', max_len=48)}] in {vcn_group_id}"
+                )
+                for n in sorted(vcn_level_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))):
+                    _add_service(n, vcn_level_id)
+
+            vcn_subnet_ids: Set[str] = set()
+            for n in comp_nodes:
+                if _is_node_type(n, "Subnet") and n.get("nodeId"):
+                    sn_id = str(n.get("nodeId") or "")
+                    if subnet_to_vcn.get(sn_id) == vcn_ocid:
+                        vcn_subnet_ids.add(sn_id)
+                att = attach_by_res.get(str(n.get("nodeId") or ""))
+                if att and att.subnet_ocid:
+                    vcn_subnet_ids.add(att.subnet_ocid)
+
+            for sn_ocid in sorted(vcn_subnet_ids):
+                sn = node_by_id.get(sn_ocid, {"name": sn_ocid, "nodeType": "Subnet"})
+                subnet_group_id = _service_id("subnet_", sn_ocid)
+                lines.append(f"    group {subnet_group_id}(cloud)[{_arch_label(_subnet_label(sn), max_len=80)}] in {vcn_group_id}")
+                _add_service(sn, subnet_group_id)
+
+                attached = [
+                    n
+                    for n in comp_nodes
+                    if attach_by_res.get(str(n.get("nodeId") or ""))
+                    and attach_by_res[str(n.get("nodeId") or "")].subnet_ocid == sn_ocid
+                    and not _is_node_type(n, "Vcn", "Subnet")
+                ]
+                for n in sorted(
+                    attached,
+                    key=lambda n: (
+                        str(n.get("nodeCategory") or ""),
+                        str(n.get("nodeType") or ""),
+                        str(n.get("name") or ""),
+                    ),
+                ):
+                    _add_service(n, subnet_group_id)
+
+            if unknown_subnet_nodes:
+                unknown_id = _service_id("subnet_unknown_", vcn_ocid)
+                lines.append(f"    group {unknown_id}(cloud)[{_arch_label('Subnet: Unknown', max_len=40)}] in {vcn_group_id}")
+                for n in sorted(unknown_subnet_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))):
+                    _add_service(n, unknown_id)
+
+        out_nodes: List[Node] = []
+        for n in comp_nodes:
+            if _is_node_type(n, "Vcn", "Subnet"):
+                continue
+            ocid = str(n.get("nodeId") or "")
+            att = attach_by_res.get(ocid)
+            if att and att.vcn_ocid:
+                continue
+            out_nodes.append(n)
+
+        lane_groups = _group_nodes_by_lane(out_nodes)
+        for lane, lane_nodes in lane_groups.items():
+            lane_group_id = _service_id(f"lane_{lane}_", f"{cid}:{lane}")
+            lines.append(f"    group {lane_group_id}(cloud)[{_arch_label(_lane_label(lane), max_len=40)}] in {out_group_id}")
+            for n in sorted(
+                lane_nodes,
+                key=lambda n: (str(n.get("nodeCategory") or ""), str(n.get("nodeType") or ""), str(n.get("name") or "")),
+            ):
+                _add_service(n, lane_group_id)
+
+    legend_id = _service_id("legend_", "legend")
+    lines.append(f"    group {legend_id}(cloud)[{_arch_label('Legend', max_len=24)}] in {tenancy_id}")
+    legend_items = [
+        ("External", "cloud"),
+        ("Compute", "server"),
+        ("Network", "cloud"),
+        ("Storage", "database"),
+        ("Policy / IAM", "server"),
+        ("Other", "server"),
+    ]
+    for label, icon in legend_items:
+        sid = _service_id("legend_item_", label)
+        lines.append(f"    service {sid}({icon})[{_arch_label(label, max_len=24)}] in {legend_id}")
+
+    rel_lines = _render_relationship_edges(
+        edges,
+        node_ids=rendered_node_ids,
+        node_id_map=node_service_ids,
+    )
+    lines.extend(rel_lines)
 
     consolidated.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return consolidated

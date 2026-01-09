@@ -9,3 +9,6 @@ Mejorar los enrichments, firewall por ejemplo y su asociacion con VMs (o servici
 Agregar una seccion de As-Is & To be que saque provecho de la creacion de los diagramas, crear tobe_guidelines.md para crear arquitecturas en OCI usando GenAI y Validated Architectures, esta seccion empezara con texto solamente, despues se agregara la creacion de diagramas y propuestas
 
 Agregar Skills al repo (pptx)
+
+uso de SDK (Python) - OCI
+https://docs.oracle.com/en-us/iaas/tools/python/latest/api/landing.html
