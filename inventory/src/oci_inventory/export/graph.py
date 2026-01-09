@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -116,6 +117,10 @@ def derive_relationships_from_metadata(records: Iterable[Dict[str, Any]]) -> Lis
 
     recs = list(records)
     ocids: Set[str] = {str(r.get("ocid") or "") for r in recs if str(r.get("ocid") or "")}
+    compartment_ids: Set[str] = {
+        str(r.get("compartmentId") or "") for r in recs if str(r.get("compartmentId") or "")
+    }
+    ocids.update(compartment_ids)
 
     out: List[Dict[str, str]] = []
     seen: Set[Tuple[str, str, str]] = set()
@@ -169,6 +174,25 @@ def derive_relationships_from_metadata(records: Iterable[Dict[str, Any]]) -> Lis
         "Firewall",
     }
 
+    iam_types = {
+        "Policy",
+        "DynamicGroup",
+        "Group",
+        "User",
+        "IdentityDomain",
+        "IdentityDomainUser",
+        "IdentityDomainGroup",
+    }
+
+    compartment_name_to_ocid: Dict[str, str] = {}
+    for r in recs:
+        if str(r.get("resourceType") or "") != "Compartment":
+            continue
+        name = str(r.get("displayName") or r.get("name") or "").strip()
+        ocid = str(r.get("ocid") or "").strip()
+        if name and ocid:
+            compartment_name_to_ocid.setdefault(name.lower(), ocid)
+
     subnet_to_vnics: Dict[str, Set[str]] = {}
     for r in recs:
         if str(r.get("resourceType") or "") != "Vnic":
@@ -180,6 +204,24 @@ def derive_relationships_from_metadata(records: Iterable[Dict[str, Any]]) -> Lis
         subnet_id = _get_meta(md, "subnet_id", "subnetId")
         if isinstance(subnet_id, str) and subnet_id:
             subnet_to_vnics.setdefault(subnet_id, set()).add(vnic_id)
+
+    private_ip_by_addr: Dict[str, str] = {}
+    public_ip_by_addr: Dict[str, str] = {}
+    for r in recs:
+        rtype = str(r.get("resourceType") or "")
+        if rtype not in {"PrivateIp", "PublicIp"}:
+            continue
+        md = _record_metadata(r)
+        ip = _get_meta(md, "ip_address", "ipAddress")
+        if not isinstance(ip, str) or not ip:
+            continue
+        ocid = str(r.get("ocid") or "")
+        if not ocid:
+            continue
+        if rtype == "PrivateIp":
+            private_ip_by_addr.setdefault(ip, ocid)
+        else:
+            public_ip_by_addr.setdefault(ip, ocid)
 
     drg_to_vcns: Dict[str, Set[str]] = {}
     for r in recs:
@@ -291,6 +333,70 @@ def derive_relationships_from_metadata(records: Iterable[Dict[str, Any]]) -> Lis
             for subnet_id in subnet_ids:
                 for vnic_id in sorted(subnet_to_vnics.get(subnet_id, set())):
                     _emit(src, "PROTECTS_VNIC", vnic_id)
+
+        if rt in iam_types:
+            comp_id = str(r.get("compartmentId") or "")
+            if comp_id:
+                _emit(src, "IAM_SCOPE", comp_id)
+            statements = _get_meta(md, "statements")
+            if isinstance(statements, list):
+                for stmt in statements:
+                    if not isinstance(stmt, str):
+                        continue
+                    stmt_lower = stmt.lower()
+                    for ocid_match in re.findall(r"ocid1\\.compartment[\\w.:-]+", stmt_lower):
+                        _emit(src, "IAM_SCOPE", ocid_match)
+                    if "in compartment" not in stmt_lower:
+                        continue
+                    tail = stmt_lower.split("in compartment", 1)[1].strip()
+                    tail = re.split(r"\\bwhere\\b|\\bwith\\b|\\b,\\b", tail, maxsplit=1)[0]
+                    name = tail.strip().strip('\"').strip("'")
+                    if not name:
+                        continue
+                    ocid = compartment_name_to_ocid.get(name)
+                    if ocid:
+                        _emit(src, "IAM_SCOPE", ocid)
+
+        if rt == "LoadBalancer":
+            subnet_refs = _collect_ids(_get_meta(md, "subnet_ids", "subnetIds"))
+            for subnet_id in subnet_refs:
+                _emit(src, "IN_SUBNET", subnet_id)
+
+            lb_ip_addrs = _get_meta(md, "ip_addresses", "ipAddresses")
+            if isinstance(lb_ip_addrs, list):
+                for entry in lb_ip_addrs:
+                    if not isinstance(entry, dict):
+                        continue
+                    ip_addr = entry.get("ipAddress") or entry.get("ip_address")
+                    if isinstance(ip_addr, str) and ip_addr in public_ip_by_addr:
+                        _emit(src, "EXPOSES_PUBLIC_IP", public_ip_by_addr[ip_addr])
+
+            backend_sets = md.get("backendSets") if isinstance(md, dict) else None
+            if backend_sets is None:
+                backend_sets = md.get("backend_sets") if isinstance(md, dict) else None
+            if isinstance(backend_sets, dict):
+                for bs in backend_sets.values():
+                    if not isinstance(bs, dict):
+                        continue
+                    backends = bs.get("backends")
+                    if not isinstance(backends, list):
+                        continue
+                    for backend in backends:
+                        if not isinstance(backend, dict):
+                            continue
+                        ip_addr = backend.get("ipAddress") or backend.get("ip_address")
+                        if isinstance(ip_addr, str) and ip_addr in private_ip_by_addr:
+                            _emit(src, "ROUTES_TO_PRIVATE_IP", private_ip_by_addr[ip_addr])
+
+        if rt in {"WebAppFirewall", "WebAppFirewallPolicy"}:
+            lb_id = _get_meta(md, "load_balancer_id", "loadBalancerId")
+            for target_id in _collect_ids(lb_id):
+                _emit(src, "PROTECTS_LOAD_BALANCER", target_id)
+
+        if rt == "NetworkFirewall":
+            policy_id = _get_meta(md, "network_firewall_policy_id", "networkFirewallPolicyId")
+            for target_id in _collect_ids(policy_id):
+                _emit(src, "USES_FIREWALL_POLICY", target_id)
 
     return sorted(out, key=lambda r: (r.get("source_ocid", ""), r.get("relation_type", ""), r.get("target_ocid", "")))
 

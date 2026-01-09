@@ -72,7 +72,7 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
     assert "-.->" not in consolidated
     for line in consolidated.splitlines():
         if "-->" in line or "<--" in line:
-            assert ":" not in line
+            assert ":" in line
 
 
 def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:

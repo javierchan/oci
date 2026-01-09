@@ -11,6 +11,28 @@ Phase 1 implements:
 
 Repository scope for this package is strictly local under this directory.
 
+## How it works (pipeline)
+The CLI runs a deterministic, read-only pipeline and writes a timestamped output folder.
+
+```mermaid
+flowchart LR
+  A[Auth resolved] --> B[Discover subscribed regions]
+  B --> C[Structured Search per region]
+  C --> D[Normalize records]
+  D --> E[Enrich records + relationships]
+  E --> F[Derive metadata relationships]
+  F --> G[Write inventory.jsonl/csv/parquet]
+  G --> H[Build graph nodes/edges]
+  H --> I[Write diagram projections]
+  I --> J[Write run_summary.json + report.md]
+  J --> K[Validate out/<timestamp> schema]
+```
+
+Key guarantees:
+- Read-only OCI calls only (list/search/get).
+- Stable ordering and hashing for reproducible diffs.
+- Report is always written, even if the run fails.
+
 ## Install
 - Python 3.11+
 - Recommended in a virtualenv
@@ -223,6 +245,42 @@ Notes for developers:
   `oci-inv run` will validate all `diagram*.mmd` artifacts automatically and fail the run on invalid Mermaid.
   To require validation even when `mmdc` may not be present, use `--validate-diagrams`.
   (During installation you may see npm warnings about Puppeteer deprecations; those are typically non-fatal.)
+- Diagram and report rules are documented in `docs/diagram_guidelines.md` and `docs/report_guidelines.md`.
+
+## Output flow (artifacts and consumers)
+```mermaid
+flowchart TB
+  subgraph out_ts[out/{timestamp}/]
+    inv[inventory.jsonl]
+    csv[inventory.csv]
+    parquet[inventory.parquet (optional)]
+    rel[relationships.jsonl]
+    nodes[graph_nodes.jsonl]
+    edges[graph_edges.jsonl]
+    raw[diagram_raw.mmd]
+    ten[diagram.tenancy.mmd]
+    net[diagram.network.{vcn}.mmd]
+    wl[diagram.workload.{workload}.mmd]
+    cons[diagram.consolidated.mmd]
+    rpt[report.md]
+    sum[run_summary.json]
+    diff[diff.json / diff_summary.json (optional)]
+  end
+  inv --> rpt
+  sum --> rpt
+  inv --> nodes
+  rel --> edges
+  nodes --> ten
+  edges --> ten
+  nodes --> net
+  edges --> net
+  nodes --> wl
+  edges --> wl
+  nodes --> cons
+  edges --> cons
+  nodes --> raw
+  edges --> raw
+```
 
 ## Output Contract
 Each run writes to: `out/<timestamp>/`
@@ -230,14 +288,14 @@ Each run writes to: `out/<timestamp>/`
 - inventory.jsonl (canonicalized, stable JSON lines)
 - inventory.csv (report fields)
 - inventory.parquet (optional; pyarrow required)
-- relationships.jsonl (optional; when relationships exist)
+- relationships.jsonl (always written; may be empty)
 - graph_nodes.jsonl (diagram-ready nodes)
 - graph_edges.jsonl (diagram-ready edges)
 - diagram_raw.mmd (Mermaid diagram; raw graph)
 - diagram.tenancy.mmd (Mermaid diagram; tenancy/compartment view)
 - diagram.network.<vcn>.mmd (Mermaid diagram; per-VCN topology view)
 - diagram.workload.<workload>.mmd (Mermaid diagram; workload/application view)
-- diagram.consolidated.mmd (Mermaid diagram; all projections consolidated)
+- diagram.consolidated.mmd (Mermaid architecture-beta diagram; all projections consolidated)
 - diff.json + diff_summary.json (when --prev provided)
 - run_summary.json (coverage metrics)
 
@@ -254,6 +312,10 @@ Quick reference (artifacts → purpose):
 JSONL stability notes:
 - Keys sorted; deterministic line ordering by ocid then resourceType
 - Hash excludes `collectedAt` to enable meaningful diffs
+
+Schema validation:
+- Every run validates `inventory.jsonl`, `relationships.jsonl`, `graph_nodes.jsonl`, `graph_edges.jsonl`, and `run_summary.json`.
+- Validation warnings are logged; validation errors fail the run.
 
 ## Enrichment
 Enrichers use **read-only** OCI SDK calls to fetch full metadata for supported resource types.
@@ -371,6 +433,10 @@ oci-inv-wizard --from wizard-run.yaml --yes
 - docs/quickstart.md: minimal getting started
 - docs/architecture.md: layout and design
 - docs/auth.md: authentication options and safety
+- docs/diagram_guidelines.md: diagram rules and OCI-aligned abstraction
+- docs/report_guidelines.md: report structure and content rules
+- docs/planned.md: planned workstreams and roadmap
+- docs/goals.md: project goals and scope guardrails
 
 ## License
 Apache-2.0 (see LICENSE)

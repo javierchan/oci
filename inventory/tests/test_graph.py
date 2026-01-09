@@ -155,6 +155,92 @@ def test_derive_relationships_from_metadata_emits_dhcp_and_public_ip_edges() -> 
     assert (public_ip_id, "ASSIGNED_TO", nat_id) in keys
 
 
+def test_derive_relationships_from_metadata_emits_iam_scope_edges() -> None:
+    comp_id = "ocid1.compartment.oc1..comp"
+    policy_id = "ocid1.policy.oc1..policy"
+
+    records = [
+        {"ocid": policy_id, "resourceType": "Policy", "compartmentId": comp_id, "details": {"metadata": {}}},
+    ]
+
+    rels = derive_relationships_from_metadata(records)
+    keys = {(r["source_ocid"], r["relation_type"], r["target_ocid"]) for r in rels}
+
+    assert (policy_id, "IAM_SCOPE", comp_id) in keys
+
+
+def test_derive_relationships_from_metadata_parses_policy_statement_compartment() -> None:
+    comp_id = "ocid1.compartment.oc1..comp"
+    policy_id = "ocid1.policy.oc1..policy"
+
+    records = [
+        {"ocid": comp_id, "resourceType": "Compartment", "displayName": "App"},
+        {
+            "ocid": policy_id,
+            "resourceType": "Policy",
+            "details": {"metadata": {"statements": ["Allow group X to read all-resources in compartment App"]}},
+        },
+    ]
+
+    rels = derive_relationships_from_metadata(records)
+    keys = {(r["source_ocid"], r["relation_type"], r["target_ocid"]) for r in rels}
+
+    assert (policy_id, "IAM_SCOPE", comp_id) in keys
+
+
+def test_derive_relationships_from_metadata_maps_load_balancer_backends() -> None:
+    lb_id = "ocid1.loadbalancer.oc1..lb"
+    pip_id = "ocid1.privateip.oc1..pip"
+
+    records = [
+        {"ocid": pip_id, "resourceType": "PrivateIp", "details": {"metadata": {"ipAddress": "10.0.0.10"}}},
+        {
+            "ocid": lb_id,
+            "resourceType": "LoadBalancer",
+            "details": {
+                "metadata": {
+                    "backendSets": {
+                        "bs": {"backends": [{"ipAddress": "10.0.0.10", "port": 80}]},
+                    }
+                }
+            },
+        },
+    ]
+
+    rels = derive_relationships_from_metadata(records)
+    keys = {(r["source_ocid"], r["relation_type"], r["target_ocid"]) for r in rels}
+
+    assert (lb_id, "ROUTES_TO_PRIVATE_IP", pip_id) in keys
+
+
+def test_derive_relationships_from_metadata_maps_waf_and_firewall_policy() -> None:
+    lb_id = "ocid1.loadbalancer.oc1..lb"
+    waf_id = "ocid1.webappfirewall.oc1..waf"
+    policy_id = "ocid1.networkfirewallpolicy.oc1..pol"
+    fw_id = "ocid1.networkfirewall.oc1..fw"
+
+    records = [
+        {"ocid": lb_id, "resourceType": "LoadBalancer", "details": {"metadata": {}}},
+        {"ocid": policy_id, "resourceType": "NetworkFirewallPolicy", "details": {"metadata": {}}},
+        {
+            "ocid": waf_id,
+            "resourceType": "WebAppFirewall",
+            "details": {"metadata": {"loadBalancerId": lb_id}},
+        },
+        {
+            "ocid": fw_id,
+            "resourceType": "NetworkFirewall",
+            "details": {"metadata": {"networkFirewallPolicyId": policy_id}},
+        },
+    ]
+
+    rels = derive_relationships_from_metadata(records)
+    keys = {(r["source_ocid"], r["relation_type"], r["target_ocid"]) for r in rels}
+
+    assert (waf_id, "PROTECTS_LOAD_BALANCER", lb_id) in keys
+    assert (fw_id, "USES_FIREWALL_POLICY", policy_id) in keys
+
+
 def test_build_graph_sets_region_on_relationship_edges() -> None:
     inst_id = "ocid1.instance.oc1..inst"
     subnet_id = "ocid1.subnet.oc1..subnet"

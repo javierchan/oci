@@ -279,8 +279,8 @@ def _render_edge(src: str, dst: str, label: str | None = None, *, dotted: bool =
     return f"  {src} {arrow} {dst}"
 
 
-def _render_arch_edge(src: str, dst: str) -> str:
-    return f"    {src} --> {dst}"
+def _render_arch_edge(src: str, dst: str, *, src_port: str = "R", dst_port: str = "L") -> str:
+    return f"    {src}:{src_port} --> {dst}:{dst_port}"
 
 
 def _edge_sort_key(edge: Edge) -> Tuple[str, str, str]:
