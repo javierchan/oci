@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from oci_inventory.export.diagram_projections import write_diagram_projections
+from oci_inventory.export.diagram_projections import _render_edge, write_diagram_projections
 from oci_inventory.export.graph import build_graph
 
 
@@ -59,10 +59,9 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
     assert any(p.name == "diagram.network.prod_vcn.mmd" for p in paths)
 
     consolidated = (tmp_path / "diagram.consolidated.mmd").read_text(encoding="utf-8")
-    assert consolidated.startswith("flowchart LR")
-    assert "subgraph LEGEND" in consolidated
-    assert "subgraph NETWORK" in consolidated
-    assert "TEN_ROOT" in consolidated
+    assert consolidated.startswith("architecture-beta")
+    assert "group network" in consolidated
+    assert "group app" in consolidated
 
 
 def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
@@ -155,4 +154,11 @@ def test_consolidated_defines_workload_anchor_nodes(tmp_path) -> None:
     write_diagram_projections(tmp_path, nodes, edges)
 
     consolidated = (tmp_path / "diagram.consolidated.mmd").read_text(encoding="utf-8")
-    assert 'WL_edge_ROOT["Workload View: edge"]' in consolidated
+    assert "service WL_edge_ROOT(server)[Workload edge] in workloads" in consolidated
+
+
+def test_render_edge_sanitizes_label() -> None:
+    line = _render_edge("A", "B", 'bad|label (test) [x]<y>')
+    assert "|bad label test xy|" in line
+    assert "(" not in line
+    assert "|" in line

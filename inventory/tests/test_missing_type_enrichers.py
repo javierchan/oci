@@ -148,6 +148,9 @@ def test_media_services_enrichers(monkeypatch: Any) -> None:
         def get_media_workflow(self, ocid: str) -> Any:
             return SimpleNamespace(data={"id": ocid, "kind": "workflow"})
 
+        def get_media_asset(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid, "kind": "asset"})
+
         def get_stream_cdn_config(self, ocid: str) -> Any:
             return SimpleNamespace(data={"id": ocid, "kind": "cdn"})
 
@@ -160,6 +163,7 @@ def test_media_services_enrichers(monkeypatch: Any) -> None:
     monkeypatch.setattr(meta.oci_clients, "get_media_services_client", lambda ctx, region: _MediaClient())
 
     assert get_enricher_for("MediaWorkflow").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.mediaworkflow.oc1..aaaa"}).enrichStatus == "OK"
+    assert get_enricher_for("MediaAsset").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.mediaasset.oc1..aaaa"}).enrichStatus == "OK"
     assert get_enricher_for("StreamCdnConfig").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.streamcdnconfig.oc1..aaaa"}).enrichStatus == "OK"
     assert get_enricher_for("StreamDistributionChannel").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.streamdistributionchannel.oc1..aaaa"}).enrichStatus == "OK"
     assert get_enricher_for("StreamPackagingConfig").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.streampackagingconfig.oc1..aaaa"}).enrichStatus == "OK"

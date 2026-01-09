@@ -118,6 +118,7 @@ Each `run` writes a deterministic set of artifacts. Fields below are the stable 
 
 - `diagram.tenancy.mmd`, `diagram.network.*.mmd`, `diagram.workload.*.mmd`, `diagram.consolidated.mmd`
   - Mermaid projections derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
+  - `diagram.consolidated.mmd` uses Mermaid `architecture-beta` syntax for the high-level architecture view.
 
 ## CLI Commands
 

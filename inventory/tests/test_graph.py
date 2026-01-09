@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 
-from oci_inventory.cli import _coverage_metrics, _validate_outdir_schema
+from oci_inventory.cli import OUT_SCHEMA_VERSION, _coverage_metrics, _validate_outdir_schema
+from oci_inventory.export.diagram_projections import write_diagram_projections
 from oci_inventory.export.graph import build_graph, derive_relationships_from_metadata, write_graph, write_mermaid
-from oci_inventory.normalize.transform import sort_relationships
+from oci_inventory.export.jsonl import write_jsonl
+from oci_inventory.normalize.transform import sort_relationships, stable_json_dumps
 
 
 def test_build_graph_adds_compartment_edges(tmp_path) -> None:
@@ -205,6 +207,66 @@ def test_validate_outdir_schema_accepts_minimal_artifacts(tmp_path) -> None:
         ),
         encoding="utf-8",
     )
+
+    result = _validate_outdir_schema(outdir)
+    assert result.errors == []
+
+
+def test_offline_pipeline_writes_schema_artifacts(tmp_path) -> None:
+    outdir = tmp_path
+    collected_at = "2026-01-09T05:35:29+00:00"
+    vcn_id = "ocid1.vcn.oc1..vcn"
+    inst_id = "ocid1.instance.oc1..inst"
+    comp_id = "ocid1.compartment.oc1..comp"
+
+    relationships = [
+        {"source_ocid": inst_id, "relation_type": "IN_VCN", "target_ocid": vcn_id},
+    ]
+
+    records = [
+        {
+            "ocid": vcn_id,
+            "resourceType": "Vcn",
+            "displayName": "vcn-1",
+            "region": "mx-queretaro-1",
+            "compartmentId": comp_id,
+            "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
+            "relationships": [],
+            "collectedAt": collected_at,
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": inst_id,
+            "resourceType": "Instance",
+            "displayName": "app-1",
+            "region": "mx-queretaro-1",
+            "compartmentId": comp_id,
+            "details": {"metadata": {"vcn_id": vcn_id}},
+            "relationships": list(relationships),
+            "collectedAt": collected_at,
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+    ]
+
+    write_jsonl(records, outdir / "inventory.jsonl")
+
+    rels_path = outdir / "relationships.jsonl"
+    rels_path.write_text(
+        "\n".join(stable_json_dumps(r) for r in sort_relationships(relationships)) + "\n",
+        encoding="utf-8",
+    )
+
+    metrics = _coverage_metrics(records)
+    summary = dict(metrics)
+    summary["schema_version"] = OUT_SCHEMA_VERSION
+    (outdir / "run_summary.json").write_text(stable_json_dumps(summary), encoding="utf-8")
+
+    nodes, edges = build_graph(records, relationships)
+    write_graph(outdir, nodes, edges)
+    write_mermaid(outdir, nodes, edges)
+    write_diagram_projections(outdir, nodes, edges)
 
     result = _validate_outdir_schema(outdir)
     assert result.errors == []
