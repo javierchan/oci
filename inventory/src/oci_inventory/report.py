@@ -10,6 +10,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .normalize.transform import group_workload_candidates
 
+REPORT_GUIDELINES_PATHS = ("docs/report_guidelines.md",)
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
