@@ -233,6 +233,7 @@ def canonicalize_record(record: Dict[str, Any]) -> Dict[str, Any]:
 def sort_relationships(relationships: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Sort relationships deterministically by (source_ocid, relation_type, target_ocid).
+    Deduplicate identical edges to avoid repeated relationships in exports.
     """
     def _key(rel: Dict[str, Any]) -> Tuple[str, str, str]:
         return (
@@ -241,7 +242,13 @@ def sort_relationships(relationships: Iterable[Dict[str, Any]]) -> List[Dict[str
             str(rel.get("target_ocid") or ""),
         )
 
-    return sorted((dict(r) for r in relationships), key=_key)
+    dedup: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+    for rel in relationships:
+        key = _key(rel)
+        if key not in dedup:
+            dedup[key] = dict(rel)
+
+    return [dedup[k] for k in sorted(dedup.keys())]
 
 
 def normalize_relationships(record: Dict[str, Any]) -> Dict[str, Any]:

@@ -255,14 +255,16 @@ def build_graph(
             )
 
     for rel in relationships:
+        src = rel.get("source_ocid")
+        src_node = nodes_by_id.get(src or "", {})
         edges.append(
             {
-                "source_ocid": rel.get("source_ocid"),
+                "source_ocid": src,
                 "target_ocid": rel.get("target_ocid"),
                 "relation_type": rel.get("relation_type"),
-                "source_type": nodes_by_id.get(rel.get("source_ocid") or "", {}).get("nodeType"),
+                "source_type": src_node.get("nodeType"),
                 "target_type": nodes_by_id.get(rel.get("target_ocid") or "", {}).get("nodeType"),
-                "region": None,
+                "region": src_node.get("region"),
             }
         )
 

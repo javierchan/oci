@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -25,10 +27,60 @@ from .util.concurrency import parallel_map_ordered
 from .util.errors import (
     AuthResolutionError,
     ConfigError,
+    ExportError,
     as_exit_code,
 )
 
 LOG = get_logger(__name__)
+
+OUT_SCHEMA_VERSION = "1"
+
+REQUIRED_INVENTORY_FIELDS = {
+    "ocid",
+    "resourceType",
+    "region",
+    "collectedAt",
+    "enrichStatus",
+    "details",
+    "relationships",
+}
+REQUIRED_RELATIONSHIP_FIELDS = {"source_ocid", "relation_type", "target_ocid"}
+REQUIRED_GRAPH_NODE_FIELDS = {
+    "nodeId",
+    "nodeType",
+    "nodeCategory",
+    "name",
+    "region",
+    "compartmentId",
+    "metadata",
+    "tags",
+    "enrichStatus",
+    "enrichError",
+}
+REQUIRED_GRAPH_EDGE_FIELDS = {
+    "source_ocid",
+    "target_ocid",
+    "relation_type",
+    "source_type",
+    "target_type",
+    "region",
+}
+REQUIRED_RUN_SUMMARY_FIELDS = {
+    "schema_version",
+    "total_discovered",
+    "enriched_ok",
+    "not_implemented",
+    "errors",
+    "counts_by_resource_type",
+    "counts_by_enrich_status",
+    "counts_by_resource_type_and_status",
+}
+
+
+@dataclass(frozen=True)
+class SchemaValidation:
+    errors: List[str]
+    warnings: List[str]
 
 
 def cmd_enrich_coverage(cfg: RunConfig) -> int:
@@ -186,11 +238,14 @@ def _enrich_record(record: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[st
 def _coverage_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     counts_by_resource_type: Dict[str, int] = {}
     counts_by_enrich_status: Dict[str, int] = {}
+    counts_by_resource_type_and_status: Dict[str, Dict[str, int]] = {}
     for r in records:
         rt = str(r.get("resourceType") or "")
         counts_by_resource_type[rt] = counts_by_resource_type.get(rt, 0) + 1
         st = str(r.get("enrichStatus") or "")
         counts_by_enrich_status[st] = counts_by_enrich_status.get(st, 0) + 1
+        per_type = counts_by_resource_type_and_status.setdefault(rt, {})
+        per_type[st] = per_type.get(st, 0) + 1
 
     enriched_ok = counts_by_enrich_status.get("OK", 0)
     not_implemented = counts_by_enrich_status.get("NOT_IMPLEMENTED", 0)
@@ -203,12 +258,16 @@ def _coverage_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         "errors": errors,
         "counts_by_resource_type": dict(sorted(counts_by_resource_type.items())),
         "counts_by_enrich_status": dict(sorted(counts_by_enrich_status.items())),
+        "counts_by_resource_type_and_status": {
+            k: dict(sorted(v.items())) for k, v in sorted(counts_by_resource_type_and_status.items())
+        },
     }
 
 
 def _write_run_summary(outdir: Path, metrics: Dict[str, Any], cfg: RunConfig) -> Path:
     summary = dict(metrics)
     # Only include required metrics; users can inspect config via logs/CLI
+    summary["schema_version"] = OUT_SCHEMA_VERSION
     path = outdir / "run_summary.json"
     path.write_text(stable_json_dumps(summary), encoding="utf-8")
     return path
@@ -218,9 +277,7 @@ def _relationships_path(outdir: Path) -> Path:
     return outdir / "relationships.jsonl"
 
 
-def _write_relationships(outdir: Path, relationships: List[Dict[str, str]]) -> Optional[Path]:
-    if not relationships:
-        return None
+def _write_relationships(outdir: Path, relationships: List[Dict[str, str]]) -> Path:
     p = _relationships_path(outdir)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w", encoding="utf-8") as f:
@@ -230,10 +287,175 @@ def _write_relationships(outdir: Path, relationships: List[Dict[str, str]]) -> O
     return p
 
 
+def _merge_relationships_into_records(
+    records: List[Dict[str, Any]],
+    relationships: List[Dict[str, str]],
+) -> None:
+    if not relationships:
+        return
+    by_source: Dict[str, List[Dict[str, str]]] = {}
+    for rel in relationships:
+        src = str(rel.get("source_ocid") or "")
+        if not src:
+            continue
+        by_source.setdefault(src, []).append(rel)
+    if not by_source:
+        return
+    for rec in records:
+        ocid = str(rec.get("ocid") or "")
+        if not ocid:
+            continue
+        extra = by_source.get(ocid)
+        if not extra:
+            continue
+        current = rec.get("relationships")
+        if isinstance(current, list):
+            merged = list(current) + list(extra)
+        else:
+            merged = list(extra)
+        rec["relationships"] = sort_relationships(merged)
+
+
+def _read_jsonl_dicts(
+    path: Path,
+    *,
+    required_fields: set[str],
+    errors: List[str],
+) -> List[Tuple[int, Dict[str, Any]]]:
+    if not path.is_file():
+        errors.append(f"{path.name}: file not found")
+        return []
+    records: List[Tuple[int, Dict[str, Any]]] = []
+    parse_errors: List[int] = []
+    non_object: List[int] = []
+    missing: List[Tuple[int, List[str]]] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line_no, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                if len(parse_errors) < 5:
+                    parse_errors.append(line_no)
+                continue
+            if not isinstance(obj, dict):
+                if len(non_object) < 5:
+                    non_object.append(line_no)
+                continue
+            missing_fields = [k for k in required_fields if k not in obj]
+            if missing_fields:
+                if len(missing) < 5:
+                    missing.append((line_no, missing_fields))
+            records.append((line_no, obj))
+    if parse_errors:
+        errors.append(f"{path.name}: invalid JSON lines (examples: {', '.join(str(n) for n in parse_errors)})")
+    if non_object:
+        errors.append(f"{path.name}: non-object JSON lines (examples: {', '.join(str(n) for n in non_object)})")
+    if missing:
+        details = "; ".join(f"line {ln} missing {', '.join(fields)}" for ln, fields in missing)
+        errors.append(f"{path.name}: records missing required fields ({details})")
+    return records
+
+
+def _validate_outdir_schema(outdir: Path) -> SchemaValidation:
+    errors: List[str] = []
+    warnings: List[str] = []
+
+    inventory_path = outdir / "inventory.jsonl"
+    inventory_records = _read_jsonl_dicts(
+        inventory_path,
+        required_fields=REQUIRED_INVENTORY_FIELDS,
+        errors=errors,
+    )
+    if inventory_records:
+        collected_values = {str(obj.get("collectedAt") or "") for _, obj in inventory_records if obj.get("collectedAt")}
+        if len(collected_values) > 1:
+            warnings.append(
+                f"{inventory_path.name}: multiple collectedAt values detected ({len(collected_values)} unique)"
+            )
+        bad_relationships: List[int] = []
+        for line_no, obj in inventory_records:
+            rels = obj.get("relationships")
+            if not isinstance(rels, list):
+                if len(bad_relationships) < 5:
+                    bad_relationships.append(line_no)
+                continue
+            for rel in rels:
+                if not isinstance(rel, dict):
+                    if len(bad_relationships) < 5:
+                        bad_relationships.append(line_no)
+                    break
+                if any(k not in rel for k in REQUIRED_RELATIONSHIP_FIELDS):
+                    if len(bad_relationships) < 5:
+                        bad_relationships.append(line_no)
+                    break
+        if bad_relationships:
+            warnings.append(
+                f"{inventory_path.name}: invalid relationships in records (examples: {', '.join(str(n) for n in bad_relationships)})"
+            )
+
+    relationships_path = outdir / "relationships.jsonl"
+    _read_jsonl_dicts(
+        relationships_path,
+        required_fields=REQUIRED_RELATIONSHIP_FIELDS,
+        errors=errors,
+    )
+
+    nodes_path = outdir / "graph_nodes.jsonl"
+    node_records = _read_jsonl_dicts(
+        nodes_path,
+        required_fields=REQUIRED_GRAPH_NODE_FIELDS,
+        errors=errors,
+    )
+    node_ids = {str(obj.get("nodeId") or "") for _, obj in node_records if obj.get("nodeId")}
+
+    edges_path = outdir / "graph_edges.jsonl"
+    edge_records = _read_jsonl_dicts(
+        edges_path,
+        required_fields=REQUIRED_GRAPH_EDGE_FIELDS,
+        errors=errors,
+    )
+    if node_ids and edge_records:
+        missing_edges: List[int] = []
+        for line_no, obj in edge_records:
+            src = str(obj.get("source_ocid") or "")
+            dst = str(obj.get("target_ocid") or "")
+            if not src or not dst:
+                continue
+            if src not in node_ids or dst not in node_ids:
+                if len(missing_edges) < 5:
+                    missing_edges.append(line_no)
+        if missing_edges:
+            warnings.append(
+                f"{edges_path.name}: edges reference missing node IDs (examples: {', '.join(str(n) for n in missing_edges)})"
+            )
+
+    summary_path = outdir / "run_summary.json"
+    if not summary_path.is_file():
+        errors.append(f"{summary_path.name}: file not found")
+    else:
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            errors.append(f"{summary_path.name}: invalid JSON")
+        else:
+            if not isinstance(summary, dict):
+                errors.append(f"{summary_path.name}: expected JSON object")
+            else:
+                missing = [k for k in REQUIRED_RUN_SUMMARY_FIELDS if k not in summary]
+                if missing:
+                    errors.append(f"{summary_path.name}: missing required fields ({', '.join(missing)})")
+
+    return SchemaValidation(errors=errors, warnings=warnings)
+
+
 def cmd_run(cfg: RunConfig) -> int:
     # Ensure the run directory exists early so we can always emit a report.
     cfg.outdir.mkdir(parents=True, exist_ok=True)
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    run_collected_at = started_at
 
     status = "OK"
     fatal_error: Optional[str] = None
@@ -270,7 +492,7 @@ def cmd_run(cfg: RunConfig) -> int:
         regions = sorted([r for r in regions if r])
 
         def _disc(r: str) -> List[Dict[str, Any]]:
-            return discover_in_region(ctx, r, cfg.query, collected_at=cfg.collected_at)
+            return discover_in_region(ctx, r, cfg.query, collected_at=run_collected_at)
 
         with ThreadPoolExecutor(max_workers=max(1, cfg.workers_region)) as pool:
             futures_by_region = {r: pool.submit(_disc, r) for r in regions}
@@ -304,6 +526,15 @@ def cmd_run(cfg: RunConfig) -> int:
 
         LOG.info("Enrichment complete", extra={"count": len(enriched)})
 
+        # Derive additional relationships from record metadata (offline; no new OCI calls)
+        # to improve graph/report fidelity when enrichers did not emit relationships.
+        from .export.graph import derive_relationships_from_metadata
+
+        derived_relationships = derive_relationships_from_metadata(enriched)
+        if derived_relationships:
+            _merge_relationships_into_records(enriched, derived_relationships)
+            all_relationships.extend(derived_relationships)
+
         # Exports
         inventory_jsonl = cfg.outdir / "inventory.jsonl"
         inventory_csv = cfg.outdir / "inventory.csv"
@@ -318,12 +549,6 @@ def cmd_run(cfg: RunConfig) -> int:
                 parquet_warning = str(e)
                 LOG.warning(str(e))
 
-        # Derive additional relationships from record metadata (offline; no new OCI calls)
-        # to improve graph/report fidelity when enrichers did not emit relationships.
-        from .export.graph import derive_relationships_from_metadata
-
-        all_relationships.extend(derive_relationships_from_metadata(enriched))
-
         _write_relationships(cfg.outdir, all_relationships)
 
         # Coverage metrics and summary
@@ -335,6 +560,15 @@ def cmd_run(cfg: RunConfig) -> int:
         write_graph(cfg.outdir, nodes, edges)
         write_mermaid(cfg.outdir, nodes, edges)
         write_diagram_projections(cfg.outdir, nodes, edges)
+
+        validation = _validate_outdir_schema(cfg.outdir)
+        for warning in validation.warnings:
+            LOG.warning("Output schema validation warning", extra={"detail": warning})
+        if validation.errors:
+            preview = "; ".join(validation.errors[:5])
+            if len(validation.errors) > 5:
+                preview = f"{preview}; (and {len(validation.errors) - 5} more)"
+            raise ExportError(f"Output schema validation failed: {preview}")
 
         # Diagram syntax policy:
         # - If --validate-diagrams is enabled, require mmdc and fail if missing.
