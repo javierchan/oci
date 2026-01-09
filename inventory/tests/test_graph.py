@@ -70,6 +70,91 @@ def test_derive_relationships_from_metadata_emits_vcn_and_subnet_edges() -> None
     assert (rtb_id, "IN_VCN", vcn_id) in keys
 
 
+def test_derive_relationships_from_metadata_emits_security_and_firewall_edges() -> None:
+    vcn_id = "ocid1.vcn.oc1..vcn"
+    subnet_id = "ocid1.subnet.oc1..subnet"
+    rtb_id = "ocid1.routetable.oc1..rtb"
+    sl_id = "ocid1.securitylist.oc1..sl"
+    nsg_id = "ocid1.nsg.oc1..nsg"
+    vnic_id = "ocid1.vnic.oc1..vnic"
+    firewall_id = "ocid1.networkfirewall.oc1..fw"
+
+    records = [
+        {"ocid": vcn_id, "resourceType": "Vcn", "details": {"metadata": {}}},
+        {
+            "ocid": subnet_id,
+            "resourceType": "Subnet",
+            "details": {"metadata": {"vcnId": vcn_id, "routeTableId": rtb_id, "securityListIds": [sl_id]}},
+        },
+        {"ocid": rtb_id, "resourceType": "RouteTable", "details": {"metadata": {"vcnId": vcn_id}}},
+        {"ocid": sl_id, "resourceType": "SecurityList", "details": {"metadata": {"vcnId": vcn_id}}},
+        {"ocid": nsg_id, "resourceType": "NetworkSecurityGroup", "details": {"metadata": {"vcnId": vcn_id}}},
+        {"ocid": vnic_id, "resourceType": "Vnic", "details": {"metadata": {"subnetId": subnet_id, "nsgIds": [nsg_id]}}},
+        {"ocid": firewall_id, "resourceType": "NetworkFirewall", "details": {"metadata": {"subnetId": subnet_id}}},
+    ]
+
+    rels = derive_relationships_from_metadata(records)
+    keys = {(r["source_ocid"], r["relation_type"], r["target_ocid"]) for r in rels}
+
+    assert (subnet_id, "USES_ROUTE_TABLE", rtb_id) in keys
+    assert (subnet_id, "USES_SECURITY_LIST", sl_id) in keys
+    assert (vnic_id, "USES_NSG", nsg_id) in keys
+    assert (firewall_id, "PROTECTS_VNIC", vnic_id) in keys
+
+
+def test_derive_relationships_from_metadata_emits_drg_attachment_edges() -> None:
+    vcn_id = "ocid1.vcn.oc1..vcn"
+    drg_id = "ocid1.drg.oc1..drg"
+    attach_id = "ocid1.drgattachment.oc1..att"
+    ipsec_id = "ocid1.ipsec.oc1..ipsec"
+
+    records = [
+        {"ocid": vcn_id, "resourceType": "Vcn", "details": {"metadata": {}}},
+        {"ocid": drg_id, "resourceType": "Drg", "details": {"metadata": {}}},
+        {
+            "ocid": attach_id,
+            "resourceType": "DrgAttachment",
+            "details": {"metadata": {"drgId": drg_id, "vcnId": vcn_id}},
+        },
+        {"ocid": ipsec_id, "resourceType": "IPSecConnection", "details": {"metadata": {"drgId": drg_id}}},
+    ]
+
+    rels = derive_relationships_from_metadata(records)
+    keys = {(r["source_ocid"], r["relation_type"], r["target_ocid"]) for r in rels}
+
+    assert (attach_id, "ATTACHED_TO_DRG", drg_id) in keys
+    assert (attach_id, "ATTACHED_TO_VCN", vcn_id) in keys
+    assert (drg_id, "IN_VCN", vcn_id) in keys
+    assert (ipsec_id, "USES_DRG", drg_id) in keys
+    assert (ipsec_id, "IN_VCN", vcn_id) in keys
+
+
+def test_derive_relationships_from_metadata_emits_dhcp_and_public_ip_edges() -> None:
+    vcn_id = "ocid1.vcn.oc1..vcn"
+    subnet_id = "ocid1.subnet.oc1..subnet"
+    dhcp_id = "ocid1.dhcpoptions.oc1..dhcp"
+    nat_id = "ocid1.natgateway.oc1..nat"
+    public_ip_id = "ocid1.publicip.oc1..pub"
+
+    records = [
+        {"ocid": vcn_id, "resourceType": "Vcn", "details": {"metadata": {}}},
+        {"ocid": dhcp_id, "resourceType": "DhcpOptions", "details": {"metadata": {}}},
+        {"ocid": nat_id, "resourceType": "NatGateway", "details": {"metadata": {"vcnId": vcn_id}}},
+        {
+            "ocid": subnet_id,
+            "resourceType": "Subnet",
+            "details": {"metadata": {"vcnId": vcn_id, "dhcpOptionsId": dhcp_id}},
+        },
+        {"ocid": public_ip_id, "resourceType": "PublicIp", "details": {"metadata": {"assignedEntityId": nat_id}}},
+    ]
+
+    rels = derive_relationships_from_metadata(records)
+    keys = {(r["source_ocid"], r["relation_type"], r["target_ocid"]) for r in rels}
+
+    assert (subnet_id, "USES_DHCP_OPTIONS", dhcp_id) in keys
+    assert (public_ip_id, "ASSIGNED_TO", nat_id) in keys
+
+
 def test_build_graph_sets_region_on_relationship_edges() -> None:
     inst_id = "ocid1.instance.oc1..inst"
     subnet_id = "ocid1.subnet.oc1..subnet"

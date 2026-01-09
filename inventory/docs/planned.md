@@ -86,3 +86,7 @@
 2) Define best-practices criteria and CIS integration outputs.
 3) Add `report.md` sections for As-Is/To-Be and design decisions.
 4) Document SDK usage and add skills artifacts once referenced.
+
+---
+
+register a OCI Icons to use in diagrams located on: /Users/javierchan/Documents/GitHub/oci/inventory/resources/icons or https://static.oracle.com/cdn/fnd/gallery/2604.0.2/images/preview/index.html using the mermaid methodology: https://mermaid.js.org/config/icons.html or as suggested by mermaid: https://icones.js.org/

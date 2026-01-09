@@ -167,3 +167,86 @@ def test_media_services_enrichers(monkeypatch: Any) -> None:
     assert get_enricher_for("StreamCdnConfig").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.streamcdnconfig.oc1..aaaa"}).enrichStatus == "OK"
     assert get_enricher_for("StreamDistributionChannel").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.streamdistributionchannel.oc1..aaaa"}).enrichStatus == "OK"
     assert get_enricher_for("StreamPackagingConfig").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.streampackagingconfig.oc1..aaaa"}).enrichStatus == "OK"
+
+
+def test_network_gateway_enrichers(monkeypatch: Any) -> None:
+    _set_dummy_ctx()
+
+    class _VcnClient:
+        def get_drg(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+        def get_drg_attachment(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+        def get_ip_sec_connection(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+        def get_virtual_circuit(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+        def get_cpe(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+        def get_local_peering_gateway(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+        def get_remote_peering_connection(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+        def get_cross_connect(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+        def get_cross_connect_group(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+    monkeypatch.setattr(meta.oci_clients, "get_virtual_network_client", lambda ctx, region: _VcnClient())
+
+    assert get_enricher_for("Drg").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.drg.oc1..aaaa"}).enrichStatus == "OK"
+    assert get_enricher_for("DrgAttachment").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.drgattachment.oc1..aaaa"}).enrichStatus == "OK"
+    assert get_enricher_for("IPSecConnection").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.ipsec.oc1..aaaa"}).enrichStatus == "OK"
+    assert get_enricher_for("VirtualCircuit").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.virtualcircuit.oc1..aaaa"}).enrichStatus == "OK"
+    assert get_enricher_for("Cpe").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.cpe.oc1..aaaa"}).enrichStatus == "OK"
+    assert get_enricher_for("LocalPeeringGateway").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.lpg.oc1..aaaa"}).enrichStatus == "OK"
+    assert get_enricher_for("RemotePeeringConnection").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.rpc.oc1..aaaa"}).enrichStatus == "OK"
+    assert get_enricher_for("CrossConnect").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.crossconnect.oc1..aaaa"}).enrichStatus == "OK"
+    assert get_enricher_for("CrossConnectGroup").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.crossconnectgroup.oc1..aaaa"}).enrichStatus == "OK"
+
+
+def test_firewall_and_waf_enrichers(monkeypatch: Any) -> None:
+    _set_dummy_ctx()
+
+    class _FirewallClient:
+        def get_network_firewall(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+        def get_network_firewall_policy(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+    class _WafClient:
+        def get_web_app_firewall(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+        def get_web_app_firewall_policy(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+    monkeypatch.setattr(meta.oci_clients, "get_network_firewall_client", lambda ctx, region: _FirewallClient())
+    monkeypatch.setattr(meta.oci_clients, "get_waf_client", lambda ctx, region: _WafClient())
+
+    assert get_enricher_for("NetworkFirewall").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.networkfirewall.oc1..aaaa"}).enrichStatus == "OK"
+    assert get_enricher_for("NetworkFirewallPolicy").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.networkfirewallpolicy.oc1..aaaa"}).enrichStatus == "OK"
+    assert get_enricher_for("WebAppFirewall").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.webappfirewall.oc1..aaaa"}).enrichStatus == "OK"
+    assert get_enricher_for("WebAppFirewallPolicy").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.webappfirewallpolicy.oc1..aaaa"}).enrichStatus == "OK"
+
+
+def test_load_balancer_enricher(monkeypatch: Any) -> None:
+    _set_dummy_ctx()
+
+    class _LbClient:
+        def get_load_balancer(self, ocid: str) -> Any:
+            return SimpleNamespace(data={"id": ocid})
+
+    monkeypatch.setattr(meta.oci_clients, "get_load_balancer_client", lambda ctx, region: _LbClient())
+
+    res = get_enricher_for("LoadBalancer").enrich({"region": "mx-queretaro-1", "ocid": "ocid1.loadbalancer.oc1..aaaa"})
+    assert res.enrichStatus == "OK"

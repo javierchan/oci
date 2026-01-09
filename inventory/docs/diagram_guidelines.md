@@ -82,7 +82,7 @@ reference zip files and are cited with file paths and line numbers.
 - Label compartments and key zones.
 - Label subnets (role labels allowed).
 - Label Internet and DRG.
-- Aggregation (e.g., `Compute x3`) is allowed.
+- Aggregation is not permitted for inventory diagrams. Use grouping and layout to manage density.
 
 ---
 
@@ -179,7 +179,7 @@ Diagrams MUST include:
 
 - Legend if using icons/colors/status
 - At least one logical flow line if relevant
-- Aggregation for readability when counts are high
+- No aggregation or omission; use grouping and layout to preserve readability
 
 ---
 
@@ -259,12 +259,20 @@ Renderer MUST:
 ### 6) Readability and Legend Updates
 
 - New overlays (IAM, tags, health) MUST update legend.
-- Aggregation MUST still show at least one representative logical flow.
-- Summaries PREFERRED over noise.
+- Grouping MUST still show at least one representative logical flow.
+- Summaries are not permitted; diagrams must remain full-detail.
 
 ---
 
-### 7) Automation and Drift Enforcement
+### 7) Full-Detail Coverage (No Omission)
+
+- All nodes and edges from `graph_nodes.jsonl` and `graph_edges.jsonl` MUST be rendered in inventory diagrams.
+- Consolidated diagrams MUST include the complete inventory scope without aggregation or omission.
+- Use grouping, lane structure, and layout (not summarization) to manage density.
+
+---
+
+### 8) Automation and Drift Enforcement
 
 - This document is the **source of truth** for abstraction and data usage.
 - Agents/generators MUST treat these rules as a **contract**.

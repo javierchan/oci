@@ -15,10 +15,13 @@ try:
     import oci.key_management  # type: ignore
     import oci.log_analytics  # type: ignore
     import oci.logging  # type: ignore
+    import oci.load_balancer  # type: ignore
     import oci.media_services  # type: ignore
+    import oci.network_firewall  # type: ignore
     import oci.object_storage  # type: ignore
     import oci.resource_search  # type: ignore
     import oci.secrets  # type: ignore
+    import oci.waf  # type: ignore
 except Exception:  # pragma: no cover - surfaced in CLI validate
     oci = None  # type: ignore
 
@@ -75,6 +78,15 @@ def get_virtual_network_client(ctx: AuthContext, region: str) -> Any:
     if oci is None:  # pragma: no cover
         raise AuthError("oci Python SDK not installed.")
     return make_client(oci.core.VirtualNetworkClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_load_balancer_client(ctx: AuthContext, region: str) -> Any:
+    """
+    Create LoadBalancerClient in the specified region.
+    """
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.load_balancer.LoadBalancerClient, ctx, region=region)  # type: ignore[attr-defined]
 
 
 def get_bastion_client(ctx: AuthContext, region: str) -> Any:
@@ -148,6 +160,20 @@ def get_media_services_client(ctx: AuthContext, region: str) -> Any:
     if oci is None:  # pragma: no cover
         raise AuthError("oci Python SDK not installed.")
     return make_client(oci.media_services.MediaServicesClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_network_firewall_client(ctx: AuthContext, region: str) -> Any:
+    """Create NetworkFirewallClient in the specified region."""
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.network_firewall.NetworkFirewallClient, ctx, region=region)  # type: ignore[attr-defined]
+
+
+def get_waf_client(ctx: AuthContext, region: str) -> Any:
+    """Create WafClient in the specified region."""
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    return make_client(oci.waf.WafClient, ctx, region=region)  # type: ignore[attr-defined]
 
 
 def list_region_subscriptions(ctx: AuthContext) -> List[str]:
