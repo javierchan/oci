@@ -308,6 +308,75 @@ def _graph_artifact_summary(outdir: Optional[Path]) -> Optional[Dict[str, Any]]:
     }
 
 
+def _graph_health_summary(graph_summary: Dict[str, Any]) -> Dict[str, Any]:
+    nodes = graph_summary.get("nodes") or []
+    edges = graph_summary.get("edges") or []
+    node_by_id: Dict[str, Dict[str, Any]] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
+
+    def _label(node: Dict[str, Any]) -> str:
+        name = str(node.get("name") or "").strip()
+        ocid = str(node.get("nodeId") or "")
+        suffix = _short_id_from_ocid(ocid)
+        if name:
+            return f"{name} ({suffix})" if suffix else name
+        return f"{str(node.get('nodeType') or 'Resource')} {suffix}".strip()
+
+    route_table_sources: Set[str] = set()
+    gateway_sources: Set[str] = set()
+    gateway_types = {
+        "InternetGateway",
+        "NatGateway",
+        "ServiceGateway",
+        "Drg",
+        "DrgAttachment",
+        "VirtualCircuit",
+        "IPSecConnection",
+        "Cpe",
+        "LocalPeeringGateway",
+        "RemotePeeringConnection",
+    }
+    for e in edges:
+        rel = str(e.get("relation_type") or "")
+        src = str(e.get("source_ocid") or "")
+        if not src:
+            continue
+        if rel == "USES_ROUTE_TABLE":
+            route_table_sources.add(src)
+        if rel == "IN_VCN":
+            src_node = node_by_id.get(src)
+            if src_node and str(src_node.get("nodeType") or "") in gateway_types:
+                gateway_sources.add(src)
+
+    gateway_vcn_ids: Set[str] = set()
+    for e in edges:
+        rel = str(e.get("relation_type") or "")
+        if rel != "IN_VCN":
+            continue
+        src = str(e.get("source_ocid") or "")
+        dst = str(e.get("target_ocid") or "")
+        if src in gateway_sources and dst:
+            gateway_vcn_ids.add(dst)
+
+    anomalies: List[str] = []
+    for n in nodes:
+        if str(n.get("nodeType") or "") != "Subnet":
+            continue
+        subnet_id = str(n.get("nodeId") or "")
+        if subnet_id and subnet_id not in route_table_sources:
+            anomalies.append(f"Subnet missing route table association: {_label(n)}.")
+
+    for n in nodes:
+        if str(n.get("nodeType") or "") != "Vcn":
+            continue
+        vcn_id = str(n.get("nodeId") or "")
+        if vcn_id and vcn_id not in gateway_vcn_ids:
+            anomalies.append(f"VCN has no attached gateways: {_label(n)}.")
+
+    return {
+        "anomalies": anomalies,
+    }
+
+
 def _pct(n: int, d: int) -> str:
     if d <= 0:
         return "0%"
@@ -535,6 +604,24 @@ def render_run_report_md(
         total_edges = int(graph_summary.get("total_edges") or 0)
         lines.append(f"Graph integrity: {endpoints_ok}/{total_edges} edges reference known node IDs.")
         lines.append("")
+
+    # Graph Health
+    lines.append("## Graph Health")
+    if graph_summary:
+        endpoints_ok = int(graph_summary.get("endpoints_ok") or 0)
+        total_edges = int(graph_summary.get("total_edges") or 0)
+        lines.append(f"Edge endpoints valid: {endpoints_ok}/{total_edges}.")
+        health = _graph_health_summary(graph_summary)
+        anomalies = health.get("anomalies") or []
+        if anomalies:
+            lines.append("Detected anomalies:")
+            for item in anomalies:
+                lines.append(f"- {item}")
+        else:
+            lines.append("No anomalies detected.")
+    else:
+        lines.append("Graph artifacts not available for this run.")
+    lines.append("")
 
     # Executive Summary (architecture)
     lines.append("## Executive Summary")
