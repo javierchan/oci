@@ -32,6 +32,7 @@ WORKLOAD_PREFIX_EXCLUDE: Tuple[str, ...] = (
     "stage",
     "staging",
 )
+WORKLOAD_MIN_SIZE: int = 3
 
 
 def _get(d: Dict[str, Any], *keys: str) -> Any:
@@ -141,7 +142,7 @@ def _workload_key_candidates(record: Mapping[str, Any]) -> List[str]:
 def group_workloads(
     records: Sequence[Mapping[str, Any]],
     *,
-    min_size: int = 3,
+    min_size: int = WORKLOAD_MIN_SIZE,
 ) -> Dict[str, List[Mapping[str, Any]]]:
     prefix_counts: Dict[str, int] = {}
     for r in records:
@@ -150,7 +151,7 @@ def group_workloads(
             prefix_counts[t.lower()] = prefix_counts.get(t.lower(), 0) + 1
 
     def _is_eligible_prefix(token: str) -> bool:
-        return prefix_counts.get(token.lower(), 0) >= 3
+        return prefix_counts.get(token.lower(), 0) >= min_size
 
     groups: Dict[str, List[Mapping[str, Any]]] = {}
     for r in records:
@@ -174,6 +175,13 @@ def group_workloads(
 
     out = {k: v for k, v in groups.items() if len(v) >= min_size}
     return dict(sorted(out.items(), key=lambda kv: (-len(kv[1]), kv[0].lower())))
+
+
+def group_workload_candidates(records: Sequence[Mapping[str, Any]]) -> Dict[str, List[Mapping[str, Any]]]:
+    """
+    Standard workload grouping used by reports and diagram projections.
+    """
+    return group_workloads(records, min_size=WORKLOAD_MIN_SIZE)
 
 
 def normalize_from_search_summary(

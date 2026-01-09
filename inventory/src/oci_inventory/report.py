@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from .normalize.transform import group_workloads
+from .normalize.transform import group_workload_candidates
 
 
 def _utc_now_iso() -> str:
@@ -313,7 +313,7 @@ def _pct(n: int, d: int) -> str:
 
 
 def _record_workload_groups(records: Sequence[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-    return {k: list(v) for k, v in group_workloads(records).items()}
+    return {k: list(v) for k, v in group_workload_candidates(records).items()}
 
 
 def build_architecture_facts(
