@@ -146,6 +146,114 @@ Generated diagrams MUST include:
 - At least one logical flow line when relevant (for example, compute -> storage, compute -> internet/DRG).
 - Aggregation of homogeneous resources when counts exceed readability thresholds.
 
+## Data-Driven Rendering Requirements
+
+The guidelines above define *what* must be represented in OCI diagrams and *how* it should be abstracted.
+This section defines *how the available data sources MUST be used* to drive diagram generation and reporting.
+
+Unless explicitly stated otherwise, "the graph" refers to the combined model derived from inventory data,
+graph node/edge exports, and relationship files (for example: `graph_nodes.*`, `graph_edges.*`,
+`relationships.*`, and similar sources).
+
+### 1) Use of Graph Relationships (Flows and Dependencies)
+
+- Workload-specific diagrams MUST NOT be rendered as collections of unconnected boxes.
+- For each workload diagram, the generator MUST use graph relationships to draw at least one end-to-end
+  value flow, such as:
+  - `Compute/Service -> Workflow -> Media Assets -> Bucket -> CDN/Edge`
+  - `Compute -> BootVolume/BlockVolume`
+- When explicit edges exist in the graph (for example, `IN_VNIC`, `IN_SUBNET`, `IN_VCN`,
+  attachment/usage edges, media/streaming relationships), they MUST be preferred over heuristics.
+- When explicit relationships are missing but resource types and names strongly suggest a relationship,
+  the generator MAY draw a best-effort set of edges, provided it does not create obviously false
+  dependencies.
+- Relationships that are purely administrative (for example, `IN_COMPARTMENT`) MUST be used for
+  placement/containment but SHOULD NOT be rendered as visible connectors unless they add clarity.
+
+### 2) IAM and Policy Relationships
+
+- IAM domains, policies, and security constructs MUST be treated as overlays with relationships, not only
+  as isolated nodes.
+- The generator MUST:
+  - Place IAM/policy/security nodes at the correct scope (tenancy, compartment, or VCN/subnet/NSG).
+  - Draw edges from policies to the primary resources or workloads they enable or protect, when this can
+    be reasonably inferred from:
+    - Policy names and statements.
+    - Target resource types (for example, Object Storage, Media services, Streaming).
+- The generator MUST avoid rendering every individual policy statement. Policies MAY be aggregated or
+  represented by a small number of representative edges (for example, one policy node connected to the
+  main bucket or workflow it governs).
+
+### 3) Tags and Metadata Overlays
+
+- Tags and metadata present on resources (for example: team/owner tags, lifecycle tags, created-by,
+  created-at) MUST be available to the diagram generator as first-class input.
+- Diagrams MUST support optional overlays based on tags/metadata, such as:
+  - Ownership/team badges applied to resources or groups.
+  - Lifecycle hints (for example, resources marked as ephemeral or scheduled for deletion).
+- Unless a specific view is declared as tag-focused, the generator MUST summarize tag information instead
+  of dumping full tag structures into node labels (for example, "Team: Media", "Lifecycle: Ephemeral",
+  not entire tag JSON blobs).
+
+### 4) Graph Integrity and Anomaly Reporting
+
+- Graph integrity metrics (for example: `N/M` edges reference known node IDs, counts by relationship
+  type) MUST be computed as part of the pipeline.
+- The textual report MUST contain a Graph Health section summarizing at least:
+  - Overall edge integrity (for example, "137/137 edges reference known node IDs").
+  - Counts of relationship types that are relevant for placement and flows (for example, `IN_COMPARTMENT`,
+    `IN_VCN`, `IN_SUBNET`, `IN_VNIC`, `USES_ROUTE_TABLE`, `USES_SECURITY_LIST`).
+- The generator SHOULD detect and report anomalies that are relevant for diagrams, such as:
+  - Resources that appear in compartments but not in any VCN when they would normally require network
+    placement.
+  - Subnets without associated route tables or security lists.
+  - VCNs that have public subnets but no Internet/NAT/DRG gateways.
+- Diagram generation MUST NOT fail because of these anomalies; instead, anomalies MUST be surfaced
+  clearly in the report, and MAY be highlighted in diagrams (for example, using a warning icon or
+  special label).
+
+### 5) Alignment Between Reports and Diagrams
+
+- The "At a Glance" and "Workloads & Services" sections of the textual report are authoritative for:
+  - Which workloads exist.
+  - How many resources they contain.
+  - Their high-level purpose and classification.
+- For every workload listed in the report, there MUST be a clearly identifiable visual representation
+  in one or more diagrams (tenancy, network, workload, or consolidated views).
+- Workload names, counts, and classifications used in diagrams MUST be consistent with the textual
+  report:
+  - Diagrams MUST use the same workload identifiers (for example, `sandbox`, `edge`, `media`,
+    `output/filename`).
+  - Aggregated counts in diagrams (for example, `MediaAsset x87`) MUST be reconcilable with counts in
+    the report.
+
+### 6) Readability and Legend Updates
+
+- When additional overlays are introduced (for example, IAM relationships, tag-based ownership markers,
+  graph health indicators), the legend MUST be updated or extended so that the notation remains
+  understandable without referencing the code.
+- If a view aggregates resources of the same type (for example, `MediaAsset x87`), the diagram MUST
+  still expose at least one representative logical flow using those resource types, so that the reader
+  can understand how the workload behaves.
+- The generator SHOULD prefer aggregation and summarization over adding raw, low-level details that
+  would make the diagram unreadable.
+
+### 7) Automation and Drift Enforcement
+
+- This document is the source of truth for OCI diagram abstraction and data usage. Any automated agent
+  or code generator that modifies diagram generation MUST treat these rules as a contract.
+- If generated diagrams or reports drift from these guidelines (for example, resources rendered outside
+  the expected hierarchy, workloads without flows, policies rendered without any relationships),
+  automated refactoring SHOULD:
+  - Prefer bringing the code and templates back into compliance with this document.
+  - Only change this document when there is an intentional design decision to evolve the abstraction or
+    data usage model.
+- When this document is updated, corresponding changes MUST be applied to:
+  - The code that builds the internal graph.
+  - The diagram generation logic.
+  - The report generation logic.
+  - Any agent configuration described in `AGENTS.md`.
+
 ### Where these requirements do NOT apply (and why)
 
 The abstraction rules defined above intentionally do **not** prescribe:
