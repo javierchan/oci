@@ -41,6 +41,9 @@ coverage.xml
 out/
 *.parquet
 
+# Project docs/artifacts (local)
+project/architecture_references/
+
 # Local (non-committed) config
 .local/
 !.local/*.sample
