@@ -159,6 +159,35 @@ The abstraction rules defined above intentionally do **not** prescribe:
 
 These elements are not part of the OCI architectural **abstraction** model. They belong to the **presentation** layer and may vary based on tooling, audience, or documentation style.
 
+## Data-Driven Rendering Requirements
+
+Diagram generation MUST leverage all relevant inventory and graph data made available by the pipeline. In particular:
+
+### 1) Graph Relationships (Flows and Dependencies)
+- Workload diagrams MUST use graph relationships (for example: `IN_VNIC`, `IN_SUBNET`, `IN_VCN`, `USES_ROUTE_TABLE`, media/streaming edges) to draw at least one meaningful end-to-end flow per workload.
+- Graph placement relationships (for example: `IN_COMPARTMENT`, `IN_VCN`, `IN_SUBNET`) MUST drive location and containment on the diagram, not manual heuristics.
+- Administrative containment relationships SHOULD NOT be drawn as visible edges unless they add clarity.
+
+### 2) IAM and Policies as Relationships
+- IAM policies MUST be drawn as overlays with inferred edges to the resources or workloads they primarily enable or protect (for example: Object Storage, Media workflows).
+- The generator MUST avoid listing raw IAM statements and SHOULD summarize or aggregate policy relationships.
+
+### 3) Tag and Metadata Overlays
+- Tags and metadata (for example: team/owner, lifecycle, createdBy/createdAt) MUST be available to the renderer.
+- Diagrams MAY show optional badge overlays or groupings derived from tag metadata, without dumping full tag structures.
+
+### 4) Graph Integrity and Anomaly Surfacing
+- Graph integrity (for example: `N/M edges reference known nodes`) MUST be surfaced in the textual report.
+- Resource anomalies (for example: subnet without route table, VCN with public subnet but no gateway) SHOULD be surfaced in the report and MAY be annotated visually.
+- Diagram generation MUST NOT fail due to anomalies.
+
+### 5) Report ↔ Diagram Alignment
+- Every workload listed in the report MUST have a corresponding visual representation.
+- Workload names and resource counts in diagrams MUST match those in the report (aggregation allowed, semantics MUST match).
+- The “At a Glance” and “Workloads & Services” sections are authoritative for workload existence and MUST drive workload-level diagrams.
+
+These requirements ensure that the generative pipeline takes full advantage of structural, relational, metadata, and integrity information available from inventory and graph sources, instead of producing purely structural or cosmetic diagrams.
+
 ## Change Control
 
 - If you change diagram structure or section expectations, update:
