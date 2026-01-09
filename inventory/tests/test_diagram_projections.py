@@ -60,8 +60,8 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
 
     consolidated = (tmp_path / "diagram.consolidated.mmd").read_text(encoding="utf-8")
     assert consolidated.startswith("architecture-beta")
-    assert "group network" in consolidated
-    assert "group app" in consolidated
+    assert "group comp_" in consolidated
+    assert "service" in consolidated
 
 
 def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
