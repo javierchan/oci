@@ -254,6 +254,12 @@ def _fetch_media_workflow(record: Dict[str, Any]) -> Dict[str, Any]:
     return _sdk_data_to_dict(client.get_media_workflow(_record_ocid(record)))
 
 
+def _fetch_media_asset(record: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = get_enrich_context()
+    client = oci_clients.get_media_services_client(ctx, _record_region(record))
+    return _sdk_data_to_dict(client.get_media_asset(_record_ocid(record)))
+
+
 def _fetch_stream_cdn_config(record: Dict[str, Any]) -> Dict[str, Any]:
     ctx = get_enrich_context()
     client = oci_clients.get_media_services_client(ctx, _record_region(record))
@@ -355,6 +361,7 @@ def register_metadata_enrichers() -> None:
         "LogAnalyticsEntity": _fetch_log_analytics_entity,
         # Media Services (Streaming + Media Workflows)
         "MediaWorkflow": _fetch_media_workflow,
+        "MediaAsset": _fetch_media_asset,
         "StreamCdnConfig": _fetch_stream_cdn_config,
         "StreamDistributionChannel": _fetch_stream_distribution_channel,
         "StreamPackagingConfig": _fetch_stream_packaging_config,
