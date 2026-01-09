@@ -84,6 +84,7 @@ src/oci_inventory/
 ## Output Artifacts (out/<timestamp>/)
 
 Each `run` writes a deterministic set of artifacts. Fields below are the stable schema contract consumed by reports and diagrams.
+Canonical field requirements and definitions live in `src/oci_inventory/normalize/schema.py`.
 
 - `inventory.jsonl`
   - One JSON object per resource record.
@@ -166,3 +167,8 @@ Secrets are never printed. The docs include operational guidance.
 - Filtering and include/exclude semantics can be added at discovery time.
 - Additional exports (e.g., graph formats) can be layered atop `relationships`.
 - Expanded coverage metrics and run metadata provenance.
+
+## Diagram Reference Guidelines
+
+The repository includes reference architecture diagrams and a distilled set of layout guidelines in
+`project/architecture_references/diagram_guidelines.md`.

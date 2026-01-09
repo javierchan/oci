@@ -9,7 +9,7 @@ from shutil import which
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .graph import Edge, Node
-from ..normalize.transform import group_workloads
+from ..normalize.transform import group_workload_candidates
 from ..util.errors import ExportError
 
 
@@ -1043,7 +1043,7 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
             continue
         candidates.append(n)
 
-    wl_to_nodes = {k: list(v) for k, v in group_workloads(candidates).items()}
+    wl_to_nodes = {k: list(v) for k, v in group_workload_candidates(candidates).items()}
 
     if not wl_to_nodes:
         return []
