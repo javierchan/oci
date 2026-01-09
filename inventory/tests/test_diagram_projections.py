@@ -115,3 +115,44 @@ def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
     diagram = (tmp_path / "diagram.network.edge_vcn.mmd").read_text(encoding="utf-8")
     assert "Subnet: Public-Subnet-1" in diagram
     assert "USES_ROUTE_TABLE" in diagram
+
+
+def test_consolidated_defines_workload_anchor_nodes(tmp_path) -> None:
+    records = [
+        {
+            "ocid": "ocid1.instance.oc1..edge1",
+            "resourceType": "Instance",
+            "displayName": "edge-service-1",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": "ocid1.instance.oc1..edge2",
+            "resourceType": "Instance",
+            "displayName": "edge-service-2",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": "ocid1.instance.oc1..edge3",
+            "resourceType": "Instance",
+            "displayName": "edge-service-3",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+    ]
+
+    nodes, edges = build_graph(records, relationships=[])
+    write_diagram_projections(tmp_path, nodes, edges)
+
+    consolidated = (tmp_path / "diagram.consolidated.mmd").read_text(encoding="utf-8")
+    assert 'WL_edge_ROOT["Workload View: edge"]' in consolidated
