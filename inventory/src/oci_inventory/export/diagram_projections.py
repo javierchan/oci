@@ -28,6 +28,7 @@ _NETWORK_CONTROL_NODETYPES: Set[str] = {
 }
 
 _EDGE_RELATIONS_FOR_PROJECTIONS: Set[str] = set()
+_ADMIN_RELATION_TYPES: Set[str] = {"IN_COMPARTMENT"}
 
 _LANE_ORDER: Tuple[str, ...] = (
     "iam",
@@ -133,6 +134,11 @@ def _mermaid_label_for(node: Node) -> str:
         label = name
 
     return label.replace('"', "'")
+
+
+def _is_iam_node(node: Node) -> bool:
+    nt = str(node.get("nodeType") or "").lower()
+    return any(k in nt for k in ("policy", "dynamicgroup", "dynamic_group", "group", "user", "identity", "domain"))
 
 
 def _arch_node_label(node: Node) -> str:
@@ -272,6 +278,8 @@ def _render_relationship_edges(
     node_ids: Set[str],
     node_id_map: Mapping[str, str],
     allowlist: Optional[Set[str]] = None,
+    node_by_id: Optional[Mapping[str, Node]] = None,
+    label_edges: bool = True,
 ) -> List[str]:
     out: List[str] = []
     seen: Set[Tuple[str, str, str]] = set()
@@ -283,6 +291,14 @@ def _render_relationship_edges(
         dst = str(edge.get("target_ocid") or "")
         if not src or not dst:
             continue
+        label = rel
+        if rel in _ADMIN_RELATION_TYPES:
+            if not node_by_id:
+                continue
+            src_node = node_by_id.get(src)
+            if not src_node or not _is_iam_node(src_node):
+                continue
+            label = "IAM scope"
         if src not in node_ids or dst not in node_ids:
             continue
         src_id = node_id_map.get(src, _mermaid_id(src))
@@ -291,7 +307,9 @@ def _render_relationship_edges(
         if key in seen:
             continue
         seen.add(key)
-        out.append(_render_edge(src_id, dst_id, rel))
+        if not label_edges:
+            label = ""
+        out.append(_render_edge(src_id, dst_id, label))
     return out
 
 
@@ -548,6 +566,19 @@ def _derived_attachments(nodes: Sequence[Node], edges: Sequence[Edge] | None = N
     for n in nodes:
         if _is_node_type(n, "Vnic"):
             vnic_meta_by_id[str(n.get("nodeId") or "")] = _node_metadata(n)
+    vnic_by_instance: Dict[str, Dict[str, Optional[str]]] = {}
+    for vnic_id in sorted(vnic_meta_by_id.keys()):
+        vmeta = vnic_meta_by_id[vnic_id]
+        inst_id = _get_meta(vmeta, "instance_id", "instanceId")
+        if not isinstance(inst_id, str) or not inst_id:
+            continue
+        vcn_hint = _get_meta(vmeta, "vcn_id", "vcnId")
+        subnet_hint = _get_meta(vmeta, "subnet_id", "subnetId")
+        entry = vnic_by_instance.setdefault(inst_id, {"vcn_id": None, "subnet_id": None})
+        if not entry["vcn_id"] and isinstance(vcn_hint, str):
+            entry["vcn_id"] = vcn_hint
+        if not entry["subnet_id"] and isinstance(subnet_hint, str):
+            entry["subnet_id"] = subnet_hint
 
     edge_vcn_by_src: Dict[str, str] = {}
     edge_subnet_by_src: Dict[str, str] = {}
@@ -592,6 +623,10 @@ def _derived_attachments(nodes: Sequence[Node], edges: Sequence[Edge] | None = N
                 vmeta = vnic_meta_by_id[pvnic]
                 vcn_id = vcn_id or _get_meta(vmeta, "vcn_id")
                 subnet_id = subnet_id or _get_meta(vmeta, "subnet_id")
+            if (not subnet_id or not vcn_id) and ocid in vnic_by_instance:
+                vmeta = vnic_by_instance.get(ocid) or {}
+                vcn_id = vcn_id or vmeta.get("vcn_id")
+                subnet_id = subnet_id or vmeta.get("subnet_id")
 
         # VNIC itself: include for downstream inference (not necessarily rendered).
         if _is_node_type(n, "Vnic"):
@@ -660,8 +695,9 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
     lines.append("%% ------------------ Tenancy / Compartments ------------------")
 
     tenancy_label = _tenancy_label(nodes)
+    tenancy_label_safe = tenancy_label.replace('"', "'")
     tenancy_id = _mermaid_id("tenancy")
-    lines.append(f"subgraph {tenancy_id}[\"{tenancy_label.replace('\"', \"'\")}\"]")
+    lines.append(f"subgraph {tenancy_id}[\"{tenancy_label_safe}\"]")
     lines.append("  direction TB")
 
     for cid in comp_ids:
@@ -670,8 +706,9 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
             if cid == "UNKNOWN"
             else _compartment_label(node_by_id.get(cid, {"name": cid}))
         )
+        comp_label_safe = comp_label.replace('"', "'")
         comp_group_id = _mermaid_id(f"comp:{cid}")
-        lines.append(f"  subgraph {comp_group_id}[\"{comp_label.replace('\"', \"'\")}\"]")
+        lines.append(f"  subgraph {comp_group_id}[\"{comp_label_safe}\"]")
         lines.append("    direction TB")
 
         comp_nodes = [n for n in comps_all.get(cid, []) if not _is_node_type(n, "Compartment")]
@@ -694,8 +731,9 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
             if not vcn_id:
                 continue
             vcn_node = node_by_id.get(vcn_id, {"name": vcn_id, "nodeType": "Vcn"})
+            vcn_label_safe = _vcn_label(vcn_node).replace('"', "'")
             vcn_group_id = _mermaid_id(f"comp:{cid}:vcn:{vcn_id}:group")
-            lines.append(f"      subgraph {vcn_group_id}[\"{_vcn_label(vcn_node).replace('\"', \"'\")}\"]")
+            lines.append(f"      subgraph {vcn_group_id}[\"{vcn_label_safe}\"]")
             lines.append("        direction TB")
 
             vcn_node_id = _mermaid_id(vcn_id)
@@ -747,8 +785,9 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
             vcn_subnets = [sn for sn in subnets if subnet_to_vcn.get(str(sn.get("nodeId") or "")) == vcn_id]
             for sn in sorted(vcn_subnets, key=lambda n: str(n.get("name") or "")):
                 sn_ocid = str(sn.get("nodeId") or "")
+                subnet_label_safe = _subnet_label(sn).replace('"', "'")
                 sn_group_id = _mermaid_id(f"comp:{cid}:subnet:{sn_ocid}:group")
-                lines.append(f"        subgraph {sn_group_id}[\"{_subnet_label(sn).replace('\"', \"'\")}\"]")
+                lines.append(f"        subgraph {sn_group_id}[\"{subnet_label_safe}\"]")
                 lines.append("          direction TB")
 
                 sn_node_id = _mermaid_id(sn_ocid)
@@ -850,7 +889,12 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
     lines.extend(_legend_flowchart_lines("tenancy"))
     lines.append("end")
 
-    rel_lines = _render_relationship_edges(edges, node_ids=rendered_node_ids, node_id_map=edge_node_id_map)
+    rel_lines = _render_relationship_edges(
+        edges,
+        node_ids=rendered_node_ids,
+        node_id_map=edge_node_id_map,
+        node_by_id=node_by_id,
+    )
     lines.extend(rel_lines)
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -912,8 +956,9 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
             lines.extend(_render_node_with_class(oci_services_id, "OCI Services", cls="external", shape="round"))
 
         tenancy_label = _tenancy_label(nodes)
+        tenancy_label_safe = tenancy_label.replace('"', "'")
         tenancy_id = _mermaid_id(f"tenancy:{vcn_ocid}")
-        lines.append(f"subgraph {tenancy_id}[\"{tenancy_label.replace('\"', \"'\")}\"]")
+        lines.append(f"subgraph {tenancy_id}[\"{tenancy_label_safe}\"]")
         lines.append("  direction TB")
 
         comp_id = str(vcn.get("compartmentId") or "") or "UNKNOWN"
@@ -922,8 +967,9 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
             if comp_id == "UNKNOWN"
             else _compartment_label(node_by_id.get(comp_id, {"name": comp_id}))
         )
+        comp_label_safe = comp_label.replace('"', "'")
         comp_group_id = _mermaid_id(f"comp:{comp_id}:network:{vcn_ocid}")
-        lines.append(f"  subgraph {comp_group_id}[\"{comp_label.replace('\"', \"'\")}\"]")
+        lines.append(f"  subgraph {comp_group_id}[\"{comp_label_safe}\"]")
         lines.append("    direction TB")
 
         in_vcn_id = _mermaid_id(f"comp:{comp_id}:network:{vcn_ocid}:in_vcn")
@@ -931,7 +977,8 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
         lines.append("      direction TB")
 
         vcn_group_id = _mermaid_id(f"comp:{comp_id}:vcn:{vcn_ocid}:group")
-        lines.append(f"      subgraph {vcn_group_id}[\"{_vcn_label(vcn).replace('\"', \"'\")}\"]")
+        vcn_label_safe = _vcn_label(vcn).replace('"', "'")
+        lines.append(f"      subgraph {vcn_group_id}[\"{vcn_label_safe}\"]")
         lines.append("        direction TB")
 
         vcn_node_id = _mermaid_id(vcn_ocid)
@@ -1009,7 +1056,8 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
         for sn in sorted(vcn_subnets, key=lambda n: str(n.get("name") or "")):
             sn_ocid = str(sn.get("nodeId") or "")
             sn_group_id = _mermaid_id(f"vcn:{vcn_ocid}:subnet:{sn_ocid}:group")
-            lines.append(f"        subgraph {sn_group_id}[\"{_subnet_label(sn).replace('\"', \"'\")}\"]")
+            subnet_label_safe = _subnet_label(sn).replace('"', "'")
+            lines.append(f"        subgraph {sn_group_id}[\"{subnet_label_safe}\"]")
             lines.append("          direction TB")
 
             sn_node_id = _mermaid_id(sn_ocid)
@@ -1076,6 +1124,7 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
             edges,
             node_ids=rendered_node_ids,
             node_id_map=edge_node_id_map,
+            node_by_id=node_by_id,
         )
         lines.extend(rel_lines)
 
@@ -1170,8 +1219,9 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
         edge_node_id_map: Dict[str, str] = {}
 
         tenancy_label = _tenancy_label(nodes)
+        tenancy_label_safe = tenancy_label.replace('"', "'")
         tenancy_id = _mermaid_id(f"tenancy:workload:{wl_name}")
-        lines.append(f"subgraph {tenancy_id}[\"{tenancy_label.replace('\"', \"'\")}\"]")
+        lines.append(f"subgraph {tenancy_id}[\"{tenancy_label_safe}\"]")
         lines.append("  direction TB")
 
         # Group by compartment.
@@ -1182,8 +1232,9 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
 
         for cid in sorted(comps.keys()):
             comp_label = "Compartment: Unknown" if cid == "UNKNOWN" else _compartment_label(node_by_id.get(cid, {"name": cid}))
+            comp_label_safe = comp_label.replace('"', "'")
             comp_group_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}")
-            lines.append(f"  subgraph {comp_group_id}[\"{comp_label.replace('\"', \"'\")}\"]")
+            lines.append(f"  subgraph {comp_group_id}[\"{comp_label_safe}\"]")
             lines.append("    direction TB")
 
             comp_nodes = [n for n in comps[cid] if not _is_node_type(n, "Compartment")]
@@ -1204,8 +1255,9 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
                 if not vcn_ocid:
                     continue
                 vcn_node = node_by_id.get(vcn_ocid, {"name": vcn_ocid, "nodeType": "Vcn"})
+                vcn_label_safe = _vcn_label(vcn_node).replace('"', "'")
                 vcn_group_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}:vcn:{vcn_ocid}:group")
-                lines.append(f"      subgraph {vcn_group_id}[\"{_vcn_label(vcn_node).replace('\"', \"'\")}\"]")
+                lines.append(f"      subgraph {vcn_group_id}[\"{vcn_label_safe}\"]")
                 lines.append("        direction TB")
 
                 vcn_node_id = _mermaid_id(vcn_ocid)
@@ -1274,8 +1326,9 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
 
                 for sn_ocid in sorted(vcn_subnet_ids):
                     sn = node_by_id.get(sn_ocid, {"name": sn_ocid, "nodeType": "Subnet"})
+                    subnet_label_safe = _subnet_label(sn).replace('"', "'")
                     sn_group_id = _mermaid_id(f"workload:{wl_name}:comp:{cid}:subnet:{sn_ocid}:group")
-                    lines.append(f"        subgraph {sn_group_id}[\"{_subnet_label(sn).replace('\"', \"'\")}\"]")
+                    lines.append(f"        subgraph {sn_group_id}[\"{subnet_label_safe}\"]")
                     lines.append("          direction TB")
 
                     sn_node_id = _mermaid_id(sn_ocid)
@@ -1378,6 +1431,7 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
 
         # Add workload-centric flows.
         # Users -> LoadBalancers / API-like entry points; compute -> buckets.
+        flow_added = False
         lbs = [
             n
             for n in wl_nodes
@@ -1393,6 +1447,7 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
             for c in computes_sorted:
                 c_id = _mermaid_id(str(c.get("nodeId") or ""))
                 lines.append(_render_edge(lb_id, c_id, "forwards inferred", dotted=True))
+            flow_added = True
 
         for c in computes_sorted:
             c_id = _mermaid_id(str(c.get("nodeId") or ""))
@@ -1401,15 +1456,41 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
             for b in buckets:
                 b_id = _mermaid_id(str(b.get("nodeId") or ""))
                 lines.append(_render_edge(c_id, b_id, "reads/writes inferred", dotted=True))
+                flow_added = True
 
         for b in buckets:
             b_id = _mermaid_id(str(b.get("nodeId") or ""))
             lines.append(_render_edge(b_id, services_id, "Object Storage inferred", dotted=True))
+            flow_added = True
+
+        if not flow_added:
+            rel_present = False
+            for edge in edges:
+                rel = str(edge.get("relation_type") or "")
+                if rel in _ADMIN_RELATION_TYPES:
+                    continue
+                src = str(edge.get("source_ocid") or "")
+                dst = str(edge.get("target_ocid") or "")
+                if src in rendered_node_ids and dst in rendered_node_ids:
+                    rel_present = True
+                    break
+            if not rel_present:
+                fallback_nodes = [
+                    n for n in wl_nodes if n.get("nodeId") and not _is_node_type(n, "Compartment")
+                ]
+                fallback_nodes = sorted(
+                    fallback_nodes,
+                    key=lambda n: (str(n.get("nodeCategory") or ""), str(n.get("nodeType") or ""), str(n.get("name") or "")),
+                )
+                if fallback_nodes:
+                    target_id = _mermaid_id(str(fallback_nodes[0].get("nodeId") or ""))
+                    lines.append(_render_edge(users_id, target_id, "entry inferred", dotted=True))
 
         rel_lines = _render_relationship_edges(
             edges,
             node_ids=rendered_node_ids,
             node_id_map=edge_node_id_map,
+            node_by_id=node_by_id,
         )
         lines.extend(rel_lines)
 
@@ -1585,6 +1666,7 @@ def _write_consolidated_mermaid(
 
     rendered_node_ids: Set[str] = set()
     node_service_ids: Dict[str, str] = {}
+    gateway_service_ids: Dict[str, str] = {}
 
     def _add_service(node: Node, parent_id: str) -> None:
         ocid = str(node.get("nodeId") or "")
@@ -1595,6 +1677,8 @@ def _write_consolidated_mermaid(
         icon = _service_icon(node)
         lines.append(f"    service {sid}({icon})[{label}] in {parent_id}")
         node_service_ids[ocid] = sid
+        if _is_node_type(node, *_NETWORK_GATEWAY_NODETYPES):
+            gateway_service_ids[ocid] = sid
         rendered_node_ids.add(ocid)
 
     tenancy_label = _tenancy_label(nodes)
@@ -1613,9 +1697,12 @@ def _write_consolidated_mermaid(
         comp_group_id = _service_id("comp_", cid)
         lines.append(f"    group {comp_group_id}(cloud)[{_arch_label(comp_label, max_len=80)}] in {tenancy_id}")
 
+        network_lane_id = _service_id("lane_network_", f"{cid}:network")
+        lines.append(f"    group {network_lane_id}(cloud)[{_arch_label('Network', max_len=24)}] in {comp_group_id}")
+
         in_group_id = _service_id("invcn_", cid)
         out_group_id = _service_id("outvcn_", cid)
-        lines.append(f"    group {in_group_id}(cloud)[{_arch_label('In-VCN', max_len=24)}] in {comp_group_id}")
+        lines.append(f"    group {in_group_id}(cloud)[{_arch_label('In-VCN', max_len=24)}] in {network_lane_id}")
         lines.append(f"    group {out_group_id}(cloud)[{_arch_label('Out-of-VCN Services', max_len=48)}] in {comp_group_id}")
 
         comp_nodes = [n for n in nodes_by_comp[cid] if not _is_node_type(n, "Compartment")]
@@ -1738,6 +1825,37 @@ def _write_consolidated_mermaid(
             ):
                 _add_service(n, lane_group_id)
 
+    external_group_id = ""
+    internet_id = ""
+    oci_services_id = ""
+    customer_net_id = ""
+
+    if gateway_service_ids:
+        external_group_id = _service_id("external_", "external")
+        lines.append(f"    group {external_group_id}(cloud)[{_arch_label('External', max_len=24)}] in {tenancy_id}")
+
+        has_internet = False
+        has_service = False
+        has_customer_net = False
+        for ocid, sid in gateway_service_ids.items():
+            node = node_by_id.get(ocid, {})
+            if _is_node_type(node, "InternetGateway", "NatGateway"):
+                has_internet = True
+            if _is_node_type(node, "ServiceGateway"):
+                has_service = True
+            if _is_node_type(node, "Drg", "VirtualCircuit", "IPSecConnection", "Cpe"):
+                has_customer_net = True
+
+        if has_internet:
+            internet_id = _service_id("internet_", "internet")
+            lines.append(f"    service {internet_id}(cloud)[{_arch_label('Internet', max_len=24)}] in {external_group_id}")
+        if has_service:
+            oci_services_id = _service_id("oci_services_", "oci_services")
+            lines.append(f"    service {oci_services_id}(cloud)[{_arch_label('OCI Services', max_len=24)}] in {external_group_id}")
+        if has_customer_net:
+            customer_net_id = _service_id("customer_net_", "customer_net")
+            lines.append(f"    service {customer_net_id}(cloud)[{_arch_label('Customer Network', max_len=32)}] in {external_group_id}")
+
     legend_id = _service_id("legend_", "legend")
     lines.append(f"    group {legend_id}(cloud)[{_arch_label('Legend', max_len=24)}] in {tenancy_id}")
     legend_items = [
@@ -1752,10 +1870,24 @@ def _write_consolidated_mermaid(
         sid = _service_id("legend_item_", label)
         lines.append(f"    service {sid}({icon})[{_arch_label(label, max_len=24)}] in {legend_id}")
 
+    if gateway_service_ids:
+        for ocid, sid in gateway_service_ids.items():
+            node = node_by_id.get(ocid, {})
+            if _is_node_type(node, "InternetGateway") and internet_id:
+                lines.append(_render_edge(internet_id, sid, "", dotted=True))
+            if _is_node_type(node, "NatGateway") and internet_id:
+                lines.append(_render_edge(sid, internet_id, "", dotted=True))
+            if _is_node_type(node, "ServiceGateway") and oci_services_id:
+                lines.append(_render_edge(sid, oci_services_id, "", dotted=True))
+            if _is_node_type(node, "Drg", "VirtualCircuit", "IPSecConnection", "Cpe") and customer_net_id:
+                lines.append(_render_edge(sid, customer_net_id, "", dotted=True))
+
     rel_lines = _render_relationship_edges(
         edges,
         node_ids=rendered_node_ids,
         node_id_map=node_service_ids,
+        node_by_id=node_by_id,
+        label_edges=False,
     )
     lines.extend(rel_lines)
 
