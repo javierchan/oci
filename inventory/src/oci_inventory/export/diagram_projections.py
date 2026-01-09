@@ -13,17 +13,7 @@ from ..normalize.transform import group_workload_candidates
 from ..util.errors import ExportError
 
 
-_NON_ARCH_LEAF_NODETYPES: Set[str] = {
-    "network.Vnic",
-    "Vnic",
-    "PrivateIp",
-    "Image",
-    "compute.Image",
-    "compute.BootVolume",
-    "compute.BlockVolume",
-    "BootVolume",
-    "BlockVolume",
-}
+_NON_ARCH_LEAF_NODETYPES: Set[str] = set()
 
 
 _NETWORK_CONTROL_NODETYPES: Set[str] = {
@@ -37,14 +27,7 @@ _NETWORK_CONTROL_NODETYPES: Set[str] = {
     "DhcpOptions",
 }
 
-_EDGE_RELATIONS_FOR_PROJECTIONS: Set[str] = {
-    "IN_VCN",
-    "IN_SUBNET",
-    "IN_VNIC",
-    "USES_ROUTE_TABLE",
-    "USES_SECURITY_LIST",
-    "USES_NSG",
-}
+_EDGE_RELATIONS_FOR_PROJECTIONS: Set[str] = set()
 
 _LANE_ORDER: Tuple[str, ...] = (
     "iam",
@@ -273,13 +256,13 @@ def _render_relationship_edges(
     *,
     node_ids: Set[str],
     node_id_map: Mapping[str, str],
-    allowlist: Set[str],
+    allowlist: Optional[Set[str]] = None,
 ) -> List[str]:
     out: List[str] = []
     seen: Set[Tuple[str, str, str]] = set()
     for edge in sorted(edges, key=_edge_sort_key):
         rel = str(edge.get("relation_type") or "")
-        if rel not in allowlist:
+        if allowlist is not None and rel not in allowlist:
             continue
         src = str(edge.get("source_ocid") or "")
         dst = str(edge.get("target_ocid") or "")
@@ -486,6 +469,42 @@ def _subnet_label(node: Node) -> str:
     return f"Subnet: {name} ({vis})"
 
 
+def _tenancy_label(nodes: Sequence[Node]) -> str:
+    roots: List[Node] = []
+    for n in nodes:
+        if not _is_node_type(n, "Compartment"):
+            continue
+        if n.get("compartmentId"):
+            continue
+        roots.append(n)
+    if roots:
+        roots_sorted = sorted(roots, key=lambda n: str(n.get("name") or ""))
+        name = str(roots_sorted[0].get("name") or "").strip()
+        if name:
+            if name.startswith("ocid1"):
+                return f"Tenancy {_short_ocid(name)}"
+            return f"Tenancy: {name}"
+    return "Tenancy"
+
+
+def _legend_flowchart_lines(prefix: str) -> List[str]:
+    legend_id = _mermaid_id(f"legend:{prefix}")
+    lines: List[str] = [f"  subgraph {legend_id}[\"Legend\"]", "    direction TB"]
+    items = [
+        ("external", "External", "external", "round"),
+        ("compute", "Compute", "compute", "round"),
+        ("network", "Network", "network", "rect"),
+        ("storage", "Storage", "storage", "db"),
+        ("policy", "Policy / IAM", "policy", "hex"),
+        ("other", "Other / Boundary", "boundary", "rect"),
+    ]
+    for key, label, cls, shape in items:
+        node_id = _mermaid_id(f"legend:{prefix}:{key}")
+        lines.extend(_render_node_with_class(node_id, label, cls=cls, shape=shape))
+    lines.append("  end")
+    return lines
+
+
 def _derived_attachments(nodes: Sequence[Node], edges: Sequence[Edge] | None = None) -> List[_DerivedAttachment]:
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
 
@@ -565,16 +584,7 @@ def _derived_attachments(nodes: Sequence[Node], edges: Sequence[Edge] | None = N
 
 
 def _tenancy_nodes_to_show(nodes: Sequence[Node]) -> List[Node]:
-    shown: List[Node] = []
-    for n in nodes:
-        nt = str(n.get("nodeType") or "")
-        if nt in _NON_ARCH_LEAF_NODETYPES:
-            continue
-        # Tenancy view is high-level: omit network control-plane detail.
-        if nt in _NETWORK_CONTROL_NODETYPES:
-            continue
-        shown.append(n)
-    return shown
+    return list(nodes)
 
 
 def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edge]) -> Path:
@@ -1445,8 +1455,10 @@ def _lane_for_node(node: Node) -> str:
 
     # Heuristic lane classification for "other" types.
     low = t.lower()
-    if any(k in low for k in ("policy", "dynamicgroup", "dynamic_group", "group", "user", "identity")):
+    if any(k in low for k in ("policy", "dynamicgroup", "dynamic_group", "group", "user", "identity", "domain")):
         return "iam"
+    if any(k in low for k in ("securityzone", "cloudguard", "vault", "secret", "nsg", "securitylist")):
+        return "security"
     if any(k in low for k in ("bucket", "database", "dbsystem", "stream", "queue", "topic")):
         return "data"
     if any(k in low for k in ("alarm", "event", "notification", "log", "metric", "loganalytics")):
