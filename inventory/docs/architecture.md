@@ -172,3 +172,5 @@ Secrets are never printed. The docs include operational guidance.
 
 The repository includes reference architecture diagrams and a distilled set of layout guidelines in
 `project/architecture_references/diagram_guidelines.md`.
+- This is the required source of truth for any diagram creation or diagram-related task.
+- If a request conflicts with these guidelines, follow the guidelines and call out the mismatch.

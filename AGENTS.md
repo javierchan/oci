@@ -253,4 +253,18 @@ Agents MUST NOT:
 
 ---
 
+## Docs
+- docs/quickstart.md: minimal getting started
+- docs/architecture.md: layout and design
+- docs/auth.md: authentication options and safety
+  +
++## Diagram Guidelines (Required)
+  +For any diagram creation or diagram-related task, use:
+  +`inventory/project/architecture_references/diagram_guidelines.md`
+  +- Treat it as the source of truth for layout, abstraction level, and component grouping.
+  +- If there is any conflict between a request and the guidelines, follow the guidelines and call out the
+  mismatch.
+
+---
+
 # End of AGENTS.md
