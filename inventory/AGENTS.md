@@ -257,12 +257,20 @@ Agents MUST NOT:
 - docs/quickstart.md: minimal getting started
 - docs/architecture.md: layout and design
 - docs/auth.md: authentication options and safety
-- project/goals.md: detailed codebase report, risks, and maintainer guidance
+- docs/report_guidelines.md: report.md structure and content requirements
+- docs/goals.md: detailed codebase report, risks, and maintainer guidance
+- docs/planned.md: project planning notes
 
 ## Diagram Guidelines (Required)
 For any diagram creation or diagram-related task, use:
-`project/architecture_references/diagram_guidelines.md`
+`docs/diagram_guidelines.md`
 - Treat it as the source of truth for layout, abstraction level, and component grouping.
+- If there is any conflict between a request and the guidelines, follow the guidelines and call out the mismatch.
+
+## Report Guidelines (Required)
+For any report.md creation or report-related task, use:
+`docs/report_guidelines.md`
+- Treat it as the source of truth for structure, wording, and redaction rules.
 - If there is any conflict between a request and the guidelines, follow the guidelines and call out the mismatch.
 
 ---

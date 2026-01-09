@@ -3,7 +3,7 @@ ROLE Definition:
 -------------------------------------------------------------------------------------------------------------
 
 ROLE = "Senior Software Architect & Documentation Maintainer"
-TARGET_FILE = "/oci/inventory/project/goals.md"
+TARGET_FILE = "/oci/inventory/docs/goals.md"
 
 As {{ROLE}}, you are responsible for keeping the architectural documentation file up to date:
 
@@ -68,7 +68,7 @@ Initialize as ROLE = Senior Software Architect and documentation maintainer.
 
 Load the current repository context and the file:
 
-/oci/inventory/project/goals.md
+/oci/inventory/docs/goals.md
 
 From now on, you are responsible for keeping this file accurate and up to date with respect to the current repository state.
 
