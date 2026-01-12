@@ -288,6 +288,7 @@ def _request_summarized_usages(
     if details_cls is None or not hasattr(details_cls, "RequestSummarizedUsagesDetails"):
         return [], None, "OCI Usage API models are unavailable"
 
+    # Explicitly set query_type for cost reporting; do not rely on defaults.
     details_kwargs: Dict[str, Any] = {
         "tenant_id": tenancy_id,
         "time_usage_started": start,
@@ -448,19 +449,14 @@ def _collect_cost_report_data(
     if not tenancy_id:
         errors.append("Tenancy OCID is required for cost reporting.")
 
-    cost_region = None
+    home_region = None
     if tenancy_id and ctx:
         try:
-            cost_region = get_home_region_name(ctx)
+            home_region = get_home_region_name(ctx)
         except Exception as e:
             errors.append(redact_text(f"Home region lookup failed: {e}"))
-    if not cost_region:
-        if requested_regions:
-            cost_region = sorted([r for r in requested_regions if r])[0]
-            warnings.append("Home region unavailable; using requested region for Usage API.")
-        else:
-            cost_region = sorted(subscribed_regions)[0] if subscribed_regions else None
-            warnings.append("Home region unavailable; using subscribed region for Usage API.")
+    if tenancy_id and ctx and not home_region:
+        errors.append("Unable to resolve tenancy home region; Usage API calls skipped.")
 
     services: List[Dict[str, Any]] = []
     compartments: List[Dict[str, Any]] = []
@@ -476,19 +472,21 @@ def _collect_cost_report_data(
         "query_type": "COST",
         "group_by": ["service", "compartmentId", "region"],
         "compartment_depth": 6,
-        "region": cost_region,
-        "home_region": cost_region,
+        "home_region": home_region or "(unresolved)",
     }
-    if cost_region and requested_regions and cost_region not in requested_regions:
+    if home_region:
+        query_inputs["region"] = home_region
+    if home_region and requested_regions and home_region not in requested_regions:
         warnings.append("Usage API forced to tenancy home region, overriding requested region.")
     if start_raw != start_dt:
         query_inputs["time_usage_started_raw"] = start_raw.isoformat(timespec="seconds")
     if end_raw != end_dt:
         query_inputs["time_usage_ended_raw"] = end_raw.isoformat(timespec="seconds")
 
-    if tenancy_id and start_dt < end_dt and ctx:
+    # Usage API must always target the tenancy home region (no fallback).
+    if tenancy_id and start_dt < end_dt and ctx and home_region:
         try:
-            usage_client = get_usage_api_client(ctx, region=cost_region)
+            usage_client = get_usage_api_client(ctx, region=home_region)
         except Exception as e:
             errors.append(redact_text(f"Usage API client failed: {e}"))
             steps.append({"name": "usage_api_total", "status": "ERROR"})
@@ -559,18 +557,26 @@ def _collect_cost_report_data(
         steps.append({"name": "usage_api_compartment", "status": "SKIPPED"})
         steps.append({"name": "usage_api_region", "status": "SKIPPED"})
 
+    # Usage API currency is authoritative; conversion is out of scope.
     if cfg.cost_currency:
         if currency and currency != cfg.cost_currency:
             warnings.append(
-                f"Currency mismatch: Usage API returned {currency}, CLI configured {cfg.cost_currency}."
+                "Requested currency "
+                f"{cfg.cost_currency} but Usage API returned {currency}. "
+                "No conversion performed; amounts remain in API currency."
             )
-        currency = cfg.cost_currency
+        elif not currency:
+            warnings.append(
+                "Requested currency "
+                f"{cfg.cost_currency} but Usage API did not return currency. "
+                "No conversion performed; currency is unknown."
+            )
 
     budgets: List[Dict[str, Any]] = []
     alert_rule_counts: Dict[str, int] = {}
     if tenancy_id and ctx:
         try:
-            budget_client = get_budget_client(ctx, region=cost_region)
+            budget_client = get_budget_client(ctx, region=home_region)
         except Exception as e:
             steps.append({"name": "budget_list", "status": "ERROR"})
             errors.append(redact_text(f"Budget client failed: {e}"))
@@ -597,40 +603,75 @@ def _collect_cost_report_data(
 
     osub_usage: Optional[Dict[str, Any]] = None
     if tenancy_id and ctx:
-        try:
-            osub_client = get_osub_usage_client(ctx, region=cost_region)
-        except Exception as e:
-            steps.append({"name": "osub_usage", "status": "ERROR"})
-            errors.append(redact_text(f"OneSubscription client failed: {e}"))
+        subscription_id = cfg.osub_subscription_id
+        if not subscription_id:
+            steps.append({"name": "osub_usage", "status": "SKIPPED"})
+            warnings.append("OneSubscription subscription ID not provided; skipping usage lookup.")
         else:
             try:
-                import oci  # type: ignore
-            except Exception as e:  # pragma: no cover
+                osub_client = get_osub_usage_client(ctx, region=home_region)
+            except Exception as e:
                 steps.append({"name": "osub_usage", "status": "ERROR"})
-                errors.append(redact_text(f"OneSubscription client unavailable: {e}"))
+                errors.append(redact_text(f"OneSubscription client failed: {e}"))
             else:
-                if hasattr(osub_client, "request_computed_usage"):
-                    try:
-                        details_cls = getattr(getattr(oci, "osub_usage", None), "models", None)
-                        if details_cls and hasattr(details_cls, "RequestComputedUsageDetails"):
-                            details = details_cls.RequestComputedUsageDetails(
-                                tenant_id=tenancy_id,
-                                time_usage_started=start_dt,
-                                time_usage_ended=end_dt,
-                            )
-                            resp = osub_client.request_computed_usage(details)  # type: ignore[attr-defined]
-                            data = getattr(resp, "data", None)
-                            osub_usage = _usage_item_to_dict(data) if data is not None else None
-                            steps.append({"name": "osub_usage", "status": "OK"})
-                        else:
-                            steps.append({"name": "osub_usage", "status": "ERROR"})
-                            errors.append("OneSubscription models are unavailable.")
-                    except Exception as e:
-                        steps.append({"name": "osub_usage", "status": "ERROR"})
-                        errors.append(redact_text(f"OneSubscription usage failed: {e}"))
-                else:
+                try:
+                    import oci  # type: ignore
+                except Exception as e:  # pragma: no cover
                     steps.append({"name": "osub_usage", "status": "ERROR"})
-                    errors.append("OneSubscription client does not support computed usage requests.")
+                    errors.append(redact_text(f"OneSubscription client unavailable: {e}"))
+                else:
+                    if hasattr(osub_client, "list_computed_usage_aggregateds"):
+                        # Use list_computed_usage_aggregateds; request_computed_usage is not supported in SDK 2.164.2.
+                        try:
+                            kwargs: Dict[str, Any] = {"grouping": "MONTHLY"}
+                            if home_region:
+                                kwargs["x_one_origin_region"] = home_region
+                            resp = osub_client.list_computed_usage_aggregateds(
+                                compartment_id=tenancy_id,
+                                subscription_id=subscription_id,
+                                time_from=start_dt,
+                                time_to=end_dt,
+                                **kwargs,
+                            )
+                            data = getattr(resp, "data", None)
+                            rows = list(data) if isinstance(data, list) else []
+                            total = 0.0
+                            currency_code: Optional[str] = None
+                            agg_rows = 0
+                            for row in rows:
+                                row_dict = _usage_item_to_dict(row)
+                                currency_code = currency_code or _extract_usage_currency(row_dict)
+                                aggregates = row_dict.get("aggregated_computed_usages") or row_dict.get(
+                                    "aggregatedComputedUsages"
+                                )
+                                if not isinstance(aggregates, list):
+                                    continue
+                                for agg in aggregates:
+                                    agg_dict = _usage_item_to_dict(agg)
+                                    total += _extract_usage_amount(agg_dict)
+                                    agg_rows += 1
+                            if rows:
+                                osub_usage = {
+                                    "computed_amount": total,
+                                    "currency_code": currency_code,
+                                    "subscription_id": subscription_id,
+                                    "aggregation_rows": agg_rows,
+                                }
+                            else:
+                                warnings.append("OneSubscription returned no usage rows.")
+                            steps.append({"name": "osub_usage", "status": "OK"})
+                        except Exception as e:
+                            msg = redact_text(f"OneSubscription usage failed: {e}")
+                            if isinstance(e, oci.exceptions.ServiceError):
+                                if e.status in (401, 403):
+                                    msg = "OneSubscription access denied or not enabled for this tenancy."
+                                elif e.status == 404:
+                                    msg = "OneSubscription is not enabled for this tenancy."
+                            steps.append({"name": "osub_usage", "status": "ERROR"})
+                            errors.append(redact_text(msg))
+                    else:
+                        steps.append({"name": "osub_usage", "status": "ERROR"})
+                        errors.append("OneSubscription client does not support required list APIs.")
     else:
         steps.append({"name": "osub_usage", "status": "SKIPPED"})
 
@@ -652,7 +693,7 @@ def _collect_cost_report_data(
         "time_start": start_dt.isoformat(timespec="seconds"),
         "time_end": end_dt.isoformat(timespec="seconds"),
         "currency": currency or "UNKNOWN",
-        "currency_source": "usage_api" if currency and currency != cfg.cost_currency else "cli" if cfg.cost_currency else "unknown",
+        "currency_source": "usage_api" if currency else "unknown",
         "total_cost": total_cost,
         "services": services,
         "compartments": compartments,

@@ -74,6 +74,7 @@ def build_run_plan(
     cost_start: Optional[str] = None,
     cost_end: Optional[str] = None,
     cost_currency: Optional[str] = None,
+    osub_subscription_id: Optional[str] = None,
     assessment_target_group: Optional[str] = None,
     assessment_target_scope: Optional[List[str]] = None,
     assessment_lens_weight: Optional[List[str]] = None,
@@ -141,6 +142,7 @@ def build_run_plan(
         _maybe_add(argv, "--cost-start", cost_start)
         _maybe_add(argv, "--cost-end", cost_end)
         _maybe_add(argv, "--cost-currency", cost_currency)
+        _maybe_add(argv, "--osub-subscription-id", osub_subscription_id)
 
     _maybe_add(argv, "--assessment-target-group", assessment_target_group)
     if assessment_target_scope:

@@ -249,7 +249,7 @@ This section is a quick map of every user-facing component in the CLI, what it d
   - Install extra: `pip install .[wizard]`
   - Run: `oci-inv-wizard`
   - Modes: run, diff, validate-auth, list-regions, list-compartments, list-genai-models, genai-chat, enrich-coverage
-  - Advanced run options: diagram generation/validation, cost report inputs, assessment metadata
+  - Advanced run options: diagram generation/validation, cost report inputs (including OneSubscription subscription ID), assessment metadata
 - **Outputs**: deterministic artifacts per run under `out/<timestamp>/` (JSONL, CSV, optional Parquet, report.md, graph files, optional diff files when `--prev` is provided).
   - Hashing excludes `collectedAt` to keep diffs stable.
 
@@ -386,6 +386,7 @@ Common flags:
 - OCI_INV_GENAI_SUMMARY
 - OCI_INV_VALIDATE_DIAGRAMS
 - OCI_INV_DIAGRAMS
+- OCI_INV_OSUB_SUBSCRIPTION_ID
 - OCI_INV_AUTH
 - OCI_INV_PROFILE
 - OCI_TENANCY_OCID
