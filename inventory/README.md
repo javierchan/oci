@@ -277,6 +277,11 @@ Notes for developers:
 - When `--validate-diagrams` is set and `mmdc` is missing, the run fails early.
 - Diagram and report rules are documented in `docs/diagram_guidelines.md` and `docs/report_guidelines.md`.
 
+## Known Issues and Notes
+
+- Zero-cost `cost_report.md` outputs can occur when the Usage API returns no data for the specified range. Use a full-day UTC range aligned to the Cost Analysis console, set `--cost-end` to the next day (end is effectively exclusive), and confirm the tenancy home region is correct.
+- Large ranges can still time out; shorten the range or split it into smaller windows when validating data.
+
 ## Output flow (artifacts and consumers)
 ```mermaid
 flowchart TB
