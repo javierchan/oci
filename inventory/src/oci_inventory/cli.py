@@ -288,14 +288,14 @@ def _request_summarized_usages(
         "tenant_id": tenancy_id,
         "time_usage_started": start,
         "time_usage_ended": end,
-        "granularity": "TOTAL",
+        "granularity": "MONTHLY",
         "query_type": "COST",
     }
     if group_by:
         details_kwargs["group_by"] = [group_by]
     details = details_cls.RequestSummarizedUsagesDetails(**details_kwargs)
 
-    rows: List[Dict[str, Any]] = []
+    totals_by_name: Dict[str, float] = {}
     currency: Optional[str] = None
     page: Optional[str] = None
     while True:
@@ -324,7 +324,7 @@ def _request_summarized_usages(
             name = _extract_group_value(item_dict, group_by)
             if group_by and not name:
                 continue
-            rows.append({"name": name, "amount": amount})
+            totals_by_name[name] = totals_by_name.get(name, 0.0) + amount
             item_currency = _extract_usage_currency(item_dict)
             if item_currency and not currency:
                 currency = item_currency
@@ -333,6 +333,7 @@ def _request_summarized_usages(
         if not page:
             break
 
+    rows = [{"name": name, "amount": total} for name, total in sorted(totals_by_name.items())]
     return rows, currency, None
 
 
@@ -396,6 +397,7 @@ def _collect_cost_report_data(
     ctx: Optional[AuthContext],
     cfg: RunConfig,
     subscribed_regions: List[str],
+    requested_regions: Optional[List[str]],
     finished_at: str,
 ) -> Dict[str, Any]:
     from .genai.redact import redact_text
@@ -430,7 +432,10 @@ def _collect_cost_report_data(
     if not tenancy_id:
         errors.append("Tenancy OCID is required for cost reporting.")
 
-    cost_region = sorted(subscribed_regions)[0] if subscribed_regions else None
+    if requested_regions:
+        cost_region = sorted([r for r in requested_regions if r])[0]
+    else:
+        cost_region = sorted(subscribed_regions)[0] if subscribed_regions else None
 
     services: List[Dict[str, Any]] = []
     compartments: List[Dict[str, Any]] = []
@@ -442,71 +447,79 @@ def _collect_cost_report_data(
         "tenant_id": tenancy_id,
         "time_usage_started": start_dt.isoformat(timespec="seconds"),
         "time_usage_ended": end_dt.isoformat(timespec="seconds"),
-        "granularity": "TOTAL",
+        "granularity": "MONTHLY",
         "query_type": "COST",
         "group_by": ["service", "compartmentId", "region"],
         "region": cost_region,
     }
 
     if tenancy_id and start_dt < end_dt and ctx:
-        usage_client = get_usage_api_client(ctx, region=cost_region)
-        rows, cur, err = _request_summarized_usages(
-            usage_client,
-            tenancy_id,
-            start_dt,
-            end_dt,
-            group_by=None,
-        )
-        steps.append({"name": "usage_api_total", "status": "OK" if not err else "ERROR"})
-        if err:
-            errors.append(redact_text(f"Usage API total failed: {err}"))
+        try:
+            usage_client = get_usage_api_client(ctx, region=cost_region)
+        except Exception as e:
+            errors.append(redact_text(f"Usage API client failed: {e}"))
+            steps.append({"name": "usage_api_total", "status": "ERROR"})
+            steps.append({"name": "usage_api_service", "status": "ERROR"})
+            steps.append({"name": "usage_api_compartment", "status": "ERROR"})
+            steps.append({"name": "usage_api_region", "status": "ERROR"})
         else:
-            total_cost = sum(float(r.get("amount") or 0.0) for r in rows)
-            currency = cur or currency
+            rows, cur, err = _request_summarized_usages(
+                usage_client,
+                tenancy_id,
+                start_dt,
+                end_dt,
+                group_by=None,
+            )
+            steps.append({"name": "usage_api_total", "status": "OK" if not err else "ERROR"})
+            if err:
+                errors.append(redact_text(f"Usage API total failed: {err}"))
+            else:
+                total_cost = sum(float(r.get("amount") or 0.0) for r in rows)
+                currency = cur or currency
 
-        rows, cur, err = _request_summarized_usages(
-            usage_client,
-            tenancy_id,
-            start_dt,
-            end_dt,
-            group_by="service",
-        )
-        steps.append({"name": "usage_api_service", "status": "OK" if not err else "ERROR"})
-        if err:
-            errors.append(redact_text(f"Usage API service failed: {err}"))
-        else:
-            services = rows
-            currency = cur or currency
+            rows, cur, err = _request_summarized_usages(
+                usage_client,
+                tenancy_id,
+                start_dt,
+                end_dt,
+                group_by="service",
+            )
+            steps.append({"name": "usage_api_service", "status": "OK" if not err else "ERROR"})
+            if err:
+                errors.append(redact_text(f"Usage API service failed: {err}"))
+            else:
+                services = rows
+                currency = cur or currency
 
-        rows, cur, err = _request_summarized_usages(
-            usage_client,
-            tenancy_id,
-            start_dt,
-            end_dt,
-            group_by="compartmentId",
-        )
-        steps.append({"name": "usage_api_compartment", "status": "OK" if not err else "ERROR"})
-        if err:
-            errors.append(redact_text(f"Usage API compartment failed: {err}"))
-        else:
-            compartments = [
-                {"compartment_id": r.get("name", ""), "amount": r.get("amount", 0.0)} for r in rows
-            ]
-            currency = cur or currency
+            rows, cur, err = _request_summarized_usages(
+                usage_client,
+                tenancy_id,
+                start_dt,
+                end_dt,
+                group_by="compartmentId",
+            )
+            steps.append({"name": "usage_api_compartment", "status": "OK" if not err else "ERROR"})
+            if err:
+                errors.append(redact_text(f"Usage API compartment failed: {err}"))
+            else:
+                compartments = [
+                    {"compartment_id": r.get("name", ""), "amount": r.get("amount", 0.0)} for r in rows
+                ]
+                currency = cur or currency
 
-        rows, cur, err = _request_summarized_usages(
-            usage_client,
-            tenancy_id,
-            start_dt,
-            end_dt,
-            group_by="region",
-        )
-        steps.append({"name": "usage_api_region", "status": "OK" if not err else "ERROR"})
-        if err:
-            errors.append(redact_text(f"Usage API region failed: {err}"))
-        else:
-            regions = rows
-            currency = cur or currency
+            rows, cur, err = _request_summarized_usages(
+                usage_client,
+                tenancy_id,
+                start_dt,
+                end_dt,
+                group_by="region",
+            )
+            steps.append({"name": "usage_api_region", "status": "OK" if not err else "ERROR"})
+            if err:
+                errors.append(redact_text(f"Usage API region failed: {err}"))
+            else:
+                regions = rows
+                currency = cur or currency
     else:
         steps.append({"name": "usage_api_total", "status": "SKIPPED"})
         steps.append({"name": "usage_api_service", "status": "SKIPPED"})
@@ -523,58 +536,68 @@ def _collect_cost_report_data(
     budgets: List[Dict[str, Any]] = []
     alert_rule_counts: Dict[str, int] = {}
     if tenancy_id and ctx:
-        budget_client = get_budget_client(ctx, region=cost_region)
-        budget_rows, err = _list_budgets(budget_client, tenancy_id)
-        steps.append({"name": "budget_list", "status": "OK" if not err else "ERROR"})
-        if err:
-            errors.append(redact_text(f"Budget list failed: {err}"))
+        try:
+            budget_client = get_budget_client(ctx, region=cost_region)
+        except Exception as e:
+            steps.append({"name": "budget_list", "status": "ERROR"})
+            errors.append(redact_text(f"Budget client failed: {e}"))
         else:
-            budgets = budget_rows
-            for budget in budgets:
-                budget_id = str(budget.get("id") or "")
-                if not budget_id:
-                    continue
-                rules, err = _list_alert_rules(budget_client, budget_id)
-                status = "OK" if not err else "ERROR"
-                steps.append({"name": "budget_alert_rules", "status": status})
-                if err:
-                    errors.append(redact_text(f"Alert rules failed for budget: {err}"))
-                else:
-                    alert_rule_counts[budget_id] = len(rules)
+            budget_rows, err = _list_budgets(budget_client, tenancy_id)
+            steps.append({"name": "budget_list", "status": "OK" if not err else "ERROR"})
+            if err:
+                errors.append(redact_text(f"Budget list failed: {err}"))
+            else:
+                budgets = budget_rows
+                for budget in budgets:
+                    budget_id = str(budget.get("id") or "")
+                    if not budget_id:
+                        continue
+                    rules, err = _list_alert_rules(budget_client, budget_id)
+                    status = "OK" if not err else "ERROR"
+                    steps.append({"name": "budget_alert_rules", "status": status})
+                    if err:
+                        errors.append(redact_text(f"Alert rules failed for budget: {err}"))
+                    else:
+                        alert_rule_counts[budget_id] = len(rules)
     else:
         steps.append({"name": "budget_list", "status": "SKIPPED"})
 
     osub_usage: Optional[Dict[str, Any]] = None
     if tenancy_id and ctx:
-        osub_client = get_osub_usage_client(ctx, region=cost_region)
         try:
-            import oci  # type: ignore
-        except Exception as e:  # pragma: no cover
+            osub_client = get_osub_usage_client(ctx, region=cost_region)
+        except Exception as e:
             steps.append({"name": "osub_usage", "status": "ERROR"})
-            errors.append(redact_text(f"OneSubscription client unavailable: {e}"))
+            errors.append(redact_text(f"OneSubscription client failed: {e}"))
         else:
-            if hasattr(osub_client, "request_computed_usage"):
-                try:
-                    details_cls = getattr(getattr(oci, "osub_usage", None), "models", None)
-                    if details_cls and hasattr(details_cls, "RequestComputedUsageDetails"):
-                        details = details_cls.RequestComputedUsageDetails(
-                            tenant_id=tenancy_id,
-                            time_usage_started=start_dt,
-                            time_usage_ended=end_dt,
-                        )
-                        resp = osub_client.request_computed_usage(details)  # type: ignore[attr-defined]
-                        data = getattr(resp, "data", None)
-                        osub_usage = _usage_item_to_dict(data) if data is not None else None
-                        steps.append({"name": "osub_usage", "status": "OK"})
-                    else:
-                        steps.append({"name": "osub_usage", "status": "ERROR"})
-                        errors.append("OneSubscription models are unavailable.")
-                except Exception as e:
-                    steps.append({"name": "osub_usage", "status": "ERROR"})
-                    errors.append(redact_text(f"OneSubscription usage failed: {e}"))
-            else:
+            try:
+                import oci  # type: ignore
+            except Exception as e:  # pragma: no cover
                 steps.append({"name": "osub_usage", "status": "ERROR"})
-                errors.append("OneSubscription client does not support computed usage requests.")
+                errors.append(redact_text(f"OneSubscription client unavailable: {e}"))
+            else:
+                if hasattr(osub_client, "request_computed_usage"):
+                    try:
+                        details_cls = getattr(getattr(oci, "osub_usage", None), "models", None)
+                        if details_cls and hasattr(details_cls, "RequestComputedUsageDetails"):
+                            details = details_cls.RequestComputedUsageDetails(
+                                tenant_id=tenancy_id,
+                                time_usage_started=start_dt,
+                                time_usage_ended=end_dt,
+                            )
+                            resp = osub_client.request_computed_usage(details)  # type: ignore[attr-defined]
+                            data = getattr(resp, "data", None)
+                            osub_usage = _usage_item_to_dict(data) if data is not None else None
+                            steps.append({"name": "osub_usage", "status": "OK"})
+                        else:
+                            steps.append({"name": "osub_usage", "status": "ERROR"})
+                            errors.append("OneSubscription models are unavailable.")
+                    except Exception as e:
+                        steps.append({"name": "osub_usage", "status": "ERROR"})
+                        errors.append(redact_text(f"OneSubscription usage failed: {e}"))
+                else:
+                    steps.append({"name": "osub_usage", "status": "ERROR"})
+                    errors.append("OneSubscription client does not support computed usage requests.")
     else:
         steps.append({"name": "osub_usage", "status": "SKIPPED"})
 
@@ -1058,6 +1081,7 @@ def cmd_run(cfg: RunConfig) -> int:
                     ctx=ctx,
                     cfg=cfg,
                     subscribed_regions=subscribed_regions,
+                    requested_regions=requested_regions,
                     finished_at=finished_at,
                 )
                 write_cost_report_md(
