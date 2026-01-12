@@ -83,11 +83,14 @@ If a capability is not assessed, mark it as "(not assessed)" and explain why.
 
 - `oci.usage_api.UsageapiClient` supports usage and cost queries via `request_summarized_usages` and configuration discovery via `request_summarized_configurations`.
 - `request_summarized_usages` supports grouping by dimensions; use it to build totals by service, compartment, region, and SKU when needed.
+- Usage API queries MUST run in the tenancy home region (no fallback to non-home regions).
 - Carbon and clean-energy endpoints exist (`request_average_carbon_emission`, `request_clean_energy_usage`, `request_usage_carbon_emissions`) but are optional and must be explicitly requested.
 
 ### Subscription Usage (Optional)
 
 - `oci.osub_usage.ComputedUsageClient` exposes subscription usage computations for OneSubscription data.
+- Supply the subscription ID via CLI or config to enable OneSubscription usage collection; otherwise mark it as skipped.
+- Use list/get methods only: `list_computed_usage_aggregateds`, `list_computed_usages`, or `get_computed_usage`.
 
 ### Budgets & Alerts (Read-only)
 
@@ -143,6 +146,7 @@ If a capability is not assessed, mark it as "(not assessed)" and explain why.
 
 - Time range MUST be explicit start/end in UTC (ISO 8601).
 - Currency code MUST be explicit (ISO 4217) and consistent across tables.
+- If a requested currency differs from the Usage API currency, report the mismatch and keep amounts in the API currency unless a deterministic conversion is applied.
 - Use tenancy-wide scope; do not omit compartments without stating the gap.
 - Grouping dimensions MUST be explicit in the report (service, compartment, region, SKU if used).
 - Assessment target group, target scope, and target scores MUST be explicit.

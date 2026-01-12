@@ -75,6 +75,18 @@ Optional flags:
   ```
   oci-inv run --no-diagrams
   ```
+- Enable cost reporting (home region; read-only):
+  ```
+  oci-inv run --cost-report --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD
+  ```
+- Cost report without diagrams:
+  ```
+  oci-inv run --no-diagrams --cost-report --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD
+  ```
+- Cost report with OneSubscription usage:
+  ```
+  oci-inv run --cost-report --osub-subscription-id <subscription_id> --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD
+  ```
 
 Output structure per run:
 
