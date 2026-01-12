@@ -215,6 +215,43 @@ def get_osub_usage_client(ctx: AuthContext, region: Optional[str] = None) -> Any
     return make_client(oci.osub_usage.ComputedUsageClient, ctx, region=region)  # type: ignore[attr-defined]
 
 
+def get_home_region_name(ctx: AuthContext) -> Optional[str]:
+    """
+    Resolve the tenancy home region name from region subscriptions.
+    Returns region_name (e.g., "us-ashburn-1") or None if unavailable.
+    """
+    if oci is None:  # pragma: no cover
+        raise AuthError("oci Python SDK not installed.")
+    tenancy = get_tenancy_ocid(ctx)
+    if not tenancy:
+        raise AuthError("Tenancy OCID is required to resolve home region.")
+
+    identity = get_identity_client(ctx)
+    try:
+        ten = identity.get_tenancy(tenancy).data  # type: ignore[attr-defined]
+    except Exception as e:
+        mapped = map_oci_error(e, "OCI SDK error while fetching tenancy details")
+        if mapped:
+            raise mapped from e
+        raise
+    home_key = getattr(ten, "home_region_key", None) or getattr(ten, "homeRegionKey", None)
+    if not home_key:
+        return None
+
+    try:
+        subs = identity.list_region_subscriptions(tenancy)  # type: ignore[attr-defined]
+    except Exception as e:
+        mapped = map_oci_error(e, "OCI SDK error while listing region subscriptions")
+        if mapped:
+            raise mapped from e
+        raise
+
+    for rs in getattr(subs, "data", []) or []:
+        if getattr(rs, "region_key", None) == home_key:
+            return getattr(rs, "region_name", None)
+    return None
+
+
 def list_region_subscriptions(ctx: AuthContext) -> List[str]:
     """
     Return a list of subscribed region identifiers (e.g., 'us-ashburn-1').

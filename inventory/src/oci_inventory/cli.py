@@ -4,7 +4,7 @@ import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -19,7 +19,7 @@ from .export.jsonl import write_jsonl
 from .export.parquet import ParquetNotAvailable, write_parquet
 from .logging import LogConfig, get_logger, setup_logging
 from .normalize.transform import sort_relationships, stable_json_dumps
-from .oci.clients import get_budget_client, get_osub_usage_client, get_usage_api_client
+from .oci.clients import get_budget_client, get_home_region_name, get_osub_usage_client, get_usage_api_client
 from .oci.compartments import list_compartments as oci_list_compartments
 from .oci.discovery import discover_in_region
 from .oci.regions import get_subscribed_regions
@@ -218,6 +218,10 @@ def _parse_iso_utc(value: str) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def _align_utc_day(dt: datetime) -> datetime:
+    return dt.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def _default_cost_range(now_utc: datetime) -> Tuple[datetime, datetime]:
     start = datetime(now_utc.year, now_utc.month, 1, tzinfo=timezone.utc)
     return start, now_utc
@@ -293,6 +297,8 @@ def _request_summarized_usages(
     }
     if group_by:
         details_kwargs["group_by"] = [group_by]
+        if group_by == "compartmentId":
+            details_kwargs["compartment_depth"] = 6
     details = details_cls.RequestSummarizedUsagesDetails(**details_kwargs)
 
     totals_by_name: Dict[str, float] = {}
@@ -309,9 +315,9 @@ def _request_summarized_usages(
                 resp = client.request_summarized_usages(details)  # type: ignore[attr-defined]
                 page = None
             else:
-                return rows, currency, str(e)
+                return [], currency, str(e)
         except Exception as e:
-            return rows, currency, str(e)
+            return [], currency, str(e)
 
         data = getattr(resp, "data", None)
         items = getattr(data, "items", []) if data is not None else []
@@ -425,6 +431,16 @@ def _collect_cost_report_data(
     else:
         _, end_dt = _default_cost_range(now)
 
+    start_raw = start_dt
+    end_raw = end_dt
+    start_dt = _align_utc_day(start_dt)
+    end_dt = _align_utc_day(end_dt)
+    if start_dt != start_raw or end_dt != end_raw:
+        warnings.append("Cost time range normalized to 00:00:00 UTC for Usage API MONTHLY granularity.")
+    if end_dt <= start_dt:
+        end_dt = start_dt + timedelta(days=1)
+        warnings.append("Cost end time adjusted to ensure end > start.")
+
     if start_dt >= end_dt:
         errors.append("Cost time range is invalid (start >= end).")
 
@@ -432,10 +448,19 @@ def _collect_cost_report_data(
     if not tenancy_id:
         errors.append("Tenancy OCID is required for cost reporting.")
 
-    if requested_regions:
-        cost_region = sorted([r for r in requested_regions if r])[0]
-    else:
-        cost_region = sorted(subscribed_regions)[0] if subscribed_regions else None
+    cost_region = None
+    if tenancy_id and ctx:
+        try:
+            cost_region = get_home_region_name(ctx)
+        except Exception as e:
+            errors.append(redact_text(f"Home region lookup failed: {e}"))
+    if not cost_region:
+        if requested_regions:
+            cost_region = sorted([r for r in requested_regions if r])[0]
+            warnings.append("Home region unavailable; using requested region for Usage API.")
+        else:
+            cost_region = sorted(subscribed_regions)[0] if subscribed_regions else None
+            warnings.append("Home region unavailable; using subscribed region for Usage API.")
 
     services: List[Dict[str, Any]] = []
     compartments: List[Dict[str, Any]] = []
@@ -450,8 +475,16 @@ def _collect_cost_report_data(
         "granularity": "MONTHLY",
         "query_type": "COST",
         "group_by": ["service", "compartmentId", "region"],
+        "compartment_depth": 6,
         "region": cost_region,
+        "home_region": cost_region,
     }
+    if cost_region and requested_regions and cost_region not in requested_regions:
+        warnings.append("Usage API forced to tenancy home region, overriding requested region.")
+    if start_raw != start_dt:
+        query_inputs["time_usage_started_raw"] = start_raw.isoformat(timespec="seconds")
+    if end_raw != end_dt:
+        query_inputs["time_usage_ended_raw"] = end_raw.isoformat(timespec="seconds")
 
     if tenancy_id and start_dt < end_dt and ctx:
         try:
