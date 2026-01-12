@@ -22,14 +22,14 @@ flowchart LR
   C --> D[Normalize records]
   D --> E[Enrich records + relationships]
   E --> F[Derive metadata relationships]
-  F --> G[Write inventory.jsonl + inventory.csv + parquet]
+  F --> G[Write inventory.jsonl inventory.csv parquet]
   G --> H[Write run_summary.json]
-  H --> I[Build graph nodes and edges (optional)]
-  I --> J[Write diagram projections (optional)]
-  J --> K[Validate out {timestamp} schema]
-  K --> L[Validate diagrams (if enabled/available)]
-  L --> M[Optional diff (if --prev)]
-  M --> N[Write report.md (always)]
+  H --> I[Build graph nodes and edges optional]
+  I --> J[Write diagram projections optional]
+  J --> K[Validate out timestamp schema]
+  K --> L[Validate diagrams if enabled]
+  L --> M[Optional diff if prev]
+  M --> N[Write report.md always]
 ```
 
 Key guarantees:
@@ -276,21 +276,21 @@ Notes for developers:
 ## Output flow (artifacts and consumers)
 ```mermaid
 flowchart TB
-subgraph out_ts[out {timestamp}]
+subgraph out_ts[out timestamp]
     inv[inventory.jsonl]
     csv[inventory.csv]
-    parquet[inventory.parquet (optional)]
+    parquet[inventory.parquet optional]
     rel[relationships.jsonl]
-    nodes[graph_nodes.jsonl (optional)]
-    edges[graph_edges.jsonl (optional)]
-    raw[diagram_raw.mmd (optional)]
-    ten[diagram.tenancy.mmd (optional)]
-    net[diagram.network.{vcn}.mmd (optional)]
-    wl[diagram.workload.{workload}.mmd (optional)]
-    cons[diagram.consolidated.mmd (optional)]
+    nodes[graph_nodes.jsonl optional]
+    edges[graph_edges.jsonl optional]
+    raw[diagram_raw.mmd optional]
+    ten[diagram.tenancy.mmd optional]
+    net[diagram.network.vcn.mmd optional]
+    wl[diagram.workload.workload.mmd optional]
+    cons[diagram.consolidated.mmd optional]
     rpt[report.md]
     sum[run_summary.json]
-    diff[diff.json + diff_summary.json (optional)]
+    diff[diff.json and diff_summary.json optional]
   end
   inv --> rpt
   sum --> rpt
