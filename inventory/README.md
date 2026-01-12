@@ -22,11 +22,11 @@ flowchart LR
   C --> D[Normalize records]
   D --> E[Enrich records + relationships]
   E --> F[Derive metadata relationships]
-  F --> G[Write inventory.jsonl/csv/parquet]
+  F --> G[Write inventory.jsonl + inventory.csv + parquet]
   G --> H[Write run_summary.json]
-  H --> I[Build graph nodes/edges (optional)]
+  H --> I[Build graph nodes and edges (optional)]
   I --> J[Write diagram projections (optional)]
-  J --> K[Validate out/{timestamp} schema]
+  J --> K[Validate out {timestamp} schema]
   K --> L[Validate diagrams (if enabled/available)]
   L --> M[Optional diff (if --prev)]
   M --> N[Write report.md (always)]
@@ -216,6 +216,9 @@ oci-inv run --auth auto --profile DEFAULT --outdir out --parquet --query "query 
 - For consistent diffs, compare `inventory.jsonl` files. The stable hash excludes `collectedAt` by design.
 - Queries are OCI Resource Search Structured Search strings. Keep the default query exactly `query all resources` unless you intentionally scope it.
 - `--include-terminated` is reserved for future filters and currently has no effect.
+- Cost reporting uses the tenancy home region for Usage API calls; if the home region cannot be resolved, Usage API cost collection is skipped and reported.
+- `--cost-currency` does not convert amounts; if it differs from the Usage API currency, the report warns and keeps API currency amounts.
+- OneSubscription usage requires `--osub-subscription-id` (or `OCI_INV_OSUB_SUBSCRIPTION_ID`); otherwise it is skipped.
 
 Flags and config precedence: defaults < config file < environment < CLI  
 - Default search query: "query all resources" (MUST)
@@ -243,6 +246,12 @@ This section is a quick map of every user-facing component in the CLI, what it d
   - Config precedence: `OCI_INV_GENAI_CONFIG` env → `~/.config/oci-inv/genai.yaml` → `.local/genai.yaml` (gitignored). Missing config disables GenAI features gracefully.
 - **GenAI report summary**: optional second pass during `run` that appends an executive summary into report.md using the run’s own findings as context.
   - Enable with `--genai-summary` on `run`. If GenAI fails, report.md is still written with an error note.
+- **Cost report (optional)**: uses Usage API (home region) for totals and optional OneSubscription usage when `--osub-subscription-id` is provided; writes `cost_report.md`.
+  - Enable with `--cost-report` on `run`.
+  - Example (no diagrams): `oci-inv run --no-diagrams --cost-report --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD`
+  - Example (OneSubscription): `oci-inv run --cost-report --osub-subscription-id <subscription_id> --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD`
+  - Data model: Cost Management → Cost Analysis via `UsageapiClient.request_summarized_usages`. This reflects tenancy cost/usage and does not read Subscription Usage or Universal Credits usage.
+  - Aggregation: `_extract_usage_amount` reads `computed_amount/cost/amount` from each Usage API item; `_request_summarized_usages` sums values per group (service, compartmentId, region, or total). `total_cost` is the sum across all buckets for the time range.
 - **Enrichment coverage**: reports which resource types in an inventory lack enrichers.
   - Example: `oci-inv enrich-coverage --inventory out/<timestamp>/inventory.jsonl --top 10`
 - **Interactive wizard (optional)**: guided, preview-first UX that builds/executes the same `oci-inv` commands; safe defaults and copy/pasteable outputs.
@@ -267,7 +276,7 @@ Notes for developers:
 ## Output flow (artifacts and consumers)
 ```mermaid
 flowchart TB
-  subgraph out_ts[out/{timestamp}/]
+subgraph out_ts[out {timestamp}]
     inv[inventory.jsonl]
     csv[inventory.csv]
     parquet[inventory.parquet (optional)]
@@ -281,7 +290,7 @@ flowchart TB
     cons[diagram.consolidated.mmd (optional)]
     rpt[report.md]
     sum[run_summary.json]
-    diff[diff.json / diff_summary.json (optional)]
+    diff[diff.json + diff_summary.json (optional)]
   end
   inv --> rpt
   sum --> rpt
