@@ -79,6 +79,7 @@ Optional flags:
   ```
   oci-inv run --cost-report --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD
   ```
+  Default time range (if omitted) is month-to-date, normalized to 00:00:00 UTC.
 - Cost report without diagrams:
   ```
   oci-inv run --no-diagrams --cost-report --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD
