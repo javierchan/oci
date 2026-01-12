@@ -5,7 +5,7 @@ Phase 1 implements:
 - Tenancy-wide discovery using Resource Search (Structured Search) with default query: "query all resources"
 - Enricher registry + DefaultEnricher with per-service metadata enrichers for supported resource types
 - Exports: JSONL (default) and CSV; Parquet optional via pyarrow
-- Graph + diagram projections (Mermaid flowchart + consolidated architecture-beta)
+- Optional graph + diagram projections (Mermaid flowchart + consolidated architecture-beta)
 - Diffs and stable hashing (excluding collectedAt)
 - Coverage metrics and schema validation
 - Tests, docs, CI (ruff + pytest)
@@ -24,8 +24,8 @@ flowchart LR
   E --> F[Derive metadata relationships]
   F --> G[Write inventory.jsonl/csv/parquet]
   G --> H[Write run_summary.json]
-  H --> I[Build graph nodes/edges]
-  I --> J[Write diagram projections]
+  H --> I[Build graph nodes/edges (optional)]
+  I --> J[Write diagram projections (optional)]
   J --> K[Validate out/{timestamp} schema]
   K --> L[Validate diagrams (if enabled/available)]
   L --> M[Optional diff (if --prev)]
@@ -249,7 +249,7 @@ This section is a quick map of every user-facing component in the CLI, what it d
   - Install extra: `pip install .[wizard]`
   - Run: `oci-inv-wizard`
   - Modes: run, diff, validate-auth, list-regions, list-compartments, list-genai-models, genai-chat, enrich-coverage
-  - Advanced run options: diagram validation, cost report inputs, assessment metadata
+  - Advanced run options: diagram generation/validation, cost report inputs, assessment metadata
 - **Outputs**: deterministic artifacts per run under `out/<timestamp>/` (JSONL, CSV, optional Parquet, report.md, graph files, optional diff files when `--prev` is provided).
   - Hashing excludes `collectedAt` to keep diffs stable.
 
@@ -257,7 +257,7 @@ Notes for developers:
 - The CLI is read-only; all SDK calls are list/get style. No mutations are performed.
 - Region failures are tolerated and captured in report.md; GenAI is optional and isolated from the main run.
 - For parquet support, install with extras: `INVENTORY_EXTRAS=parquet ./preflight.sh`.
-- Mermaid diagrams are generated as `.mmd` files. If `mmdc` (Mermaid CLI) is installed,
+- Mermaid diagrams are generated as `.mmd` files unless `--no-diagrams` is set. If `mmdc` (Mermaid CLI) is installed,
   `oci-inv run` will validate all `diagram*.mmd` artifacts automatically and fail the run on invalid Mermaid.
   To require validation even when `mmdc` may not be present, use `--validate-diagrams`.
   (During installation you may see npm warnings about Puppeteer deprecations; those are typically non-fatal.)
@@ -272,13 +272,13 @@ flowchart TB
     csv[inventory.csv]
     parquet[inventory.parquet (optional)]
     rel[relationships.jsonl]
-    nodes[graph_nodes.jsonl]
-    edges[graph_edges.jsonl]
-    raw[diagram_raw.mmd]
-    ten[diagram.tenancy.mmd]
-    net[diagram.network.{vcn}.mmd]
-    wl[diagram.workload.{workload}.mmd]
-    cons[diagram.consolidated.mmd]
+    nodes[graph_nodes.jsonl (optional)]
+    edges[graph_edges.jsonl (optional)]
+    raw[diagram_raw.mmd (optional)]
+    ten[diagram.tenancy.mmd (optional)]
+    net[diagram.network.{vcn}.mmd (optional)]
+    wl[diagram.workload.{workload}.mmd (optional)]
+    cons[diagram.consolidated.mmd (optional)]
     rpt[report.md]
     sum[run_summary.json]
     diff[diff.json / diff_summary.json (optional)]
@@ -306,13 +306,13 @@ Each run writes to: `out/<timestamp>/`
 - inventory.csv (report fields)
 - inventory.parquet (optional; pyarrow required)
 - relationships.jsonl (always written; may be empty)
-- graph_nodes.jsonl (diagram-ready nodes)
-- graph_edges.jsonl (diagram-ready edges)
-- diagram_raw.mmd (Mermaid diagram; raw graph)
-- diagram.tenancy.mmd (Mermaid diagram; tenancy/compartment view)
-- diagram.network.<vcn>.mmd (Mermaid diagram; per-VCN topology view)
-- diagram.workload.<workload>.mmd (Mermaid diagram; workload/application view)
-- diagram.consolidated.mmd (Mermaid architecture-beta diagram; all projections consolidated, edges are unlabelled by design)
+- graph_nodes.jsonl (diagram-ready nodes; optional)
+- graph_edges.jsonl (diagram-ready edges; optional)
+- diagram_raw.mmd (Mermaid diagram; raw graph; optional)
+- diagram.tenancy.mmd (Mermaid diagram; tenancy/compartment view; optional)
+- diagram.network.<vcn>.mmd (Mermaid diagram; per-VCN topology view; optional)
+- diagram.workload.<workload>.mmd (Mermaid diagram; workload/application view; optional)
+- diagram.consolidated.mmd (Mermaid architecture-beta diagram; all projections consolidated, edges are unlabelled by design; optional)
 - diff.json + diff_summary.json (when --prev provided)
 - run_summary.json (coverage metrics)
 
@@ -322,8 +322,8 @@ Quick reference (artifacts → purpose):
 - inventory.csv: tabular view aligned to report fields.
 - inventory.parquet: analytics-friendly columnar export (requires parquet extras).
 - relationships.jsonl: relationship edges from enrichers + derived metadata.
-- graph_nodes.jsonl / graph_edges.jsonl / diagram_raw.mmd: raw topology outputs.
-- diagram.*.mmd: architecture-focused projected views.
+- graph_nodes.jsonl / graph_edges.jsonl / diagram_raw.mmd: raw topology outputs (optional).
+- diagram.*.mmd: architecture-focused projected views (optional).
 - diff.json / diff_summary.json: change set when `--prev` is used.
 - run_summary.json: coverage/metrics snapshot for automation.
 
@@ -333,7 +333,8 @@ JSONL stability notes:
 - `collectedAt` is set per run (run start time) for consistency across records
 
 Schema validation:
-- Every run validates `inventory.jsonl`, `relationships.jsonl`, `graph_nodes.jsonl`, `graph_edges.jsonl`, and `run_summary.json`.
+- Every run validates `inventory.jsonl`, `relationships.jsonl`, and `run_summary.json`.
+- Graph artifacts (`graph_nodes.jsonl`, `graph_edges.jsonl`) are validated when diagrams are enabled.
 - Validation warnings are logged; validation errors fail the run.
 
 ## Enrichment
@@ -384,6 +385,7 @@ Common flags:
 - OCI_INV_REGIONS
 - OCI_INV_GENAI_SUMMARY
 - OCI_INV_VALIDATE_DIAGRAMS
+- OCI_INV_DIAGRAMS
 - OCI_INV_AUTH
 - OCI_INV_PROFILE
 - OCI_TENANCY_OCID

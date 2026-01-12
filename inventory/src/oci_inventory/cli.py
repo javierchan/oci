@@ -820,7 +820,7 @@ def _read_jsonl_dicts(
     return records
 
 
-def _validate_outdir_schema(outdir: Path) -> SchemaValidation:
+def _validate_outdir_schema(outdir: Path, *, expect_graph: bool = True) -> SchemaValidation:
     errors: List[str] = []
     warnings: List[str] = []
 
@@ -865,33 +865,34 @@ def _validate_outdir_schema(outdir: Path) -> SchemaValidation:
     )
 
     nodes_path = outdir / "graph_nodes.jsonl"
-    node_records = _read_jsonl_dicts(
-        nodes_path,
-        required_fields=REQUIRED_GRAPH_NODE_FIELDS,
-        errors=errors,
-    )
-    node_ids = {str(obj.get("nodeId") or "") for _, obj in node_records if obj.get("nodeId")}
-
     edges_path = outdir / "graph_edges.jsonl"
-    edge_records = _read_jsonl_dicts(
-        edges_path,
-        required_fields=REQUIRED_GRAPH_EDGE_FIELDS,
-        errors=errors,
-    )
-    if node_ids and edge_records:
-        missing_edges: List[int] = []
-        for line_no, obj in edge_records:
-            src = str(obj.get("source_ocid") or "")
-            dst = str(obj.get("target_ocid") or "")
-            if not src or not dst:
-                continue
-            if src not in node_ids or dst not in node_ids:
-                if len(missing_edges) < 5:
-                    missing_edges.append(line_no)
-        if missing_edges:
-            warnings.append(
-                f"{edges_path.name}: edges reference missing node IDs (examples: {', '.join(str(n) for n in missing_edges)})"
-            )
+    if expect_graph or nodes_path.is_file() or edges_path.is_file():
+        node_records = _read_jsonl_dicts(
+            nodes_path,
+            required_fields=REQUIRED_GRAPH_NODE_FIELDS,
+            errors=errors,
+        )
+        node_ids = {str(obj.get("nodeId") or "") for _, obj in node_records if obj.get("nodeId")}
+
+        edge_records = _read_jsonl_dicts(
+            edges_path,
+            required_fields=REQUIRED_GRAPH_EDGE_FIELDS,
+            errors=errors,
+        )
+        if node_ids and edge_records:
+            missing_edges: List[int] = []
+            for line_no, obj in edge_records:
+                src = str(obj.get("source_ocid") or "")
+                dst = str(obj.get("target_ocid") or "")
+                if not src or not dst:
+                    continue
+                if src not in node_ids or dst not in node_ids:
+                    if len(missing_edges) < 5:
+                        missing_edges.append(line_no)
+            if missing_edges:
+                warnings.append(
+                    f"{edges_path.name}: edges reference missing node IDs (examples: {', '.join(str(n) for n in missing_edges)})"
+                )
 
     summary_path = outdir / "run_summary.json"
     if not summary_path.is_file():
@@ -1018,12 +1019,13 @@ def cmd_run(cfg: RunConfig) -> int:
         _write_run_summary(cfg.outdir, metrics, cfg)
 
         # Graph artifacts (nodes/edges + Mermaid)
-        nodes, edges = build_graph(enriched, all_relationships)
-        write_graph(cfg.outdir, nodes, edges)
-        write_mermaid(cfg.outdir, nodes, edges)
-        write_diagram_projections(cfg.outdir, nodes, edges)
+        if cfg.diagrams:
+            nodes, edges = build_graph(enriched, all_relationships)
+            write_graph(cfg.outdir, nodes, edges)
+            write_mermaid(cfg.outdir, nodes, edges)
+            write_diagram_projections(cfg.outdir, nodes, edges)
 
-        validation = _validate_outdir_schema(cfg.outdir)
+        validation = _validate_outdir_schema(cfg.outdir, expect_graph=cfg.diagrams)
         for warning in validation.warnings:
             LOG.warning("Output schema validation warning", extra={"detail": warning})
         if validation.errors:
@@ -1036,7 +1038,7 @@ def cmd_run(cfg: RunConfig) -> int:
         # - If --validate-diagrams is enabled, require mmdc and fail if missing.
         # - Otherwise, if mmdc is available, validate all diagram*.mmd outputs and fail
         #   on invalid Mermaid so we don't ship broken artifacts.
-        if cfg.validate_diagrams or is_mmdc_available():
+        if cfg.diagrams and (cfg.validate_diagrams or is_mmdc_available()):
             validated = validate_mermaid_diagrams_with_mmdc(cfg.outdir)
             LOG.info("Mermaid diagrams validated", extra={"count": len(validated)})
 

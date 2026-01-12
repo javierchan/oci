@@ -69,6 +69,7 @@ def build_run_plan(
     workers_enrich: Optional[int] = None,
     include_terminated: Optional[bool] = None,
     validate_diagrams: Optional[bool] = None,
+    diagrams: Optional[bool] = None,
     cost_report: Optional[bool] = None,
     cost_start: Optional[str] = None,
     cost_end: Optional[str] = None,
@@ -125,6 +126,11 @@ def build_run_plan(
         argv.append("--validate-diagrams")
     elif validate_diagrams is False:
         argv.append("--no-validate-diagrams")
+
+    if diagrams is True:
+        argv.append("--diagrams")
+    elif diagrams is False:
+        argv.append("--no-diagrams")
 
     if cost_report is True:
         argv.append("--cost-report")

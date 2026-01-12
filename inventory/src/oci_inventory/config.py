@@ -31,6 +31,7 @@ ALLOWED_CONFIG_KEYS = {
     "workers_enrich",
     "genai_summary",
     "validate_diagrams",
+    "diagrams",
     "regions",
     "auth",
     "profile",
@@ -48,7 +49,15 @@ ALLOWED_CONFIG_KEYS = {
     "inventory",
     "top",
 }
-BOOL_CONFIG_KEYS = {"parquet", "include_terminated", "json_logs", "genai_summary", "validate_diagrams", "cost_report"}
+BOOL_CONFIG_KEYS = {
+    "parquet",
+    "include_terminated",
+    "json_logs",
+    "genai_summary",
+    "validate_diagrams",
+    "diagrams",
+    "cost_report",
+}
 INT_CONFIG_KEYS = {"workers_region", "workers_enrich", "top"}
 PATH_CONFIG_KEYS = {"outdir", "prev", "curr", "inventory"}
 STR_CONFIG_KEYS = {
@@ -85,6 +94,7 @@ class RunConfig:
     # Optional features
     genai_summary: bool = False
     validate_diagrams: bool = False
+    diagrams: bool = True
 
     # Cost reporting (optional)
     cost_report: bool = False
@@ -363,6 +373,12 @@ def load_run_config(
             "(If mmdc is present, diagrams are validated automatically even without this flag.)"
         ),
     )
+    p_run.add_argument(
+        "--diagrams",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Generate graph artifacts and Mermaid diagram projections (disable with --no-diagrams).",
+    )
 
     p_run.add_argument(
         "--cost-report",
@@ -504,6 +520,7 @@ def load_run_config(
         "workers_enrich": DEFAULT_WORKERS_ENRICH,
         "genai_summary": False,
         "validate_diagrams": False,
+        "diagrams": True,
         "genai_api_format": None,
         "genai_message": None,
         "genai_report": None,
@@ -544,6 +561,7 @@ def load_run_config(
             "workers_enrich": _env_int("OCI_INV_WORKERS_ENRICH"),
             "genai_summary": _env_bool("OCI_INV_GENAI_SUMMARY"),
             "validate_diagrams": _env_bool("OCI_INV_VALIDATE_DIAGRAMS"),
+            "diagrams": _env_bool("OCI_INV_DIAGRAMS"),
             "cost_report": _env_bool("OCI_INV_COST_REPORT"),
             "cost_start": _env_str("OCI_INV_COST_START"),
             "cost_end": _env_str("OCI_INV_COST_END"),
@@ -574,6 +592,7 @@ def load_run_config(
             "workers_enrich": getattr(ns, "workers_enrich", None),
             "genai_summary": getattr(ns, "genai_summary", None),
             "validate_diagrams": getattr(ns, "validate_diagrams", None),
+            "diagrams": getattr(ns, "diagrams", None),
             "cost_report": getattr(ns, "cost_report", None),
             "cost_start": getattr(ns, "cost_start", None),
             "cost_end": getattr(ns, "cost_end", None),
@@ -643,6 +662,7 @@ def load_run_config(
         workers_enrich=workers_enrich,
         genai_summary=bool(merged.get("genai_summary")),
         validate_diagrams=bool(merged.get("validate_diagrams")),
+        diagrams=bool(merged.get("diagrams")),
         cost_report=bool(merged.get("cost_report")),
         cost_start=str(merged.get("cost_start")) if merged.get("cost_start") else None,
         cost_end=str(merged.get("cost_end")) if merged.get("cost_end") else None,
@@ -682,6 +702,7 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "workers_enrich": cfg.workers_enrich,
         "genai_summary": cfg.genai_summary,
         "validate_diagrams": cfg.validate_diagrams,
+        "diagrams": cfg.diagrams,
         "cost_report": cfg.cost_report,
         "cost_start": cfg.cost_start,
         "cost_end": cfg.cost_end,

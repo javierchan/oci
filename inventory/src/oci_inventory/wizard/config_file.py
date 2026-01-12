@@ -107,6 +107,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       workers_region: optional int
       workers_enrich: optional int
       validate_diagrams: optional bool
+      diagrams: optional bool
       cost_report: optional bool
       cost_start: optional (ISO 8601)
       cost_end: optional (ISO 8601)
@@ -223,6 +224,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
         workers_enrich = _as_int(cfg.get("workers_enrich"))
         include_terminated = _as_bool(cfg.get("include_terminated"))
         validate_diagrams = _as_bool(cfg.get("validate_diagrams"))
+        diagrams = _as_bool(cfg.get("diagrams"))
         cost_report = _as_bool(cfg.get("cost_report"))
         cost_start = _as_str(cfg.get("cost_start"))
         cost_end = _as_str(cfg.get("cost_end"))
@@ -246,6 +248,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             workers_enrich=workers_enrich,
             include_terminated=include_terminated,
             validate_diagrams=validate_diagrams,
+            diagrams=diagrams,
             cost_report=cost_report,
             cost_start=cost_start,
             cost_end=cost_end,

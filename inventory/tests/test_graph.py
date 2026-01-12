@@ -383,6 +383,57 @@ def test_validate_outdir_schema_accepts_minimal_artifacts(tmp_path) -> None:
     assert result.errors == []
 
 
+def test_validate_outdir_schema_allows_missing_graph_when_disabled(tmp_path) -> None:
+    outdir = tmp_path
+    inv = outdir / "inventory.jsonl"
+    rels = outdir / "relationships.jsonl"
+    summary = outdir / "run_summary.json"
+
+    inv_record = {
+        "ocid": "ocid1.instance.oc1..inst",
+        "resourceType": "Instance",
+        "region": "mx-queretaro-1",
+        "collectedAt": "2026-01-08T23:47:48+00:00",
+        "enrichStatus": "OK",
+        "details": {},
+        "relationships": [
+            {"source_ocid": "ocid1.instance.oc1..inst", "relation_type": "IN_COMPARTMENT", "target_ocid": "ocid1.compartment.oc1..comp"}
+        ],
+    }
+    inv.write_text(json.dumps(inv_record) + "\n", encoding="utf-8")
+
+    rels.write_text(
+        json.dumps(
+            {
+                "source_ocid": "ocid1.instance.oc1..inst",
+                "relation_type": "IN_COMPARTMENT",
+                "target_ocid": "ocid1.compartment.oc1..comp",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "total_discovered": 1,
+                "enriched_ok": 1,
+                "not_implemented": 0,
+                "errors": 0,
+                "counts_by_resource_type": {"Instance": 1},
+                "counts_by_enrich_status": {"OK": 1},
+                "counts_by_resource_type_and_status": {"Instance": {"OK": 1}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _validate_outdir_schema(outdir, expect_graph=False)
+    assert result.errors == []
+
+
 def test_offline_pipeline_writes_schema_artifacts(tmp_path) -> None:
     outdir = tmp_path
     collected_at = "2026-01-09T05:35:29+00:00"

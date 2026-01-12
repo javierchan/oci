@@ -26,6 +26,7 @@ def test_build_run_plan_contains_expected_flags() -> None:
         workers_enrich=9,
         include_terminated=True,
         validate_diagrams=True,
+        diagrams=False,
         cost_report=True,
         cost_start="2025-01-01T00:00:00Z",
         cost_end="2025-01-31T23:59:59Z",
@@ -58,6 +59,7 @@ def test_build_run_plan_contains_expected_flags() -> None:
     assert "--include-terminated" in plan.argv
     assert "--no-json-logs" in plan.argv
     assert "--validate-diagrams" in plan.argv
+    assert "--no-diagrams" in plan.argv
     assert "--cost-report" in plan.argv
     assert "--cost-start" in plan.argv
     assert "2025-01-01T00:00:00Z" in plan.argv

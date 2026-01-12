@@ -71,6 +71,10 @@ Optional flags:
   ```
   oci-inv run --workers-region 6 --workers-enrich 24
   ```
+- Disable diagram generation:
+  ```
+  oci-inv run --no-diagrams
+  ```
 
 Output structure per run:
 
@@ -80,13 +84,13 @@ out/<timestamp>/
   inventory.csv
   inventory.parquet        # when --parquet and pyarrow installed
   relationships.jsonl      # when relationships are emitted
-  graph_nodes.jsonl        # diagram-ready nodes
-  graph_edges.jsonl        # diagram-ready edges
-  diagram_raw.mmd          # Mermaid diagram (raw graph)
-  diagram.tenancy.mmd      # Mermaid diagram (tenancy/compartment view)
-  diagram.network.<vcn>.mmd # Mermaid diagram (per-VCN topology view)
-  diagram.workload.<workload>.mmd # Mermaid diagram (workload/application view)
-  diagram.consolidated.mmd # Mermaid diagram (all projections consolidated)
+  graph_nodes.jsonl        # diagram-ready nodes (optional)
+  graph_edges.jsonl        # diagram-ready edges (optional)
+  diagram_raw.mmd          # Mermaid diagram (raw graph; optional)
+  diagram.tenancy.mmd      # Mermaid diagram (tenancy/compartment view; optional)
+  diagram.network.<vcn>.mmd # Mermaid diagram (per-VCN topology view; optional)
+  diagram.workload.<workload>.mmd # Mermaid diagram (workload/application view; optional)
+  diagram.consolidated.mmd # Mermaid diagram (all projections consolidated; optional)
   diff.json                # when --prev provided
   diff_summary.json        # when --prev provided
   run_summary.json         # coverage metrics
@@ -126,6 +130,7 @@ Common environment variables that influence behavior:
 - OCI_INV_AUTH
 - OCI_INV_PROFILE
 - OCI_TENANCY_OCID
+- OCI_INV_DIAGRAMS
 
 ## Troubleshooting
 

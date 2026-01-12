@@ -19,6 +19,7 @@ query: "query all resources"
 parquet: false
 genai_summary: true
 validate_diagrams: true
+diagrams: false
 cost_report: true
 cost_start: "2025-01-01T00:00:00Z"
 cost_end: "2025-01-31T23:59:59Z"
@@ -44,6 +45,7 @@ workers_enrich: 24
     assert "--no-parquet" in plan.argv
     assert "--genai-summary" in plan.argv
     assert "--validate-diagrams" in plan.argv
+    assert "--no-diagrams" in plan.argv
     assert "--cost-report" in plan.argv
     assert "--cost-start" in plan.argv
     assert "2025-01-01T00:00:00Z" in plan.argv
