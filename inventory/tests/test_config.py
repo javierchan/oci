@@ -105,6 +105,11 @@ def test_cli_can_disable_config_boolean(tmp_path) -> None:
     assert cfg.parquet is False
 
 
+def test_cli_can_disable_diagrams() -> None:
+    _, cfg = load_run_config(argv=["run", "--no-diagrams"])
+    assert cfg.diagrams is False
+
+
 def test_unknown_config_keys_warn(tmp_path) -> None:
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text("query: from-config\nunknown_key: value\n", encoding="utf-8")

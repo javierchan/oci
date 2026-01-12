@@ -109,19 +109,19 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
   - Required fields: `schema_version`, `total_discovered`, `enriched_ok`, `not_implemented`, `errors`,
     `counts_by_resource_type`, `counts_by_enrich_status`, `counts_by_resource_type_and_status`.
 
-- `graph_nodes.jsonl`
+- `graph_nodes.jsonl` (optional; generated when diagrams are enabled)
   - Node projection of inventory records.
   - Required fields: `nodeId`, `nodeType`, `nodeCategory`, `name`, `region`, `compartmentId`,
     `metadata`, `tags`, `enrichStatus`, `enrichError`.
 
-- `graph_edges.jsonl`
+- `graph_edges.jsonl` (optional; generated when diagrams are enabled)
   - Graph edges (relationships) with node typing hints.
   - Required fields: `source_ocid`, `target_ocid`, `relation_type`, `source_type`, `target_type`, `region`.
 
-- `diagram_raw.mmd`
+- `diagram_raw.mmd` (optional; generated when diagrams are enabled)
   - Raw Mermaid graph export (full graph, intended for debugging).
 
-- `diagram.tenancy.mmd`, `diagram.network.*.mmd`, `diagram.workload.*.mmd`, `diagram.consolidated.mmd`
+- `diagram.tenancy.mmd`, `diagram.network.*.mmd`, `diagram.workload.*.mmd`, `diagram.consolidated.mmd` (optional; generated when diagrams are enabled)
   - Mermaid projections derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
   - `diagram.consolidated.mmd` uses Mermaid `architecture-beta` syntax for the high-level architecture view.
   - Projections render full detail without aggregation; grouping and layout manage density.

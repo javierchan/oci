@@ -90,3 +90,5 @@
 ---
 
 register a OCI Icons to use in diagrams located on: /Users/javierchan/Documents/GitHub/oci/inventory/resources/icons or https://static.oracle.com/cdn/fnd/gallery/2604.0.2/images/preview/index.html using the mermaid methodology: https://mermaid.js.org/config/icons.html or as suggested by mermaid: https://icones.js.org/
+
+MLX Support Addition to use LLM's in macOS to use when GenAI is not available, maybe ollama can be used to support multiplatform.
