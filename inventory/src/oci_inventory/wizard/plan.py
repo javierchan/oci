@@ -68,6 +68,15 @@ def build_run_plan(
     workers_region: Optional[int] = None,
     workers_enrich: Optional[int] = None,
     include_terminated: Optional[bool] = None,
+    validate_diagrams: Optional[bool] = None,
+    cost_report: Optional[bool] = None,
+    cost_start: Optional[str] = None,
+    cost_end: Optional[str] = None,
+    cost_currency: Optional[str] = None,
+    assessment_target_group: Optional[str] = None,
+    assessment_target_scope: Optional[List[str]] = None,
+    assessment_lens_weight: Optional[List[str]] = None,
+    assessment_capability: Optional[List[str]] = None,
     json_logs: Optional[bool] = None,
     log_level: Optional[str] = None,
 ) -> WizardPlan:
@@ -111,6 +120,32 @@ def build_run_plan(
         argv.append("--include-terminated")
     elif include_terminated is False:
         argv.append("--no-include-terminated")
+
+    if validate_diagrams is True:
+        argv.append("--validate-diagrams")
+    elif validate_diagrams is False:
+        argv.append("--no-validate-diagrams")
+
+    if cost_report is True:
+        argv.append("--cost-report")
+    elif cost_report is False:
+        argv.append("--no-cost-report")
+
+    if cost_report is not False:
+        _maybe_add(argv, "--cost-start", cost_start)
+        _maybe_add(argv, "--cost-end", cost_end)
+        _maybe_add(argv, "--cost-currency", cost_currency)
+
+    _maybe_add(argv, "--assessment-target-group", assessment_target_group)
+    if assessment_target_scope:
+        for entry in assessment_target_scope:
+            _maybe_add(argv, "--assessment-target-scope", entry)
+    if assessment_lens_weight:
+        for entry in assessment_lens_weight:
+            _maybe_add(argv, "--assessment-lens-weight", entry)
+    if assessment_capability:
+        for entry in assessment_capability:
+            _maybe_add(argv, "--assessment-capability", entry)
 
     return WizardPlan(argv=argv)
 
@@ -159,7 +194,7 @@ def build_simple_plan(
     json_logs: Optional[bool] = None,
     log_level: Optional[str] = None,
 ) -> WizardPlan:
-    if subcommand not in {"validate-auth", "list-regions", "list-compartments"}:
+    if subcommand not in {"validate-auth", "list-regions", "list-compartments", "list-genai-models"}:
         raise ValueError(f"Unsupported wizard subcommand: {subcommand}")
 
     argv: List[str] = [subcommand]
@@ -172,4 +207,36 @@ def build_simple_plan(
             json_logs=json_logs,
         )
     )
+    return WizardPlan(argv=argv)
+
+
+def build_genai_chat_plan(
+    *,
+    auth: str,
+    profile: Optional[str],
+    tenancy_ocid: Optional[str],
+    api_format: Optional[str] = None,
+    message: Optional[str] = None,
+    report: Optional[Path] = None,
+    max_tokens: Optional[int] = None,
+    temperature: Optional[float] = None,
+    json_logs: Optional[bool] = None,
+    log_level: Optional[str] = None,
+) -> WizardPlan:
+    argv: List[str] = ["genai-chat"]
+    argv.extend(
+        build_common_argv(
+            auth=auth,
+            profile=profile,
+            tenancy_ocid=tenancy_ocid,
+            log_level=log_level,
+            json_logs=json_logs,
+        )
+    )
+
+    _maybe_add(argv, "--api-format", api_format)
+    _maybe_add(argv, "--message", message)
+    _maybe_add(argv, "--report", str(report) if report else None)
+    _maybe_add(argv, "--max-tokens", str(max_tokens) if max_tokens is not None else None)
+    _maybe_add(argv, "--temperature", str(temperature) if temperature is not None else None)
     return WizardPlan(argv=argv)

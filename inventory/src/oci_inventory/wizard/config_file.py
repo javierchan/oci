@@ -12,6 +12,7 @@ from .plan import (
     build_coverage_plan,
     build_run_plan,
     build_simple_plan,
+    build_genai_chat_plan,
 )
 
 
@@ -57,6 +58,19 @@ def _as_regions(v: Any) -> Optional[List[str]]:
     return out or None
 
 
+def _as_list(v: Any) -> Optional[List[str]]:
+    if v is None:
+        return None
+    if isinstance(v, list):
+        out = [str(x).strip() for x in v if str(x).strip()]
+        return out or None
+    s = str(v).strip()
+    if not s:
+        return None
+    out = [p.strip() for p in s.split(",") if p.strip()]
+    return out or None
+
+
 def _load_data(path: Path) -> Dict[str, Any]:
     raw = path.read_text(encoding="utf-8")
     suffix = path.suffix.lower()
@@ -76,7 +90,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
     """Load a non-interactive wizard plan from a YAML/JSON file.
 
         Schema (minimal):
-            mode: run|diff|validate-auth|list-regions|list-compartments|enrich-coverage
+            mode: run|diff|validate-auth|list-regions|list-compartments|list-genai-models|genai-chat|enrich-coverage
       auth: auto|config|instance|resource|security_token
       profile: optional
       tenancy_ocid: optional
@@ -92,11 +106,27 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       prev: optional path
       workers_region: optional int
       workers_enrich: optional int
+      validate_diagrams: optional bool
+      cost_report: optional bool
+      cost_start: optional (ISO 8601)
+      cost_end: optional (ISO 8601)
+      cost_currency: optional (ISO 4217)
+      assessment_target_group: optional string
+      assessment_target_scope: optional list or comma-separated string
+      assessment_lens_weight: optional list or comma-separated string
+      assessment_capability: optional list or comma-separated string
 
     For mode=diff:
       prev: required path
       curr: required path
       outdir: required path
+
+    For mode=genai-chat:
+      genai_api_format: optional (AUTO|GENERIC|COHERE)
+      genai_message: optional string
+      genai_report: optional path to report.md
+      genai_max_tokens: optional int
+      genai_temperature: optional float
     """
 
     cfg = _load_data(path)
@@ -114,12 +144,40 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
     json_logs = _as_bool(cfg.get("json_logs"))
     log_level = _as_str(cfg.get("log_level"))
 
-    if mode in {"validate-auth", "list-regions", "list-compartments"}:
+    if mode in {"validate-auth", "list-regions", "list-compartments", "list-genai-models"}:
         return build_simple_plan(
             subcommand=mode,
             auth=auth,
             profile=profile,
             tenancy_ocid=tenancy_ocid,
+            json_logs=json_logs,
+            log_level=log_level,
+        )
+
+    if mode == "genai-chat":
+        genai_api_format = _as_str(cfg.get("genai_api_format"))
+        genai_message = _as_str(cfg.get("genai_message"))
+        genai_report = _as_str(cfg.get("genai_report"))
+        genai_max_tokens = _as_int(cfg.get("genai_max_tokens"))
+        genai_temperature = cfg.get("genai_temperature")
+        if genai_temperature is not None:
+            try:
+                genai_temperature = float(genai_temperature)
+            except Exception:
+                genai_temperature = None
+
+        if not genai_message and not genai_report:
+            raise ValueError("Wizard genai-chat config requires: genai_message or genai_report")
+
+        return build_genai_chat_plan(
+            auth=auth,
+            profile=profile,
+            tenancy_ocid=tenancy_ocid,
+            api_format=genai_api_format,
+            message=genai_message,
+            report=Path(genai_report) if genai_report else None,
+            max_tokens=genai_max_tokens,
+            temperature=genai_temperature,
             json_logs=json_logs,
             log_level=log_level,
         )
@@ -164,6 +222,15 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
         workers_region = _as_int(cfg.get("workers_region"))
         workers_enrich = _as_int(cfg.get("workers_enrich"))
         include_terminated = _as_bool(cfg.get("include_terminated"))
+        validate_diagrams = _as_bool(cfg.get("validate_diagrams"))
+        cost_report = _as_bool(cfg.get("cost_report"))
+        cost_start = _as_str(cfg.get("cost_start"))
+        cost_end = _as_str(cfg.get("cost_end"))
+        cost_currency = _as_str(cfg.get("cost_currency"))
+        assessment_target_group = _as_str(cfg.get("assessment_target_group"))
+        assessment_target_scope = _as_list(cfg.get("assessment_target_scope"))
+        assessment_lens_weight = _as_list(cfg.get("assessment_lens_weight"))
+        assessment_capability = _as_list(cfg.get("assessment_capability"))
 
         return build_run_plan(
             auth=auth,
@@ -178,6 +245,15 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             workers_region=workers_region,
             workers_enrich=workers_enrich,
             include_terminated=include_terminated,
+            validate_diagrams=validate_diagrams,
+            cost_report=cost_report,
+            cost_start=cost_start,
+            cost_end=cost_end,
+            cost_currency=cost_currency,
+            assessment_target_group=assessment_target_group,
+            assessment_target_scope=assessment_target_scope,
+            assessment_lens_weight=assessment_lens_weight,
+            assessment_capability=assessment_capability,
             json_logs=json_logs,
             log_level=log_level,
         )

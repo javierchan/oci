@@ -9,7 +9,9 @@ from typing import Optional, Tuple
 from ..cli import (
     cmd_diff,
     cmd_enrich_coverage,
+    cmd_genai_chat,
     cmd_list_compartments,
+    cmd_list_genai_models,
     cmd_list_regions,
     cmd_run,
     cmd_validate_auth,
@@ -94,6 +96,12 @@ def execute_plan(plan: WizardPlan) -> Tuple[int, Optional[Path], str, str]:
             return code, None, stdout_buf.getvalue(), log_buf.getvalue()
         if command == "list-compartments":
             code = cmd_list_compartments(cfg)
+            return code, None, stdout_buf.getvalue(), log_buf.getvalue()
+        if command == "list-genai-models":
+            code = cmd_list_genai_models(cfg)
+            return code, None, stdout_buf.getvalue(), log_buf.getvalue()
+        if command == "genai-chat":
+            code = cmd_genai_chat(cfg)
             return code, None, stdout_buf.getvalue(), log_buf.getvalue()
 
     return 2, None, f"Unsupported command: {command}\n", log_buf.getvalue()
