@@ -131,6 +131,7 @@ Common environment variables that influence behavior:
 - OCI_INV_PROFILE
 - OCI_TENANCY_OCID
 - OCI_INV_DIAGRAMS
+- OCI_INV_OSUB_SUBSCRIPTION_ID
 
 ## Troubleshooting
 

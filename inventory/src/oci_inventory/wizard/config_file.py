@@ -112,6 +112,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       cost_start: optional (ISO 8601)
       cost_end: optional (ISO 8601)
       cost_currency: optional (ISO 4217)
+      osub_subscription_id: optional string
       assessment_target_group: optional string
       assessment_target_scope: optional list or comma-separated string
       assessment_lens_weight: optional list or comma-separated string
@@ -229,6 +230,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
         cost_start = _as_str(cfg.get("cost_start"))
         cost_end = _as_str(cfg.get("cost_end"))
         cost_currency = _as_str(cfg.get("cost_currency"))
+        osub_subscription_id = _as_str(cfg.get("osub_subscription_id"))
         assessment_target_group = _as_str(cfg.get("assessment_target_group"))
         assessment_target_scope = _as_list(cfg.get("assessment_target_scope"))
         assessment_lens_weight = _as_list(cfg.get("assessment_lens_weight"))
@@ -253,6 +255,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             cost_start=cost_start,
             cost_end=cost_end,
             cost_currency=cost_currency,
+            osub_subscription_id=osub_subscription_id,
             assessment_target_group=assessment_target_group,
             assessment_target_scope=assessment_target_scope,
             assessment_lens_weight=assessment_lens_weight,

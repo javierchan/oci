@@ -31,6 +31,7 @@ def test_build_run_plan_contains_expected_flags() -> None:
         cost_start="2025-01-01T00:00:00Z",
         cost_end="2025-01-31T23:59:59Z",
         cost_currency="USD",
+        osub_subscription_id="sub123",
         assessment_target_group="engineering",
         assessment_target_scope=["team:inventory", "org:oci"],
         assessment_lens_weight=["Knowledge=1", "Process=2"],
@@ -67,6 +68,8 @@ def test_build_run_plan_contains_expected_flags() -> None:
     assert "2025-01-31T23:59:59Z" in plan.argv
     assert "--cost-currency" in plan.argv
     assert "USD" in plan.argv
+    assert "--osub-subscription-id" in plan.argv
+    assert "sub123" in plan.argv
     assert "--assessment-target-group" in plan.argv
     assert "engineering" in plan.argv
     assert "--assessment-target-scope" in plan.argv

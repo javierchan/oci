@@ -146,3 +146,8 @@ def test_genai_chat_parses_message_args() -> None:
     assert cfg.genai_message == "hello"
     assert cfg.genai_max_tokens == 42
     assert abs((cfg.genai_temperature or 0.0) - 0.3) < 1e-9
+
+
+def test_cost_osub_subscription_id_parsed() -> None:
+    _, cfg = load_run_config(argv=["run", "--osub-subscription-id", "sub123"])
+    assert cfg.osub_subscription_id == "sub123"
