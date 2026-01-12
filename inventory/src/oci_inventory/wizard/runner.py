@@ -73,38 +73,42 @@ def execute_plan(plan: WizardPlan) -> Tuple[int, Optional[Path], str, str]:
     - Logs are still emitted via the configured logger handlers.
     """
 
-    command, cfg = load_run_config(argv=plan.argv)
     stdout_buf = io.StringIO()
     log_buf = io.StringIO()
-    _configure_wizard_logging(cfg, log_buf)
+    try:
+        command, cfg = load_run_config(argv=plan.argv)
+        _configure_wizard_logging(cfg, log_buf)
 
-    with redirect_stdout(stdout_buf):
-        if command == "run":
-            code = cmd_run(cfg)
-            return code, cfg.outdir, stdout_buf.getvalue(), log_buf.getvalue()
-        if command == "diff":
-            code = cmd_diff(cfg)
-            return code, cfg.outdir, stdout_buf.getvalue(), log_buf.getvalue()
-        if command == "enrich-coverage":
-            code = cmd_enrich_coverage(cfg)
-            return code, None, stdout_buf.getvalue(), log_buf.getvalue()
-        if command == "validate-auth":
-            code = cmd_validate_auth(cfg)
-            return code, None, stdout_buf.getvalue(), log_buf.getvalue()
-        if command == "list-regions":
-            code = cmd_list_regions(cfg)
-            return code, None, stdout_buf.getvalue(), log_buf.getvalue()
-        if command == "list-compartments":
-            code = cmd_list_compartments(cfg)
-            return code, None, stdout_buf.getvalue(), log_buf.getvalue()
-        if command == "list-genai-models":
-            code = cmd_list_genai_models(cfg)
-            return code, None, stdout_buf.getvalue(), log_buf.getvalue()
-        if command == "genai-chat":
-            code = cmd_genai_chat(cfg)
-            return code, None, stdout_buf.getvalue(), log_buf.getvalue()
-
-    return 2, None, f"Unsupported command: {command}\n", log_buf.getvalue()
+        with redirect_stdout(stdout_buf):
+            if command == "run":
+                code = cmd_run(cfg)
+                return code, cfg.outdir, stdout_buf.getvalue(), log_buf.getvalue()
+            if command == "diff":
+                code = cmd_diff(cfg)
+                return code, cfg.outdir, stdout_buf.getvalue(), log_buf.getvalue()
+            if command == "enrich-coverage":
+                code = cmd_enrich_coverage(cfg)
+                return code, None, stdout_buf.getvalue(), log_buf.getvalue()
+            if command == "validate-auth":
+                code = cmd_validate_auth(cfg)
+                return code, None, stdout_buf.getvalue(), log_buf.getvalue()
+            if command == "list-regions":
+                code = cmd_list_regions(cfg)
+                return code, None, stdout_buf.getvalue(), log_buf.getvalue()
+            if command == "list-compartments":
+                code = cmd_list_compartments(cfg)
+                return code, None, stdout_buf.getvalue(), log_buf.getvalue()
+            if command == "list-genai-models":
+                code = cmd_list_genai_models(cfg)
+                return code, None, stdout_buf.getvalue(), log_buf.getvalue()
+            if command == "genai-chat":
+                code = cmd_genai_chat(cfg)
+                return code, None, stdout_buf.getvalue(), log_buf.getvalue()
+        return 2, None, f"Unsupported command: {command}\n", log_buf.getvalue()
+    except Exception as exc:
+        if not log_buf.getvalue().strip():
+            log_buf.write(f"ERROR: {exc}")
+        return 1, None, stdout_buf.getvalue(), log_buf.getvalue()
 
 
 def summarize_outdir(outdir: Path) -> str:

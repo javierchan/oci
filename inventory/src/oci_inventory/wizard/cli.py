@@ -143,11 +143,19 @@ def _ask_outdir_base(prompt: str, default: str) -> Path:
 
 
 def _parse_regions(s: str) -> Optional[List[str]]:
+    import re
+
     raw = (s or "").strip()
     if not raw:
         return None
     parts = [p.strip() for p in raw.split(",") if p.strip()]
-    return parts or None
+    if not parts:
+        return None
+    pattern = re.compile(r"^[a-z0-9-]+-[0-9]+$")
+    invalid = [p for p in parts if not pattern.match(p)]
+    if invalid:
+        raise ValueError(f"Invalid region value(s): {', '.join(invalid)}")
+    return parts
 
 
 def _header() -> None:
@@ -264,6 +272,13 @@ def main() -> None:
     profile: Optional[str] = None
     if auth in {"config", "security_token"}:
         profile = _ask_str("Profile", default="DEFAULT")
+    elif auth == "auto":
+        from rich.console import Console
+
+        Console().print(
+            "[dim]Note: auto auth falls back to config profile 'DEFAULT' if principals are unavailable. "
+            "Use auth=config to specify a different profile.[/dim]"
+        )
 
     tenancy_ocid = _ask_str("Tenancy OCID (optional)", default="", allow_blank=True).strip() or None
 
@@ -392,7 +407,22 @@ def main() -> None:
     # Run inventory
     _section("Run Inventory")
     outdir = _ask_outdir_base("Output base dir", default="out")
-    regions = _parse_regions(_ask_str("Regions (comma-separated, blank = subscribed)", default="", allow_blank=True))
+    while True:
+        try:
+            regions = _parse_regions(
+                _ask_str(
+                    "Regions (comma-separated, blank = subscribed). Example: mx-queretaro-1,us-phoenix-1",
+                    default="",
+                    allow_blank=True,
+                )
+            )
+            break
+        except ValueError as exc:
+            from rich.console import Console
+
+            console = Console()
+            console.print(f"[red]{exc}[/red]")
+            console.print("[dim]Example: mx-queretaro-1,us-phoenix-1[/dim]")
 
     genai_summary = _ask_bool(
         "Generate GenAI Executive Summary in report.md? (uses OCI_INV_GENAI_CONFIG, else ~/.config/oci-inv/genai.yaml, else inventory/.local/genai.yaml)",
