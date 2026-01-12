@@ -62,15 +62,19 @@ def resolve_auth(method: str, profile: Optional[str], tenancy_ocid: Optional[str
 
     # Helpers to build contexts
     def ctx_from_config() -> AuthContext:
+        resolved_profile = profile or "DEFAULT"
         try:
-            cfg = oci.config.from_file(profile_name=profile)  # type: ignore[attr-defined]
+            if profile:
+                cfg = oci.config.from_file(profile_name=profile)  # type: ignore[attr-defined]
+            else:
+                cfg = oci.config.from_file()  # type: ignore[attr-defined]
         except Exception as e:
             mapped = map_oci_error(e, "OCI SDK error while loading config profile")
             if mapped:
                 raise mapped from e
             raise AuthError(f"Failed to load OCI config profile: {e}") from e
         ten = tenancy_ocid or cfg.get("tenancy")
-        return AuthContext(method="config", config_dict=cfg, signer=None, profile=profile, tenancy_ocid=ten)
+        return AuthContext(method="config", config_dict=cfg, signer=None, profile=resolved_profile, tenancy_ocid=ten)
 
     def ctx_from_ip() -> AuthContext:
         try:
