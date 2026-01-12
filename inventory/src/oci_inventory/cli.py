@@ -293,7 +293,7 @@ def _request_summarized_usages(
         "tenant_id": tenancy_id,
         "time_usage_started": start,
         "time_usage_ended": end,
-        "granularity": "MONTHLY",
+        "granularity": "DAILY",
         "query_type": "COST",
     }
     if group_by:
@@ -437,7 +437,7 @@ def _collect_cost_report_data(
     start_dt = _align_utc_day(start_dt)
     end_dt = _align_utc_day(end_dt)
     if start_dt != start_raw or end_dt != end_raw:
-        warnings.append("Cost time range normalized to 00:00:00 UTC for Usage API MONTHLY granularity.")
+        warnings.append("Cost time range normalized to 00:00:00 UTC for Usage API DAILY granularity.")
     if end_dt <= start_dt:
         end_dt = start_dt + timedelta(days=1)
         warnings.append("Cost end time adjusted to ensure end > start.")
@@ -468,7 +468,7 @@ def _collect_cost_report_data(
         "tenant_id": tenancy_id,
         "time_usage_started": start_dt.isoformat(timespec="seconds"),
         "time_usage_ended": end_dt.isoformat(timespec="seconds"),
-        "granularity": "MONTHLY",
+        "granularity": "DAILY",
         "query_type": "COST",
         "group_by": ["service", "compartmentId", "region"],
         "compartment_depth": 6,
