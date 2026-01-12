@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -23,7 +23,7 @@ from .oci.clients import get_budget_client, get_home_region_name, get_osub_usage
 from .oci.compartments import list_compartments as oci_list_compartments
 from .oci.discovery import discover_in_region
 from .oci.regions import get_subscribed_regions
-from .report import write_cost_report_md, write_run_report_md
+from .report import render_cost_report_md, write_cost_report_md, write_run_report_md
 from .util.concurrency import parallel_map_ordered
 from .util.errors import (
     AuthResolutionError,
@@ -1117,11 +1117,53 @@ def cmd_run(cfg: RunConfig) -> int:
                     requested_regions=requested_regions,
                     finished_at=finished_at,
                 )
+                cost_executive_summary: Optional[str] = None
+                cost_executive_summary_error: Optional[str] = None
+                if cfg.genai_summary and status == "OK":
+                    try:
+                        from .genai import generate_executive_summary  # lazy import
+                        from .genai.redact import redact_text
+
+                        try:
+                            cfg_dict = asdict(cfg)
+                        except Exception:
+                            cfg_dict = {
+                                "cost_report": getattr(cfg, "cost_report", None),
+                                "cost_start": getattr(cfg, "cost_start", None),
+                                "cost_end": getattr(cfg, "cost_end", None),
+                                "cost_currency": getattr(cfg, "cost_currency", None),
+                                "assessment_target_group": getattr(cfg, "assessment_target_group", None),
+                                "assessment_target_scope": getattr(cfg, "assessment_target_scope", None),
+                                "assessment_lens_weights": getattr(cfg, "assessment_lens_weights", None),
+                                "assessment_capabilities": getattr(cfg, "assessment_capabilities", None),
+                            }
+
+                        base_report_md = render_cost_report_md(
+                            status=status,
+                            cfg_dict=cfg_dict,
+                            cost_context=cost_context,
+                        )
+                        safe_report_md = redact_text(base_report_md)
+                        cost_executive_summary = generate_executive_summary(
+                            status=status,
+                            started_at=started_at,
+                            finished_at=finished_at,
+                            subscribed_regions=subscribed_regions,
+                            requested_regions=requested_regions,
+                            excluded_regions=excluded_regions,
+                            metrics=metrics,
+                            report_md=safe_report_md,
+                        )
+                    except Exception as e:
+                        cost_executive_summary_error = str(e)
+                        LOG.warning("GenAI cost report summary failed", extra={"error": str(e)})
                 write_cost_report_md(
                     outdir=cfg.outdir,
                     status=status,
                     cfg=cfg,
                     cost_context=cost_context,
+                    executive_summary=cost_executive_summary,
+                    executive_summary_error=cost_executive_summary_error,
                 )
             except Exception as e:
                 from .genai.redact import redact_text

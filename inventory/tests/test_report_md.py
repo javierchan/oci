@@ -238,3 +238,48 @@ def test_render_cost_report_includes_required_sections_and_aliases(tmp_path: Pat
     assert "Top 10; remaining aggregated as Other." in text
     assert "Prod (Compartment-01)" in text
     assert "## Execution Metadata" in text
+
+
+def test_render_cost_report_embeds_genai_summary(tmp_path: Path) -> None:
+    cfg = RunConfig(outdir=tmp_path, auth="config", profile="DEFAULT", query="query all resources")
+
+    cost_context = {
+        "time_start": "2026-02-01T00:00:00+00:00",
+        "time_end": "2026-02-15T00:00:00+00:00",
+        "currency": "USD",
+        "currency_source": "cli",
+        "total_cost": 12.34,
+        "services": [{"name": "ServiceA", "amount": 12.34}],
+        "compartments": [{"compartment_id": "ocid1.compartment.oc1..exampleuniqueID", "amount": 12.34}],
+        "regions": [{"name": "us-ashburn-1", "amount": 12.34}],
+        "budgets": [],
+        "budget_alert_rule_counts": {},
+        "errors": [],
+        "warnings": [],
+        "steps": [{"name": "usage_api_total", "status": "OK"}],
+        "query_inputs": {"tenant_id": "ocid1.tenancy.oc1..exampleTenancy", "group_by": ["service"]},
+        "compartment_names": {"ocid1.compartment.oc1..exampleuniqueID": "Prod"},
+    }
+
+    text = render_cost_report_md(
+        status="OK",
+        cfg_dict={
+            "cost_report": True,
+            "cost_start": None,
+            "cost_end": None,
+            "cost_currency": "USD",
+            "assessment_target_group": "FinOps Team",
+            "assessment_target_scope": ["Cost Management / Allocation"],
+            "assessment_lens_weights": ["Knowledge=1", "Process=1", "Metrics=1", "Adoption=1", "Automation=1"],
+            "assessment_capabilities": [
+                "Cost Management|Allocation|2|2|1|1|1|10|Usage API totals + budgets",
+            ],
+        },
+        cost_context=cost_context,
+        executive_summary="Summary line.\n- Bullet one",
+    )
+
+    assert "**Executive Summary**" in text
+    assert "Summary line." in text
+    assert "- Bullet one" in text
+    assert "GenAI executive summary embedded after the introduction." in text

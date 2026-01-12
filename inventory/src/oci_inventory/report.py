@@ -1451,6 +1451,8 @@ def render_cost_report_md(
     status: str,
     cfg_dict: Dict[str, Any],
     cost_context: Dict[str, Any],
+    executive_summary: Optional[str] = None,
+    executive_summary_error: Optional[str] = None,
 ) -> str:
     from .genai.redact import redact_text
 
@@ -1486,6 +1488,15 @@ def render_cost_report_md(
         "The report ends with Execution Metadata."
     )
     lines.append("")
+    if executive_summary:
+        summary = executive_summary.strip()
+        for prefix in ("## Executive Summary", "# Executive Summary"):
+            if summary.startswith(prefix):
+                summary = summary[len(prefix) :].lstrip("\n ")
+                break
+        lines.append("**Executive Summary**")
+        lines.append(summary)
+        lines.append("")
     lines.append("## At a Glance")
     lines.extend(
         _md_table(
@@ -1854,6 +1865,11 @@ def render_cost_report_md(
     lines.append(f"- Currency source: {currency_source}.")
     if cost_context.get("errors"):
         lines.append("- Errors were captured in Risks & Gaps.")
+    if executive_summary:
+        lines.append("- GenAI executive summary embedded after the introduction.")
+    elif executive_summary_error:
+        err_txt = redact_text(_truncate(str(executive_summary_error or ""), 200))
+        lines.append(f"- GenAI executive summary unavailable: {err_txt}")
 
     lines.append("")
     lines.append("### Alias Map")
@@ -1877,6 +1893,8 @@ def write_cost_report_md(
     status: str,
     cfg: Any,
     cost_context: Dict[str, Any],
+    executive_summary: Optional[str] = None,
+    executive_summary_error: Optional[str] = None,
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
     try:
@@ -1893,7 +1911,13 @@ def write_cost_report_md(
             "assessment_capabilities": getattr(cfg, "assessment_capabilities", None),
         }
 
-    text = render_cost_report_md(status=status, cfg_dict=cfg_dict, cost_context=cost_context)
+    text = render_cost_report_md(
+        status=status,
+        cfg_dict=cfg_dict,
+        cost_context=cost_context,
+        executive_summary=executive_summary,
+        executive_summary_error=executive_summary_error,
+    )
     p = outdir / "cost_report.md"
     p.write_text(text, encoding="utf-8")
     return p
