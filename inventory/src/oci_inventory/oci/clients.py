@@ -19,11 +19,8 @@ try:
     import oci.media_services  # type: ignore
     import oci.network_firewall  # type: ignore
     import oci.object_storage  # type: ignore
-    import oci.osub_usage  # type: ignore
-    import oci.budget  # type: ignore
     import oci.resource_search  # type: ignore
     import oci.secrets  # type: ignore
-    import oci.usage_api  # type: ignore
     import oci.waf  # type: ignore
 except Exception:  # pragma: no cover - surfaced in CLI validate
     oci = None  # type: ignore
@@ -183,6 +180,12 @@ def get_usage_api_client(ctx: AuthContext, region: Optional[str] = None) -> Any:
     """Create UsageapiClient (cost/usage read-only)."""
     if oci is None:  # pragma: no cover
         raise AuthError("oci Python SDK not installed.")
+    try:  # pragma: no cover - optional module varies by SDK version
+        import importlib
+
+        importlib.import_module("oci.usage_api")
+    except Exception as e:  # pragma: no cover
+        raise AuthError(f"oci.usage_api not available in installed SDK: {e}") from e
     return make_client(oci.usage_api.UsageapiClient, ctx, region=region)  # type: ignore[attr-defined]
 
 
@@ -190,6 +193,12 @@ def get_budget_client(ctx: AuthContext, region: Optional[str] = None) -> Any:
     """Create BudgetClient (read-only)."""
     if oci is None:  # pragma: no cover
         raise AuthError("oci Python SDK not installed.")
+    try:  # pragma: no cover - optional module varies by SDK version
+        import importlib
+
+        importlib.import_module("oci.budget")
+    except Exception as e:  # pragma: no cover
+        raise AuthError(f"oci.budget not available in installed SDK: {e}") from e
     return make_client(oci.budget.BudgetClient, ctx, region=region)  # type: ignore[attr-defined]
 
 
@@ -197,6 +206,12 @@ def get_osub_usage_client(ctx: AuthContext, region: Optional[str] = None) -> Any
     """Create ComputedUsageClient for OneSubscription usage (read-only)."""
     if oci is None:  # pragma: no cover
         raise AuthError("oci Python SDK not installed.")
+    try:  # pragma: no cover - optional module varies by SDK version
+        import importlib
+
+        importlib.import_module("oci.osub_usage")
+    except Exception as e:  # pragma: no cover
+        raise AuthError(f"oci.osub_usage not available in installed SDK: {e}") from e
     return make_client(oci.osub_usage.ComputedUsageClient, ctx, region=region)  # type: ignore[attr-defined]
 
 

@@ -280,7 +280,7 @@ def _render_edge(src: str, dst: str, label: str | None = None, *, dotted: bool =
 
 
 def _render_arch_edge(src: str, dst: str, *, src_port: str = "R", dst_port: str = "L") -> str:
-    return f"    {src}:{src_port} --> {dst}:{dst_port}"
+    return f"    {src}:{src_port} -- {dst_port}:{dst}"
 
 
 def _edge_sort_key(edge: Edge) -> Tuple[str, str, str]:
@@ -315,7 +315,7 @@ def _render_relationship_edges(
     label_edges: bool = True,
 ) -> List[str]:
     out: List[str] = []
-    seen: Set[Tuple[str, str, str]] = set()
+    seen: Set[Tuple[str, str]] = set()
     for edge in sorted(edges, key=_edge_sort_key):
         rel = str(edge.get("relation_type") or "")
         if allowlist is not None and rel not in allowlist:
@@ -336,7 +336,7 @@ def _render_relationship_edges(
             continue
         src_id = node_id_map.get(src, _mermaid_id(src))
         dst_id = node_id_map.get(dst, _mermaid_id(dst))
-        key = (src_id, rel, dst_id)
+        key = (src_id, dst_id)
         if key in seen:
             continue
         seen.add(key)
@@ -353,9 +353,10 @@ def _render_arch_relationship_edges(
     node_id_map: Mapping[str, str],
     allowlist: Optional[Set[str]] = None,
     include_admin_edges: bool = True,
+    seen_pairs: Optional[Set[Tuple[str, str]]] = None,
 ) -> List[str]:
     out: List[str] = []
-    seen: Set[Tuple[str, str, str]] = set()
+    seen: Set[Tuple[str, str]] = set()
     for edge in sorted(edges, key=_edge_sort_key):
         rel = str(edge.get("relation_type") or "")
         if allowlist is not None and rel not in allowlist:
@@ -372,10 +373,14 @@ def _render_arch_relationship_edges(
         dst_id = node_id_map.get(dst)
         if not src_id or not dst_id:
             continue
-        key = (src_id, rel, dst_id)
+        key = tuple(sorted((src_id, dst_id)))
         if key in seen:
             continue
         seen.add(key)
+        if seen_pairs is not None:
+            if key in seen_pairs:
+                continue
+            seen_pairs.add(key)
         out.append(_render_arch_edge(src_id, dst_id))
     return out
 
@@ -1938,6 +1943,7 @@ def _write_consolidated_mermaid(
     rendered_node_ids: Set[str] = set()
     node_service_ids: Dict[str, str] = {}
     gateway_service_ids: Dict[str, str] = {}
+    seen_arch_edges: Set[Tuple[str, str]] = set()
 
     def _add_service(node: Node, parent_id: str) -> None:
         ocid = str(node.get("nodeId") or "")
@@ -1951,6 +1957,13 @@ def _write_consolidated_mermaid(
         if _is_node_type(node, *_NETWORK_GATEWAY_NODETYPES):
             gateway_service_ids[ocid] = sid
         rendered_node_ids.add(ocid)
+
+    def _add_arch_edge(src_id: str, dst_id: str) -> None:
+        key = tuple(sorted((src_id, dst_id)))
+        if key in seen_arch_edges:
+            return
+        seen_arch_edges.add(key)
+        lines.append(_render_arch_edge(src_id, dst_id))
 
     tenancy_label = _tenancy_label(nodes)
     tenancy_id = _service_id("tenancy_", tenancy_label)
@@ -2092,7 +2105,7 @@ def _write_consolidated_mermaid(
 
         lane_groups = _group_nodes_by_lane(out_nodes)
         for lane, lane_nodes in lane_groups.items():
-            lane_group_id = _service_id(f"lane_{lane}_", f"{cid}:{lane}")
+            lane_group_id = _service_id(f"lane_out_{lane}_", f"{cid}:{lane}")
             lines.append(f"    group {lane_group_id}(cloud)[{_arch_label(_lane_label(lane), max_len=40)}] in {out_group_id}")
             for n in sorted(
                 lane_nodes,
@@ -2126,7 +2139,7 @@ def _write_consolidated_mermaid(
                     label = _arch_label(_arch_node_label(n), max_len=None)
                     icon = _service_icon(n)
                     lines.append(f"    service {overlay_sid}({icon})[{label}] in {lane_id}")
-                    lines.append(_render_arch_edge(overlay_sid, canonical_id))
+                    _add_arch_edge(overlay_sid, canonical_id)
 
     external_group_id = ""
     internet_id = ""
@@ -2178,19 +2191,20 @@ def _write_consolidated_mermaid(
         for ocid, sid in gateway_service_ids.items():
             node = node_by_id.get(ocid, {})
             if _is_node_type(node, "InternetGateway") and internet_id:
-                lines.append(_render_arch_edge(internet_id, sid))
+                _add_arch_edge(internet_id, sid)
             if _is_node_type(node, "NatGateway") and internet_id:
-                lines.append(_render_arch_edge(sid, internet_id))
+                _add_arch_edge(sid, internet_id)
             if _is_node_type(node, "ServiceGateway") and oci_services_id:
-                lines.append(_render_arch_edge(sid, oci_services_id))
+                _add_arch_edge(sid, oci_services_id)
             if _is_node_type(node, "Drg", "VirtualCircuit", "IPSecConnection", "Cpe") and customer_net_id:
-                lines.append(_render_arch_edge(sid, customer_net_id))
+                _add_arch_edge(sid, customer_net_id)
 
     rel_lines = _render_arch_relationship_edges(
         edges,
         node_ids=rendered_node_ids,
         node_id_map=node_service_ids,
         include_admin_edges=True,
+        seen_pairs=seen_arch_edges,
     )
     lines.extend(rel_lines)
 
