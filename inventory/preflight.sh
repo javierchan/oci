@@ -235,6 +235,12 @@ Optional:
       OCI_INV_INSTALL_OCI_CLI=1 ./preflight.sh
   - Offline mode (skip network actions):
       OCI_INV_OFFLINE=1 ./preflight.sh
+  - Disable diagram generation (runtime):
+      oci-inv run --no-diagrams
+    Or set default via OCI_INV_DIAGRAMS=0
+  - Provide OneSubscription subscription ID (runtime):
+      oci-inv run --cost-report --osub-subscription-id <subscription_id>
+    Or set default via OCI_INV_OSUB_SUBSCRIPTION_ID
 
 Common issues:
   - Python version < 3.11 -> Install Python 3.11+ and re-run
