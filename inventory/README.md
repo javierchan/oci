@@ -248,6 +248,8 @@ This section is a quick map of every user-facing component in the CLI, what it d
 - **Interactive wizard (optional)**: guided, preview-first UX that builds/executes the same `oci-inv` commands; safe defaults and copy/pasteable outputs.
   - Install extra: `pip install .[wizard]`
   - Run: `oci-inv-wizard`
+  - Modes: run, diff, validate-auth, list-regions, list-compartments, list-genai-models, genai-chat, enrich-coverage
+  - Advanced run options: diagram validation, cost report inputs, assessment metadata
 - **Outputs**: deterministic artifacts per run under `out/<timestamp>/` (JSONL, CSV, optional Parquet, report.md, graph files, optional diff files when `--prev` is provided).
   - Hashing excludes `collectedAt` to keep diffs stable.
 
@@ -417,6 +419,7 @@ What it does:
 - Walks you through run/diff options, shows the exact `oci-inv` command before execution.
 - Writes the same outputs as the CLI (`out/<timestamp>/`), so artifacts remain consistent.
 - Supports plan files for non-interactive use (see below for an example).
+- Covers all CLI modes, with advanced run options for diagram validation, cost reporting, and assessments.
 
 ## GenAI Configuration
 

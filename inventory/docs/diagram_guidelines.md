@@ -1,4 +1,3 @@
-```markdown
 # Architecture Reference Diagram Guidelines
 
 ## Scope
@@ -292,6 +291,5 @@ If diagram structure or section expectations change, update:
 - `docs/diagram_guidelines.md`
 - `docs/architecture.md`
 - `AGENTS.md`
-```
 
 ---
