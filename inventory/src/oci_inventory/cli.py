@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .auth.providers import AuthContext, AuthError, resolve_auth
+from .auth.providers import AuthContext, AuthError, get_tenancy_ocid, resolve_auth
 from .config import RunConfig, load_run_config
 from .diff.diff import diff_files, write_diff
 from .enrich import get_enricher_for, set_enrich_context
@@ -19,10 +19,11 @@ from .export.jsonl import write_jsonl
 from .export.parquet import ParquetNotAvailable, write_parquet
 from .logging import LogConfig, get_logger, setup_logging
 from .normalize.transform import sort_relationships, stable_json_dumps
+from .oci.clients import get_budget_client, get_osub_usage_client, get_usage_api_client
 from .oci.compartments import list_compartments as oci_list_compartments
 from .oci.discovery import discover_in_region
 from .oci.regions import get_subscribed_regions
-from .report import write_run_report_md
+from .report import write_cost_report_md, write_run_report_md
 from .util.concurrency import parallel_map_ordered
 from .util.errors import (
     AuthResolutionError,
@@ -205,6 +206,410 @@ def _resolve_auth(cfg: RunConfig) -> AuthContext:
         return resolve_auth(cfg.auth, cfg.profile, cfg.tenancy_ocid)
     except AuthError as e:
         raise AuthResolutionError(str(e)) from e
+
+
+def _parse_iso_utc(value: str) -> datetime:
+    raw = (value or "").strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    dt = datetime.fromisoformat(raw)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _default_cost_range(now_utc: datetime) -> Tuple[datetime, datetime]:
+    start = datetime(now_utc.year, now_utc.month, 1, tzinfo=timezone.utc)
+    return start, now_utc
+
+
+def _usage_item_to_dict(item: Any) -> Dict[str, Any]:
+    if isinstance(item, dict):
+        return item
+    to_dict = getattr(item, "to_dict", None)
+    if callable(to_dict):
+        return to_dict()  # type: ignore[no-any-return]
+    return {}
+
+
+def _extract_usage_amount(data: Dict[str, Any]) -> float:
+    for key in ("computed_amount", "computedAmount", "cost", "amount"):
+        val = data.get(key)
+        if val is not None:
+            try:
+                return float(val)
+            except Exception:
+                return 0.0
+    return 0.0
+
+
+def _extract_usage_currency(data: Dict[str, Any]) -> Optional[str]:
+    for key in ("currency", "currency_code", "currencyCode"):
+        val = data.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return None
+
+
+def _extract_group_value(data: Dict[str, Any], group_by: Optional[str]) -> str:
+    if not group_by:
+        return ""
+    keys_by_group = {
+        "service": ("service", "service_name", "serviceName"),
+        "compartmentId": ("compartment_id", "compartmentId", "compartment_id"),
+        "region": ("region", "region_name", "regionName"),
+        "sku": ("sku", "sku_name", "skuName"),
+    }
+    for key in keys_by_group.get(group_by, (group_by,)):
+        val = data.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return ""
+
+
+def _request_summarized_usages(
+    client: Any,
+    tenancy_id: str,
+    start: datetime,
+    end: datetime,
+    *,
+    group_by: Optional[str],
+) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str]]:
+    try:
+        import oci  # type: ignore
+    except Exception as e:  # pragma: no cover - import error surfaced in CLI validate
+        return [], None, str(e)
+
+    details_cls = getattr(getattr(oci, "usage_api", None), "models", None)
+    if details_cls is None or not hasattr(details_cls, "RequestSummarizedUsagesDetails"):
+        return [], None, "OCI Usage API models are unavailable"
+
+    details_kwargs: Dict[str, Any] = {
+        "tenant_id": tenancy_id,
+        "time_usage_started": start,
+        "time_usage_ended": end,
+        "granularity": "TOTAL",
+        "query_type": "COST",
+    }
+    if group_by:
+        details_kwargs["group_by"] = [group_by]
+    details = details_cls.RequestSummarizedUsagesDetails(**details_kwargs)
+
+    rows: List[Dict[str, Any]] = []
+    currency: Optional[str] = None
+    page: Optional[str] = None
+    while True:
+        try:
+            if page:
+                resp = client.request_summarized_usages(details, page=page)  # type: ignore[attr-defined]
+            else:
+                resp = client.request_summarized_usages(details)  # type: ignore[attr-defined]
+        except TypeError as e:
+            if "page" in str(e):
+                resp = client.request_summarized_usages(details)  # type: ignore[attr-defined]
+                page = None
+            else:
+                return rows, currency, str(e)
+        except Exception as e:
+            return rows, currency, str(e)
+
+        data = getattr(resp, "data", None)
+        items = getattr(data, "items", []) if data is not None else []
+        data_currency = getattr(data, "currency", None) if data is not None else None
+        if isinstance(data_currency, str) and data_currency.strip():
+            currency = data_currency.strip()
+        for item in items or []:
+            item_dict = _usage_item_to_dict(item)
+            amount = _extract_usage_amount(item_dict)
+            name = _extract_group_value(item_dict, group_by)
+            if group_by and not name:
+                continue
+            rows.append({"name": name, "amount": amount})
+            item_currency = _extract_usage_currency(item_dict)
+            if item_currency and not currency:
+                currency = item_currency
+
+        page = getattr(resp, "headers", {}).get("opc-next-page")
+        if not page:
+            break
+
+    return rows, currency, None
+
+
+def _list_budgets(client: Any, tenancy_id: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    budgets: List[Dict[str, Any]] = []
+    page: Optional[str] = None
+    while True:
+        try:
+            if page:
+                resp = client.list_budgets(tenancy_id, page=page)  # type: ignore[attr-defined]
+            else:
+                resp = client.list_budgets(tenancy_id)  # type: ignore[attr-defined]
+        except TypeError as e:
+            if "page" in str(e):
+                resp = client.list_budgets(tenancy_id)  # type: ignore[attr-defined]
+                page = None
+            else:
+                return budgets, str(e)
+        except Exception as e:
+            return budgets, str(e)
+
+        data = getattr(resp, "data", []) or []
+        for item in data:
+            item_dict = _usage_item_to_dict(item)
+            budgets.append(item_dict)
+        page = getattr(resp, "headers", {}).get("opc-next-page")
+        if not page:
+            break
+    return budgets, None
+
+
+def _list_alert_rules(client: Any, budget_id: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    rules: List[Dict[str, Any]] = []
+    page: Optional[str] = None
+    while True:
+        try:
+            if page:
+                resp = client.list_alert_rules(budget_id, page=page)  # type: ignore[attr-defined]
+            else:
+                resp = client.list_alert_rules(budget_id)  # type: ignore[attr-defined]
+        except TypeError as e:
+            if "page" in str(e):
+                resp = client.list_alert_rules(budget_id)  # type: ignore[attr-defined]
+                page = None
+            else:
+                return rules, str(e)
+        except Exception as e:
+            return rules, str(e)
+        data = getattr(resp, "data", []) or []
+        for item in data:
+            item_dict = _usage_item_to_dict(item)
+            rules.append(item_dict)
+        page = getattr(resp, "headers", {}).get("opc-next-page")
+        if not page:
+            break
+    return rules, None
+
+
+def _collect_cost_report_data(
+    *,
+    ctx: Optional[AuthContext],
+    cfg: RunConfig,
+    subscribed_regions: List[str],
+    finished_at: str,
+) -> Dict[str, Any]:
+    from .genai.redact import redact_text
+
+    errors: List[str] = []
+    steps: List[Dict[str, str]] = []
+    warnings: List[str] = []
+
+    now = _parse_iso_utc(finished_at)
+    if cfg.cost_start:
+        try:
+            start_dt = _parse_iso_utc(cfg.cost_start)
+        except Exception as e:
+            errors.append(redact_text(f"Invalid --cost-start: {e}"))
+            start_dt, _ = _default_cost_range(now)
+    else:
+        start_dt, _ = _default_cost_range(now)
+
+    if cfg.cost_end:
+        try:
+            end_dt = _parse_iso_utc(cfg.cost_end)
+        except Exception as e:
+            errors.append(redact_text(f"Invalid --cost-end: {e}"))
+            _, end_dt = _default_cost_range(now)
+    else:
+        _, end_dt = _default_cost_range(now)
+
+    if start_dt >= end_dt:
+        errors.append("Cost time range is invalid (start >= end).")
+
+    tenancy_id = get_tenancy_ocid(ctx) if ctx else None
+    if not tenancy_id:
+        errors.append("Tenancy OCID is required for cost reporting.")
+
+    cost_region = sorted(subscribed_regions)[0] if subscribed_regions else None
+
+    services: List[Dict[str, Any]] = []
+    compartments: List[Dict[str, Any]] = []
+    regions: List[Dict[str, Any]] = []
+    total_cost = 0.0
+    currency: Optional[str] = None
+
+    query_inputs: Dict[str, Any] = {
+        "tenant_id": tenancy_id,
+        "time_usage_started": start_dt.isoformat(timespec="seconds"),
+        "time_usage_ended": end_dt.isoformat(timespec="seconds"),
+        "granularity": "TOTAL",
+        "query_type": "COST",
+        "group_by": ["service", "compartmentId", "region"],
+        "region": cost_region,
+    }
+
+    if tenancy_id and start_dt < end_dt and ctx:
+        usage_client = get_usage_api_client(ctx, region=cost_region)
+        rows, cur, err = _request_summarized_usages(
+            usage_client,
+            tenancy_id,
+            start_dt,
+            end_dt,
+            group_by=None,
+        )
+        steps.append({"name": "usage_api_total", "status": "OK" if not err else "ERROR"})
+        if err:
+            errors.append(redact_text(f"Usage API total failed: {err}"))
+        else:
+            total_cost = sum(float(r.get("amount") or 0.0) for r in rows)
+            currency = cur or currency
+
+        rows, cur, err = _request_summarized_usages(
+            usage_client,
+            tenancy_id,
+            start_dt,
+            end_dt,
+            group_by="service",
+        )
+        steps.append({"name": "usage_api_service", "status": "OK" if not err else "ERROR"})
+        if err:
+            errors.append(redact_text(f"Usage API service failed: {err}"))
+        else:
+            services = rows
+            currency = cur or currency
+
+        rows, cur, err = _request_summarized_usages(
+            usage_client,
+            tenancy_id,
+            start_dt,
+            end_dt,
+            group_by="compartmentId",
+        )
+        steps.append({"name": "usage_api_compartment", "status": "OK" if not err else "ERROR"})
+        if err:
+            errors.append(redact_text(f"Usage API compartment failed: {err}"))
+        else:
+            compartments = [
+                {"compartment_id": r.get("name", ""), "amount": r.get("amount", 0.0)} for r in rows
+            ]
+            currency = cur or currency
+
+        rows, cur, err = _request_summarized_usages(
+            usage_client,
+            tenancy_id,
+            start_dt,
+            end_dt,
+            group_by="region",
+        )
+        steps.append({"name": "usage_api_region", "status": "OK" if not err else "ERROR"})
+        if err:
+            errors.append(redact_text(f"Usage API region failed: {err}"))
+        else:
+            regions = rows
+            currency = cur or currency
+    else:
+        steps.append({"name": "usage_api_total", "status": "SKIPPED"})
+        steps.append({"name": "usage_api_service", "status": "SKIPPED"})
+        steps.append({"name": "usage_api_compartment", "status": "SKIPPED"})
+        steps.append({"name": "usage_api_region", "status": "SKIPPED"})
+
+    if cfg.cost_currency:
+        if currency and currency != cfg.cost_currency:
+            warnings.append(
+                f"Currency mismatch: Usage API returned {currency}, CLI configured {cfg.cost_currency}."
+            )
+        currency = cfg.cost_currency
+
+    budgets: List[Dict[str, Any]] = []
+    alert_rule_counts: Dict[str, int] = {}
+    if tenancy_id and ctx:
+        budget_client = get_budget_client(ctx, region=cost_region)
+        budget_rows, err = _list_budgets(budget_client, tenancy_id)
+        steps.append({"name": "budget_list", "status": "OK" if not err else "ERROR"})
+        if err:
+            errors.append(redact_text(f"Budget list failed: {err}"))
+        else:
+            budgets = budget_rows
+            for budget in budgets:
+                budget_id = str(budget.get("id") or "")
+                if not budget_id:
+                    continue
+                rules, err = _list_alert_rules(budget_client, budget_id)
+                status = "OK" if not err else "ERROR"
+                steps.append({"name": "budget_alert_rules", "status": status})
+                if err:
+                    errors.append(redact_text(f"Alert rules failed for budget: {err}"))
+                else:
+                    alert_rule_counts[budget_id] = len(rules)
+    else:
+        steps.append({"name": "budget_list", "status": "SKIPPED"})
+
+    osub_usage: Optional[Dict[str, Any]] = None
+    if tenancy_id and ctx:
+        osub_client = get_osub_usage_client(ctx, region=cost_region)
+        try:
+            import oci  # type: ignore
+        except Exception as e:  # pragma: no cover
+            steps.append({"name": "osub_usage", "status": "ERROR"})
+            errors.append(redact_text(f"OneSubscription client unavailable: {e}"))
+        else:
+            if hasattr(osub_client, "request_computed_usage"):
+                try:
+                    details_cls = getattr(getattr(oci, "osub_usage", None), "models", None)
+                    if details_cls and hasattr(details_cls, "RequestComputedUsageDetails"):
+                        details = details_cls.RequestComputedUsageDetails(
+                            tenant_id=tenancy_id,
+                            time_usage_started=start_dt,
+                            time_usage_ended=end_dt,
+                        )
+                        resp = osub_client.request_computed_usage(details)  # type: ignore[attr-defined]
+                        data = getattr(resp, "data", None)
+                        osub_usage = _usage_item_to_dict(data) if data is not None else None
+                        steps.append({"name": "osub_usage", "status": "OK"})
+                    else:
+                        steps.append({"name": "osub_usage", "status": "ERROR"})
+                        errors.append("OneSubscription models are unavailable.")
+                except Exception as e:
+                    steps.append({"name": "osub_usage", "status": "ERROR"})
+                    errors.append(redact_text(f"OneSubscription usage failed: {e}"))
+            else:
+                steps.append({"name": "osub_usage", "status": "ERROR"})
+                errors.append("OneSubscription client does not support computed usage requests.")
+    else:
+        steps.append({"name": "osub_usage", "status": "SKIPPED"})
+
+    compartment_names: Dict[str, str] = {}
+    comp_ids = {str(r.get("compartment_id") or "") for r in compartments if str(r.get("compartment_id") or "")}
+    if comp_ids and ctx:
+        try:
+            comp_rows = oci_list_compartments(ctx, tenancy_ocid=tenancy_id)
+            compartment_names = {c["ocid"]: c["name"] for c in comp_rows if c.get("ocid") and c.get("name")}
+            steps.append({"name": "compartment_names", "status": "OK"})
+        except Exception as e:
+            steps.append({"name": "compartment_names", "status": "ERROR"})
+            errors.append(redact_text(f"Compartment name lookup failed: {e}"))
+    elif comp_ids:
+        steps.append({"name": "compartment_names", "status": "ERROR"})
+        errors.append("Compartment name lookup skipped: no auth context.")
+
+    return {
+        "time_start": start_dt.isoformat(timespec="seconds"),
+        "time_end": end_dt.isoformat(timespec="seconds"),
+        "currency": currency or "UNKNOWN",
+        "currency_source": "usage_api" if currency and currency != cfg.cost_currency else "cli" if cfg.cost_currency else "unknown",
+        "total_cost": total_cost,
+        "services": services,
+        "compartments": compartments,
+        "regions": regions,
+        "budgets": budgets,
+        "budget_alert_rule_counts": alert_rule_counts,
+        "osub_usage": osub_usage,
+        "errors": errors,
+        "warnings": warnings,
+        "steps": steps,
+        "query_inputs": query_inputs,
+        "compartment_names": compartment_names,
+    }
 
 
 def _enrich_record(record: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
@@ -459,6 +864,7 @@ def cmd_run(cfg: RunConfig) -> int:
 
     status = "OK"
     fatal_error: Optional[str] = None
+    ctx: Optional[AuthContext] = None
 
     subscribed_regions: List[str] = []
     requested_regions: Optional[List[str]] = None
@@ -645,6 +1051,25 @@ def cmd_run(cfg: RunConfig) -> int:
         except Exception:
             # Report generation must never affect the run outcome.
             pass
+
+        if cfg.cost_report:
+            try:
+                cost_context = _collect_cost_report_data(
+                    ctx=ctx,
+                    cfg=cfg,
+                    subscribed_regions=subscribed_regions,
+                    finished_at=finished_at,
+                )
+                write_cost_report_md(
+                    outdir=cfg.outdir,
+                    status=status,
+                    cfg=cfg,
+                    cost_context=cost_context,
+                )
+            except Exception as e:
+                from .genai.redact import redact_text
+
+                LOG.warning("Cost report failed", extra={"error": redact_text(str(e))})
 
 
 def cmd_diff(cfg: RunConfig) -> int:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from oci_inventory.config import RunConfig
-from oci_inventory.report import render_run_report_md
+from oci_inventory.report import render_cost_report_md, render_run_report_md
 
 
 def test_render_run_report_includes_excluded_regions_and_query(tmp_path: Path) -> None:
@@ -185,3 +185,56 @@ def test_render_run_report_includes_workload_group_from_tags(tmp_path: Path) -> 
 
     assert "## Workloads & Services" in text
     assert "EdgeApp" in text
+
+
+def test_render_cost_report_includes_required_sections_and_aliases(tmp_path: Path) -> None:
+    cfg = RunConfig(outdir=tmp_path, auth="config", profile="DEFAULT", query="query all resources")
+
+    cost_context = {
+        "time_start": "2026-02-01T00:00:00+00:00",
+        "time_end": "2026-02-15T00:00:00+00:00",
+        "currency": "USD",
+        "currency_source": "cli",
+        "total_cost": 123.456,
+        "services": [{"name": f"Service{i}", "amount": i + 1} for i in range(12)],
+        "compartments": [{"compartment_id": "ocid1.compartment.oc1..exampleuniqueID", "amount": 42}],
+        "regions": [{"name": "us-ashburn-1", "amount": 84}],
+        "budgets": [
+            {
+                "id": "ocid1.budget.oc1..exampleBudget",
+                "display_name": "Ops Budget",
+                "amount": 100,
+                "reset_period": "MONTHLY",
+                "lifecycle_state": "ACTIVE",
+            }
+        ],
+        "budget_alert_rule_counts": {"ocid1.budget.oc1..exampleBudget": 2},
+        "errors": [],
+        "warnings": [],
+        "steps": [{"name": "usage_api_total", "status": "OK"}],
+        "query_inputs": {"tenant_id": "ocid1.tenancy.oc1..exampleTenancy", "group_by": ["service"]},
+        "compartment_names": {"ocid1.compartment.oc1..exampleuniqueID": "Prod"},
+    }
+
+    text = render_cost_report_md(
+        status="OK",
+        cfg_dict={
+            "cost_report": True,
+            "cost_start": None,
+            "cost_end": None,
+            "cost_currency": "USD",
+            "assessment_target_group": "FinOps Team",
+            "assessment_target_scope": ["Cost Management / Allocation"],
+            "assessment_lens_weights": ["Knowledge=1", "Process=1", "Metrics=1", "Adoption=1", "Automation=1"],
+            "assessment_capabilities": [
+                "Cost Management|Allocation|2|2|1|1|1|10|Usage API totals + budgets",
+            ],
+        },
+        cost_context=cost_context,
+    )
+
+    assert "# OCI Cost & Usage Assessment" in text
+    assert "## Cost by Service" in text
+    assert "Top 10; remaining aggregated as Other." in text
+    assert "Prod (Compartment-01)" in text
+    assert "## Execution Metadata" in text

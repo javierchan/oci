@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1312,5 +1313,587 @@ def write_run_report_md(
     )
 
     p = outdir / "report.md"
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def _money_decimal(value: Any) -> Decimal:
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return Decimal("0")
+
+
+def _money_fmt(value: Any) -> str:
+    dec = _money_decimal(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return f"{dec:.2f}"
+
+
+def _normalize_cost_rows(rows: Sequence[Dict[str, Any]], name_key: str) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        name = str(row.get(name_key) or "").strip()
+        if not name:
+            continue
+        amount = _money_decimal(row.get("amount", 0))
+        out.append({"name": name, "amount": amount})
+    out.sort(key=lambda r: (-r["amount"], r["name"].lower()))
+    return out
+
+
+def _cap_cost_rows(rows: List[Dict[str, Any]], cap: int) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    if len(rows) <= cap:
+        return rows, None
+    head = rows[:cap]
+    tail = rows[cap:]
+    other = sum((r["amount"] for r in tail), Decimal("0"))
+    head = list(head) + [{"name": "Other", "amount": other}]
+    return head, f"Top {cap}; remaining aggregated as Other."
+
+
+def _parse_lens_weights(raw: Optional[Sequence[str]]) -> Tuple[Dict[str, float], List[str]]:
+    weights: Dict[str, float] = {}
+    errors: List[str] = []
+    if not raw:
+        return weights, errors
+    for entry in raw:
+        text = str(entry or "").strip()
+        if not text:
+            continue
+        if "=" not in text:
+            errors.append(f"Invalid lens weight entry: {text}")
+            continue
+        lens, weight = [p.strip() for p in text.split("=", 1)]
+        lens_title = lens.title()
+        if lens_title not in {"Knowledge", "Process", "Metrics", "Adoption", "Automation"}:
+            errors.append(f"Unknown lens in weight entry: {lens}")
+            continue
+        try:
+            weights[lens_title] = float(weight)
+        except Exception:
+            errors.append(f"Invalid weight value for {lens_title}: {weight}")
+    return weights, errors
+
+
+def _parse_assessment_capabilities(raw: Optional[Sequence[str]]) -> Tuple[List[Dict[str, Any]], List[str]]:
+    parsed: List[Dict[str, Any]] = []
+    errors: List[str] = []
+    if not raw:
+        return parsed, errors
+    for entry in raw:
+        text = str(entry or "").strip()
+        if not text:
+            continue
+        parts = [p.strip() for p in text.split("|", 8)]
+        if len(parts) < 9:
+            errors.append(f"Invalid capability entry (expected 9 fields): {text}")
+            continue
+        domain, capability = parts[0], parts[1]
+        lens_raw = parts[2:7]
+        target_raw = parts[7]
+        evidence = parts[8]
+        if not domain:
+            domain = "Unspecified"
+        if not capability:
+            errors.append(f"Capability name missing in entry: {text}")
+            continue
+        lens_scores: List[int] = []
+        lens_ok = True
+        for val in lens_raw:
+            try:
+                lens_scores.append(int(val))
+            except Exception:
+                lens_ok = False
+                errors.append(f"Invalid lens score '{val}' in entry: {text}")
+                break
+        if not lens_ok:
+            continue
+        try:
+            target_score = int(target_raw)
+        except Exception:
+            errors.append(f"Invalid target score '{target_raw}' in entry: {text}")
+            continue
+        parsed.append(
+            {
+                "domain": domain,
+                "capability": capability,
+                "scores": lens_scores,
+                "target": target_score,
+                "evidence": evidence,
+            }
+        )
+    parsed.sort(key=lambda r: (r["domain"].lower(), r["capability"].lower()))
+    return parsed, errors
+
+
+def _extract_osub_total(osub_usage: Optional[Dict[str, Any]]) -> Optional[Decimal]:
+    if not osub_usage:
+        return None
+    for key in (
+        "computed_amount",
+        "computedAmount",
+        "total_amount",
+        "totalAmount",
+        "amount",
+        "total_computed_amount",
+        "totalComputedAmount",
+    ):
+        if key in osub_usage:
+            try:
+                return _money_decimal(osub_usage[key])
+            except Exception:
+                return None
+    return None
+
+
+def render_cost_report_md(
+    *,
+    status: str,
+    cfg_dict: Dict[str, Any],
+    cost_context: Dict[str, Any],
+) -> str:
+    from .genai.redact import redact_text
+
+    lens_order = ["Knowledge", "Process", "Metrics", "Adoption", "Automation"]
+    time_start = str(cost_context.get("time_start") or "")
+    time_end = str(cost_context.get("time_end") or "")
+    currency = str(cost_context.get("currency") or "UNKNOWN")
+    currency_source = str(cost_context.get("currency_source") or "unknown")
+
+    services = _normalize_cost_rows(cost_context.get("services", []), "name")
+    regions = _normalize_cost_rows(cost_context.get("regions", []), "name")
+    raw_compartments = cost_context.get("compartments", [])
+    comp_rows = _normalize_cost_rows(raw_compartments, "compartment_id")
+
+    total_cost = _money_decimal(cost_context.get("total_cost") or 0)
+    if total_cost == Decimal("0") and services:
+        total_cost = sum((r["amount"] for r in services), Decimal("0"))
+
+    service_count = len({r["name"] for r in services})
+    region_count = len({r["name"] for r in regions})
+    compartment_ids = [r["name"] for r in comp_rows]
+    compartment_count = len(set(compartment_ids))
+
+    alias_by_comp = _compartment_alias_map(compartment_ids)
+    name_by_comp = cost_context.get("compartment_names") or {}
+
+    lines: List[str] = []
+    lines.append("# OCI Cost & Usage Assessment")
+    lines.append("")
+    lines.append(
+        "This report summarizes tenancy-wide OCI cost and usage data "
+        f"from {time_start} to {time_end} in {currency}. "
+        "The report ends with Execution Metadata."
+    )
+    lines.append("")
+    lines.append("## At a Glance")
+    lines.extend(
+        _md_table(
+            ["Metric", "Value"],
+            [
+                ["Status", status],
+                ["Total cost", f"{_money_fmt(total_cost)} {currency}"],
+                ["Currency", currency],
+                ["Time range (UTC)", f"{time_start} to {time_end}"],
+                ["Services covered", str(service_count)],
+                ["Compartments covered", str(compartment_count)],
+                ["Regions covered", str(region_count)],
+            ],
+        )
+    )
+
+    lines.append("")
+    lines.append("## Assessment Scope & Intent")
+    target_group = redact_text(str(cost_context.get("assessment_target_group") or cfg_dict.get("assessment_target_group") or "")).strip()
+    target_scope = cost_context.get("assessment_target_scope") or cfg_dict.get("assessment_target_scope") or []
+    if isinstance(target_scope, str):
+        target_scope = [target_scope]
+    if target_group or target_scope:
+        if target_group:
+            lines.append(f"- Target group: {target_group}")
+        if target_scope:
+            for entry in target_scope:
+                entry_txt = redact_text(str(entry)).strip()
+                if entry_txt:
+                    lines.append(f"- Scope: {entry_txt}")
+    else:
+        lines.append("(not assessed)")
+
+    lines.append("")
+    lines.append("## Assessment Lenses & Scoring")
+    weights_raw = cost_context.get("assessment_lens_weights") or cfg_dict.get("assessment_lens_weights")
+    if isinstance(weights_raw, str):
+        weights_raw = [weights_raw]
+    weights, weight_errors = _parse_lens_weights(weights_raw)
+    lines.append("Lens order: Knowledge, Process, Metrics, Adoption, Automation.")
+    lines.append("Scoring scale: 0-4 per lens (0 = none, 4 = fully established).")
+    if weights:
+        rows = [[lens, str(weights.get(lens, ""))] for lens in lens_order if lens in weights]
+        lines.extend(_md_table(["Lens", "Weight"], rows))
+    else:
+        lines.append("Lens weights: unweighted (1.0 each).")
+
+    lines.append("")
+    lines.append("## Assessment Outcomes")
+    caps_raw = cost_context.get("assessment_capabilities") or cfg_dict.get("assessment_capabilities")
+    if isinstance(caps_raw, str):
+        caps_raw = [caps_raw]
+    capabilities, cap_errors = _parse_assessment_capabilities(caps_raw)
+    if not capabilities:
+        lines.append("(not assessed)")
+    else:
+        rows: List[List[str]] = []
+        for cap in capabilities:
+            evidence = redact_text(str(cap.get("evidence") or "")).strip()
+            scores = cap["scores"]
+            total = sum(scores)
+            domain = redact_text(str(cap["domain"])).strip() or "Unspecified"
+            capability = redact_text(str(cap["capability"])).strip() or "Capability"
+            rows.append(
+                [
+                    domain,
+                    capability,
+                    str(scores[0]),
+                    str(scores[1]),
+                    str(scores[2]),
+                    str(scores[3]),
+                    str(scores[4]),
+                    str(total),
+                    str(cap["target"]),
+                    _truncate(evidence, 120),
+                ]
+            )
+        lines.extend(
+            _md_table(
+                [
+                    "Domain",
+                    "Capability",
+                    "Knowledge",
+                    "Process",
+                    "Metrics",
+                    "Adoption",
+                    "Automation",
+                    "Total",
+                    "Target",
+                    "Evidence",
+                ],
+                rows,
+            )
+        )
+
+    lines.append("")
+    lines.append("## Assessment Focus Areas")
+    if not capabilities:
+        lines.append("(not assessed)")
+    else:
+        gaps: List[Tuple[int, Dict[str, Any]]] = []
+        for cap in capabilities:
+            total = sum(cap["scores"])
+            gap = cap["target"] - total
+            if gap > 0:
+                gaps.append((gap, cap))
+        gaps.sort(key=lambda g: (-g[0], g[1]["domain"].lower(), g[1]["capability"].lower()))
+        if not gaps:
+            lines.append("(none)")
+        else:
+            for gap, cap in gaps:
+                domain = redact_text(str(cap["domain"])).strip() or "Unspecified"
+                capability = redact_text(str(cap["capability"])).strip() or "Capability"
+                total = sum(cap["scores"])
+                lines.append(
+                    f"- {domain} / {capability}: score {total} vs target {cap['target']} (gap {gap})"
+                )
+
+    lines.append("")
+    lines.append("## Time Range & Currency")
+    lines.extend(
+        _md_table(
+            ["Field", "Value"],
+            [
+                ["Start (UTC)", time_start],
+                ["End (UTC)", time_end],
+                ["Currency", currency],
+            ],
+        )
+    )
+
+    lines.append("")
+    lines.append("## Cost Summary (Tenancy Total)")
+    summary_rows = [["Total cost", _money_fmt(total_cost)]]
+    osub_total = _extract_osub_total(cost_context.get("osub_usage"))
+    if osub_total is not None:
+        summary_rows.append(["OneSubscription usage (total)", _money_fmt(osub_total)])
+    lines.extend(_md_table(["Metric", f"Value ({currency})"], summary_rows))
+
+    lines.append("")
+    lines.append("## Cost by Service")
+    capped, cap_note = _cap_cost_rows(services, 10)
+    if cap_note:
+        lines.append(cap_note)
+    if not capped:
+        lines.append("(none)")
+    else:
+        rows = [[r["name"], _money_fmt(r["amount"])] for r in capped]
+        lines.extend(_md_table(["Service", f"Cost ({currency})"], rows))
+
+    lines.append("")
+    lines.append("## Cost by Compartment")
+    capped, cap_note = _cap_cost_rows(comp_rows, 20)
+    if cap_note:
+        lines.append(cap_note)
+    if not capped:
+        lines.append("(none)")
+    else:
+        rows = []
+        for r in capped:
+            cid = r["name"]
+            label = _compartment_label(cid, alias_by_id=alias_by_comp, name_by_id=name_by_comp)
+            rows.append([label, _money_fmt(r["amount"])])
+        lines.extend(_md_table(["Compartment", f"Cost ({currency})"], rows))
+
+    lines.append("")
+    lines.append("## Cost by Region")
+    capped, cap_note = _cap_cost_rows(regions, 20)
+    if cap_note:
+        lines.append(cap_note)
+    if not capped:
+        lines.append("(none)")
+    else:
+        rows = [[r["name"], _money_fmt(r["amount"])] for r in capped]
+        lines.extend(_md_table(["Region", f"Cost ({currency})"], rows))
+
+    lines.append("")
+    lines.append("## Credits, Discounts & Promotions")
+    credits = cost_context.get("credits", [])
+    if credits:
+        credit_rows = _normalize_cost_rows(credits, "name")
+        rows = [[r["name"], _money_fmt(r["amount"])] for r in credit_rows]
+        lines.extend(_md_table(["Type", f"Amount ({currency})"], rows))
+    else:
+        lines.append("(none)")
+
+    lines.append("")
+    lines.append("## Budgets & Alerts (Read-only)")
+    budgets = cost_context.get("budgets", [])
+    alert_counts = cost_context.get("budget_alert_rule_counts", {})
+    if budgets:
+        rows = []
+        for budget in budgets:
+            name = str(
+                budget.get("display_name")
+                or budget.get("displayName")
+                or budget.get("name")
+                or "Budget"
+            ).strip()
+            name = redact_text(name).strip() or "Budget"
+            amount = _money_fmt(budget.get("amount", 0))
+            reset_period = str(budget.get("reset_period") or budget.get("resetPeriod") or "").strip()
+            lifecycle = str(budget.get("lifecycle_state") or budget.get("lifecycleState") or "").strip()
+            budget_id = str(budget.get("id") or "")
+            alert_count = alert_counts.get(budget_id, 0)
+            rows.append([name, amount, reset_period or "(unknown)", lifecycle or "(unknown)", str(alert_count)])
+        rows.sort(key=lambda r: r[0].lower())
+        lines.extend(_md_table(["Budget", f"Amount ({currency})", "Reset", "State", "Alert rules"], rows))
+    else:
+        lines.append("(none)")
+
+    lines.append("")
+    lines.append("## Risks & Gaps (Non-blocking)")
+    risks: List[str] = []
+    for err in cost_context.get("errors", []):
+        risks.append(str(err))
+    if currency == "UNKNOWN":
+        risks.append("Currency is unknown; set --cost-currency or verify Usage API returns currency.")
+    if cap_errors:
+        risks.extend([redact_text(str(e)) for e in cap_errors])
+    if weight_errors:
+        risks.extend([redact_text(str(e)) for e in weight_errors])
+    if not capabilities:
+        risks.append("Assessment capability scores not provided.")
+    for warn in cost_context.get("warnings", []):
+        risks.append(str(warn))
+    if not risks:
+        lines.append("(none)")
+    else:
+        for item in risks:
+            lines.append(f"- {item}")
+
+    lines.append("")
+    lines.append("### Coverage Notes")
+    coverage_notes: List[str] = []
+    if any(step.get("status") == "ERROR" for step in cost_context.get("steps", [])):
+        coverage_notes.append("Some cost-report steps failed; see Execution Metadata for details.")
+    if not services and not regions and not comp_rows:
+        coverage_notes.append("Usage API summaries returned no grouped cost data.")
+    if not budgets:
+        coverage_notes.append("Budgets and alert rules were not returned.")
+    if not credits:
+        coverage_notes.append("Credits/discounts were not reported.")
+    if currency_source == "cli":
+        coverage_notes.append("Currency sourced from CLI configuration.")
+    elif currency_source == "usage_api":
+        coverage_notes.append("Currency sourced from Usage API response.")
+    if not coverage_notes:
+        lines.append("(none)")
+    else:
+        for note in coverage_notes:
+            lines.append(f"- {note}")
+
+    lines.append("")
+    lines.append("### Recommendations (Non-binding)")
+    recommendations: List[str] = []
+    if capabilities:
+        for gap, cap in (
+            sorted(
+                [(cap["target"] - sum(cap["scores"]), cap) for cap in capabilities if cap["target"] > sum(cap["scores"])],
+                key=lambda g: (-g[0], g[1]["domain"].lower(), g[1]["capability"].lower()),
+            )
+            or []
+        ):
+            if gap <= 0:
+                continue
+            domain = redact_text(str(cap["domain"])).strip() or "Unspecified"
+            capability = redact_text(str(cap["capability"])).strip() or "Capability"
+            recommendations.append(
+                f"Close the gap for {domain} / {capability} (gap {gap})."
+            )
+    if not recommendations:
+        lines.append("(none)")
+    else:
+        for rec in recommendations:
+            lines.append(f"- {rec}")
+
+    lines.append("")
+    lines.append("## Execution Metadata")
+
+    lines.append("")
+    lines.append("### Steps Executed")
+    steps = cost_context.get("steps", [])
+    if steps:
+        counts: Dict[Tuple[str, str], int] = {}
+        for step in steps:
+            name = str(step.get("name") or "")
+            status = str(step.get("status") or "")
+            counts[(name, status)] = counts.get((name, status), 0) + 1
+        for (name, status), count in sorted(counts.items(), key=lambda k: (k[0][0], k[0][1])):
+            suffix = f" ({count})" if count > 1 else ""
+            lines.append(f"- {name}: {status}{suffix}")
+    else:
+        lines.append("(none)")
+
+    lines.append("")
+    lines.append("### Run Configuration")
+    run_cfg_lines = [
+        f"- cost_report: {bool(cfg_dict.get('cost_report'))}",
+        f"- cost_start: {cfg_dict.get('cost_start') or '(default month-to-date)'}",
+        f"- cost_end: {cfg_dict.get('cost_end') or '(default now)'}",
+        f"- cost_currency: {cfg_dict.get('cost_currency') or '(auto)'}",
+    ]
+    lines.extend(run_cfg_lines)
+
+    lines.append("")
+    lines.append("### Query Inputs")
+    query_inputs = cost_context.get("query_inputs", {})
+    if query_inputs:
+        for key in sorted(query_inputs.keys()):
+            val = query_inputs[key]
+            lines.append(f"- {key}: {val}")
+    else:
+        lines.append("(none)")
+
+    lines.append("")
+    lines.append("### Assessment Inputs")
+    assessment_lines: List[str] = []
+    if target_group:
+        assessment_lines.append(f"- target_group: {target_group}")
+    if target_scope:
+        for entry in target_scope:
+            entry_txt = redact_text(str(entry)).strip()
+            if entry_txt:
+                assessment_lines.append(f"- target_scope: {entry_txt}")
+    if weights_raw:
+        for entry in weights_raw:
+            entry_txt = redact_text(str(entry)).strip()
+            if entry_txt:
+                assessment_lines.append(f"- lens_weight: {entry_txt}")
+    if caps_raw:
+        for entry in caps_raw:
+            entry_txt = redact_text(str(entry)).strip()
+            if entry_txt:
+                assessment_lines.append(f"- capability: {entry_txt}")
+    if assessment_lines:
+        lines.extend(assessment_lines)
+    else:
+        lines.append("(none)")
+
+    lines.append("")
+    lines.append("### Results")
+    lines.append(f"- total_cost: {_money_fmt(total_cost)} {currency}")
+    lines.append(f"- services_covered: {service_count}")
+    lines.append(f"- compartments_covered: {compartment_count}")
+    lines.append(f"- regions_covered: {region_count}")
+
+    lines.append("")
+    lines.append("### Findings")
+    findings: List[str] = []
+    if cap_errors:
+        findings.extend([redact_text(str(e)) for e in cap_errors])
+    if weight_errors:
+        findings.extend([redact_text(str(e)) for e in weight_errors])
+    if cost_context.get("warnings"):
+        findings.extend([str(w) for w in cost_context.get("warnings", [])])
+    if not findings:
+        lines.append("(none)")
+    else:
+        for item in findings:
+            lines.append(f"- {item}")
+
+    lines.append("")
+    lines.append("### Notes")
+    lines.append("- Rounding: Decimal quantize to 2 decimals (ROUND_HALF_UP).")
+    lines.append(f"- Currency source: {currency_source}.")
+    if cost_context.get("errors"):
+        lines.append("- Errors were captured in Risks & Gaps.")
+
+    lines.append("")
+    lines.append("### Alias Map")
+    if alias_by_comp:
+        for cid in sorted(alias_by_comp.keys()):
+            alias = alias_by_comp[cid]
+            name = name_by_comp.get(cid, "")
+            if name:
+                lines.append(f"- {alias}: {name} — `{cid}`")
+            else:
+                lines.append(f"- {alias}: `{cid}`")
+    else:
+        lines.append("(none)")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def write_cost_report_md(
+    *,
+    outdir: Path,
+    status: str,
+    cfg: Any,
+    cost_context: Dict[str, Any],
+) -> Path:
+    outdir.mkdir(parents=True, exist_ok=True)
+    try:
+        cfg_dict = asdict(cfg)
+    except Exception:
+        cfg_dict = {
+            "cost_report": getattr(cfg, "cost_report", None),
+            "cost_start": getattr(cfg, "cost_start", None),
+            "cost_end": getattr(cfg, "cost_end", None),
+            "cost_currency": getattr(cfg, "cost_currency", None),
+            "assessment_target_group": getattr(cfg, "assessment_target_group", None),
+            "assessment_target_scope": getattr(cfg, "assessment_target_scope", None),
+            "assessment_lens_weights": getattr(cfg, "assessment_lens_weights", None),
+            "assessment_capabilities": getattr(cfg, "assessment_capabilities", None),
+        }
+
+    text = render_cost_report_md(status=status, cfg_dict=cfg_dict, cost_context=cost_context)
+    p = outdir / "cost_report.md"
     p.write_text(text, encoding="utf-8")
     return p

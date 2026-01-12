@@ -35,14 +35,34 @@ ALLOWED_CONFIG_KEYS = {
     "auth",
     "profile",
     "tenancy_ocid",
+    # cost reporting
+    "cost_report",
+    "cost_start",
+    "cost_end",
+    "cost_currency",
+    "assessment_target_group",
+    "assessment_target_scope",
+    "assessment_lens_weights",
+    "assessment_capabilities",
     # enrich-coverage
     "inventory",
     "top",
 }
-BOOL_CONFIG_KEYS = {"parquet", "include_terminated", "json_logs", "genai_summary", "validate_diagrams"}
+BOOL_CONFIG_KEYS = {"parquet", "include_terminated", "json_logs", "genai_summary", "validate_diagrams", "cost_report"}
 INT_CONFIG_KEYS = {"workers_region", "workers_enrich", "top"}
 PATH_CONFIG_KEYS = {"outdir", "prev", "curr", "inventory"}
-STR_CONFIG_KEYS = {"query", "log_level", "auth", "profile", "tenancy_ocid"}
+STR_CONFIG_KEYS = {
+    "query",
+    "log_level",
+    "auth",
+    "profile",
+    "tenancy_ocid",
+    "cost_start",
+    "cost_end",
+    "cost_currency",
+    "assessment_target_group",
+}
+LIST_CONFIG_KEYS = {"assessment_target_scope", "assessment_lens_weights", "assessment_capabilities"}
 
 
 @dataclass(frozen=True)
@@ -65,6 +85,16 @@ class RunConfig:
     # Optional features
     genai_summary: bool = False
     validate_diagrams: bool = False
+
+    # Cost reporting (optional)
+    cost_report: bool = False
+    cost_start: Optional[str] = None
+    cost_end: Optional[str] = None
+    cost_currency: Optional[str] = None
+    assessment_target_group: Optional[str] = None
+    assessment_target_scope: Optional[List[str]] = None
+    assessment_lens_weights: Optional[List[str]] = None
+    assessment_capabilities: Optional[List[str]] = None
 
     # GenAI (used by genai-chat)
     genai_api_format: Optional[str] = None  # AUTO|GENERIC|COHERE
@@ -191,6 +221,14 @@ def _normalize_config_file(data: Dict[str, Any]) -> Dict[str, Any]:
                 normalized[key] = value
             else:
                 raise ValueError(f"Config field '{key}' must be a string path")
+        elif key in LIST_CONFIG_KEYS:
+            if isinstance(value, str):
+                items = [v.strip() for v in value.split(",") if v.strip()]
+                normalized[key] = items
+            elif isinstance(value, list) and all(isinstance(v, str) for v in value):
+                normalized[key] = [v.strip() for v in value if v.strip()]
+            else:
+                raise ValueError(f"Config field '{key}' must be a list of strings or comma-separated string")
         elif key in STR_CONFIG_KEYS:
             if isinstance(value, str):
                 normalized[key] = value
@@ -326,6 +364,54 @@ def load_run_config(
         ),
     )
 
+    p_run.add_argument(
+        "--cost-report",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Generate cost_report.md using OCI Usage API (read-only).",
+    )
+    p_run.add_argument(
+        "--cost-start",
+        default=None,
+        help="UTC start time (ISO 8601) for cost reporting (default: month-to-date).",
+    )
+    p_run.add_argument(
+        "--cost-end",
+        default=None,
+        help="UTC end time (ISO 8601) for cost reporting (default: now).",
+    )
+    p_run.add_argument(
+        "--cost-currency",
+        default=None,
+        help="ISO 4217 currency code (optional if Usage API returns currency).",
+    )
+    p_run.add_argument(
+        "--assessment-target-group",
+        default=None,
+        help="Assessment target group (team, business unit, or org).",
+    )
+    p_run.add_argument(
+        "--assessment-target-scope",
+        action="append",
+        default=None,
+        help="Assessment target scope entry (repeatable).",
+    )
+    p_run.add_argument(
+        "--assessment-lens-weight",
+        action="append",
+        default=None,
+        help="Assessment lens weight, e.g. Knowledge=1 (repeatable).",
+    )
+    p_run.add_argument(
+        "--assessment-capability",
+        action="append",
+        default=None,
+        help=(
+            "Assessment capability entry (repeatable). Format: "
+            "domain|capability|knowledge|process|metrics|adoption|automation|target|evidence"
+        ),
+    )
+
     # diff
     p_diff = subparsers.add_parser("diff", help="Diff two inventory JSONL files")
     add_common(p_diff)
@@ -428,6 +514,14 @@ def load_run_config(
         "auth": "auto",
         "profile": None,
         "tenancy_ocid": None,
+        "cost_report": False,
+        "cost_start": None,
+        "cost_end": None,
+        "cost_currency": None,
+        "assessment_target_group": None,
+        "assessment_target_scope": None,
+        "assessment_lens_weights": None,
+        "assessment_capabilities": None,
     }
 
     # config file
@@ -450,6 +544,14 @@ def load_run_config(
             "workers_enrich": _env_int("OCI_INV_WORKERS_ENRICH"),
             "genai_summary": _env_bool("OCI_INV_GENAI_SUMMARY"),
             "validate_diagrams": _env_bool("OCI_INV_VALIDATE_DIAGRAMS"),
+            "cost_report": _env_bool("OCI_INV_COST_REPORT"),
+            "cost_start": _env_str("OCI_INV_COST_START"),
+            "cost_end": _env_str("OCI_INV_COST_END"),
+            "cost_currency": _env_str("OCI_INV_COST_CURRENCY"),
+            "assessment_target_group": _env_str("OCI_INV_ASSESSMENT_TARGET_GROUP"),
+            "assessment_target_scope": _env_str("OCI_INV_ASSESSMENT_TARGET_SCOPE"),
+            "assessment_lens_weights": _env_str("OCI_INV_ASSESSMENT_LENS_WEIGHTS"),
+            "assessment_capabilities": _env_str("OCI_INV_ASSESSMENT_CAPABILITIES"),
             "regions": _env_str("OCI_INV_REGIONS"),
             "auth": _env_str("OCI_INV_AUTH"),
             "profile": _env_str("OCI_INV_PROFILE"),
@@ -472,6 +574,14 @@ def load_run_config(
             "workers_enrich": getattr(ns, "workers_enrich", None),
             "genai_summary": getattr(ns, "genai_summary", None),
             "validate_diagrams": getattr(ns, "validate_diagrams", None),
+            "cost_report": getattr(ns, "cost_report", None),
+            "cost_start": getattr(ns, "cost_start", None),
+            "cost_end": getattr(ns, "cost_end", None),
+            "cost_currency": getattr(ns, "cost_currency", None),
+            "assessment_target_group": getattr(ns, "assessment_target_group", None),
+            "assessment_target_scope": getattr(ns, "assessment_target_scope", None),
+            "assessment_lens_weights": getattr(ns, "assessment_lens_weight", None),
+            "assessment_capabilities": getattr(ns, "assessment_capability", None),
             "genai_api_format": getattr(ns, "api_format", None),
             "genai_message": getattr(ns, "message", None),
             "genai_report": getattr(ns, "report", None),
@@ -503,6 +613,19 @@ def load_run_config(
     elif isinstance(regions_raw, str):
         regions = [r.strip() for r in regions_raw.split(",") if r.strip()]
 
+    def _parse_list_field(raw: Any) -> Optional[List[str]]:
+        if raw is None:
+            return None
+        if isinstance(raw, list):
+            return [str(v).strip() for v in raw if str(v).strip()]
+        if isinstance(raw, str):
+            return [v.strip() for v in raw.split(",") if v.strip()]
+        return None
+
+    assessment_target_scope = _parse_list_field(merged.get("assessment_target_scope"))
+    assessment_lens_weights = _parse_list_field(merged.get("assessment_lens_weights"))
+    assessment_capabilities = _parse_list_field(merged.get("assessment_capabilities"))
+
     # default workers if None
     workers_region = int(merged["workers_region"] or DEFAULT_WORKERS_REGION)
     workers_enrich = int(merged["workers_enrich"] or DEFAULT_WORKERS_ENRICH)
@@ -520,6 +643,16 @@ def load_run_config(
         workers_enrich=workers_enrich,
         genai_summary=bool(merged.get("genai_summary")),
         validate_diagrams=bool(merged.get("validate_diagrams")),
+        cost_report=bool(merged.get("cost_report")),
+        cost_start=str(merged.get("cost_start")) if merged.get("cost_start") else None,
+        cost_end=str(merged.get("cost_end")) if merged.get("cost_end") else None,
+        cost_currency=str(merged.get("cost_currency")) if merged.get("cost_currency") else None,
+        assessment_target_group=str(merged.get("assessment_target_group"))
+        if merged.get("assessment_target_group")
+        else None,
+        assessment_target_scope=assessment_target_scope,
+        assessment_lens_weights=assessment_lens_weights,
+        assessment_capabilities=assessment_capabilities,
         genai_api_format=str(merged.get("genai_api_format")) if merged.get("genai_api_format") else None,
         genai_message=str(merged.get("genai_message")) if merged.get("genai_message") else None,
         genai_report=Path(merged.get("genai_report")) if merged.get("genai_report") else None,
@@ -549,6 +682,14 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "workers_enrich": cfg.workers_enrich,
         "genai_summary": cfg.genai_summary,
         "validate_diagrams": cfg.validate_diagrams,
+        "cost_report": cfg.cost_report,
+        "cost_start": cfg.cost_start,
+        "cost_end": cfg.cost_end,
+        "cost_currency": cfg.cost_currency,
+        "assessment_target_group": cfg.assessment_target_group,
+        "assessment_target_scope": cfg.assessment_target_scope,
+        "assessment_lens_weights": cfg.assessment_lens_weights,
+        "assessment_capabilities": cfg.assessment_capabilities,
         "regions": cfg.regions,
         "auth": cfg.auth,
         "profile": cfg.profile,
