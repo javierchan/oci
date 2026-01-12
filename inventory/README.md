@@ -252,13 +252,16 @@ This section is a quick map of every user-facing component in the CLI, what it d
   - Example (OneSubscription): `oci-inv run --cost-report --osub-subscription-id <subscription_id> --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD`
   - Data model: Cost Management → Cost Analysis via `UsageapiClient.request_summarized_usages`. This reflects tenancy cost/usage and does not read Subscription Usage or Universal Credits usage.
   - Aggregation: `_extract_usage_amount` reads `computed_amount/cost/amount` from each Usage API item; `_request_summarized_usages` sums values per group (service, compartmentId, region, or total). `total_cost` is the sum across all buckets for the time range.
+  - Default granularity is DAILY; time range inputs are normalized to 00:00:00 UTC before querying.
 - **Enrichment coverage**: reports which resource types in an inventory lack enrichers.
   - Example: `oci-inv enrich-coverage --inventory out/<timestamp>/inventory.jsonl --top 10`
 - **Interactive wizard (optional)**: guided, preview-first UX that builds/executes the same `oci-inv` commands; safe defaults and copy/pasteable outputs.
   - Install extra: `pip install .[wizard]`
   - Run: `oci-inv-wizard`
-  - Modes: run, diff, validate-auth, list-regions, list-compartments, list-genai-models, genai-chat, enrich-coverage
+  - Main modes: run, diff, troubleshooting
+  - Troubleshooting includes: validate-auth, list-regions, list-compartments, enrich-coverage, list-genai-models, genai-chat
   - Advanced run options: diagram generation/validation, cost report inputs (including OneSubscription subscription ID), assessment metadata
+  - Can save reusable wizard plan files (YAML/JSON) from the interactive flow
 - **Outputs**: deterministic artifacts per run under `out/<timestamp>/` (JSONL, CSV, optional Parquet, report.md, graph files, optional diff files when `--prev` is provided).
   - Hashing excludes `collectedAt` to keep diffs stable.
 
@@ -432,6 +435,7 @@ What it does:
 - Writes the same outputs as the CLI (`out/<timestamp>/`), so artifacts remain consistent.
 - Supports plan files for non-interactive use (see below for an example).
 - Covers all CLI modes, with advanced run options for diagram validation, cost reporting, and assessments.
+- Lets you save interactive runs as plan files for reproducible execution.
 
 ## GenAI Configuration
 

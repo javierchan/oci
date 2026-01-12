@@ -226,6 +226,7 @@ def test_cost_currency_mismatch_does_not_override(tmp_path, monkeypatch) -> None
 
     assert cost_context["currency"] == "USD"
     assert cost_context["currency_source"] == "usage_api"
+    assert cost_context["query_inputs"]["granularity"] == "DAILY"
     assert any("No conversion performed" in warn for warn in cost_context.get("warnings", []))
 
 

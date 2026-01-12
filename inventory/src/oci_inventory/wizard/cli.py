@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from .plan import (
     WizardPlan,
@@ -27,18 +28,37 @@ def _require_rich() -> None:
         )
 
 
-def _ask_choice(prompt: str, choices: List[str], default: Optional[str] = None) -> str:
+def _ask_choice(
+    prompt: str,
+    choices: Sequence[Union[str, Tuple[str, str]]],
+    default: Optional[str] = None,
+    *,
+    allow_back: bool = False,
+) -> str:
     from rich.console import Console
     from rich.prompt import Prompt
 
     console = Console()
     console.print(f"\n[bold]{prompt}[/bold]")
-    for idx, c in enumerate(choices, start=1):
-        console.print(f"  [cyan]{idx}[/cyan]) {c}")
+    normalized: List[Tuple[str, str]] = []
+    for item in choices:
+        if isinstance(item, tuple):
+            label, desc = item
+        else:
+            label, desc = str(item), ""
+        normalized.append((label, desc))
+
+    if allow_back and "Back" not in [label for label, _ in normalized]:
+        normalized.append(("Back", "Return to the previous menu."))
+    labels = [label for label, _ in normalized]
+
+    for idx, (label, desc) in enumerate(normalized, start=1):
+        console.print(f"  [cyan]{idx}[/cyan]) {label}")
+        console.print(f"     [dim]{desc}[/dim]")
 
     default_idx = None
-    if default and default in choices:
-        default_idx = str(choices.index(default) + 1)
+    if default and default in labels:
+        default_idx = str(labels.index(default) + 1)
 
     while True:
         ans = Prompt.ask("Select", default=default_idx)
@@ -46,8 +66,8 @@ def _ask_choice(prompt: str, choices: List[str], default: Optional[str] = None) 
             i = int(ans)
         except Exception:
             i = 0
-        if 1 <= i <= len(choices):
-            return choices[i - 1]
+        if 1 <= i <= len(labels):
+            return labels[i - 1]
         console.print(f"[red]Invalid selection: {ans}[/red]")
 
 
@@ -142,6 +162,28 @@ def _ask_outdir_base(prompt: str, default: str) -> Path:
         return p
 
 
+def _is_within_repo(path: Path) -> bool:
+    try:
+        return path.resolve().is_relative_to(Path.cwd().resolve())
+    except Exception:
+        return str(path.resolve()).startswith(str(Path.cwd().resolve()))
+
+
+def _ask_plan_path(prompt: str, default: str) -> Path:
+    from rich.console import Console
+
+    console = Console()
+    while True:
+        p = Path(_ask_str(prompt, default=default))
+        if p.suffix.lower() not in {".yaml", ".yml", ".json"}:
+            console.print("[red]Plan file must end with .yaml, .yml, or .json.[/red]")
+            continue
+        if not _is_within_repo(p):
+            console.print("[red]Plan file must be inside the inventory repository.[/red]")
+            continue
+        return p
+
+
 def _parse_regions(s: str) -> Optional[List[str]]:
     import re
 
@@ -177,18 +219,97 @@ def _print_hints() -> None:
     Console().print("[dim]Tips: Enter accepts defaults. Ctrl+C exits.[/dim]")
 
 
+def _print_startup_status() -> None:
+    from rich.console import Console
+    from rich.table import Table
+    import os
+
+    from ..genai.config import default_genai_config_path, local_genai_config_path
+
+    console = Console()
+    table = Table(title="Startup Context", show_header=True, header_style="bold")
+    table.add_column("Source")
+    table.add_column("Path")
+    table.add_column("Status")
+
+    oci_path = Path("~/.oci/config").expanduser()
+    oci_status = "OK" if oci_path.exists() else "error retrieving"
+    table.add_row("OCI config", str(oci_path), oci_status)
+
+    env_path = os.environ.get("OCI_INV_GENAI_CONFIG")
+    if env_path:
+        genai_path = Path(env_path).expanduser()
+        genai_source = "GenAI config (OCI_INV_GENAI_CONFIG)"
+    else:
+        default_path = default_genai_config_path()
+        if default_path.exists():
+            genai_path = default_path
+            genai_source = "GenAI config (~/.config/oci-inv/genai.yaml)"
+        else:
+            genai_path = local_genai_config_path()
+            genai_source = "GenAI config (inventory/.local/genai.yaml)"
+
+    genai_status = "OK" if genai_path.exists() else "error retrieving"
+    table.add_row(genai_source, str(genai_path), genai_status)
+
+    console.print(table)
+
+
 def _section(title: str) -> None:
     from rich.console import Console
 
     Console().rule(f"[bold]{title}[/bold]")
 
 
-def _confirm_and_run(plan: WizardPlan, *, dry_run: bool = False, assume_yes: bool = False) -> int:
+def _write_plan_file(plan_data: Dict[str, Any], path: Path) -> None:
+    from rich.console import Console
+    import yaml
+
+    console = Console()
+    data = {k: v for k, v in plan_data.items() if v is not None}
+    if path.suffix.lower() in {".yaml", ".yml"}:
+        path.write_text(
+            yaml.safe_dump(data, sort_keys=False).strip() + "\n",
+            encoding="utf-8",
+        )
+    else:
+        path.write_text(
+            json.dumps(data, indent=2, sort_keys=False) + "\n",
+            encoding="utf-8",
+        )
+    console.print(f"[dim]Saved plan: {path}[/dim]")
+
+
+def _run_quick_plan(plan: WizardPlan, title: str) -> None:
+    from rich.console import Console
+    from rich.panel import Panel
+
+    console = Console()
+    console.print(Panel.fit(plan.as_command_line(), title=title))
+    code, _, stdout_text, log_text = execute_plan(plan)
+    if log_text.strip():
+        console.print(Panel.fit(log_text.rstrip(), title="Logs"))
+    if stdout_text.strip():
+        console.print(Panel.fit(stdout_text.rstrip(), title="Command output"))
+    console.print(f"Exit code: {code}")
+
+
+def _confirm_and_run(
+    plan: WizardPlan,
+    *,
+    dry_run: bool = False,
+    assume_yes: bool = False,
+    plan_data: Optional[Dict[str, Any]] = None,
+) -> int:
     from rich.console import Console
     from rich.panel import Panel
 
     console = Console()
     console.print(Panel.fit(plan.as_command_line(), title="Command preview"))
+
+    if plan_data and _ask_bool("Save this plan file for later?", default=False):
+        plan_path = _ask_plan_path("Plan file path", default="wizard-plan.yaml")
+        _write_plan_file(plan_data, plan_path)
 
     if dry_run:
         console.print("Dry run: no execution performed.")
@@ -219,6 +340,17 @@ def _confirm_and_run(plan: WizardPlan, *, dry_run: bool = False, assume_yes: boo
         console.print(f"Exit code: {code}")
     else:
         console.print(f"Exit code: {code}")
+        auth_markers = (
+            "Failed to resolve auth",
+            "config profile",
+            "Profile",
+            "OCI SDK error while loading config profile",
+        )
+        if any(marker in log_text for marker in auth_markers):
+            console.print(
+                "[yellow]Auth hint:[/yellow] If you use config auth, confirm the profile exists "
+                "(default is DEFAULT) or select auth=config and set --profile explicitly."
+            )
     return int(code)
 
 
@@ -243,283 +375,484 @@ def main() -> None:
 
     _header()
     _print_hints()
+    _print_startup_status()
 
     if ns.from_file:
         plan = load_wizard_plan_from_file(ns.from_file)
         code = _confirm_and_run(plan, dry_run=bool(ns.dry_run), assume_yes=bool(ns.yes))
         raise SystemExit(code)
 
-    mode = _ask_choice(
-        "What do you want to do?",
-        [
-            "Run inventory",
-            "Diff inventories",
-            "Validate auth",
-            "List regions",
-            "List compartments",
-            "List GenAI models",
-            "GenAI chat",
-            "Enrichment coverage",
-            "Exit",
-        ],
-        default="Run inventory",
-    )
-
-    if mode == "Exit":
-        raise SystemExit(0)
-
-    auth = _ask_choice("Auth method", ["auto", "config", "instance", "resource", "security_token"], default="auto")
-    profile: Optional[str] = None
-    if auth in {"config", "security_token"}:
-        profile = _ask_str("Profile", default="DEFAULT")
-    elif auth == "auto":
-        from rich.console import Console
-
-        Console().print(
-            "[dim]Note: auto auth falls back to config profile 'DEFAULT' if principals are unavailable. "
-            "Use auth=config to specify a different profile.[/dim]"
-        )
-
-    tenancy_ocid = _ask_str("Tenancy OCID (optional)", default="", allow_blank=True).strip() or None
-
-    # Logging toggles (keep simple)
-    json_logs = _ask_bool("Enable JSON logs?", default=False)
-    log_level = _ask_choice("Log level", ["INFO", "DEBUG"], default="INFO")
-
-    if mode == "Validate auth":
-        _section("Validate Auth")
-        plan = build_simple_plan(
-            subcommand="validate-auth",
-            auth=auth,
-            profile=profile,
-            tenancy_ocid=tenancy_ocid,
-            json_logs=json_logs,
-            log_level=log_level,
-        )
-        raise SystemExit(_confirm_and_run(plan))
-
-    if mode == "List regions":
-        _section("List Regions")
-        plan = build_simple_plan(
-            subcommand="list-regions",
-            auth=auth,
-            profile=profile,
-            tenancy_ocid=tenancy_ocid,
-            json_logs=json_logs,
-            log_level=log_level,
-        )
-        raise SystemExit(_confirm_and_run(plan))
-
-    if mode == "List compartments":
-        _section("List Compartments")
-        plan = build_simple_plan(
-            subcommand="list-compartments",
-            auth=auth,
-            profile=profile,
-            tenancy_ocid=tenancy_ocid,
-            json_logs=json_logs,
-            log_level=log_level,
-        )
-        raise SystemExit(_confirm_and_run(plan))
-
-    if mode == "List GenAI models":
-        _section("List GenAI Models")
-        plan = build_simple_plan(
-            subcommand="list-genai-models",
-            auth=auth,
-            profile=profile,
-            tenancy_ocid=tenancy_ocid,
-            json_logs=json_logs,
-            log_level=log_level,
-        )
-        raise SystemExit(_confirm_and_run(plan))
-
-    if mode == "GenAI chat":
-        _section("GenAI Chat")
-        api_format = _ask_choice("GenAI API format", ["AUTO", "GENERIC", "COHERE"], default="AUTO")
-        message_mode = _ask_choice(
-            "Message input",
-            ["Enter message", "Load message from file", "Use report.md as context"],
-            default="Enter message",
-        )
-
-        message: Optional[str] = None
-        report_path: Optional[Path] = None
-        if message_mode == "Enter message":
-            while True:
-                message = _ask_str("Message", default="", allow_blank=True).strip()
-                if message:
-                    break
-        elif message_mode == "Load message from file":
-            msg_path = _ask_existing_file("Message file path")
-            message = msg_path.read_text(encoding="utf-8")
-        else:
-            report_path = _ask_existing_file("report.md path")
-
-        advanced = _ask_bool("Advanced GenAI options?", default=False)
-        max_tokens: Optional[int] = None
-        temperature: Optional[float] = None
-        if advanced:
-            max_tokens = _ask_optional_int("Max tokens (blank = default)")
-            temperature = _ask_optional_float("Temperature (blank = default)")
-
-        plan = build_genai_chat_plan(
-            auth=auth,
-            profile=profile,
-            tenancy_ocid=tenancy_ocid,
-            api_format=api_format,
-            message=message,
-            report=report_path,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            json_logs=json_logs,
-            log_level=log_level,
-        )
-        raise SystemExit(_confirm_and_run(plan))
-
-    if mode == "Enrichment coverage":
-        _section("Enrichment Coverage")
-        inventory_path = _ask_existing_file("inventory.jsonl path")
-        top_n = _ask_int("Top missing types to show", default=10, min_value=1)
-        plan = build_coverage_plan(
-            inventory=inventory_path,
-            top=top_n,
-        )
-        raise SystemExit(_confirm_and_run(plan))
-
-    if mode == "Diff inventories":
-        _section("Diff Inventories")
-        prev = _ask_existing_file("Prev inventory.jsonl path")
-        curr = _ask_existing_file("Curr inventory.jsonl path")
-        outdir = _ask_outdir_base("Diff output dir", default=str(Path("out") / "diff"))
-        plan = build_diff_plan(
-            auth=auth,
-            profile=profile,
-            tenancy_ocid=tenancy_ocid,
-            prev=prev,
-            curr=curr,
-            outdir=outdir,
-            json_logs=json_logs,
-            log_level=log_level,
-        )
-        raise SystemExit(_confirm_and_run(plan))
-
-    # Run inventory
-    _section("Run Inventory")
-    outdir = _ask_outdir_base("Output base dir", default="out")
+    start_in_troubleshooting = False
     while True:
-        try:
-            regions = _parse_regions(
-                _ask_str(
-                    "Regions (comma-separated, blank = subscribed). Example: mx-queretaro-1,us-phoenix-1",
-                    default="",
-                    allow_blank=True,
-                )
+        if start_in_troubleshooting:
+            mode = "Troubleshooting"
+        else:
+            mode = _ask_choice(
+                "What do you want to do?",
+                [
+                    ("Run inventory", "Discover resources and write a new inventory run."),
+                    ("Diff inventories", "Compare two inventory.jsonl files and write a diff."),
+                    ("Troubleshooting", "Diagnostics and helper utilities."),
+                    ("Exit", "Quit the wizard."),
+                ],
+                default="Run inventory",
             )
-            break
-        except ValueError as exc:
+
+        if mode == "Exit":
             from rich.console import Console
 
-            console = Console()
-            console.print(f"[red]{exc}[/red]")
-            console.print("[dim]Example: mx-queretaro-1,us-phoenix-1[/dim]")
+            Console().print("Bye o/")
+            raise SystemExit(0)
 
-    genai_summary = _ask_bool(
-        "Generate GenAI Executive Summary in report.md? (uses OCI_INV_GENAI_CONFIG, else ~/.config/oci-inv/genai.yaml, else inventory/.local/genai.yaml)",
-        default=False,
-    )
+        menu_origin = "main"
+        if mode == "Troubleshooting":
+            trouble = _ask_choice(
+                "Troubleshooting",
+                [
+                    ("Validate auth", "Validate OCI credentials and auth configuration."),
+                    ("List regions", "Show subscribed regions for the tenancy."),
+                    ("List compartments", "List compartments in the tenancy."),
+                    ("Enrichment coverage", "Report missing enrichers in an inventory.jsonl."),
+                    ("List GenAI models", "List available OCI GenAI models and capabilities."),
+                    ("GenAI chat", "Send a one-off GenAI prompt."),
+                ],
+                default="Validate auth",
+                allow_back=True,
+            )
+            if trouble == "Back":
+                start_in_troubleshooting = False
+                continue
+            mode = trouble
+            menu_origin = "troubleshooting"
 
-    while True:
-        query = _ask_str("Structured Search query", default="query all resources")
-        if query.strip():
+        start_in_troubleshooting = False
+
+        while True:
+            auth = _ask_choice(
+                "Auth method",
+                [
+                    ("auto", "Try resource principals, then instance principals, then config DEFAULT."),
+                    ("config", "Use ~/.oci/config with an explicit profile."),
+                    ("instance", "Use instance principals (OCI compute)."),
+                    ("resource", "Use resource principals (OCI services)."),
+                    ("security_token", "Use a security_token profile in ~/.oci/config."),
+                ],
+                default="auto",
+                allow_back=True,
+            )
+            if auth == "Back":
+                if menu_origin == "troubleshooting":
+                    start_in_troubleshooting = True
+                break
+
+            profile: Optional[str] = None
+            if auth in {"config", "security_token"}:
+                profile = _ask_str("Profile", default="DEFAULT")
+            elif auth == "auto":
+                from rich.console import Console
+
+                Console().print(
+                    "[dim]Note: auto auth falls back to config profile 'DEFAULT' if principals are unavailable. "
+                    "Use auth=config to specify a different profile.[/dim]"
+                )
+
+            tenancy_ocid = _ask_str("Tenancy OCID (optional)", default="", allow_blank=True).strip() or None
+
+            # Logging toggles (keep simple)
+            json_logs = _ask_bool("Enable JSON logs?", default=False)
+            log_level = _ask_choice(
+                "Log level",
+                [
+                    ("INFO", "Standard logs for normal operation."),
+                    ("DEBUG", "Verbose logs for troubleshooting."),
+                ],
+                default="INFO",
+                allow_back=True,
+            )
+            if log_level == "Back":
+                continue
             break
 
-    parquet = _ask_bool("Write Parquet (requires pyarrow)?", default=False)
+        if auth == "Back":
+            continue
 
-    include_terminated = _ask_bool("Include terminated resources?", default=False)
+        if mode == "Validate auth":
+            _section("Validate Auth")
+            plan = build_simple_plan(
+                subcommand="validate-auth",
+                auth=auth,
+                profile=profile,
+                tenancy_ocid=tenancy_ocid,
+                json_logs=json_logs,
+                log_level=log_level,
+            )
+            plan_data = {
+                "mode": "validate-auth",
+                "auth": auth,
+                "profile": profile,
+                "tenancy_ocid": tenancy_ocid,
+                "json_logs": json_logs,
+                "log_level": log_level,
+            }
+            raise SystemExit(_confirm_and_run(plan, plan_data=plan_data))
 
-    prev_raw = _ask_str("Prev inventory.jsonl (optional)", default="", allow_blank=True).strip()
-    prev = Path(prev_raw) if prev_raw else None
-    if prev and (not prev.exists() or not prev.is_file()):
-        prev = None
+        if mode == "List regions":
+            _section("List Regions")
+            plan = build_simple_plan(
+                subcommand="list-regions",
+                auth=auth,
+                profile=profile,
+                tenancy_ocid=tenancy_ocid,
+                json_logs=json_logs,
+                log_level=log_level,
+            )
+            plan_data = {
+                "mode": "list-regions",
+                "auth": auth,
+                "profile": profile,
+                "tenancy_ocid": tenancy_ocid,
+                "json_logs": json_logs,
+                "log_level": log_level,
+            }
+            raise SystemExit(_confirm_and_run(plan, plan_data=plan_data))
 
-    workers_region = _ask_int("Max parallel regions", default=6, min_value=1)
-    workers_enrich = _ask_int("Max enricher workers", default=24, min_value=1)
+        if mode == "List compartments":
+            _section("List Compartments")
+            plan = build_simple_plan(
+                subcommand="list-compartments",
+                auth=auth,
+                profile=profile,
+                tenancy_ocid=tenancy_ocid,
+                json_logs=json_logs,
+                log_level=log_level,
+            )
+            plan_data = {
+                "mode": "list-compartments",
+                "auth": auth,
+                "profile": profile,
+                "tenancy_ocid": tenancy_ocid,
+                "json_logs": json_logs,
+                "log_level": log_level,
+            }
+            raise SystemExit(_confirm_and_run(plan, plan_data=plan_data))
 
-    validate_diagrams = False
-    cost_report = False
-    cost_start: Optional[str] = None
-    cost_end: Optional[str] = None
-    cost_currency: Optional[str] = None
-    assessment_target_group: Optional[str] = None
-    assessment_target_scope: Optional[List[str]] = None
-    assessment_lens_weight: Optional[List[str]] = None
-    assessment_capability: Optional[List[str]] = None
+        if mode == "List GenAI models":
+            _section("List GenAI Models")
+            plan = build_simple_plan(
+                subcommand="list-genai-models",
+                auth=auth,
+                profile=profile,
+                tenancy_ocid=tenancy_ocid,
+                json_logs=json_logs,
+                log_level=log_level,
+            )
+            plan_data = {
+                "mode": "list-genai-models",
+                "auth": auth,
+                "profile": profile,
+                "tenancy_ocid": tenancy_ocid,
+                "json_logs": json_logs,
+                "log_level": log_level,
+            }
+            raise SystemExit(_confirm_and_run(plan, plan_data=plan_data))
 
-    if _ask_bool("Show advanced run options?", default=False):
-        _section("Advanced Run Options")
-        validate_diagrams = _ask_bool(
-            "Validate Mermaid diagrams with mmdc (fails run if invalid)?",
+        if mode == "GenAI chat":
+            _section("GenAI Chat")
+            return_to_menu = False
+            while True:
+                api_format = _ask_choice(
+                    "GenAI API format",
+                    [
+                        ("AUTO", "Try GENERIC first, then COHERE if needed."),
+                        ("GENERIC", "Use the OCI GenAI generic format."),
+                        ("COHERE", "Use the OCI GenAI Cohere format."),
+                    ],
+                    default="AUTO",
+                    allow_back=True,
+                )
+                if api_format == "Back":
+                    start_in_troubleshooting = True
+                    return_to_menu = True
+                    break
+
+                message_mode = _ask_choice(
+                    "Message input",
+                    [
+                        ("Enter message", "Type a single-line prompt."),
+                        ("Load message from file", "Read prompt text from a local file."),
+                        ("Use report.md as context", "Send report.md as context without a manual prompt."),
+                    ],
+                    default="Enter message",
+                    allow_back=True,
+                )
+                if message_mode == "Back":
+                    continue
+                break
+
+            if return_to_menu:
+                continue
+
+            message: Optional[str] = None
+            report_path: Optional[Path] = None
+            if message_mode == "Enter message":
+                while True:
+                    message = _ask_str("Message", default="", allow_blank=True).strip()
+                    if message:
+                        break
+            elif message_mode == "Load message from file":
+                msg_path = _ask_existing_file("Message file path")
+                message = msg_path.read_text(encoding="utf-8")
+            else:
+                report_path = _ask_existing_file("report.md path")
+
+            advanced = _ask_bool("Advanced GenAI options?", default=False)
+            max_tokens: Optional[int] = None
+            temperature: Optional[float] = None
+            if advanced:
+                max_tokens = _ask_optional_int("Max tokens (blank = default)")
+                temperature = _ask_optional_float("Temperature (blank = default)")
+
+            plan = build_genai_chat_plan(
+                auth=auth,
+                profile=profile,
+                tenancy_ocid=tenancy_ocid,
+                api_format=api_format,
+                message=message,
+                report=report_path,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                json_logs=json_logs,
+                log_level=log_level,
+            )
+            plan_data = {
+                "mode": "genai-chat",
+                "auth": auth,
+                "profile": profile,
+                "tenancy_ocid": tenancy_ocid,
+                "json_logs": json_logs,
+                "log_level": log_level,
+                "genai_api_format": api_format,
+                "genai_message": message,
+                "genai_report": str(report_path) if report_path else None,
+                "genai_max_tokens": max_tokens,
+                "genai_temperature": temperature,
+            }
+            raise SystemExit(_confirm_and_run(plan, plan_data=plan_data))
+
+        if mode == "Enrichment coverage":
+            _section("Enrichment Coverage")
+            inventory_path = _ask_existing_file("inventory.jsonl path")
+            top_n = _ask_int("Top missing types to show", default=10, min_value=1)
+            plan = build_coverage_plan(
+                inventory=inventory_path,
+                top=top_n,
+            )
+            plan_data = {
+                "mode": "enrich-coverage",
+                "auth": auth,
+                "inventory": str(inventory_path),
+                "top": top_n,
+                "json_logs": json_logs,
+                "log_level": log_level,
+            }
+            raise SystemExit(_confirm_and_run(plan, plan_data=plan_data))
+
+        if mode == "Diff inventories":
+            _section("Diff Inventories")
+            prev = _ask_existing_file("Prev inventory.jsonl path")
+            curr = _ask_existing_file("Curr inventory.jsonl path")
+            outdir = _ask_outdir_base("Diff output dir", default=str(Path("out") / "diff"))
+            plan = build_diff_plan(
+                auth=auth,
+                profile=profile,
+                tenancy_ocid=tenancy_ocid,
+                prev=prev,
+                curr=curr,
+                outdir=outdir,
+                json_logs=json_logs,
+                log_level=log_level,
+            )
+            plan_data = {
+                "mode": "diff",
+                "auth": auth,
+                "profile": profile,
+                "tenancy_ocid": tenancy_ocid,
+                "json_logs": json_logs,
+                "log_level": log_level,
+                "prev": str(prev),
+                "curr": str(curr),
+                "outdir": str(outdir),
+            }
+            raise SystemExit(_confirm_and_run(plan, plan_data=plan_data))
+
+        # Run inventory
+        _section("Run Inventory")
+        if _ask_bool("List subscribed regions now?", default=False):
+            _section("List Regions")
+            _run_quick_plan(
+                build_simple_plan(
+                    subcommand="list-regions",
+                    auth=auth,
+                    profile=profile,
+                    tenancy_ocid=tenancy_ocid,
+                    json_logs=json_logs,
+                    log_level=log_level,
+                ),
+                "List Regions",
+            )
+        if _ask_bool("List compartments now?", default=False):
+            _section("List Compartments")
+            _run_quick_plan(
+                build_simple_plan(
+                    subcommand="list-compartments",
+                    auth=auth,
+                    profile=profile,
+                    tenancy_ocid=tenancy_ocid,
+                    json_logs=json_logs,
+                    log_level=log_level,
+                ),
+                "List Compartments",
+            )
+        outdir = _ask_outdir_base("Output base dir", default="out")
+        while True:
+            try:
+                regions = _parse_regions(
+                    _ask_str(
+                        "Regions (comma-separated, blank = subscribed). Example: mx-queretaro-1,us-phoenix-1",
+                        default="",
+                        allow_blank=True,
+                    )
+                )
+                break
+            except ValueError as exc:
+                from rich.console import Console
+
+                console = Console()
+                console.print(f"[red]{exc}[/red]")
+                console.print("[dim]Example: mx-queretaro-1,us-phoenix-1[/dim]")
+
+        genai_summary = _ask_bool(
+            "Generate GenAI Executive Summary in report.md? (uses OCI_INV_GENAI_CONFIG, else ~/.config/oci-inv/genai.yaml, else inventory/.local/genai.yaml)",
             default=False,
         )
-        cost_report = _ask_bool("Generate cost_report.md (Usage API, read-only)?", default=False)
-        if cost_report:
-            cost_start = _ask_str("Cost start (ISO 8601, blank = month-to-date)", default="", allow_blank=True).strip()
-            cost_end = _ask_str("Cost end (ISO 8601, blank = now)", default="", allow_blank=True).strip()
-            cost_currency = _ask_str("Cost currency (ISO 4217, optional)", default="", allow_blank=True).strip()
-            if not cost_start:
-                cost_start = None
-            if not cost_end:
-                cost_end = None
-            if not cost_currency:
-                cost_currency = None
 
-        if _ask_bool("Add assessment metadata?", default=False):
-            assessment_target_group = _ask_str(
-                "Assessment target group (optional)",
-                default="",
-                allow_blank=True,
-            ).strip() or None
-            assessment_target_scope = _ask_repeatable_list(
-                "Assessment target scope (repeatable, blank = done)",
-            )
-            assessment_lens_weight = _ask_repeatable_list(
-                "Assessment lens weight (e.g., Knowledge=1) (blank = done)",
-            )
-            assessment_capability = _ask_repeatable_list(
-                "Assessment capability (domain|capability|knowledge|process|metrics|adoption|automation|target|evidence) (blank = done)",
-            )
+        while True:
+            query = _ask_str("Structured Search query", default="query all resources")
+            if query.strip():
+                break
 
-            if not assessment_target_scope:
-                assessment_target_scope = None
-            if not assessment_lens_weight:
-                assessment_lens_weight = None
-            if not assessment_capability:
-                assessment_capability = None
+        parquet = _ask_bool("Write Parquet (requires pyarrow)?", default=False)
 
-    plan = build_run_plan(
-        auth=auth,
-        profile=profile,
-        tenancy_ocid=tenancy_ocid,
-        outdir=outdir,
-        query=query,
-        regions=regions,
-        parquet=parquet,
-        genai_summary=genai_summary,
-        prev=prev,
-        workers_region=workers_region,
-        workers_enrich=workers_enrich,
-        include_terminated=include_terminated,
-        validate_diagrams=validate_diagrams,
-        cost_report=cost_report,
-        cost_start=cost_start,
-        cost_end=cost_end,
-        cost_currency=cost_currency,
-        assessment_target_group=assessment_target_group,
-        assessment_target_scope=assessment_target_scope,
-        assessment_lens_weight=assessment_lens_weight,
-        assessment_capability=assessment_capability,
-        json_logs=json_logs,
-        log_level=log_level,
-    )
-    raise SystemExit(_confirm_and_run(plan))
+        include_terminated = _ask_bool("Include terminated resources?", default=False)
+
+        prev_raw = _ask_str("Prev inventory.jsonl (optional)", default="", allow_blank=True).strip()
+        prev = Path(prev_raw) if prev_raw else None
+        if prev and (not prev.exists() or not prev.is_file()):
+            prev = None
+
+        workers_region = _ask_int("Max parallel regions", default=6, min_value=1)
+        workers_enrich = _ask_int("Max enricher workers", default=24, min_value=1)
+
+        validate_diagrams = False
+        cost_report = False
+        cost_start: Optional[str] = None
+        cost_end: Optional[str] = None
+        cost_currency: Optional[str] = None
+        assessment_target_group: Optional[str] = None
+        assessment_target_scope: Optional[List[str]] = None
+        assessment_lens_weight: Optional[List[str]] = None
+        assessment_capability: Optional[List[str]] = None
+
+        if _ask_bool("Show advanced run options?", default=False):
+            _section("Advanced Run Options")
+            validate_diagrams = _ask_bool(
+                "Validate Mermaid diagrams with mmdc (fails run if invalid)?",
+                default=False,
+            )
+            cost_report = _ask_bool("Generate cost_report.md (Usage API, read-only)?", default=False)
+            if cost_report:
+                cost_start = _ask_str("Cost start (ISO 8601, blank = month-to-date)", default="", allow_blank=True).strip()
+                cost_end = _ask_str("Cost end (ISO 8601, blank = now)", default="", allow_blank=True).strip()
+                cost_currency = _ask_str("Cost currency (ISO 4217, optional)", default="", allow_blank=True).strip()
+                if not cost_start:
+                    cost_start = None
+                if not cost_end:
+                    cost_end = None
+                if not cost_currency:
+                    cost_currency = None
+
+            if _ask_bool("Add assessment metadata?", default=False):
+                assessment_target_group = _ask_str(
+                    "Assessment target group (optional)",
+                    default="",
+                    allow_blank=True,
+                ).strip() or None
+                assessment_target_scope = _ask_repeatable_list(
+                    "Assessment target scope (repeatable, blank = done)",
+                )
+                assessment_lens_weight = _ask_repeatable_list(
+                    "Assessment lens weight (e.g., Knowledge=1) (blank = done)",
+                )
+                assessment_capability = _ask_repeatable_list(
+                    "Assessment capability (domain|capability|knowledge|process|metrics|adoption|automation|target|evidence) (blank = done)",
+                )
+
+                if not assessment_target_scope:
+                    assessment_target_scope = None
+                if not assessment_lens_weight:
+                    assessment_lens_weight = None
+                if not assessment_capability:
+                    assessment_capability = None
+
+        plan = build_run_plan(
+            auth=auth,
+            profile=profile,
+            tenancy_ocid=tenancy_ocid,
+            outdir=outdir,
+            query=query,
+            regions=regions,
+            parquet=parquet,
+            genai_summary=genai_summary,
+            prev=prev,
+            workers_region=workers_region,
+            workers_enrich=workers_enrich,
+            include_terminated=include_terminated,
+            validate_diagrams=validate_diagrams,
+            cost_report=cost_report,
+            cost_start=cost_start,
+            cost_end=cost_end,
+            cost_currency=cost_currency,
+            assessment_target_group=assessment_target_group,
+            assessment_target_scope=assessment_target_scope,
+            assessment_lens_weight=assessment_lens_weight,
+            assessment_capability=assessment_capability,
+            json_logs=json_logs,
+            log_level=log_level,
+        )
+        plan_data = {
+            "mode": "run",
+            "auth": auth,
+            "profile": profile,
+            "tenancy_ocid": tenancy_ocid,
+            "json_logs": json_logs,
+            "log_level": log_level,
+            "outdir": str(outdir),
+            "query": query,
+            "regions": regions,
+            "parquet": parquet,
+            "genai_summary": genai_summary,
+            "prev": str(prev) if prev else None,
+            "workers_region": workers_region,
+            "workers_enrich": workers_enrich,
+            "include_terminated": include_terminated,
+            "validate_diagrams": validate_diagrams,
+            "cost_report": cost_report,
+            "cost_start": cost_start,
+            "cost_end": cost_end,
+            "cost_currency": cost_currency,
+            "assessment_target_group": assessment_target_group,
+            "assessment_target_scope": assessment_target_scope,
+            "assessment_lens_weight": assessment_lens_weight,
+            "assessment_capability": assessment_capability,
+        }
+        raise SystemExit(_confirm_and_run(plan, plan_data=plan_data))
