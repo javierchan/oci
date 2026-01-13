@@ -1466,6 +1466,7 @@ def render_cost_report_md(
     regions = _normalize_cost_rows(cost_context.get("regions", []), "name")
     raw_compartments = cost_context.get("compartments", [])
     comp_rows = _normalize_cost_rows(raw_compartments, "compartment_id")
+    compartment_group_by = str(cost_context.get("compartment_group_by") or "compartmentId")
 
     total_cost = _money_decimal(cost_context.get("total_cost") or 0)
     if total_cost == Decimal("0") and services:
@@ -1476,8 +1477,11 @@ def render_cost_report_md(
     compartment_ids = [r["name"] for r in comp_rows]
     compartment_count = len(set(compartment_ids))
 
-    alias_by_comp = _compartment_alias_map(compartment_ids)
-    name_by_comp = cost_context.get("compartment_names") or {}
+    alias_by_comp: Dict[str, str] = {}
+    name_by_comp: Dict[str, str] = {}
+    if compartment_group_by == "compartmentId":
+        alias_by_comp = _compartment_alias_map(compartment_ids)
+        name_by_comp = cost_context.get("compartment_names") or {}
 
     lines: List[str] = []
     lines.append("# OCI Cost & Usage Assessment")
@@ -1658,7 +1662,10 @@ def render_cost_report_md(
         rows = []
         for r in capped:
             cid = r["name"]
-            label = _compartment_label(cid, alias_by_id=alias_by_comp, name_by_id=name_by_comp)
+            if compartment_group_by == "compartmentId":
+                label = _compartment_label(cid, alias_by_id=alias_by_comp, name_by_id=name_by_comp)
+            else:
+                label = cid
             rows.append([label, _money_fmt(r["amount"])])
         lines.extend(_md_table(["Compartment", f"Cost ({currency})"], rows))
 
@@ -1873,7 +1880,7 @@ def render_cost_report_md(
 
     lines.append("")
     lines.append("### Alias Map")
-    if alias_by_comp:
+    if alias_by_comp and compartment_group_by == "compartmentId":
         for cid in sorted(alias_by_comp.keys()):
             alias = alias_by_comp[cid]
             name = name_by_comp.get(cid, "")
@@ -1905,6 +1912,7 @@ def write_cost_report_md(
             "cost_start": getattr(cfg, "cost_start", None),
             "cost_end": getattr(cfg, "cost_end", None),
             "cost_currency": getattr(cfg, "cost_currency", None),
+            "cost_compartment_group_by": getattr(cfg, "cost_compartment_group_by", None),
             "assessment_target_group": getattr(cfg, "assessment_target_group", None),
             "assessment_target_scope": getattr(cfg, "assessment_target_scope", None),
             "assessment_lens_weights": getattr(cfg, "assessment_lens_weights", None),
@@ -1921,3 +1929,55 @@ def write_cost_report_md(
     p = outdir / "cost_report.md"
     p.write_text(text, encoding="utf-8")
     return p
+
+
+def write_cost_usage_csv(
+    *,
+    outdir: Path,
+    usage_items: Sequence[Dict[str, Any]],
+) -> Optional[Path]:
+    if not usage_items:
+        return None
+
+    rows: List[Dict[str, Any]] = []
+    for item in usage_items:
+        amount_raw = item.get("computed_amount")
+        try:
+            amount = Decimal(str(amount_raw))
+        except Exception:
+            continue
+        if amount <= 0:
+            continue
+        rows.append(
+            {
+                "time_usage_started": str(item.get("time_usage_started") or ""),
+                "time_usage_ended": str(item.get("time_usage_ended") or ""),
+                "service": str(item.get("service") or ""),
+                "computed_amount": amount,
+                "currency": str(item.get("currency") or ""),
+            }
+        )
+    if not rows:
+        return None
+
+    rows.sort(key=lambda r: (r["time_usage_started"], r["service"], r["computed_amount"]))
+
+    outdir.mkdir(parents=True, exist_ok=True)
+    path = outdir / "cost_usage_items.csv"
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["time_usage_started", "time_usage_ended", "service", "computed_amount", "currency"],
+        )
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    "time_usage_started": row["time_usage_started"],
+                    "time_usage_ended": row["time_usage_ended"],
+                    "service": row["service"],
+                    "computed_amount": _money_fmt(row["computed_amount"]),
+                    "currency": row["currency"],
+                }
+            )
+    return path

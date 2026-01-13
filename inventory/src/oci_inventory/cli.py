@@ -23,7 +23,7 @@ from .oci.clients import get_budget_client, get_home_region_name, get_osub_usage
 from .oci.compartments import list_compartments as oci_list_compartments
 from .oci.discovery import discover_in_region
 from .oci.regions import get_subscribed_regions
-from .report import render_cost_report_md, write_cost_report_md, write_run_report_md
+from .report import render_cost_report_md, write_cost_report_md, write_cost_usage_csv, write_run_report_md
 from .util.concurrency import parallel_map_ordered
 from .util.errors import (
     AuthResolutionError,
@@ -233,6 +233,15 @@ def _usage_item_to_dict(item: Any) -> Dict[str, Any]:
     to_dict = getattr(item, "to_dict", None)
     if callable(to_dict):
         return to_dict()  # type: ignore[no-any-return]
+    attr_map = getattr(item, "attribute_map", None)
+    if isinstance(attr_map, dict) and attr_map:
+        out: Dict[str, Any] = {}
+        for key in attr_map.keys():
+            try:
+                out[key] = getattr(item, key)
+            except Exception:
+                continue
+        return out
     return {}
 
 
@@ -261,6 +270,8 @@ def _extract_group_value(data: Dict[str, Any], group_by: Optional[str]) -> str:
     keys_by_group = {
         "service": ("service", "service_name", "serviceName", "service-name"),
         "compartmentId": ("compartment_id", "compartmentId", "compartment-id"),
+        "compartmentName": ("compartment_name", "compartmentName", "compartment-name"),
+        "compartmentPath": ("compartment_path", "compartmentPath", "compartment-path"),
         "region": ("region", "region_name", "regionName", "region-name"),
         "sku": ("sku", "sku_name", "skuName", "sku-name"),
     }
@@ -278,6 +289,7 @@ def _request_summarized_usages(
     end: datetime,
     *,
     group_by: Optional[str],
+    items_out: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str]]:
     try:
         import oci  # type: ignore
@@ -298,11 +310,12 @@ def _request_summarized_usages(
     }
     if group_by:
         details_kwargs["group_by"] = [group_by]
-        if group_by == "compartmentId":
+        if group_by in {"compartmentId", "compartmentName", "compartmentPath"}:
             details_kwargs["compartment_depth"] = 6
     details = details_cls.RequestSummarizedUsagesDetails(**details_kwargs)
 
     totals_by_name: Dict[str, float] = {}
+    meta_by_name: Dict[str, Dict[str, str]] = {}
     currency: Optional[str] = None
     page: Optional[str] = None
     while True:
@@ -321,8 +334,16 @@ def _request_summarized_usages(
             return [], currency, str(e)
 
         data = getattr(resp, "data", None)
-        items = getattr(data, "items", []) if data is not None else []
-        data_currency = getattr(data, "currency", None) if data is not None else None
+        items: List[Any] = []
+        data_currency = None
+        if isinstance(data, list):
+            items = data
+        elif isinstance(data, dict):
+            items = data.get("items", []) or []
+            data_currency = data.get("currency")
+        elif data is not None:
+            items = getattr(data, "items", []) or []
+            data_currency = getattr(data, "currency", None)
         if isinstance(data_currency, str) and data_currency.strip():
             currency = data_currency.strip()
         for item in items or []:
@@ -335,12 +356,67 @@ def _request_summarized_usages(
             item_currency = _extract_usage_currency(item_dict)
             if item_currency and not currency:
                 currency = item_currency
+            if group_by == "compartmentId":
+                meta = meta_by_name.setdefault(name, {})
+                if "compartment_name" not in meta:
+                    comp_name = ""
+                    for key in ("compartment_name", "compartmentName", "compartment-name"):
+                        val = item_dict.get(key)
+                        if isinstance(val, str) and val.strip():
+                            comp_name = val.strip()
+                            break
+                    if comp_name:
+                        meta["compartment_name"] = comp_name
+                if "compartment_path" not in meta:
+                    comp_path = ""
+                    for key in ("compartment_path", "compartmentPath", "compartment-path"):
+                        val = item_dict.get(key)
+                        if isinstance(val, str) and val.strip():
+                            comp_path = val.strip()
+                            break
+                    if comp_path:
+                        meta["compartment_path"] = comp_path
+            if items_out is not None:
+                started = ""
+                ended = ""
+                for key in ("time_usage_started", "timeUsageStarted", "time-usage-started"):
+                    val = item_dict.get(key)
+                    if isinstance(val, str) and val.strip():
+                        started = val.strip()
+                        break
+                for key in ("time_usage_ended", "timeUsageEnded", "time-usage-ended"):
+                    val = item_dict.get(key)
+                    if isinstance(val, str) and val.strip():
+                        ended = val.strip()
+                        break
+                service_name = _extract_group_value(item_dict, "service")
+                if not service_name:
+                    for key in ("service", "serviceName", "service-name"):
+                        val = item_dict.get(key)
+                        if isinstance(val, str) and val.strip():
+                            service_name = val.strip()
+                            break
+                items_out.append(
+                    {
+                        "time_usage_started": started,
+                        "time_usage_ended": ended,
+                        "service": service_name,
+                        "computed_amount": amount,
+                        "currency": item_currency or currency,
+                    }
+                )
 
         page = getattr(resp, "headers", {}).get("opc-next-page")
         if not page:
             break
 
-    rows = [{"name": name, "amount": total} for name, total in sorted(totals_by_name.items())]
+    rows: List[Dict[str, Any]] = []
+    for name, total in sorted(totals_by_name.items()):
+        row = {"name": name, "amount": total}
+        meta = meta_by_name.get(name)
+        if meta:
+            row.update(meta)
+        rows.append(row)
     return rows, currency, None
 
 
@@ -458,11 +534,13 @@ def _collect_cost_report_data(
     if tenancy_id and ctx and not home_region:
         errors.append("Unable to resolve tenancy home region; Usage API calls skipped.")
 
+    compartment_group_by = cfg.cost_compartment_group_by or "compartmentId"
     services: List[Dict[str, Any]] = []
     compartments: List[Dict[str, Any]] = []
     regions: List[Dict[str, Any]] = []
     total_cost = 0.0
     currency: Optional[str] = None
+    usage_items: List[Dict[str, Any]] = []
 
     query_inputs: Dict[str, Any] = {
         "tenant_id": tenancy_id,
@@ -470,8 +548,9 @@ def _collect_cost_report_data(
         "time_usage_ended": end_dt.isoformat(timespec="seconds"),
         "granularity": "DAILY",
         "query_type": "COST",
-        "group_by": ["service", "compartmentId", "region"],
+        "group_by": ["service", compartment_group_by, "region"],
         "compartment_depth": 6,
+        "compartment_group_by": compartment_group_by,
         "home_region": home_region or "(unresolved)",
     }
     if home_region:
@@ -514,6 +593,7 @@ def _collect_cost_report_data(
                 start_dt,
                 end_dt,
                 group_by="service",
+                items_out=usage_items,
             )
             steps.append({"name": "usage_api_service", "status": "OK" if not err else "ERROR"})
             if err:
@@ -527,15 +607,21 @@ def _collect_cost_report_data(
                 tenancy_id,
                 start_dt,
                 end_dt,
-                group_by="compartmentId",
+                group_by=compartment_group_by,
             )
             steps.append({"name": "usage_api_compartment", "status": "OK" if not err else "ERROR"})
             if err:
                 errors.append(redact_text(f"Usage API compartment failed: {err}"))
             else:
-                compartments = [
-                    {"compartment_id": r.get("name", ""), "amount": r.get("amount", 0.0)} for r in rows
-                ]
+                for r in rows:
+                    compartments.append(
+                        {
+                            "compartment_id": r.get("name", ""),
+                            "amount": r.get("amount", 0.0),
+                            "compartment_name": r.get("compartment_name", ""),
+                            "compartment_path": r.get("compartment_path", ""),
+                        }
+                    )
                 currency = cur or currency
 
             rows, cur, err = _request_summarized_usages(
@@ -676,15 +762,36 @@ def _collect_cost_report_data(
         steps.append({"name": "osub_usage", "status": "SKIPPED"})
 
     compartment_names: Dict[str, str] = {}
-    comp_ids = {str(r.get("compartment_id") or "") for r in compartments if str(r.get("compartment_id") or "")}
+    comp_ids = set()
+    if compartment_group_by == "compartmentId":
+        comp_ids = {
+            str(r.get("compartment_id") or "") for r in compartments if str(r.get("compartment_id") or "")
+        }
+        for row in compartments:
+            cid = str(row.get("compartment_id") or "")
+            if not cid:
+                continue
+            name = str(row.get("compartment_name") or "").strip()
+            path = str(row.get("compartment_path") or "").strip()
+            label = path or name
+            if label and cid not in compartment_names:
+                compartment_names[cid] = label
     if comp_ids and ctx:
-        try:
-            comp_rows = oci_list_compartments(ctx, tenancy_ocid=tenancy_id)
-            compartment_names = {c["ocid"]: c["name"] for c in comp_rows if c.get("ocid") and c.get("name")}
+        missing = comp_ids - set(compartment_names)
+        if missing:
+            try:
+                comp_rows = oci_list_compartments(ctx, tenancy_ocid=tenancy_id)
+                for row in comp_rows:
+                    ocid = row.get("ocid")
+                    name = row.get("name")
+                    if ocid and name and ocid not in compartment_names:
+                        compartment_names[str(ocid)] = str(name)
+                steps.append({"name": "compartment_names", "status": "OK"})
+            except Exception as e:
+                steps.append({"name": "compartment_names", "status": "ERROR"})
+                errors.append(redact_text(f"Compartment name lookup failed: {e}"))
+        else:
             steps.append({"name": "compartment_names", "status": "OK"})
-        except Exception as e:
-            steps.append({"name": "compartment_names", "status": "ERROR"})
-            errors.append(redact_text(f"Compartment name lookup failed: {e}"))
     elif comp_ids:
         steps.append({"name": "compartment_names", "status": "ERROR"})
         errors.append("Compartment name lookup skipped: no auth context.")
@@ -697,10 +804,12 @@ def _collect_cost_report_data(
         "total_cost": total_cost,
         "services": services,
         "compartments": compartments,
+        "compartment_group_by": compartment_group_by,
         "regions": regions,
         "budgets": budgets,
         "budget_alert_rule_counts": alert_rule_counts,
         "osub_usage": osub_usage,
+        "usage_items": usage_items,
         "errors": errors,
         "warnings": warnings,
         "steps": steps,
@@ -1175,6 +1284,7 @@ def cmd_run(cfg: RunConfig) -> int:
                                 "cost_start": getattr(cfg, "cost_start", None),
                                 "cost_end": getattr(cfg, "cost_end", None),
                                 "cost_currency": getattr(cfg, "cost_currency", None),
+                                "cost_compartment_group_by": getattr(cfg, "cost_compartment_group_by", None),
                                 "assessment_target_group": getattr(cfg, "assessment_target_group", None),
                                 "assessment_target_scope": getattr(cfg, "assessment_target_scope", None),
                                 "assessment_lens_weights": getattr(cfg, "assessment_lens_weights", None),
@@ -1208,6 +1318,9 @@ def cmd_run(cfg: RunConfig) -> int:
                     executive_summary=cost_executive_summary,
                     executive_summary_error=cost_executive_summary_error,
                 )
+                usage_items = cost_context.get("usage_items") or []
+                if usage_items:
+                    write_cost_usage_csv(outdir=cfg.outdir, usage_items=usage_items)
             except Exception as e:
                 from .genai.redact import redact_text
 

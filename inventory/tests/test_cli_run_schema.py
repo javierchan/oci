@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import types
 
 from oci_inventory.auth.providers import AuthContext
-from oci_inventory.cli import _collect_cost_report_data, _extract_group_value, _extract_usage_amount, _extract_usage_currency, cmd_run
+from oci_inventory.cli import (
+    _collect_cost_report_data,
+    _extract_group_value,
+    _extract_usage_amount,
+    _extract_usage_currency,
+    _request_summarized_usages,
+    _usage_item_to_dict,
+    cmd_run,
+)
 from oci_inventory.config import RunConfig, load_run_config
 from oci_inventory.enrich.default import DefaultEnricher
 from oci_inventory.normalize.transform import normalize_from_search_summary
@@ -210,7 +219,7 @@ def test_cost_currency_mismatch_does_not_override(tmp_path, monkeypatch) -> None
     monkeypatch.setattr(cli, "get_budget_client", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(cli, "_list_budgets", lambda *_args, **_kwargs: ([], None))
 
-    def _fake_request(_client, _tenancy, _start, _end, *, group_by):
+    def _fake_request(_client, _tenancy, _start, _end, *, group_by, items_out=None):
         return ([{"name": group_by or "total", "amount": 10.0}], "USD", None)
 
     monkeypatch.setattr(cli, "_request_summarized_usages", _fake_request)
@@ -305,3 +314,119 @@ def test_usage_item_hyphenated_keys_are_supported() -> None:
     assert _extract_group_value(data, "service") == "Compute"
     assert _extract_group_value(data, "compartmentId") == "ocid1.compartment.oc1..test"
     assert _extract_group_value(data, "region") == "us-ashburn-1"
+
+
+def test_usage_item_attribute_map_object() -> None:
+    class FakeUsageItem:
+        attribute_map = {
+            "service": "service",
+            "computed_amount": "computedAmount",
+            "currency": "currency",
+        }
+
+        def __init__(self) -> None:
+            self.service = "Compute"
+            self.computed_amount = 7.25
+            self.currency = "USD"
+
+    data = _usage_item_to_dict(FakeUsageItem())
+    assert data["service"] == "Compute"
+    assert data["computed_amount"] == 7.25
+    assert data["currency"] == "USD"
+
+
+def test_request_summarized_usages_handles_list_data(monkeypatch) -> None:
+    class FakeDetails:
+        def __init__(self, **_kwargs):
+            pass
+
+    fake_oci = types.SimpleNamespace(
+        usage_api=types.SimpleNamespace(models=types.SimpleNamespace(RequestSummarizedUsagesDetails=FakeDetails))
+    )
+    monkeypatch.setitem(__import__("sys").modules, "oci", fake_oci)
+
+    class FakeResponse:
+        def __init__(self, data):
+            self.data = data
+            self.headers = {}
+
+    class FakeClient:
+        def request_summarized_usages(self, _details, page=None):
+            return FakeResponse(
+                [
+                    {
+                        "computed-amount": "3.5",
+                        "currency": "USD",
+                        "service": "Compute",
+                    }
+                ]
+            )
+
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    items_out: list[dict[str, object]] = []
+    rows, currency, err = _request_summarized_usages(
+        FakeClient(),
+        "ocid1.tenancy.oc1..test",
+        start,
+        end,
+        group_by="service",
+        items_out=items_out,
+    )
+
+    assert err is None
+    assert currency == "USD"
+    assert rows == [{"name": "Compute", "amount": 3.5}]
+    assert items_out == [
+        {
+            "time_usage_started": "",
+            "time_usage_ended": "",
+            "service": "Compute",
+            "computed_amount": 3.5,
+            "currency": "USD",
+        }
+    ]
+
+
+def test_cost_report_uses_compartment_group_by(monkeypatch, tmp_path) -> None:
+    cfg = RunConfig(
+        outdir=tmp_path,
+        auth="config",
+        profile="DEFAULT",
+        query="query all resources",
+        cost_report=True,
+        cost_compartment_group_by="compartmentName",
+    )
+    ctx = AuthContext(
+        method="config",
+        config_dict={"tenancy": "ocid1.tenancy.oc1..test"},
+        signer=None,
+        profile="DEFAULT",
+        tenancy_ocid="ocid1.tenancy.oc1..test",
+    )
+
+    monkeypatch.setattr(cli, "get_home_region_name", lambda _ctx: "us-ashburn-1")
+    monkeypatch.setattr(cli, "get_usage_api_client", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(cli, "get_budget_client", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(cli, "_list_budgets", lambda *_args, **_kwargs: ([], None))
+
+    seen_group_by: list[str] = []
+
+    def _fake_request(_client, _tenancy, _start, _end, *, group_by, items_out=None):
+        if group_by:
+            seen_group_by.append(group_by)
+        return ([], "USD", None)
+
+    monkeypatch.setattr(cli, "_request_summarized_usages", _fake_request)
+
+    finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    cost_context = _collect_cost_report_data(
+        ctx=ctx,
+        cfg=cfg,
+        subscribed_regions=["us-ashburn-1"],
+        requested_regions=None,
+        finished_at=finished_at,
+    )
+
+    assert "compartmentName" in seen_group_by
+    assert cost_context["query_inputs"]["group_by"][1] == "compartmentName"
