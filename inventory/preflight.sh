@@ -170,16 +170,54 @@ ensure_mmdc() {
     err "Install Mermaid CLI and retry: npm install -g @mermaid-js/mermaid-cli"
     exit 1
   fi
-  info "Installing Mermaid CLI (@mermaid-js/mermaid-cli)..."
-  if npm install -g @mermaid-js/mermaid-cli >/dev/null 2>&1; then
-    local npm_global_bin=""
-    npm_global_bin="$(npm bin -g 2>/dev/null || true)"
+  local npm_global_bin=""
+  local npm_can_write=0
+  npm_global_bin="$(npm bin -g 2>/dev/null || true)"
+  if [ -n "${npm_global_bin}" ] && [ -w "${npm_global_bin}" ]; then
+    npm_can_write=1
+  fi
+  if [ "${npm_can_write}" -eq 1 ]; then
+    info "Installing Mermaid CLI (@mermaid-js/mermaid-cli) globally..."
+    if ! npm install -g @mermaid-js/mermaid-cli; then
+      err "Failed to install Mermaid CLI via npm."
+      exit 1
+    fi
     if [ -n "${npm_global_bin}" ]; then
       export PATH="${npm_global_bin}:${PATH}"
     fi
   else
-    err "Failed to install Mermaid CLI via npm."
-    exit 1
+    local use_sudo=""
+    if command -v sudo >/dev/null 2>&1 && [ -t 0 ]; then
+      info "Global npm prefix is not writable. Use sudo for global install? [y/N]"
+      read -r use_sudo
+    fi
+    case "${use_sudo}" in
+      y|Y|yes|YES)
+        info "Requesting sudo authentication (input will be hidden)..."
+        if ! sudo -v; then
+          err "sudo authentication failed."
+          exit 1
+        fi
+        info "Installing Mermaid CLI via sudo npm..."
+        if ! sudo npm install -g @mermaid-js/mermaid-cli; then
+          err "Failed to install Mermaid CLI via sudo npm."
+          exit 1
+        fi
+        npm_global_bin="$(npm bin -g 2>/dev/null || true)"
+        if [ -n "${npm_global_bin}" ]; then
+          export PATH="${npm_global_bin}:${PATH}"
+        fi
+        ;;
+      *)
+        local user_prefix="${HOME}/.local"
+        info "Installing Mermaid CLI to user prefix: ${user_prefix}"
+        if ! npm install -g --prefix "${user_prefix}" @mermaid-js/mermaid-cli; then
+          err "Failed to install Mermaid CLI via npm (user prefix)."
+          exit 1
+        fi
+        export PATH="${user_prefix}/bin:${PATH}"
+        ;;
+    esac
   fi
   if command -v mmdc >/dev/null 2>&1; then
     ok "mmdc installed: $(mmdc --version 2>/dev/null | tr -d '\n')"
