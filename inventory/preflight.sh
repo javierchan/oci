@@ -50,6 +50,7 @@ if [ "${OS_NAME}" = "Linux" ] && [ -f /etc/os-release ]; then
 fi
 
 APT_UPDATED=0
+NODE_MIN_MAJOR=20
 
 require_sudo() {
   if ! command -v sudo >/dev/null 2>&1; then
@@ -156,15 +157,57 @@ ensure_git() {
   fi
 }
 
+node_major_version() {
+  if ! command -v node >/dev/null 2>&1; then
+    return 1
+  fi
+  node -v 2>/dev/null | tr -d 'v' | cut -d. -f1
+}
+
+node_meets_requirement() {
+  local major=""
+  major="$(node_major_version || true)"
+  if [ -z "${major}" ]; then
+    return 1
+  fi
+  if [ "${major}" -lt "${NODE_MIN_MAJOR}" ]; then
+    return 1
+  fi
+  return 0
+}
+
+install_nodesource_repo() {
+  apt_install ca-certificates curl gnupg
+  require_sudo
+  sudo install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  printf "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main\n" \
+    | sudo tee /etc/apt/sources.list.d/nodesource.list >/dev/null
+  APT_UPDATED=0
+}
+
+install_nodejs_linux() {
+  install_nodesource_repo
+  apt_install nodejs
+  if ! command -v npm >/dev/null 2>&1; then
+    apt_install npm
+  fi
+}
+
 ensure_nodejs() {
-  if command -v npm >/dev/null 2>&1; then
-    ok "npm detected: $(npm --version 2>/dev/null | tr -d '\n')"
+  if command -v npm >/dev/null 2>&1 && node_meets_requirement; then
+    ok "node detected: $(node -v 2>/dev/null | tr -d '\n'); npm $(npm --version 2>/dev/null | tr -d '\n')"
     return 0
+  fi
+  if ! is_bootstrap; then
+    err "Node.js ${NODE_MIN_MAJOR}+ and npm are required (OCI_INV_MODE=check)."
+    exit 1
   fi
   if [ "${OS_NAME}" = "Darwin" ]; then
     brew_install node
   elif [ "${OS_NAME}" = "Linux" ]; then
-    apt_install nodejs npm
+    install_nodejs_linux
   else
     err "Unsupported OS for automatic Node.js/npm install: ${OS_NAME}"
     exit 1
@@ -173,7 +216,11 @@ ensure_nodejs() {
     err "npm installation completed but npm not found on PATH."
     exit 1
   fi
-  ok "npm installed: $(npm --version 2>/dev/null | tr -d '\n')"
+  if ! node_meets_requirement; then
+    err "Node.js ${NODE_MIN_MAJOR}+ required; detected: $(node -v 2>/dev/null || echo unknown)"
+    exit 1
+  fi
+  ok "node installed: $(node -v 2>/dev/null | tr -d '\n'); npm $(npm --version 2>/dev/null | tr -d '\n')"
 }
 
 ensure_mmdc() {
@@ -186,17 +233,15 @@ ensure_mmdc() {
     exit 1
   fi
   info "Installing Mermaid CLI (@mermaid-js/mermaid-cli)..."
-  if npm install -g @mermaid-js/mermaid-cli; then
-    :
-  elif command -v sudo >/dev/null 2>&1; then
-    info "Retrying Mermaid CLI install with sudo..."
-    if ! sudo npm install -g @mermaid-js/mermaid-cli; then
-      info "Falling back to user prefix for Mermaid CLI..."
+  NPM_PREFIX="$(npm config get prefix 2>/dev/null || true)"
+  if [ -n "${NPM_PREFIX}" ] && [ -w "${NPM_PREFIX}" ]; then
+    if ! npm install -g @mermaid-js/mermaid-cli; then
+      warn "Global npm install failed; using user-local prefix."
       npm install -g --prefix "${HOME}/.local" @mermaid-js/mermaid-cli
       export PATH="${HOME}/.local/bin:${PATH}"
     fi
   else
-    info "Falling back to user prefix for Mermaid CLI..."
+    info "npm global prefix not writable; using user-local prefix."
     npm install -g --prefix "${HOME}/.local" @mermaid-js/mermaid-cli
     export PATH="${HOME}/.local/bin:${PATH}"
   fi
