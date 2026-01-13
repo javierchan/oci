@@ -96,20 +96,49 @@ ensure_nodejs() {
         exit 1
       fi
       if [ "$(id -u)" -ne 0 ]; then
-        err "npm is required but missing."
-        err "Install Node.js/npm and retry:"
-        err "  sudo apt-get update"
-        err "  sudo apt-get install -y nodejs npm"
-        exit 1
-      fi
-      info "Installing Node.js and npm via apt-get..."
-      if ! apt-get update >/dev/null 2>&1; then
-        err "apt-get update failed."
-        exit 1
-      fi
-      if ! apt-get install -y nodejs npm >/dev/null 2>&1; then
-        err "apt-get install nodejs npm failed."
-        exit 1
+        if ! command -v sudo >/dev/null 2>&1; then
+          err "npm is required but sudo is not available."
+          err "Install Node.js/npm and retry:"
+          err "  sudo apt-get update"
+          err "  sudo apt-get install -y nodejs npm"
+          exit 1
+        fi
+        if [ ! -t 0 ]; then
+          err "npm is required but missing, and no TTY is available for sudo."
+          err "Install Node.js/npm and retry:"
+          err "  sudo apt-get update"
+          err "  sudo apt-get install -y nodejs npm"
+          exit 1
+        fi
+        info "Node.js/npm required. Allow sudo install? [y/N]"
+        read -r install_node
+        case "${install_node}" in
+          y|Y|yes|YES)
+            info "Installing Node.js and npm via sudo apt-get..."
+            if ! sudo apt-get update >/dev/null 2>&1; then
+              err "apt-get update failed."
+              exit 1
+            fi
+            if ! sudo apt-get install -y nodejs npm >/dev/null 2>&1; then
+              err "apt-get install nodejs npm failed."
+              exit 1
+            fi
+            ;;
+          *)
+            err "npm is required; install Node.js/npm and retry."
+            exit 1
+            ;;
+        esac
+      else
+        info "Installing Node.js and npm via apt-get..."
+        if ! apt-get update >/dev/null 2>&1; then
+          err "apt-get update failed."
+          exit 1
+        fi
+        if ! apt-get install -y nodejs npm >/dev/null 2>&1; then
+          err "apt-get install nodejs npm failed."
+          exit 1
+        fi
       fi
       if command -v npm >/dev/null 2>&1; then
         ok "npm installed: $(npm --version 2>/dev/null | tr -d '\n')"
