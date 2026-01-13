@@ -41,6 +41,7 @@ ALLOWED_CONFIG_KEYS = {
     "cost_start",
     "cost_end",
     "cost_currency",
+    "cost_compartment_group_by",
     "osub_subscription_id",
     "assessment_target_group",
     "assessment_target_scope",
@@ -70,6 +71,7 @@ STR_CONFIG_KEYS = {
     "cost_start",
     "cost_end",
     "cost_currency",
+    "cost_compartment_group_by",
     "osub_subscription_id",
     "assessment_target_group",
 }
@@ -103,6 +105,7 @@ class RunConfig:
     cost_start: Optional[str] = None
     cost_end: Optional[str] = None
     cost_currency: Optional[str] = None
+    cost_compartment_group_by: Optional[str] = None
     osub_subscription_id: Optional[str] = None
     assessment_target_group: Optional[str] = None
     assessment_target_scope: Optional[List[str]] = None
@@ -405,6 +408,12 @@ def load_run_config(
         help="ISO 4217 currency code (optional if Usage API returns currency).",
     )
     p_run.add_argument(
+        "--cost-compartment-group-by",
+        choices=("compartmentId", "compartmentName", "compartmentPath"),
+        default=None,
+        help="Group cost by compartmentId (default), compartmentName, or compartmentPath.",
+    )
+    p_run.add_argument(
         "--osub-subscription-id",
         default=None,
         help="OneSubscription subscription ID for ComputedUsageClient (optional).",
@@ -543,6 +552,7 @@ def load_run_config(
         "cost_start": None,
         "cost_end": None,
         "cost_currency": None,
+        "cost_compartment_group_by": None,
         "osub_subscription_id": None,
         "assessment_target_group": None,
         "assessment_target_scope": None,
@@ -575,6 +585,7 @@ def load_run_config(
             "cost_start": _env_str("OCI_INV_COST_START"),
             "cost_end": _env_str("OCI_INV_COST_END"),
             "cost_currency": _env_str("OCI_INV_COST_CURRENCY"),
+            "cost_compartment_group_by": _env_str("OCI_INV_COST_COMPARTMENT_GROUP_BY"),
             "osub_subscription_id": _env_str("OCI_INV_OSUB_SUBSCRIPTION_ID"),
             "assessment_target_group": _env_str("OCI_INV_ASSESSMENT_TARGET_GROUP"),
             "assessment_target_scope": _env_str("OCI_INV_ASSESSMENT_TARGET_SCOPE"),
@@ -607,6 +618,7 @@ def load_run_config(
             "cost_start": getattr(ns, "cost_start", None),
             "cost_end": getattr(ns, "cost_end", None),
             "cost_currency": getattr(ns, "cost_currency", None),
+            "cost_compartment_group_by": getattr(ns, "cost_compartment_group_by", None),
             "osub_subscription_id": getattr(ns, "osub_subscription_id", None),
             "assessment_target_group": getattr(ns, "assessment_target_group", None),
             "assessment_target_scope": getattr(ns, "assessment_target_scope", None),
@@ -656,6 +668,15 @@ def load_run_config(
     assessment_lens_weights = _parse_list_field(merged.get("assessment_lens_weights"))
     assessment_capabilities = _parse_list_field(merged.get("assessment_capabilities"))
 
+    comp_group_by_raw = merged.get("cost_compartment_group_by")
+    cost_compartment_group_by = None
+    if comp_group_by_raw is not None:
+        cost_compartment_group_by = str(comp_group_by_raw).strip()
+        if cost_compartment_group_by not in {"compartmentId", "compartmentName", "compartmentPath"}:
+            raise ValueError(
+                "cost_compartment_group_by must be one of compartmentId, compartmentName, compartmentPath"
+            )
+
     # default workers if None
     workers_region = int(merged["workers_region"] or DEFAULT_WORKERS_REGION)
     workers_enrich = int(merged["workers_enrich"] or DEFAULT_WORKERS_ENRICH)
@@ -678,6 +699,7 @@ def load_run_config(
         cost_start=str(merged.get("cost_start")) if merged.get("cost_start") else None,
         cost_end=str(merged.get("cost_end")) if merged.get("cost_end") else None,
         cost_currency=str(merged.get("cost_currency")) if merged.get("cost_currency") else None,
+        cost_compartment_group_by=cost_compartment_group_by,
         osub_subscription_id=str(merged.get("osub_subscription_id"))
         if merged.get("osub_subscription_id")
         else None,
@@ -721,6 +743,7 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "cost_start": cfg.cost_start,
         "cost_end": cfg.cost_end,
         "cost_currency": cfg.cost_currency,
+        "cost_compartment_group_by": cfg.cost_compartment_group_by,
         "osub_subscription_id": cfg.osub_subscription_id,
         "assessment_target_group": cfg.assessment_target_group,
         "assessment_target_scope": cfg.assessment_target_scope,

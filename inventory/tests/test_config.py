@@ -151,3 +151,14 @@ def test_genai_chat_parses_message_args() -> None:
 def test_cost_osub_subscription_id_parsed() -> None:
     _, cfg = load_run_config(argv=["run", "--osub-subscription-id", "sub123"])
     assert cfg.osub_subscription_id == "sub123"
+
+
+def test_cost_compartment_group_by_parsed() -> None:
+    _, cfg = load_run_config(argv=["run", "--cost-compartment-group-by", "compartmentPath"])
+    assert cfg.cost_compartment_group_by == "compartmentPath"
+
+
+def test_cost_compartment_group_by_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("OCI_INV_COST_COMPARTMENT_GROUP_BY", "compartmentName")
+    _, cfg = load_run_config(argv=["run"])
+    assert cfg.cost_compartment_group_by == "compartmentName"

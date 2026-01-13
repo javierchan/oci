@@ -88,6 +88,10 @@ Optional flags:
   ```
   oci-inv run --cost-report --osub-subscription-id <subscription_id> --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD
   ```
+- Cost report grouped by compartment name or path:
+  ```
+  oci-inv run --cost-report --cost-compartment-group-by compartmentName --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD
+  ```
 
 Output structure per run:
 
@@ -96,6 +100,8 @@ out/<timestamp>/
   inventory.jsonl
   inventory.csv
   inventory.parquet        # when --parquet and pyarrow installed
+  cost_report.md           # when --cost-report
+  cost_usage_items.csv     # when --cost-report; non-zero Usage API rows
   relationships.jsonl      # when relationships are emitted
   graph_nodes.jsonl        # diagram-ready nodes (optional)
   graph_edges.jsonl        # diagram-ready edges (optional)
@@ -144,6 +150,11 @@ Common environment variables that influence behavior:
 - OCI_INV_PROFILE
 - OCI_TENANCY_OCID
 - OCI_INV_DIAGRAMS
+- OCI_INV_COST_REPORT
+- OCI_INV_COST_START
+- OCI_INV_COST_END
+- OCI_INV_COST_CURRENCY
+- OCI_INV_COST_COMPARTMENT_GROUP_BY
 - OCI_INV_OSUB_SUBSCRIPTION_ID
 
 ## Troubleshooting
