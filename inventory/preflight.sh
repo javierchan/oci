@@ -12,9 +12,25 @@ ok()   { printf "[OK]   %s\n" "$*"; }
 warn() { printf "[WARN] %s\n" "$*"; }
 err()  { printf "[ERROR] %s\n" "$*" >&2; }
 
-# Resolve repo root (directory of this script)
+# Resolve repo root (directory containing pyproject.toml)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "${SCRIPT_DIR}"
+REPO_ROOT="${SCRIPT_DIR}"
+if [ ! -f "${REPO_ROOT}/pyproject.toml" ]; then
+  if [ -f "${REPO_ROOT}/inventory/pyproject.toml" ]; then
+    REPO_ROOT="${REPO_ROOT}/inventory"
+  else
+    err "pyproject.toml not found under ${SCRIPT_DIR}; run this script from the inventory repo."
+    exit 1
+  fi
+fi
+cd "${REPO_ROOT}"
+
+is_offline() {
+  case "${OCI_INV_OFFLINE:-}" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 # 1) Prerequisite checks
 info "Checking prerequisites..."
@@ -56,29 +72,42 @@ fi
 need_cmd git || { err "git is required"; exit 1; }
 ok "git detected: $(git --version | tr -d '\n')"
 
-# Mermaid CLI (optional; used for --validate-diagrams)
-if command -v mmdc >/dev/null 2>&1; then
-  ok "mmdc detected: $(mmdc --version 2>/dev/null | tr -d '\n')"
-else
-  warn "mmdc not found; Mermaid diagram syntax validation will be skipped."
-  warn "(When mmdc is installed, oci-inv will validate all diagram*.mmd outputs automatically.)"
-  warn "Install (macOS): npm install -g @mermaid-js/mermaid-cli"
-fi
-
-
-should_install_oci_cli() {
-  case "${OCI_INV_INSTALL_OCI_CLI:-}" in
-    1|true|yes|on) return 0 ;;
-    *) return 1 ;;
-  esac
+ensure_mmdc() {
+  if command -v mmdc >/dev/null 2>&1; then
+    ok "mmdc detected: $(mmdc --version 2>/dev/null | tr -d '\n')"
+    return 0
+  fi
+  if is_offline; then
+    err "mmdc is required but missing, and offline mode is enabled."
+    err "Install Mermaid CLI and retry: npm install -g @mermaid-js/mermaid-cli"
+    exit 1
+  fi
+  if ! command -v npm >/dev/null 2>&1; then
+    err "mmdc is required but npm was not found."
+    err "Install Node.js/npm, then run: npm install -g @mermaid-js/mermaid-cli"
+    exit 1
+  fi
+  info "Installing Mermaid CLI (@mermaid-js/mermaid-cli)..."
+  if npm install -g @mermaid-js/mermaid-cli >/dev/null 2>&1; then
+    local npm_global_bin=""
+    npm_global_bin="$(npm bin -g 2>/dev/null || true)"
+    if [ -n "${npm_global_bin}" ]; then
+      export PATH="${npm_global_bin}:${PATH}"
+    fi
+  else
+    err "Failed to install Mermaid CLI via npm."
+    exit 1
+  fi
+  if command -v mmdc >/dev/null 2>&1; then
+    ok "mmdc installed: $(mmdc --version 2>/dev/null | tr -d '\n')"
+  else
+    err "mmdc installation completed but command not found on PATH."
+    err "Check npm global bin path and your PATH."
+    exit 1
+  fi
 }
 
-is_offline() {
-  case "${OCI_INV_OFFLINE:-}" in
-    1|true|yes|on) return 0 ;;
-    *) return 1 ;;
-  esac
-}
+ensure_mmdc
 
 print_python_venv_help() {
   local os_name=""
@@ -140,30 +169,6 @@ if is_offline; then
   export PIP_NO_INDEX=1
   export PIP_DISABLE_PIP_VERSION_CHECK=1
   info "Offline mode enabled; network operations will be skipped when possible."
-fi
-
-# oci CLI (opt-in install; avoids changes outside .venv by default)
-if command -v oci >/dev/null 2>&1; then
-  ok "oci CLI detected: $(oci --version 2>/dev/null | tr -d '\n')"
-else
-  if should_install_oci_cli; then
-    if is_offline; then
-      warn "Offline mode enabled; skipping OCI CLI install."
-    else
-      info "oci CLI not found; installing non-interactively (no sudo)..."
-      # Accept defaults (installs under $HOME and updates PATH in rc files). Avoid prompts.
-      if bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults >/dev/null 2>&1; then
-        export PATH="$HOME/bin:$PATH"
-        ok "oci CLI installed: $(oci --version 2>/dev/null | tr -d '\n')"
-      else
-        err "oci CLI installation failed. Please install manually if needed:"
-        err '  bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults'
-        exit 1
-      fi
-    fi
-  else
-    warn "oci CLI not found; skipping install (set OCI_INV_INSTALL_OCI_CLI=1 to install)"
-  fi
 fi
 
 # 2) Python virtual environment
@@ -260,6 +265,38 @@ else
   ok "Tooling upgraded: $(pip --version | tr -d '\n')"
 fi
 
+ensure_oci_cli() {
+  local venv_bin=""
+  venv_bin="$(python -c 'import sys, pathlib; print(pathlib.Path(sys.executable).parent)' 2>/dev/null || true)"
+  if [ -z "${venv_bin}" ]; then
+    err "Unable to determine virtual environment bin directory."
+    exit 1
+  fi
+  if [ -x "${venv_bin}/oci" ]; then
+    ok "oci CLI detected in venv: $("${venv_bin}/oci" --version 2>/dev/null | tr -d '\n')"
+    return 0
+  fi
+  if is_offline; then
+    err "oci CLI is required but missing, and offline mode is enabled."
+    err "Install oci-cli in the venv when network access is available."
+    exit 1
+  fi
+  info "Installing OCI CLI inside virtual environment..."
+  if python -m pip install oci-cli; then
+    if [ -x "${venv_bin}/oci" ]; then
+      ok "oci CLI installed: $("${venv_bin}/oci" --version 2>/dev/null | tr -d '\n')"
+    else
+      err "oci CLI installation completed but command not found in venv."
+      exit 1
+    fi
+  else
+    err "Failed to install oci CLI via pip."
+    exit 1
+  fi
+}
+
+ensure_oci_cli
+
 # 4) Install project (editable) with all defined extras (mandatory)
 EXTRAS_SPEC=""
 ALL_EXTRAS=""
@@ -312,8 +349,8 @@ find_genai_config() {
     printf "%s" "$HOME/.config/oci-inv/genai.yaml"
     return 0
   fi
-  if [ -f "${SCRIPT_DIR}/.local/genai.yaml" ]; then
-    printf "%s" "${SCRIPT_DIR}/.local/genai.yaml"
+  if [ -f "${REPO_ROOT}/.local/genai.yaml" ]; then
+    printf "%s" "${REPO_ROOT}/.local/genai.yaml"
     return 0
   fi
   return 1
@@ -350,4 +387,6 @@ Common issues:
   - Python version < 3.11 -> Install Python 3.11+ and re-run
   - Missing pip for python3 -> python3 -m ensurepip --upgrade
   - Missing git -> Install git for your OS
+  - Missing npm/Node.js -> Install Node.js (npm is required for Mermaid CLI)
+  - Offline mode with missing deps -> Disable offline mode or preinstall dependencies
 OUT

@@ -4,8 +4,8 @@ Production-ready Python CLI to inventory Oracle Cloud Infrastructure (OCI) resou
 Phase 1 implements:
 - Tenancy-wide discovery using Resource Search (Structured Search) with default query: "query all resources"
 - Enricher registry + DefaultEnricher with per-service metadata enrichers for supported resource types
-- Exports: JSONL (default) and CSV; Parquet optional via pyarrow
-- Optional graph + diagram projections (Mermaid flowchart + consolidated architecture-beta)
+- Exports: JSONL (default), CSV, and Parquet (pyarrow installed by preflight; enable with --parquet)
+- Graph + diagram projections (Mermaid flowchart + consolidated architecture-beta; disable with --no-diagrams)
 - Diffs and stable hashing (excluding collectedAt)
 - Coverage metrics and schema validation
 - Tests, docs, CI (ruff + pytest)
@@ -40,37 +40,34 @@ Key guarantees:
 
 ## Install
 - Python 3.11+
-- Recommended in a virtualenv
+- Git
+- Node.js + npm (required for Mermaid CLI)
+- Use a `.venv` for all Python dependencies (required)
 
+Recommended: `./preflight.sh` (installs all required components).
+
+Manual install (inside `.venv`):
 ```
+python3 -m venv .venv
+. .venv/bin/activate
 pip install -U pip
-pip install .
-# Optional Parquet support
-pip install .[parquet]
+pip install .[parquet,wizard]
+pip install oci-cli
+npm install -g @mermaid-js/mermaid-cli
 ```
 
 ## Preflight setup
 Use the preflight script to prepare a local or CI environment (macOS/Linux, no sudo required). It:
-- Verifies prerequisites (python3 ≥ 3.11, pip, git; oci CLI is optional and opt-in)
+- Verifies prerequisites (python3 ≥ 3.11, git, npm) and installs Mermaid CLI (mmdc) if missing
 - Creates or reuses a .venv virtual environment and upgrades pip/setuptools/wheel
 - Installs the project in editable mode, respecting pyproject.toml
-- Supports optional extras via INVENTORY_EXTRAS (e.g., parquet)
-- Uses network access for pip upgrades and dependency installs (and OCI CLI if enabled)
+- Installs all extras defined in pyproject.toml (parquet, wizard)
+- Installs OCI CLI inside the virtual environment
+- Uses network access for pip/npm installs and dependency upgrades
 
 Run:
 ```
 ./preflight.sh
-```
-
-With extras:
-```
-INVENTORY_EXTRAS=parquet ./preflight.sh
-INVENTORY_EXTRAS=parquet,dev ./preflight.sh
-```
-
-Install OCI CLI (opt-in):
-```
-OCI_INV_INSTALL_OCI_CLI=1 ./preflight.sh
 ```
 
 Offline mode (skip network actions; requires deps already available):
@@ -86,6 +83,8 @@ Common failure modes:
 - Python version too low (< 3.11) — install Python 3.11+ and re-run
 - Missing pip for python3 — try: `python3 -m ensurepip --upgrade`
 - Missing git — install git for your OS
+- Missing npm/Node.js — install Node.js (npm is required for Mermaid CLI)
+- Offline mode with missing deps — disable offline mode or preinstall dependencies
 
 ## CLI
 Entrypoint: `oci-inv`
@@ -260,8 +259,7 @@ This section is a quick map of every user-facing component in the CLI, what it d
   - Per-view exports: `cost_usage_service.csv`, `cost_usage_region.csv`, `cost_usage_compartment.csv`.
 - **Enrichment coverage**: reports which resource types in an inventory lack enrichers.
   - Example: `oci-inv enrich-coverage --inventory out/<timestamp>/inventory.jsonl --top 10`
-- **Interactive wizard (optional)**: guided, preview-first UX that builds/executes the same `oci-inv` commands; safe defaults and copy/pasteable outputs.
-  - Install extra: `pip install .[wizard]`
+- **Interactive wizard**: guided, preview-first UX that builds/executes the same `oci-inv` commands; safe defaults and copy/pasteable outputs.
   - Run: `oci-inv-wizard`
   - Main modes: run, diff, troubleshooting
   - Troubleshooting includes: validate-auth, list-regions, list-compartments, enrich-coverage, list-genai-models, genai-chat
@@ -273,12 +271,10 @@ This section is a quick map of every user-facing component in the CLI, what it d
 Notes for developers:
 - The CLI is read-only; all SDK calls are list/get style. No mutations are performed.
 - Region failures are tolerated and captured in report.md; GenAI is optional and isolated from the main run.
-- For parquet support, install with extras: `INVENTORY_EXTRAS=parquet ./preflight.sh`.
-- Mermaid diagrams are generated as `.mmd` files unless `--no-diagrams` is set. If `mmdc` (Mermaid CLI) is installed,
-  `oci-inv run` will validate all `diagram*.mmd` artifacts automatically and fail the run on invalid Mermaid.
-  To require validation even when `mmdc` may not be present, use `--validate-diagrams`.
+- Parquet support is installed by preflight; enable output with `--parquet`.
+- Mermaid diagrams are generated as `.mmd` files unless `--no-diagrams` is set. Mermaid CLI (`mmdc`) is required and preflight installs it;
+  validation runs automatically when diagrams are enabled.
   (During installation you may see npm warnings about Puppeteer deprecations; those are typically non-fatal.)
-- When `--validate-diagrams` is set and `mmdc` is missing, the run fails early.
 - Diagram and report rules are documented in `docs/diagram_guidelines.md` and `docs/report_guidelines.md`.
 
 ## Known Issues and Notes
@@ -292,7 +288,7 @@ flowchart TB
 subgraph out_ts[out timestamp]
     inv[inventory.jsonl]
     csv[inventory.csv]
-    parquet[inventory.parquet optional]
+    parquet[inventory.parquet when --parquet]
     rel[relationships.jsonl]
     nodes[graph_nodes.jsonl optional]
     edges[graph_edges.jsonl optional]
@@ -326,7 +322,7 @@ Each run writes to: `out/<timestamp>/`
 - report.md (execution steps, exclusions, findings, and optional GenAI summary)
 - inventory.jsonl (canonicalized, stable JSON lines)
 - inventory.csv (report fields)
-- inventory.parquet (optional; pyarrow required)
+- inventory.parquet (enabled with `--parquet`; pyarrow installed by preflight)
 - relationships.jsonl (always written; may be empty)
 - graph_nodes.jsonl (diagram-ready nodes; optional)
 - graph_edges.jsonl (diagram-ready edges; optional)
@@ -342,7 +338,7 @@ Quick reference (artifacts → purpose):
 - report.md: human-readable run log + findings; holds GenAI summary when enabled.
 - inventory.jsonl: canonical per-resource records for downstream processing/diffing.
 - inventory.csv: tabular view aligned to report fields.
-- inventory.parquet: analytics-friendly columnar export (requires parquet extras).
+- inventory.parquet: analytics-friendly columnar export (enable with `--parquet`; pyarrow installed by preflight).
 - relationships.jsonl: relationship edges from enrichers + derived metadata.
 - graph_nodes.jsonl / graph_edges.jsonl / diagram_raw.mmd: raw topology outputs (optional).
 - diagram.*.mmd: architecture-focused projected views (optional).
@@ -430,18 +426,17 @@ Common flags:
 
 Run locally:
 ```
-pip install -e .[parquet]
+pip install -e .[parquet,wizard]
 pip install ruff pytest
 ruff check .
 pytest
 ```
 
-## Interactive Wizard (Optional)
+## Interactive Wizard
 
-If you prefer a guided, preview-first UX with safer defaults, install the optional wizard extra and run:
+If you prefer a guided, preview-first UX with safer defaults, run:
 
 ```
-pip install .[wizard]
 oci-inv-wizard
 ```
 
