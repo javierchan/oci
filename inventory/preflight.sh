@@ -51,6 +51,7 @@ fi
 
 APT_UPDATED=0
 NODE_MIN_MAJOR=20
+MMDC_USED_LOCAL_PREFIX=0
 
 require_sudo() {
   if ! command -v sudo >/dev/null 2>&1; then
@@ -237,11 +238,13 @@ ensure_mmdc() {
   if [ -n "${NPM_PREFIX}" ] && [ -w "${NPM_PREFIX}" ]; then
     if ! npm install -g @mermaid-js/mermaid-cli; then
       warn "Global npm install failed; using user-local prefix."
+      MMDC_USED_LOCAL_PREFIX=1
       npm install -g --prefix "${HOME}/.local" @mermaid-js/mermaid-cli
       export PATH="${HOME}/.local/bin:${PATH}"
     fi
   else
     info "npm global prefix not writable; using user-local prefix."
+    MMDC_USED_LOCAL_PREFIX=1
     npm install -g --prefix "${HOME}/.local" @mermaid-js/mermaid-cli
     export PATH="${HOME}/.local/bin:${PATH}"
   fi
@@ -254,6 +257,42 @@ ensure_mmdc() {
     exit 1
   fi
   ok "mmdc installed: $(mmdc --version 2>/dev/null | tr -d '\n')"
+}
+
+ensure_local_bin_path() {
+  if [ "${MMDC_USED_LOCAL_PREFIX}" -ne 1 ]; then
+    return 0
+  fi
+  if ! is_bootstrap; then
+    return 0
+  fi
+  local marker="# oci-inventory: ensure ~/.local/bin on PATH"
+  local profile="${HOME}/.profile"
+  local bashrc="${HOME}/.bashrc"
+  append_path_snippet "${profile}" "${marker}"
+  append_path_snippet "${bashrc}" "${marker}"
+}
+
+append_path_snippet() {
+  local target="$1"
+  local marker="$2"
+  if [ -f "${target}" ] && grep -q "${marker}" "${target}"; then
+    ok "PATH update already present in ${target}"
+    return 0
+  fi
+  info "Adding ~/.local/bin to PATH in ${target}"
+  printf "%s\n" \
+    "" \
+    "${marker}" \
+    "if [ -d \"\$HOME/.local/bin\" ]; then" \
+    "  case \":\$PATH:\" in" \
+    "    *\":\$HOME/.local/bin:\"*) ;;" \
+    "    *) PATH=\"\$HOME/.local/bin:\$PATH\" ;;" \
+    "  esac" \
+    "fi" \
+    "export PATH" \
+    >> "${target}"
+  ok "Updated ${target}"
 }
 
 ensure_venv() {
@@ -422,6 +461,7 @@ ensure_python
 ensure_git
 ensure_nodejs
 ensure_mmdc
+ensure_local_bin_path
 ensure_venv
 ensure_pip
 ensure_oci_cli
