@@ -87,6 +87,13 @@ Common failure modes:
 - Missing Homebrew on macOS — install Homebrew (https://brew.sh/) and retry
 - Offline mode with missing deps — disable offline mode or preinstall dependencies
 
+## Dev Container (Docker Desktop)
+For VS Code on macOS with Docker Desktop, use `.devcontainer/devcontainer.json`:
+- It mounts `~/.oci` and `~/.config/oci-inv` into the container.
+- It runs `./preflight.sh` on first create to install all prerequisites and extras.
+
+Open the repo in VS Code and run: `Dev Containers: Reopen in Container`.
+
 ## CLI
 Entrypoint: `oci-inv`
 
