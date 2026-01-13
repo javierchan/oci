@@ -9,6 +9,7 @@ from oci_inventory.report import (
     render_run_report_md,
     write_cost_usage_csv,
     write_cost_usage_jsonl,
+    write_cost_usage_views,
 )
 
 
@@ -306,26 +307,53 @@ def test_write_cost_usage_exports(tmp_path: Path) -> None:
             "time_usage_started": "2026-01-01T00:00:00+00:00",
             "time_usage_ended": "2026-01-02T00:00:00+00:00",
             "service": "Compute",
-            "region": "us-ashburn-1",
             "computed_amount": 1.5,
             "currency": "USD",
             "tags": [FakeTag("env", "dev")],
-        }
+        },
+        {
+            "group_by": "region",
+            "group_value": "us-ashburn-1",
+            "time_usage_started": "2026-01-01T00:00:00+00:00",
+            "time_usage_ended": "2026-01-02T00:00:00+00:00",
+            "region": "us-ashburn-1",
+            "computed_amount": 2.0,
+            "currency": "USD",
+        },
+        {
+            "group_by": "compartmentId",
+            "group_value": "ocid1.compartment.oc1..exampleuniqueID",
+            "time_usage_started": "2026-01-01T00:00:00+00:00",
+            "time_usage_ended": "2026-01-02T00:00:00+00:00",
+            "compartment_id": "ocid1.compartment.oc1..exampleuniqueID",
+            "compartment_name": "Prod",
+            "compartment_path": "Prod",
+            "computed_amount": 3.0,
+            "currency": "USD",
+        },
     ]
 
     csv_path = write_cost_usage_csv(outdir=tmp_path, usage_items=usage_items)
     jsonl_path = write_cost_usage_jsonl(outdir=tmp_path, usage_items=usage_items)
+    view_paths = write_cost_usage_views(
+        outdir=tmp_path,
+        usage_items=usage_items,
+        compartment_group_by="compartmentId",
+    )
 
     assert csv_path is not None
     assert jsonl_path is not None
     assert csv_path.is_file()
     assert jsonl_path.is_file()
+    assert (tmp_path / "cost_usage_service.csv") in view_paths
+    assert (tmp_path / "cost_usage_region.csv") in view_paths
+    assert (tmp_path / "cost_usage_compartment.csv") in view_paths
 
     csv_text = csv_path.read_text(encoding="utf-8")
     assert "group_by" in csv_text
     assert "computed_amount" in csv_text
 
-    json_line = json.loads(jsonl_path.read_text(encoding="utf-8").splitlines()[0])
-    assert json_line["group_by"] == "service"
-    assert json_line["computed_amount"] == 1.5
-    assert json_line["tags"] == [{"key": "env", "value": "dev"}]
+    json_lines = [json.loads(line) for line in jsonl_path.read_text(encoding="utf-8").splitlines()]
+    service_line = next(item for item in json_lines if item.get("group_by") == "service")
+    assert service_line["computed_amount"] == 1.5
+    assert service_line["tags"] == [{"key": "env", "value": "dev"}]

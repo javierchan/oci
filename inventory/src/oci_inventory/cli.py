@@ -23,7 +23,14 @@ from .oci.clients import get_budget_client, get_home_region_name, get_osub_usage
 from .oci.compartments import list_compartments as oci_list_compartments
 from .oci.discovery import discover_in_region
 from .oci.regions import get_subscribed_regions
-from .report import render_cost_report_md, write_cost_report_md, write_cost_usage_csv, write_cost_usage_jsonl, write_run_report_md
+from .report import (
+    render_cost_report_md,
+    write_cost_report_md,
+    write_cost_usage_csv,
+    write_cost_usage_jsonl,
+    write_cost_usage_views,
+    write_run_report_md,
+)
 from .util.concurrency import parallel_map_ordered
 from .util.errors import (
     AuthResolutionError,
@@ -1328,6 +1335,12 @@ def cmd_run(cfg: RunConfig) -> int:
                 if usage_items:
                     write_cost_usage_csv(outdir=cfg.outdir, usage_items=usage_items)
                     write_cost_usage_jsonl(outdir=cfg.outdir, usage_items=usage_items)
+                    comp_group_by = cost_context.get("compartment_group_by") or "compartmentId"
+                    write_cost_usage_views(
+                        outdir=cfg.outdir,
+                        usage_items=usage_items,
+                        compartment_group_by=str(comp_group_by),
+                    )
             except Exception as e:
                 from .genai.redact import redact_text
 

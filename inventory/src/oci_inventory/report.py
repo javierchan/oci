@@ -1329,6 +1329,57 @@ def _money_fmt(value: Any) -> str:
     return f"{dec:.2f}"
 
 
+def _usage_json_safe(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _usage_json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_usage_json_safe(v) for v in value]
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        try:
+            return _usage_json_safe(to_dict())
+        except Exception:
+            return str(value)
+    attr_map = getattr(value, "attribute_map", None)
+    if isinstance(attr_map, dict) and attr_map:
+        out: Dict[str, Any] = {}
+        for key in attr_map.keys():
+            try:
+                out[str(key)] = _usage_json_safe(getattr(value, key))
+            except Exception:
+                continue
+        return out
+    return str(value)
+
+
+def _normalize_usage_value(value: Any) -> str:
+    safe_value = _usage_json_safe(value)
+    if safe_value is None:
+        return ""
+    if isinstance(safe_value, (dict, list)):
+        return json.dumps(safe_value, sort_keys=True, ensure_ascii=True)
+    return str(safe_value)
+
+
+def _usage_item_sort_key(item: Dict[str, Any]) -> Tuple[str, str, str, str, str, str, str, str]:
+    return (
+        str(item.get("group_by") or ""),
+        str(item.get("group_value") or ""),
+        str(item.get("time_usage_started") or ""),
+        str(item.get("time_usage_ended") or ""),
+        str(item.get("service") or ""),
+        str(item.get("region") or ""),
+        str(item.get("computed_amount") or ""),
+        str(item.get("currency") or ""),
+    )
+
+
 def _normalize_cost_rows(rows: Sequence[Dict[str, Any]], name_key: str) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for row in rows:
@@ -1939,54 +1990,6 @@ def write_cost_usage_csv(
     if not usage_items:
         return None
 
-    def _usage_json_safe(value: Any) -> Any:
-        if value is None:
-            return None
-        if isinstance(value, (str, int, float, bool)):
-            return value
-        if isinstance(value, Decimal):
-            return str(value)
-        if isinstance(value, dict):
-            return {str(k): _usage_json_safe(v) for k, v in value.items()}
-        if isinstance(value, (list, tuple)):
-            return [_usage_json_safe(v) for v in value]
-        to_dict = getattr(value, "to_dict", None)
-        if callable(to_dict):
-            try:
-                return _usage_json_safe(to_dict())
-            except Exception:
-                return str(value)
-        attr_map = getattr(value, "attribute_map", None)
-        if isinstance(attr_map, dict) and attr_map:
-            out: Dict[str, Any] = {}
-            for key in attr_map.keys():
-                try:
-                    out[str(key)] = _usage_json_safe(getattr(value, key))
-                except Exception:
-                    continue
-            return out
-        return str(value)
-
-    def _usage_item_sort_key(item: Dict[str, Any]) -> Tuple[str, str, str, str, str, str, str, str]:
-        return (
-            str(item.get("group_by") or ""),
-            str(item.get("group_value") or ""),
-            str(item.get("time_usage_started") or ""),
-            str(item.get("time_usage_ended") or ""),
-            str(item.get("service") or ""),
-            str(item.get("region") or ""),
-            str(item.get("computed_amount") or ""),
-            str(item.get("currency") or ""),
-        )
-
-    def _normalize_usage_value(value: Any) -> str:
-        safe_value = _usage_json_safe(value)
-        if safe_value is None:
-            return ""
-        if isinstance(safe_value, (dict, list)):
-            return json.dumps(safe_value, sort_keys=True, ensure_ascii=True)
-        return str(safe_value)
-
     base_fields = [
         "group_by",
         "group_value",
@@ -2053,34 +2056,6 @@ def write_cost_usage_jsonl(
     if not usage_items:
         return None
 
-    def _usage_json_safe(value: Any) -> Any:
-        if value is None:
-            return None
-        if isinstance(value, (str, int, float, bool)):
-            return value
-        if isinstance(value, Decimal):
-            return str(value)
-        if isinstance(value, dict):
-            return {str(k): _usage_json_safe(v) for k, v in value.items()}
-        if isinstance(value, (list, tuple)):
-            return [_usage_json_safe(v) for v in value]
-        to_dict = getattr(value, "to_dict", None)
-        if callable(to_dict):
-            try:
-                return _usage_json_safe(to_dict())
-            except Exception:
-                return str(value)
-        attr_map = getattr(value, "attribute_map", None)
-        if isinstance(attr_map, dict) and attr_map:
-            out: Dict[str, Any] = {}
-            for key in attr_map.keys():
-                try:
-                    out[str(key)] = _usage_json_safe(getattr(value, key))
-                except Exception:
-                    continue
-            return out
-        return str(value)
-
     rows: List[Dict[str, Any]] = []
     for item in usage_items:
         if isinstance(item, dict):
@@ -2108,3 +2083,64 @@ def write_cost_usage_jsonl(
             handle.write(json.dumps(_usage_json_safe(row), sort_keys=True, ensure_ascii=True))
             handle.write("\n")
     return path
+
+
+def write_cost_usage_views(
+    *,
+    outdir: Path,
+    usage_items: Sequence[Dict[str, Any]],
+    compartment_group_by: str,
+) -> List[Path]:
+    if not usage_items:
+        return []
+
+    def _write_view(filename: str, group_by: str, fieldnames: Sequence[str]) -> Optional[Path]:
+        rows = [item for item in usage_items if item.get("group_by") == group_by]
+        if not rows:
+            return None
+        rows.sort(key=_usage_item_sort_key)
+        outdir.mkdir(parents=True, exist_ok=True)
+        path = outdir / filename
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({field: _normalize_usage_value(row.get(field)) for field in fieldnames})
+        return path
+
+    outputs: List[Path] = []
+    service_fields = [
+        "time_usage_started",
+        "time_usage_ended",
+        "service",
+        "computed_amount",
+        "currency",
+    ]
+    region_fields = [
+        "time_usage_started",
+        "time_usage_ended",
+        "region",
+        "computed_amount",
+        "currency",
+    ]
+    compartment_fields: List[str] = [
+        "time_usage_started",
+        "time_usage_ended",
+    ]
+    if compartment_group_by == "compartmentName":
+        compartment_fields.append("compartment_name")
+    elif compartment_group_by == "compartmentPath":
+        compartment_fields.append("compartment_path")
+    else:
+        compartment_fields.extend(["compartment_id", "compartment_name", "compartment_path"])
+    compartment_fields.extend(["computed_amount", "currency"])
+
+    for filename, group_by, fields in (
+        ("cost_usage_service.csv", "service", service_fields),
+        ("cost_usage_region.csv", "region", region_fields),
+        ("cost_usage_compartment.csv", compartment_group_by, compartment_fields),
+    ):
+        path = _write_view(filename, group_by, fields)
+        if path:
+            outputs.append(path)
+    return outputs

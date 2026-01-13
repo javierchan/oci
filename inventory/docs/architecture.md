@@ -103,6 +103,8 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
   - Optional Usage API rows with full fields for validation/export (group_by, time window, service/region/compartment).
 - `cost_usage_items.jsonl`
   - Optional full Usage API items for auditability.
+- `cost_usage_service.csv`, `cost_usage_region.csv`, `cost_usage_compartment.csv`
+  - Optional per-view exports derived from Usage API groupings for stable FinOps reporting.
 
 - `relationships.jsonl`
   - Derived + enricher relationships (graph edges), one per line.
