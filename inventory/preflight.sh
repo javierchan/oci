@@ -2,7 +2,7 @@
 # Preflight setup for OCI Inventory project
 # - Verifies prerequisites
 # - Creates/uses .venv
-# - Installs project (editable) with optional extras via INVENTORY_EXTRAS
+# - Installs project (editable) with all defined extras (mandatory)
 # - Idempotent and CI-friendly
 set -euo pipefail
 
@@ -260,37 +260,46 @@ else
   ok "Tooling upgraded: $(pip --version | tr -d '\n')"
 fi
 
-# 4) Install project (editable), supporting optional extras via INVENTORY_EXTRAS
+# 4) Install project (editable) with all defined extras (mandatory)
 EXTRAS_SPEC=""
-if [ "${INVENTORY_EXTRAS:-}" != "" ]; then
-  # Sanitize spaces
-  EXTRAS_SANITIZED="$(printf "%s" "${INVENTORY_EXTRAS}" | tr -d ' ')"
-  EXTRAS_SPEC=".[${EXTRAS_SANITIZED}]"
-  info "Installing with extras: ${EXTRAS_SANITIZED}"
+ALL_EXTRAS=""
+if ! ALL_EXTRAS="$(python -c 'import tomllib, pathlib; data=tomllib.loads(pathlib.Path("pyproject.toml").read_text()); extras=sorted((data.get("project") or {}).get("optional-dependencies") or {}); print(",".join(extras))' 2>/dev/null)"; then
+  err "Failed to read optional dependencies from pyproject.toml."
+  exit 1
+fi
+if [ -n "${INVENTORY_EXTRAS:-}" ]; then
+  warn "INVENTORY_EXTRAS is set but all extras are mandatory; ignoring override."
+fi
+if [ -n "${ALL_EXTRAS}" ]; then
+  EXTRAS_SPEC=".[${ALL_EXTRAS}]"
+  info "Installing with all extras: ${ALL_EXTRAS}"
 else
-  info "Installing without extras"
+  info "Installing without extras (none defined)"
 fi
 
 # Respect pyproject.toml as source of truth; do not generate lock files here
 SETUP_TARGET="."
 if ! python -m pip install -e "${SETUP_TARGET}${EXTRAS_SPEC}"; then
-  err "pip install failed. Check network, index access, or extras name (INVENTORY_EXTRAS=${INVENTORY_EXTRAS:-<unset>})."
+  err "pip install failed. Check network or index access."
   exit 1
 fi
 ok "Project installed (editable) ${EXTRAS_SPEC}"
 
-# 5) Optional sanity checks for extras/config
+# 5) Sanity checks for extras/config
 if printf "%s" "${EXTRAS_SPEC}" | grep -q "parquet"; then
-  if ! python - <<'PY'
-try:
-    import pyarrow  # noqa: F401
-except Exception as exc:
-    raise SystemExit(1)
-PY
-  then
-    warn "pyarrow not importable; Parquet export may fail. Install extras with INVENTORY_EXTRAS=parquet."
-  else
+  if python -c 'import pyarrow' >/dev/null 2>&1; then
     ok "pyarrow import check passed"
+  else
+    err "pyarrow not importable; Parquet export will fail."
+    exit 1
+  fi
+fi
+if printf "%s" "${EXTRAS_SPEC}" | grep -q "wizard"; then
+  if python -c 'import rich' >/dev/null 2>&1; then
+    ok "rich import check passed"
+  else
+    err "rich not importable; wizard CLI will fail."
+    exit 1
   fi
 fi
 
@@ -327,13 +336,7 @@ Next steps:
   - Show CLI help:
       oci-inv --help
 
-Optional:
-  - Install with Parquet support:
-      INVENTORY_EXTRAS=parquet ./preflight.sh
-  - Install dev extras (if defined later):
-      INVENTORY_EXTRAS=dev ./preflight.sh
-  - Install OCI CLI (opt-in):
-      OCI_INV_INSTALL_OCI_CLI=1 ./preflight.sh
+Notes:
   - Offline mode (skip network actions):
       OCI_INV_OFFLINE=1 ./preflight.sh
   - Disable diagram generation (runtime):
@@ -347,5 +350,4 @@ Common issues:
   - Python version < 3.11 -> Install Python 3.11+ and re-run
   - Missing pip for python3 -> python3 -m ensurepip --upgrade
   - Missing git -> Install git for your OS
-  - Missing oci CLI -> Optional; install if needed for manual CLI workflows
 OUT
