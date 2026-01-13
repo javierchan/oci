@@ -82,75 +82,112 @@ ensure_nodejs() {
     err "Install Node.js/npm and retry."
     exit 1
   fi
-  local os_id=""
-  if [ -f /etc/os-release ]; then
-    # shellcheck disable=SC1091
-    . /etc/os-release
-    os_id="${ID:-}"
-  fi
-  case "${os_id}" in
-    debian|ubuntu|linuxmint)
-      if ! command -v apt-get >/dev/null 2>&1; then
-        err "npm is required but apt-get was not found."
-        err "Install Node.js/npm for your OS and retry."
+  local os_name=""
+  os_name="$(uname -s 2>/dev/null || echo unknown)"
+  case "${os_name}" in
+    Darwin)
+      if ! command -v brew >/dev/null 2>&1; then
+        err "npm is required but Homebrew was not found."
+        err "Install Homebrew (https://brew.sh/) and run: brew install node"
         exit 1
       fi
-      if [ "$(id -u)" -ne 0 ]; then
-        if ! command -v sudo >/dev/null 2>&1; then
-          err "npm is required but sudo is not available."
-          err "Install Node.js/npm and retry:"
-          err "  sudo apt-get update"
-          err "  sudo apt-get install -y nodejs npm"
+      if [ ! -t 0 ]; then
+        err "npm is required but missing, and no TTY is available."
+        err "Install Node.js/npm and retry: brew install node"
+        exit 1
+      fi
+      info "Node.js/npm required. Install via Homebrew? [y/N]"
+      read -r install_node
+      case "${install_node}" in
+        y|Y|yes|YES)
+          info "Installing Node.js via Homebrew..."
+          if ! brew install node; then
+            err "brew install node failed."
+            exit 1
+          fi
+          local brew_prefix=""
+          brew_prefix="$(brew --prefix 2>/dev/null || true)"
+          if [ -n "${brew_prefix}" ]; then
+            export PATH="${brew_prefix}/bin:${PATH}"
+          fi
+          ;;
+        *)
+          err "npm is required; install Node.js/npm and retry."
           exit 1
-        fi
-        if [ ! -t 0 ]; then
-          err "npm is required but missing, and no TTY is available for sudo."
-          err "Install Node.js/npm and retry:"
-          err "  sudo apt-get update"
-          err "  sudo apt-get install -y nodejs npm"
-          exit 1
-        fi
-        info "Node.js/npm required. Allow sudo install? [y/N]"
-        read -r install_node
-        case "${install_node}" in
-          y|Y|yes|YES)
-            info "Requesting sudo authentication (input will be hidden)..."
-            if ! sudo -v; then
-              err "sudo authentication failed."
+          ;;
+      esac
+      ;;
+    Linux)
+      local os_id=""
+      if [ -f /etc/os-release ]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        os_id="${ID:-}"
+      fi
+      case "${os_id}" in
+        debian|ubuntu|linuxmint)
+          if ! command -v apt-get >/dev/null 2>&1; then
+            err "npm is required but apt-get was not found."
+            err "Install Node.js/npm for your OS and retry."
+            exit 1
+          fi
+          if [ "$(id -u)" -ne 0 ]; then
+            if ! command -v sudo >/dev/null 2>&1; then
+              err "npm is required but sudo is not available."
+              err "Install Node.js/npm and retry:"
+              err "  sudo apt-get update"
+              err "  sudo apt-get install -y nodejs npm"
               exit 1
             fi
-            info "Installing Node.js and npm via sudo apt-get..."
-            if ! sudo apt-get update >/dev/null 2>&1; then
+            if [ ! -t 0 ]; then
+              err "npm is required but missing, and no TTY is available for sudo."
+              err "Install Node.js/npm and retry:"
+              err "  sudo apt-get update"
+              err "  sudo apt-get install -y nodejs npm"
+              exit 1
+            fi
+            info "Node.js/npm required. Allow sudo install? [y/N]"
+            read -r install_node
+            case "${install_node}" in
+              y|Y|yes|YES)
+                info "Requesting sudo authentication (input will be hidden)..."
+                if ! sudo -v; then
+                  err "sudo authentication failed."
+                  exit 1
+                fi
+                info "Installing Node.js and npm via sudo apt-get..."
+                if ! sudo apt-get update >/dev/null 2>&1; then
+                  err "apt-get update failed."
+                  exit 1
+                fi
+                if ! sudo apt-get install -y nodejs npm >/dev/null 2>&1; then
+                  err "apt-get install nodejs npm failed."
+                  exit 1
+                fi
+                ;;
+              *)
+                err "npm is required; install Node.js/npm and retry."
+                exit 1
+                ;;
+            esac
+          else
+            info "Installing Node.js and npm via apt-get..."
+            if ! apt-get update >/dev/null 2>&1; then
               err "apt-get update failed."
               exit 1
             fi
-            if ! sudo apt-get install -y nodejs npm >/dev/null 2>&1; then
+            if ! apt-get install -y nodejs npm >/dev/null 2>&1; then
               err "apt-get install nodejs npm failed."
               exit 1
             fi
-            ;;
-          *)
-            err "npm is required; install Node.js/npm and retry."
-            exit 1
-            ;;
-        esac
-      else
-        info "Installing Node.js and npm via apt-get..."
-        if ! apt-get update >/dev/null 2>&1; then
-          err "apt-get update failed."
+          fi
+          ;;
+        *)
+          err "npm is required but missing."
+          err "Install Node.js/npm for your Linux distribution and retry."
           exit 1
-        fi
-        if ! apt-get install -y nodejs npm >/dev/null 2>&1; then
-          err "apt-get install nodejs npm failed."
-          exit 1
-        fi
-      fi
-      if command -v npm >/dev/null 2>&1; then
-        ok "npm installed: $(npm --version 2>/dev/null | tr -d '\n')"
-      else
-        err "npm installation completed but npm not found on PATH."
-        exit 1
-      fi
+          ;;
+      esac
       ;;
     *)
       err "npm is required but missing."
@@ -158,6 +195,12 @@ ensure_nodejs() {
       exit 1
       ;;
   esac
+  if command -v npm >/dev/null 2>&1; then
+    ok "npm installed: $(npm --version 2>/dev/null | tr -d '\n')"
+  else
+    err "npm installation completed but npm not found on PATH."
+    exit 1
+  fi
 }
 
 ensure_mmdc() {
@@ -216,6 +259,12 @@ ensure_mmdc() {
           exit 1
         fi
         export PATH="${user_prefix}/bin:${PATH}"
+        case ":${PATH}:" in
+          *":${user_prefix}/bin:"*) ;;
+          *)
+            warn "Add ${user_prefix}/bin to PATH for future shells."
+            ;;
+        esac
         ;;
     esac
   fi

@@ -57,7 +57,7 @@ npm install -g @mermaid-js/mermaid-cli
 ```
 
 ## Preflight setup
-Use the preflight script to prepare a local or CI environment (macOS/Linux; may require sudo to install Node.js/npm or Mermaid CLI on Debian/Ubuntu). It:
+Use the preflight script to prepare a local or CI environment (macOS/Linux; may require sudo on Debian/Ubuntu and Homebrew on macOS for Node.js/npm or Mermaid CLI). It:
 - Verifies prerequisites (python3 ≥ 3.11, git, npm) and installs Mermaid CLI (mmdc) if missing
 - Creates or reuses a .venv virtual environment and upgrades pip/setuptools/wheel
 - Installs the project in editable mode, respecting pyproject.toml
@@ -84,6 +84,7 @@ Common failure modes:
 - Missing pip for python3 — try: `python3 -m ensurepip --upgrade`
 - Missing git — install git for your OS
 - Missing npm/Node.js — install Node.js (npm is required for Mermaid CLI)
+- Missing Homebrew on macOS — install Homebrew (https://brew.sh/) and retry
 - Offline mode with missing deps — disable offline mode or preinstall dependencies
 
 ## CLI
