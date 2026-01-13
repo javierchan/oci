@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from oci_inventory.auth.providers import AuthContext
-from oci_inventory.cli import _collect_cost_report_data, cmd_run
+from oci_inventory.cli import _collect_cost_report_data, _extract_group_value, _extract_usage_amount, _extract_usage_currency, cmd_run
 from oci_inventory.config import RunConfig, load_run_config
 from oci_inventory.enrich.default import DefaultEnricher
 from oci_inventory.normalize.transform import normalize_from_search_summary
@@ -289,3 +289,19 @@ def test_osub_aggregated_usage_is_collected(tmp_path, monkeypatch) -> None:
 
     assert osub_client.called is True
     assert cost_context.get("osub_usage", {}).get("computed_amount") == 12.5
+
+
+def test_usage_item_hyphenated_keys_are_supported() -> None:
+    data = {
+        "computed-amount": "12.5",
+        "currency": "USD",
+        "service": "Compute",
+        "compartment-id": "ocid1.compartment.oc1..test",
+        "region": "us-ashburn-1",
+    }
+
+    assert _extract_usage_amount(data) == 12.5
+    assert _extract_usage_currency(data) == "USD"
+    assert _extract_group_value(data, "service") == "Compute"
+    assert _extract_group_value(data, "compartmentId") == "ocid1.compartment.oc1..test"
+    assert _extract_group_value(data, "region") == "us-ashburn-1"

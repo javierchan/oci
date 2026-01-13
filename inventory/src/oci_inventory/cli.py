@@ -237,7 +237,7 @@ def _usage_item_to_dict(item: Any) -> Dict[str, Any]:
 
 
 def _extract_usage_amount(data: Dict[str, Any]) -> float:
-    for key in ("computed_amount", "computedAmount", "cost", "amount"):
+    for key in ("computed_amount", "computedAmount", "computed-amount", "cost", "amount"):
         val = data.get(key)
         if val is not None:
             try:
@@ -248,7 +248,7 @@ def _extract_usage_amount(data: Dict[str, Any]) -> float:
 
 
 def _extract_usage_currency(data: Dict[str, Any]) -> Optional[str]:
-    for key in ("currency", "currency_code", "currencyCode"):
+    for key in ("currency", "currency_code", "currencyCode", "currency-code"):
         val = data.get(key)
         if isinstance(val, str) and val.strip():
             return val.strip()
@@ -259,10 +259,10 @@ def _extract_group_value(data: Dict[str, Any], group_by: Optional[str]) -> str:
     if not group_by:
         return ""
     keys_by_group = {
-        "service": ("service", "service_name", "serviceName"),
-        "compartmentId": ("compartment_id", "compartmentId", "compartment_id"),
-        "region": ("region", "region_name", "regionName"),
-        "sku": ("sku", "sku_name", "skuName"),
+        "service": ("service", "service_name", "serviceName", "service-name"),
+        "compartmentId": ("compartment_id", "compartmentId", "compartment-id"),
+        "region": ("region", "region_name", "regionName", "region-name"),
+        "sku": ("sku", "sku_name", "skuName", "sku-name"),
     }
     for key in keys_by_group.get(group_by, (group_by,)):
         val = data.get(key)
