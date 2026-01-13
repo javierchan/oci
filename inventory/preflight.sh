@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Preflight setup for OCI Inventory project
-# - Verifies prerequisites
-# - Creates/uses .venv
-# - Installs project (editable) with all defined extras (mandatory)
+# - Verifies prerequisites and installs missing OS-level tools (bootstrap)
+# - Creates/uses .venv tied to the current Python major.minor
+# - Installs project (editable) with all defined extras
+# - Installs and verifies CLI tools (oci-inv, oci, mmdc)
 # - Idempotent and CI-friendly
 set -euo pipefail
 
@@ -11,6 +12,17 @@ info() { printf "[INFO] %s\n" "$*"; }
 ok()   { printf "[OK]   %s\n" "$*"; }
 warn() { printf "[WARN] %s\n" "$*"; }
 err()  { printf "[ERROR] %s\n" "$*" >&2; }
+
+MODE="${OCI_INV_MODE:-bootstrap}"
+case "${MODE}" in
+  bootstrap|check) ;;
+  *)
+    err "Invalid OCI_INV_MODE: ${MODE} (expected bootstrap or check)"
+    exit 1
+    ;;
+esac
+
+is_bootstrap() { [ "${MODE}" = "bootstrap" ]; }
 
 # Resolve repo root (directory containing pyproject.toml)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,182 +38,142 @@ fi
 REPO_ROOT="$(cd "${REPO_ROOT}" && pwd -P)"
 cd "${REPO_ROOT}"
 
-is_offline() {
-  case "${OCI_INV_OFFLINE:-}" in
-    1|true|yes|on) return 0 ;;
-    *) return 1 ;;
-  esac
-}
+VENV_DIR="${REPO_ROOT}/.venv"
+PY_VERSION_FILE="${VENV_DIR}/.python-version"
 
-# 1) Prerequisite checks
-info "Checking prerequisites..."
+OS_NAME="$(uname -s 2>/dev/null || echo unknown)"
+OS_ID=""
+if [ "${OS_NAME}" = "Linux" ] && [ -f /etc/os-release ]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  OS_ID="${ID:-}"
+fi
 
-need_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    err "Required command not found: $1"
-    return 1
+APT_UPDATED=0
+
+require_sudo() {
+  if ! command -v sudo >/dev/null 2>&1; then
+    err "sudo is required for package installation but was not found."
+    exit 1
   fi
-  return 0
 }
 
-# python3
-need_cmd python3 || { err "python3 is required (>= 3.11)"; exit 1; }
-PY_OK=0
-if ! python3 - <<'PY'
-import sys
-ok = (sys.version_info.major > 3) or (sys.version_info.major == 3 and sys.version_info.minor >= 11)
-sys.exit(0 if ok else 1)
-PY
-then
-  PY_OK=1
-fi
-if [ "${PY_OK}" -ne 0 ]; then
-  err "Python 3.11+ required; detected: $(python3 --version 2>/dev/null || echo 'unknown')"
-  exit 1
-fi
-ok "python3 detected: $(python3 --version 2>/dev/null | tr -d '\n')"
+apt_install() {
+  if ! is_bootstrap; then
+    err "Missing required package(s): $* (OCI_INV_MODE=check)"
+    exit 1
+  fi
+  case "${OS_ID}" in
+    debian|ubuntu|linuxmint) ;;
+    *)
+      err "Automatic install not supported for this Linux distribution (ID=${OS_ID})."
+      exit 1
+      ;;
+  esac
+  require_sudo
+  if [ "${APT_UPDATED}" -eq 0 ]; then
+    info "Running apt-get update..."
+    sudo apt-get update -y >/dev/null
+    APT_UPDATED=1
+  fi
+  info "Installing packages via apt-get: $*"
+  sudo apt-get install -y "$@" >/dev/null
+}
 
-# pip (module for current python)
-# System pip is not strictly required; we will ensure pip inside the virtualenv.
-if ! python3 -m pip --version >/dev/null 2>&1; then
-  warn "System pip for python3 not found; will bootstrap pip inside the virtual environment."
-else
-  ok "pip detected: $(python3 -m pip --version | tr -d '\n')"
-fi
+brew_install() {
+  if ! command -v brew >/dev/null 2>&1; then
+    err "Homebrew is required but not found. Install it from https://brew.sh/ and retry."
+    exit 1
+  fi
+  if ! is_bootstrap; then
+    err "Missing required package(s): $* (OCI_INV_MODE=check)"
+    exit 1
+  fi
+  info "Installing packages via Homebrew: $*"
+  brew install "$@"
+}
 
-# git
-need_cmd git || { err "git is required"; exit 1; }
-ok "git detected: $(git --version | tr -d '\n')"
+ensure_python() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    if ! is_bootstrap; then
+      err "python3 is required but missing (OCI_INV_MODE=check)."
+      exit 1
+    fi
+    if [ "${OS_NAME}" = "Darwin" ]; then
+      brew_install python@3.12
+    elif [ "${OS_NAME}" = "Linux" ]; then
+      apt_install python3 python3-venv
+    else
+      err "Unsupported OS for automatic Python install: ${OS_NAME}"
+      exit 1
+    fi
+  fi
+  if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+    err "Python 3.11+ required; detected: $(python3 --version 2>/dev/null || echo unknown)"
+    exit 1
+  fi
+  if ! python3 -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("venv") else 1)'; then
+    if ! is_bootstrap; then
+      err "Python venv module missing (OCI_INV_MODE=check)."
+      exit 1
+    fi
+    if [ "${OS_NAME}" = "Linux" ]; then
+      apt_install python3-venv
+    else
+      err "Python venv module missing; reinstall Python 3.11+ with venv support."
+      exit 1
+    fi
+  fi
+  if ! python3 -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("ensurepip") else 1)'; then
+    if ! is_bootstrap; then
+      err "Python ensurepip module missing (OCI_INV_MODE=check)."
+      exit 1
+    fi
+    if [ "${OS_NAME}" = "Linux" ]; then
+      apt_install python3-venv
+    else
+      err "Python ensurepip module missing; reinstall Python 3.11+ with ensurepip support."
+      exit 1
+    fi
+  fi
+  ok "python3 detected: $(python3 --version 2>/dev/null | tr -d '\n')"
+}
+
+ensure_git() {
+  if command -v git >/dev/null 2>&1; then
+    ok "git detected: $(git --version | tr -d '\n')"
+    return 0
+  fi
+  if [ "${OS_NAME}" = "Darwin" ]; then
+    err "git is required. Install Command Line Tools: xcode-select --install"
+    exit 1
+  elif [ "${OS_NAME}" = "Linux" ]; then
+    apt_install git
+    ok "git installed: $(git --version | tr -d '\n')"
+  else
+    err "Unsupported OS for automatic git install: ${OS_NAME}"
+    exit 1
+  fi
+}
 
 ensure_nodejs() {
   if command -v npm >/dev/null 2>&1; then
     ok "npm detected: $(npm --version 2>/dev/null | tr -d '\n')"
     return 0
   fi
-  if is_offline; then
-    err "npm is required but missing, and offline mode is enabled."
-    err "Install Node.js/npm and retry."
+  if [ "${OS_NAME}" = "Darwin" ]; then
+    brew_install node
+  elif [ "${OS_NAME}" = "Linux" ]; then
+    apt_install nodejs npm
+  else
+    err "Unsupported OS for automatic Node.js/npm install: ${OS_NAME}"
     exit 1
   fi
-  local os_name=""
-  os_name="$(uname -s 2>/dev/null || echo unknown)"
-  case "${os_name}" in
-    Darwin)
-      if ! command -v brew >/dev/null 2>&1; then
-        err "npm is required but Homebrew was not found."
-        err "Install Homebrew (https://brew.sh/) and run: brew install node"
-        exit 1
-      fi
-      if [ ! -t 0 ]; then
-        err "npm is required but missing, and no TTY is available."
-        err "Install Node.js/npm and retry: brew install node"
-        exit 1
-      fi
-      info "Node.js/npm required. Install via Homebrew? [y/N]"
-      read -r install_node
-      case "${install_node}" in
-        y|Y|yes|YES)
-          info "Installing Node.js via Homebrew..."
-          if ! brew install node; then
-            err "brew install node failed."
-            exit 1
-          fi
-          local brew_prefix=""
-          brew_prefix="$(brew --prefix 2>/dev/null || true)"
-          if [ -n "${brew_prefix}" ]; then
-            export PATH="${brew_prefix}/bin:${PATH}"
-          fi
-          ;;
-        *)
-          err "npm is required; install Node.js/npm and retry."
-          exit 1
-          ;;
-      esac
-      ;;
-    Linux)
-      local os_id=""
-      if [ -f /etc/os-release ]; then
-        # shellcheck disable=SC1091
-        . /etc/os-release
-        os_id="${ID:-}"
-      fi
-      case "${os_id}" in
-        debian|ubuntu|linuxmint)
-          if ! command -v apt-get >/dev/null 2>&1; then
-            err "npm is required but apt-get was not found."
-            err "Install Node.js/npm for your OS and retry."
-            exit 1
-          fi
-          if [ "$(id -u)" -ne 0 ]; then
-            if ! command -v sudo >/dev/null 2>&1; then
-              err "npm is required but sudo is not available."
-              err "Install Node.js/npm and retry:"
-              err "  sudo apt-get update"
-              err "  sudo apt-get install -y nodejs npm"
-              exit 1
-            fi
-            if [ ! -t 0 ]; then
-              err "npm is required but missing, and no TTY is available for sudo."
-              err "Install Node.js/npm and retry:"
-              err "  sudo apt-get update"
-              err "  sudo apt-get install -y nodejs npm"
-              exit 1
-            fi
-            info "Node.js/npm required. Allow sudo install? [y/N]"
-            read -r install_node
-            case "${install_node}" in
-              y|Y|yes|YES)
-                info "Requesting sudo authentication (input will be hidden)..."
-                if ! sudo -v; then
-                  err "sudo authentication failed."
-                  exit 1
-                fi
-                info "Installing Node.js and npm via sudo apt-get..."
-                if ! sudo apt-get update >/dev/null 2>&1; then
-                  err "apt-get update failed."
-                  exit 1
-                fi
-                if ! sudo apt-get install -y nodejs npm >/dev/null 2>&1; then
-                  err "apt-get install nodejs npm failed."
-                  exit 1
-                fi
-                ;;
-              *)
-                err "npm is required; install Node.js/npm and retry."
-                exit 1
-                ;;
-            esac
-          else
-            info "Installing Node.js and npm via apt-get..."
-            if ! apt-get update >/dev/null 2>&1; then
-              err "apt-get update failed."
-              exit 1
-            fi
-            if ! apt-get install -y nodejs npm >/dev/null 2>&1; then
-              err "apt-get install nodejs npm failed."
-              exit 1
-            fi
-          fi
-          ;;
-        *)
-          err "npm is required but missing."
-          err "Install Node.js/npm for your Linux distribution and retry."
-          exit 1
-          ;;
-      esac
-      ;;
-    *)
-      err "npm is required but missing."
-      err "Install Node.js/npm for your OS and retry."
-      exit 1
-      ;;
-  esac
-  if command -v npm >/dev/null 2>&1; then
-    ok "npm installed: $(npm --version 2>/dev/null | tr -d '\n')"
-  else
+  if ! command -v npm >/dev/null 2>&1; then
     err "npm installation completed but npm not found on PATH."
     exit 1
   fi
+  ok "npm installed: $(npm --version 2>/dev/null | tr -d '\n')"
 }
 
 ensure_mmdc() {
@@ -209,336 +181,216 @@ ensure_mmdc() {
     ok "mmdc detected: $(mmdc --version 2>/dev/null | tr -d '\n')"
     return 0
   fi
-  if is_offline; then
-    err "mmdc is required but missing, and offline mode is enabled."
-    err "Install Mermaid CLI and retry: npm install -g @mermaid-js/mermaid-cli"
+  if ! is_bootstrap; then
+    err "mmdc is required but missing (OCI_INV_MODE=check)."
     exit 1
   fi
-  local npm_global_bin=""
-  local npm_can_write=0
-  npm_global_bin="$(npm bin -g 2>/dev/null || true)"
-  if [ -n "${npm_global_bin}" ] && [ -w "${npm_global_bin}" ]; then
-    npm_can_write=1
-  fi
-  if [ "${npm_can_write}" -eq 1 ]; then
-    info "Installing Mermaid CLI (@mermaid-js/mermaid-cli) globally..."
-    if ! npm install -g @mermaid-js/mermaid-cli; then
-      err "Failed to install Mermaid CLI via npm."
-      exit 1
-    fi
-    if [ -n "${npm_global_bin}" ]; then
-      export PATH="${npm_global_bin}:${PATH}"
+  info "Installing Mermaid CLI (@mermaid-js/mermaid-cli)..."
+  if npm install -g @mermaid-js/mermaid-cli; then
+    :
+  elif command -v sudo >/dev/null 2>&1; then
+    info "Retrying Mermaid CLI install with sudo..."
+    if ! sudo npm install -g @mermaid-js/mermaid-cli; then
+      info "Falling back to user prefix for Mermaid CLI..."
+      npm install -g --prefix "${HOME}/.local" @mermaid-js/mermaid-cli
+      export PATH="${HOME}/.local/bin:${PATH}"
     fi
   else
-    local use_sudo=""
-    if command -v sudo >/dev/null 2>&1 && [ -t 0 ]; then
-      info "Global npm prefix is not writable. Use sudo for global install? [y/N]"
-      read -r use_sudo
-    fi
-    case "${use_sudo}" in
-      y|Y|yes|YES)
-        info "Requesting sudo authentication (input will be hidden)..."
-        if ! sudo -v; then
-          err "sudo authentication failed."
-          exit 1
-        fi
-        info "Installing Mermaid CLI via sudo npm..."
-        if ! sudo npm install -g @mermaid-js/mermaid-cli; then
-          err "Failed to install Mermaid CLI via sudo npm."
-          exit 1
-        fi
-        npm_global_bin="$(npm bin -g 2>/dev/null || true)"
-        if [ -n "${npm_global_bin}" ]; then
-          export PATH="${npm_global_bin}:${PATH}"
-        fi
-        ;;
-      *)
-        local user_prefix="${HOME}/.local"
-        info "Installing Mermaid CLI to user prefix: ${user_prefix}"
-        if ! npm install -g --prefix "${user_prefix}" @mermaid-js/mermaid-cli; then
-          err "Failed to install Mermaid CLI via npm (user prefix)."
-          exit 1
-        fi
-        export PATH="${user_prefix}/bin:${PATH}"
-        case ":${PATH}:" in
-          *":${user_prefix}/bin:"*) ;;
-          *)
-            warn "Add ${user_prefix}/bin to PATH for future shells."
-            ;;
-        esac
-        ;;
-    esac
+    info "Falling back to user prefix for Mermaid CLI..."
+    npm install -g --prefix "${HOME}/.local" @mermaid-js/mermaid-cli
+    export PATH="${HOME}/.local/bin:${PATH}"
   fi
-  if command -v mmdc >/dev/null 2>&1; then
-    ok "mmdc installed: $(mmdc --version 2>/dev/null | tr -d '\n')"
-  else
+  NPM_GLOBAL_BIN="$(npm bin -g 2>/dev/null || true)"
+  if [ -n "${NPM_GLOBAL_BIN}" ]; then
+    export PATH="${NPM_GLOBAL_BIN}:${PATH}"
+  fi
+  if ! command -v mmdc >/dev/null 2>&1; then
     err "mmdc installation completed but command not found on PATH."
-    err "Check npm global bin path and your PATH."
     exit 1
   fi
+  ok "mmdc installed: $(mmdc --version 2>/dev/null | tr -d '\n')"
 }
 
-ensure_nodejs
-ensure_mmdc
+ensure_venv() {
+  local current_py_version=""
+  current_py_version="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+  local recreate=0
+  if [ ! -d "${VENV_DIR}" ] || [ ! -f "${VENV_DIR}/bin/activate" ]; then
+    recreate=1
+  elif [ -f "${PY_VERSION_FILE}" ]; then
+    if [ "$(cat "${PY_VERSION_FILE}")" != "${current_py_version}" ]; then
+      recreate=1
+    fi
+  fi
 
-print_python_venv_help() {
-  local os_name=""
-  os_name="$(uname -s 2>/dev/null || echo unknown)"
-  case "${os_name}" in
-    Darwin)
-      warn "macOS: ensure python3 includes venv/ensurepip (python.org installer or Homebrew)."
-      warn "Homebrew: brew install python@3.12"
-      ;;
-    Linux)
-      if [ -f /etc/os-release ]; then
-        # shellcheck disable=SC1091
-        . /etc/os-release
-        case "${ID:-}" in
-          debian|ubuntu|linuxmint)
-            warn "Debian/Ubuntu: sudo apt-get install -y python3-venv or python3.<minor>-venv"
-            ;;
-          *)
-            warn "Linux: install your distro's python3 venv/ensurepip package (often named python3-venv)."
-            ;;
-        esac
-      else
-        warn "Linux: install your distro's python3 venv/ensurepip package (often named python3-venv)."
-      fi
-      ;;
-    *)
-      warn "Install the Python venv/ensurepip components for your OS."
-      ;;
-  esac
-}
-
-VENV_WITHOUT_PIP=0
-VENV_PIP_FLAG=""
-PY_MISSING_MODULES="$(
-  python3 -c 'import importlib.util; missing=[m for m in ("venv","ensurepip") if importlib.util.find_spec(m) is None]; print(",".join(missing))' 2>/dev/null || true
-)"
-if printf "%s" "${PY_MISSING_MODULES}" | grep -q "venv"; then
-  err "Python venv module is missing; cannot create a virtual environment."
-  print_python_venv_help
-  exit 1
-fi
-if printf "%s" "${PY_MISSING_MODULES}" | grep -q "ensurepip"; then
-  warn "Python ensurepip module is missing; venv will be created without pip."
-  VENV_WITHOUT_PIP=1
-  VENV_PIP_FLAG="--without-pip"
-  if is_offline; then
-    err "Offline mode enabled and ensurepip is unavailable; cannot bootstrap pip in venv."
-    print_python_venv_help
-    exit 1
-  fi
-  if ! command -v curl >/dev/null 2>&1; then
-    err "curl is required to bootstrap pip when ensurepip is unavailable."
-    print_python_venv_help
-    exit 1
-  fi
-fi
-
-if is_offline; then
-  export PIP_NO_INDEX=1
-  export PIP_DISABLE_PIP_VERSION_CHECK=1
-  info "Offline mode enabled; network operations will be skipped when possible."
-fi
-
-# 2) Python virtual environment
-VENV_DIR=".venv"
-VENV_ACTIVATE=""
-RECREATE_VENV=0
-if [ -e "${VENV_DIR}" ] && [ ! -d "${VENV_DIR}" ]; then
-  err "${VENV_DIR} exists but is not a directory; remove or rename it and retry."
-  exit 1
-fi
-if [ -d "${VENV_DIR}" ]; then
-  if [ -f "${VENV_DIR}/bin/activate" ]; then
-    VENV_ACTIVATE="${VENV_DIR}/bin/activate"
-    info "Using existing virtual environment: ${VENV_DIR}"
-  elif [ -f "${VENV_DIR}/Scripts/activate" ]; then
-    VENV_ACTIVATE="${VENV_DIR}/Scripts/activate"
-    info "Using existing virtual environment: ${VENV_DIR}"
-  else
-    warn "Existing ${VENV_DIR} is missing activation scripts; recreating."
-    RECREATE_VENV=1
-  fi
-fi
-if [ "${RECREATE_VENV}" -eq 1 ]; then
-  if python3 -m venv ${VENV_PIP_FLAG} --clear "${VENV_DIR}"; then
-    ok "Virtual environment recreated"
-  else
-    err "Failed to recreate virtual environment."
-    print_python_venv_help
-    exit 1
-  fi
-  if [ -f "${VENV_DIR}/bin/activate" ]; then
-    VENV_ACTIVATE="${VENV_DIR}/bin/activate"
-  elif [ -f "${VENV_DIR}/Scripts/activate" ]; then
-    VENV_ACTIVATE="${VENV_DIR}/Scripts/activate"
-  else
-    err "Virtual environment activation script not found after recreation."
-    exit 1
-  fi
-fi
-if [ -z "${VENV_ACTIVATE}" ]; then
-  if [ "${VENV_WITHOUT_PIP}" -eq 1 ]; then
-    info "Creating virtual environment without pip: ${VENV_DIR}"
-  else
-    info "Creating virtual environment: ${VENV_DIR}"
-  fi
-  if python3 -m venv ${VENV_PIP_FLAG} "${VENV_DIR}"; then
-    ok "Virtual environment created"
-  else
-    err "Failed to create virtual environment."
-    print_python_venv_help
-    exit 1
-  fi
-  if [ -f "${VENV_DIR}/bin/activate" ]; then
-    VENV_ACTIVATE="${VENV_DIR}/bin/activate"
-  elif [ -f "${VENV_DIR}/Scripts/activate" ]; then
-    VENV_ACTIVATE="${VENV_DIR}/Scripts/activate"
-  else
-    err "Virtual environment activation script not found after creation."
-    exit 1
-  fi
-fi
-
-# shellcheck source=/dev/null
-# Activate venv for this script process
-. "${VENV_ACTIVATE}"
-ok "Activated virtual environment: ${VENV_DIR}"
-
-# 3) Ensure/upgrade pip/setuptools/wheel inside venv
-# Ensure pip present in venv
-if ! command -v pip >/dev/null 2>&1; then
-  info "Bootstrapping pip inside virtual environment..."
-  if python -m ensurepip --upgrade >/dev/null 2>&1; then
-    ok "ensurepip in venv succeeded"
-  else
-    if is_offline; then
-      err "Offline mode enabled and ensurepip unavailable; cannot bootstrap pip in venv."
+  if [ "${recreate}" -eq 1 ]; then
+    if ! is_bootstrap; then
+      err "Virtualenv missing or incompatible (OCI_INV_MODE=check)."
       exit 1
-    else
-      info "ensurepip unavailable; fetching get-pip.py to bootstrap pip in venv..."
-      if curl -sSfL https://bootstrap.pypa.io/get-pip.py | python - >/dev/null 2>&1; then
-        ok "get-pip.py succeeded"
+    fi
+    info "Creating virtual environment: ${VENV_DIR}"
+    rm -rf "${VENV_DIR}"
+    python3 -m venv "${VENV_DIR}"
+  else
+    info "Using existing virtual environment: ${VENV_DIR}"
+  fi
+
+  if [ ! -f "${VENV_DIR}/bin/activate" ]; then
+    err "Virtual environment activation script not found: ${VENV_DIR}/bin/activate"
+    exit 1
+  fi
+
+  # shellcheck source=/dev/null
+  . "${VENV_DIR}/bin/activate"
+  printf "%s\n" "${current_py_version}" > "${PY_VERSION_FILE}"
+  ok "Activated virtual environment: ${VENV_DIR}"
+}
+
+ensure_pip() {
+  if ! python -m pip --version >/dev/null 2>&1; then
+    if ! is_bootstrap; then
+      err "pip missing in virtualenv (OCI_INV_MODE=check)."
+      exit 1
+    fi
+    info "Bootstrapping pip inside virtual environment..."
+    if ! python -m ensurepip --upgrade >/dev/null 2>&1; then
+      if [ "${OCI_INV_ALLOW_GET_PIP:-}" = "1" ]; then
+        if ! command -v curl >/dev/null 2>&1; then
+          err "curl is required for get-pip.py but was not found."
+          exit 1
+        fi
+        info "ensurepip failed; using get-pip.py (OCI_INV_ALLOW_GET_PIP=1)..."
+        curl -sSfL https://bootstrap.pypa.io/get-pip.py | python - >/dev/null 2>&1
       else
-        err "Failed to bootstrap pip inside the virtual environment. Install python3-venv or python3-pip and retry."
+        err "ensurepip failed and OCI_INV_ALLOW_GET_PIP is not set."
         exit 1
       fi
     fi
   fi
-fi
-if is_offline; then
-  warn "Offline mode enabled; skipping pip/setuptools/wheel upgrade."
-else
   info "Upgrading pip, setuptools, wheel..."
   python -m pip install --upgrade pip setuptools wheel >/dev/null
-  ok "Tooling upgraded: $(pip --version | tr -d '\n')"
-fi
+  ok "Tooling upgraded: $(python -m pip --version | tr -d '\n')"
+}
 
-ensure_oci_cli() {
-  local venv_bin=""
-  venv_bin="$(python -c 'import sys, pathlib; print(pathlib.Path(sys.executable).parent)' 2>/dev/null || true)"
-  if [ -z "${venv_bin}" ]; then
-    err "Unable to determine virtual environment bin directory."
-    exit 1
-  fi
-  if [ -x "${venv_bin}/oci" ]; then
-    ok "oci CLI detected in venv: $("${venv_bin}/oci" --version 2>/dev/null | tr -d '\n')"
-    return 0
-  fi
-  if is_offline; then
-    err "oci CLI is required but missing, and offline mode is enabled."
-    err "Install oci-cli in the venv when network access is available."
-    exit 1
-  fi
-  info "Installing OCI CLI inside virtual environment..."
-  if python -m pip install oci-cli; then
-    if [ -x "${venv_bin}/oci" ]; then
-      ok "oci CLI installed: $("${venv_bin}/oci" --version 2>/dev/null | tr -d '\n')"
+read_all_extras() {
+  local tmp=""
+  tmp="$(mktemp)"
+  printf "%s\n" \
+    "import tomllib" \
+    "from pathlib import Path" \
+    "data = tomllib.loads(Path(\"pyproject.toml\").read_text(encoding=\"utf-8\"))" \
+    "extras = (data.get(\"project\") or {}).get(\"optional-dependencies\") or {}" \
+    "print(\",\".join(sorted(extras)))" > "${tmp}"
+  python "${tmp}"
+  rm -f "${tmp}"
+}
+
+install_project() {
+  local all_extras=""
+  all_extras="$(read_all_extras)"
+  if is_bootstrap; then
+    if [ -n "${all_extras}" ]; then
+      info "Installing project with all extras: ${all_extras}"
+      python -m pip install -e "${REPO_ROOT}[${all_extras}]"
     else
-      err "oci CLI installation completed but command not found in venv."
+      info "No extras defined; installing project only"
+      python -m pip install -e "${REPO_ROOT}"
+    fi
+    ok "Project installed (editable)"
+  else
+    info "OCI_INV_MODE=check: skipping project installation."
+  fi
+
+  if printf ",%s," "${all_extras}" | grep -q ",parquet,"; then
+    if python -c 'import pyarrow' >/dev/null 2>&1; then
+      ok "pyarrow import check passed"
+    else
+      err "pyarrow not importable; Parquet support will fail."
       exit 1
     fi
-  else
-    err "Failed to install oci CLI via pip."
-    exit 1
+  fi
+  if printf ",%s," "${all_extras}" | grep -q ",wizard,"; then
+    if python -c 'import rich' >/dev/null 2>&1; then
+      ok "rich import check passed"
+    else
+      err "rich not importable; wizard CLI will fail."
+      exit 1
+    fi
   fi
 }
 
+ensure_oci_cli() {
+  if is_bootstrap; then
+    info "Installing OCI CLI inside virtual environment..."
+    python -m pip install -U oci-cli >/dev/null
+  fi
+  if [ ! -x "${VENV_DIR}/bin/oci" ]; then
+    err "OCI CLI binary not found in venv: ${VENV_DIR}/bin/oci"
+    exit 1
+  fi
+  OCI_PATH="$(command -v oci || true)"
+  case "${OCI_PATH}" in
+    "${VENV_DIR}/bin/"*)
+      ok "oci CLI detected in venv: $("${VENV_DIR}/bin/oci" --version 2>/dev/null | tr -d '\n')"
+      ;;
+    *)
+      err "oci CLI on PATH is not from the virtual environment: ${OCI_PATH}"
+      exit 1
+      ;;
+  esac
+}
+
+ensure_project_cli() {
+  if ! command -v oci-inv >/dev/null 2>&1; then
+    err "Project CLI 'oci-inv' not found on PATH after install."
+    exit 1
+  fi
+  if ! oci-inv --help >/dev/null 2>&1; then
+    err "oci-inv --help failed; installation may be broken."
+    exit 1
+  fi
+  ok "oci-inv CLI available"
+}
+
+create_env_template() {
+  local template="${REPO_ROOT}/inventory.env.example"
+  if [ -f "${template}" ] || ! is_bootstrap; then
+    return 0
+  fi
+  printf "%s\n" \
+    "# Example config for OCI Inventory" \
+    "" \
+    "# Enable diagram generation (default: 1)" \
+    "OCI_INV_DIAGRAMS=1" \
+    "" \
+    "# OneSubscription subscription ID for cost reports" \
+    "OCI_INV_OSUB_SUBSCRIPTION_ID=<subscription_id>" \
+    "" \
+    "# Offline mode (no network at runtime)" \
+    "OCI_INV_OFFLINE=0" \
+    "" > "${template}"
+  ok "Wrote configuration template: ${template}"
+}
+
+info "Checking prerequisites..."
+ensure_python
+ensure_git
+ensure_nodejs
+ensure_mmdc
+ensure_venv
+ensure_pip
 ensure_oci_cli
-
-# 4) Install project (editable) with all defined extras (mandatory)
-EXTRAS_SPEC=""
-ALL_EXTRAS=""
-if ! ALL_EXTRAS="$(python -c 'import tomllib, pathlib; data=tomllib.loads(pathlib.Path("pyproject.toml").read_text()); extras=sorted((data.get("project") or {}).get("optional-dependencies") or {}); print(",".join(extras))' 2>/dev/null)"; then
-  err "Failed to read optional dependencies from pyproject.toml."
-  exit 1
-fi
-if [ -n "${INVENTORY_EXTRAS:-}" ]; then
-  warn "INVENTORY_EXTRAS is set but all extras are mandatory; ignoring override."
-fi
-if [ -n "${ALL_EXTRAS}" ]; then
-  EXTRAS_SPEC=".[${ALL_EXTRAS}]"
-  info "Installing with all extras: ${ALL_EXTRAS}"
-else
-  info "Installing without extras (none defined)"
-fi
-
-# Respect pyproject.toml as source of truth; do not generate lock files here
-SETUP_TARGET="."
-if ! python -m pip install -e "${SETUP_TARGET}${EXTRAS_SPEC}"; then
-  err "pip install failed. Check network or index access."
-  exit 1
-fi
-ok "Project installed (editable) ${EXTRAS_SPEC}"
-
-# 5) Sanity checks for extras/config
-if printf "%s" "${EXTRAS_SPEC}" | grep -q "parquet"; then
-  if python -c 'import pyarrow' >/dev/null 2>&1; then
-    ok "pyarrow import check passed"
-  else
-    err "pyarrow not importable; Parquet export will fail."
-    exit 1
-  fi
-fi
-if printf "%s" "${EXTRAS_SPEC}" | grep -q "wizard"; then
-  if python -c 'import rich' >/dev/null 2>&1; then
-    ok "rich import check passed"
-  else
-    err "rich not importable; wizard CLI will fail."
-    exit 1
-  fi
-fi
+install_project
+ensure_project_cli
 
 info "Skipping validation of OCI config (~/.oci/config) and GenAI YAML config."
+create_env_template
 
-# 5) Final summary and next steps
-cat <<'OUT'
-[OK] Preflight complete.
-
-Next steps:
-  - Activate your virtual environment in new shells:
-      . .venv/bin/activate
-    (or run this script again to ensure activation in this shell)
-  - Show CLI help:
-      oci-inv --help
-
-Notes:
-  - Offline mode (skip network actions):
-      OCI_INV_OFFLINE=1 ./preflight.sh
-  - Disable diagram generation (runtime):
-      oci-inv run --no-diagrams
-    Or set default via OCI_INV_DIAGRAMS=0
-  - Provide OneSubscription subscription ID (runtime):
-      oci-inv run --cost-report --osub-subscription-id <subscription_id>
-    Or set default via OCI_INV_OSUB_SUBSCRIPTION_ID
-
-Common issues:
-  - Python version < 3.11 -> Install Python 3.11+ and re-run
-  - Missing pip for python3 -> python3 -m ensurepip --upgrade
-  - Missing git -> Install git for your OS
-  - Missing npm/Node.js -> Install Node.js (npm is required for Mermaid CLI)
-  - Offline mode with missing deps -> Disable offline mode or preinstall dependencies
-OUT
+printf "%s\n" \
+  "[OK] Preflight complete." \
+  "" \
+  "Next steps:" \
+  "  - Activate your virtual environment in new shells:" \
+  "      . .venv/bin/activate" \
+  "  - Show CLI help:" \
+  "      oci-inv --help"

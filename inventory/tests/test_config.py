@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+
 import pytest
 
 from oci_inventory.config import DEFAULT_QUERY, RunConfig, load_run_config
@@ -162,3 +164,15 @@ def test_cost_compartment_group_by_from_env(monkeypatch) -> None:
     monkeypatch.setenv("OCI_INV_COST_COMPARTMENT_GROUP_BY", "compartmentName")
     _, cfg = load_run_config(argv=["run"])
     assert cfg.cost_compartment_group_by == "compartmentName"
+
+
+def test_validate_auth_skips_config(monkeypatch) -> None:
+    from oci_inventory import cli
+
+    buf = io.StringIO()
+    monkeypatch.setattr(cli.sys, "stdout", buf)
+
+    _command, cfg = load_run_config(argv=["validate-auth", "--auth", "config", "--profile", "DEFAULT"])
+    rc = cli.cmd_validate_auth(cfg)
+    assert rc == 0
+    assert "SKIP: OCI config validation disabled" in buf.getvalue()
