@@ -100,7 +100,9 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
   - Optional cost and usage assessment report when cost reporting is enabled.
   - Must follow `docs/cost_guidelines.md`.
 - `cost_usage_items.csv`
-  - Optional non-zero Usage API rows for quick validation (service, time window, amount, currency).
+  - Optional Usage API rows with full fields for validation/export (group_by, time window, service/region/compartment).
+- `cost_usage_items.jsonl`
+  - Optional full Usage API items for auditability.
 
 - `relationships.jsonl`
   - Derived + enricher relationships (graph edges), one per line.

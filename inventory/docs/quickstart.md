@@ -101,7 +101,8 @@ out/<timestamp>/
   inventory.csv
   inventory.parquet        # when --parquet and pyarrow installed
   cost_report.md           # when --cost-report
-  cost_usage_items.csv     # when --cost-report; non-zero Usage API rows
+  cost_usage_items.csv     # when --cost-report; full Usage API rows
+  cost_usage_items.jsonl   # when --cost-report; full Usage API items
   relationships.jsonl      # when relationships are emitted
   graph_nodes.jsonl        # diagram-ready nodes (optional)
   graph_edges.jsonl        # diagram-ready edges (optional)

@@ -23,7 +23,7 @@ from .oci.clients import get_budget_client, get_home_region_name, get_osub_usage
 from .oci.compartments import list_compartments as oci_list_compartments
 from .oci.discovery import discover_in_region
 from .oci.regions import get_subscribed_regions
-from .report import render_cost_report_md, write_cost_report_md, write_cost_usage_csv, write_run_report_md
+from .report import render_cost_report_md, write_cost_report_md, write_cost_usage_csv, write_cost_usage_jsonl, write_run_report_md
 from .util.concurrency import parallel_map_ordered
 from .util.errors import (
     AuthResolutionError,
@@ -396,15 +396,18 @@ def _request_summarized_usages(
                         if isinstance(val, str) and val.strip():
                             service_name = val.strip()
                             break
-                items_out.append(
-                    {
-                        "time_usage_started": started,
-                        "time_usage_ended": ended,
-                        "service": service_name,
-                        "computed_amount": amount,
-                        "currency": item_currency or currency,
-                    }
-                )
+                record = dict(item_dict)
+                record.setdefault("group_by", group_by or "total")
+                record.setdefault("group_value", name if group_by else "")
+                if started and not record.get("time_usage_started"):
+                    record["time_usage_started"] = started
+                if ended and not record.get("time_usage_ended"):
+                    record["time_usage_ended"] = ended
+                if service_name and not record.get("service"):
+                    record["service"] = service_name
+                record["computed_amount"] = amount
+                record["currency"] = item_currency or currency or ""
+                items_out.append(record)
 
         page = getattr(resp, "headers", {}).get("opc-next-page")
         if not page:
@@ -579,6 +582,7 @@ def _collect_cost_report_data(
                 start_dt,
                 end_dt,
                 group_by=None,
+                items_out=usage_items,
             )
             steps.append({"name": "usage_api_total", "status": "OK" if not err else "ERROR"})
             if err:
@@ -608,6 +612,7 @@ def _collect_cost_report_data(
                 start_dt,
                 end_dt,
                 group_by=compartment_group_by,
+                items_out=usage_items,
             )
             steps.append({"name": "usage_api_compartment", "status": "OK" if not err else "ERROR"})
             if err:
@@ -630,6 +635,7 @@ def _collect_cost_report_data(
                 start_dt,
                 end_dt,
                 group_by="region",
+                items_out=usage_items,
             )
             steps.append({"name": "usage_api_region", "status": "OK" if not err else "ERROR"})
             if err:
@@ -1321,6 +1327,7 @@ def cmd_run(cfg: RunConfig) -> int:
                 usage_items = cost_context.get("usage_items") or []
                 if usage_items:
                     write_cost_usage_csv(outdir=cfg.outdir, usage_items=usage_items)
+                    write_cost_usage_jsonl(outdir=cfg.outdir, usage_items=usage_items)
             except Exception as e:
                 from .genai.redact import redact_text
 
