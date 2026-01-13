@@ -80,6 +80,62 @@ is_offline() {
   esac
 }
 
+print_python_venv_help() {
+  local os_name=""
+  os_name="$(uname -s 2>/dev/null || echo unknown)"
+  case "${os_name}" in
+    Darwin)
+      warn "macOS: ensure python3 includes venv/ensurepip (python.org installer or Homebrew)."
+      warn "Homebrew: brew install python@3.12"
+      ;;
+    Linux)
+      if [ -f /etc/os-release ]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        case "${ID:-}" in
+          debian|ubuntu|linuxmint)
+            warn "Debian/Ubuntu: sudo apt-get install -y python3-venv or python3.<minor>-venv"
+            ;;
+          *)
+            warn "Linux: install your distro's python3 venv/ensurepip package (often named python3-venv)."
+            ;;
+        esac
+      else
+        warn "Linux: install your distro's python3 venv/ensurepip package (often named python3-venv)."
+      fi
+      ;;
+    *)
+      warn "Install the Python venv/ensurepip components for your OS."
+      ;;
+  esac
+}
+
+VENV_WITHOUT_PIP=0
+VENV_PIP_FLAG=""
+PY_MISSING_MODULES="$(
+  python3 -c 'import importlib.util; missing=[m for m in ("venv","ensurepip") if importlib.util.find_spec(m) is None]; print(",".join(missing))' 2>/dev/null || true
+)"
+if printf "%s" "${PY_MISSING_MODULES}" | grep -q "venv"; then
+  err "Python venv module is missing; cannot create a virtual environment."
+  print_python_venv_help
+  exit 1
+fi
+if printf "%s" "${PY_MISSING_MODULES}" | grep -q "ensurepip"; then
+  warn "Python ensurepip module is missing; venv will be created without pip."
+  VENV_WITHOUT_PIP=1
+  VENV_PIP_FLAG="--without-pip"
+  if is_offline; then
+    err "Offline mode enabled and ensurepip is unavailable; cannot bootstrap pip in venv."
+    print_python_venv_help
+    exit 1
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    err "curl is required to bootstrap pip when ensurepip is unavailable."
+    print_python_venv_help
+    exit 1
+  fi
+fi
+
 if is_offline; then
   export PIP_NO_INDEX=1
   export PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -112,22 +168,67 @@ fi
 
 # 2) Python virtual environment
 VENV_DIR=".venv"
+VENV_ACTIVATE=""
+RECREATE_VENV=0
+if [ -e "${VENV_DIR}" ] && [ ! -d "${VENV_DIR}" ]; then
+  err "${VENV_DIR} exists but is not a directory; remove or rename it and retry."
+  exit 1
+fi
 if [ -d "${VENV_DIR}" ]; then
-  info "Using existing virtual environment: ${VENV_DIR}"
-else
-  info "Creating virtual environment: ${VENV_DIR}"
-  if python3 -m venv "${VENV_DIR}"; then
+  if [ -f "${VENV_DIR}/bin/activate" ]; then
+    VENV_ACTIVATE="${VENV_DIR}/bin/activate"
+    info "Using existing virtual environment: ${VENV_DIR}"
+  elif [ -f "${VENV_DIR}/Scripts/activate" ]; then
+    VENV_ACTIVATE="${VENV_DIR}/Scripts/activate"
+    info "Using existing virtual environment: ${VENV_DIR}"
+  else
+    warn "Existing ${VENV_DIR} is missing activation scripts; recreating."
+    RECREATE_VENV=1
+  fi
+fi
+if [ "${RECREATE_VENV}" -eq 1 ]; then
+  if python3 -m venv ${VENV_PIP_FLAG} --clear "${VENV_DIR}"; then
+    ok "Virtual environment recreated"
+  else
+    err "Failed to recreate virtual environment."
+    print_python_venv_help
+    exit 1
+  fi
+  if [ -f "${VENV_DIR}/bin/activate" ]; then
+    VENV_ACTIVATE="${VENV_DIR}/bin/activate"
+  elif [ -f "${VENV_DIR}/Scripts/activate" ]; then
+    VENV_ACTIVATE="${VENV_DIR}/Scripts/activate"
+  else
+    err "Virtual environment activation script not found after recreation."
+    exit 1
+  fi
+fi
+if [ -z "${VENV_ACTIVATE}" ]; then
+  if [ "${VENV_WITHOUT_PIP}" -eq 1 ]; then
+    info "Creating virtual environment without pip: ${VENV_DIR}"
+  else
+    info "Creating virtual environment: ${VENV_DIR}"
+  fi
+  if python3 -m venv ${VENV_PIP_FLAG} "${VENV_DIR}"; then
     ok "Virtual environment created"
   else
-    err "Failed to create virtual environment. The venv module may be missing."
-    warn "On Debian/Ubuntu: sudo apt-get install -y python3-venv"
+    err "Failed to create virtual environment."
+    print_python_venv_help
+    exit 1
+  fi
+  if [ -f "${VENV_DIR}/bin/activate" ]; then
+    VENV_ACTIVATE="${VENV_DIR}/bin/activate"
+  elif [ -f "${VENV_DIR}/Scripts/activate" ]; then
+    VENV_ACTIVATE="${VENV_DIR}/Scripts/activate"
+  else
+    err "Virtual environment activation script not found after creation."
     exit 1
   fi
 fi
 
 # shellcheck source=/dev/null
 # Activate venv for this script process
-. "${VENV_DIR}/bin/activate"
+. "${VENV_ACTIVATE}"
 ok "Activated virtual environment: ${VENV_DIR}"
 
 # 3) Ensure/upgrade pip/setuptools/wheel inside venv
