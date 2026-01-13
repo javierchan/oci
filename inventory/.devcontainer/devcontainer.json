@@ -1,0 +1,12 @@
+{
+  "name": "OCI Inventory",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "workspaceFolder": "/workspaces/inventory",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+  "mounts": [
+    "source=${localEnv:HOME}/.oci,target=/home/vscode/.oci,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.config/oci-inv,target=/home/vscode/.config/oci-inv,type=bind,consistency=cached"
+  ],
+  "postCreateCommand": "bash -lc './preflight.sh'"
+}
