@@ -83,3 +83,10 @@ def load_genai_config(path: Optional[Path] = None) -> GenAIConfig:
         vision_model_id=(str(raw.get("vision_model_id")).strip() if raw.get("vision_model_id") else None),
     )
     return cfg
+
+
+def try_load_genai_config(path: Optional[Path] = None) -> Optional[GenAIConfig]:
+    try:
+        return load_genai_config(path)
+    except Exception:
+        return None

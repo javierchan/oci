@@ -23,6 +23,7 @@ if [ ! -f "${REPO_ROOT}/pyproject.toml" ]; then
     exit 1
   fi
 fi
+REPO_ROOT="$(cd "${REPO_ROOT}" && pwd -P)"
 cd "${REPO_ROOT}"
 
 is_offline() {
@@ -486,7 +487,7 @@ else
 fi
 
 # Respect pyproject.toml as source of truth; do not generate lock files here
-SETUP_TARGET="."
+SETUP_TARGET="${REPO_ROOT}"
 if ! python -m pip install -e "${SETUP_TARGET}${EXTRAS_SPEC}"; then
   err "pip install failed. Check network or index access."
   exit 1
@@ -511,27 +512,7 @@ if printf "%s" "${EXTRAS_SPEC}" | grep -q "wizard"; then
   fi
 fi
 
-find_genai_config() {
-  if [ -n "${OCI_INV_GENAI_CONFIG:-}" ] && [ -f "${OCI_INV_GENAI_CONFIG}" ]; then
-    printf "%s" "${OCI_INV_GENAI_CONFIG}"
-    return 0
-  fi
-  if [ -f "$HOME/.config/oci-inv/genai.yaml" ]; then
-    printf "%s" "$HOME/.config/oci-inv/genai.yaml"
-    return 0
-  fi
-  if [ -f "${REPO_ROOT}/.local/genai.yaml" ]; then
-    printf "%s" "${REPO_ROOT}/.local/genai.yaml"
-    return 0
-  fi
-  return 1
-}
-
-if GENAI_PATH="$(find_genai_config)"; then
-  ok "GenAI config detected: ${GENAI_PATH}"
-else
-  warn "GenAI config not found; GenAI features (genai-chat, --genai-summary) will be skipped. Set OCI_INV_GENAI_CONFIG or place ~/.config/oci-inv/genai.yaml."
-fi
+info "Skipping validation of OCI config (~/.oci/config) and GenAI YAML config."
 
 # 5) Final summary and next steps
 cat <<'OUT'
