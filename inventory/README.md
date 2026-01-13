@@ -255,7 +255,8 @@ This section is a quick map of every user-facing component in the CLI, what it d
   - Default granularity is DAILY; time range inputs are normalized to 00:00:00 UTC before querying.
   - Default time range is month-to-date (first day of the current month at 00:00 UTC through now, normalized to 00:00 UTC).
   - Optional compartment grouping: `--cost-compartment-group-by [compartmentId|compartmentName|compartmentPath]` (defaults to compartmentId).
-  - `cost_usage_items.csv` includes non-zero Usage API rows (service, time window, amount, currency) for quick validation.
+  - `cost_usage_items.csv` includes Usage API rows with full fields (group_by, time window, service/region/compartment where available).
+  - `cost_usage_items.jsonl` includes full Usage API items for auditability.
 - **Enrichment coverage**: reports which resource types in an inventory lack enrichers.
   - Example: `oci-inv enrich-coverage --inventory out/<timestamp>/inventory.jsonl --top 10`
 - **Interactive wizard (optional)**: guided, preview-first UX that builds/executes the same `oci-inv` commands; safe defaults and copy/pasteable outputs.

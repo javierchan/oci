@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from oci_inventory.config import RunConfig
-from oci_inventory.report import render_cost_report_md, render_run_report_md
+from oci_inventory.report import (
+    render_cost_report_md,
+    render_run_report_md,
+    write_cost_usage_csv,
+    write_cost_usage_jsonl,
+)
 
 
 def test_render_run_report_includes_excluded_regions_and_query(tmp_path: Path) -> None:
@@ -283,3 +289,43 @@ def test_render_cost_report_embeds_genai_summary(tmp_path: Path) -> None:
     assert "Summary line." in text
     assert "- Bullet one" in text
     assert "GenAI executive summary embedded after the introduction." in text
+
+
+def test_write_cost_usage_exports(tmp_path: Path) -> None:
+    class FakeTag:
+        attribute_map = {"key": "key", "value": "value"}
+
+        def __init__(self, key: str, value: str) -> None:
+            self.key = key
+            self.value = value
+
+    usage_items = [
+        {
+            "group_by": "service",
+            "group_value": "Compute",
+            "time_usage_started": "2026-01-01T00:00:00+00:00",
+            "time_usage_ended": "2026-01-02T00:00:00+00:00",
+            "service": "Compute",
+            "region": "us-ashburn-1",
+            "computed_amount": 1.5,
+            "currency": "USD",
+            "tags": [FakeTag("env", "dev")],
+        }
+    ]
+
+    csv_path = write_cost_usage_csv(outdir=tmp_path, usage_items=usage_items)
+    jsonl_path = write_cost_usage_jsonl(outdir=tmp_path, usage_items=usage_items)
+
+    assert csv_path is not None
+    assert jsonl_path is not None
+    assert csv_path.is_file()
+    assert jsonl_path.is_file()
+
+    csv_text = csv_path.read_text(encoding="utf-8")
+    assert "group_by" in csv_text
+    assert "computed_amount" in csv_text
+
+    json_line = json.loads(jsonl_path.read_text(encoding="utf-8").splitlines()[0])
+    assert json_line["group_by"] == "service"
+    assert json_line["computed_amount"] == 1.5
+    assert json_line["tags"] == [{"key": "env", "value": "dev"}]

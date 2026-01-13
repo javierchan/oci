@@ -1939,45 +1939,172 @@ def write_cost_usage_csv(
     if not usage_items:
         return None
 
+    def _usage_json_safe(value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, Decimal):
+            return str(value)
+        if isinstance(value, dict):
+            return {str(k): _usage_json_safe(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [_usage_json_safe(v) for v in value]
+        to_dict = getattr(value, "to_dict", None)
+        if callable(to_dict):
+            try:
+                return _usage_json_safe(to_dict())
+            except Exception:
+                return str(value)
+        attr_map = getattr(value, "attribute_map", None)
+        if isinstance(attr_map, dict) and attr_map:
+            out: Dict[str, Any] = {}
+            for key in attr_map.keys():
+                try:
+                    out[str(key)] = _usage_json_safe(getattr(value, key))
+                except Exception:
+                    continue
+            return out
+        return str(value)
+
+    def _usage_item_sort_key(item: Dict[str, Any]) -> Tuple[str, str, str, str, str, str, str, str]:
+        return (
+            str(item.get("group_by") or ""),
+            str(item.get("group_value") or ""),
+            str(item.get("time_usage_started") or ""),
+            str(item.get("time_usage_ended") or ""),
+            str(item.get("service") or ""),
+            str(item.get("region") or ""),
+            str(item.get("computed_amount") or ""),
+            str(item.get("currency") or ""),
+        )
+
+    def _normalize_usage_value(value: Any) -> str:
+        safe_value = _usage_json_safe(value)
+        if safe_value is None:
+            return ""
+        if isinstance(safe_value, (dict, list)):
+            return json.dumps(safe_value, sort_keys=True, ensure_ascii=True)
+        return str(safe_value)
+
+    base_fields = [
+        "group_by",
+        "group_value",
+        "time_usage_started",
+        "time_usage_ended",
+        "service",
+        "region",
+        "compartment_id",
+        "compartment_name",
+        "compartment_path",
+        "resource_id",
+        "resource_name",
+        "sku_name",
+        "sku_part_number",
+        "unit",
+        "computed_amount",
+        "computed_quantity",
+        "currency",
+        "attributed_cost",
+        "attributed_usage",
+        "discount",
+        "list_rate",
+        "overage",
+        "overages_flag",
+        "platform",
+        "ad",
+        "is_forecast",
+        "subscription_id",
+        "tenant_id",
+        "tenant_name",
+        "tags",
+        "weight",
+    ]
+
+    all_keys: set[str] = set()
     rows: List[Dict[str, Any]] = []
     for item in usage_items:
-        amount_raw = item.get("computed_amount")
-        try:
-            amount = Decimal(str(amount_raw))
-        except Exception:
+        if not isinstance(item, dict):
             continue
-        if amount <= 0:
-            continue
-        rows.append(
-            {
-                "time_usage_started": str(item.get("time_usage_started") or ""),
-                "time_usage_ended": str(item.get("time_usage_ended") or ""),
-                "service": str(item.get("service") or ""),
-                "computed_amount": amount,
-                "currency": str(item.get("currency") or ""),
-            }
-        )
+        rows.append(item)
+        all_keys.update(item.keys())
     if not rows:
         return None
 
-    rows.sort(key=lambda r: (r["time_usage_started"], r["service"], r["computed_amount"]))
+    extra_fields = sorted(key for key in all_keys if key not in base_fields)
+    fieldnames = base_fields + extra_fields
+    rows.sort(key=_usage_item_sort_key)
 
     outdir.mkdir(parents=True, exist_ok=True)
     path = outdir / "cost_usage_items.csv"
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(
-            handle,
-            fieldnames=["time_usage_started", "time_usage_ended", "service", "computed_amount", "currency"],
-        )
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
-            writer.writerow(
-                {
-                    "time_usage_started": row["time_usage_started"],
-                    "time_usage_ended": row["time_usage_ended"],
-                    "service": row["service"],
-                    "computed_amount": _money_fmt(row["computed_amount"]),
-                    "currency": row["currency"],
-                }
-            )
+            writer.writerow({field: _normalize_usage_value(row.get(field)) for field in fieldnames})
+    return path
+
+
+def write_cost_usage_jsonl(
+    *,
+    outdir: Path,
+    usage_items: Sequence[Dict[str, Any]],
+) -> Optional[Path]:
+    if not usage_items:
+        return None
+
+    def _usage_json_safe(value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, Decimal):
+            return str(value)
+        if isinstance(value, dict):
+            return {str(k): _usage_json_safe(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [_usage_json_safe(v) for v in value]
+        to_dict = getattr(value, "to_dict", None)
+        if callable(to_dict):
+            try:
+                return _usage_json_safe(to_dict())
+            except Exception:
+                return str(value)
+        attr_map = getattr(value, "attribute_map", None)
+        if isinstance(attr_map, dict) and attr_map:
+            out: Dict[str, Any] = {}
+            for key in attr_map.keys():
+                try:
+                    out[str(key)] = _usage_json_safe(getattr(value, key))
+                except Exception:
+                    continue
+            return out
+        return str(value)
+
+    rows: List[Dict[str, Any]] = []
+    for item in usage_items:
+        if isinstance(item, dict):
+            rows.append(item)
+    if not rows:
+        return None
+
+    rows.sort(
+        key=lambda item: (
+            str(item.get("group_by") or ""),
+            str(item.get("group_value") or ""),
+            str(item.get("time_usage_started") or ""),
+            str(item.get("time_usage_ended") or ""),
+            str(item.get("service") or ""),
+            str(item.get("region") or ""),
+            str(item.get("computed_amount") or ""),
+            str(item.get("currency") or ""),
+        )
+    )
+
+    outdir.mkdir(parents=True, exist_ok=True)
+    path = outdir / "cost_usage_items.jsonl"
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(_usage_json_safe(row), sort_keys=True, ensure_ascii=True))
+            handle.write("\n")
     return path
