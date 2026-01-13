@@ -118,6 +118,12 @@ def cmd_genai_chat(cfg: RunConfig) -> int:
     from .genai.redact import redact_text
 def cmd_genai_chat(cfg: RunConfig) -> int:
     from .genai.chat_runner import run_genai_chat
+    from .genai.config import try_load_genai_config
+
+    genai_cfg = try_load_genai_config()
+    if genai_cfg is None:
+        print("SKIP: GenAI config not found or invalid; genai-chat disabled.")
+        return 0
 
     if cfg.genai_report:
         report_text = cfg.genai_report.read_text(encoding="utf-8")
@@ -149,6 +155,7 @@ def cmd_genai_chat(cfg: RunConfig) -> int:
                 system=system,
                 max_tokens=max_tokens,
                 temperature=temperature,
+                genai_cfg=genai_cfg,
             )
             if not out.strip():
                 out, hint = run_genai_chat(
@@ -157,6 +164,7 @@ def cmd_genai_chat(cfg: RunConfig) -> int:
                     system=system,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    genai_cfg=genai_cfg,
                 )
         else:
             out, hint = run_genai_chat(
@@ -165,6 +173,7 @@ def cmd_genai_chat(cfg: RunConfig) -> int:
                 system=system,
                 max_tokens=max_tokens,
                 temperature=temperature,
+                genai_cfg=genai_cfg,
             )
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
@@ -213,6 +222,17 @@ def _resolve_auth(cfg: RunConfig) -> AuthContext:
         return resolve_auth(cfg.auth, cfg.profile, cfg.tenancy_ocid)
     except AuthError as e:
         raise AuthResolutionError(str(e)) from e
+
+
+def _resolve_auth_no_config(cfg: RunConfig) -> Optional[AuthContext]:
+    try:
+        return resolve_auth("resource", cfg.profile, cfg.tenancy_ocid)
+    except AuthError:
+        pass
+    try:
+        return resolve_auth("instance", cfg.profile, cfg.tenancy_ocid)
+    except AuthError:
+        return None
 
 
 def _parse_iso_utc(value: str) -> datetime:
@@ -1361,7 +1381,16 @@ def cmd_diff(cfg: RunConfig) -> int:
 
 
 def cmd_validate_auth(cfg: RunConfig) -> int:
-    ctx = _resolve_auth(cfg)
+    if cfg.auth in {"config", "security_token"}:
+        print("SKIP: OCI config validation disabled by policy.")
+        return 0
+    if cfg.auth == "auto":
+        ctx = _resolve_auth_no_config(cfg)
+        if ctx is None:
+            print("SKIP: signer-based auth not available; OCI config validation disabled by policy.")
+            return 0
+    else:
+        ctx = _resolve_auth(cfg)
     # Attempt to list regions as a validation step
     regions = get_subscribed_regions(ctx)
     LOG.info("Authentication validated", extra={"method": cfg.auth, "profile": cfg.profile, "regions": regions})
@@ -1388,10 +1417,13 @@ def cmd_list_compartments(cfg: RunConfig) -> int:
 
 def cmd_list_genai_models(cfg: RunConfig) -> int:
     # Intentionally uses the out-of-repo GenAI config file to avoid committing secrets.
-    from .genai.config import load_genai_config
+    from .genai.config import try_load_genai_config
     from .genai.list_models import list_genai_models, write_genai_models_csv
 
-    genai_cfg = load_genai_config()
+    genai_cfg = try_load_genai_config()
+    if genai_cfg is None:
+        print("SKIP: GenAI config not found or invalid; list-genai-models disabled.")
+        return 0
     rows = list_genai_models(genai_cfg=genai_cfg)
     write_genai_models_csv(rows, sys.stdout)
     return 0
