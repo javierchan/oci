@@ -114,6 +114,11 @@ ensure_nodejs() {
         read -r install_node
         case "${install_node}" in
           y|Y|yes|YES)
+            info "Requesting sudo authentication (input will be hidden)..."
+            if ! sudo -v; then
+              err "sudo authentication failed."
+              exit 1
+            fi
             info "Installing Node.js and npm via sudo apt-get..."
             if ! sudo apt-get update >/dev/null 2>&1; then
               err "apt-get update failed."
