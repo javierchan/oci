@@ -57,7 +57,7 @@ npm install -g @mermaid-js/mermaid-cli
 ```
 
 ## Preflight setup
-Use the preflight script to prepare a local or CI environment (macOS/Linux; may require sudo to install Node.js/npm on Debian/Ubuntu). It:
+Use the preflight script to prepare a local or CI environment (macOS/Linux; may require sudo to install Node.js/npm or Mermaid CLI on Debian/Ubuntu). It:
 - Verifies prerequisites (python3 ≥ 3.11, git, npm) and installs Mermaid CLI (mmdc) if missing
 - Creates or reuses a .venv virtual environment and upgrades pip/setuptools/wheel
 - Installs the project in editable mode, respecting pyproject.toml
