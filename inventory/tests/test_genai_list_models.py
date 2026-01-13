@@ -30,7 +30,7 @@ def test_cmd_list_genai_models_outputs_csv(monkeypatch) -> None:
     # Fake GenAI config loader
     monkeypatch.setattr(
         genai_config,
-        "load_genai_config",
+        "try_load_genai_config",
         lambda _path=None: GenAIConfig(
             oci_profile="DEFAULT",
             compartment_id="ocid1.compartment.oc1..example",
@@ -79,3 +79,17 @@ def test_cmd_list_genai_models_outputs_csv(monkeypatch) -> None:
     # this test focuses on CSV formatting and that the command prints something.
     assert any("A Model" in line for line in out[1:])
     assert any("B Model" in line for line in out[1:])
+
+
+def test_cmd_list_genai_models_skips_when_missing_config(monkeypatch) -> None:
+    from oci_inventory import cli
+    import oci_inventory.genai.config as genai_config
+
+    monkeypatch.setattr(genai_config, "try_load_genai_config", lambda _path=None: None)
+    buf = io.StringIO()
+    monkeypatch.setattr(cli.sys, "stdout", buf)
+
+    _command, cfg = load_run_config(argv=["list-genai-models"])
+    rc = cli.cmd_list_genai_models(cfg)
+    assert rc == 0
+    assert "SKIP: GenAI config not found or invalid" in buf.getvalue()
