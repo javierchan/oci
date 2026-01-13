@@ -487,7 +487,7 @@ else
 fi
 
 # Respect pyproject.toml as source of truth; do not generate lock files here
-SETUP_TARGET="${REPO_ROOT}"
+SETUP_TARGET="."
 if ! python -m pip install -e "${SETUP_TARGET}${EXTRAS_SPEC}"; then
   err "pip install failed. Check network or index access."
   exit 1
