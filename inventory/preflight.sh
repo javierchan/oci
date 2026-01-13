@@ -72,6 +72,60 @@ fi
 need_cmd git || { err "git is required"; exit 1; }
 ok "git detected: $(git --version | tr -d '\n')"
 
+ensure_nodejs() {
+  if command -v npm >/dev/null 2>&1; then
+    ok "npm detected: $(npm --version 2>/dev/null | tr -d '\n')"
+    return 0
+  fi
+  if is_offline; then
+    err "npm is required but missing, and offline mode is enabled."
+    err "Install Node.js/npm and retry."
+    exit 1
+  fi
+  local os_id=""
+  if [ -f /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    os_id="${ID:-}"
+  fi
+  case "${os_id}" in
+    debian|ubuntu|linuxmint)
+      if ! command -v apt-get >/dev/null 2>&1; then
+        err "npm is required but apt-get was not found."
+        err "Install Node.js/npm for your OS and retry."
+        exit 1
+      fi
+      if [ "$(id -u)" -ne 0 ]; then
+        err "npm is required but missing."
+        err "Install Node.js/npm and retry:"
+        err "  sudo apt-get update"
+        err "  sudo apt-get install -y nodejs npm"
+        exit 1
+      fi
+      info "Installing Node.js and npm via apt-get..."
+      if ! apt-get update >/dev/null 2>&1; then
+        err "apt-get update failed."
+        exit 1
+      fi
+      if ! apt-get install -y nodejs npm >/dev/null 2>&1; then
+        err "apt-get install nodejs npm failed."
+        exit 1
+      fi
+      if command -v npm >/dev/null 2>&1; then
+        ok "npm installed: $(npm --version 2>/dev/null | tr -d '\n')"
+      else
+        err "npm installation completed but npm not found on PATH."
+        exit 1
+      fi
+      ;;
+    *)
+      err "npm is required but missing."
+      err "Install Node.js/npm for your OS and retry."
+      exit 1
+      ;;
+  esac
+}
+
 ensure_mmdc() {
   if command -v mmdc >/dev/null 2>&1; then
     ok "mmdc detected: $(mmdc --version 2>/dev/null | tr -d '\n')"
@@ -80,11 +134,6 @@ ensure_mmdc() {
   if is_offline; then
     err "mmdc is required but missing, and offline mode is enabled."
     err "Install Mermaid CLI and retry: npm install -g @mermaid-js/mermaid-cli"
-    exit 1
-  fi
-  if ! command -v npm >/dev/null 2>&1; then
-    err "mmdc is required but npm was not found."
-    err "Install Node.js/npm, then run: npm install -g @mermaid-js/mermaid-cli"
     exit 1
   fi
   info "Installing Mermaid CLI (@mermaid-js/mermaid-cli)..."
@@ -107,6 +156,7 @@ ensure_mmdc() {
   fi
 }
 
+ensure_nodejs
 ensure_mmdc
 
 print_python_venv_help() {
