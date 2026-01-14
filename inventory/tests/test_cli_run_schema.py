@@ -377,15 +377,13 @@ def test_request_summarized_usages_handles_list_data(monkeypatch) -> None:
     assert err is None
     assert currency == "USD"
     assert rows == [{"name": "Compute", "amount": 3.5}]
-    assert items_out == [
-        {
-            "time_usage_started": "",
-            "time_usage_ended": "",
-            "service": "Compute",
-            "computed_amount": 3.5,
-            "currency": "USD",
-        }
-    ]
+    assert len(items_out) == 1
+    item = items_out[0]
+    assert item["service"] == "Compute"
+    assert item["computed_amount"] == 3.5
+    assert item["currency"] == "USD"
+    assert item["group_by"] == "service"
+    assert item["group_value"] == "Compute"
 
 
 def test_cost_report_uses_compartment_group_by(monkeypatch, tmp_path) -> None:

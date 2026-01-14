@@ -169,6 +169,7 @@ Secrets are never printed. The docs include operational guidance.
 - Enrichment runs with a separate worker pool (`--workers-enrich`).
 - Cost Usage API queries can run in parallel when `--workers-cost` is set (opt-in).
 - Cost export writes can run in parallel when `--workers-export` is set (opt-in).
+- Enrichment results are chunked to disk before final exports to reduce peak memory usage.
 - OCI SDK default retry strategy is enabled for clients.
 - Local helpers provide safe concurrency patterns.
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
@@ -19,7 +20,7 @@ from .export.graph import build_graph, write_graph, write_mermaid
 from .export.jsonl import write_jsonl
 from .export.parquet import ParquetNotAvailable, write_parquet
 from .logging import LogConfig, get_logger, setup_logging
-from .normalize.transform import sort_relationships, stable_json_dumps
+from .normalize.transform import canonicalize_record, normalize_relationships, sort_relationships, stable_json_dumps
 from .oci.clients import get_budget_client, get_home_region_name, get_osub_usage_client, get_usage_api_client
 from .oci.compartments import list_compartments as oci_list_compartments
 from .oci.discovery import discover_in_region
@@ -42,6 +43,7 @@ from .util.errors import (
 LOG = get_logger(__name__)
 
 OUT_SCHEMA_VERSION = "1"
+STREAM_CHUNK_SIZE = 5000
 
 REQUIRED_INVENTORY_FIELDS = {
     "ocid",
@@ -843,6 +845,38 @@ def _generate_cost_report_narratives(
     return narratives, errors
 
 
+def _record_sort_key(record: Dict[str, Any]) -> Tuple[str, str]:
+    return (str(record.get("ocid") or ""), str(record.get("resourceType") or ""))
+
+
+def _write_inventory_chunk(records: List[Dict[str, Any]], path: Path) -> int:
+    records.sort(key=_record_sort_key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for rec in records:
+            obj = canonicalize_record(normalize_relationships(dict(rec)))
+            f.write(stable_json_dumps(obj))
+            f.write("\n")
+    return len(records)
+
+
+def _load_inventory_chunks(paths: Sequence[Path]) -> List[Dict[str, Any]]:
+    records: List[Dict[str, Any]] = []
+    for path in paths:
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                records.append(json.loads(line))
+    return records
+
+
+def _cleanup_chunk_dir(path: Path) -> None:
+    if path.exists():
+        shutil.rmtree(path)
+
+
 def _collect_cost_report_data(
     *,
     ctx: Optional[AuthContext],
@@ -1458,8 +1492,8 @@ def cmd_run(cfg: RunConfig) -> int:
     subscribed_regions: List[str] = []
     requested_regions: Optional[List[str]] = None
     excluded_regions: List[Dict[str, str]] = []
-    discovered: List[Dict[str, Any]] = []
-    enriched: List[Dict[str, Any]] = []
+    discovered_count = 0
+    inventory_records: List[Dict[str, Any]] = []
     metrics: Optional[Dict[str, Any]] = None
     parquet_warning: Optional[str] = None
     diff_warning: Optional[str] = None
@@ -1489,57 +1523,77 @@ def cmd_run(cfg: RunConfig) -> int:
         def _disc(r: str) -> List[Dict[str, Any]]:
             return discover_in_region(ctx, r, cfg.query, collected_at=run_collected_at)
 
+        all_relationships: List[Dict[str, str]] = []
+        chunk_dir = cfg.outdir / ".inventory_chunks"
+        chunk_paths: List[Path] = []
+        chunk_records: List[Dict[str, Any]] = []
+        chunk_index = 0
+
+        def _flush_chunk() -> None:
+            nonlocal chunk_index
+            if not chunk_records:
+                return
+            chunk_path = chunk_dir / f"inventory_chunk_{chunk_index:04d}.jsonl"
+            _write_inventory_chunk(chunk_records, chunk_path)
+            chunk_paths.append(chunk_path)
+            chunk_records.clear()
+            chunk_index += 1
+
         with ThreadPoolExecutor(max_workers=max(1, cfg.workers_region)) as pool:
             futures_by_region = {r: pool.submit(_disc, r) for r in regions}
 
-            region_results: List[List[Dict[str, Any]]] = []
             for r in regions:
                 try:
-                    region_results.append(futures_by_region[r].result())
+                    region_records = futures_by_region[r].result()
                 except Exception as e:
                     excluded_regions.append({"region": r, "reason": str(e)})
                     LOG.warning("Region discovery failed; skipping region", extra={"region": r, "error": str(e)})
-                    region_results.append([])
+                    region_records = []
 
-        # Flatten discovered records
-        discovered = [rec for sub in region_results for rec in sub]
-        LOG.info("Discovery complete", extra={"count": len(discovered), "excluded_regions": len(excluded_regions)})
+                discovered_count += len(region_records)
+                if not region_records:
+                    continue
 
-        # Enrichment in parallel
-        all_relationships: List[Dict[str, str]] = []
+                # Enrichment in parallel per region (streamed to disk).
+                def _enrich_and_collect(rec: Dict[str, Any]) -> Dict[str, Any]:
+                    updated, rels = _enrich_record(rec)
+                    return {"record": updated, "rels": rels}
 
-        def _enrich_and_collect(rec: Dict[str, Any]) -> Dict[str, Any]:
-            updated, rels = _enrich_record(rec)
-            return {"record": updated, "rels": rels}
+                worker_results = parallel_map_ordered(
+                    _enrich_and_collect, region_records, max_workers=max(1, cfg.workers_enrich)
+                )
+                for item in worker_results:
+                    record = item["record"]
+                    all_relationships.extend(item["rels"] or [])
+                    chunk_records.append(record)
+                    if len(chunk_records) >= STREAM_CHUNK_SIZE:
+                        _flush_chunk()
 
-        worker_results = parallel_map_ordered(
-            _enrich_and_collect, discovered, max_workers=max(1, cfg.workers_enrich)
-        )
-        for item in worker_results:
-            enriched.append(item["record"])
-            all_relationships.extend(item["rels"] or [])
+        _flush_chunk()
+        LOG.info("Discovery complete", extra={"count": discovered_count, "excluded_regions": len(excluded_regions)})
 
-        LOG.info("Enrichment complete", extra={"count": len(enriched)})
+        inventory_records = _load_inventory_chunks(chunk_paths) if chunk_paths else []
+        LOG.info("Enrichment complete", extra={"count": len(inventory_records)})
 
         # Derive additional relationships from record metadata (offline; no new OCI calls)
         # to improve graph/report fidelity when enrichers did not emit relationships.
         from .export.graph import derive_relationships_from_metadata
 
-        derived_relationships = derive_relationships_from_metadata(enriched)
+        derived_relationships = derive_relationships_from_metadata(inventory_records)
         if derived_relationships:
-            _merge_relationships_into_records(enriched, derived_relationships)
+            _merge_relationships_into_records(inventory_records, derived_relationships)
             all_relationships.extend(derived_relationships)
 
         # Exports
         inventory_jsonl = cfg.outdir / "inventory.jsonl"
         inventory_csv = cfg.outdir / "inventory.csv"
-        write_jsonl(enriched, inventory_jsonl)
-        write_csv(enriched, inventory_csv)
+        write_jsonl(inventory_records, inventory_jsonl)
+        write_csv(inventory_records, inventory_csv)
 
         if cfg.parquet:
             try:
                 parquet_path = cfg.outdir / "inventory.parquet"
-                write_parquet(enriched, parquet_path)
+                write_parquet(inventory_records, parquet_path)
             except ParquetNotAvailable as e:
                 parquet_warning = str(e)
                 LOG.warning(str(e))
@@ -1547,15 +1601,17 @@ def cmd_run(cfg: RunConfig) -> int:
         _write_relationships(cfg.outdir, all_relationships)
 
         # Coverage metrics and summary
-        metrics = _coverage_metrics(enriched)
+        metrics = _coverage_metrics(inventory_records)
         _write_run_summary(cfg.outdir, metrics, cfg)
 
         # Graph artifacts (nodes/edges + Mermaid)
         if cfg.diagrams:
-            nodes, edges = build_graph(enriched, all_relationships)
+            nodes, edges = build_graph(inventory_records, all_relationships)
             write_graph(cfg.outdir, nodes, edges)
             write_mermaid(cfg.outdir, nodes, edges)
             write_diagram_projections(cfg.outdir, nodes, edges)
+
+        _cleanup_chunk_dir(chunk_dir)
 
         validation = _validate_outdir_schema(cfg.outdir, expect_graph=cfg.diagrams)
         for warning in validation.warnings:
@@ -1599,7 +1655,7 @@ def cmd_run(cfg: RunConfig) -> int:
                 from .report import build_architecture_facts  # lazy import
 
                 arch_facts = build_architecture_facts(
-                    discovered_records=enriched or discovered,
+                    discovered_records=inventory_records,
                     subscribed_regions=subscribed_regions,
                     requested_regions=requested_regions,
                     excluded_regions=excluded_regions,
@@ -1628,7 +1684,7 @@ def cmd_run(cfg: RunConfig) -> int:
                 subscribed_regions=subscribed_regions,
                 requested_regions=requested_regions,
                 excluded_regions=excluded_regions,
-                discovered_records=enriched or discovered,
+                discovered_records=inventory_records,
                 metrics=metrics,
                 parquet_warning=parquet_warning,
                 diff_warning=diff_warning,
