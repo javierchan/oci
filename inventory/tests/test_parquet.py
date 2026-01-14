@@ -16,3 +16,20 @@ def test_write_parquet_raises_when_pyarrow_missing(monkeypatch, tmp_path) -> Non
             [{"ocid": "ocid1", "resourceType": "TestResource"}],
             tmp_path / "inventory.parquet",
         )
+
+
+def test_parquet_sanitizes_empty_structs() -> None:
+    record = {
+        "ocid": "ocid1",
+        "resourceType": "Test",
+        "certificates": {},
+        "details": {
+            "foo": {},
+            "bar": [{}, {"k": 1}],
+        },
+    }
+    sanitized = parquet_mod._sanitize_parquet_row(record)
+    assert sanitized["certificates"] is None
+    assert sanitized["details"]["foo"] is None
+    assert sanitized["details"]["bar"][0] is None
+    assert sanitized["details"]["bar"][1]["k"] == 1
