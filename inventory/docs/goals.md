@@ -147,7 +147,7 @@
 - Installation uses `pip install .` with optional extras (parquet, wizard); CLI entrypoints are `oci-inv` and `oci-inv-wizard`. (README.md:18; pyproject.toml:32; pyproject.toml:41)
 - Preflight script prepares environments, creates a .venv, installs dependencies, and supports offline mode plus optional OCI CLI install. (README.md:25; preflight.sh:20; preflight.sh:80)
 - Runtime requirements: Python 3.11+, OCI SDK, PyYAML; optional pyarrow for Parquet and rich for wizard. (pyproject.toml:10; pyproject.toml:27; pyproject.toml:33; pyproject.toml:37)
-- Environment variables and config precedence are documented and implemented for query, output, auth, regions, and workers. (README.md:188; README.md:276; src/oci_inventory/config.py:236)
+- Environment variables and config precedence are documented and implemented for query, output, auth, regions, and workers (including opt-in cost/export workers). (README.md:188; README.md:276; src/oci_inventory/config.py:236)
 - Auth methods: config-file, instance principals, resource principals, security token, and auto fallback; tenancy OCID may be required for list-regions and list-compartments. (docs/auth.md:5; src/oci_inventory/auth/providers.py:51; src/oci_inventory/oci/clients.py:162)
 - Read-only posture: CLI is documented as read-only and report notes reinforce no mutations; SDK calls are list/get style. (README.md:218; src/oci_inventory/report.py:189)
 - Security hygiene: redaction for sensitive keys during serialization and OCID/URL redaction for GenAI. (src/oci_inventory/util/serialization.py:7; src/oci_inventory/genai/redact.py:5)

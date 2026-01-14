@@ -17,6 +17,8 @@ import yaml
 DEFAULT_QUERY = "query all resources"
 DEFAULT_WORKERS_REGION = 6
 DEFAULT_WORKERS_ENRICH = 24
+DEFAULT_WORKERS_COST = 1
+DEFAULT_WORKERS_EXPORT = 1
 AUTH_METHODS = {"auto", "config", "instance", "resource", "security_token"}
 ALLOWED_CONFIG_KEYS = {
     "outdir",
@@ -29,6 +31,8 @@ ALLOWED_CONFIG_KEYS = {
     "log_level",
     "workers_region",
     "workers_enrich",
+    "workers_cost",
+    "workers_export",
     "genai_summary",
     "validate_diagrams",
     "diagrams",
@@ -60,7 +64,7 @@ BOOL_CONFIG_KEYS = {
     "diagrams",
     "cost_report",
 }
-INT_CONFIG_KEYS = {"workers_region", "workers_enrich", "top"}
+INT_CONFIG_KEYS = {"workers_region", "workers_enrich", "workers_cost", "workers_export", "top"}
 PATH_CONFIG_KEYS = {"outdir", "prev", "curr", "inventory"}
 STR_CONFIG_KEYS = {
     "query",
@@ -93,6 +97,8 @@ class RunConfig:
     # Performance
     workers_region: int = DEFAULT_WORKERS_REGION
     workers_enrich: int = DEFAULT_WORKERS_ENRICH
+    workers_cost: int = DEFAULT_WORKERS_COST
+    workers_export: int = DEFAULT_WORKERS_EXPORT
     regions: Optional[List[str]] = None
 
     # Optional features
@@ -348,6 +354,18 @@ def load_run_config(
         "--workers-enrich", type=int, default=None, help=f"Max enricher workers (default {DEFAULT_WORKERS_ENRICH})"
     )
     p_run.add_argument(
+        "--workers-cost",
+        type=int,
+        default=None,
+        help=f"Max parallel cost API tasks (opt-in; default {DEFAULT_WORKERS_COST})",
+    )
+    p_run.add_argument(
+        "--workers-export",
+        type=int,
+        default=None,
+        help=f"Max parallel export tasks (opt-in; default {DEFAULT_WORKERS_EXPORT})",
+    )
+    p_run.add_argument(
         "--regions",
         default=None,
         help="Comma-separated list of regions to query (overrides subscriptions)",
@@ -535,6 +553,8 @@ def load_run_config(
         "log_level": "INFO",
         "workers_region": DEFAULT_WORKERS_REGION,
         "workers_enrich": DEFAULT_WORKERS_ENRICH,
+        "workers_cost": DEFAULT_WORKERS_COST,
+        "workers_export": DEFAULT_WORKERS_EXPORT,
         "genai_summary": False,
         "validate_diagrams": False,
         "diagrams": True,
@@ -578,6 +598,8 @@ def load_run_config(
             "log_level": _env_str("OCI_INV_LOG_LEVEL"),
             "workers_region": _env_int("OCI_INV_WORKERS_REGION"),
             "workers_enrich": _env_int("OCI_INV_WORKERS_ENRICH"),
+            "workers_cost": _env_int("OCI_INV_WORKERS_COST"),
+            "workers_export": _env_int("OCI_INV_WORKERS_EXPORT"),
             "genai_summary": _env_bool("OCI_INV_GENAI_SUMMARY"),
             "validate_diagrams": _env_bool("OCI_INV_VALIDATE_DIAGRAMS"),
             "diagrams": _env_bool("OCI_INV_DIAGRAMS"),
@@ -611,6 +633,8 @@ def load_run_config(
             "log_level": getattr(ns, "log_level", None),
             "workers_region": getattr(ns, "workers_region", None),
             "workers_enrich": getattr(ns, "workers_enrich", None),
+            "workers_cost": getattr(ns, "workers_cost", None),
+            "workers_export": getattr(ns, "workers_export", None),
             "genai_summary": getattr(ns, "genai_summary", None),
             "validate_diagrams": getattr(ns, "validate_diagrams", None),
             "diagrams": getattr(ns, "diagrams", None),
@@ -680,6 +704,8 @@ def load_run_config(
     # default workers if None
     workers_region = int(merged["workers_region"] or DEFAULT_WORKERS_REGION)
     workers_enrich = int(merged["workers_enrich"] or DEFAULT_WORKERS_ENRICH)
+    workers_cost = int(merged["workers_cost"] or DEFAULT_WORKERS_COST)
+    workers_export = int(merged["workers_export"] or DEFAULT_WORKERS_EXPORT)
 
     cfg = RunConfig(
         outdir=outdir,
@@ -692,6 +718,8 @@ def load_run_config(
         log_level=log_level,
         workers_region=workers_region,
         workers_enrich=workers_enrich,
+        workers_cost=workers_cost,
+        workers_export=workers_export,
         genai_summary=bool(merged.get("genai_summary")),
         validate_diagrams=bool(merged.get("validate_diagrams")),
         diagrams=bool(merged.get("diagrams")),
@@ -736,6 +764,8 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "log_level": cfg.log_level,
         "workers_region": cfg.workers_region,
         "workers_enrich": cfg.workers_enrich,
+        "workers_cost": cfg.workers_cost,
+        "workers_export": cfg.workers_export,
         "genai_summary": cfg.genai_summary,
         "validate_diagrams": cfg.validate_diagrams,
         "diagrams": cfg.diagrams,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pytest
 
@@ -15,6 +16,8 @@ def test_default_query_and_workers_from_defaults(monkeypatch) -> None:
     assert cfg.query == DEFAULT_QUERY  # must be "query all resources"
     assert cfg.workers_region > 0
     assert cfg.workers_enrich > 0
+    assert cfg.workers_cost > 0
+    assert cfg.workers_export > 0
     assert cfg.auth == "auto"
 
 
@@ -46,6 +49,16 @@ def test_config_file_used_when_env_and_cli_missing(tmp_path, monkeypatch) -> Non
 
     _, cfg = load_run_config(argv=["run", "--config", str(cfg_path)])
     assert cfg.query == "from-config"
+
+
+def test_repo_workers_config_file_loads() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    cfg_path = repo_root / "config" / "workers.yaml"
+    _, cfg = load_run_config(argv=["run", "--config", str(cfg_path)])
+    assert cfg.workers_region == 6
+    assert cfg.workers_enrich == 24
+    assert cfg.workers_cost == 2
+    assert cfg.workers_export == 2
 
 
 def test_env_overrides_config_file(monkeypatch, tmp_path) -> None:

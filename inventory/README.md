@@ -107,9 +107,10 @@ Commands:
 - Run inventory:
   ```
   oci-inv run --outdir out --auth auto --profile DEFAULT --parquet --prev out/20240101T000000Z/inventory.jsonl \
-              --workers-region 6 --workers-enrich 24 \
+              --workers-region 6 --workers-enrich 24 --workers-cost 2 --workers-export 2 \
               --query "query all resources"
   ```
+  Opt-in worker overrides for cost collection/export are available via `--workers-cost` and `--workers-export` (defaults are 1 unless explicitly set).
 - Diff two inventories:
   ```
   oci-inv diff --prev out/prev-run/inventory.jsonl --curr out/curr-run/inventory.jsonl --outdir out/diff
@@ -487,11 +488,15 @@ query: "query all resources"
 parquet: false
 workers_region: 6
 workers_enrich: 24
+workers_cost: 2
+workers_export: 2
 YAML
 
 oci-inv-wizard --from wizard-run.yaml --dry-run
 oci-inv-wizard --from wizard-run.yaml --yes
 ```
+
+Opt-in worker defaults are also provided in `config/workers.yaml` for reuse with `--config config/workers.yaml` (this file is not loaded automatically).
 
 ## Docs
 - docs/quickstart.md: minimal getting started
