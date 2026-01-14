@@ -159,7 +159,12 @@ def make_client(client_cls: Any, ctx: AuthContext, region: Optional[str] = None)
             cfg["region"] = region
         client = client_cls(cfg, **kwargs)
     elif ctx.signer is not None:
-        cfg = {"region": region or _detect_region() or "us-ashburn-1"}
+        detected_region = region or _detect_region()
+        if not detected_region:
+            raise AuthError(
+                "Region is required for signer-based auth. Set OCI_REGION/OCI_CLI_REGION or pass an explicit region."
+            )
+        cfg = {"region": detected_region}
         client = client_cls(cfg, signer=ctx.signer, **kwargs)
     else:  # pragma: no cover - defensive
         raise AuthError("Invalid AuthContext: neither config_dict nor signer present")
