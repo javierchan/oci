@@ -106,6 +106,8 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       prev: optional path
       workers_region: optional int
       workers_enrich: optional int
+      workers_cost: optional int
+      workers_export: optional int
       validate_diagrams: optional bool
       diagrams: optional bool
       cost_report: optional bool
@@ -223,6 +225,8 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
         prev_s = _as_str(cfg.get("prev"))
         workers_region = _as_int(cfg.get("workers_region"))
         workers_enrich = _as_int(cfg.get("workers_enrich"))
+        workers_cost = _as_int(cfg.get("workers_cost"))
+        workers_export = _as_int(cfg.get("workers_export"))
         include_terminated = _as_bool(cfg.get("include_terminated"))
         validate_diagrams = _as_bool(cfg.get("validate_diagrams"))
         diagrams = _as_bool(cfg.get("diagrams"))
@@ -248,6 +252,8 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             prev=Path(prev_s) if prev_s else None,
             workers_region=workers_region,
             workers_enrich=workers_enrich,
+            workers_cost=workers_cost,
+            workers_export=workers_export,
             include_terminated=include_terminated,
             validate_diagrams=validate_diagrams,
             diagrams=diagrams,

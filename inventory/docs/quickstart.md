@@ -71,6 +71,11 @@ Optional flags:
   ```
   oci-inv run --workers-region 6 --workers-enrich 24
   ```
+  Opt-in cost/export workers:
+  ```
+  oci-inv run --workers-cost 2 --workers-export 2
+  ```
+  You can also reuse `config/workers.yaml` with `--config config/workers.yaml`.
 - Disable diagram generation:
   ```
   oci-inv run --no-diagrams
@@ -149,6 +154,8 @@ Common environment variables that influence behavior:
 - OCI_INV_LOG_LEVEL
 - OCI_INV_WORKERS_REGION
 - OCI_INV_WORKERS_ENRICH
+- OCI_INV_WORKERS_COST
+- OCI_INV_WORKERS_EXPORT
 - OCI_INV_REGIONS
 - OCI_INV_AUTH
 - OCI_INV_PROFILE

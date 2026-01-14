@@ -67,6 +67,8 @@ def build_run_plan(
     prev: Optional[Path] = None,
     workers_region: Optional[int] = None,
     workers_enrich: Optional[int] = None,
+    workers_cost: Optional[int] = None,
+    workers_export: Optional[int] = None,
     include_terminated: Optional[bool] = None,
     validate_diagrams: Optional[bool] = None,
     diagrams: Optional[bool] = None,
@@ -117,6 +119,12 @@ def build_run_plan(
 
     if workers_enrich is not None:
         argv.extend(["--workers-enrich", str(int(workers_enrich))])
+
+    if workers_cost is not None:
+        argv.extend(["--workers-cost", str(int(workers_cost))])
+
+    if workers_export is not None:
+        argv.extend(["--workers-export", str(int(workers_export))])
 
     if include_terminated is True:
         argv.append("--include-terminated")

@@ -1,0 +1,5 @@
+# Worker knobs (opt-in). Use with --config config/workers.yaml.
+workers_region: 6
+workers_enrich: 24
+workers_cost: 2
+workers_export: 2

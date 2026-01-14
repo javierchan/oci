@@ -910,6 +910,10 @@ def _collect_cost_report_data(
     currency: Optional[str] = None
     usage_items: List[Dict[str, Any]] = []
 
+    workers_cost = int(getattr(cfg, "workers_cost", 1) or 1)
+    if workers_cost < 1:
+        workers_cost = 1
+
     query_inputs: Dict[str, Any] = {
         "tenant_id": tenancy_id,
         "time_usage_started": start_dt.isoformat(timespec="seconds"),
@@ -941,73 +945,80 @@ def _collect_cost_report_data(
             steps.append({"name": "usage_api_compartment", "status": "ERROR"})
             steps.append({"name": "usage_api_region", "status": "ERROR"})
         else:
-            rows, cur, err = _request_summarized_usages(
-                usage_client,
-                tenancy_id,
-                start_dt,
-                end_dt,
-                group_by=None,
-                items_out=usage_items,
-            )
-            steps.append({"name": "usage_api_total", "status": "OK" if not err else "ERROR"})
-            if err:
-                errors.append(redact_text(f"Usage API total failed: {err}"))
-            else:
-                total_cost = sum(float(r.get("amount") or 0.0) for r in rows)
-                currency = cur or currency
+            usage_queries: List[Tuple[str, Optional[str]]] = [
+                ("usage_api_total", None),
+                ("usage_api_service", "service"),
+                ("usage_api_compartment", compartment_group_by),
+                ("usage_api_region", "region"),
+            ]
 
-            rows, cur, err = _request_summarized_usages(
-                usage_client,
-                tenancy_id,
-                start_dt,
-                end_dt,
-                group_by="service",
-                items_out=usage_items,
-            )
-            steps.append({"name": "usage_api_service", "status": "OK" if not err else "ERROR"})
-            if err:
-                errors.append(redact_text(f"Usage API service failed: {err}"))
-            else:
-                services = rows
-                currency = cur or currency
+            def _run_usage_query(
+                group_by: Optional[str],
+            ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], List[Dict[str, Any]]]:
+                local_items: List[Dict[str, Any]] = []
+                client = usage_client
+                if workers_cost > 1:
+                    try:
+                        client = get_usage_api_client(ctx, region=home_region)
+                    except Exception as e:
+                        return [], None, f"Usage API client failed: {e}", []
+                rows, cur, err = _request_summarized_usages(
+                    client,
+                    tenancy_id,
+                    start_dt,
+                    end_dt,
+                    group_by=group_by,
+                    items_out=local_items,
+                )
+                return rows, cur, err, local_items
 
-            rows, cur, err = _request_summarized_usages(
-                usage_client,
-                tenancy_id,
-                start_dt,
-                end_dt,
-                group_by=compartment_group_by,
-                items_out=usage_items,
-            )
-            steps.append({"name": "usage_api_compartment", "status": "OK" if not err else "ERROR"})
-            if err:
-                errors.append(redact_text(f"Usage API compartment failed: {err}"))
+            results: Dict[str, Tuple[List[Dict[str, Any]], Optional[str], Optional[str], List[Dict[str, Any]]]] = {}
+            if workers_cost > 1:
+                with ThreadPoolExecutor(max_workers=workers_cost) as executor:
+                    futures = {executor.submit(_run_usage_query, group_by): name for name, group_by in usage_queries}
+                    for future, name in futures.items():
+                        try:
+                            rows, cur, err, items = future.result()
+                        except Exception as e:
+                            rows, cur, err, items = [], None, str(e), []
+                        results[name] = (rows, cur, err, items)
             else:
-                for r in rows:
-                    compartments.append(
-                        {
-                            "compartment_id": r.get("name", ""),
-                            "amount": r.get("amount", 0.0),
-                            "compartment_name": r.get("compartment_name", ""),
-                            "compartment_path": r.get("compartment_path", ""),
-                        }
-                    )
-                currency = cur or currency
+                for name, group_by in usage_queries:
+                    rows, cur, err, items = _run_usage_query(group_by)
+                    results[name] = (rows, cur, err, items)
 
-            rows, cur, err = _request_summarized_usages(
-                usage_client,
-                tenancy_id,
-                start_dt,
-                end_dt,
-                group_by="region",
-                items_out=usage_items,
-            )
-            steps.append({"name": "usage_api_region", "status": "OK" if not err else "ERROR"})
-            if err:
-                errors.append(redact_text(f"Usage API region failed: {err}"))
-            else:
-                regions = rows
-                currency = cur or currency
+            error_labels = {
+                "usage_api_total": "Usage API total failed",
+                "usage_api_service": "Usage API service failed",
+                "usage_api_compartment": "Usage API compartment failed",
+                "usage_api_region": "Usage API region failed",
+            }
+            for name, _group_by in usage_queries:
+                rows, cur, err, items = results.get(name, ([], None, "Usage API result missing", []))
+                steps.append({"name": name, "status": "OK" if not err else "ERROR"})
+                if err:
+                    errors.append(redact_text(f"{error_labels.get(name, name)}: {err}"))
+                else:
+                    if name == "usage_api_total":
+                        total_cost = sum(float(r.get("amount") or 0.0) for r in rows)
+                    elif name == "usage_api_service":
+                        services = rows
+                    elif name == "usage_api_compartment":
+                        for r in rows:
+                            compartments.append(
+                                {
+                                    "compartment_id": r.get("name", ""),
+                                    "amount": r.get("amount", 0.0),
+                                    "compartment_name": r.get("compartment_name", ""),
+                                    "compartment_path": r.get("compartment_path", ""),
+                                }
+                            )
+                    elif name == "usage_api_region":
+                        regions = rows
+                    if cur:
+                        currency = cur or currency
+                if items:
+                    usage_items.extend(items)
     else:
         steps.append({"name": "usage_api_total", "status": "SKIPPED"})
         steps.append({"name": "usage_api_service", "status": "SKIPPED"})
@@ -1670,14 +1681,32 @@ def cmd_run(cfg: RunConfig) -> int:
                 )
                 usage_items = cost_context.get("usage_items") or []
                 if usage_items:
-                    write_cost_usage_csv(outdir=cfg.outdir, usage_items=usage_items)
-                    write_cost_usage_jsonl(outdir=cfg.outdir, usage_items=usage_items)
+                    workers_export = int(getattr(cfg, "workers_export", 1) or 1)
+                    if workers_export < 1:
+                        workers_export = 1
                     comp_group_by = cost_context.get("compartment_group_by") or "compartmentId"
-                    write_cost_usage_views(
-                        outdir=cfg.outdir,
-                        usage_items=usage_items,
-                        compartment_group_by=str(comp_group_by),
-                    )
+                    if workers_export > 1:
+                        with ThreadPoolExecutor(max_workers=workers_export) as executor:
+                            futures = [
+                                executor.submit(write_cost_usage_csv, outdir=cfg.outdir, usage_items=usage_items),
+                                executor.submit(write_cost_usage_jsonl, outdir=cfg.outdir, usage_items=usage_items),
+                                executor.submit(
+                                    write_cost_usage_views,
+                                    outdir=cfg.outdir,
+                                    usage_items=usage_items,
+                                    compartment_group_by=str(comp_group_by),
+                                ),
+                            ]
+                            for future in futures:
+                                future.result()
+                    else:
+                        write_cost_usage_csv(outdir=cfg.outdir, usage_items=usage_items)
+                        write_cost_usage_jsonl(outdir=cfg.outdir, usage_items=usage_items)
+                        write_cost_usage_views(
+                            outdir=cfg.outdir,
+                            usage_items=usage_items,
+                            compartment_group_by=str(comp_group_by),
+                        )
             except Exception as e:
                 from .genai.redact import redact_text
 
