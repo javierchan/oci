@@ -358,6 +358,7 @@ JSONL stability notes:
 - Keys sorted; deterministic line ordering by ocid then resourceType
 - Hash excludes `collectedAt` to enable meaningful diffs
 - `collectedAt` is set per run (run start time) for consistency across records
+- Large runs may create a temporary `.inventory_chunks` directory inside the outdir while streaming records; it is removed on successful completion.
 
 Schema validation:
 - Every run validates `inventory.jsonl`, `relationships.jsonl`, and `run_summary.json`.
