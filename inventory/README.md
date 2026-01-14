@@ -138,6 +138,8 @@ Commands:
 - Diagram caps: `--diagram-max-networks N` and `--diagram-max-workloads N` (0 disables that view; use only for perf-focused runs).
 - Use `--no-diagrams` when you only need inventory/cost outputs.
 - OCI SDK clients are cached per service+region; set `OCI_INV_DISABLE_CLIENT_CACHE=1` to disable.
+- Increase OCI SDK HTTP connection pool size with `--client-connection-pool-size N` or `OCI_INV_CLIENT_CONNECTION_POOL_SIZE` to reduce pool churn in high-concurrency runs.
+- Sizing tip: set `--client-connection-pool-size` to at least `--workers-enrich` when you see connection pool warnings.
 - Inventory exports are streamed/merged from chunk files for large runs to avoid extra in-memory sorting.
 
 ## Common Use Cases (Copy/Paste)
@@ -468,6 +470,7 @@ Signer-based auth also needs a region; set `OCI_REGION` (or `OCI_CLI_REGION`) wh
 - OCI_INV_WORKERS_ENRICH
 - OCI_INV_WORKERS_COST
 - OCI_INV_WORKERS_EXPORT
+- OCI_INV_CLIENT_CONNECTION_POOL_SIZE
 - OCI_INV_REGIONS
 - OCI_INV_GENAI_SUMMARY
 - OCI_INV_VALIDATE_DIAGRAMS
