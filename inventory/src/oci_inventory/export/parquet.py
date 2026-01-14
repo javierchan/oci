@@ -7,6 +7,20 @@ from ..normalize.schema import NormalizedRecord
 from ..normalize.transform import canonicalize_record, normalize_relationships
 
 
+def _drop_empty_structs(value: object) -> object:
+    if isinstance(value, dict):
+        if not value:
+            return None
+        return {k: _drop_empty_structs(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_drop_empty_structs(v) for v in value]
+    return value
+
+
+def _sanitize_parquet_row(record: NormalizedRecord) -> NormalizedRecord:
+    return {k: _drop_empty_structs(v) for k, v in record.items()}
+
+
 class ParquetNotAvailable(RuntimeError):
     pass
 
@@ -36,7 +50,10 @@ def write_parquet(records: Iterable[NormalizedRecord], path: Path) -> None:
 
     sorted_records: List[NormalizedRecord] = sorted(records, key=_key)
     # Canonicalize field order for stable schema
-    rows = [canonicalize_record(normalize_relationships(dict(r))) for r in sorted_records]
+    rows = [
+        _sanitize_parquet_row(canonicalize_record(normalize_relationships(dict(r))))
+        for r in sorted_records
+    ]
 
     table = pa.Table.from_pylist(rows)
     pq.write_table(table, path)
