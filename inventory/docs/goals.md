@@ -49,6 +49,7 @@
 - Responsibility: define enricher contract and results, provide safe DefaultEnricher, register per-resource-type metadata enrichers, and compute enrichment coverage. (src/oci_inventory/enrich/base.py:10; src/oci_inventory/enrich/default.py:8; src/oci_inventory/enrich/oci_metadata.py:53; src/oci_inventory/enrich/coverage.py:30)
 - Interfaces: `Enricher` protocol, `EnrichResult`, `register_enricher`, `get_enricher_for`, `set_enrich_context`, `compute_enrichment_coverage`. (src/oci_inventory/enrich/base.py:18; src/oci_inventory/enrich/__init__.py:42; src/oci_inventory/enrich/__init__.py:46; src/oci_inventory/enrich/__init__.py:58; src/oci_inventory/enrich/coverage.py:30)
 - External dependencies: OCI SDK clients via `oci_inventory.oci.clients`, used in metadata enrichers. (src/oci_inventory/enrich/oci_metadata.py:5)
+- Known gaps (SDK 2.164.2 lacks `get_*` APIs): LimitsIncreaseRequest, ProcessAutomationInstance, QueryServiceProject. (src/oci_inventory/enrich/oci_metadata.py:1116)
 
 ### export
 - Paths: `src/oci_inventory/export/jsonl.py`, `src/oci_inventory/export/csv.py`, `src/oci_inventory/export/parquet.py`, `src/oci_inventory/export/graph.py`. (src/oci_inventory/export/jsonl.py:1; src/oci_inventory/export/csv.py:1; src/oci_inventory/export/parquet.py:1; src/oci_inventory/export/graph.py:1)

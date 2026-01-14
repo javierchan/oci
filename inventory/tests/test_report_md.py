@@ -8,6 +8,7 @@ from oci_inventory.report import (
     render_cost_report_md,
     render_run_report_md,
     write_cost_usage_csv,
+    write_cost_usage_grouped_csv,
     write_cost_usage_jsonl,
     write_cost_usage_views,
 )
@@ -380,3 +381,35 @@ def test_write_cost_usage_exports(tmp_path: Path) -> None:
     service_line = next(item for item in json_lines if item.get("group_by") == "service")
     assert service_line["computed_amount"] == 1.5
     assert service_line["tags"] == [{"key": "env", "value": "dev"}]
+
+
+def test_write_cost_usage_csv_group_by_filter(tmp_path: Path) -> None:
+    usage_items = [
+        {
+            "group_by": "service",
+            "group_value": "Compute",
+            "service": "Compute",
+            "computed_amount": 1.0,
+            "currency": "USD",
+        },
+        {
+            "group_by": "service,region,compartmentId",
+            "group_value": "service=Compute|region=us-ashburn-1|compartmentId=ocid1.compartment.oc1..aaaa",
+            "service": "Compute",
+            "region": "us-ashburn-1",
+            "compartment_id": "ocid1.compartment.oc1..aaaa",
+            "computed_amount": 2.0,
+            "currency": "USD",
+        },
+    ]
+
+    csv_path = write_cost_usage_grouped_csv(
+        outdir=tmp_path,
+        usage_items=usage_items,
+        group_by_label="service,region,compartmentId",
+    )
+
+    assert csv_path is not None
+    csv_text = csv_path.read_text(encoding="utf-8")
+    assert "service,region,compartmentId" in csv_text
+    assert "\nservice," not in csv_text

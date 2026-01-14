@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import heapq
 import json
+import logging
 import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -8,31 +10,20 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from time import perf_counter
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from .auth.providers import AuthContext, AuthError, get_tenancy_ocid, resolve_auth
 from .config import RunConfig, load_run_config
 from .diff.diff import diff_files, write_diff
 from .enrich import get_enricher_for, set_enrich_context
-from .export.csv import write_csv
-from .export.diagram_projections import is_mmdc_available, validate_mermaid_diagrams_with_mmdc, write_diagram_projections
-from .export.graph import build_graph, write_graph, write_mermaid
-from .export.jsonl import write_jsonl
-from .export.parquet import ParquetNotAvailable, write_parquet
 from .logging import LogConfig, get_logger, setup_logging
 from .normalize.transform import canonicalize_record, normalize_relationships, sort_relationships, stable_json_dumps
 from .oci.clients import get_budget_client, get_home_region_name, get_osub_usage_client, get_usage_api_client
 from .oci.compartments import list_compartments as oci_list_compartments
 from .oci.discovery import discover_in_region
 from .oci.regions import get_subscribed_regions
-from .report import (
-    write_cost_report_md,
-    write_cost_usage_csv,
-    write_cost_usage_jsonl,
-    write_cost_usage_views,
-    write_run_report_md,
-)
-from .util.concurrency import parallel_map_ordered
+from .util.concurrency import parallel_map_ordered_iter
 from .util.errors import (
     AuthResolutionError,
     ConfigError,
@@ -44,6 +35,7 @@ LOG = get_logger(__name__)
 
 OUT_SCHEMA_VERSION = "1"
 STREAM_CHUNK_SIZE = 5000
+ENRICH_BATCH_SIZE = 500
 
 REQUIRED_INVENTORY_FIELDS = {
     "ocid",
@@ -93,6 +85,78 @@ class SchemaValidation:
     warnings: List[str]
 
 
+def is_mmdc_available() -> bool:
+    from .export.diagram_projections import is_mmdc_available as _is_mmdc_available
+
+    return _is_mmdc_available()
+
+
+def validate_mermaid_diagrams_with_mmdc(outdir: Path, *, glob_pattern: str = "diagram*.mmd") -> List[Path]:
+    from .export.diagram_projections import (
+        validate_mermaid_diagrams_with_mmdc as _validate_mermaid_diagrams_with_mmdc,
+    )
+
+    return _validate_mermaid_diagrams_with_mmdc(outdir, glob_pattern=glob_pattern)
+
+
+def write_diagram_projections(
+    outdir: Path,
+    nodes: Sequence[Dict[str, Any]],
+    edges: Sequence[Dict[str, Any]],
+    *,
+    max_network_views: Optional[int] = None,
+    max_workload_views: Optional[int] = None,
+) -> List[Path]:
+    from .export.diagram_projections import write_diagram_projections as _write_diagram_projections
+
+    return _write_diagram_projections(
+        outdir,
+        nodes,
+        edges,
+        max_network_views=max_network_views,
+        max_workload_views=max_workload_views,
+    )
+
+
+class _StepTimers:
+    def __init__(self) -> None:
+        self._starts: Dict[str, float] = {}
+
+    def start(self, key: str) -> None:
+        self._starts[key] = perf_counter()
+
+    def finish(self, key: str) -> Optional[int]:
+        started = self._starts.pop(key, None)
+        if started is None:
+            return None
+        return int((perf_counter() - started) * 1000)
+
+
+def _log_event(
+    logger: Any,
+    level: int,
+    message: str,
+    *,
+    step: str,
+    phase: str,
+    timers: Optional[_StepTimers] = None,
+    timer_key: Optional[str] = None,
+    **extra: Any,
+) -> None:
+    key = timer_key or step
+    duration_ms = None
+    if timers is not None:
+        if phase == "start":
+            timers.start(key)
+        elif phase in {"complete", "error", "warning", "validated", "skipped"}:
+            duration_ms = timers.finish(key)
+    payload: Dict[str, Any] = {"step": step, "phase": phase, "event": f"{step}.{phase}"}
+    if duration_ms is not None:
+        payload["duration_ms"] = duration_ms
+    payload.update(extra)
+    logger.log(level, message, extra=payload)
+
+
 def cmd_enrich_coverage(cfg: RunConfig) -> int:
     from .enrich.coverage import compute_enrichment_coverage, top_missing_types
 
@@ -116,11 +180,8 @@ def cmd_enrich_coverage(cfg: RunConfig) -> int:
 
 
 def cmd_genai_chat(cfg: RunConfig) -> int:
-    from .genai.chat_probe import chat_probe
-    from .genai.redact import redact_text
-def cmd_genai_chat(cfg: RunConfig) -> int:
-    from .genai.chat_runner import run_genai_chat
     from .genai.config import try_load_genai_config
+    from .genai.executive_summary import run_genai_best_effort_prompt
 
     genai_cfg = try_load_genai_config()
     if genai_cfg is None:
@@ -150,73 +211,25 @@ def cmd_genai_chat(cfg: RunConfig) -> int:
     temperature = float(cfg.genai_temperature) if cfg.genai_temperature is not None else None
 
     try:
-        if api == "AUTO":
-            out, hint = run_genai_chat(
-                message=message,
-                api_format="GENERIC",
-                system=system,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                genai_cfg=genai_cfg,
-            )
-            if not out.strip():
-                out, hint = run_genai_chat(
-                    message=message,
-                    api_format="COHERE",
-                    system=system,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    genai_cfg=genai_cfg,
-                )
-        else:
-            out, hint = run_genai_chat(
-                message=message,
-                api_format=api,
-                system=system,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                genai_cfg=genai_cfg,
-            )
+        prompt = f"{system}\n\n{message}".strip()
+        out, runtime = run_genai_best_effort_prompt(
+            prompt=prompt,
+            genai_cfg=genai_cfg,
+            prefer_chat=True,
+            api_format=api,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
 
     if not out.strip():
-        print(f"ERROR: GenAI chat returned empty text (hint={hint})", file=sys.stderr)
+        print(f"ERROR: GenAI chat returned empty text (runtime={runtime})", file=sys.stderr)
         return 1
 
     print(out)
     return 0
-
-    api_format = (cfg.genai_api_format or "AUTO").upper()
-    max_tokens = int(cfg.genai_max_tokens or 256)
-    temperature = float(cfg.genai_temperature if cfg.genai_temperature is not None else 0.2)
-
-    msg = cfg.genai_message
-    if cfg.genai_report:
-        text = cfg.genai_report.read_text(encoding="utf-8")
-        # The report may contain OCIDs/URLs (for example in the query); redact before use.
-        msg = (
-            "Write an Executive Summary (4-8 bullets) for the following OCI inventory report.\n\n"
-            + redact_text(text)
-        )
-    if not msg:
-        raise ConfigError("genai-chat requires --message or --report")
-
-    res = chat_probe(
-        message=msg,
-        api_format=api_format,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-
-    out = (res.text or "").strip()
-    if out:
-        print(out)
-        return 0
-
-    print(f"(no text returned; {res.hint})")
-    return 2
 
 
 def _resolve_auth(cfg: RunConfig) -> AuthContext:
@@ -317,7 +330,7 @@ def _request_summarized_usages(
     start: datetime,
     end: datetime,
     *,
-    group_by: Optional[str],
+    group_by: Optional[Union[str, Sequence[str]]],
     items_out: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str]]:
     try:
@@ -330,6 +343,15 @@ def _request_summarized_usages(
         return [], None, "OCI Usage API models are unavailable"
 
     # Explicitly set query_type for cost reporting; do not rely on defaults.
+    group_by_list: List[str] = []
+    if group_by:
+        if isinstance(group_by, str):
+            group_by_list = [group_by]
+        else:
+            group_by_list = [str(value).strip() for value in group_by if str(value).strip()]
+    group_by_label = ",".join(group_by_list) if group_by_list else "total"
+    multi_group = len(group_by_list) > 1
+
     details_kwargs: Dict[str, Any] = {
         "tenant_id": tenancy_id,
         "time_usage_started": start,
@@ -337,9 +359,9 @@ def _request_summarized_usages(
         "granularity": "DAILY",
         "query_type": "COST",
     }
-    if group_by:
-        details_kwargs["group_by"] = [group_by]
-        if group_by in {"compartmentId", "compartmentName", "compartmentPath"}:
+    if group_by_list:
+        details_kwargs["group_by"] = list(group_by_list)
+        if any(value in {"compartmentId", "compartmentName", "compartmentPath"} for value in group_by_list):
             details_kwargs["compartment_depth"] = 6
     details = details_cls.RequestSummarizedUsagesDetails(**details_kwargs)
 
@@ -378,14 +400,23 @@ def _request_summarized_usages(
         for item in items or []:
             item_dict = _usage_item_to_dict(item)
             amount = _extract_usage_amount(item_dict)
-            name = _extract_group_value(item_dict, group_by)
-            if group_by and not name:
-                continue
-            totals_by_name[name] = totals_by_name.get(name, 0.0) + amount
+            name = ""
+            if group_by_list and not multi_group:
+                name = _extract_group_value(item_dict, group_by_list[0])
+                if not name:
+                    continue
+                totals_by_name[name] = totals_by_name.get(name, 0.0) + amount
+            elif multi_group:
+                parts: List[str] = []
+                for value in group_by_list:
+                    part_val = _extract_group_value(item_dict, value)
+                    if part_val:
+                        parts.append(f"{value}={part_val}")
+                name = "|".join(parts)
             item_currency = _extract_usage_currency(item_dict)
             if item_currency and not currency:
                 currency = item_currency
-            if group_by == "compartmentId":
+            if not multi_group and group_by_list and group_by_list[0] == "compartmentId":
                 meta = meta_by_name.setdefault(name, {})
                 if "compartment_name" not in meta:
                     comp_name = ""
@@ -426,8 +457,8 @@ def _request_summarized_usages(
                             service_name = val.strip()
                             break
                 record = dict(item_dict)
-                record.setdefault("group_by", group_by or "total")
-                record.setdefault("group_value", name if group_by else "")
+                record.setdefault("group_by", group_by_label)
+                record.setdefault("group_value", name if group_by_list else "")
                 if started and not record.get("time_usage_started"):
                     record["time_usage_started"] = started
                 if ended and not record.get("time_usage_ended"):
@@ -850,6 +881,85 @@ def _record_sort_key(record: Dict[str, Any]) -> Tuple[str, str]:
     return (str(record.get("ocid") or ""), str(record.get("resourceType") or ""))
 
 
+def _iter_jsonl_records(path: Path) -> Iterable[Dict[str, Any]]:
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            yield json.loads(line)
+
+
+def _merge_sorted_inventory_chunks(paths: Sequence[Path]) -> Iterable[Dict[str, Any]]:
+    files: List[Any] = []
+    heap: List[Tuple[Tuple[str, str], int, Dict[str, Any]]] = []
+
+    def _read_next(fh: Any) -> Optional[Dict[str, Any]]:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            return json.loads(line)
+        return None
+
+    try:
+        for idx, path in enumerate(paths):
+            fh = path.open("r", encoding="utf-8")
+            files.append(fh)
+            rec = _read_next(fh)
+            if rec is not None:
+                heapq.heappush(heap, (_record_sort_key(rec), idx, rec))
+
+        while heap:
+            _key, idx, rec = heapq.heappop(heap)
+            yield rec
+            next_rec = _read_next(files[idx])
+            if next_rec is not None:
+                heapq.heappush(heap, (_record_sort_key(next_rec), idx, next_rec))
+    finally:
+        for fh in files:
+            try:
+                fh.close()
+            except Exception:
+                pass
+
+
+def _relationships_by_source(relationships: Sequence[Dict[str, str]]) -> Dict[str, List[Dict[str, str]]]:
+    by_source: Dict[str, List[Dict[str, str]]] = {}
+    for rel in relationships:
+        src = str(rel.get("source_ocid") or "")
+        if not src:
+            continue
+        by_source.setdefault(src, []).append(rel)
+    return by_source
+
+
+def _apply_derived_relationships(
+    record: Dict[str, Any],
+    derived_by_source: Dict[str, List[Dict[str, str]]],
+) -> Dict[str, Any]:
+    ocid = str(record.get("ocid") or "")
+    extra = derived_by_source.get(ocid)
+    if not extra:
+        return record
+    current = record.get("relationships")
+    if isinstance(current, list):
+        merged = list(current) + list(extra)
+    else:
+        merged = list(extra)
+    updated = dict(record)
+    updated["relationships"] = sort_relationships(merged)
+    return updated
+
+
+def _iter_export_records(
+    chunk_paths: Sequence[Path],
+    derived_by_source: Dict[str, List[Dict[str, str]]],
+) -> Iterable[Dict[str, Any]]:
+    for rec in _merge_sorted_inventory_chunks(chunk_paths):
+        yield _apply_derived_relationships(rec, derived_by_source)
+
+
 def _write_inventory_chunk(records: List[Dict[str, Any]], path: Path) -> int:
     records.sort(key=_record_sort_key)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -938,6 +1048,8 @@ def _collect_cost_report_data(
         errors.append("Unable to resolve tenancy home region; Usage API calls skipped.")
 
     compartment_group_by = cfg.cost_compartment_group_by or "compartmentId"
+    cost_group_by = cfg.cost_group_by or []
+    cost_group_by_label = ",".join(cost_group_by) if cost_group_by else ""
     services: List[Dict[str, Any]] = []
     compartments: List[Dict[str, Any]] = []
     regions: List[Dict[str, Any]] = []
@@ -958,6 +1070,7 @@ def _collect_cost_report_data(
         "group_by": ["service", compartment_group_by, "region"],
         "compartment_depth": 6,
         "compartment_group_by": compartment_group_by,
+        "cost_group_by": cost_group_by or None,
         "home_region": home_region or "(unresolved)",
     }
     if home_region:
@@ -980,12 +1093,14 @@ def _collect_cost_report_data(
             steps.append({"name": "usage_api_compartment", "status": "ERROR"})
             steps.append({"name": "usage_api_region", "status": "ERROR"})
         else:
-            usage_queries: List[Tuple[str, Optional[str]]] = [
+            usage_queries: List[Tuple[str, Optional[Union[str, Sequence[str]]]]] = [
                 ("usage_api_total", None),
                 ("usage_api_service", "service"),
                 ("usage_api_compartment", compartment_group_by),
                 ("usage_api_region", "region"),
             ]
+            if cost_group_by:
+                usage_queries.append(("usage_api_grouped", list(cost_group_by)))
 
             def _run_usage_query(
                 group_by: Optional[str],
@@ -1027,6 +1142,7 @@ def _collect_cost_report_data(
                 "usage_api_service": "Usage API service failed",
                 "usage_api_compartment": "Usage API compartment failed",
                 "usage_api_region": "Usage API region failed",
+                "usage_api_grouped": "Usage API grouped usage failed",
             }
             for name, _group_by in usage_queries:
                 rows, cur, err, items = results.get(name, ([], None, "Usage API result missing", []))
@@ -1059,6 +1175,8 @@ def _collect_cost_report_data(
         steps.append({"name": "usage_api_service", "status": "SKIPPED"})
         steps.append({"name": "usage_api_compartment", "status": "SKIPPED"})
         steps.append({"name": "usage_api_region", "status": "SKIPPED"})
+        if cost_group_by:
+            steps.append({"name": "usage_api_grouped", "status": "SKIPPED"})
 
     # Usage API currency is authoritative; conversion is out of scope.
     if cfg.cost_currency:
@@ -1222,6 +1340,8 @@ def _collect_cost_report_data(
         "services": services,
         "compartments": compartments,
         "compartment_group_by": compartment_group_by,
+        "cost_group_by": cost_group_by or None,
+        "cost_group_by_label": cost_group_by_label,
         "regions": regions,
         "budgets": budgets,
         "budget_alert_rule_counts": alert_rule_counts,
@@ -1349,6 +1469,7 @@ def _read_jsonl_dicts(
     *,
     required_fields: set[str],
     errors: List[str],
+    max_records: Optional[int] = None,
 ) -> List[Tuple[int, Dict[str, Any]]]:
     if not path.is_file():
         errors.append(f"{path.name}: file not found")
@@ -1362,6 +1483,8 @@ def _read_jsonl_dicts(
             line = line.strip()
             if not line:
                 continue
+            if max_records is not None and len(records) >= max_records:
+                break
             try:
                 obj = json.loads(line)
             except Exception:
@@ -1387,15 +1510,38 @@ def _read_jsonl_dicts(
     return records
 
 
-def _validate_outdir_schema(outdir: Path, *, expect_graph: bool = True) -> SchemaValidation:
+def _validate_outdir_schema(
+    outdir: Path,
+    *,
+    expect_graph: bool = True,
+    mode: str = "auto",
+    sample_limit: int = 5000,
+    auto_sample_bytes: int = 50 * 1024 * 1024,
+) -> SchemaValidation:
     errors: List[str] = []
     warnings: List[str] = []
 
     inventory_path = outdir / "inventory.jsonl"
+    mode = (mode or "auto").strip().lower()
+    if sample_limit < 1:
+        sample_limit = 1
+    if mode == "off":
+        warnings.append("Schema validation skipped (disabled).")
+        return SchemaValidation(errors=errors, warnings=warnings)
+    if mode == "auto":
+        try:
+            size = inventory_path.stat().st_size
+        except Exception:
+            size = 0
+        mode = "sampled" if size >= auto_sample_bytes else "full"
+    max_records = sample_limit if mode == "sampled" else None
+    if mode == "sampled":
+        warnings.append(f"Schema validation sampled first {sample_limit} records.")
     inventory_records = _read_jsonl_dicts(
         inventory_path,
         required_fields=REQUIRED_INVENTORY_FIELDS,
         errors=errors,
+        max_records=max_records,
     )
     if inventory_records:
         collected_values = {str(obj.get("collectedAt") or "") for _, obj in inventory_records if obj.get("collectedAt")}
@@ -1429,6 +1575,7 @@ def _validate_outdir_schema(outdir: Path, *, expect_graph: bool = True) -> Schem
         relationships_path,
         required_fields=REQUIRED_RELATIONSHIP_FIELDS,
         errors=errors,
+        max_records=max_records,
     )
 
     nodes_path = outdir / "graph_nodes.jsonl"
@@ -1438,6 +1585,7 @@ def _validate_outdir_schema(outdir: Path, *, expect_graph: bool = True) -> Schem
             nodes_path,
             required_fields=REQUIRED_GRAPH_NODE_FIELDS,
             errors=errors,
+            max_records=max_records,
         )
         node_ids = {str(obj.get("nodeId") or "") for _, obj in node_records if obj.get("nodeId")}
 
@@ -1445,6 +1593,7 @@ def _validate_outdir_schema(outdir: Path, *, expect_graph: bool = True) -> Schem
             edges_path,
             required_fields=REQUIRED_GRAPH_EDGE_FIELDS,
             errors=errors,
+            max_records=max_records,
         )
         if node_ids and edge_records:
             missing_edges: List[int] = []
@@ -1481,10 +1630,24 @@ def _validate_outdir_schema(outdir: Path, *, expect_graph: bool = True) -> Schem
 
 
 def cmd_run(cfg: RunConfig) -> int:
+    from .export.csv import write_csv
+    from .export.graph import build_graph, write_graph, write_mermaid
+    from .export.jsonl import write_jsonl
+    from .export.parquet import ParquetNotAvailable, write_parquet
+    from .report import (
+        write_cost_report_md,
+        write_cost_usage_csv,
+        write_cost_usage_grouped_csv,
+        write_cost_usage_jsonl,
+        write_cost_usage_views,
+        write_run_report_md,
+    )
+
     # Ensure the run directory exists early so we can always emit a report.
     cfg.outdir.mkdir(parents=True, exist_ok=True)
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     run_collected_at = started_at
+    timers = _StepTimers()
 
     status = "OK"
     fatal_error: Optional[str] = None
@@ -1502,21 +1665,49 @@ def cmd_run(cfg: RunConfig) -> int:
     executive_summary: Optional[str] = None
     executive_summary_error: Optional[str] = None
 
-    LOG.info(
+    _log_event(
+        LOG,
+        logging.INFO,
         "Starting inventory run",
-        extra={"outdir": str(cfg.outdir), "step": "run", "phase": "start"},
+        step="run",
+        phase="start",
+        timers=timers,
+        outdir=str(cfg.outdir),
     )
 
     try:
+        _log_event(
+            LOG,
+            logging.INFO,
+            "Authentication resolution started",
+            step="auth",
+            phase="start",
+            timers=timers,
+            method=cfg.auth,
+            profile=cfg.profile,
+        )
         ctx = _resolve_auth(cfg)
         set_enrich_context(ctx)
-        LOG.info(
+        _log_event(
+            LOG,
+            logging.INFO,
             "Authentication resolved",
-            extra={"step": "auth", "phase": "complete", "method": cfg.auth, "profile": cfg.profile},
+            step="auth",
+            phase="complete",
+            timers=timers,
+            method=cfg.auth,
+            profile=cfg.profile,
         )
 
         # Discover regions
-        LOG.info("Region discovery started", extra={"step": "regions", "phase": "start"})
+        _log_event(
+            LOG,
+            logging.INFO,
+            "Region discovery started",
+            step="regions",
+            phase="start",
+            timers=timers,
+        )
         regions = get_subscribed_regions(ctx)
         subscribed_regions = list(regions)
         if not regions:
@@ -1524,16 +1715,27 @@ def cmd_run(cfg: RunConfig) -> int:
         if cfg.regions:
             requested_regions = [r for r in cfg.regions if r]
             regions = requested_regions
-        LOG.info(
+        _log_event(
+            LOG,
+            logging.INFO,
             "Discovered subscribed regions",
-            extra={"regions": regions, "count": len(regions), "step": "regions", "phase": "complete"},
+            step="regions",
+            phase="complete",
+            timers=timers,
+            regions=regions,
+            count=len(regions),
         )
 
         # Per-region discovery in parallel (ordered by region for determinism)
         regions = sorted([r for r in regions if r])
-        LOG.info(
+        _log_event(
+            LOG,
+            logging.INFO,
             "Discovery started",
-            extra={"step": "discovery", "phase": "start", "region_count": len(regions)},
+            step="discovery",
+            phase="start",
+            timers=timers,
+            region_count=len(regions),
         )
 
         def _disc(r: str) -> List[Dict[str, Any]]:
@@ -1557,45 +1759,63 @@ def cmd_run(cfg: RunConfig) -> int:
 
         with ThreadPoolExecutor(max_workers=max(1, cfg.workers_region)) as pool:
             futures_by_region = {r: pool.submit(_disc, r) for r in regions}
+            for r in regions:
+                timers.start(f"discovery:{r}")
 
             for r in regions:
                 try:
                     region_records = futures_by_region[r].result()
                 except Exception as e:
                     excluded_regions.append({"region": r, "reason": str(e)})
-                    LOG.warning(
-                        "Region discovery failed; skipping region %s",
-                        r,
-                        extra={"region": r, "error": str(e), "step": "discovery", "phase": "error"},
+                    _log_event(
+                        LOG,
+                        logging.WARNING,
+                        f"Region discovery failed; skipping region {r}",
+                        step="discovery",
+                        phase="error",
+                        timers=timers,
+                        timer_key=f"discovery:{r}",
+                        region=r,
+                        error=str(e),
                     )
                     region_records = []
 
                 discovered_count += len(region_records)
-                LOG.info(
-                    "Region discovery complete %s",
-                    r,
-                    extra={
-                        "step": "discovery",
-                        "phase": "complete",
-                        "region": r,
-                        "count": len(region_records),
-                    },
+                _log_event(
+                    LOG,
+                    logging.INFO,
+                    f"Region discovery complete {r}",
+                    step="discovery",
+                    phase="complete",
+                    timers=timers,
+                    timer_key=f"discovery:{r}",
+                    region=r,
+                    count=len(region_records),
                 )
                 if not region_records:
                     continue
 
                 # Enrichment in parallel per region (streamed to disk).
-                LOG.info(
-                    "Region enrichment started %s",
-                    r,
-                    extra={"step": "enrich", "phase": "start", "region": r, "count": len(region_records)},
+                _log_event(
+                    LOG,
+                    logging.INFO,
+                    f"Region enrichment started {r}",
+                    step="enrich",
+                    phase="start",
+                    timers=timers,
+                    timer_key=f"enrich:{r}",
+                    region=r,
+                    count=len(region_records),
                 )
                 def _enrich_and_collect(rec: Dict[str, Any]) -> Dict[str, Any]:
                     updated, rels = _enrich_record(rec)
                     return {"record": updated, "rels": rels}
 
-                worker_results = parallel_map_ordered(
-                    _enrich_and_collect, region_records, max_workers=max(1, cfg.workers_enrich)
+                worker_results = parallel_map_ordered_iter(
+                    _enrich_and_collect,
+                    region_records,
+                    max_workers=max(1, cfg.workers_enrich),
+                    batch_size=ENRICH_BATCH_SIZE,
                 )
                 for item in worker_results:
                     record = item["record"]
@@ -1603,27 +1823,39 @@ def cmd_run(cfg: RunConfig) -> int:
                     chunk_records.append(record)
                     if len(chunk_records) >= STREAM_CHUNK_SIZE:
                         _flush_chunk()
-                LOG.info(
-                    "Region enrichment complete %s",
-                    r,
-                    extra={"step": "enrich", "phase": "complete", "region": r, "count": len(region_records)},
+                _log_event(
+                    LOG,
+                    logging.INFO,
+                    f"Region enrichment complete {r}",
+                    step="enrich",
+                    phase="complete",
+                    timers=timers,
+                    timer_key=f"enrich:{r}",
+                    region=r,
+                    count=len(region_records),
                 )
 
         _flush_chunk()
-        LOG.info(
+        _log_event(
+            LOG,
+            logging.INFO,
             "Discovery complete",
-            extra={
-                "count": discovered_count,
-                "excluded_regions": len(excluded_regions),
-                "step": "discovery",
-                "phase": "complete",
-            },
+            step="discovery",
+            phase="complete",
+            timers=timers,
+            count=discovered_count,
+            excluded_regions=len(excluded_regions),
         )
 
         inventory_records = _load_inventory_chunks(chunk_paths) if chunk_paths else []
-        LOG.info(
+        _log_event(
+            LOG,
+            logging.INFO,
             "Enrichment complete",
-            extra={"count": len(inventory_records), "step": "enrich", "phase": "complete"},
+            step="enrich",
+            phase="complete",
+            timers=timers,
+            count=len(inventory_records),
         )
 
         # Derive additional relationships from record metadata (offline; no new OCI calls)
@@ -1634,21 +1866,40 @@ def cmd_run(cfg: RunConfig) -> int:
         if derived_relationships:
             _merge_relationships_into_records(inventory_records, derived_relationships)
             all_relationships.extend(derived_relationships)
+        derived_by_source = _relationships_by_source(derived_relationships)
 
         # Exports
-        LOG.info(
+        _log_event(
+            LOG,
+            logging.INFO,
             "Exporting inventory artifacts",
-            extra={"step": "export", "phase": "start", "parquet": bool(cfg.parquet)},
+            step="export",
+            phase="start",
+            timers=timers,
+            parquet=bool(cfg.parquet),
         )
         inventory_jsonl = cfg.outdir / "inventory.jsonl"
         inventory_csv = cfg.outdir / "inventory.csv"
-        write_jsonl(inventory_records, inventory_jsonl)
-        write_csv(inventory_records, inventory_csv)
+        if chunk_paths:
+            def _export_iter() -> Iterable[Dict[str, Any]]:
+                return _iter_export_records(chunk_paths, derived_by_source)
+
+            write_jsonl(_export_iter(), inventory_jsonl, already_sorted=True)
+            write_csv(_export_iter(), inventory_csv, already_sorted=True)
+        else:
+            write_jsonl(inventory_records, inventory_jsonl)
+            write_csv(inventory_records, inventory_csv)
 
         if cfg.parquet:
             try:
                 parquet_path = cfg.outdir / "inventory.parquet"
-                write_parquet(inventory_records, parquet_path)
+                if chunk_paths:
+                    def _parquet_iter() -> Iterable[Dict[str, Any]]:
+                        return _iter_export_records(chunk_paths, derived_by_source)
+
+                    write_parquet(_parquet_iter(), parquet_path, already_sorted=True)
+                else:
+                    write_parquet(inventory_records, parquet_path)
             except ParquetNotAvailable as e:
                 parquet_warning = str(e)
                 LOG.warning(
@@ -1657,49 +1908,124 @@ def cmd_run(cfg: RunConfig) -> int:
                 )
 
         _write_relationships(cfg.outdir, all_relationships)
-        LOG.info(
+        _log_event(
+            LOG,
+            logging.INFO,
             "Exported inventory artifacts",
-            extra={"step": "export", "phase": "complete", "count": len(inventory_records)},
+            step="export",
+            phase="complete",
+            timers=timers,
+            count=len(inventory_records),
         )
 
         # Coverage metrics and summary
-        LOG.info("Coverage metrics started", extra={"step": "metrics", "phase": "start"})
+        _log_event(
+            LOG,
+            logging.INFO,
+            "Coverage metrics started",
+            step="metrics",
+            phase="start",
+            timers=timers,
+        )
         metrics = _coverage_metrics(inventory_records)
         _write_run_summary(cfg.outdir, metrics, cfg)
-        LOG.info("Coverage metrics complete", extra={"step": "metrics", "phase": "complete"})
+        _log_event(
+            LOG,
+            logging.INFO,
+            "Coverage metrics complete",
+            step="metrics",
+            phase="complete",
+            timers=timers,
+        )
 
         # Graph artifacts (nodes/edges + Mermaid)
         if cfg.diagrams:
-            LOG.info("Graph build started", extra={"step": "graph", "phase": "start"})
+            _log_event(
+                LOG,
+                logging.INFO,
+                "Graph build started",
+                step="graph",
+                phase="start",
+                timers=timers,
+            )
             nodes, edges = build_graph(inventory_records, all_relationships)
             write_graph(cfg.outdir, nodes, edges)
             write_mermaid(cfg.outdir, nodes, edges)
-            write_diagram_projections(cfg.outdir, nodes, edges)
-            LOG.info(
+            if cfg.diagram_max_networks == 0:
+                _log_event(
+                    LOG,
+                    logging.WARNING,
+                    "Network diagram views disabled (diagram_max_networks=0)",
+                    step="diagrams",
+                    phase="warning",
+                    timers=timers,
+                )
+            if cfg.diagram_max_workloads == 0:
+                _log_event(
+                    LOG,
+                    logging.WARNING,
+                    "Workload diagram views disabled (diagram_max_workloads=0)",
+                    step="diagrams",
+                    phase="warning",
+                    timers=timers,
+                )
+            diagram_paths = write_diagram_projections(
+                cfg.outdir,
+                nodes,
+                edges,
+                max_network_views=cfg.diagram_max_networks,
+                max_workload_views=cfg.diagram_max_workloads,
+            )
+            _log_event(
+                LOG,
+                logging.INFO,
                 "Graph build complete",
-                extra={"step": "graph", "phase": "complete", "nodes": len(nodes), "edges": len(edges)},
+                step="graph",
+                phase="complete",
+                timers=timers,
+                nodes=len(nodes),
+                edges=len(edges),
+                diagrams=len(diagram_paths),
             )
 
         _cleanup_chunk_dir(chunk_dir)
 
-        LOG.info(
+        _log_event(
+            LOG,
+            logging.INFO,
             "Output schema validation started",
-            extra={"step": "schema", "phase": "start", "expect_graph": cfg.diagrams},
+            step="schema",
+            phase="start",
+            timers=timers,
+            expect_graph=cfg.diagrams,
+            mode=cfg.schema_validation,
+            sample_records=cfg.schema_sample_records,
         )
-        validation = _validate_outdir_schema(cfg.outdir, expect_graph=cfg.diagrams)
-        LOG.info(
+        validation = _validate_outdir_schema(
+            cfg.outdir,
+            expect_graph=cfg.diagrams,
+            mode=cfg.schema_validation,
+            sample_limit=cfg.schema_sample_records,
+        )
+        _log_event(
+            LOG,
+            logging.INFO,
             "Output schema validation complete",
-            extra={
-                "step": "schema",
-                "phase": "complete",
-                "warning_count": len(validation.warnings),
-                "error_count": len(validation.errors),
-            },
+            step="schema",
+            phase="complete",
+            timers=timers,
+            warning_count=len(validation.warnings),
+            error_count=len(validation.errors),
         )
         for warning in validation.warnings:
-            LOG.warning(
+            _log_event(
+                LOG,
+                logging.WARNING,
                 "Output schema validation warning",
-                extra={"detail": warning, "step": "schema", "phase": "warning"},
+                step="schema",
+                phase="warning",
+                timers=timers,
+                detail=warning,
             )
         if validation.errors:
             preview = "; ".join(validation.errors[:5])
@@ -1712,35 +2038,67 @@ def cmd_run(cfg: RunConfig) -> int:
         # - Otherwise, if mmdc is available, validate all diagram*.mmd outputs and fail
         #   on invalid Mermaid so we don't ship broken artifacts.
         if cfg.diagrams and (cfg.validate_diagrams or is_mmdc_available()):
-            LOG.info("Mermaid validation started", extra={"step": "diagrams", "phase": "validate"})
+            _log_event(
+                LOG,
+                logging.INFO,
+                "Mermaid validation started",
+                step="diagrams",
+                phase="validate",
+                timers=timers,
+            )
             validated = validate_mermaid_diagrams_with_mmdc(cfg.outdir)
-            LOG.info(
+            _log_event(
+                LOG,
+                logging.INFO,
                 "Mermaid diagrams validated",
-                extra={"count": len(validated), "step": "diagrams", "phase": "validated"},
+                step="diagrams",
+                phase="validated",
+                timers=timers,
+                count=len(validated),
             )
 
         # Optional diff against previous
         if cfg.prev:
             try:
-                LOG.info("Diff started", extra={"step": "diff", "phase": "start"})
+                _log_event(
+                    LOG,
+                    logging.INFO,
+                    "Diff started",
+                    step="diff",
+                    phase="start",
+                    timers=timers,
+                )
                 diff_obj = diff_files(Path(cfg.prev), inventory_jsonl)
                 write_diff(cfg.outdir, diff_obj)
-                LOG.info("Diff complete", extra={"step": "diff", "phase": "complete"})
+                _log_event(
+                    LOG,
+                    logging.INFO,
+                    "Diff complete",
+                    step="diff",
+                    phase="complete",
+                    timers=timers,
+                )
             except Exception as e:
                 diff_warning = str(e)
-                LOG.warning(
+                _log_event(
+                    LOG,
+                    logging.WARNING,
                     "Diff failed",
-                    extra={"error": str(e), "step": "diff", "phase": "error"},
+                    step="diff",
+                    phase="error",
+                    timers=timers,
+                    error=str(e),
                 )
 
-        LOG.info(
+        _log_event(
+            LOG,
+            logging.INFO,
             "Run complete",
-            extra={
-                "outdir": str(cfg.outdir),
-                "excluded_regions": len(excluded_regions),
-                "step": "run",
-                "phase": "complete",
-            },
+            step="run",
+            phase="complete",
+            timers=timers,
+            outdir=str(cfg.outdir),
+            excluded_regions=len(excluded_regions),
         )
         return 0
     except Exception as e:
@@ -1752,6 +2110,14 @@ def cmd_run(cfg: RunConfig) -> int:
         finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
         if cfg.genai_summary and status == "OK":
+            _log_event(
+                LOG,
+                logging.INFO,
+                "GenAI executive summary started",
+                step="genai_summary",
+                phase="start",
+                timers=timers,
+            )
             try:
                 from .genai import generate_executive_summary  # lazy import
                 from .report import build_architecture_facts  # lazy import
@@ -1774,11 +2140,25 @@ def cmd_run(cfg: RunConfig) -> int:
                     metrics=metrics,
                     architecture_facts=arch_facts,
                 )
+                _log_event(
+                    LOG,
+                    logging.INFO,
+                    "GenAI executive summary complete",
+                    step="genai_summary",
+                    phase="complete",
+                    timers=timers,
+                    chars=len(executive_summary or ""),
+                )
             except Exception as e:
                 executive_summary_error = str(e)
-                LOG.warning(
+                _log_event(
+                    LOG,
+                    logging.WARNING,
                     "GenAI executive summary failed",
-                    extra={"error": str(e), "step": "genai", "phase": "error"},
+                    step="genai_summary",
+                    phase="error",
+                    timers=timers,
+                    error=str(e),
                 )
 
         try:
@@ -1805,7 +2185,14 @@ def cmd_run(cfg: RunConfig) -> int:
 
         if cfg.cost_report:
             try:
-                LOG.info("Cost report started", extra={"step": "cost_report", "phase": "start"})
+                _log_event(
+                    LOG,
+                    logging.INFO,
+                    "Cost report started",
+                    step="cost_report",
+                    phase="start",
+                    timers=timers,
+                )
                 cost_context = _collect_cost_report_data(
                     ctx=ctx,
                     cfg=cfg,
@@ -1816,10 +2203,27 @@ def cmd_run(cfg: RunConfig) -> int:
                 narratives: Optional[Dict[str, str]] = None
                 narrative_errors: Optional[Dict[str, str]] = None
                 if cfg.genai_summary and status == "OK":
+                    _log_event(
+                        LOG,
+                        logging.INFO,
+                        "GenAI cost report narratives started",
+                        step="genai_cost_report",
+                        phase="start",
+                        timers=timers,
+                    )
                     try:
                         narratives, narrative_errors = _generate_cost_report_narratives(
                             cost_context=cost_context,
                             cfg=cfg,
+                        )
+                        _log_event(
+                            LOG,
+                            logging.INFO,
+                            "GenAI cost report narratives complete",
+                            step="genai_cost_report",
+                            phase="complete",
+                            timers=timers,
+                            error_count=len(narrative_errors or {}),
                         )
                     except Exception as e:
                         err = str(e)
@@ -1832,9 +2236,14 @@ def cmd_run(cfg: RunConfig) -> int:
                             "audience": err,
                             "next_steps": err,
                         }
-                        LOG.warning(
+                        _log_event(
+                            LOG,
+                            logging.WARNING,
                             "GenAI cost report narratives failed",
-                            extra={"error": str(e), "step": "genai", "phase": "error"},
+                            step="genai_cost_report",
+                            phase="error",
+                            timers=timers,
+                            error=str(e),
                         )
                 write_cost_report_md(
                     outdir=cfg.outdir,
@@ -1844,15 +2253,16 @@ def cmd_run(cfg: RunConfig) -> int:
                     narratives=narratives,
                     narrative_errors=narrative_errors,
                 )
-                LOG.info(
+                _log_event(
+                    LOG,
+                    logging.INFO,
                     "Cost report complete",
-                    extra={
-                        "step": "cost_report",
-                        "phase": "complete",
-                        "error_count": len(cost_context.get("errors") or []),
-                        "warning_count": len(cost_context.get("warnings") or []),
-                        "usage_items": len(cost_context.get("usage_items") or []),
-                    },
+                    step="cost_report",
+                    phase="complete",
+                    timers=timers,
+                    error_count=len(cost_context.get("errors") or []),
+                    warning_count=len(cost_context.get("warnings") or []),
+                    usage_items=len(cost_context.get("usage_items") or []),
                 )
                 usage_items = cost_context.get("usage_items") or []
                 if usage_items:
@@ -1860,10 +2270,21 @@ def cmd_run(cfg: RunConfig) -> int:
                     if workers_export < 1:
                         workers_export = 1
                     comp_group_by = cost_context.get("compartment_group_by") or "compartmentId"
+                    cost_group_by_label = str(cost_context.get("cost_group_by_label") or "")
                     if workers_export > 1:
                         with ThreadPoolExecutor(max_workers=workers_export) as executor:
                             futures = [
-                                executor.submit(write_cost_usage_csv, outdir=cfg.outdir, usage_items=usage_items),
+                                executor.submit(
+                                    write_cost_usage_csv,
+                                    outdir=cfg.outdir,
+                                    usage_items=usage_items,
+                                ),
+                                executor.submit(
+                                    write_cost_usage_grouped_csv,
+                                    outdir=cfg.outdir,
+                                    usage_items=usage_items,
+                                    group_by_label=cost_group_by_label or None,
+                                ),
                                 executor.submit(write_cost_usage_jsonl, outdir=cfg.outdir, usage_items=usage_items),
                                 executor.submit(
                                     write_cost_usage_views,
@@ -1875,7 +2296,15 @@ def cmd_run(cfg: RunConfig) -> int:
                             for future in futures:
                                 future.result()
                     else:
-                        write_cost_usage_csv(outdir=cfg.outdir, usage_items=usage_items)
+                        write_cost_usage_csv(
+                            outdir=cfg.outdir,
+                            usage_items=usage_items,
+                        )
+                        write_cost_usage_grouped_csv(
+                            outdir=cfg.outdir,
+                            usage_items=usage_items,
+                            group_by_label=cost_group_by_label or None,
+                        )
                         write_cost_usage_jsonl(outdir=cfg.outdir, usage_items=usage_items)
                         write_cost_usage_views(
                             outdir=cfg.outdir,
@@ -1885,9 +2314,14 @@ def cmd_run(cfg: RunConfig) -> int:
             except Exception as e:
                 from .genai.redact import redact_text
 
-                LOG.warning(
+                _log_event(
+                    LOG,
+                    logging.WARNING,
                     "Cost report failed",
-                    extra={"error": redact_text(str(e)), "step": "cost_report", "phase": "error"},
+                    step="cost_report",
+                    phase="error",
+                    timers=timers,
+                    error=redact_text(str(e)),
                 )
 
 
@@ -1896,13 +2330,27 @@ def cmd_diff(cfg: RunConfig) -> int:
     curr = cfg.curr
     if not prev or not curr:
         raise ConfigError("Both --prev and --curr must be provided for diff")
+    timers = _StepTimers()
     prev_p = Path(prev)
     curr_p = Path(curr)
+    _log_event(
+        LOG,
+        logging.INFO,
+        "Diff started",
+        step="diff",
+        phase="start",
+        timers=timers,
+    )
     diff_obj = diff_files(prev_p, curr_p)
     write_diff(cfg.outdir, diff_obj)
-    LOG.info(
+    _log_event(
+        LOG,
+        logging.INFO,
         "Diff complete",
-        extra={"outdir": str(cfg.outdir), "step": "diff", "phase": "complete"},
+        step="diff",
+        phase="complete",
+        timers=timers,
+        outdir=str(cfg.outdir),
     )
     return 0
 

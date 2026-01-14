@@ -36,7 +36,7 @@ Key guarantees:
 - Read-only OCI calls only (list/search/get).
 - Stable ordering and hashing for reproducible diffs.
 - Report is always written, even if the run fails.
-- Schema validation is enforced; validation errors fail the run.
+- Schema validation runs in auto mode by default; use `--validate-schema` to force full/sampled/off (errors fail when enabled).
 
 ## Install
 - Python 3.11+
@@ -131,6 +131,14 @@ Commands:
   ```
   oci-inv list-genai-models
   ```
+
+## Performance tuning
+- Worker overrides are opt-in: `--config config/workers.yaml` (region/enrich/cost/export workers).
+- Schema validation modes: `--validate-schema auto|full|sampled|off` and `--validate-schema-sample N`.
+- Diagram caps: `--diagram-max-networks N` and `--diagram-max-workloads N` (0 disables that view; use only for perf-focused runs).
+- Use `--no-diagrams` when you only need inventory/cost outputs.
+- OCI SDK clients are cached per service+region; set `OCI_INV_DISABLE_CLIENT_CACHE=1` to disable.
+- Inventory exports are streamed/merged from chunk files for large runs to avoid extra in-memory sorting.
 
 ## Common Use Cases (Copy/Paste)
 
@@ -263,7 +271,9 @@ This section is a quick map of every user-facing component in the CLI, what it d
   - Default granularity is DAILY; time range inputs are normalized to 00:00:00 UTC before querying.
   - Default time range is month-to-date (first day of the current month at 00:00 UTC through now, normalized to 00:00 UTC).
   - Optional compartment grouping: `--cost-compartment-group-by [compartmentId|compartmentName|compartmentPath]` (defaults to compartmentId).
+  - Optional multi-dimension group_by for a combined usage CSV: `--cost-group-by service,region,compartmentId`.
   - `cost_usage_items.csv` includes Usage API rows with full fields (group_by, time window, service/region/compartment where available).
+  - `cost_usage_items_grouped.csv` is written when `--cost-group-by` is set and contains only those grouped rows.
   - `cost_usage_items.jsonl` includes full Usage API items for auditability.
   - Per-view exports: `cost_usage_service.csv`, `cost_usage_region.csv`, `cost_usage_compartment.csv`.
 - **Enrichment coverage**: reports which resource types in an inventory lack enrichers.
@@ -373,16 +383,61 @@ For resource types without a registered enricher, DefaultEnricher returns `NOT_I
 stores the raw search summary under `details.searchSummary`.
 
 Supported resource types (current metadata enrichers):
-- Compute: Instance, Image, BootVolume, BlockVolume, InstanceConfiguration, InstancePool
-- Networking: Vcn, Subnet, Vnic, NetworkSecurityGroup, SecurityList, RouteTable, InternetGateway, NatGateway, ServiceGateway, Drg, DrgAttachment, IPSecConnection, IpSecConnection, VirtualCircuit, Cpe, LocalPeeringGateway, RemotePeeringConnection, CrossConnect, CrossConnectGroup, DhcpOptions, DHCPOptions, PrivateIp
-- Block Storage: Volume, PublicIp, LoadBalancer
-- Identity: Policy
+- Access Governance: AgcsGovernanceInstance
+- AI Services: AiDataPlatform, AiLanguageProject, AiVisionModel, AiVisionProject
+- Analytics: AnalyticsInstance
+- API Gateway: ApiDeployment, ApiGateway, ApiGatewayApi
+- Budgets: Budget
+- Certificates: Certificate, CertificateAuthority
+- Cloud Guard: CloudGuardDetectorRecipe, CloudGuardManagedList, CloudGuardResponderRecipe, CloudGuardSavedQuery, CloudGuardTarget
+- Compute: Instance, Image, BootVolume, BlockVolume, InstanceConfiguration, InstancePool, DedicatedVmHost
+- Container: ClustersCluster, Container, ContainerImage, ContainerInstance, ContainerRepo
+- Dashboards: ConsoleDashboard, ConsoleDashboardGroup
+- Data Flow: DataFlowApplication, DataFlowRun
+- Data Integration: DISWorkspace
+- Data Labeling: DataLabelingDataset
+- Data Safe: DataSafeAuditProfile, DataSafeReportDefinition, DataSafeSecurityAssessment, DataSafeUserAssessment
+- Data Science: DataScienceJob, DataScienceJobRun, DataScienceModel, DataScienceModelDeployment, DataScienceModelVersionSet, DataScienceNotebookSession, DataScienceProject
+- Database: AutonomousDatabase, DbNode, PluggableDatabase
+- Database Tools: DatabaseToolsPrivateEndpoint
+- DevOps: DevOpsBuildPipelineStage, DevOpsBuildRun, DevOpsDeployArtifact, DevOpsProject, DevOpsRepository
 - DNS: DnsZone, CustomerDnsZone, DnsResolver, DnsView
-- Object Storage: Bucket
-- Logging: LogGroup
-- Log Analytics: LogAnalyticsEntity
+- Email Delivery: EmailDkim, EmailDomain, EmailSender
+- Events: EventRule
+- File Storage: FileSystem
+- Functions: FunctionsApplication, FunctionsFunction
+- GenAI Agent: GenAiAgent, GenAiAgentDataIngestionJob, GenAiAgentDataSource, GenAiAgentEndpoint, GenAiAgentKnowledgeBase
+- Identity: Policy, Compartment, DynamicResourceGroup, Group, IdentityProvider, User
+- Identity Domains: App
+- Integration: IntegrationInstance
+- Key Management: Key, KmsHsmCluster, KmsHsmPartition, VaultSecret
+- Logging: LogGroup, Log, LogSavedSearch, LogAnalyticsEntity
 - Media Services: MediaWorkflow, MediaAsset, StreamCdnConfig, StreamDistributionChannel, StreamPackagingConfig
-- Security: Bastion, Vault, Secret, CloudGuardTarget, NetworkFirewall, NetworkFirewallPolicy, WebAppFirewall, WebAppFirewallPolicy
+- MySQL: MysqlBackup, MysqlDbSystem
+- Networking: Vcn, Subnet, Vnic, NetworkSecurityGroup, SecurityList, RouteTable, InternetGateway, NatGateway, ServiceGateway, Drg, DrgAttachment, IPSecConnection, IpSecConnection, VirtualCircuit, Cpe, LocalPeeringGateway, RemotePeeringConnection, CrossConnect, CrossConnectGroup, DhcpOptions, DHCPOptions, PrivateIp, DrgRouteDistribution, DrgRouteTable
+- Notifications: OnsSubscription, OnsTopic
+- ODA: OdaInstance
+- Object Storage: Bucket
+- OS Management Hub: OsmhLifecycleEnvironment, OsmhManagedInstanceGroup, OsmhProfile, OsmhScheduledJob, OsmhSoftwareSource
+- Path Analyzer: PathAnalyzerTest
+- PostgreSQL: PostgresqlConfiguration
+- Recovery Service: ProtectedDatabase, RecoveryServiceSubnet
+- Resource Manager: OrmConfigSourceProvider, OrmJob, OrmPrivateEndpoint, OrmStack, OrmTemplate
+- Resource Scheduler: ResourceSchedule
+- Security: Bastion, Vault, Secret, NetworkFirewall, NetworkFirewallPolicy, WebAppFirewall, WebAppFirewallPolicy, SecurityZonesSecurityRecipe, SecurityZonesSecurityZone, SecurityAttributeNamespace
+- Service Connector: ServiceConnector
+- Streaming: Stream, ConnectHarness
+- Tags: TagDefault, TagNamespace
+- Visual Builder: VisualBuilderInstance
+- Volume Backups: BootVolumeBackup, VolumeBackup, VolumeBackupPolicy, VolumeGroup, VolumeGroupBackup
+- Vulnerability Scanning: VssHostScanRecipe, VssHostScanTarget
+- WAAS: HttpRedirect, WaasCertificate
+- ZPR: ZprPolicy
+
+Known missing enrichers (SDK 2.164.2 has no `get_*` API available yet):
+- LimitsIncreaseRequest
+- ProcessAutomationInstance
+- QueryServiceProject
 
 ## Auth
 Supported methods:
@@ -410,24 +465,33 @@ Common flags:
 - OCI_INV_LOG_LEVEL (INFO, DEBUG, ...)
 - OCI_INV_WORKERS_REGION
 - OCI_INV_WORKERS_ENRICH
+- OCI_INV_WORKERS_COST
+- OCI_INV_WORKERS_EXPORT
 - OCI_INV_REGIONS
 - OCI_INV_GENAI_SUMMARY
 - OCI_INV_VALIDATE_DIAGRAMS
 - OCI_INV_DIAGRAMS
+- OCI_INV_SCHEMA_VALIDATION
+- OCI_INV_SCHEMA_SAMPLE_RECORDS
+- OCI_INV_DIAGRAM_MAX_NETWORKS
+- OCI_INV_DIAGRAM_MAX_WORKLOADS
 - OCI_INV_COST_REPORT
 - OCI_INV_COST_START
 - OCI_INV_COST_END
 - OCI_INV_COST_CURRENCY
 - OCI_INV_COST_COMPARTMENT_GROUP_BY
+- OCI_INV_COST_GROUP_BY
 - OCI_INV_OSUB_SUBSCRIPTION_ID
 - OCI_INV_AUTH
 - OCI_INV_PROFILE
 - OCI_TENANCY_OCID
 - OCI_INV_GENAI_CONFIG (GenAI config path)
+- OCI_INV_DISABLE_CLIENT_CACHE (set to 1/true to disable client reuse)
 
 ## Logging
 - Std logging, INFO by default
 - Structured JSON logs toggled with `--json-logs` or `OCI_INV_JSON_LOGS=1`
+- JSON logs include `event`, `step`, `phase`, and `duration_ms` when available; plain logs prefix `[step:phase]`.
 
 ## Development
 - Linting: ruff

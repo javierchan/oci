@@ -7,10 +7,10 @@ from ..normalize.schema import NormalizedRecord
 from ..normalize.transform import canonicalize_record, normalize_relationships, stable_json_dumps
 
 
-def write_jsonl(records: Iterable[NormalizedRecord], path: Path) -> None:
+def write_jsonl(records: Iterable[NormalizedRecord], path: Path, *, already_sorted: bool = False) -> None:
     """
     Write records to a JSONL file with stable key ordering and deterministic line order.
-    Ordering: sort by ocid, then resourceType.
+    Ordering: sort by ocid, then resourceType (unless already_sorted=True).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -18,7 +18,10 @@ def write_jsonl(records: Iterable[NormalizedRecord], path: Path) -> None:
     def _key(r: NormalizedRecord) -> tuple[str, str]:
         return (str(r.get("ocid") or ""), str(r.get("resourceType") or ""))
 
-    sorted_records: List[NormalizedRecord] = sorted(records, key=_key)
+    if already_sorted:
+        sorted_records = records
+    else:
+        sorted_records = sorted(records, key=_key)
 
     with path.open("w", encoding="utf-8") as f:
         for rec in sorted_records:

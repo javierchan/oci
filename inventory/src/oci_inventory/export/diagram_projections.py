@@ -1058,7 +1058,15 @@ def _write_tenancy_view(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edg
     return path
 
 
-def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edge]) -> List[Path]:
+def _write_network_views(
+    outdir: Path,
+    nodes: Sequence[Node],
+    edges: Sequence[Edge],
+    *,
+    max_vcns: Optional[int] = None,
+) -> List[Path]:
+    if max_vcns == 0:
+        return []
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
 
     vcns = [n for n in nodes if _is_node_type(n, "Vcn")]
@@ -1079,9 +1087,33 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
     attachments = _derived_attachments(nodes, edges)
     attach_by_res: Dict[str, _DerivedAttachment] = {a.resource_ocid: a for a in attachments}
 
+    gateways_by_vcn: Dict[str, List[Node]] = {}
+    for n in nodes:
+        if not _is_node_type(n, *_NETWORK_GATEWAY_NODETYPES):
+            continue
+        meta = _node_metadata(n)
+        nid = str(n.get("nodeId") or "")
+        vcn_ref = edge_vcn_by_src.get(nid) or _get_meta(meta, "vcn_id")
+        if isinstance(vcn_ref, str) and vcn_ref:
+            gateways_by_vcn.setdefault(vcn_ref, []).append(n)
+
     out_paths: List[Path] = []
 
-    for vcn in sorted(vcns, key=lambda n: str(n.get("name") or "")):
+    vcns_sorted = sorted(vcns, key=lambda n: str(n.get("name") or ""))
+    if max_vcns is not None and max_vcns > 0 and len(vcns_sorted) > max_vcns:
+        vcn_scores: Dict[str, int] = {}
+        for sn_id, vcn_id in subnet_to_vcn.items():
+            vcn_scores[vcn_id] = vcn_scores.get(vcn_id, 0) + 1
+        for att in attachments:
+            if att.vcn_ocid:
+                vcn_scores[att.vcn_ocid] = vcn_scores.get(att.vcn_ocid, 0) + 1
+        vcns_scored = sorted(
+            vcns_sorted,
+            key=lambda n: (-vcn_scores.get(str(n.get("nodeId") or ""), 0), str(n.get("name") or "")),
+        )
+        vcns_sorted = sorted(vcns_scored[:max_vcns], key=lambda n: str(n.get("name") or ""))
+
+    for vcn in vcns_sorted:
         vcn_ocid = str(vcn.get("nodeId") or "")
         vcn_name = str(vcn.get("name") or "vcn").strip() or "vcn"
         fname = f"diagram.network.{_slugify(vcn_name)}.mmd"
@@ -1096,15 +1128,7 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
         internet_id = _mermaid_id(f"external:internet:{vcn_name}")
         lines.extend(_render_node_with_class(internet_id, "Internet", cls="external", shape="round"))
 
-        gateways: List[Node] = []
-        for n in nodes:
-            if not _is_node_type(n, *_NETWORK_GATEWAY_NODETYPES):
-                continue
-            meta = _node_metadata(n)
-            nid = str(n.get("nodeId") or "")
-            vcn_ref = edge_vcn_by_src.get(nid) or _get_meta(meta, "vcn_id")
-            if isinstance(vcn_ref, str) and vcn_ref == vcn_ocid:
-                gateways.append(n)
+        gateways: List[Node] = gateways_by_vcn.get(vcn_ocid, [])
 
         has_sgw = any(_is_node_type(g, "ServiceGateway") for g in gateways)
         oci_services_id = ""
@@ -1350,7 +1374,15 @@ def _write_network_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Ed
     return out_paths
 
 
-def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edge]) -> List[Path]:
+def _write_workload_views(
+    outdir: Path,
+    nodes: Sequence[Node],
+    edges: Sequence[Edge],
+    *,
+    max_workloads: Optional[int] = None,
+) -> List[Path]:
+    if max_workloads == 0:
+        return []
     # Identify candidate workloads using shared grouping logic.
     candidates: List[Node] = []
     for n in nodes:
@@ -1384,8 +1416,12 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
 
     out_paths: List[Path] = []
 
-    for wl_name in sorted(wl_to_nodes.keys(), key=lambda s: s.lower()):
-        wl_nodes = wl_to_nodes[wl_name]
+    wl_items = list(wl_to_nodes.items())
+    if max_workloads is not None and max_workloads > 0 and len(wl_items) > max_workloads:
+        wl_items = sorted(wl_items, key=lambda kv: (-len(kv[1]), kv[0].lower()))[:max_workloads]
+    wl_items = sorted(wl_items, key=lambda kv: kv[0].lower())
+
+    for wl_name, wl_nodes in wl_items:
 
         wl_comp_ids: Set[str] = set()
         for n in wl_nodes:
@@ -1777,12 +1813,19 @@ def _write_workload_views(outdir: Path, nodes: Sequence[Node], edges: Sequence[E
     return out_paths
 
 
-def write_diagram_projections(outdir: Path, nodes: Sequence[Node], edges: Sequence[Edge]) -> List[Path]:
+def write_diagram_projections(
+    outdir: Path,
+    nodes: Sequence[Node],
+    edges: Sequence[Edge],
+    *,
+    max_network_views: Optional[int] = None,
+    max_workload_views: Optional[int] = None,
+) -> List[Path]:
     # Edges drive placement and relationship hints in projections.
     out: List[Path] = []
     out.append(_write_tenancy_view(outdir, nodes, edges))
-    out.extend(_write_network_views(outdir, nodes, edges))
-    out.extend(_write_workload_views(outdir, nodes, edges))
+    out.extend(_write_network_views(outdir, nodes, edges, max_vcns=max_network_views))
+    out.extend(_write_workload_views(outdir, nodes, edges, max_workloads=max_workload_views))
 
     # Consolidated, end-user-friendly artifact: one Mermaid diagram that contains all the views.
     out.append(_write_consolidated_mermaid(outdir, nodes, edges, out))

@@ -1942,10 +1942,12 @@ def write_cost_report_md(
     return p
 
 
-def write_cost_usage_csv(
+def _write_cost_usage_csv(
     *,
     outdir: Path,
     usage_items: Sequence[Dict[str, Any]],
+    filename: str,
+    group_by_filter: Optional[str] = None,
 ) -> Optional[Path]:
     if not usage_items:
         return None
@@ -1989,6 +1991,8 @@ def write_cost_usage_csv(
     for item in usage_items:
         if not isinstance(item, dict):
             continue
+        if group_by_filter and str(item.get("group_by") or "") != group_by_filter:
+            continue
         rows.append(item)
         all_keys.update(item.keys())
     if not rows:
@@ -1999,13 +2003,41 @@ def write_cost_usage_csv(
     rows.sort(key=_usage_item_sort_key)
 
     outdir.mkdir(parents=True, exist_ok=True)
-    path = outdir / "cost_usage_items.csv"
+    path = outdir / filename
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
             writer.writerow({field: _normalize_usage_value(row.get(field)) for field in fieldnames})
     return path
+
+
+def write_cost_usage_csv(
+    *,
+    outdir: Path,
+    usage_items: Sequence[Dict[str, Any]],
+) -> Optional[Path]:
+    return _write_cost_usage_csv(
+        outdir=outdir,
+        usage_items=usage_items,
+        filename="cost_usage_items.csv",
+    )
+
+
+def write_cost_usage_grouped_csv(
+    *,
+    outdir: Path,
+    usage_items: Sequence[Dict[str, Any]],
+    group_by_label: Optional[str],
+) -> Optional[Path]:
+    if not group_by_label:
+        return None
+    return _write_cost_usage_csv(
+        outdir=outdir,
+        usage_items=usage_items,
+        filename="cost_usage_items_grouped.csv",
+        group_by_filter=group_by_label,
+    )
 
 
 def write_cost_usage_jsonl(

@@ -19,6 +19,8 @@ DEFAULT_WORKERS_REGION = 6
 DEFAULT_WORKERS_ENRICH = 24
 DEFAULT_WORKERS_COST = 1
 DEFAULT_WORKERS_EXPORT = 1
+DEFAULT_SCHEMA_VALIDATION = "auto"
+DEFAULT_SCHEMA_SAMPLE_RECORDS = 5000
 AUTH_METHODS = {"auto", "config", "instance", "resource", "security_token"}
 ALLOWED_CONFIG_KEYS = {
     "outdir",
@@ -36,6 +38,10 @@ ALLOWED_CONFIG_KEYS = {
     "genai_summary",
     "validate_diagrams",
     "diagrams",
+    "schema_validation",
+    "schema_sample_records",
+    "diagram_max_networks",
+    "diagram_max_workloads",
     "regions",
     "auth",
     "profile",
@@ -46,6 +52,7 @@ ALLOWED_CONFIG_KEYS = {
     "cost_end",
     "cost_currency",
     "cost_compartment_group_by",
+    "cost_group_by",
     "osub_subscription_id",
     "assessment_target_group",
     "assessment_target_scope",
@@ -64,7 +71,16 @@ BOOL_CONFIG_KEYS = {
     "diagrams",
     "cost_report",
 }
-INT_CONFIG_KEYS = {"workers_region", "workers_enrich", "workers_cost", "workers_export", "top"}
+INT_CONFIG_KEYS = {
+    "workers_region",
+    "workers_enrich",
+    "workers_cost",
+    "workers_export",
+    "schema_sample_records",
+    "diagram_max_networks",
+    "diagram_max_workloads",
+    "top",
+}
 PATH_CONFIG_KEYS = {"outdir", "prev", "curr", "inventory"}
 STR_CONFIG_KEYS = {
     "query",
@@ -72,6 +88,7 @@ STR_CONFIG_KEYS = {
     "auth",
     "profile",
     "tenancy_ocid",
+    "schema_validation",
     "cost_start",
     "cost_end",
     "cost_currency",
@@ -79,7 +96,12 @@ STR_CONFIG_KEYS = {
     "osub_subscription_id",
     "assessment_target_group",
 }
-LIST_CONFIG_KEYS = {"assessment_target_scope", "assessment_lens_weights", "assessment_capabilities"}
+LIST_CONFIG_KEYS = {
+    "assessment_target_scope",
+    "assessment_lens_weights",
+    "assessment_capabilities",
+    "cost_group_by",
+}
 
 
 @dataclass(frozen=True)
@@ -105,6 +127,10 @@ class RunConfig:
     genai_summary: bool = False
     validate_diagrams: bool = False
     diagrams: bool = True
+    schema_validation: str = DEFAULT_SCHEMA_VALIDATION
+    schema_sample_records: int = DEFAULT_SCHEMA_SAMPLE_RECORDS
+    diagram_max_networks: Optional[int] = None
+    diagram_max_workloads: Optional[int] = None
 
     # Cost reporting (optional)
     cost_report: bool = False
@@ -112,6 +138,7 @@ class RunConfig:
     cost_end: Optional[str] = None
     cost_currency: Optional[str] = None
     cost_compartment_group_by: Optional[str] = None
+    cost_group_by: Optional[List[str]] = None
     osub_subscription_id: Optional[str] = None
     assessment_target_group: Optional[str] = None
     assessment_target_scope: Optional[List[str]] = None
@@ -403,6 +430,33 @@ def load_run_config(
         default=None,
         help="Generate graph artifacts and Mermaid diagram projections (disable with --no-diagrams).",
     )
+    p_run.add_argument(
+        "--validate-schema",
+        choices=["auto", "full", "sampled", "off"],
+        default=None,
+        help=(
+            "Schema validation mode for outputs: auto (default), full, sampled, or off. "
+            "Auto switches to sampling for large inventory.jsonl files."
+        ),
+    )
+    p_run.add_argument(
+        "--validate-schema-sample",
+        type=int,
+        default=None,
+        help=f"Records to scan when --validate-schema=sampled (default {DEFAULT_SCHEMA_SAMPLE_RECORDS}).",
+    )
+    p_run.add_argument(
+        "--diagram-max-networks",
+        type=int,
+        default=None,
+        help="Limit network (VCN) diagram count; 0 disables network views.",
+    )
+    p_run.add_argument(
+        "--diagram-max-workloads",
+        type=int,
+        default=None,
+        help="Limit workload diagram count; 0 disables workload views.",
+    )
 
     p_run.add_argument(
         "--cost-report",
@@ -430,6 +484,11 @@ def load_run_config(
         choices=("compartmentId", "compartmentName", "compartmentPath"),
         default=None,
         help="Group cost by compartmentId (default), compartmentName, or compartmentPath.",
+    )
+    p_run.add_argument(
+        "--cost-group-by",
+        default=None,
+        help="Comma-separated Usage API group_by list for combined cost usage items (opt-in).",
     )
     p_run.add_argument(
         "--osub-subscription-id",
@@ -558,6 +617,10 @@ def load_run_config(
         "genai_summary": False,
         "validate_diagrams": False,
         "diagrams": True,
+        "schema_validation": DEFAULT_SCHEMA_VALIDATION,
+        "schema_sample_records": DEFAULT_SCHEMA_SAMPLE_RECORDS,
+        "diagram_max_networks": None,
+        "diagram_max_workloads": None,
         "genai_api_format": None,
         "genai_message": None,
         "genai_report": None,
@@ -573,6 +636,7 @@ def load_run_config(
         "cost_end": None,
         "cost_currency": None,
         "cost_compartment_group_by": None,
+        "cost_group_by": None,
         "osub_subscription_id": None,
         "assessment_target_group": None,
         "assessment_target_scope": None,
@@ -603,11 +667,16 @@ def load_run_config(
             "genai_summary": _env_bool("OCI_INV_GENAI_SUMMARY"),
             "validate_diagrams": _env_bool("OCI_INV_VALIDATE_DIAGRAMS"),
             "diagrams": _env_bool("OCI_INV_DIAGRAMS"),
+            "schema_validation": _env_str("OCI_INV_SCHEMA_VALIDATION"),
+            "schema_sample_records": _env_int("OCI_INV_SCHEMA_SAMPLE_RECORDS"),
+            "diagram_max_networks": _env_int("OCI_INV_DIAGRAM_MAX_NETWORKS"),
+            "diagram_max_workloads": _env_int("OCI_INV_DIAGRAM_MAX_WORKLOADS"),
             "cost_report": _env_bool("OCI_INV_COST_REPORT"),
             "cost_start": _env_str("OCI_INV_COST_START"),
             "cost_end": _env_str("OCI_INV_COST_END"),
             "cost_currency": _env_str("OCI_INV_COST_CURRENCY"),
             "cost_compartment_group_by": _env_str("OCI_INV_COST_COMPARTMENT_GROUP_BY"),
+            "cost_group_by": _env_str("OCI_INV_COST_GROUP_BY"),
             "osub_subscription_id": _env_str("OCI_INV_OSUB_SUBSCRIPTION_ID"),
             "assessment_target_group": _env_str("OCI_INV_ASSESSMENT_TARGET_GROUP"),
             "assessment_target_scope": _env_str("OCI_INV_ASSESSMENT_TARGET_SCOPE"),
@@ -638,11 +707,16 @@ def load_run_config(
             "genai_summary": getattr(ns, "genai_summary", None),
             "validate_diagrams": getattr(ns, "validate_diagrams", None),
             "diagrams": getattr(ns, "diagrams", None),
+            "schema_validation": getattr(ns, "validate_schema", None),
+            "schema_sample_records": getattr(ns, "validate_schema_sample", None),
+            "diagram_max_networks": getattr(ns, "diagram_max_networks", None),
+            "diagram_max_workloads": getattr(ns, "diagram_max_workloads", None),
             "cost_report": getattr(ns, "cost_report", None),
             "cost_start": getattr(ns, "cost_start", None),
             "cost_end": getattr(ns, "cost_end", None),
             "cost_currency": getattr(ns, "cost_currency", None),
             "cost_compartment_group_by": getattr(ns, "cost_compartment_group_by", None),
+            "cost_group_by": getattr(ns, "cost_group_by", None),
             "osub_subscription_id": getattr(ns, "osub_subscription_id", None),
             "assessment_target_group": getattr(ns, "assessment_target_group", None),
             "assessment_target_scope": getattr(ns, "assessment_target_scope", None),
@@ -701,11 +775,44 @@ def load_run_config(
                 "cost_compartment_group_by must be one of compartmentId, compartmentName, compartmentPath"
             )
 
+    cost_group_by_raw = merged.get("cost_group_by")
+    cost_group_by = _parse_list_field(cost_group_by_raw)
+    if cost_group_by:
+        allowed_cost_group_by = {"service", "region", "compartmentId", "compartmentName", "compartmentPath", "sku"}
+        deduped: List[str] = []
+        for value in cost_group_by:
+            if value in deduped:
+                continue
+            deduped.append(value)
+        invalid = [value for value in deduped if value not in allowed_cost_group_by]
+        if invalid:
+            raise ValueError(
+                "cost_group_by must be a comma-separated list of: "
+                "service, region, compartmentId, compartmentName, compartmentPath, sku"
+            )
+        cost_group_by = deduped
+
     # default workers if None
     workers_region = int(merged["workers_region"] or DEFAULT_WORKERS_REGION)
     workers_enrich = int(merged["workers_enrich"] or DEFAULT_WORKERS_ENRICH)
     workers_cost = int(merged["workers_cost"] or DEFAULT_WORKERS_COST)
     workers_export = int(merged["workers_export"] or DEFAULT_WORKERS_EXPORT)
+    schema_validation = str(merged.get("schema_validation") or DEFAULT_SCHEMA_VALIDATION).strip().lower()
+    if schema_validation not in {"auto", "full", "sampled", "off"}:
+        raise ValueError("schema_validation must be one of auto, full, sampled, off")
+    schema_sample_records = int(merged.get("schema_sample_records") or DEFAULT_SCHEMA_SAMPLE_RECORDS)
+    if schema_sample_records < 1:
+        schema_sample_records = DEFAULT_SCHEMA_SAMPLE_RECORDS
+    diagram_max_networks = merged.get("diagram_max_networks")
+    diagram_max_workloads = merged.get("diagram_max_workloads")
+    if diagram_max_networks is not None:
+        diagram_max_networks = int(diagram_max_networks)
+        if diagram_max_networks < 0:
+            raise ValueError("diagram_max_networks must be >= 0")
+    if diagram_max_workloads is not None:
+        diagram_max_workloads = int(diagram_max_workloads)
+        if diagram_max_workloads < 0:
+            raise ValueError("diagram_max_workloads must be >= 0")
 
     cfg = RunConfig(
         outdir=outdir,
@@ -723,11 +830,16 @@ def load_run_config(
         genai_summary=bool(merged.get("genai_summary")),
         validate_diagrams=bool(merged.get("validate_diagrams")),
         diagrams=bool(merged.get("diagrams")),
+        schema_validation=schema_validation,
+        schema_sample_records=schema_sample_records,
+        diagram_max_networks=diagram_max_networks,
+        diagram_max_workloads=diagram_max_workloads,
         cost_report=bool(merged.get("cost_report")),
         cost_start=str(merged.get("cost_start")) if merged.get("cost_start") else None,
         cost_end=str(merged.get("cost_end")) if merged.get("cost_end") else None,
         cost_currency=str(merged.get("cost_currency")) if merged.get("cost_currency") else None,
         cost_compartment_group_by=cost_compartment_group_by,
+        cost_group_by=cost_group_by,
         osub_subscription_id=str(merged.get("osub_subscription_id"))
         if merged.get("osub_subscription_id")
         else None,
@@ -769,11 +881,16 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "genai_summary": cfg.genai_summary,
         "validate_diagrams": cfg.validate_diagrams,
         "diagrams": cfg.diagrams,
+        "schema_validation": cfg.schema_validation,
+        "schema_sample_records": cfg.schema_sample_records,
+        "diagram_max_networks": cfg.diagram_max_networks,
+        "diagram_max_workloads": cfg.diagram_max_workloads,
         "cost_report": cfg.cost_report,
         "cost_start": cfg.cost_start,
         "cost_end": cfg.cost_end,
         "cost_currency": cfg.cost_currency,
         "cost_compartment_group_by": cfg.cost_compartment_group_by,
+        "cost_group_by": cfg.cost_group_by,
         "osub_subscription_id": cfg.osub_subscription_id,
         "assessment_target_group": cfg.assessment_target_group,
         "assessment_target_scope": cfg.assessment_target_scope,

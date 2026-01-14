@@ -186,3 +186,42 @@ def test_render_edge_sanitizes_label() -> None:
     assert "|bad label test xy|" in line
     assert "(" not in line
     assert "|" in line
+
+
+def test_write_diagram_projections_limits_views(tmp_path) -> None:
+    records = [
+        {
+            "ocid": "ocid1.vcn.oc1..vcn",
+            "resourceType": "Vcn",
+            "displayName": "Prod-VCN",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": "ocid1.instance.oc1..inst",
+            "resourceType": "Instance",
+            "displayName": "mediaflow-api-01",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {"vcn_id": "ocid1.vcn.oc1..vcn"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+    ]
+
+    nodes, edges = build_graph(records, relationships=[])
+    paths = write_diagram_projections(
+        tmp_path,
+        nodes,
+        edges,
+        max_network_views=0,
+        max_workload_views=0,
+    )
+
+    assert (tmp_path / "diagram.tenancy.mmd").exists()
+    assert (tmp_path / "diagram.consolidated.mmd").exists()
+    assert not any(p.name.startswith("diagram.network.") for p in paths)
+    assert not any(p.name.startswith("diagram.workload.") for p in paths)

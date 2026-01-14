@@ -63,6 +63,7 @@ src/oci_inventory/
      - details: `{"searchSummary": ...}`
      - relationships: `[]`
      - never raises
+   - Known gaps (SDK 2.164.2 lacks `get_*` APIs): LimitsIncreaseRequest, ProcessAutomationInstance, QueryServiceProject.
    - The `searchSummary` field is removed from the final record before export.
 6. Exports:
    - JSONL: canonicalized, stable key order, sorted by `(ocid, resourceType)`.
