@@ -150,11 +150,19 @@ def _apply_connection_pool_size(client: Any, pool_size: Optional[int]) -> None:
     session = getattr(base_client, "session", None)
     if session is None:
         return
+    adapter_cls = None
     try:
-        from requests.adapters import HTTPAdapter
+        if oci is not None:
+            adapter_cls = oci._vendor.requests.adapters.HTTPAdapter  # type: ignore[attr-defined]
     except Exception:
-        return
-    adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size)
+        adapter_cls = None
+    if adapter_cls is None:
+        try:
+            from requests.adapters import HTTPAdapter
+        except Exception:
+            return
+        adapter_cls = HTTPAdapter
+    adapter = adapter_cls(pool_connections=pool_size, pool_maxsize=pool_size)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
 
