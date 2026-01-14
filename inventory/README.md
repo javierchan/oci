@@ -140,6 +140,8 @@ Commands:
 - OCI SDK clients are cached per service+region; set `OCI_INV_DISABLE_CLIENT_CACHE=1` to disable.
 - Increase OCI SDK HTTP connection pool size with `--client-connection-pool-size N` or `OCI_INV_CLIENT_CONNECTION_POOL_SIZE` to reduce pool churn in high-concurrency runs.
 - Sizing tip: set `--client-connection-pool-size` to at least `--workers-enrich` when you see connection pool warnings.
+- The pool size applies to the OCI SDK vendored HTTP stack (`oci._vendor.requests`), so it targets the same connections that emit pool warnings.
+- If warnings persist, increase `--client-connection-pool-size` or reduce `--workers-enrich`.
 - Inventory exports are streamed/merged from chunk files for large runs to avoid extra in-memory sorting.
 
 ## Common Use Cases (Copy/Paste)
