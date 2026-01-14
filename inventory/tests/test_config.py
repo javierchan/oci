@@ -141,6 +141,17 @@ def test_diagram_limits_from_cli() -> None:
     assert cfg.diagram_max_workloads == 3
 
 
+def test_client_connection_pool_size_from_cli() -> None:
+    _, cfg = load_run_config(argv=["run", "--client-connection-pool-size", "20"])
+    assert cfg.client_connection_pool_size == 20
+
+
+def test_client_connection_pool_size_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("OCI_INV_CLIENT_CONNECTION_POOL_SIZE", "15")
+    _, cfg = load_run_config(argv=["run"])
+    assert cfg.client_connection_pool_size == 15
+
+
 def test_unknown_config_keys_warn(tmp_path) -> None:
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text("query: from-config\nunknown_key: value\n", encoding="utf-8")

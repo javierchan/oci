@@ -29,7 +29,8 @@ except Exception:  # pragma: no cover - surfaced in CLI validate
     oci = None  # type: ignore
 
 _CLIENT_CACHE_LOCK = threading.Lock()
-_CLIENT_CACHE: dict[Tuple[str, Optional[str], Tuple[Any, ...]], Any] = {}
+_CLIENT_CACHE: dict[Tuple[str, Optional[str], Tuple[Any, ...], Optional[int]], Any] = {}
+_CLIENT_CONNECTION_POOL_SIZE: Optional[int] = None
 
 
 def _client_cache_enabled() -> bool:
@@ -54,13 +55,18 @@ def _auth_cache_key(ctx: AuthContext) -> Tuple[Any, ...]:
 
 def _cached_client(client_cls: Any, ctx: AuthContext, region: Optional[str]) -> Any:
     if not _client_cache_enabled():
-        return make_client(client_cls, ctx, region=region)
-    key = (f"{getattr(client_cls, '__module__', '')}.{getattr(client_cls, '__name__', '')}", region, _auth_cache_key(ctx))
+        return make_client(client_cls, ctx, region=region, connection_pool_size=_CLIENT_CONNECTION_POOL_SIZE)
+    key = (
+        f"{getattr(client_cls, '__module__', '')}.{getattr(client_cls, '__name__', '')}",
+        region,
+        _auth_cache_key(ctx),
+        _CLIENT_CONNECTION_POOL_SIZE,
+    )
     with _CLIENT_CACHE_LOCK:
         cached = _CLIENT_CACHE.get(key)
     if cached is not None:
         return cached
-    client = make_client(client_cls, ctx, region=region)
+    client = make_client(client_cls, ctx, region=region, connection_pool_size=_CLIENT_CONNECTION_POOL_SIZE)
     with _CLIENT_CACHE_LOCK:
         _CLIENT_CACHE.setdefault(key, client)
     return client
@@ -82,6 +88,17 @@ def _load_client_class(module_name: str, class_name: str) -> Any:
 def clear_client_cache() -> None:
     with _CLIENT_CACHE_LOCK:
         _CLIENT_CACHE.clear()
+
+
+def set_client_connection_pool_size(size: Optional[int]) -> None:
+    global _CLIENT_CONNECTION_POOL_SIZE
+    normalized = None if size is None else int(size)
+    if normalized is not None and normalized < 1:
+        raise ValueError("client_connection_pool_size must be >= 1")
+    if normalized == _CLIENT_CONNECTION_POOL_SIZE:
+        return
+    _CLIENT_CONNECTION_POOL_SIZE = normalized
+    clear_client_cache()
 
 
 def get_identity_client(ctx: AuthContext, region: Optional[str] = None) -> Any:

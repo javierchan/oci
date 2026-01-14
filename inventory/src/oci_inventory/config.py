@@ -35,6 +35,7 @@ ALLOWED_CONFIG_KEYS = {
     "workers_enrich",
     "workers_cost",
     "workers_export",
+    "client_connection_pool_size",
     "genai_summary",
     "validate_diagrams",
     "diagrams",
@@ -76,6 +77,7 @@ INT_CONFIG_KEYS = {
     "workers_enrich",
     "workers_cost",
     "workers_export",
+    "client_connection_pool_size",
     "schema_sample_records",
     "diagram_max_networks",
     "diagram_max_workloads",
@@ -121,6 +123,7 @@ class RunConfig:
     workers_enrich: int = DEFAULT_WORKERS_ENRICH
     workers_cost: int = DEFAULT_WORKERS_COST
     workers_export: int = DEFAULT_WORKERS_EXPORT
+    client_connection_pool_size: Optional[int] = None
     regions: Optional[List[str]] = None
 
     # Optional features
@@ -343,6 +346,12 @@ def load_run_config(
             help="Enable JSON logs",
         )
         p.add_argument("--log-level", default=None, help="Log level (INFO, DEBUG, ...)")
+        p.add_argument(
+            "--client-connection-pool-size",
+            type=int,
+            default=None,
+            help="HTTP connection pool size per OCI SDK client (default: SDK default)",
+        )
         # Auth
         p.add_argument(
             "--auth",
@@ -614,6 +623,7 @@ def load_run_config(
         "workers_enrich": DEFAULT_WORKERS_ENRICH,
         "workers_cost": DEFAULT_WORKERS_COST,
         "workers_export": DEFAULT_WORKERS_EXPORT,
+        "client_connection_pool_size": None,
         "genai_summary": False,
         "validate_diagrams": False,
         "diagrams": True,
@@ -664,6 +674,7 @@ def load_run_config(
             "workers_enrich": _env_int("OCI_INV_WORKERS_ENRICH"),
             "workers_cost": _env_int("OCI_INV_WORKERS_COST"),
             "workers_export": _env_int("OCI_INV_WORKERS_EXPORT"),
+            "client_connection_pool_size": _env_int("OCI_INV_CLIENT_CONNECTION_POOL_SIZE"),
             "genai_summary": _env_bool("OCI_INV_GENAI_SUMMARY"),
             "validate_diagrams": _env_bool("OCI_INV_VALIDATE_DIAGRAMS"),
             "diagrams": _env_bool("OCI_INV_DIAGRAMS"),
@@ -704,6 +715,7 @@ def load_run_config(
             "workers_enrich": getattr(ns, "workers_enrich", None),
             "workers_cost": getattr(ns, "workers_cost", None),
             "workers_export": getattr(ns, "workers_export", None),
+            "client_connection_pool_size": getattr(ns, "client_connection_pool_size", None),
             "genai_summary": getattr(ns, "genai_summary", None),
             "validate_diagrams": getattr(ns, "validate_diagrams", None),
             "diagrams": getattr(ns, "diagrams", None),
@@ -797,6 +809,11 @@ def load_run_config(
     workers_enrich = int(merged["workers_enrich"] or DEFAULT_WORKERS_ENRICH)
     workers_cost = int(merged["workers_cost"] or DEFAULT_WORKERS_COST)
     workers_export = int(merged["workers_export"] or DEFAULT_WORKERS_EXPORT)
+    client_connection_pool_size = merged.get("client_connection_pool_size")
+    if client_connection_pool_size is not None:
+        client_connection_pool_size = int(client_connection_pool_size)
+        if client_connection_pool_size < 1:
+            raise ValueError("client_connection_pool_size must be >= 1")
     schema_validation = str(merged.get("schema_validation") or DEFAULT_SCHEMA_VALIDATION).strip().lower()
     if schema_validation not in {"auto", "full", "sampled", "off"}:
         raise ValueError("schema_validation must be one of auto, full, sampled, off")
@@ -827,6 +844,7 @@ def load_run_config(
         workers_enrich=workers_enrich,
         workers_cost=workers_cost,
         workers_export=workers_export,
+        client_connection_pool_size=client_connection_pool_size,
         genai_summary=bool(merged.get("genai_summary")),
         validate_diagrams=bool(merged.get("validate_diagrams")),
         diagrams=bool(merged.get("diagrams")),
@@ -878,6 +896,7 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "workers_enrich": cfg.workers_enrich,
         "workers_cost": cfg.workers_cost,
         "workers_export": cfg.workers_export,
+        "client_connection_pool_size": cfg.client_connection_pool_size,
         "genai_summary": cfg.genai_summary,
         "validate_diagrams": cfg.validate_diagrams,
         "diagrams": cfg.diagrams,

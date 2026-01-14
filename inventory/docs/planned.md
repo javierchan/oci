@@ -99,25 +99,4 @@ Queue Manager, que pasa si hay varias sesiones consumiendo este codebase, necesi
 Nuestra terminal app oci-inv-wizard esta alineado a todas las flags que tenemos en el codebase?
 ---
 --
-    
-Dame un comando que utilice todas las new flags and performance details o mejoras que hayamos implementado, puedes complementar este comando: 
-
-I want to run the full suite with a real oci-inv with my usual flags, incluye la flag --cost-group-by  y complementa este comando de manera consistente:
-
-  /Users/javierchan/Documents/GitHub/oci/inventory/.venv/bin/python -m oci_inventory.cli run \
-    --auth config \
-    --profile DEFAULT \
-    --tenancy ocid1.tenancy.oc1..aaaaaaaaoi6b5sxlv4z773boczybqz3h2vspvvru42jysvizl77lky22ijaq \
-    --regions us-ashburn-1 \
-    --query "query all resources" \
-    --config config/workers.yaml \
-    --parquet \
-    --validate-diagrams \
-    --genai-summary \
-    --cost-report \
-    --cost-currency USD \
-    --osub-subscription-id 7573671 \
-    --cost-start 2026-01-01T00:00:00Z \
-    --cost-end 2026-01-02T00:00:00Z \
-    --log-level DEBUG \
-    --json-logs
+  

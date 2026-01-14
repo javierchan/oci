@@ -19,7 +19,13 @@ from .diff.diff import diff_files, write_diff
 from .enrich import get_enricher_for, set_enrich_context
 from .logging import LogConfig, get_logger, setup_logging
 from .normalize.transform import canonicalize_record, normalize_relationships, sort_relationships, stable_json_dumps
-from .oci.clients import get_budget_client, get_home_region_name, get_osub_usage_client, get_usage_api_client
+from .oci.clients import (
+    get_budget_client,
+    get_home_region_name,
+    get_osub_usage_client,
+    get_usage_api_client,
+    set_client_connection_pool_size,
+)
 from .oci.compartments import list_compartments as oci_list_compartments
 from .oci.discovery import discover_in_region
 from .oci.regions import get_subscribed_regions
@@ -2408,6 +2414,7 @@ def main() -> None:
     try:
         command, cfg = load_run_config()
         setup_logging(LogConfig(level=cfg.log_level, json_logs=cfg.json_logs))
+        set_client_connection_pool_size(cfg.client_connection_pool_size)
 
         if command == "run":
             code = cmd_run(cfg)

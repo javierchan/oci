@@ -76,6 +76,10 @@ Optional flags:
   oci-inv run --workers-cost 2 --workers-export 2
   ```
   You can also reuse `config/workers.yaml` with `--config config/workers.yaml`.
+- Increase the OCI SDK HTTP connection pool size (reduces pool churn at higher concurrency):
+  ```
+  oci-inv run --client-connection-pool-size 25
+  ```
 - Disable diagram generation:
   ```
   oci-inv run --no-diagrams
@@ -169,6 +173,7 @@ Common environment variables that influence behavior:
 - OCI_INV_WORKERS_ENRICH
 - OCI_INV_WORKERS_COST
 - OCI_INV_WORKERS_EXPORT
+- OCI_INV_CLIENT_CONNECTION_POOL_SIZE
 - OCI_INV_REGIONS
 - OCI_INV_AUTH
 - OCI_INV_PROFILE

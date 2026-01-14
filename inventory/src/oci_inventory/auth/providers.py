@@ -141,7 +141,30 @@ def get_tenancy_ocid(ctx: AuthContext) -> Optional[str]:
     return None
 
 
-def make_client(client_cls: Any, ctx: AuthContext, region: Optional[str] = None) -> Any:
+def _apply_connection_pool_size(client: Any, pool_size: Optional[int]) -> None:
+    if pool_size is None:
+        return
+    if pool_size < 1:
+        return
+    base_client = getattr(client, "base_client", None)
+    session = getattr(base_client, "session", None)
+    if session is None:
+        return
+    try:
+        from requests.adapters import HTTPAdapter
+    except Exception:
+        return
+    adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+
+
+def make_client(
+    client_cls: Any,
+    ctx: AuthContext,
+    region: Optional[str] = None,
+    connection_pool_size: Optional[int] = None,
+) -> Any:
     """
     Construct an OCI SDK client of type client_cls using the provided AuthContext.
     When using signer-based auth, a minimal config dict with region must be provided.
@@ -176,4 +199,5 @@ def make_client(client_cls: Any, ctx: AuthContext, region: Optional[str] = None)
         except Exception:
             # not fatal; SDK usually respects config['region']
             pass
+    _apply_connection_pool_size(client, connection_pool_size)
     return client
