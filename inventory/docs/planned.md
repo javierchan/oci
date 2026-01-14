@@ -74,7 +74,6 @@
 - Deterministic outputs and ordering; offline, fast tests.
 - Redaction requirements for reports and GenAI outputs.
 - No new dependencies without explicit approval; reuse the existing `.venv`.
-- If a valid method already exists, reuse or adapt it before introducing a new approach.
 
 ## 4.4 Risks and Open Questions
 - Definition and scope of "OCI best practices/CAF" and its data sources.
@@ -96,5 +95,4 @@ MLX Support Addition to use LLM's in macOS to use when GenAI is not available, m
 
 Queue Manager, que pasa si hay varias sesiones consumiendo este codebase, mnecesitamos tener un queue manager que ejecute los jobs de manera efectiva
 
- Adicionalmente, en AGENTS.md y archivos relacionados (en donde aplique) hay que agregar el statement, si ya tenemos un metodo activo / valido para resolver determinada situacion,
-  debe ser reusado, correctamente redactadode acuerdo a el lineamiento utilizado en estos documentos
+ 
