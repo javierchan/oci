@@ -26,6 +26,7 @@ Environment variables can also be used:
 - `OCI_TENANCY_OCID`: tenancy OCID for auth flows that don't infer it from a config file
 
 Note: For operations like listing regions and compartments, the tenancy OCID must be known. When using config-file auth, it is read from the profile. For signer-based methods (instance/resource principals), provide `--tenancy` if the tenancy cannot be inferred.
+Signer-based auth also requires a region. Set `OCI_REGION` (or `OCI_CLI_REGION`) or pass a region explicitly to avoid SDK initialization errors.
 
 ## Config-file auth (API keys)
 

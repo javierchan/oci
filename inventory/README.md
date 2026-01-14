@@ -453,6 +453,7 @@ Common flags:
 - `--auth [auto|config|instance|resource|security_token]`
 - `--profile PROFILE` (config-file auth)
 - `--tenancy OCID` (some calls require explicit tenancy OCID when not available from config)
+Signer-based auth also needs a region; set `OCI_REGION` (or `OCI_CLI_REGION`) when no region is provided.
 
 ## Environment Variables
 - OCI_INV_QUERY
