@@ -85,6 +85,7 @@ Forbidden (mutating):
 - Tests must be offline, deterministic, and fast.
 - Avoid network calls, real OCI access, or external dependencies.
 - Run smallest relevant subset of tests; expand only if needed.
+- Always run pytest using the repo `.venv` (e.g., `./.venv/bin/python -m pytest`).
 
 ---
 
@@ -105,8 +106,7 @@ When making claims or decisions:
 - Do not reformat or refactor unrelated areas.
 - Keep diffs small, focused, logically grouped.
 - Separate refactors from functional changes.
-- Always re-use the existing `.venv` located at:
-  `/Users/javierchan/Documents/GitHub/oci/inventory/.venv`
+- Always re-use the existing `.venv` located at the repo root (`./.venv`).
 - Only update the venv if strictly necessary.
 
 ---
@@ -159,7 +159,7 @@ To avoid breaking the integrated terminal in VSCode or other execution environme
    - Avoid commands that alter the shell state or environment unintentionally (e.g., `source` without context).
    - When activation of a virtual environment is required, prefer:
      ```
-     source /Users/javierchan/Documents/GitHub/oci/inventory/.venv/bin/activate
+     source .venv/bin/activate
      ```
      and do not create new virtual environments.
 

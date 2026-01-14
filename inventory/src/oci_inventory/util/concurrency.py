@@ -34,6 +34,32 @@ def parallel_map_ordered(
     return results
 
 
+def parallel_map_ordered_iter(
+    func: Callable[[T], R],
+    items: Sequence[T] | Iterable[T],
+    max_workers: int,
+    *,
+    batch_size: int = 500,
+) -> Iterable[R]:
+    """
+    Execute func over items in ordered batches, yielding results in input order.
+    This bounds in-flight futures for large inputs.
+    """
+    if not isinstance(items, Sequence):
+        items = list(items)
+
+    total = len(items)
+    if batch_size <= 0 or batch_size >= total:
+        for item in parallel_map_ordered(func, items, max_workers=max_workers):
+            yield item
+        return
+
+    for start in range(0, total, batch_size):
+        batch = items[start : start + batch_size]
+        for item in parallel_map_ordered(func, batch, max_workers=max_workers):
+            yield item
+
+
 def parallel_for_each(
     func: Callable[[T], None],
     items: Sequence[T] | Iterable[T],

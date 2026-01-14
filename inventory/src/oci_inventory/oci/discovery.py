@@ -27,6 +27,17 @@ def _to_dict(obj: Any) -> Dict[str, Any]:
             return sanitize_for_json(to_dict())
         except Exception:
             pass
+    # Fast path for OCI SDK models with attribute maps.
+    attr_map = getattr(obj, "attribute_map", None)
+    swagger_types = getattr(obj, "swagger_types", None)
+    if isinstance(attr_map, dict) and isinstance(swagger_types, dict):
+        out: Dict[str, Any] = {}
+        for attr in attr_map.keys():
+            try:
+                out[attr] = sanitize_for_json(getattr(obj, attr))
+            except Exception:
+                continue
+        return out
     # Fallback: best-effort shallow conversion
     out: Dict[str, Any] = {}
     for k in dir(obj):

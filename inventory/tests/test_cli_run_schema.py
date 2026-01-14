@@ -428,3 +428,67 @@ def test_cost_report_uses_compartment_group_by(monkeypatch, tmp_path) -> None:
 
     assert "compartmentName" in seen_group_by
     assert cost_context["query_inputs"]["group_by"][1] == "compartmentName"
+
+
+def test_merge_sorted_inventory_chunks(tmp_path) -> None:
+    chunk1 = tmp_path / "chunk1.jsonl"
+    chunk2 = tmp_path / "chunk2.jsonl"
+    chunk1.write_text(
+        "\n".join(
+            [
+                '{"ocid":"ocid1.a","resourceType":"A"}',
+                '{"ocid":"ocid1.c","resourceType":"A"}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    chunk2.write_text(
+        "\n".join(
+            [
+                '{"ocid":"ocid1.b","resourceType":"A"}',
+                '{"ocid":"ocid1.d","resourceType":"A"}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    merged = list(cli._merge_sorted_inventory_chunks([chunk1, chunk2]))
+    ocids = [rec["ocid"] for rec in merged]
+    assert ocids == ["ocid1.a", "ocid1.b", "ocid1.c", "ocid1.d"]
+
+
+def test_validate_outdir_schema_sampled_warns(tmp_path) -> None:
+    inv = tmp_path / "inventory.jsonl"
+    rels = tmp_path / "relationships.jsonl"
+    summary = tmp_path / "run_summary.json"
+
+    inv.write_text(
+        "\n".join(
+            [
+                '{"ocid":"ocid1.a","resourceType":"A","region":"r1","collectedAt":"2026-01-01T00:00:00Z","enrichStatus":"OK","details":{},"relationships":[]}',
+                '{"ocid":"ocid1.b","resourceType":"B","region":"r1","collectedAt":"2026-01-01T00:00:00Z","enrichStatus":"OK","details":{},"relationships":[]}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    rels.write_text("", encoding="utf-8")
+    summary.write_text(
+        '{"schema_version":"1","total_discovered":2,"enriched_ok":2,"not_implemented":0,"errors":0,'
+        '"counts_by_resource_type":{},"counts_by_enrich_status":{},"counts_by_resource_type_and_status":{}}',
+        encoding="utf-8",
+    )
+
+    result = cli._validate_outdir_schema(tmp_path, mode="sampled", sample_limit=1, expect_graph=False)
+    assert result.errors == []
+    assert any("sampled first 1 records" in w for w in result.warnings)
+
+
+def test_parallel_map_ordered_iter_batches() -> None:
+    from oci_inventory.util.concurrency import parallel_map_ordered_iter
+
+    items = [3, 1, 2, 4]
+    out = list(parallel_map_ordered_iter(lambda x: x * 2, items, max_workers=2, batch_size=2))
+    assert out == [6, 2, 4, 8]

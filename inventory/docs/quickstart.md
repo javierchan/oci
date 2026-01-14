@@ -80,6 +80,14 @@ Optional flags:
   ```
   oci-inv run --no-diagrams
   ```
+- Limit diagram volume (large tenancies):
+  ```
+  oci-inv run --diagram-max-networks 10 --diagram-max-workloads 20
+  ```
+- Tune schema validation for large outputs:
+  ```
+  oci-inv run --validate-schema sampled --validate-schema-sample 2000
+  ```
 - Enable cost reporting (home region; read-only):
   ```
   oci-inv run --cost-report --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD
@@ -97,6 +105,10 @@ Optional flags:
   ```
   oci-inv run --cost-report --cost-compartment-group-by compartmentName --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD
   ```
+- Cost report with multi-dimension group_by for combined usage items:
+  ```
+  oci-inv run --cost-report --cost-group-by service,region,compartmentId --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD
+  ```
 
 Output structure per run:
 
@@ -107,6 +119,7 @@ out/<timestamp>/
   inventory.parquet        # when --parquet and pyarrow installed
   cost_report.md           # when --cost-report
   cost_usage_items.csv     # when --cost-report; full Usage API rows
+  cost_usage_items_grouped.csv # when --cost-group-by; grouped multi-dim rows
   cost_usage_items.jsonl   # when --cost-report; full Usage API items
   cost_usage_service.csv   # when --cost-report; service view
   cost_usage_region.csv    # when --cost-report; region view
@@ -161,12 +174,18 @@ Common environment variables that influence behavior:
 - OCI_INV_PROFILE
 - OCI_TENANCY_OCID
 - OCI_INV_DIAGRAMS
+- OCI_INV_VALIDATE_DIAGRAMS
+- OCI_INV_SCHEMA_VALIDATION
+- OCI_INV_SCHEMA_SAMPLE_RECORDS
+- OCI_INV_DIAGRAM_MAX_NETWORKS
+- OCI_INV_DIAGRAM_MAX_WORKLOADS
 - OCI_INV_COST_REPORT
 - OCI_INV_COST_START
 - OCI_INV_COST_END
 - OCI_INV_COST_CURRENCY
 - OCI_INV_COST_COMPARTMENT_GROUP_BY
 - OCI_INV_OSUB_SUBSCRIPTION_ID
+- OCI_INV_DISABLE_CLIENT_CACHE
 
 ## Troubleshooting
 

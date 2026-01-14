@@ -52,6 +52,9 @@ class JsonFormatter(logging.Formatter):
             ):
                 if value is None:
                     continue
+                if isinstance(value, (str, int, float, bool)):
+                    payload[key] = value
+                    continue
                 try:
                     json.dumps({key: value})
                     payload[key] = value
@@ -66,11 +69,14 @@ class PlainFormatter(logging.Formatter):
         timestamp = datetime.utcfromtimestamp(record.created).isoformat(timespec="seconds") + "Z"
         step = getattr(record, "step", None)
         phase = getattr(record, "phase", None)
+        duration_ms = getattr(record, "duration_ms", None)
         message = record.getMessage()
         if step or phase:
             step_label = step if step else "unknown"
             phase_label = phase if phase else "unknown"
             message = f"[{step_label}:{phase_label}] {message}"
+        if duration_ms is not None:
+            message = f"{message} (duration_ms={duration_ms})"
         return f"{timestamp} {record.levelname} {record.name}: {message}"
 
 

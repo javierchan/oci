@@ -114,7 +114,7 @@ def run_genai_best_effort_prompt(
     client = GenerativeAiInferenceClient(oci_cfg, **client_kwargs)
 
     prompt_red = redact_text(prompt).strip()
-    api_format_u = (api_format or "GENERIC").strip().upper()
+    api_format_u = (api_format or "AUTO").strip().upper()
     temp_val = float(temperature) if temperature is not None else 0.2
     max_tokens = int(max_tokens)
 
@@ -372,11 +372,19 @@ def run_genai_best_effort_prompt(
                 return client.chat(chat_details_2)
             raise
 
+    if api_format_u not in {"AUTO", BaseChatRequest.API_FORMAT_GENERIC, BaseChatRequest.API_FORMAT_COHERE}:
+        api_format_u = "AUTO"
+
     used_runtime = ""
 
     # If prefer_chat is set, skip generate_text and use chat() directly.
     if prefer_chat:
-        resp = _do_chat(api_format_value=BaseChatRequest.API_FORMAT_GENERIC)
+        chat_format = (
+            BaseChatRequest.API_FORMAT_COHERE
+            if api_format_u == BaseChatRequest.API_FORMAT_COHERE
+            else BaseChatRequest.API_FORMAT_GENERIC
+        )
+        resp = _do_chat(api_format_value=chat_format)
         used_runtime = "CHAT"
     # Otherwise: try generate_text first. If the model/runtime mismatches or the on-demand
     # generate_text model is retired/unavailable, fall back:
@@ -401,7 +409,12 @@ def run_genai_best_effort_prompt(
             used_runtime = "LLAMA"
         except Exception as e:
             if _should_fallback_to_chat(e):
-                resp = _do_chat(api_format_value=BaseChatRequest.API_FORMAT_GENERIC)
+                chat_format = (
+                    BaseChatRequest.API_FORMAT_COHERE
+                    if api_format_u == BaseChatRequest.API_FORMAT_COHERE
+                    else BaseChatRequest.API_FORMAT_GENERIC
+                )
+                resp = _do_chat(api_format_value=chat_format)
                 used_runtime = "CHAT"
             elif not _should_retry_with_cohere(e):
                 raise
@@ -425,7 +438,12 @@ def run_genai_best_effort_prompt(
                     if not _should_fallback_to_chat(e2):
                         raise
 
-                    resp = _do_chat(api_format_value=BaseChatRequest.API_FORMAT_GENERIC)
+                    chat_format = (
+                        BaseChatRequest.API_FORMAT_COHERE
+                        if api_format_u == BaseChatRequest.API_FORMAT_COHERE
+                        else BaseChatRequest.API_FORMAT_GENERIC
+                    )
+                    resp = _do_chat(api_format_value=chat_format)
                     used_runtime = "CHAT"
 
     # Parse response
@@ -444,7 +462,11 @@ def run_genai_best_effort_prompt(
         text = getattr(choices[0], "text", "")
         out = str(text or "").strip()
     elif used_runtime == "CHAT":
-        used_api_format = BaseChatRequest.API_FORMAT_GENERIC
+        used_api_format = (
+            BaseChatRequest.API_FORMAT_COHERE
+            if api_format_u == BaseChatRequest.API_FORMAT_COHERE
+            else BaseChatRequest.API_FORMAT_GENERIC
+        )
         tried_cohere_format = False
         cohere_retry_error: str = ""
 
@@ -490,7 +512,7 @@ def run_genai_best_effort_prompt(
         # This must be evaluated after redaction to avoid treating an OCID-only
         # response as "non-empty".
         if not out or not _looks_usable_summary(redact_text(out).strip()):
-            if api_format_u != BaseChatRequest.API_FORMAT_COHERE:
+            if api_format_u == "AUTO":
                 try:
                     tried_cohere_format = True
                     resp2 = _do_chat(api_format_value=BaseChatRequest.API_FORMAT_COHERE)
@@ -643,7 +665,7 @@ def generate_executive_summary(
         prompt=prompt,
         genai_cfg=cfg,
         prefer_chat=bool(report_md_red),
-        api_format="GENERIC",
+        api_format="AUTO",
         max_tokens=300,
         temperature=0.2,
     )

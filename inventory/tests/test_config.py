@@ -19,6 +19,8 @@ def test_default_query_and_workers_from_defaults(monkeypatch) -> None:
     assert cfg.workers_cost > 0
     assert cfg.workers_export > 0
     assert cfg.auth == "auto"
+    assert cfg.schema_validation == "auto"
+    assert cfg.schema_sample_records > 0
 
 
 def test_env_overrides_query(monkeypatch) -> None:
@@ -125,6 +127,20 @@ def test_cli_can_disable_diagrams() -> None:
     assert cfg.diagrams is False
 
 
+def test_schema_validation_cli_overrides() -> None:
+    _, cfg = load_run_config(argv=["run", "--validate-schema", "sampled", "--validate-schema-sample", "12"])
+    assert cfg.schema_validation == "sampled"
+    assert cfg.schema_sample_records == 12
+
+
+def test_diagram_limits_from_cli() -> None:
+    _, cfg = load_run_config(
+        argv=["run", "--diagram-max-networks", "2", "--diagram-max-workloads", "3"]
+    )
+    assert cfg.diagram_max_networks == 2
+    assert cfg.diagram_max_workloads == 3
+
+
 def test_unknown_config_keys_warn(tmp_path) -> None:
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text("query: from-config\nunknown_key: value\n", encoding="utf-8")
@@ -177,6 +193,17 @@ def test_cost_compartment_group_by_from_env(monkeypatch) -> None:
     monkeypatch.setenv("OCI_INV_COST_COMPARTMENT_GROUP_BY", "compartmentName")
     _, cfg = load_run_config(argv=["run"])
     assert cfg.cost_compartment_group_by == "compartmentName"
+
+
+def test_cost_group_by_parsed() -> None:
+    _, cfg = load_run_config(argv=["run", "--cost-group-by", "service,region,compartmentId"])
+    assert cfg.cost_group_by == ["service", "region", "compartmentId"]
+
+
+def test_cost_group_by_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("OCI_INV_COST_GROUP_BY", "service,region")
+    _, cfg = load_run_config(argv=["run"])
+    assert cfg.cost_group_by == ["service", "region"]
 
 
 def test_validate_auth_skips_config(monkeypatch) -> None:
