@@ -64,24 +64,16 @@ def _build_prompt(
     return "\n".join(lines)
 
 
-def generate_executive_summary(
+def run_genai_best_effort_prompt(
     *,
+    prompt: str,
     genai_cfg: Optional[GenAIConfig] = None,
-    status: str,
-    started_at: str,
-    finished_at: str,
-    subscribed_regions: List[str],
-    requested_regions: Optional[List[str]],
-    excluded_regions: List[Dict[str, str]],
-    metrics: Optional[Dict[str, Any]],
-    architecture_facts: Optional[Dict[str, Any]] = None,
-    report_md: Optional[str] = None,
-) -> str:
-    """
-    Generate a short Markdown executive summary via OCI Generative AI Inference.
-
-    This is intentionally best-effort and must be called only when explicitly enabled.
-    """
+    prefer_chat: bool = False,
+    api_format: Optional[str] = None,
+    max_tokens: int = 300,
+    temperature: Optional[float] = None,
+) -> tuple[str, str]:
+    """Run a best-effort GenAI prompt with generate_text + chat fallback."""
 
     cfg = genai_cfg or load_genai_config()
 
@@ -121,50 +113,13 @@ def generate_executive_summary(
 
     client = GenerativeAiInferenceClient(oci_cfg, **client_kwargs)
 
-    excluded_short = [
-        {"region": str(x.get("region") or ""), "reason": str(x.get("reason") or "")}
-        for x in excluded_regions
-    ]
-
-    run_facts: Dict[str, Any] = {
-        "Status": status,
-        "Started (UTC)": started_at,
-        "Finished (UTC)": finished_at,
-        "Subscribed regions": ", ".join(subscribed_regions),
-        "Requested regions": ", ".join(requested_regions) if requested_regions else "(all subscribed)",
-        "Excluded regions": ", ".join(sorted({x.get('region','') for x in excluded_short if x.get('region')}))
-        if excluded_short
-        else "none",
-    }
-    if metrics:
-        run_facts["Discovered records"] = str(metrics.get("total_discovered", ""))
-        cbes = metrics.get("counts_by_enrich_status") or {}
-        if cbes:
-            run_facts["Enrichment status"] = ", ".join([f"{k}={cbes[k]}" for k in sorted(cbes.keys())])
-
-        cbrt = metrics.get("counts_by_resource_type") or {}
-        if cbrt:
-            # top 8 types
-            top = sorted(((k, int(v)) for k, v in cbrt.items()), key=lambda kv: (-kv[1], kv[0]))[:8]
-            run_facts["Top resource types"] = ", ".join([f"{k}={v}" for k, v in top])
-
-    # Redact aggressively before sending to GenAI.
-    run_facts = {k: redact_text(str(v)) for k, v in run_facts.items()}
-
-    arch_facts_red: Optional[Dict[str, Any]] = None
-    if architecture_facts:
-        arch_facts_red = {k: redact_text(str(v)) for k, v in architecture_facts.items()}
-
-    # Redact any report.md content before sending to GenAI.
-    report_md_red = redact_text(report_md).strip() if report_md else None
-    prompt = _build_prompt(run_facts=run_facts, architecture_facts=arch_facts_red, report_md=report_md_red)
+    prompt_red = redact_text(prompt).strip()
+    api_format_u = (api_format or "GENERIC").strip().upper()
+    temp_val = float(temperature) if temperature is not None else 0.2
+    max_tokens = int(max_tokens)
 
     def _extract_text(value: Any, *, max_depth: int = 2, _seen: Optional[set[int]] = None) -> str:
-        """Best-effort extraction of human-readable text.
-
-        This intentionally avoids dumping full payloads; it's used only to
-        recover the assistant's textual content across varying SDK shapes.
-        """
+        """Best-effort extraction of human-readable text."""
 
         if value is None or max_depth <= 0:
             return ""
@@ -222,10 +177,7 @@ def generate_executive_summary(
         return _extract_text(content)
 
     def _iter_text_candidates(obj: Any, *, max_depth: int = 5, _seen: Optional[set[int]] = None) -> List[str]:
-        """Best-effort text extraction across SDK/dict/list response shapes.
-
-        Returns candidate strings (unfiltered). Caller chooses.
-        """
+        """Best-effort text extraction across SDK/dict/list response shapes."""
 
         if max_depth <= 0:
             return []
@@ -333,19 +285,39 @@ def generate_executive_summary(
             return True
         return False
 
-    def _do_chat(*, api_format: str) -> Any:
+    def _looks_usable_summary(text: str) -> bool:
+        t = (text or "").strip()
+        if not t:
+            return False
+        # Reject outputs that are only redaction placeholders.
+        if t in {"<ocid>", "<url>"}:
+            return False
+        if re.fullmatch(r"(?:<ocid>|<url>|[\\s\\-•*#])+", t):
+            return False
+        # Reject outputs that are effectively only redactions.
+        if t.startswith("[") and t.endswith("]") and "REDACT" in t.upper() and len(t) < 64:
+            return False
+        # Require at least some alphabetic characters.
+        if not any(ch.isalpha() for ch in t):
+            return False
+        # Avoid accepting a single token / metadata-like string.
+        if " " not in t and "\n" not in t and not t.lstrip().startswith("-") and len(t) < 40:
+            return False
+        return True
+
+    def _do_chat(*, api_format_value: str) -> Any:
         # Chat-style inference (for CHAT-capable models). Some models support
         # only specific api_formats; we try GENERIC first and may retry COHERE
         # when the response contains no usable text.
-        if api_format == BaseChatRequest.API_FORMAT_COHERE:
+        if api_format_value == BaseChatRequest.API_FORMAT_COHERE:
             from oci.generative_ai_inference.models import CohereChatRequest  # type: ignore
 
             chat_req = CohereChatRequest(
                 api_format=BaseChatRequest.API_FORMAT_COHERE,
-                message=prompt,
+                message=prompt_red,
                 is_stream=False,
-                max_tokens=300,
-                temperature=0.2,
+                max_tokens=max_tokens,
+                temperature=temp_val,
                 top_p=0.9,
             )
         else:
@@ -356,7 +328,7 @@ def generate_executive_summary(
                     "Do not include secrets, OCIDs, URLs, or raw error dumps."
                 )
             )
-            user_content = TextContent(text=prompt)
+            user_content = TextContent(text=prompt_red)
             # Prefer a role-specific message type so the SDK serializes the
             # correct subtype reliably.
             messages = [SystemMessage(content=[system_content]), UserMessage(content=[user_content])]
@@ -366,9 +338,11 @@ def generate_executive_summary(
                 api_format=BaseChatRequest.API_FORMAT_GENERIC,
                 messages=messages,
                 is_stream=False,
-                max_completion_tokens=300,
+                max_completion_tokens=max_tokens,
                 verbosity="LOW",
             )
+            if temperature is not None:
+                chat_req.temperature = temp_val
 
         chat_details = ChatDetails(
             compartment_id=cfg.compartment_id,
@@ -382,7 +356,7 @@ def generate_executive_summary(
             sc = _status_code(e)
             msg = str(e)
             if sc == 400 and "maxcompletiontokens" in msg.lower() and "unsupported" in msg.lower():
-                if api_format != BaseChatRequest.API_FORMAT_GENERIC:
+                if api_format_value != BaseChatRequest.API_FORMAT_GENERIC:
                     raise
                 chat_details_2 = ChatDetails(
                     compartment_id=cfg.compartment_id,
@@ -391,17 +365,18 @@ def generate_executive_summary(
                         api_format=BaseChatRequest.API_FORMAT_GENERIC,
                         messages=messages,
                         is_stream=False,
-                        max_tokens=300,
+                        max_tokens=max_tokens,
                         verbosity="LOW",
                     ),
                 )
                 return client.chat(chat_details_2)
             raise
 
-    # If report.md context is provided, prefer chat() so the prompt structure
-    # aligns with the documented chat request formats.
-    if report_md_red:
-        resp = _do_chat(api_format=BaseChatRequest.API_FORMAT_GENERIC)
+    used_runtime = ""
+
+    # If prefer_chat is set, skip generate_text and use chat() directly.
+    if prefer_chat:
+        resp = _do_chat(api_format_value=BaseChatRequest.API_FORMAT_GENERIC)
         used_runtime = "CHAT"
     # Otherwise: try generate_text first. If the model/runtime mismatches or the on-demand
     # generate_text model is retired/unavailable, fall back:
@@ -414,19 +389,19 @@ def generate_executive_summary(
                 compartment_id=cfg.compartment_id,
                 serving_mode=OnDemandServingMode(model_id=cfg.base_model_id),
                 inference_request=LlamaLlmInferenceRequest(
-                    prompt=prompt,
+                    prompt=prompt_red,
                     is_stream=False,
                     num_generations=1,
-                    temperature=0.2,
+                    temperature=temp_val,
                     top_p=0.9,
-                    max_tokens=300,
+                    max_tokens=max_tokens,
                 ),
             )
             resp = client.generate_text(req)
             used_runtime = "LLAMA"
         except Exception as e:
             if _should_fallback_to_chat(e):
-                resp = _do_chat(api_format=BaseChatRequest.API_FORMAT_GENERIC)
+                resp = _do_chat(api_format_value=BaseChatRequest.API_FORMAT_GENERIC)
                 used_runtime = "CHAT"
             elif not _should_retry_with_cohere(e):
                 raise
@@ -436,12 +411,12 @@ def generate_executive_summary(
                         compartment_id=cfg.compartment_id,
                         serving_mode=OnDemandServingMode(model_id=cfg.base_model_id),
                         inference_request=CohereLlmInferenceRequest(
-                            prompt=prompt,
+                            prompt=prompt_red,
                             is_stream=False,
                             num_generations=1,
-                            temperature=0.2,
+                            temperature=temp_val,
                             top_p=0.9,
-                            max_tokens=300,
+                            max_tokens=max_tokens,
                         ),
                     )
                     resp = client.generate_text(req)
@@ -450,7 +425,7 @@ def generate_executive_summary(
                     if not _should_fallback_to_chat(e2):
                         raise
 
-                    resp = _do_chat(api_format=BaseChatRequest.API_FORMAT_GENERIC)
+                    resp = _do_chat(api_format_value=BaseChatRequest.API_FORMAT_GENERIC)
                     used_runtime = "CHAT"
 
     # Parse response
@@ -460,26 +435,6 @@ def generate_executive_summary(
 
     out = ""
     debug_hint: str = ""
-
-    def _looks_usable_summary(text: str) -> bool:
-        t = (text or "").strip()
-        if not t:
-            return False
-        # Reject outputs that are only redaction placeholders.
-        if t in {"<ocid>", "<url>"}:
-            return False
-        if re.fullmatch(r"(?:<ocid>|<url>|[\s\-•*#])+", t):
-            return False
-        # Reject outputs that are effectively only redactions.
-        if t.startswith("[") and t.endswith("]") and "REDACT" in t.upper() and len(t) < 64:
-            return False
-        # Require at least some alphabetic characters.
-        if not any(ch.isalpha() for ch in t):
-            return False
-        # Avoid accepting a single token / metadata-like string.
-        if " " not in t and "\n" not in t and not t.lstrip().startswith("-") and len(t) < 40:
-            return False
-        return True
 
     if used_runtime in {"LLAMA", "COHERE"}:
         ir = getattr(data, "inference_response", None)
@@ -535,24 +490,25 @@ def generate_executive_summary(
         # This must be evaluated after redaction to avoid treating an OCID-only
         # response as "non-empty".
         if not out or not _looks_usable_summary(redact_text(out).strip()):
-            try:
-                tried_cohere_format = True
-                resp2 = _do_chat(api_format=BaseChatRequest.API_FORMAT_COHERE)
-                data2 = getattr(resp2, "data", None)
-                cr2 = getattr(data2, "chat_response", None) if data2 is not None else None
-                cr2_text = getattr(cr2, "text", None) if cr2 is not None else None
-                if isinstance(cr2_text, str) and cr2_text.strip():
-                    out = cr2_text.strip()
-                    data = data2
-                    cr = cr2
-                    used_api_format = BaseChatRequest.API_FORMAT_COHERE
-            except Exception as e_coh:
-                # Capture a safe hint only; do not dump server messages.
+            if api_format_u != BaseChatRequest.API_FORMAT_COHERE:
                 try:
-                    sc = _status_code(e_coh)
-                    cohere_retry_error = f"{type(e_coh).__name__}:{sc}" if sc is not None else type(e_coh).__name__
-                except Exception:
-                    cohere_retry_error = "error"
+                    tried_cohere_format = True
+                    resp2 = _do_chat(api_format_value=BaseChatRequest.API_FORMAT_COHERE)
+                    data2 = getattr(resp2, "data", None)
+                    cr2 = getattr(data2, "chat_response", None) if data2 is not None else None
+                    cr2_text = getattr(cr2, "text", None) if cr2 is not None else None
+                    if isinstance(cr2_text, str) and cr2_text.strip():
+                        out = cr2_text.strip()
+                        data = data2
+                        cr = cr2
+                        used_api_format = BaseChatRequest.API_FORMAT_COHERE
+                except Exception as e_coh:
+                    # Capture a safe hint only; do not dump server messages.
+                    try:
+                        sc = _status_code(e_coh)
+                        cohere_retry_error = f"{type(e_coh).__name__}:{sc}" if sc is not None else type(e_coh).__name__
+                    except Exception:
+                        cohere_retry_error = "error"
 
         # Collect a tiny hint for troubleshooting without dumping full payloads.
         try:
@@ -618,8 +574,78 @@ def generate_executive_summary(
         cr_t = type(getattr(data, "chat_response", None)).__name__ if used_runtime == "CHAT" else ""
         hint = f", hint={debug_hint}" if debug_hint else ""
         raise RuntimeError(
-            f"GenAI returned empty/invalid summary (runtime={used_runtime}, data={data_t}, chat_response={cr_t}{hint})"
+            f"GenAI returned empty/invalid response (runtime={used_runtime}, data={data_t}, chat_response={cr_t}{hint})"
         )
 
-    LOG.info("Generated GenAI executive summary", extra={"chars": len(out), "runtime": used_runtime})
+    return out, used_runtime
+
+
+def generate_executive_summary(
+    *,
+    genai_cfg: Optional[GenAIConfig] = None,
+    status: str,
+    started_at: str,
+    finished_at: str,
+    subscribed_regions: List[str],
+    requested_regions: Optional[List[str]],
+    excluded_regions: List[Dict[str, str]],
+    metrics: Optional[Dict[str, Any]],
+    architecture_facts: Optional[Dict[str, Any]] = None,
+    report_md: Optional[str] = None,
+) -> str:
+    """
+    Generate a short Markdown executive summary via OCI Generative AI Inference.
+
+    This is intentionally best-effort and must be called only when explicitly enabled.
+    """
+
+    cfg = genai_cfg or load_genai_config()
+
+    excluded_short = [
+        {"region": str(x.get("region") or ""), "reason": str(x.get("reason") or "")}
+        for x in excluded_regions
+    ]
+
+    run_facts: Dict[str, Any] = {
+        "Status": status,
+        "Started (UTC)": started_at,
+        "Finished (UTC)": finished_at,
+        "Subscribed regions": ", ".join(subscribed_regions),
+        "Requested regions": ", ".join(requested_regions) if requested_regions else "(all subscribed)",
+        "Excluded regions": ", ".join(sorted({x.get('region','') for x in excluded_short if x.get('region')}))
+        if excluded_short
+        else "none",
+    }
+    if metrics:
+        run_facts["Discovered records"] = str(metrics.get("total_discovered", ""))
+        cbes = metrics.get("counts_by_enrich_status") or {}
+        if cbes:
+            run_facts["Enrichment status"] = ", ".join([f"{k}={cbes[k]}" for k in sorted(cbes.keys())])
+
+        cbrt = metrics.get("counts_by_resource_type") or {}
+        if cbrt:
+            # top 8 types
+            top = sorted(((k, int(v)) for k, v in cbrt.items()), key=lambda kv: (-kv[1], kv[0]))[:8]
+            run_facts["Top resource types"] = ", ".join([f"{k}={v}" for k, v in top])
+
+    # Redact aggressively before sending to GenAI.
+    run_facts = {k: redact_text(str(v)) for k, v in run_facts.items()}
+
+    arch_facts_red: Optional[Dict[str, Any]] = None
+    if architecture_facts:
+        arch_facts_red = {k: redact_text(str(v)) for k, v in architecture_facts.items()}
+
+    # Redact any report.md content before sending to GenAI.
+    report_md_red = redact_text(report_md).strip() if report_md else None
+    prompt = _build_prompt(run_facts=run_facts, architecture_facts=arch_facts_red, report_md=report_md_red)
+
+    out, runtime = run_genai_best_effort_prompt(
+        prompt=prompt,
+        genai_cfg=cfg,
+        prefer_chat=bool(report_md_red),
+        api_format="GENERIC",
+        max_tokens=300,
+        temperature=0.2,
+    )
+    LOG.info("Generated GenAI executive summary", extra={"chars": len(out), "runtime": runtime})
     return out

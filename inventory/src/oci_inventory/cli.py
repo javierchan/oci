@@ -599,8 +599,8 @@ def _generate_cost_report_narratives(
     cost_context: Dict[str, Any],
     cfg: RunConfig,
 ) -> Tuple[Dict[str, str], Dict[str, str]]:
-    from .genai.chat_runner import run_genai_chat
     from .genai.config import try_load_genai_config
+    from .genai.executive_summary import run_genai_best_effort_prompt
 
     keys = [
         "intro",
@@ -827,12 +827,13 @@ def _generate_cost_report_narratives(
             errors[key] = "Prompt missing for GenAI narrative section."
             continue
         try:
-            out, _ = run_genai_chat(
-                message=prompt,
+            out, _ = run_genai_best_effort_prompt(
+                prompt=prompt,
+                genai_cfg=genai_cfg,
+                prefer_chat=False,
                 api_format=api_format,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                genai_cfg=genai_cfg,
             )
             out = (out or "").strip()
             if out:
@@ -1501,13 +1502,21 @@ def cmd_run(cfg: RunConfig) -> int:
     executive_summary: Optional[str] = None
     executive_summary_error: Optional[str] = None
 
-    LOG.info("Starting inventory run", extra={"outdir": str(cfg.outdir)})
+    LOG.info(
+        "Starting inventory run",
+        extra={"outdir": str(cfg.outdir), "step": "run", "phase": "start"},
+    )
 
     try:
         ctx = _resolve_auth(cfg)
         set_enrich_context(ctx)
+        LOG.info(
+            "Authentication resolved",
+            extra={"step": "auth", "phase": "complete", "method": cfg.auth, "profile": cfg.profile},
+        )
 
         # Discover regions
+        LOG.info("Region discovery started", extra={"step": "regions", "phase": "start"})
         regions = get_subscribed_regions(ctx)
         subscribed_regions = list(regions)
         if not regions:
@@ -1515,10 +1524,17 @@ def cmd_run(cfg: RunConfig) -> int:
         if cfg.regions:
             requested_regions = [r for r in cfg.regions if r]
             regions = requested_regions
-        LOG.info("Discovered subscribed regions", extra={"regions": regions})
+        LOG.info(
+            "Discovered subscribed regions",
+            extra={"regions": regions, "count": len(regions), "step": "regions", "phase": "complete"},
+        )
 
         # Per-region discovery in parallel (ordered by region for determinism)
         regions = sorted([r for r in regions if r])
+        LOG.info(
+            "Discovery started",
+            extra={"step": "discovery", "phase": "start", "region_count": len(regions)},
+        )
 
         def _disc(r: str) -> List[Dict[str, Any]]:
             return discover_in_region(ctx, r, cfg.query, collected_at=run_collected_at)
@@ -1547,14 +1563,33 @@ def cmd_run(cfg: RunConfig) -> int:
                     region_records = futures_by_region[r].result()
                 except Exception as e:
                     excluded_regions.append({"region": r, "reason": str(e)})
-                    LOG.warning("Region discovery failed; skipping region", extra={"region": r, "error": str(e)})
+                    LOG.warning(
+                        "Region discovery failed; skipping region %s",
+                        r,
+                        extra={"region": r, "error": str(e), "step": "discovery", "phase": "error"},
+                    )
                     region_records = []
 
                 discovered_count += len(region_records)
+                LOG.info(
+                    "Region discovery complete %s",
+                    r,
+                    extra={
+                        "step": "discovery",
+                        "phase": "complete",
+                        "region": r,
+                        "count": len(region_records),
+                    },
+                )
                 if not region_records:
                     continue
 
                 # Enrichment in parallel per region (streamed to disk).
+                LOG.info(
+                    "Region enrichment started %s",
+                    r,
+                    extra={"step": "enrich", "phase": "start", "region": r, "count": len(region_records)},
+                )
                 def _enrich_and_collect(rec: Dict[str, Any]) -> Dict[str, Any]:
                     updated, rels = _enrich_record(rec)
                     return {"record": updated, "rels": rels}
@@ -1568,12 +1603,28 @@ def cmd_run(cfg: RunConfig) -> int:
                     chunk_records.append(record)
                     if len(chunk_records) >= STREAM_CHUNK_SIZE:
                         _flush_chunk()
+                LOG.info(
+                    "Region enrichment complete %s",
+                    r,
+                    extra={"step": "enrich", "phase": "complete", "region": r, "count": len(region_records)},
+                )
 
         _flush_chunk()
-        LOG.info("Discovery complete", extra={"count": discovered_count, "excluded_regions": len(excluded_regions)})
+        LOG.info(
+            "Discovery complete",
+            extra={
+                "count": discovered_count,
+                "excluded_regions": len(excluded_regions),
+                "step": "discovery",
+                "phase": "complete",
+            },
+        )
 
         inventory_records = _load_inventory_chunks(chunk_paths) if chunk_paths else []
-        LOG.info("Enrichment complete", extra={"count": len(inventory_records)})
+        LOG.info(
+            "Enrichment complete",
+            extra={"count": len(inventory_records), "step": "enrich", "phase": "complete"},
+        )
 
         # Derive additional relationships from record metadata (offline; no new OCI calls)
         # to improve graph/report fidelity when enrichers did not emit relationships.
@@ -1585,6 +1636,10 @@ def cmd_run(cfg: RunConfig) -> int:
             all_relationships.extend(derived_relationships)
 
         # Exports
+        LOG.info(
+            "Exporting inventory artifacts",
+            extra={"step": "export", "phase": "start", "parquet": bool(cfg.parquet)},
+        )
         inventory_jsonl = cfg.outdir / "inventory.jsonl"
         inventory_csv = cfg.outdir / "inventory.csv"
         write_jsonl(inventory_records, inventory_jsonl)
@@ -1596,26 +1651,56 @@ def cmd_run(cfg: RunConfig) -> int:
                 write_parquet(inventory_records, parquet_path)
             except ParquetNotAvailable as e:
                 parquet_warning = str(e)
-                LOG.warning(str(e))
+                LOG.warning(
+                    str(e),
+                    extra={"step": "export", "phase": "warning", "artifact": "parquet"},
+                )
 
         _write_relationships(cfg.outdir, all_relationships)
+        LOG.info(
+            "Exported inventory artifacts",
+            extra={"step": "export", "phase": "complete", "count": len(inventory_records)},
+        )
 
         # Coverage metrics and summary
+        LOG.info("Coverage metrics started", extra={"step": "metrics", "phase": "start"})
         metrics = _coverage_metrics(inventory_records)
         _write_run_summary(cfg.outdir, metrics, cfg)
+        LOG.info("Coverage metrics complete", extra={"step": "metrics", "phase": "complete"})
 
         # Graph artifacts (nodes/edges + Mermaid)
         if cfg.diagrams:
+            LOG.info("Graph build started", extra={"step": "graph", "phase": "start"})
             nodes, edges = build_graph(inventory_records, all_relationships)
             write_graph(cfg.outdir, nodes, edges)
             write_mermaid(cfg.outdir, nodes, edges)
             write_diagram_projections(cfg.outdir, nodes, edges)
+            LOG.info(
+                "Graph build complete",
+                extra={"step": "graph", "phase": "complete", "nodes": len(nodes), "edges": len(edges)},
+            )
 
         _cleanup_chunk_dir(chunk_dir)
 
+        LOG.info(
+            "Output schema validation started",
+            extra={"step": "schema", "phase": "start", "expect_graph": cfg.diagrams},
+        )
         validation = _validate_outdir_schema(cfg.outdir, expect_graph=cfg.diagrams)
+        LOG.info(
+            "Output schema validation complete",
+            extra={
+                "step": "schema",
+                "phase": "complete",
+                "warning_count": len(validation.warnings),
+                "error_count": len(validation.errors),
+            },
+        )
         for warning in validation.warnings:
-            LOG.warning("Output schema validation warning", extra={"detail": warning})
+            LOG.warning(
+                "Output schema validation warning",
+                extra={"detail": warning, "step": "schema", "phase": "warning"},
+            )
         if validation.errors:
             preview = "; ".join(validation.errors[:5])
             if len(validation.errors) > 5:
@@ -1627,19 +1712,36 @@ def cmd_run(cfg: RunConfig) -> int:
         # - Otherwise, if mmdc is available, validate all diagram*.mmd outputs and fail
         #   on invalid Mermaid so we don't ship broken artifacts.
         if cfg.diagrams and (cfg.validate_diagrams or is_mmdc_available()):
+            LOG.info("Mermaid validation started", extra={"step": "diagrams", "phase": "validate"})
             validated = validate_mermaid_diagrams_with_mmdc(cfg.outdir)
-            LOG.info("Mermaid diagrams validated", extra={"count": len(validated)})
+            LOG.info(
+                "Mermaid diagrams validated",
+                extra={"count": len(validated), "step": "diagrams", "phase": "validated"},
+            )
 
         # Optional diff against previous
         if cfg.prev:
             try:
+                LOG.info("Diff started", extra={"step": "diff", "phase": "start"})
                 diff_obj = diff_files(Path(cfg.prev), inventory_jsonl)
                 write_diff(cfg.outdir, diff_obj)
+                LOG.info("Diff complete", extra={"step": "diff", "phase": "complete"})
             except Exception as e:
                 diff_warning = str(e)
-                LOG.warning("Diff failed", extra={"error": str(e)})
+                LOG.warning(
+                    "Diff failed",
+                    extra={"error": str(e), "step": "diff", "phase": "error"},
+                )
 
-        LOG.info("Run complete", extra={"outdir": str(cfg.outdir), "excluded_regions": len(excluded_regions)})
+        LOG.info(
+            "Run complete",
+            extra={
+                "outdir": str(cfg.outdir),
+                "excluded_regions": len(excluded_regions),
+                "step": "run",
+                "phase": "complete",
+            },
+        )
         return 0
     except Exception as e:
         status = "FAILED"
@@ -1674,7 +1776,10 @@ def cmd_run(cfg: RunConfig) -> int:
                 )
             except Exception as e:
                 executive_summary_error = str(e)
-                LOG.warning("GenAI executive summary failed", extra={"error": str(e)})
+                LOG.warning(
+                    "GenAI executive summary failed",
+                    extra={"error": str(e), "step": "genai", "phase": "error"},
+                )
 
         try:
             write_run_report_md(
@@ -1700,6 +1805,7 @@ def cmd_run(cfg: RunConfig) -> int:
 
         if cfg.cost_report:
             try:
+                LOG.info("Cost report started", extra={"step": "cost_report", "phase": "start"})
                 cost_context = _collect_cost_report_data(
                     ctx=ctx,
                     cfg=cfg,
@@ -1726,7 +1832,10 @@ def cmd_run(cfg: RunConfig) -> int:
                             "audience": err,
                             "next_steps": err,
                         }
-                        LOG.warning("GenAI cost report narratives failed", extra={"error": str(e)})
+                        LOG.warning(
+                            "GenAI cost report narratives failed",
+                            extra={"error": str(e), "step": "genai", "phase": "error"},
+                        )
                 write_cost_report_md(
                     outdir=cfg.outdir,
                     status=status,
@@ -1734,6 +1843,16 @@ def cmd_run(cfg: RunConfig) -> int:
                     cost_context=cost_context,
                     narratives=narratives,
                     narrative_errors=narrative_errors,
+                )
+                LOG.info(
+                    "Cost report complete",
+                    extra={
+                        "step": "cost_report",
+                        "phase": "complete",
+                        "error_count": len(cost_context.get("errors") or []),
+                        "warning_count": len(cost_context.get("warnings") or []),
+                        "usage_items": len(cost_context.get("usage_items") or []),
+                    },
                 )
                 usage_items = cost_context.get("usage_items") or []
                 if usage_items:
@@ -1766,7 +1885,10 @@ def cmd_run(cfg: RunConfig) -> int:
             except Exception as e:
                 from .genai.redact import redact_text
 
-                LOG.warning("Cost report failed", extra={"error": redact_text(str(e))})
+                LOG.warning(
+                    "Cost report failed",
+                    extra={"error": redact_text(str(e)), "step": "cost_report", "phase": "error"},
+                )
 
 
 def cmd_diff(cfg: RunConfig) -> int:
@@ -1778,7 +1900,10 @@ def cmd_diff(cfg: RunConfig) -> int:
     curr_p = Path(curr)
     diff_obj = diff_files(prev_p, curr_p)
     write_diff(cfg.outdir, diff_obj)
-    LOG.info("Diff complete", extra={"outdir": str(cfg.outdir)})
+    LOG.info(
+        "Diff complete",
+        extra={"outdir": str(cfg.outdir), "step": "diff", "phase": "complete"},
+    )
     return 0
 
 

@@ -74,6 +74,7 @@
 - Deterministic outputs and ordering; offline, fast tests.
 - Redaction requirements for reports and GenAI outputs.
 - No new dependencies without explicit approval; reuse the existing `.venv`.
+- If a valid method already exists, reuse or adapt it before introducing a new approach.
 
 ## 4.4 Risks and Open Questions
 - Definition and scope of "OCI best practices/CAF" and its data sources.
@@ -91,4 +92,9 @@
 
 register a OCI Icons to use in diagrams located on: /Users/javierchan/Documents/GitHub/oci/inventory/resources/icons or https://static.oracle.com/cdn/fnd/gallery/2604.0.2/images/preview/index.html using the mermaid methodology: https://mermaid.js.org/config/icons.html or as suggested by mermaid: https://icones.js.org/
 
-MLX Support Addition to use LLM's in macOS to use when GenAI is not available, maybe ollama can be used to support multiplatform.
+MLX Support Addition to use LLM's in macOS to use when GenAI is not available, maybe ollama can be used to support multiplatform (tener un config file para esto).
+
+Queue Manager, que pasa si hay varias sesiones consumiendo este codebase, mnecesitamos tener un queue manager que ejecute los jobs de manera efectiva
+
+ Adicionalmente, en AGENTS.md y archivos relacionados (en donde aplique) hay que agregar el statement, si ya tenemos un metodo activo / valido para resolver determinada situacion,
+  debe ser reusado, correctamente redactadode acuerdo a el lineamiento utilizado en estos documentos

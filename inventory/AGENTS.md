@@ -34,6 +34,7 @@ operational policies. Task-specific solution instructions must live in the agent
 - Be explicit about assumptions and unknowns.
 - Avoid speculative changes; anchor decisions in evidence.
 - Follow established patterns in `src/oci_inventory/**` where applicable.
+- If a valid method already exists, reuse or adapt it before introducing a new approach.
 - Respect module boundaries and avoid cross-layer leaks.
 - Prefer pure/immutable transformations when feasible.
 - Produce code and docs that humans can read without AI assistance.

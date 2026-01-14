@@ -50,6 +50,8 @@ class JsonFormatter(logging.Formatter):
                 "processName",
                 "process",
             ):
+                if value is None:
+                    continue
                 try:
                     json.dumps({key: value})
                     payload[key] = value
@@ -57,6 +59,19 @@ class JsonFormatter(logging.Formatter):
                     # skip non-serializable extras
                     pass
         return json.dumps(payload, sort_keys=True)
+
+
+class PlainFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:  # type: ignore[override]
+        timestamp = datetime.utcfromtimestamp(record.created).isoformat(timespec="seconds") + "Z"
+        step = getattr(record, "step", None)
+        phase = getattr(record, "phase", None)
+        message = record.getMessage()
+        if step or phase:
+            step_label = step if step else "unknown"
+            phase_label = phase if phase else "unknown"
+            message = f"[{step_label}:{phase_label}] {message}"
+        return f"{timestamp} {record.levelname} {record.name}: {message}"
 
 
 def _level_from_str(level: str) -> int:
@@ -88,12 +103,7 @@ def setup_logging(config: Optional[LogConfig] = None) -> None:
     if json_logs:
         handler.setFormatter(JsonFormatter())
     else:
-        handler.setFormatter(
-            logging.Formatter(
-                fmt="%(asctime)s %(levelname)s %(name)s: %(message)s",
-                datefmt="%Y-%m-%dT%H:%M:%SZ",
-            )
-        )
+        handler.setFormatter(PlainFormatter())
 
     root = logging.getLogger()
     root.setLevel(level)
