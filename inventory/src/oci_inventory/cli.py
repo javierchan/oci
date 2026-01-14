@@ -5,8 +5,9 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .auth.providers import AuthContext, AuthError, get_tenancy_ocid, resolve_auth
 from .config import RunConfig, load_run_config
@@ -24,7 +25,6 @@ from .oci.compartments import list_compartments as oci_list_compartments
 from .oci.discovery import discover_in_region
 from .oci.regions import get_subscribed_regions
 from .report import (
-    render_cost_report_md,
     write_cost_report_md,
     write_cost_usage_csv,
     write_cost_usage_jsonl,
@@ -503,6 +503,344 @@ def _list_alert_rules(client: Any, budget_id: str) -> Tuple[List[Dict[str, Any]]
         if not page:
             break
     return rules, None
+
+
+def _money_decimal(value: Any) -> Decimal:
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return Decimal("0")
+
+
+def _money_fmt(value: Any) -> str:
+    dec = _money_decimal(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return f"{dec:.2f}"
+
+
+def _pct_fmt(value: Decimal, total: Decimal) -> str:
+    if total <= 0:
+        return "0.0%"
+    pct = (value / total * Decimal("100")).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    return f"{pct:.1f}%"
+
+
+def _truncate_text(text: str, max_len: int = 200) -> str:
+    val = str(text or "").strip()
+    if len(val) <= max_len:
+        return val
+    return val[: max_len - 3] + "..."
+
+
+def _normalize_cost_rows(rows: Sequence[Dict[str, Any]], name_key: str) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        name = str(row.get(name_key) or row.get("name") or "").strip()
+        if not name:
+            continue
+        amount = _money_decimal(row.get("amount", 0))
+        out.append({"name": name, "amount": amount})
+    out.sort(key=lambda r: (-r["amount"], r["name"].lower()))
+    return out
+
+
+def _compartment_alias_map(compartment_ids: Sequence[str]) -> Dict[str, str]:
+    ids = sorted({cid for cid in compartment_ids if cid})
+    return {cid: f"Compartment-{i:02d}" for i, cid in enumerate(ids, start=1)}
+
+
+def _compartment_label(
+    compartment_id: str,
+    *,
+    alias_by_id: Dict[str, str],
+    name_by_id: Dict[str, str],
+) -> str:
+    cid = str(compartment_id or "")
+    alias = alias_by_id.get(cid, "Compartment")
+    name = name_by_id.get(cid, "")
+    if name:
+        return f"{name} ({alias})"
+    return alias
+
+
+def _compartment_row_label(
+    row: Dict[str, Any],
+    *,
+    group_by: str,
+    alias_by_id: Dict[str, str],
+    name_by_id: Dict[str, str],
+) -> str:
+    if group_by == "compartmentName":
+        return str(row.get("compartment_name") or row.get("compartment_id") or "").strip()
+    if group_by == "compartmentPath":
+        return str(row.get("compartment_path") or row.get("compartment_id") or "").strip()
+    if group_by == "compartmentId":
+        return _compartment_label(str(row.get("compartment_id") or ""), alias_by_id=alias_by_id, name_by_id=name_by_id)
+    return str(row.get("compartment_id") or row.get("name") or "").strip()
+
+
+def _rows_with_pct(rows: List[Dict[str, Any]], total: Decimal, limit: int) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    for row in rows[:limit]:
+        amount = _money_decimal(row.get("amount"))
+        out.append(
+            {
+                "name": str(row.get("name") or ""),
+                "cost": _money_fmt(amount),
+                "share_pct": _pct_fmt(amount, total),
+            }
+        )
+    return out
+
+
+def _generate_cost_report_narratives(
+    *,
+    cost_context: Dict[str, Any],
+    cfg: RunConfig,
+) -> Tuple[Dict[str, str], Dict[str, str]]:
+    from .genai.chat_runner import run_genai_chat
+    from .genai.config import try_load_genai_config
+
+    keys = [
+        "intro",
+        "executive_summary",
+        "data_sources",
+        "consumption_insights",
+        "coverage_gaps",
+        "audience",
+        "next_steps",
+    ]
+    genai_cfg = try_load_genai_config()
+    if genai_cfg is None:
+        err = "GenAI config not found or invalid; narrative generation skipped."
+        return {}, {key: err for key in keys}
+
+    time_start = str(cost_context.get("time_start") or "")
+    time_end = str(cost_context.get("time_end") or "")
+    currency = str(cost_context.get("currency") or "UNKNOWN")
+
+    services = _normalize_cost_rows(cost_context.get("services", []), "name")
+    regions = _normalize_cost_rows(cost_context.get("regions", []), "name")
+    raw_compartments = cost_context.get("compartments", [])
+    compartment_group_by = str(cost_context.get("compartment_group_by") or "compartmentId")
+    alias_by_comp: Dict[str, str] = {}
+    name_by_comp: Dict[str, str] = {}
+    if compartment_group_by == "compartmentId":
+        comp_ids = [str(r.get("compartment_id") or "") for r in raw_compartments if str(r.get("compartment_id") or "")]
+        alias_by_comp = _compartment_alias_map(comp_ids)
+        name_by_comp = cost_context.get("compartment_names") or {}
+
+    compartment_rows: List[Dict[str, Any]] = []
+    for row in raw_compartments:
+        label = _compartment_row_label(
+            row,
+            group_by=compartment_group_by,
+            alias_by_id=alias_by_comp,
+            name_by_id=name_by_comp,
+        )
+        if not label:
+            continue
+        compartment_rows.append({"name": label, "amount": _money_decimal(row.get("amount", 0))})
+    compartment_rows.sort(key=lambda r: (-r["amount"], r["name"].lower()))
+
+    total_cost = _money_decimal(cost_context.get("total_cost") or 0)
+    if total_cost == Decimal("0") and services:
+        total_cost = sum((r["amount"] for r in services), Decimal("0"))
+
+    service_count = len({r["name"] for r in services})
+    region_count = len({r["name"] for r in regions})
+    compartment_count = len({r["name"] for r in compartment_rows})
+
+    top_services = _rows_with_pct(services, total_cost, 5)
+    top_regions = _rows_with_pct(regions, total_cost, 5)
+    top_compartments = _rows_with_pct(compartment_rows, total_cost, 5)
+
+    query_inputs = cost_context.get("query_inputs") or {}
+    base_ctx: Dict[str, Any] = {
+        "time_range_utc": {"start": time_start, "end": time_end},
+        "currency": currency,
+        "total_cost": _money_fmt(total_cost),
+        "services_covered": service_count,
+        "compartments_covered": compartment_count,
+        "regions_covered": region_count,
+        "granularity": query_inputs.get("granularity"),
+        "group_by": query_inputs.get("group_by"),
+        "compartment_depth": query_inputs.get("compartment_depth"),
+        "top_services": top_services,
+        "top_regions": top_regions,
+        "top_compartments": top_compartments,
+    }
+
+    steps = cost_context.get("steps") or []
+    step_status: Dict[str, str] = {}
+    for step in steps:
+        name = str(step.get("name") or "").strip()
+        status = str(step.get("status") or "").strip()
+        if not name:
+            continue
+        step_status[name] = status.split()[0] if status else ""
+
+    core_steps = ["usage_api_total", "usage_api_service", "usage_api_compartment", "usage_api_region"]
+    optional_steps = sorted({name for name in step_status.keys() if name not in core_steps})
+    coverage_ctx = {
+        "core_steps": {name: step_status.get(name, "missing") for name in core_steps},
+        "optional_steps": {name: step_status.get(name, "missing") for name in optional_steps},
+        "errors": [_truncate_text(e) for e in cost_context.get("errors") or []],
+        "warnings": [_truncate_text(w) for w in cost_context.get("warnings") or []],
+        "budgets_count": len(cost_context.get("budgets") or []),
+        "osub_usage_present": bool(cost_context.get("osub_usage")),
+    }
+
+    data_sources = []
+    if any(name.startswith("usage_api") for name in step_status.keys()):
+        data_sources.append(
+            {
+                "source": "Usage API request_summarized_usages",
+                "role": "Cost totals and grouped costs by service, compartment, and region",
+            }
+        )
+    if "budget_list" in step_status:
+        data_sources.append(
+            {
+                "source": "Budget API list_budgets/list_alert_rules",
+                "role": "Budget and alert rule metadata (read-only)",
+            }
+        )
+    if "osub_usage" in step_status:
+        data_sources.append(
+            {
+                "source": "OneSubscription computed usage (list_computed_usage_aggregateds)",
+                "role": "Subscription usage aggregates when enabled",
+            }
+        )
+
+    data_ctx = dict(base_ctx)
+    data_ctx.update(
+        {
+            "data_sources": data_sources,
+            "aggregation_dimensions": query_inputs.get("group_by"),
+            "rounding": "ROUND_HALF_UP to 2 decimals",
+        }
+    )
+
+    exec_ctx = dict(base_ctx)
+    insights_ctx = dict(base_ctx)
+    coverage_ctx_full = dict(base_ctx)
+    coverage_ctx_full.update(coverage_ctx)
+    audience_ctx = dict(base_ctx)
+    next_steps_ctx = dict(base_ctx)
+    next_steps_ctx.update(
+        {
+            "coverage_gaps": coverage_ctx.get("optional_steps"),
+            "warnings": coverage_ctx.get("warnings"),
+        }
+    )
+
+    def _build_prompt(section: str, ctx: Dict[str, Any], extras: List[str]) -> str:
+        payload = json.dumps(ctx, sort_keys=True, ensure_ascii=True)
+        lines = [
+            f"Task: Write the {section} section for an OCI cost snapshot report.",
+            "Constraints:",
+            "- Use FinOps-compatible language.",
+            "- Descriptive only; no optimization, forecasting, anomaly detection, or budget vs actuals.",
+            "- Treat this as a point-in-time visibility and allocation snapshot, not a FinOps platform replacement.",
+            "- Do not invent or infer business context (no owners, cost centers, or environments).",
+            "- Do not fabricate numbers; only reference values from the context.",
+            "- Output Markdown text only, no headings.",
+        ]
+        lines.extend(extras)
+        lines.append("Context (JSON):")
+        lines.append("```")
+        lines.append(payload)
+        lines.append("```")
+        lines.append("Write the section now.")
+        return "\n".join(lines)
+
+    api_format = (cfg.genai_api_format or "AUTO").strip().upper()
+    max_tokens = int(cfg.genai_max_tokens or 300)
+    temperature = float(cfg.genai_temperature) if cfg.genai_temperature is not None else 0.2
+
+    narratives: Dict[str, str] = {}
+    errors: Dict[str, str] = {}
+
+    prompts = {
+        "intro": _build_prompt(
+            "introduction",
+            exec_ctx,
+            ["- 1 short paragraph that states snapshot purpose and limitations."],
+        ),
+        "executive_summary": _build_prompt(
+            "Executive Summary",
+            exec_ctx,
+            [
+                "- 2-4 short paragraphs.",
+                "- Summarize total cost and time range; mention top services and regions.",
+                "- Explicitly note this is visibility-only and does not include optimization, budgets, or forecasts.",
+            ],
+        ),
+        "data_sources": _build_prompt(
+            "Data Sources & Methodology",
+            data_ctx,
+            [
+                "- Explain data sources, time range, granularity, and grouping dimensions.",
+                "- Note currency comes from Usage API and amounts are aggregated over the range.",
+            ],
+        ),
+        "consumption_insights": _build_prompt(
+            "Consumption Insights (Descriptive Only)",
+            insights_ctx,
+            [
+                "- Describe dominant services, regions, and compartment concentration.",
+                "- Use the provided percentages when referencing concentration.",
+            ],
+        ),
+        "coverage_gaps": _build_prompt(
+            "Coverage & Data Gaps",
+            coverage_ctx_full,
+            [
+                "- Clearly list what data is included and what is missing or unavailable.",
+                "- Do not speculate about missing data.",
+            ],
+        ),
+        "audience": _build_prompt(
+            "Intended Audience & Usage Guidelines",
+            audience_ctx,
+            [
+                "- Identify typical readers and appropriate uses (visibility, allocation awareness).",
+                "- State what this report should not be used for (budgeting, forecasting, rightsizing).",
+            ],
+        ),
+        "next_steps": _build_prompt(
+            "Suggested Next Steps (Optional)",
+            next_steps_ctx,
+            [
+                "- Provide high-level, non-binding suggestions (e.g., integrate with FinOps tools, enrich tags).",
+                "- No resource-level actions or optimization guidance.",
+            ],
+        ),
+    }
+
+    for key in keys:
+        prompt = prompts.get(key, "")
+        if not prompt:
+            errors[key] = "Prompt missing for GenAI narrative section."
+            continue
+        try:
+            out, _ = run_genai_chat(
+                message=prompt,
+                api_format=api_format,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                genai_cfg=genai_cfg,
+            )
+            out = (out or "").strip()
+            if out:
+                narratives[key] = out
+            else:
+                errors[key] = "GenAI returned empty response."
+        except Exception as e:
+            errors[key] = str(e)
+
+    return narratives, errors
 
 
 def _collect_cost_report_data(
@@ -1302,54 +1640,33 @@ def cmd_run(cfg: RunConfig) -> int:
                     requested_regions=requested_regions,
                     finished_at=finished_at,
                 )
-                cost_executive_summary: Optional[str] = None
-                cost_executive_summary_error: Optional[str] = None
+                narratives: Optional[Dict[str, str]] = None
+                narrative_errors: Optional[Dict[str, str]] = None
                 if cfg.genai_summary and status == "OK":
                     try:
-                        from .genai import generate_executive_summary  # lazy import
-                        from .genai.redact import redact_text
-
-                        try:
-                            cfg_dict = asdict(cfg)
-                        except Exception:
-                            cfg_dict = {
-                                "cost_report": getattr(cfg, "cost_report", None),
-                                "cost_start": getattr(cfg, "cost_start", None),
-                                "cost_end": getattr(cfg, "cost_end", None),
-                                "cost_currency": getattr(cfg, "cost_currency", None),
-                                "cost_compartment_group_by": getattr(cfg, "cost_compartment_group_by", None),
-                                "assessment_target_group": getattr(cfg, "assessment_target_group", None),
-                                "assessment_target_scope": getattr(cfg, "assessment_target_scope", None),
-                                "assessment_lens_weights": getattr(cfg, "assessment_lens_weights", None),
-                                "assessment_capabilities": getattr(cfg, "assessment_capabilities", None),
-                            }
-
-                        base_report_md = render_cost_report_md(
-                            status=status,
-                            cfg_dict=cfg_dict,
+                        narratives, narrative_errors = _generate_cost_report_narratives(
                             cost_context=cost_context,
-                        )
-                        safe_report_md = redact_text(base_report_md)
-                        cost_executive_summary = generate_executive_summary(
-                            status=status,
-                            started_at=started_at,
-                            finished_at=finished_at,
-                            subscribed_regions=subscribed_regions,
-                            requested_regions=requested_regions,
-                            excluded_regions=excluded_regions,
-                            metrics=metrics,
-                            report_md=safe_report_md,
+                            cfg=cfg,
                         )
                     except Exception as e:
-                        cost_executive_summary_error = str(e)
-                        LOG.warning("GenAI cost report summary failed", extra={"error": str(e)})
+                        err = str(e)
+                        narrative_errors = {
+                            "intro": err,
+                            "executive_summary": err,
+                            "data_sources": err,
+                            "consumption_insights": err,
+                            "coverage_gaps": err,
+                            "audience": err,
+                            "next_steps": err,
+                        }
+                        LOG.warning("GenAI cost report narratives failed", extra={"error": str(e)})
                 write_cost_report_md(
                     outdir=cfg.outdir,
                     status=status,
                     cfg=cfg,
                     cost_context=cost_context,
-                    executive_summary=cost_executive_summary,
-                    executive_summary_error=cost_executive_summary_error,
+                    narratives=narratives,
+                    narrative_errors=narrative_errors,
                 )
                 usage_items = cost_context.get("usage_items") or []
                 if usage_items:
