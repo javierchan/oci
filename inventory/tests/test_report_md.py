@@ -222,6 +222,15 @@ def test_render_cost_report_includes_required_sections_and_aliases(tmp_path: Pat
         "query_inputs": {"tenant_id": "ocid1.tenancy.oc1..exampleTenancy", "group_by": ["service"]},
         "compartment_names": {"ocid1.compartment.oc1..exampleuniqueID": "Prod"},
     }
+    narratives = {
+        "intro": "Intro narrative.",
+        "executive_summary": "Executive summary narrative.",
+        "data_sources": "Data sources narrative.",
+        "consumption_insights": "Insights narrative.",
+        "coverage_gaps": "Coverage narrative.",
+        "audience": "Audience narrative.",
+        "next_steps": "Next steps narrative.",
+    }
 
     text = render_cost_report_md(
         status="OK",
@@ -238,16 +247,22 @@ def test_render_cost_report_includes_required_sections_and_aliases(tmp_path: Pat
             ],
         },
         cost_context=cost_context,
+        narratives=narratives,
     )
 
-    assert "# OCI Cost & Usage Assessment" in text
-    assert "## Cost by Service" in text
+    assert "# OCI Cost Snapshot Report" in text
+    assert "## Executive Summary" in text
+    assert "## Data Sources & Methodology" in text
+    assert "## Snapshot Overview" in text
+    assert "## Cost Allocation Snapshots" in text
+    assert "### Cost by Service" in text
     assert "Top 10; remaining aggregated as Other." in text
     assert "Prod (Compartment-01)" in text
-    assert "## Execution Metadata" in text
+    assert "Intro narrative." in text
+    assert "Executive summary narrative." in text
 
 
-def test_render_cost_report_embeds_genai_summary(tmp_path: Path) -> None:
+def test_render_cost_report_embeds_genai_narratives(tmp_path: Path) -> None:
     cfg = RunConfig(outdir=tmp_path, auth="config", profile="DEFAULT", query="query all resources")
 
     cost_context = {
@@ -283,13 +298,21 @@ def test_render_cost_report_embeds_genai_summary(tmp_path: Path) -> None:
             ],
         },
         cost_context=cost_context,
-        executive_summary="Summary line.\n- Bullet one",
+        narratives={
+            "intro": "Intro line.",
+            "executive_summary": "Summary line.\n- Bullet one",
+            "data_sources": "Data sources line.",
+            "consumption_insights": "Insights line.",
+            "coverage_gaps": "Coverage line.",
+            "audience": "Audience line.",
+            "next_steps": "Next steps line.",
+        },
     )
 
-    assert "**Executive Summary**" in text
     assert "Summary line." in text
     assert "- Bullet one" in text
-    assert "GenAI executive summary embedded after the introduction." in text
+    assert "Intro line." in text
+    assert "Data sources line." in text
 
 
 def test_write_cost_usage_exports(tmp_path: Path) -> None:
