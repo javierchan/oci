@@ -39,12 +39,20 @@ def build_common_argv(
     tenancy_ocid: Optional[str] = None,
     log_level: Optional[str] = None,
     json_logs: Optional[bool] = None,
+    config_path: Optional[Path] = None,
+    client_connection_pool_size: Optional[int] = None,
 ) -> List[str]:
     argv: List[str] = []
+    _maybe_add(argv, "--config", str(config_path) if config_path else None)
     argv.extend(["--auth", auth])
     _maybe_add(argv, "--profile", profile)
     _maybe_add(argv, "--tenancy", tenancy_ocid)
     _maybe_add(argv, "--log-level", log_level)
+    _maybe_add(
+        argv,
+        "--client-connection-pool-size",
+        str(client_connection_pool_size) if client_connection_pool_size is not None else None,
+    )
 
     if json_logs is True:
         argv.append("--json-logs")
@@ -59,6 +67,7 @@ def build_run_plan(
     auth: str,
     profile: Optional[str],
     tenancy_ocid: Optional[str],
+    config_path: Optional[Path],
     outdir: Path,
     query: str,
     regions: Optional[List[str]] = None,
@@ -69,13 +78,20 @@ def build_run_plan(
     workers_enrich: Optional[int] = None,
     workers_cost: Optional[int] = None,
     workers_export: Optional[int] = None,
+    client_connection_pool_size: Optional[int] = None,
     include_terminated: Optional[bool] = None,
     validate_diagrams: Optional[bool] = None,
     diagrams: Optional[bool] = None,
+    schema_validation: Optional[str] = None,
+    schema_sample_records: Optional[int] = None,
+    diagram_max_networks: Optional[int] = None,
+    diagram_max_workloads: Optional[int] = None,
     cost_report: Optional[bool] = None,
     cost_start: Optional[str] = None,
     cost_end: Optional[str] = None,
     cost_currency: Optional[str] = None,
+    cost_compartment_group_by: Optional[str] = None,
+    cost_group_by: Optional[List[str]] = None,
     osub_subscription_id: Optional[str] = None,
     assessment_target_group: Optional[str] = None,
     assessment_target_scope: Optional[List[str]] = None,
@@ -92,6 +108,8 @@ def build_run_plan(
             tenancy_ocid=tenancy_ocid,
             log_level=log_level,
             json_logs=json_logs,
+            config_path=config_path,
+            client_connection_pool_size=client_connection_pool_size,
         )
     )
 
@@ -141,6 +159,14 @@ def build_run_plan(
     elif diagrams is False:
         argv.append("--no-diagrams")
 
+    _maybe_add(argv, "--validate-schema", schema_validation)
+    if schema_sample_records is not None:
+        _maybe_add(argv, "--validate-schema-sample", str(int(schema_sample_records)))
+    if diagram_max_networks is not None:
+        _maybe_add(argv, "--diagram-max-networks", str(int(diagram_max_networks)))
+    if diagram_max_workloads is not None:
+        _maybe_add(argv, "--diagram-max-workloads", str(int(diagram_max_workloads)))
+
     if cost_report is True:
         argv.append("--cost-report")
     elif cost_report is False:
@@ -150,6 +176,9 @@ def build_run_plan(
         _maybe_add(argv, "--cost-start", cost_start)
         _maybe_add(argv, "--cost-end", cost_end)
         _maybe_add(argv, "--cost-currency", cost_currency)
+        _maybe_add(argv, "--cost-compartment-group-by", cost_compartment_group_by)
+        if cost_group_by:
+            _maybe_add(argv, "--cost-group-by", ",".join(cost_group_by))
         _maybe_add(argv, "--osub-subscription-id", osub_subscription_id)
 
     _maybe_add(argv, "--assessment-target-group", assessment_target_group)
@@ -171,6 +200,7 @@ def build_diff_plan(
     auth: str,
     profile: Optional[str],
     tenancy_ocid: Optional[str],
+    config_path: Optional[Path] = None,
     prev: Path,
     curr: Path,
     outdir: Path,
@@ -185,6 +215,7 @@ def build_diff_plan(
             tenancy_ocid=tenancy_ocid,
             log_level=log_level,
             json_logs=json_logs,
+            config_path=config_path,
         )
     )
 
@@ -207,6 +238,7 @@ def build_simple_plan(
     auth: str,
     profile: Optional[str],
     tenancy_ocid: Optional[str],
+    config_path: Optional[Path] = None,
     json_logs: Optional[bool] = None,
     log_level: Optional[str] = None,
 ) -> WizardPlan:
@@ -221,6 +253,7 @@ def build_simple_plan(
             tenancy_ocid=tenancy_ocid,
             log_level=log_level,
             json_logs=json_logs,
+            config_path=config_path,
         )
     )
     return WizardPlan(argv=argv)
@@ -231,6 +264,7 @@ def build_genai_chat_plan(
     auth: str,
     profile: Optional[str],
     tenancy_ocid: Optional[str],
+    config_path: Optional[Path] = None,
     api_format: Optional[str] = None,
     message: Optional[str] = None,
     report: Optional[Path] = None,
@@ -247,6 +281,7 @@ def build_genai_chat_plan(
             tenancy_ocid=tenancy_ocid,
             log_level=log_level,
             json_logs=json_logs,
+            config_path=config_path,
         )
     )
 
