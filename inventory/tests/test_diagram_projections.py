@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from oci_inventory.export.diagram_projections import _render_edge, write_diagram_projections
 from oci_inventory.export.graph import build_graph
 
@@ -73,6 +75,41 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
     for line in consolidated.splitlines():
         if "-->" in line or "<--" in line:
             assert ":" in line
+
+
+def test_consolidated_subnet_group_id_scoped_by_vcn(tmp_path) -> None:
+    vcn_id = "ocid1.vcn.oc1..vcn"
+    subnet_id = "ocid1.subnet.oc1..subnet"
+    comp_id = "ocid1.compartment.oc1..comp"
+    records = [
+        {
+            "ocid": vcn_id,
+            "resourceType": "Vcn",
+            "displayName": "Prod-VCN",
+            "region": "mx-queretaro-1",
+            "compartmentId": comp_id,
+            "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": subnet_id,
+            "resourceType": "Subnet",
+            "displayName": "Public-Subnet-1",
+            "region": "mx-queretaro-1",
+            "compartmentId": comp_id,
+            "details": {"metadata": {"vcn_id": vcn_id, "cidr_block": "10.0.1.0/24"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+    ]
+
+    nodes, edges = build_graph(records, relationships=[])
+    write_diagram_projections(tmp_path, nodes, edges)
+
+    consolidated = (tmp_path / "diagram.consolidated.mmd").read_text(encoding="utf-8")
+    digest = hashlib.sha1(f"{comp_id}:{vcn_id}:{subnet_id}".encode("utf-8")).hexdigest()[:10]
+    assert f"group subnet_{digest}" in consolidated
 
 
 def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
