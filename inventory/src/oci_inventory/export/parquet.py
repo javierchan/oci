@@ -131,45 +131,53 @@ def write_parquet(
         nonlocal writer, rows, row_meta
         if not rows:
             return
-        try:
-            if writer is None:
-                table = pa.Table.from_pylist(rows)
-                nullable_schema = _make_nullable_schema(pa, table.schema)
-                if table.schema != nullable_schema:
-                    table = table.cast(nullable_schema, safe=False)
-            else:
-                table = pa.Table.from_pylist(rows, schema=writer.schema)
-        except Exception as exc:
-            LOG.error(
-                "Parquet batch write failed; attempting to isolate invalid record",
-                extra={"step": "export", "phase": "error", "artifact": "parquet", "error": str(exc)},
-            )
-            schema = writer.schema if writer is not None else None
-            for row, meta in zip(rows, row_meta):
-                idx, label = meta
-                try:
-                    if schema is None:
-                        pa.Table.from_pylist([row])
-                    else:
-                        pa.Table.from_pylist([row], schema=schema)
-                except Exception as row_exc:
+        while True:
+            try:
+                if writer is None:
+                    table = pa.Table.from_pylist(rows)
+                    nullable_schema = _make_nullable_schema(pa, table.schema)
+                    if table.schema != nullable_schema:
+                        table = table.cast(nullable_schema, safe=False)
+                else:
+                    table = pa.Table.from_pylist(rows, schema=writer.schema)
+                break
+            except Exception as exc:
+                LOG.error(
+                    "Parquet batch write failed; attempting to isolate invalid record",
+                    extra={"step": "export", "phase": "error", "artifact": "parquet", "error": str(exc)},
+                )
+                schema = writer.schema if writer is not None else None
+                bad_indexes: List[int] = []
+                for idx_in_batch, (row, meta) in enumerate(zip(rows, row_meta)):
+                    record_index, label = meta
+                    try:
+                        if schema is None:
+                            pa.Table.from_pylist([row])
+                        else:
+                            pa.Table.from_pylist([row], schema=schema)
+                    except Exception as row_exc:
+                        LOG.warning(
+                            "Parquet record skipped due to schema coercion failure",
+                            extra={
+                                "step": "export",
+                                "phase": "warning",
+                                "artifact": "parquet",
+                                "record_index": record_index,
+                                "record_hint": label,
+                                "error": str(row_exc),
+                            },
+                        )
+                        bad_indexes.append(idx_in_batch)
+                if not bad_indexes:
                     LOG.error(
-                        "Parquet record failed schema coercion",
-                        extra={
-                            "step": "export",
-                            "phase": "error",
-                            "artifact": "parquet",
-                            "record_index": idx,
-                            "record_hint": label,
-                            "error": str(row_exc),
-                        },
+                        "Parquet batch failed but no single record isolated",
+                        extra={"step": "export", "phase": "error", "artifact": "parquet"},
                     )
                     raise
-            LOG.error(
-                "Parquet batch failed but no single record isolated",
-                extra={"step": "export", "phase": "error", "artifact": "parquet"},
-            )
-            raise
+                rows = [row for i, row in enumerate(rows) if i not in bad_indexes]
+                row_meta = [meta for i, meta in enumerate(row_meta) if i not in bad_indexes]
+                if not rows:
+                    return
         if writer is None:
             writer = pq.ParquetWriter(path, table.schema)
         writer.write_table(table)
