@@ -37,6 +37,49 @@ def _record_debug_label(record: Mapping[str, Any]) -> str:
     return f"{resource_type} ocid_sha1={_hash_ocid(ocid)}"
 
 
+def _make_nullable_type(pa, pa_type: Any) -> Any:
+    if pa.types.is_struct(pa_type):
+        fields = [pa.field(f.name, _make_nullable_type(pa, f.type), nullable=True, metadata=f.metadata) for f in pa_type]
+        return pa.struct(fields)
+    if pa.types.is_list(pa_type):
+        value_field = pa.field(
+            pa_type.value_field.name,
+            _make_nullable_type(pa, pa_type.value_type),
+            nullable=True,
+            metadata=pa_type.value_field.metadata,
+        )
+        return pa.list_(value_field)
+    if pa.types.is_large_list(pa_type):
+        value_field = pa.field(
+            pa_type.value_field.name,
+            _make_nullable_type(pa, pa_type.value_type),
+            nullable=True,
+            metadata=pa_type.value_field.metadata,
+        )
+        return pa.large_list(value_field)
+    if pa.types.is_map(pa_type):
+        key_field = pa.field(
+            pa_type.key_field.name,
+            _make_nullable_type(pa, pa_type.key_type),
+            nullable=False,
+            metadata=pa_type.key_field.metadata,
+        )
+        item_field = pa.field(
+            pa_type.item_field.name,
+            _make_nullable_type(pa, pa_type.item_type),
+            nullable=True,
+            metadata=pa_type.item_field.metadata,
+        )
+        return pa.map_(key_field, item_field, keys_sorted=pa_type.keys_sorted)
+    return pa_type
+
+
+def _make_nullable_schema(pa, schema: Any) -> Any:
+    return pa.schema(
+        [pa.field(f.name, _make_nullable_type(pa, f.type), nullable=True, metadata=f.metadata) for f in schema]
+    )
+
+
 class ParquetNotAvailable(RuntimeError):
     pass
 
@@ -89,7 +132,13 @@ def write_parquet(
         if not rows:
             return
         try:
-            table = pa.Table.from_pylist(rows) if writer is None else pa.Table.from_pylist(rows, schema=writer.schema)
+            if writer is None:
+                table = pa.Table.from_pylist(rows)
+                nullable_schema = _make_nullable_schema(pa, table.schema)
+                if table.schema != nullable_schema:
+                    table = table.cast(nullable_schema, safe=False)
+            else:
+                table = pa.Table.from_pylist(rows, schema=writer.schema)
         except Exception as exc:
             LOG.error(
                 "Parquet batch write failed; attempting to isolate invalid record",
