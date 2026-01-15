@@ -295,6 +295,7 @@ Notes for developers:
 - The CLI is read-only; all SDK calls are list/get style. No mutations are performed.
 - Region failures are tolerated and captured in report.md; GenAI is optional and isolated from the main run.
 - Parquet support is installed by preflight; enable output with `--parquet`.
+- Parquet write failures log a record index and a hashed OCID hint to help isolate problematic rows without exposing raw OCIDs.
 - Mermaid diagrams are generated as `.mmd` files unless `--no-diagrams` is set. Mermaid CLI (`mmdc`) is required and preflight installs it;
   validation runs automatically when diagrams are enabled.
   (During installation you may see npm warnings about Puppeteer deprecations; those are typically non-fatal.)

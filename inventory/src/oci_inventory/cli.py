@@ -1637,7 +1637,7 @@ def _validate_outdir_schema(
 
 def cmd_run(cfg: RunConfig) -> int:
     from .export.csv import write_csv
-    from .export.graph import build_graph, write_graph, write_mermaid
+    from .export.graph import build_graph, filter_edges_with_nodes, write_graph, write_mermaid
     from .export.jsonl import write_jsonl
     from .export.parquet import ParquetNotAvailable, write_parquet
     from .report import (
@@ -1955,6 +1955,20 @@ def cmd_run(cfg: RunConfig) -> int:
                 timers=timers,
             )
             nodes, edges = build_graph(inventory_records, all_relationships)
+            total_edges = len(edges)
+            edges, dropped_edges = filter_edges_with_nodes(nodes, edges)
+            if dropped_edges:
+                _log_event(
+                    LOG,
+                    logging.WARNING,
+                    "Graph edges filtered to remove missing nodes",
+                    step="graph",
+                    phase="warning",
+                    timers=timers,
+                    dropped_edges=dropped_edges,
+                    remaining_edges=len(edges),
+                    total_edges=total_edges,
+                )
             write_graph(cfg.outdir, nodes, edges)
             write_mermaid(cfg.outdir, nodes, edges)
             if cfg.diagram_max_networks == 0:

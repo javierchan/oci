@@ -500,6 +500,17 @@ def build_graph(
     return nodes_out, edges_out
 
 
+def filter_edges_with_nodes(nodes: Sequence[Node], edges: Sequence[Edge]) -> Tuple[List[Edge], int]:
+    node_ids = {str(node.get("nodeId") or "") for node in nodes if node.get("nodeId")}
+    filtered = [
+        edge
+        for edge in edges
+        if str(edge.get("source_ocid") or "") in node_ids
+        and str(edge.get("target_ocid") or "") in node_ids
+    ]
+    return filtered, len(edges) - len(filtered)
+
+
 def write_graph(outdir: Path, nodes: List[Node], edges: List[Edge]) -> Tuple[Path, Path]:
     nodes_path = outdir / "graph_nodes.jsonl"
     edges_path = outdir / "graph_edges.jsonl"
