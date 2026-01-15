@@ -118,6 +118,20 @@ def _ask_optional_int(prompt: str) -> Optional[int]:
             continue
 
 
+def _ask_optional_int_with_min(prompt: str, *, min_value: int = 0) -> Optional[int]:
+    from rich.console import Console
+
+    console = Console()
+    while True:
+        value = _ask_optional_int(prompt)
+        if value is None:
+            return None
+        if value < min_value:
+            console.print(f"[red]Value must be >= {min_value}.[/red]")
+            continue
+        return value
+
+
 def _ask_optional_float(prompt: str) -> Optional[float]:
     from rich.console import Console
 
@@ -142,12 +156,86 @@ def _ask_repeatable_list(prompt: str) -> List[str]:
         out.append(v)
 
 
+def _ask_multi_select(
+    prompt: str,
+    choices: Sequence[Union[str, Tuple[str, str]]],
+    *,
+    default: Optional[Sequence[str]] = None,
+) -> List[str]:
+    from rich.console import Console
+    from rich.prompt import Prompt
+
+    console = Console()
+    console.print(f"\n[bold]{prompt}[/bold]")
+    normalized: List[Tuple[str, str]] = []
+    for item in choices:
+        if isinstance(item, tuple):
+            label, desc = item
+        else:
+            label, desc = str(item), ""
+        normalized.append((label, desc))
+
+    labels = [label for label, _ in normalized]
+    for idx, (label, desc) in enumerate(normalized, start=1):
+        console.print(f"  [cyan]{idx}[/cyan]) {label}")
+        console.print(f"     [dim]{desc}[/dim]")
+
+    default_idx = None
+    if default:
+        idx_list = [str(labels.index(item) + 1) for item in default if item in labels]
+        if idx_list:
+            default_idx = ",".join(idx_list)
+
+    while True:
+        raw = Prompt.ask("Select (comma-separated, blank = none)", default=default_idx or "").strip()
+        if not raw:
+            return []
+        tokens = [t.strip() for t in raw.split(",") if t.strip()]
+        selected: List[str] = []
+        invalid: List[str] = []
+        for token in tokens:
+            if token.isdigit():
+                idx = int(token)
+                if 1 <= idx <= len(labels):
+                    selected.append(labels[idx - 1])
+                else:
+                    invalid.append(token)
+            else:
+                match = next((l for l in labels if l.lower() == token.lower()), None)
+                if match:
+                    selected.append(match)
+                else:
+                    invalid.append(token)
+        if invalid:
+            console.print(f"[red]Invalid selection(s): {', '.join(invalid)}[/red]")
+            continue
+        deduped: List[str] = []
+        for item in selected:
+            if item not in deduped:
+                deduped.append(item)
+        return deduped
+
+
 def _ask_existing_file(prompt: str, default: Optional[str] = None) -> Path:
     from rich.console import Console
 
     console = Console()
     while True:
         p = Path(_ask_str(prompt, default=default))
+        if p.exists() and p.is_file():
+            return p
+        console.print(f"[red]File not found: {p}[/red]")
+
+
+def _ask_optional_existing_file(prompt: str, default: Optional[str] = None) -> Optional[Path]:
+    from rich.console import Console
+
+    console = Console()
+    while True:
+        raw = _ask_str(prompt, default=default, allow_blank=True).strip()
+        if not raw or raw.lower() in {"none", "no", "skip"}:
+            return None
+        p = Path(raw)
         if p.exists() and p.is_file():
             return p
         console.print(f"[red]File not found: {p}[/red]")
@@ -714,6 +802,16 @@ def main() -> None:
                 "List Compartments",
             )
         outdir = _ask_outdir_base("Output base dir", default="out")
+        config_path = _ask_optional_existing_file(
+            "Config file path (enter 'none' to skip)",
+            default="config/workers.yaml",
+        )
+        use_config_workers = False
+        if config_path:
+            use_config_workers = _ask_bool(
+                "Use worker values from config file (recommended)?",
+                default=True,
+            )
         while True:
             try:
                 regions = _parse_regions(
@@ -750,14 +848,28 @@ def main() -> None:
         if prev and (not prev.exists() or not prev.is_file()):
             prev = None
 
-        workers_region = _ask_int("Max parallel regions", default=6, min_value=1)
-        workers_enrich = _ask_int("Max enricher workers", default=24, min_value=1)
+        workers_region = None
+        workers_enrich = None
+        if not use_config_workers:
+            workers_region = _ask_int("Max parallel regions", default=6, min_value=1)
+            workers_enrich = _ask_int("Max enricher workers", default=24, min_value=1)
+        workers_cost = None
+        workers_export = None
+        client_connection_pool_size = None
 
-        validate_diagrams = False
-        cost_report = False
+        validate_diagrams: Optional[bool] = None
+        diagrams: Optional[bool] = None
+        schema_validation: Optional[str] = None
+        schema_sample_records: Optional[int] = None
+        diagram_max_networks: Optional[int] = None
+        diagram_max_workloads: Optional[int] = None
+        cost_report: Optional[bool] = None
         cost_start: Optional[str] = None
         cost_end: Optional[str] = None
         cost_currency: Optional[str] = None
+        cost_compartment_group_by: Optional[str] = None
+        cost_group_by: Optional[List[str]] = None
+        osub_subscription_id: Optional[str] = None
         assessment_target_group: Optional[str] = None
         assessment_target_scope: Optional[List[str]] = None
         assessment_lens_weight: Optional[List[str]] = None
@@ -765,15 +877,109 @@ def main() -> None:
 
         if _ask_bool("Show advanced run options?", default=False):
             _section("Advanced Run Options")
-            validate_diagrams = _ask_bool(
-                "Validate Mermaid diagrams with mmdc (fails run if invalid)?",
-                default=False,
+            workers_cost = _ask_optional_int_with_min("Max cost workers (blank = default)", min_value=1)
+            workers_export = _ask_optional_int_with_min("Max export workers (blank = default)", min_value=1)
+            client_connection_pool_size = _ask_optional_int_with_min(
+                "Client connection pool size (blank = SDK default)",
+                min_value=1,
             )
-            cost_report = _ask_bool("Generate cost_report.md (Usage API, read-only)?", default=False)
+            diagrams_choice = _ask_choice(
+                "Generate diagrams?",
+                [
+                    ("Default", "Use CLI/config defaults."),
+                    ("Enable", "Always generate diagrams."),
+                    ("Disable", "Disable diagrams for this run."),
+                ],
+                default="Default",
+            )
+            if diagrams_choice == "Enable":
+                diagrams = True
+            elif diagrams_choice == "Disable":
+                diagrams = False
+            validate_choice = _ask_choice(
+                "Validate Mermaid diagrams with mmdc?",
+                [
+                    ("Default", "Use CLI/config defaults."),
+                    ("Enable", "Require validation (fails run if invalid)."),
+                    ("Disable", "Skip explicit validation flag."),
+                ],
+                default="Default",
+            )
+            if validate_choice == "Enable":
+                validate_diagrams = True
+            elif validate_choice == "Disable":
+                validate_diagrams = False
+
+            schema_validation = _ask_choice(
+                "Schema validation mode",
+                [
+                    ("auto", "Auto (default; sample large outputs)."),
+                    ("full", "Validate all records."),
+                    ("sampled", "Validate a fixed sample size."),
+                    ("off", "Disable schema validation."),
+                ],
+                default="auto",
+            )
+            if schema_validation == "sampled":
+                schema_sample_records = _ask_optional_int_with_min(
+                    "Schema sample records (blank = default)",
+                    min_value=1,
+                )
+            diagram_max_networks = _ask_optional_int_with_min(
+                "Diagram max networks (blank = default, 0 disables network views)",
+                min_value=0,
+            )
+            diagram_max_workloads = _ask_optional_int_with_min(
+                "Diagram max workloads (blank = default, 0 disables workload views)",
+                min_value=0,
+            )
+
+            cost_report_choice = _ask_choice(
+                "Generate cost_report.md (Usage API, read-only)?",
+                [
+                    ("Default", "Use CLI/config defaults."),
+                    ("Enable", "Generate cost report."),
+                    ("Disable", "Disable cost report."),
+                ],
+                default="Default",
+            )
+            if cost_report_choice == "Enable":
+                cost_report = True
+            elif cost_report_choice == "Disable":
+                cost_report = False
             if cost_report:
                 cost_start = _ask_str("Cost start (ISO 8601, blank = month-to-date)", default="", allow_blank=True).strip()
                 cost_end = _ask_str("Cost end (ISO 8601, blank = now)", default="", allow_blank=True).strip()
                 cost_currency = _ask_str("Cost currency (ISO 4217, optional)", default="", allow_blank=True).strip()
+                cost_compartment_group_by = _ask_choice(
+                    "Cost compartment grouping",
+                    [
+                        ("Default", "Use compartmentId (default)."),
+                        ("compartmentName", "Group by compartment display name."),
+                        ("compartmentPath", "Group by compartment path."),
+                    ],
+                    default="Default",
+                )
+                if cost_compartment_group_by == "Default":
+                    cost_compartment_group_by = None
+                cost_group_by = _ask_multi_select(
+                    "Cost group_by fields (optional)",
+                    [
+                        ("service", "Service name"),
+                        ("region", "Region name"),
+                        ("compartmentId", "Compartment OCID"),
+                        ("compartmentName", "Compartment display name"),
+                        ("compartmentPath", "Compartment path"),
+                        ("sku", "SKU"),
+                    ],
+                )
+                if not cost_group_by:
+                    cost_group_by = None
+                osub_subscription_id = _ask_str(
+                    "OneSubscription subscription ID (optional)",
+                    default="",
+                    allow_blank=True,
+                ).strip() or None
                 if not cost_start:
                     cost_start = None
                 if not cost_end:
@@ -808,6 +1014,7 @@ def main() -> None:
             auth=auth,
             profile=profile,
             tenancy_ocid=tenancy_ocid,
+            config_path=config_path,
             outdir=outdir,
             query=query,
             regions=regions,
@@ -816,12 +1023,23 @@ def main() -> None:
             prev=prev,
             workers_region=workers_region,
             workers_enrich=workers_enrich,
+            workers_cost=workers_cost,
+            workers_export=workers_export,
+            client_connection_pool_size=client_connection_pool_size,
             include_terminated=include_terminated,
             validate_diagrams=validate_diagrams,
+            diagrams=diagrams,
+            schema_validation=schema_validation,
+            schema_sample_records=schema_sample_records,
+            diagram_max_networks=diagram_max_networks,
+            diagram_max_workloads=diagram_max_workloads,
             cost_report=cost_report,
             cost_start=cost_start,
             cost_end=cost_end,
             cost_currency=cost_currency,
+            cost_compartment_group_by=cost_compartment_group_by,
+            cost_group_by=cost_group_by,
+            osub_subscription_id=osub_subscription_id,
             assessment_target_group=assessment_target_group,
             assessment_target_scope=assessment_target_scope,
             assessment_lens_weight=assessment_lens_weight,
@@ -836,6 +1054,7 @@ def main() -> None:
             "tenancy_ocid": tenancy_ocid,
             "json_logs": json_logs,
             "log_level": log_level,
+            "config": str(config_path) if config_path else None,
             "outdir": str(outdir),
             "query": query,
             "regions": regions,
@@ -844,12 +1063,23 @@ def main() -> None:
             "prev": str(prev) if prev else None,
             "workers_region": workers_region,
             "workers_enrich": workers_enrich,
+            "workers_cost": workers_cost,
+            "workers_export": workers_export,
+            "client_connection_pool_size": client_connection_pool_size,
             "include_terminated": include_terminated,
             "validate_diagrams": validate_diagrams,
+            "diagrams": diagrams,
+            "schema_validation": schema_validation,
+            "schema_sample_records": schema_sample_records,
+            "diagram_max_networks": diagram_max_networks,
+            "diagram_max_workloads": diagram_max_workloads,
             "cost_report": cost_report,
             "cost_start": cost_start,
             "cost_end": cost_end,
             "cost_currency": cost_currency,
+            "cost_compartment_group_by": cost_compartment_group_by,
+            "cost_group_by": cost_group_by,
+            "osub_subscription_id": osub_subscription_id,
             "assessment_target_group": assessment_target_group,
             "assessment_target_scope": assessment_target_scope,
             "assessment_lens_weight": assessment_lens_weight,

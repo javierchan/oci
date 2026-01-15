@@ -525,8 +525,9 @@ What it does:
 - Walks you through run/diff options, shows the exact `oci-inv` command before execution.
 - Writes the same outputs as the CLI (`out/<timestamp>/`), so artifacts remain consistent.
 - Supports plan files for non-interactive use (see below for an example).
-- Covers all CLI modes, with advanced run options for diagram validation, cost reporting, and assessments.
+- Covers all CLI modes, with advanced run options for diagram validation, schema validation, cost reporting, and assessments.
 - Lets you save interactive runs as plan files for reproducible execution.
+- Prompts for an optional config file path (default `config/workers.yaml`; enter `none` to skip).
 
 ## GenAI Configuration
 
@@ -552,6 +553,7 @@ cat > wizard-run.yaml <<'YAML'
 mode: run
 auth: config
 profile: DEFAULT
+config: config/workers.yaml
 log_level: INFO
 json_logs: false
 outdir: out
@@ -562,6 +564,9 @@ workers_region: 6
 workers_enrich: 24
 workers_cost: 2
 workers_export: 2
+client_connection_pool_size: 16
+cost_report: true
+cost_group_by: [service, region, compartmentId]
 YAML
 
 oci-inv-wizard --from wizard-run.yaml --dry-run

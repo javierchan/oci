@@ -98,6 +98,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       log_level: optional (INFO/DEBUG/...)
 
     For mode=run:
+      config: optional path to a CLI config file
       outdir: required (base directory)
       query: required
       regions: optional list or comma-separated string
@@ -108,12 +109,19 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       workers_enrich: optional int
       workers_cost: optional int
       workers_export: optional int
+      client_connection_pool_size: optional int
       validate_diagrams: optional bool
       diagrams: optional bool
+      schema_validation: optional (auto|full|sampled|off)
+      schema_sample_records: optional int
+      diagram_max_networks: optional int
+      diagram_max_workloads: optional int
       cost_report: optional bool
       cost_start: optional (ISO 8601)
       cost_end: optional (ISO 8601)
       cost_currency: optional (ISO 4217)
+      cost_compartment_group_by: optional (compartmentId|compartmentName|compartmentPath)
+      cost_group_by: optional list or comma-separated string
       osub_subscription_id: optional string
       assessment_target_group: optional string
       assessment_target_scope: optional list or comma-separated string
@@ -149,16 +157,19 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
     log_level = _as_str(cfg.get("log_level"))
 
     if mode in {"validate-auth", "list-regions", "list-compartments", "list-genai-models"}:
+        config_path = _as_str(cfg.get("config"))
         return build_simple_plan(
             subcommand=mode,
             auth=auth,
             profile=profile,
             tenancy_ocid=tenancy_ocid,
+            config_path=Path(config_path) if config_path else None,
             json_logs=json_logs,
             log_level=log_level,
         )
 
     if mode == "genai-chat":
+        config_path = _as_str(cfg.get("config"))
         genai_api_format = _as_str(cfg.get("genai_api_format"))
         genai_message = _as_str(cfg.get("genai_message"))
         genai_report = _as_str(cfg.get("genai_report"))
@@ -177,6 +188,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             auth=auth,
             profile=profile,
             tenancy_ocid=tenancy_ocid,
+            config_path=Path(config_path) if config_path else None,
             api_format=genai_api_format,
             message=genai_message,
             report=Path(genai_report) if genai_report else None,
@@ -187,6 +199,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
         )
 
     if mode == "diff":
+        config_path = _as_str(cfg.get("config"))
         prev = _as_str(cfg.get("prev"))
         curr = _as_str(cfg.get("curr"))
         outdir = _as_str(cfg.get("outdir"))
@@ -196,6 +209,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             auth=auth,
             profile=profile,
             tenancy_ocid=tenancy_ocid,
+            config_path=Path(config_path) if config_path else None,
             prev=Path(prev),
             curr=Path(curr),
             outdir=Path(outdir),
@@ -214,6 +228,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
         )
 
     if mode == "run":
+        config_path = _as_str(cfg.get("config"))
         outdir = _as_str(cfg.get("outdir"))
         query = _as_str(cfg.get("query"))
         if not outdir or not query:
@@ -227,13 +242,20 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
         workers_enrich = _as_int(cfg.get("workers_enrich"))
         workers_cost = _as_int(cfg.get("workers_cost"))
         workers_export = _as_int(cfg.get("workers_export"))
+        client_connection_pool_size = _as_int(cfg.get("client_connection_pool_size"))
         include_terminated = _as_bool(cfg.get("include_terminated"))
         validate_diagrams = _as_bool(cfg.get("validate_diagrams"))
         diagrams = _as_bool(cfg.get("diagrams"))
+        schema_validation = _as_str(cfg.get("schema_validation"))
+        schema_sample_records = _as_int(cfg.get("schema_sample_records"))
+        diagram_max_networks = _as_int(cfg.get("diagram_max_networks"))
+        diagram_max_workloads = _as_int(cfg.get("diagram_max_workloads"))
         cost_report = _as_bool(cfg.get("cost_report"))
         cost_start = _as_str(cfg.get("cost_start"))
         cost_end = _as_str(cfg.get("cost_end"))
         cost_currency = _as_str(cfg.get("cost_currency"))
+        cost_compartment_group_by = _as_str(cfg.get("cost_compartment_group_by"))
+        cost_group_by = _as_list(cfg.get("cost_group_by"))
         osub_subscription_id = _as_str(cfg.get("osub_subscription_id"))
         assessment_target_group = _as_str(cfg.get("assessment_target_group"))
         assessment_target_scope = _as_list(cfg.get("assessment_target_scope"))
@@ -244,6 +266,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             auth=auth,
             profile=profile,
             tenancy_ocid=tenancy_ocid,
+            config_path=Path(config_path) if config_path else None,
             outdir=Path(outdir),
             query=query,
             regions=regions,
@@ -254,13 +277,20 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             workers_enrich=workers_enrich,
             workers_cost=workers_cost,
             workers_export=workers_export,
+            client_connection_pool_size=client_connection_pool_size,
             include_terminated=include_terminated,
             validate_diagrams=validate_diagrams,
             diagrams=diagrams,
+            schema_validation=schema_validation,
+            schema_sample_records=schema_sample_records,
+            diagram_max_networks=diagram_max_networks,
+            diagram_max_workloads=diagram_max_workloads,
             cost_report=cost_report,
             cost_start=cost_start,
             cost_end=cost_end,
             cost_currency=cost_currency,
+            cost_compartment_group_by=cost_compartment_group_by,
+            cost_group_by=cost_group_by,
             osub_subscription_id=osub_subscription_id,
             assessment_target_group=assessment_target_group,
             assessment_target_scope=assessment_target_scope,

@@ -16,6 +16,7 @@ def test_build_run_plan_contains_expected_flags() -> None:
         auth="config",
         profile="DEFAULT",
         tenancy_ocid=None,
+        config_path=Path("config/workers.yaml"),
         outdir=Path("out"),
         query="query all resources",
         regions=["mx-queretaro-1"],
@@ -24,13 +25,22 @@ def test_build_run_plan_contains_expected_flags() -> None:
         prev=Path("out/prev/inventory.jsonl"),
         workers_region=3,
         workers_enrich=9,
+        workers_cost=4,
+        workers_export=2,
+        client_connection_pool_size=16,
         include_terminated=True,
         validate_diagrams=True,
         diagrams=False,
+        schema_validation="sampled",
+        schema_sample_records=2500,
+        diagram_max_networks=5,
+        diagram_max_workloads=10,
         cost_report=True,
         cost_start="2025-01-01T00:00:00Z",
         cost_end="2025-01-31T23:59:59Z",
         cost_currency="USD",
+        cost_compartment_group_by="compartmentPath",
+        cost_group_by=["service", "region", "compartmentId"],
         osub_subscription_id="sub123",
         assessment_target_group="engineering",
         assessment_target_scope=["team:inventory", "org:oci"],
@@ -43,6 +53,8 @@ def test_build_run_plan_contains_expected_flags() -> None:
     assert plan.argv[0] == "run"
     assert "--auth" in plan.argv
     assert "config" in plan.argv
+    assert "--config" in plan.argv
+    assert "config/workers.yaml" in plan.argv
     assert "--profile" in plan.argv
     assert "DEFAULT" in plan.argv
     assert "--regions" in plan.argv
@@ -57,10 +69,24 @@ def test_build_run_plan_contains_expected_flags() -> None:
     assert "3" in plan.argv
     assert "--workers-enrich" in plan.argv
     assert "9" in plan.argv
+    assert "--workers-cost" in plan.argv
+    assert "4" in plan.argv
+    assert "--workers-export" in plan.argv
+    assert "2" in plan.argv
+    assert "--client-connection-pool-size" in plan.argv
+    assert "16" in plan.argv
     assert "--include-terminated" in plan.argv
     assert "--no-json-logs" in plan.argv
     assert "--validate-diagrams" in plan.argv
     assert "--no-diagrams" in plan.argv
+    assert "--validate-schema" in plan.argv
+    assert "sampled" in plan.argv
+    assert "--validate-schema-sample" in plan.argv
+    assert "2500" in plan.argv
+    assert "--diagram-max-networks" in plan.argv
+    assert "5" in plan.argv
+    assert "--diagram-max-workloads" in plan.argv
+    assert "10" in plan.argv
     assert "--cost-report" in plan.argv
     assert "--cost-start" in plan.argv
     assert "2025-01-01T00:00:00Z" in plan.argv
@@ -68,6 +94,10 @@ def test_build_run_plan_contains_expected_flags() -> None:
     assert "2025-01-31T23:59:59Z" in plan.argv
     assert "--cost-currency" in plan.argv
     assert "USD" in plan.argv
+    assert "--cost-compartment-group-by" in plan.argv
+    assert "compartmentPath" in plan.argv
+    assert "--cost-group-by" in plan.argv
+    assert "service,region,compartmentId" in plan.argv
     assert "--osub-subscription-id" in plan.argv
     assert "sub123" in plan.argv
     assert "--assessment-target-group" in plan.argv
