@@ -33,3 +33,11 @@ def test_parquet_sanitizes_empty_structs() -> None:
     assert sanitized["details"]["foo"] is None
     assert sanitized["details"]["bar"][0] is None
     assert sanitized["details"]["bar"][1]["k"] == 1
+
+
+def test_parquet_record_debug_label_hashes_ocid() -> None:
+    record = {"ocid": "ocid1.test.oc1..aaa", "resourceType": "Widget"}
+    label = parquet_mod._record_debug_label(record)
+    assert "Widget" in label
+    assert "ocid1.test.oc1..aaa" not in label
+    assert "ocid_sha1=" in label

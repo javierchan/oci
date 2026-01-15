@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
-from typing import Any, Iterable, List, Optional
+from typing import Any, Iterable, List, Mapping, Optional, Tuple
 
+from ..logging import get_logger
 from ..normalize.schema import NormalizedRecord
 from ..normalize.transform import canonicalize_record, normalize_relationships
+
+LOG = get_logger(__name__)
 
 
 def _drop_empty_structs(value: object) -> object:
@@ -19,6 +23,18 @@ def _drop_empty_structs(value: object) -> object:
 
 def _sanitize_parquet_row(record: NormalizedRecord) -> NormalizedRecord:
     return {k: _drop_empty_structs(v) for k, v in record.items()}
+
+
+def _hash_ocid(ocid: str) -> str:
+    if not ocid:
+        return "unknown"
+    return hashlib.sha1(ocid.encode("utf-8")).hexdigest()[:12]
+
+
+def _record_debug_label(record: Mapping[str, Any]) -> str:
+    resource_type = str(record.get("resourceType") or "Unknown")
+    ocid = str(record.get("ocid") or "")
+    return f"{resource_type} ocid_sha1={_hash_ocid(ocid)}"
 
 
 class ParquetNotAvailable(RuntimeError):
@@ -65,19 +81,57 @@ def write_parquet(
 
     writer: Optional[Any] = None
     rows: List[NormalizedRecord] = []
+    row_meta: List[Tuple[int, str]] = []
+    record_index = 0
 
     def _flush_rows() -> None:
-        nonlocal writer, rows
+        nonlocal writer, rows, row_meta
         if not rows:
             return
-        table = pa.Table.from_pylist(rows) if writer is None else pa.Table.from_pylist(rows, schema=writer.schema)
+        try:
+            table = pa.Table.from_pylist(rows) if writer is None else pa.Table.from_pylist(rows, schema=writer.schema)
+        except Exception as exc:
+            LOG.error(
+                "Parquet batch write failed; attempting to isolate invalid record",
+                extra={"step": "export", "phase": "error", "artifact": "parquet", "error": str(exc)},
+            )
+            schema = writer.schema if writer is not None else None
+            for row, meta in zip(rows, row_meta):
+                idx, label = meta
+                try:
+                    if schema is None:
+                        pa.Table.from_pylist([row])
+                    else:
+                        pa.Table.from_pylist([row], schema=schema)
+                except Exception as row_exc:
+                    LOG.error(
+                        "Parquet record failed schema coercion",
+                        extra={
+                            "step": "export",
+                            "phase": "error",
+                            "artifact": "parquet",
+                            "record_index": idx,
+                            "record_hint": label,
+                            "error": str(row_exc),
+                        },
+                    )
+                    raise
+            LOG.error(
+                "Parquet batch failed but no single record isolated",
+                extra={"step": "export", "phase": "error", "artifact": "parquet"},
+            )
+            raise
         if writer is None:
             writer = pq.ParquetWriter(path, table.schema)
         writer.write_table(table)
         rows = []
+        row_meta = []
 
     for rec in iter_records:
-        rows.append(_sanitize_parquet_row(canonicalize_record(normalize_relationships(dict(rec)))))
+        record_index += 1
+        sanitized = _sanitize_parquet_row(canonicalize_record(normalize_relationships(dict(rec))))
+        rows.append(sanitized)
+        row_meta.append((record_index, _record_debug_label(sanitized)))
         if len(rows) >= batch_size:
             _flush_rows()
 

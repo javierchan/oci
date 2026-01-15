@@ -4,7 +4,13 @@ import json
 
 from oci_inventory.cli import OUT_SCHEMA_VERSION, _coverage_metrics, _validate_outdir_schema
 from oci_inventory.export.diagram_projections import write_diagram_projections
-from oci_inventory.export.graph import build_graph, derive_relationships_from_metadata, write_graph, write_mermaid
+from oci_inventory.export.graph import (
+    build_graph,
+    derive_relationships_from_metadata,
+    filter_edges_with_nodes,
+    write_graph,
+    write_mermaid,
+)
 from oci_inventory.export.jsonl import write_jsonl
 from oci_inventory.normalize.transform import sort_relationships, stable_json_dumps
 
@@ -34,6 +40,23 @@ def test_build_graph_adds_compartment_edges(tmp_path) -> None:
     mmd_path = write_mermaid(tmp_path, nodes, edges)
     assert mmd_path.read_text(encoding="utf-8").startswith("graph TD")
     assert mmd_path.name == "diagram_raw.mmd"
+
+
+def test_filter_edges_with_nodes_drops_missing_targets() -> None:
+    nodes = [
+        {"nodeId": "ocid1.a", "nodeType": "Test", "nodeCategory": "other"},
+        {"nodeId": "ocid1.b", "nodeType": "Test", "nodeCategory": "other"},
+    ]
+    edges = [
+        {"source_ocid": "ocid1.a", "target_ocid": "ocid1.b", "relation_type": "REL"},
+        {"source_ocid": "ocid1.a", "target_ocid": "ocid1.missing", "relation_type": "REL"},
+    ]
+
+    filtered, dropped = filter_edges_with_nodes(nodes, edges)
+
+    assert dropped == 1
+    assert len(filtered) == 1
+    assert filtered[0]["target_ocid"] == "ocid1.b"
 
 
 def test_derive_relationships_from_metadata_emits_vcn_and_subnet_edges() -> None:
