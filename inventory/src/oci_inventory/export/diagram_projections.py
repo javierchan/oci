@@ -2109,7 +2109,7 @@ def _write_consolidated_mermaid(
 
             for sn_ocid in sorted(vcn_subnet_ids):
                 sn = node_by_id.get(sn_ocid, {"name": sn_ocid, "nodeType": "Subnet"})
-                subnet_group_id = _service_id("subnet_", sn_ocid)
+                subnet_group_id = _service_id("subnet_", f"{cid}:{vcn_ocid}:{sn_ocid}")
                 lines.append(f"    group {subnet_group_id}(cloud)[{_arch_label(_subnet_label(sn), max_len=80)}] in {vcn_group_id}")
                 _add_service(sn, subnet_group_id)
 
@@ -2131,7 +2131,7 @@ def _write_consolidated_mermaid(
                     _add_service(n, subnet_group_id)
 
             if unknown_subnet_nodes:
-                unknown_id = _service_id("subnet_unknown_", vcn_ocid)
+                unknown_id = _service_id("subnet_unknown_", f"{cid}:{vcn_ocid}")
                 lines.append(f"    group {unknown_id}(cloud)[{_arch_label('Subnet: Unknown', max_len=40)}] in {vcn_group_id}")
                 for n in sorted(unknown_subnet_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))):
                     _add_service(n, unknown_id)
