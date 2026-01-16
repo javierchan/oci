@@ -63,7 +63,8 @@ src/oci_inventory/
      - relationships: `[]`
      - never raises
    - Known gaps (SDK 2.164.2 lacks `get_*` APIs): LimitsIncreaseRequest, ProcessAutomationInstance, QueryServiceProject.
-   - The `searchSummary` field is removed from the final record before export.
+   - The top-level `searchSummary` field is removed from the final record before export.
+   - When present, `searchSummary` is preserved under `details` for auditability and backfills.
 6. Exports:
    - JSONL: canonicalized, stable key order, sorted by `(ocid, resourceType)`.
    - CSV: report fields only.
@@ -79,6 +80,9 @@ src/oci_inventory/
    - If `--prev` is provided, compute a diff between previous JSONL and current JSONL.
    - Hash excludes `collectedAt`, enabling meaningful changes detection.
    - Writes `diff.json` and `diff_summary.json`.
+9. Cost reporting (optional):
+   - Usage API summaries in the tenancy home region with deterministic aggregation.
+   - Writes `cost_report.md` and cost usage exports when enabled.
 
 ## Output Artifacts (out/<timestamp>/)
 
@@ -102,6 +106,8 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
   - Optional Usage API rows with full fields for validation/export (group_by, time window, service/region/compartment).
 - `cost_usage_items.jsonl`
   - Optional full Usage API items for auditability.
+- `cost_usage_items_grouped.csv`
+  - Optional combined group_by export when `--cost-group-by` is set.
 - `cost_usage_service.csv`, `cost_usage_region.csv`, `cost_usage_compartment.csv`
   - Optional per-view exports derived from Usage API groupings for stable FinOps reporting.
 
@@ -126,10 +132,10 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
 - `diagram_raw.mmd` (optional; generated when diagrams are enabled)
   - Raw Mermaid graph export (full graph, intended for debugging).
 
-- `diagram.tenancy.mmd`, `diagram.network.*.mmd`, `diagram.workload.*.mmd`, `diagram.consolidated.architecture.mmd` (optional; generated when diagrams are enabled)
+- `diagram.tenancy.mmd`, `diagram.network.*.mmd`, `diagram.workload.*.mmd`, `diagram.consolidated.architecture.mmd`, `diagram.consolidated.flowchart.mmd` (optional; generated when diagrams are enabled)
   - Mermaid projections derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
   - `diagram.consolidated.architecture.mmd` uses Mermaid `architecture-beta` syntax for the high-level architecture view.
-  - Projections render full detail without aggregation; grouping and layout manage density.
+  - Consolidated diagrams honor `--diagram-depth` (1=network only, 2=add workloads, 3=add workload edges).
 
 ## CLI Commands
 

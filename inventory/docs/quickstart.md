@@ -21,8 +21,6 @@ python -m venv .venv
 . .venv/bin/activate
 pip install -U pip
 pip install .
-# Optional Parquet export support:
-pip install .
 ```
 
 Verify installation:
@@ -51,7 +49,7 @@ OK: authentication validated; subscribed regions: <region1>, <region2>, ...
 
 ## Run an inventory collection
 
-Run a full discovery with the default query (MUST be "query all resources"):
+Run a full discovery with the default query ("query all resources"):
 
 ```
 oci-inv run --auth auto --profile DEFAULT --outdir out
@@ -123,7 +121,7 @@ out/<timestamp>/
   cost_usage_service.csv   # when --cost-report; service view
   cost_usage_region.csv    # when --cost-report; region view
   cost_usage_compartment.csv # when --cost-report; compartment view
-  relationships.jsonl      # when relationships are emitted
+  relationships.jsonl      # always written (may be empty)
   graph_nodes.jsonl        # diagram-ready nodes (optional)
   graph_edges.jsonl        # diagram-ready edges (optional)
   diagram_raw.mmd          # Mermaid diagram (raw graph; optional)
@@ -131,6 +129,7 @@ out/<timestamp>/
   diagram.network.<vcn>.mmd # Mermaid diagram (per-VCN topology view; optional)
   diagram.workload.<workload>.mmd # Mermaid diagram (workload/application view; optional)
   diagram.consolidated.architecture.mmd # Mermaid diagram (all projections consolidated; optional)
+  diagram.consolidated.flowchart.mmd # Mermaid diagram (consolidated flowchart; optional)
   diff.json                # when --prev provided
   diff_summary.json        # when --prev provided
   run_summary.json         # coverage metrics
@@ -160,7 +159,6 @@ Common environment variables that influence behavior:
 - OCI_INV_OUTDIR
 - OCI_INV_PREV
 - OCI_INV_CURR
-- OCI_INV_PARQUET
 - OCI_INV_INCLUDE_TERMINATED
 - OCI_INV_JSON_LOGS
 - OCI_INV_LOG_LEVEL
@@ -173,18 +171,26 @@ Common environment variables that influence behavior:
 - OCI_INV_AUTH
 - OCI_INV_PROFILE
 - OCI_TENANCY_OCID
+- OCI_INV_GENAI_CONFIG
 - OCI_INV_DIAGRAMS
 - OCI_INV_VALIDATE_DIAGRAMS
 - OCI_INV_SCHEMA_VALIDATION
 - OCI_INV_SCHEMA_SAMPLE_RECORDS
+- OCI_INV_DIAGRAM_DEPTH
 - OCI_INV_DIAGRAM_MAX_NETWORKS
 - OCI_INV_DIAGRAM_MAX_WORKLOADS
+- OCI_INV_GENAI_SUMMARY
 - OCI_INV_COST_REPORT
 - OCI_INV_COST_START
 - OCI_INV_COST_END
 - OCI_INV_COST_CURRENCY
 - OCI_INV_COST_COMPARTMENT_GROUP_BY
+- OCI_INV_COST_GROUP_BY
 - OCI_INV_OSUB_SUBSCRIPTION_ID
+- OCI_INV_ASSESSMENT_TARGET_GROUP
+- OCI_INV_ASSESSMENT_TARGET_SCOPE
+- OCI_INV_ASSESSMENT_LENS_WEIGHTS
+- OCI_INV_ASSESSMENT_CAPABILITIES
 - OCI_INV_DISABLE_CLIENT_CACHE
 
 ## Troubleshooting

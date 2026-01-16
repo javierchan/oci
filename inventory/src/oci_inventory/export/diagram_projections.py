@@ -4,6 +4,7 @@ import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from shutil import which
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
@@ -14,6 +15,8 @@ from ..util.errors import ExportError
 
 
 _NON_ARCH_LEAF_NODETYPES: Set[str] = set()
+MAX_MERMAID_TEXT_CHARS = 50000
+LOG = logging.getLogger(__name__)
 
 
 _NETWORK_CONTROL_NODETYPES: Set[str] = {
@@ -277,6 +280,10 @@ def _render_edge(src: str, dst: str, label: str | None = None, *, dotted: bool =
         if safe:
             return f"  {src} {arrow}|{safe}| {dst}"
     return f"  {src} {arrow} {dst}"
+
+
+def _mermaid_text_size(lines: Sequence[str]) -> int:
+    return sum(len(line) + 1 for line in lines)
 
 
 def _render_arch_edge(src: str, dst: str, *, src_port: str = "R", dst_port: str = "L") -> str:
@@ -775,6 +782,11 @@ def _write_tenancy_view(
 
     attachments = _derived_attachments(nodes, edges)
     attach_by_res: Dict[str, _DerivedAttachment] = {a.resource_ocid: a for a in attachments}
+    vcn_owner_by_id: Dict[str, str] = {
+        str(n.get("nodeId") or ""): str(n.get("compartmentId") or "") or "UNKNOWN"
+        for n in nodes
+        if _is_node_type(n, "Vcn") and n.get("nodeId")
+    }
 
     include_workloads = depth >= 2
     include_edges = depth >= 3
@@ -847,10 +859,6 @@ def _write_tenancy_view(
             for n in comp_nodes
             if _is_node_type(n, "Vcn") and n.get("nodeId")
         }
-        for n in comp_nodes:
-            att = attach_by_res.get(str(n.get("nodeId") or ""))
-            if att and att.vcn_ocid:
-                comp_vcn_ids.add(att.vcn_ocid)
 
         for vcn_id in sorted(comp_vcn_ids):
             if not vcn_id:
@@ -917,7 +925,12 @@ def _write_tenancy_view(
                             edge_node_id_map.setdefault(raw_id, nid)
                     lines.append("        end")
 
-            vcn_subnets = [sn for sn in subnets if subnet_to_vcn.get(str(sn.get("nodeId") or "")) == vcn_id]
+            vcn_subnets = [
+                sn
+                for sn in comp_nodes
+                if _is_node_type(sn, "Subnet")
+                and subnet_to_vcn.get(str(sn.get("nodeId") or "")) == vcn_id
+            ]
             for sn in sorted(vcn_subnets, key=lambda n: str(n.get("name") or "")):
                 sn_ocid = str(sn.get("nodeId") or "")
                 subnet_label_safe = _subnet_label(sn).replace('"', "'")
@@ -997,7 +1010,7 @@ def _write_tenancy_view(
                     continue
                 ocid = str(n.get("nodeId") or "")
                 att = attach_by_res.get(ocid)
-                if att and att.vcn_ocid:
+                if att and att.vcn_ocid and vcn_owner_by_id.get(att.vcn_ocid) == cid:
                     continue
                 out_nodes.append(n)
 
@@ -1988,9 +2001,11 @@ def _write_consolidated_mermaid(
     diagram_paths: Sequence[Path],
     *,
     depth: int = 3,
+    _requested_depth: Optional[int] = None,
 ) -> Path:
     consolidated = outdir / "diagram.consolidated.architecture.mmd"
     # Architecture diagram (architecture-beta). Full-detail OCI containment view.
+    requested_depth = depth if _requested_depth is None else _requested_depth
 
     def _service_id(prefix: str, value: str) -> str:
         import hashlib
@@ -2011,6 +2026,11 @@ def _write_consolidated_mermaid(
 
     lines: List[str] = ["architecture-beta"]
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
+    vcn_owner_by_id: Dict[str, str] = {
+        str(n.get("nodeId") or ""): str(n.get("compartmentId") or "") or "UNKNOWN"
+        for n in nodes
+        if _is_node_type(n, "Vcn") and n.get("nodeId")
+    }
     subnets = [n for n in nodes if _is_node_type(n, "Subnet")]
     edge_vcn_by_src = _edge_single_target_map(edges, "IN_VCN")
 
@@ -2086,13 +2106,11 @@ def _write_consolidated_mermaid(
                 if _is_node_type(n, "Vcn", "Subnet", *_NETWORK_GATEWAY_NODETYPES)
             ]
 
-        comp_vcn_ids: Set[str] = set()
-        for n in comp_nodes:
-            if _is_node_type(n, "Vcn") and n.get("nodeId"):
-                comp_vcn_ids.add(str(n.get("nodeId") or ""))
-            att = attach_by_res.get(str(n.get("nodeId") or ""))
-            if att and att.vcn_ocid:
-                comp_vcn_ids.add(att.vcn_ocid)
+        comp_vcn_ids: Set[str] = {
+            str(n.get("nodeId") or "")
+            for n in comp_nodes
+            if _is_node_type(n, "Vcn") and n.get("nodeId")
+        }
 
         for vcn_ocid in sorted(comp_vcn_ids):
             if not vcn_ocid:
@@ -2152,7 +2170,7 @@ def _write_consolidated_mermaid(
                     if subnet_to_vcn.get(sn_id) == vcn_ocid:
                         vcn_subnet_ids.add(sn_id)
                 att = attach_by_res.get(str(n.get("nodeId") or ""))
-                if att and att.subnet_ocid:
+                if att and att.subnet_ocid and att.vcn_ocid == vcn_ocid:
                     vcn_subnet_ids.add(att.subnet_ocid)
 
             for sn_ocid in sorted(vcn_subnet_ids):
@@ -2191,7 +2209,7 @@ def _write_consolidated_mermaid(
                 continue
             ocid = str(n.get("nodeId") or "")
             att = attach_by_res.get(ocid)
-            if att and att.vcn_ocid:
+            if att and att.vcn_ocid and vcn_owner_by_id.get(att.vcn_ocid) == cid:
                 continue
             out_nodes.append(n)
 
@@ -2313,6 +2331,43 @@ def _write_consolidated_mermaid(
         )
         lines.extend(rel_lines)
 
+    size = _mermaid_text_size(lines)
+    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
+        LOG.warning(
+            "Architecture consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
+            size,
+            depth,
+            depth - 1,
+        )
+        return _write_consolidated_mermaid(
+            outdir,
+            nodes,
+            edges,
+            diagram_paths,
+            depth=depth - 1,
+            _requested_depth=requested_depth,
+        )
+    if depth != requested_depth:
+        lines.insert(
+            1,
+            (
+                f"%% NOTE: consolidated depth reduced from {requested_depth} to {depth} "
+                "to stay within Mermaid text size limits."
+            ),
+        )
+    if size > MAX_MERMAID_TEXT_CHARS:
+        LOG.warning(
+            "Architecture consolidated diagram exceeds Mermaid max text size (%s chars) at depth %s; diagram may not render.",
+            size,
+            depth,
+        )
+        lines.insert(
+            1,
+            (
+                f"%% WARNING: diagram text size {size} exceeds Mermaid limit {MAX_MERMAID_TEXT_CHARS} "
+                "and may not render."
+            ),
+        )
     consolidated.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return consolidated
 
@@ -2323,9 +2378,11 @@ def _write_consolidated_flowchart(
     edges: Sequence[Edge],
     *,
     depth: int = 3,
+    _requested_depth: Optional[int] = None,
 ) -> Path:
     path = outdir / "diagram.consolidated.flowchart.mmd"
-    return _write_tenancy_view(
+    requested_depth = depth if _requested_depth is None else _requested_depth
+    path = _write_tenancy_view(
         outdir,
         nodes,
         edges,
@@ -2334,3 +2391,46 @@ def _write_consolidated_flowchart(
         legend_prefix="consolidated",
         title="Consolidated Flowchart",
     )
+    text = path.read_text(encoding="utf-8")
+    size = len(text)
+    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
+        LOG.warning(
+            "Flowchart consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
+            size,
+            depth,
+            depth - 1,
+        )
+        return _write_consolidated_flowchart(
+            outdir,
+            nodes,
+            edges,
+            depth=depth - 1,
+            _requested_depth=requested_depth,
+        )
+    if depth != requested_depth or size > MAX_MERMAID_TEXT_CHARS:
+        lines = text.splitlines()
+        insert_at = 1 if lines else 0
+        if depth != requested_depth:
+            lines.insert(
+                insert_at,
+                (
+                    f"%% NOTE: consolidated depth reduced from {requested_depth} to {depth} "
+                    "to stay within Mermaid text size limits."
+                ),
+            )
+            insert_at += 1
+        if size > MAX_MERMAID_TEXT_CHARS:
+            LOG.warning(
+                "Flowchart consolidated diagram exceeds Mermaid max text size (%s chars) at depth %s; diagram may not render.",
+                size,
+                depth,
+            )
+            lines.insert(
+                insert_at,
+                (
+                    f"%% WARNING: diagram text size {size} exceeds Mermaid limit {MAX_MERMAID_TEXT_CHARS} "
+                    "and may not render."
+                ),
+            )
+        path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return path
