@@ -276,14 +276,14 @@ Renderer MUST:
 
 - New overlays (IAM, tags, health) MUST update legend.
 - Grouping MUST still show at least one representative logical flow.
-- Summaries are not permitted; diagrams must remain full-detail.
+- Summaries are not permitted; diagrams must remain full-detail when emitted.
 
 ---
 
 ### 7) Full-Detail Coverage (No Omission)
 
-- All nodes and edges from `graph_nodes.jsonl` and `graph_edges.jsonl` MUST be rendered in inventory diagrams.
-- Consolidated diagrams MUST include the complete inventory scope without aggregation or omission.
+- All nodes and edges from `graph_nodes.jsonl` and `graph_edges.jsonl` MUST be rendered in inventory diagrams unless a specific diagram exceeds Mermaid text limits, in which case that diagram is skipped and logged.
+- Consolidated diagrams MUST include the complete inventory scope without aggregation or omission; if depth is reduced due to Mermaid limits, it must be annotated in the diagram output.
 - Use grouping, lane structure, and layout (not summarization) to manage density.
 
 ---
