@@ -111,8 +111,6 @@ def write_diagram_projections(
     edges: Sequence[Dict[str, Any]],
     *,
     diagram_depth: Optional[int] = None,
-    max_network_views: Optional[int] = None,
-    max_workload_views: Optional[int] = None,
 ) -> List[Path]:
     from .export.diagram_projections import write_diagram_projections as _write_diagram_projections
 
@@ -121,8 +119,6 @@ def write_diagram_projections(
         nodes,
         edges,
         diagram_depth=diagram_depth,
-        max_network_views=max_network_views,
-        max_workload_views=max_workload_views,
     )
 
 
@@ -1901,24 +1897,6 @@ def cmd_run(cfg: RunConfig) -> int:
                 )
             write_graph(cfg.outdir, nodes, edges)
             write_mermaid(cfg.outdir, nodes, edges)
-            if cfg.diagram_max_networks == 0:
-                _log_event(
-                    LOG,
-                    logging.WARNING,
-                    "Network diagram views disabled (diagram_max_networks=0)",
-                    step="diagrams",
-                    phase="warning",
-                    timers=timers,
-                )
-            if cfg.diagram_max_workloads == 0:
-                _log_event(
-                    LOG,
-                    logging.WARNING,
-                    "Workload diagram views disabled (diagram_max_workloads=0)",
-                    step="diagrams",
-                    phase="warning",
-                    timers=timers,
-                )
             if cfg.diagram_depth < 3:
                 _log_event(
                     LOG,
@@ -1934,8 +1912,6 @@ def cmd_run(cfg: RunConfig) -> int:
                 nodes,
                 edges,
                 diagram_depth=cfg.diagram_depth,
-                max_network_views=cfg.diagram_max_networks,
-                max_workload_views=cfg.diagram_max_workloads,
             )
             _log_event(
                 LOG,

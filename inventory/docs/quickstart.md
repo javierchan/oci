@@ -80,7 +80,7 @@ Optional flags:
   ```
 - Limit diagram volume (large tenancies):
   ```
-  oci-inv run --diagram-max-networks 10 --diagram-max-workloads 20
+  oci-inv run --diagram-depth 2
   ```
 - Tune schema validation for large outputs:
   ```
@@ -177,8 +177,6 @@ Common environment variables that influence behavior:
 - OCI_INV_SCHEMA_VALIDATION
 - OCI_INV_SCHEMA_SAMPLE_RECORDS
 - OCI_INV_DIAGRAM_DEPTH
-- OCI_INV_DIAGRAM_MAX_NETWORKS
-- OCI_INV_DIAGRAM_MAX_WORKLOADS
 - OCI_INV_GENAI_SUMMARY
 - OCI_INV_COST_REPORT
 - OCI_INV_COST_START

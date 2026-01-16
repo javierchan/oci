@@ -84,8 +84,6 @@ def build_run_plan(
     schema_validation: Optional[str] = None,
     schema_sample_records: Optional[int] = None,
     diagram_depth: Optional[int] = None,
-    diagram_max_networks: Optional[int] = None,
-    diagram_max_workloads: Optional[int] = None,
     cost_report: Optional[bool] = None,
     cost_start: Optional[str] = None,
     cost_end: Optional[str] = None,
@@ -159,10 +157,6 @@ def build_run_plan(
         _maybe_add(argv, "--validate-schema-sample", str(int(schema_sample_records)))
     if diagram_depth is not None:
         _maybe_add(argv, "--diagram-depth", str(int(diagram_depth)))
-    if diagram_max_networks is not None:
-        _maybe_add(argv, "--diagram-max-networks", str(int(diagram_max_networks)))
-    if diagram_max_workloads is not None:
-        _maybe_add(argv, "--diagram-max-workloads", str(int(diagram_max_workloads)))
 
     if cost_report is True:
         argv.append("--cost-report")
@@ -254,4 +248,3 @@ def build_simple_plan(
         )
     )
     return WizardPlan(argv=argv)
-

@@ -32,8 +32,6 @@ def test_build_run_plan_contains_expected_flags() -> None:
         schema_validation="sampled",
         schema_sample_records=2500,
         diagram_depth=2,
-        diagram_max_networks=5,
-        diagram_max_workloads=10,
         cost_report=True,
         cost_start="2025-01-01T00:00:00Z",
         cost_end="2025-01-31T23:59:59Z",
@@ -83,10 +81,6 @@ def test_build_run_plan_contains_expected_flags() -> None:
     assert "2500" in plan.argv
     assert "--diagram-depth" in plan.argv
     assert "2" in plan.argv
-    assert "--diagram-max-networks" in plan.argv
-    assert "5" in plan.argv
-    assert "--diagram-max-workloads" in plan.argv
-    assert "10" in plan.argv
     assert "--cost-report" in plan.argv
     assert "--cost-start" in plan.argv
     assert "2025-01-01T00:00:00Z" in plan.argv
@@ -166,4 +160,3 @@ def test_build_simple_plan_list_genai_models() -> None:
     )
     assert plan.argv[0] == "list-genai-models"
     assert "--auth" in plan.argv
-

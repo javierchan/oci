@@ -113,8 +113,6 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       schema_validation: optional (auto|full|sampled|off)
       schema_sample_records: optional int
       diagram_depth: optional int (1-3)
-      diagram_max_networks: optional int
-      diagram_max_workloads: optional int
       cost_report: optional bool
       cost_start: optional (ISO 8601)
       cost_end: optional (ISO 8601)
@@ -211,8 +209,6 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
         schema_validation = _as_str(cfg.get("schema_validation"))
         schema_sample_records = _as_int(cfg.get("schema_sample_records"))
         diagram_depth = _as_int(cfg.get("diagram_depth"))
-        diagram_max_networks = _as_int(cfg.get("diagram_max_networks"))
-        diagram_max_workloads = _as_int(cfg.get("diagram_max_workloads"))
         cost_report = _as_bool(cfg.get("cost_report"))
         cost_start = _as_str(cfg.get("cost_start"))
         cost_end = _as_str(cfg.get("cost_end"))
@@ -246,8 +242,6 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             schema_validation=schema_validation,
             schema_sample_records=schema_sample_records,
             diagram_depth=diagram_depth,
-            diagram_max_networks=diagram_max_networks,
-            diagram_max_workloads=diagram_max_workloads,
             cost_report=cost_report,
             cost_start=cost_start,
             cost_end=cost_end,

@@ -1109,11 +1109,7 @@ def _write_network_views(
     outdir: Path,
     nodes: Sequence[Node],
     edges: Sequence[Edge],
-    *,
-    max_vcns: Optional[int] = None,
 ) -> List[Path]:
-    if max_vcns == 0:
-        return []
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
 
     vcns = [n for n in nodes if _is_node_type(n, "Vcn")]
@@ -1147,18 +1143,6 @@ def _write_network_views(
     out_paths: List[Path] = []
 
     vcns_sorted = sorted(vcns, key=lambda n: str(n.get("name") or ""))
-    if max_vcns is not None and max_vcns > 0 and len(vcns_sorted) > max_vcns:
-        vcn_scores: Dict[str, int] = {}
-        for sn_id, vcn_id in subnet_to_vcn.items():
-            vcn_scores[vcn_id] = vcn_scores.get(vcn_id, 0) + 1
-        for att in attachments:
-            if att.vcn_ocid:
-                vcn_scores[att.vcn_ocid] = vcn_scores.get(att.vcn_ocid, 0) + 1
-        vcns_scored = sorted(
-            vcns_sorted,
-            key=lambda n: (-vcn_scores.get(str(n.get("nodeId") or ""), 0), str(n.get("name") or "")),
-        )
-        vcns_sorted = sorted(vcns_scored[:max_vcns], key=lambda n: str(n.get("name") or ""))
 
     for vcn in vcns_sorted:
         vcn_ocid = str(vcn.get("nodeId") or "")
@@ -1415,6 +1399,15 @@ def _write_network_views(
                 sgw_id = _mermaid_id(str(sgw.get("nodeId") or ""))
                 lines.append(_render_edge(sn_id, sgw_id, "OCI services inferred", dotted=True))
 
+        size = _mermaid_text_size(lines)
+        if size > MAX_MERMAID_TEXT_CHARS:
+            LOG.warning(
+                "Skipping network diagram %s (%s chars) exceeds Mermaid max text size %s.",
+                path.name,
+                size,
+                MAX_MERMAID_TEXT_CHARS,
+            )
+            continue
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         out_paths.append(path)
 
@@ -1425,11 +1418,7 @@ def _write_workload_views(
     outdir: Path,
     nodes: Sequence[Node],
     edges: Sequence[Edge],
-    *,
-    max_workloads: Optional[int] = None,
 ) -> List[Path]:
-    if max_workloads == 0:
-        return []
     # Identify candidate workloads using shared grouping logic.
     candidates: List[Node] = []
     for n in nodes:
@@ -1463,10 +1452,7 @@ def _write_workload_views(
 
     out_paths: List[Path] = []
 
-    wl_items = list(wl_to_nodes.items())
-    if max_workloads is not None and max_workloads > 0 and len(wl_items) > max_workloads:
-        wl_items = sorted(wl_items, key=lambda kv: (-len(kv[1]), kv[0].lower()))[:max_workloads]
-    wl_items = sorted(wl_items, key=lambda kv: kv[0].lower())
+    wl_items = sorted(wl_to_nodes.items(), key=lambda kv: kv[0].lower())
 
     for wl_name, wl_nodes in wl_items:
 
@@ -1854,6 +1840,15 @@ def _write_workload_views(
         lines.extend(_legend_flowchart_lines(f"workload:{wl_name}"))
         lines.append("end")
 
+        size = _mermaid_text_size(lines)
+        if size > MAX_MERMAID_TEXT_CHARS:
+            LOG.warning(
+                "Skipping workload diagram %s (%s chars) exceeds Mermaid max text size %s.",
+                path.name,
+                size,
+                MAX_MERMAID_TEXT_CHARS,
+            )
+            continue
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         out_paths.append(path)
 
@@ -1866,15 +1861,13 @@ def write_diagram_projections(
     edges: Sequence[Edge],
     *,
     diagram_depth: Optional[int] = None,
-    max_network_views: Optional[int] = None,
-    max_workload_views: Optional[int] = None,
 ) -> List[Path]:
     # Edges drive placement and relationship hints in projections.
     depth = int(diagram_depth or 3)
     out: List[Path] = []
     out.append(_write_tenancy_view(outdir, nodes, edges))
-    out.extend(_write_network_views(outdir, nodes, edges, max_vcns=max_network_views))
-    out.extend(_write_workload_views(outdir, nodes, edges, max_workloads=max_workload_views))
+    out.extend(_write_network_views(outdir, nodes, edges))
+    out.extend(_write_workload_views(outdir, nodes, edges))
 
     # Consolidated, end-user-friendly artifact: one Mermaid diagram that contains all the views.
     out.append(_write_consolidated_mermaid(outdir, nodes, edges, out, depth=depth))

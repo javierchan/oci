@@ -139,7 +139,7 @@ Commands:
 - Schema validation modes: `--validate-schema auto|full|sampled|off` and `--validate-schema-sample N`.
 - Consolidated diagram depth: `--diagram-depth 1|2|3` (1=tenancy/compartments+VCN/subnet/gateways, 2=add workloads, 3=add workload edges). Applies to `diagram.consolidated.architecture.mmd` and `diagram.consolidated.flowchart.mmd`.
 - Consolidated diagrams auto-reduce depth when Mermaid text limits are exceeded; a NOTE comment is added to the output when this happens.
-- Diagram caps: `--diagram-max-networks N` and `--diagram-max-workloads N` (0 disables that view; use only for perf-focused runs).
+- Network/workload diagrams are skipped if a single diagram exceeds Mermaid text limits; the skip is logged for visibility.
 - Use `--no-diagrams` when you only need inventory/cost outputs.
 - OCI SDK clients are cached per service+region; set `OCI_INV_DISABLE_CLIENT_CACHE=1` to disable.
 - Increase OCI SDK HTTP connection pool size with `--client-connection-pool-size N` or `OCI_INV_CLIENT_CONNECTION_POOL_SIZE` to reduce pool churn in high-concurrency runs.
@@ -483,8 +483,6 @@ Signer-based auth also needs a region; set `OCI_REGION` (or `OCI_CLI_REGION`) wh
 - OCI_INV_SCHEMA_VALIDATION
 - OCI_INV_SCHEMA_SAMPLE_RECORDS
 - OCI_INV_DIAGRAM_DEPTH
-- OCI_INV_DIAGRAM_MAX_NETWORKS
-- OCI_INV_DIAGRAM_MAX_WORKLOADS
 - OCI_INV_COST_REPORT
 - OCI_INV_COST_START
 - OCI_INV_COST_END

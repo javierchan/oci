@@ -775,8 +775,6 @@ def main() -> None:
         schema_validation: Optional[str] = None
         schema_sample_records: Optional[int] = None
         diagram_depth: Optional[int] = None
-        diagram_max_networks: Optional[int] = None
-        diagram_max_workloads: Optional[int] = None
         cost_report: Optional[bool] = None
         cost_start: Optional[str] = None
         cost_end: Optional[str] = None
@@ -849,14 +847,6 @@ def main() -> None:
                 default="3",
             )
             diagram_depth = int(diagram_depth_choice)
-            diagram_max_networks = _ask_optional_int_with_min(
-                "Diagram max networks (blank = default, 0 disables network views)",
-                min_value=0,
-            )
-            diagram_max_workloads = _ask_optional_int_with_min(
-                "Diagram max workloads (blank = default, 0 disables workload views)",
-                min_value=0,
-            )
 
             cost_report_choice = _ask_choice(
                 "Generate cost_report.md (Usage API, read-only)?",
@@ -955,8 +945,6 @@ def main() -> None:
             schema_validation=schema_validation,
             schema_sample_records=schema_sample_records,
             diagram_depth=diagram_depth,
-            diagram_max_networks=diagram_max_networks,
-            diagram_max_workloads=diagram_max_workloads,
             cost_report=cost_report,
             cost_start=cost_start,
             cost_end=cost_end,
@@ -995,8 +983,6 @@ def main() -> None:
             "schema_validation": schema_validation,
             "schema_sample_records": schema_sample_records,
             "diagram_depth": diagram_depth,
-            "diagram_max_networks": diagram_max_networks,
-            "diagram_max_workloads": diagram_max_workloads,
             "cost_report": cost_report,
             "cost_start": cost_start,
             "cost_end": cost_end,
