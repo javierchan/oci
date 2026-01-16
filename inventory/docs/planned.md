@@ -86,18 +86,3 @@
 2) Define best-practices criteria and CIS integration outputs.
 3) Add `report.md` sections for As-Is/To-Be and design decisions.
 4) Document SDK usage and add skills artifacts once referenced.
-
----
-
-register a OCI Icons to use in diagrams located on: /Users/javierchan/Documents/GitHub/oci/inventory/resources/icons or https://static.oracle.com/cdn/fnd/gallery/2604.0.2/images/preview/index.html using the mermaid methodology: https://mermaid.js.org/config/icons.html or as suggested by mermaid: https://icones.js.org/
-
-MLX Support Addition to use LLM's in macOS to use when GenAI is not available, maybe ollama can be used to support multiplatform (tener un config file para esto).
-
-Queue Manager, que pasa si hay varias sesiones consumiendo este codebase, necesitamos tener un queue manager que ejecute los jobs de manera efectiva en paralelo
-
- ---
-Nuestra terminal app oci-inv-wizard esta alineado a todas las flags que tenemos en el codebase?
----
---
-  
- If you want the Parquet fix

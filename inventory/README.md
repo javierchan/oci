@@ -6,6 +6,8 @@ Phase 1 implements:
 - Enricher registry + DefaultEnricher with per-service metadata enrichers for supported resource types
 - Exports: JSONL (default) and CSV
 - Graph + diagram projections (Mermaid flowchart + consolidated architecture-beta + consolidated flowchart; disable with --no-diagrams)
+- Cost snapshot reporting via Usage API with optional OneSubscription usage (opt-in)
+- Optional GenAI narratives for report.md and cost_report.md
 - Diffs and stable hashing (excluding collectedAt)
 - Coverage metrics and schema validation
 - Tests, docs, CI (ruff + pytest)
@@ -136,6 +138,7 @@ Commands:
 - Worker overrides are opt-in: `--config config/workers.yaml` (region/enrich/cost/export workers).
 - Schema validation modes: `--validate-schema auto|full|sampled|off` and `--validate-schema-sample N`.
 - Consolidated diagram depth: `--diagram-depth 1|2|3` (1=tenancy/compartments+VCN/subnet/gateways, 2=add workloads, 3=add workload edges). Applies to `diagram.consolidated.architecture.mmd` and `diagram.consolidated.flowchart.mmd`.
+- Consolidated diagrams auto-reduce depth when Mermaid text limits are exceeded; a NOTE comment is added to the output when this happens.
 - Diagram caps: `--diagram-max-networks N` and `--diagram-max-workloads N` (0 disables that view; use only for perf-focused runs).
 - Use `--no-diagrams` when you only need inventory/cost outputs.
 - OCI SDK clients are cached per service+region; set `OCI_INV_DISABLE_CLIENT_CACHE=1` to disable.
@@ -225,7 +228,7 @@ oci-inv diff --prev out/prev-run/inventory.jsonl --curr out/curr-run/inventory.j
 
 ### 7) Export formats used in reporting pipelines
 
-JSONL + CSV are always written. Parquet is optional and recommended for analytics.
+JSONL + CSV are always written; diagram and cost artifacts are optional based on flags.
 
 ```
 oci-inv run --auth auto --profile DEFAULT --outdir out --query "query all resources"
@@ -242,7 +245,7 @@ oci-inv run --auth auto --profile DEFAULT --outdir out --query "query all resour
 - OneSubscription usage requires `--osub-subscription-id` (or `OCI_INV_OSUB_SUBSCRIPTION_ID`); otherwise it is skipped.
 
 Flags and config precedence: defaults < config file < environment < CLI  
-- Default search query: "query all resources" (MUST)
+- Default search query: "query all resources"
 - Workers defaults: regions=6, enrich=24
 - Output: creates a timestamped directory under `--outdir` (default `out/TS`) for run
 - Boolean flags accept `--no-<flag>` to override config/env (e.g., `--no-json-logs`)
@@ -252,7 +255,7 @@ Flags and config precedence: defaults < config file < environment < CLI
 ## Components and Usage
 This section is a quick map of every user-facing component in the CLI, what it does, and a copy/paste example.
 
-- **Inventory run** (core): discover + enrich, always writes JSONL/CSV and report.md; optional Parquet.
+- **Inventory run** (core): discover + enrich, always writes JSONL/CSV and report.md.
   - Example: `oci-inv run --auth config --profile DEFAULT --regions mx-queretaro-1 --outdir out --query "query all resources where compartmentId = '<compartment_ocid>'" --genai-summary`
 - **Diff**: compare two inventories; writes diff artifacts into an out directory.
   - Example: `oci-inv diff --prev out/old/inventory.jsonl --curr out/new/inventory.jsonl --outdir out/diff`
@@ -465,7 +468,6 @@ Signer-based auth also needs a region; set `OCI_REGION` (or `OCI_CLI_REGION`) wh
 - OCI_INV_OUTDIR
 - OCI_INV_PREV
 - OCI_INV_CURR
-- OCI_INV_PARQUET
 - OCI_INV_INCLUDE_TERMINATED
 - OCI_INV_JSON_LOGS
 - OCI_INV_LOG_LEVEL (INFO, DEBUG, ...)
@@ -480,6 +482,7 @@ Signer-based auth also needs a region; set `OCI_REGION` (or `OCI_CLI_REGION`) wh
 - OCI_INV_DIAGRAMS
 - OCI_INV_SCHEMA_VALIDATION
 - OCI_INV_SCHEMA_SAMPLE_RECORDS
+- OCI_INV_DIAGRAM_DEPTH
 - OCI_INV_DIAGRAM_MAX_NETWORKS
 - OCI_INV_DIAGRAM_MAX_WORKLOADS
 - OCI_INV_COST_REPORT
@@ -489,6 +492,10 @@ Signer-based auth also needs a region; set `OCI_REGION` (or `OCI_CLI_REGION`) wh
 - OCI_INV_COST_COMPARTMENT_GROUP_BY
 - OCI_INV_COST_GROUP_BY
 - OCI_INV_OSUB_SUBSCRIPTION_ID
+- OCI_INV_ASSESSMENT_TARGET_GROUP
+- OCI_INV_ASSESSMENT_TARGET_SCOPE
+- OCI_INV_ASSESSMENT_LENS_WEIGHTS
+- OCI_INV_ASSESSMENT_CAPABILITIES
 - OCI_INV_AUTH
 - OCI_INV_PROFILE
 - OCI_TENANCY_OCID

@@ -92,9 +92,9 @@
 - Canonical ordering for deterministic output is defined in `CANONICAL_FIELD_ORDER`; CSV export uses `CSV_REPORT_FIELDS`. (src/oci_inventory/normalize/schema.py:30; src/oci_inventory/normalize/schema.py:42)
 
 ### searchSummary handling
-- Resource Search discovery attaches the raw summary to `searchSummary` for use by enrichers. (src/oci_inventory/oci/discovery.py:76; src/oci_inventory/oci/discovery.py:80)
-- The enrichment step removes `searchSummary` from the final output record, keeping it transient. (src/oci_inventory/cli.py:179)
-- DefaultEnricher and metadata enrichers include `searchSummary` inside `details` when present. (src/oci_inventory/enrich/default.py:24; src/oci_inventory/enrich/oci_metadata.py:41)
+- Resource Search discovery attaches the raw summary to `searchSummary` for use by enrichers. (src/oci_inventory/oci/discovery.py:95; src/oci_inventory/oci/discovery.py:97)
+- The enrichment step removes top-level `searchSummary` from the final output record. (src/oci_inventory/cli.py:1336; src/oci_inventory/cli.py:1338)
+- DefaultEnricher and metadata enrichers preserve `searchSummary` under `details` when present. (src/oci_inventory/enrich/default.py:24; src/oci_inventory/enrich/oci_metadata.py:41)
 
 ### Enrichment contract
 - Enrichers implement the `Enricher` protocol and return an `EnrichResult` with `details`, `relationships`, `enrichStatus`, and `enrichError`. (src/oci_inventory/enrich/base.py:10; src/oci_inventory/enrich/base.py:19)
@@ -121,8 +121,8 @@
 - Auth: `resolve_auth` builds AuthContext; context is stored for enrichment use. (src/oci_inventory/cli.py:255; src/oci_inventory/enrich/__init__.py:58)
 - Regions: subscribed regions from identity are sorted; `--regions` overrides. (src/oci_inventory/cli.py:258; src/oci_inventory/cli.py:263; src/oci_inventory/oci/regions.py:9)
 - Discovery: Resource Search is executed per region in a ThreadPool; failures are recorded as excluded regions. (src/oci_inventory/cli.py:268; src/oci_inventory/cli.py:279)
-- Normalization and searchSummary: each summary is normalized and `searchSummary` is attached for enrichment. (src/oci_inventory/oci/discovery.py:76; src/oci_inventory/oci/discovery.py:80)
-- Enrichment: registry selects an enricher by resourceType; errors are captured into `enrichStatus` and `enrichError`; `searchSummary` is stripped from output. (src/oci_inventory/cli.py:163; src/oci_inventory/cli.py:173; src/oci_inventory/cli.py:179)
+- Normalization and searchSummary: each summary is normalized and `searchSummary` is attached for enrichment. (src/oci_inventory/oci/discovery.py:95; src/oci_inventory/oci/discovery.py:97)
+- Enrichment: registry selects an enricher by resourceType; errors are captured into `enrichStatus` and `enrichError`; top-level `searchSummary` is removed after enrichment. (src/oci_inventory/cli.py:1320; src/oci_inventory/cli.py:1338)
 - Exports: JSONL and CSV always; relationships and graph artifacts are written. (src/oci_inventory/cli.py:306; src/oci_inventory/cli.py:312; src/oci_inventory/cli.py:320; src/oci_inventory/cli.py:326)
 - Coverage metrics: counts by resource type and enrich status are computed and written to run_summary.json. (src/oci_inventory/cli.py:185; src/oci_inventory/cli.py:322; src/oci_inventory/cli.py:208)
 - Optional diff: when `--prev` is provided, diff.json and diff_summary.json are produced. (src/oci_inventory/cli.py:331; src/oci_inventory/diff/diff.py:100)
