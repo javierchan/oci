@@ -78,6 +78,7 @@ Depth controls are a rendering knob for consolidated outputs only; per-VCN and w
 
 Depth is for readability/performance and does not override any required abstraction or containment rules.
 If consolidated output exceeds Mermaid text limits, the renderer reduces depth until it fits and annotates the diagram with a NOTE comment.
+Per-VCN and workload diagrams are generated at full detail; if an individual diagram exceeds Mermaid text limits, it is skipped and logged.
 
 ---
 

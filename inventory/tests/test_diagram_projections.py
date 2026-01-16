@@ -308,7 +308,10 @@ def test_render_edge_sanitizes_label() -> None:
     assert "|" in line
 
 
-def test_write_diagram_projections_limits_views(tmp_path) -> None:
+def test_write_diagram_projections_skips_large_views(tmp_path, monkeypatch) -> None:
+    from oci_inventory.export import diagram_projections
+
+    monkeypatch.setattr(diagram_projections, "MAX_MERMAID_TEXT_CHARS", 10)
     records = [
         {
             "ocid": "ocid1.vcn.oc1..vcn",
@@ -333,13 +336,7 @@ def test_write_diagram_projections_limits_views(tmp_path) -> None:
     ]
 
     nodes, edges = build_graph(records, relationships=[])
-    paths = write_diagram_projections(
-        tmp_path,
-        nodes,
-        edges,
-        max_network_views=0,
-        max_workload_views=0,
-    )
+    paths = write_diagram_projections(tmp_path, nodes, edges)
 
     assert (tmp_path / "diagram.tenancy.mmd").exists()
     assert (tmp_path / "diagram.consolidated.architecture.mmd").exists()

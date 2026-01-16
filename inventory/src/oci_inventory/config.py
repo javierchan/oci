@@ -42,8 +42,6 @@ ALLOWED_CONFIG_KEYS = {
     "schema_validation",
     "schema_sample_records",
     "diagram_depth",
-    "diagram_max_networks",
-    "diagram_max_workloads",
     "regions",
     "auth",
     "profile",
@@ -80,8 +78,6 @@ INT_CONFIG_KEYS = {
     "client_connection_pool_size",
     "schema_sample_records",
     "diagram_depth",
-    "diagram_max_networks",
-    "diagram_max_workloads",
     "top",
 }
 PATH_CONFIG_KEYS = {"outdir", "prev", "curr", "inventory"}
@@ -133,8 +129,6 @@ class RunConfig:
     schema_validation: str = DEFAULT_SCHEMA_VALIDATION
     schema_sample_records: int = DEFAULT_SCHEMA_SAMPLE_RECORDS
     diagram_depth: int = DEFAULT_DIAGRAM_DEPTH
-    diagram_max_networks: Optional[int] = None
-    diagram_max_workloads: Optional[int] = None
 
     # Cost reporting (optional)
     cost_report: bool = False
@@ -443,18 +437,6 @@ def load_run_config(
         help=f"Records to scan when --validate-schema=sampled (default {DEFAULT_SCHEMA_SAMPLE_RECORDS}).",
     )
     p_run.add_argument(
-        "--diagram-max-networks",
-        type=int,
-        default=None,
-        help="Limit network (VCN) diagram count; 0 disables network views.",
-    )
-    p_run.add_argument(
-        "--diagram-max-workloads",
-        type=int,
-        default=None,
-        help="Limit workload diagram count; 0 disables workload views.",
-    )
-    p_run.add_argument(
         "--diagram-depth",
         type=int,
         default=None,
@@ -597,8 +579,6 @@ def load_run_config(
         "schema_validation": DEFAULT_SCHEMA_VALIDATION,
         "schema_sample_records": DEFAULT_SCHEMA_SAMPLE_RECORDS,
         "diagram_depth": DEFAULT_DIAGRAM_DEPTH,
-        "diagram_max_networks": None,
-        "diagram_max_workloads": None,
         "inventory": None,
         "top": None,
         "auth": "auto",
@@ -643,8 +623,6 @@ def load_run_config(
             "schema_validation": _env_str("OCI_INV_SCHEMA_VALIDATION"),
             "schema_sample_records": _env_int("OCI_INV_SCHEMA_SAMPLE_RECORDS"),
             "diagram_depth": _env_int("OCI_INV_DIAGRAM_DEPTH"),
-            "diagram_max_networks": _env_int("OCI_INV_DIAGRAM_MAX_NETWORKS"),
-            "diagram_max_workloads": _env_int("OCI_INV_DIAGRAM_MAX_WORKLOADS"),
             "cost_report": _env_bool("OCI_INV_COST_REPORT"),
             "cost_start": _env_str("OCI_INV_COST_START"),
             "cost_end": _env_str("OCI_INV_COST_END"),
@@ -684,8 +662,6 @@ def load_run_config(
             "schema_validation": getattr(ns, "validate_schema", None),
             "schema_sample_records": getattr(ns, "validate_schema_sample", None),
             "diagram_depth": getattr(ns, "diagram_depth", None),
-            "diagram_max_networks": getattr(ns, "diagram_max_networks", None),
-            "diagram_max_workloads": getattr(ns, "diagram_max_workloads", None),
             "cost_report": getattr(ns, "cost_report", None),
             "cost_start": getattr(ns, "cost_start", None),
             "cost_end": getattr(ns, "cost_end", None),
@@ -781,16 +757,6 @@ def load_run_config(
     diagram_depth = int(merged.get("diagram_depth") or DEFAULT_DIAGRAM_DEPTH)
     if diagram_depth not in {1, 2, 3}:
         raise ValueError("diagram_depth must be 1, 2, or 3")
-    diagram_max_networks = merged.get("diagram_max_networks")
-    diagram_max_workloads = merged.get("diagram_max_workloads")
-    if diagram_max_networks is not None:
-        diagram_max_networks = int(diagram_max_networks)
-        if diagram_max_networks < 0:
-            raise ValueError("diagram_max_networks must be >= 0")
-    if diagram_max_workloads is not None:
-        diagram_max_workloads = int(diagram_max_workloads)
-        if diagram_max_workloads < 0:
-            raise ValueError("diagram_max_workloads must be >= 0")
 
     cfg = RunConfig(
         outdir=outdir,
@@ -811,8 +777,6 @@ def load_run_config(
         schema_validation=schema_validation,
         schema_sample_records=schema_sample_records,
         diagram_depth=diagram_depth,
-        diagram_max_networks=diagram_max_networks,
-        diagram_max_workloads=diagram_max_workloads,
         cost_report=bool(merged.get("cost_report")),
         cost_start=str(merged.get("cost_start")) if merged.get("cost_start") else None,
         cost_end=str(merged.get("cost_end")) if merged.get("cost_end") else None,
@@ -858,8 +822,6 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "schema_validation": cfg.schema_validation,
         "schema_sample_records": cfg.schema_sample_records,
         "diagram_depth": cfg.diagram_depth,
-        "diagram_max_networks": cfg.diagram_max_networks,
-        "diagram_max_workloads": cfg.diagram_max_workloads,
         "cost_report": cfg.cost_report,
         "cost_start": cfg.cost_start,
         "cost_end": cfg.cost_end,

@@ -115,14 +115,6 @@ def test_schema_validation_cli_overrides() -> None:
     assert cfg.schema_sample_records == 12
 
 
-def test_diagram_limits_from_cli() -> None:
-    _, cfg = load_run_config(
-        argv=["run", "--diagram-max-networks", "2", "--diagram-max-workloads", "3"]
-    )
-    assert cfg.diagram_max_networks == 2
-    assert cfg.diagram_max_workloads == 3
-
-
 def test_diagram_depth_from_cli() -> None:
     _, cfg = load_run_config(argv=["run", "--diagram-depth", "2"])
     assert cfg.diagram_depth == 2

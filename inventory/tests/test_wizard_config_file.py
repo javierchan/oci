@@ -23,8 +23,6 @@ diagrams: false
 schema_validation: sampled
 schema_sample_records: 2000
 diagram_depth: 2
-diagram_max_networks: 5
-diagram_max_workloads: 10
 cost_report: true
 cost_start: "2025-01-01T00:00:00Z"
 cost_end: "2025-01-31T23:59:59Z"
@@ -63,10 +61,6 @@ client_connection_pool_size: 12
     assert "2000" in plan.argv
     assert "--diagram-depth" in plan.argv
     assert "2" in plan.argv
-    assert "--diagram-max-networks" in plan.argv
-    assert "5" in plan.argv
-    assert "--diagram-max-workloads" in plan.argv
-    assert "10" in plan.argv
     assert "--cost-report" in plan.argv
     assert "--cost-start" in plan.argv
     assert "2025-01-01T00:00:00Z" in plan.argv
@@ -150,4 +144,3 @@ def test_load_wizard_plan_list_genai_models(tmp_path: Path) -> None:
     plan = load_wizard_plan_from_file(p)
     assert plan.argv[0] == "list-genai-models"
     assert "--auth" in plan.argv
-
