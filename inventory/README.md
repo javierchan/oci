@@ -383,6 +383,9 @@ Metadata is stored under `details.metadata` as the SDK `to_dict()` output, with 
 redacted by key substring (e.g., private_key, passphrase, password, secret, token, ssh, content).
 For resource types without a registered enricher, DefaultEnricher returns `NOT_IMPLEMENTED` and
 stores the raw search summary under `details.searchSummary`.
+When SDK metadata is missing network wiring fields, the pipeline backfills a small set of
+network identifiers (VCN, subnet, DHCP options, route table, security lists, NSGs, DRG)
+from `searchSummary` to keep diagrams and relationship edges consistent.
 
 Supported resource types (current metadata enrichers):
 - Access Governance: AgcsGovernanceInstance
