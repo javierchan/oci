@@ -136,6 +136,7 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
   - Mermaid projections derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
   - `diagram.consolidated.architecture.mmd` uses Mermaid `architecture-beta` syntax for the high-level architecture view.
   - Consolidated diagrams honor `--diagram-depth` (1=network only, 2=add workloads, 3=add workload edges).
+  - Per-VCN and workload diagrams are full-detail outputs; if a single diagram exceeds Mermaid text limits it is skipped and logged.
 
 ## CLI Commands
 
