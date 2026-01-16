@@ -30,7 +30,6 @@ src/oci_inventory/
   export/
     jsonl.py             # JSONL export with stable ordering
     csv.py               # CSV export for report fields
-    parquet.py           # optional Parquet export via pyarrow
   diff/
     hash.py              # stable hashing (excluding collectedAt)
     diff.py              # basic diff computation and writers
@@ -68,7 +67,6 @@ src/oci_inventory/
 6. Exports:
    - JSONL: canonicalized, stable key order, sorted by `(ocid, resourceType)`.
    - CSV: report fields only.
-   - Parquet: optional (requires `pyarrow`) with canonical field order.
 7. Coverage Metrics:
    - total_discovered
    - enriched_ok
@@ -128,9 +126,9 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
 - `diagram_raw.mmd` (optional; generated when diagrams are enabled)
   - Raw Mermaid graph export (full graph, intended for debugging).
 
-- `diagram.tenancy.mmd`, `diagram.network.*.mmd`, `diagram.workload.*.mmd`, `diagram.consolidated.mmd` (optional; generated when diagrams are enabled)
+- `diagram.tenancy.mmd`, `diagram.network.*.mmd`, `diagram.workload.*.mmd`, `diagram.consolidated.architecture.mmd` (optional; generated when diagrams are enabled)
   - Mermaid projections derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
-  - `diagram.consolidated.mmd` uses Mermaid `architecture-beta` syntax for the high-level architecture view.
+  - `diagram.consolidated.architecture.mmd` uses Mermaid `architecture-beta` syntax for the high-level architecture view.
   - Projections render full detail without aggregation; grouping and layout manage density.
 
 ## CLI Commands

@@ -63,7 +63,7 @@ This document defines how `report.md` must be structured and written for OCI inv
 
 - If GenAI summary fails, note it briefly and keep the details in Execution Metadata.
 - If regions are excluded, state partial results in Risks & Gaps and list details in Execution Metadata.
-- Report export warnings (parquet/diff) in Execution Metadata.
+- Report export warnings (diff) in Execution Metadata.
 
 ## Maintainer Notes
 

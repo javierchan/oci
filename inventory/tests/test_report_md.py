@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import csv
 import json
+import io
 from pathlib import Path
 
 from oci_inventory.config import RunConfig
+from oci_inventory.export.csv import write_csv
+from oci_inventory.normalize.schema import CSV_REPORT_FIELDS
 from oci_inventory.report import (
     render_cost_report_md,
     render_run_report_md,
@@ -25,7 +29,6 @@ def test_render_run_report_includes_excluded_regions_and_query(tmp_path: Path) -
             "tenancy_ocid": cfg.tenancy_ocid,
             "query": cfg.query,
             "outdir": str(cfg.outdir),
-            "parquet": cfg.parquet,
             "prev": None,
             "workers_region": cfg.workers_region,
             "workers_enrich": cfg.workers_enrich,
@@ -68,7 +71,6 @@ def test_render_run_report_includes_executive_summary_when_provided(tmp_path: Pa
             "tenancy_ocid": cfg.tenancy_ocid,
             "query": cfg.query,
             "outdir": str(cfg.outdir),
-            "parquet": cfg.parquet,
             "prev": None,
             "workers_region": cfg.workers_region,
             "workers_enrich": cfg.workers_enrich,
@@ -117,7 +119,6 @@ def test_render_run_report_includes_complete_inventory_listing(tmp_path: Path) -
             "tenancy_ocid": cfg.tenancy_ocid,
             "query": cfg.query,
             "outdir": str(cfg.outdir),
-            "parquet": cfg.parquet,
             "prev": None,
             "workers_region": cfg.workers_region,
             "workers_enrich": cfg.workers_enrich,
@@ -177,7 +178,6 @@ def test_render_run_report_includes_workload_group_from_tags(tmp_path: Path) -> 
             "tenancy_ocid": cfg.tenancy_ocid,
             "query": cfg.query,
             "outdir": str(cfg.outdir),
-            "parquet": cfg.parquet,
             "prev": None,
             "workers_region": cfg.workers_region,
             "workers_enrich": cfg.workers_enrich,
@@ -377,10 +377,30 @@ def test_write_cost_usage_exports(tmp_path: Path) -> None:
     assert "group_by" in csv_text
     assert "computed_amount" in csv_text
 
+    reader = csv.DictReader(io.StringIO(csv_text))
+    rows = list(reader)
+    service_row = next(item for item in rows if item.get("group_by") == "service")
+    assert service_row["region"] == "unknown"
+    assert service_row["computed_quantity"] == ""
+
     json_lines = [json.loads(line) for line in jsonl_path.read_text(encoding="utf-8").splitlines()]
     service_line = next(item for item in json_lines if item.get("group_by") == "service")
     assert service_line["computed_amount"] == 1.5
     assert service_line["tags"] == [{"key": "env", "value": "dev"}]
+
+
+def test_write_inventory_csv_uses_unknown_placeholder(tmp_path: Path) -> None:
+    record = {field: None for field in CSV_REPORT_FIELDS}
+    record["ocid"] = "ocid1.test.oc1..example"
+    record["resourceType"] = "ExampleResource"
+
+    path = tmp_path / "inventory.csv"
+    write_csv([record], path)
+
+    with path.open(encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[0]["displayName"] == "unknown"
+    assert rows[0]["region"] == "unknown"
 
 
 def test_write_cost_usage_csv_group_by_filter(tmp_path: Path) -> None:

@@ -74,7 +74,7 @@ def test_env_overrides_config_file(monkeypatch, tmp_path) -> None:
 
 def test_cli_overrides_env_and_config(monkeypatch, tmp_path) -> None:
     cfg_path = tmp_path / "config.yaml"
-    cfg_path.write_text("query: from-config\nworkers_region: 7\nparquet: true\n", encoding="utf-8")
+    cfg_path.write_text("query: from-config\nworkers_region: 7\n", encoding="utf-8")
     monkeypatch.setenv("OCI_INV_QUERY", "from-env")
     monkeypatch.setenv("OCI_INV_WORKERS_REGION", "9")
 
@@ -91,16 +91,6 @@ def test_cli_overrides_env_and_config(monkeypatch, tmp_path) -> None:
     )
     assert cfg.query == "from-cli"
     assert cfg.workers_region == 11
-    assert cfg.parquet is True
-
-
-def test_env_boolean_overrides_config_boolean(monkeypatch, tmp_path) -> None:
-    cfg_path = tmp_path / "config.yaml"
-    cfg_path.write_text("parquet: true\n", encoding="utf-8")
-    monkeypatch.setenv("OCI_INV_PARQUET", "0")
-
-    _, cfg = load_run_config(argv=["run", "--config", str(cfg_path)])
-    assert cfg.parquet is False
 
 
 def test_regions_from_cli() -> None:
@@ -112,14 +102,6 @@ def test_regions_from_env(monkeypatch) -> None:
     monkeypatch.setenv("OCI_INV_REGIONS", "mx-queretaro-1")
     _, cfg = load_run_config(argv=["run"])
     assert cfg.regions == ["mx-queretaro-1"]
-
-
-def test_cli_can_disable_config_boolean(tmp_path) -> None:
-    cfg_path = tmp_path / "config.yaml"
-    cfg_path.write_text("parquet: true\n", encoding="utf-8")
-
-    _, cfg = load_run_config(argv=["run", "--config", str(cfg_path), "--no-parquet"])
-    assert cfg.parquet is False
 
 
 def test_cli_can_disable_diagrams() -> None:
@@ -139,6 +121,17 @@ def test_diagram_limits_from_cli() -> None:
     )
     assert cfg.diagram_max_networks == 2
     assert cfg.diagram_max_workloads == 3
+
+
+def test_diagram_depth_from_cli() -> None:
+    _, cfg = load_run_config(argv=["run", "--diagram-depth", "2"])
+    assert cfg.diagram_depth == 2
+
+
+def test_diagram_depth_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("OCI_INV_DIAGRAM_DEPTH", "1")
+    _, cfg = load_run_config(argv=["run"])
+    assert cfg.diagram_depth == 1
 
 
 def test_client_connection_pool_size_from_cli() -> None:
@@ -168,26 +161,6 @@ def test_invalid_config_type_raises(tmp_path) -> None:
     with pytest.raises(ValueError):
         load_run_config(argv=["run", "--config", str(cfg_path)])
 
-
-def test_genai_chat_parses_message_args() -> None:
-    command, cfg = load_run_config(
-        argv=[
-            "genai-chat",
-            "--api-format",
-            "GENERIC",
-            "--message",
-            "hello",
-            "--max-tokens",
-            "42",
-            "--temperature",
-            "0.3",
-        ]
-    )
-    assert command == "genai-chat"
-    assert cfg.genai_api_format == "GENERIC"
-    assert cfg.genai_message == "hello"
-    assert cfg.genai_max_tokens == 42
-    assert abs((cfg.genai_temperature or 0.0) - 0.3) < 1e-9
 
 
 def test_cost_osub_subscription_id_parsed() -> None:

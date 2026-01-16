@@ -65,6 +65,19 @@ reference zip files and are cited with file paths and line numbers.
 - Include IAM and Security Zone overlays at tenancy or boundary level.
 - Provide a legend for symbols and status.
 
+### 1a) Consolidated Outputs and Depth Levels (Implementation)
+
+The pipeline emits two consolidated diagrams per run (both must follow the OCI abstraction rules above):
+- `diagram.consolidated.architecture.mmd` (Mermaid `architecture-beta`).
+- `diagram.consolidated.flowchart.mmd` (Mermaid `flowchart`).
+
+Depth controls are a rendering knob for consolidated outputs only; per-VCN and workload-specific diagrams remain full detail.
+- Depth 1: tenancy/compartments + VCN/subnet/gateways only.
+- Depth 2: add workloads (no relationship edges).
+- Depth 3: add workloads + relationship edges (default; full detail).
+
+Depth is for readability/performance and does not override any required abstraction or containment rules.
+
 ---
 
 ### 2) Workload-Specific Diagrams (Detailed)
@@ -195,6 +208,8 @@ The abstraction rules do **NOT** prescribe:
 - Vendor tooling or syntax preferences
 
 These are **presentation layer** concerns and intentionally not part of OCI abstraction.
+
+Note: consolidated diagram depth levels are an implementation detail for this pipeline and do not change any of the abstraction requirements above.
 
 ---
 

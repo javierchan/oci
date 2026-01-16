@@ -17,12 +17,12 @@ config: config/workers.yaml
 outdir: out
 regions: [mx-queretaro-1]
 query: "query all resources"
-parquet: false
 genai_summary: true
 validate_diagrams: true
 diagrams: false
 schema_validation: sampled
 schema_sample_records: 2000
+diagram_depth: 2
 diagram_max_networks: 5
 diagram_max_workloads: 10
 cost_report: true
@@ -54,7 +54,6 @@ client_connection_pool_size: 12
     assert "--outdir" in plan.argv and "out" in plan.argv
     assert "--regions" in plan.argv and "mx-queretaro-1" in plan.argv
     assert "--query" in plan.argv and "query all resources" in plan.argv
-    assert "--no-parquet" in plan.argv
     assert "--genai-summary" in plan.argv
     assert "--validate-diagrams" in plan.argv
     assert "--no-diagrams" in plan.argv
@@ -62,6 +61,8 @@ client_connection_pool_size: 12
     assert "sampled" in plan.argv
     assert "--validate-schema-sample" in plan.argv
     assert "2000" in plan.argv
+    assert "--diagram-depth" in plan.argv
+    assert "2" in plan.argv
     assert "--diagram-max-networks" in plan.argv
     assert "5" in plan.argv
     assert "--diagram-max-workloads" in plan.argv
@@ -150,30 +151,3 @@ def test_load_wizard_plan_list_genai_models(tmp_path: Path) -> None:
     assert plan.argv[0] == "list-genai-models"
     assert "--auth" in plan.argv
 
-
-def test_load_wizard_plan_genai_chat(tmp_path: Path) -> None:
-    p = tmp_path / "plan.json"
-    p.write_text(
-        json.dumps(
-            {
-                "mode": "genai-chat",
-                "auth": "config",
-                "profile": "DEFAULT",
-                "genai_api_format": "AUTO",
-                "genai_message": "hello",
-                "genai_max_tokens": 123,
-                "genai_temperature": 0.5,
-            }
-        ),
-        encoding="utf-8",
-    )
-    plan = load_wizard_plan_from_file(p)
-    assert plan.argv[0] == "genai-chat"
-    assert "--api-format" in plan.argv
-    assert "AUTO" in plan.argv
-    assert "--message" in plan.argv
-    assert "hello" in plan.argv
-    assert "--max-tokens" in plan.argv
-    assert "123" in plan.argv
-    assert "--temperature" in plan.argv
-    assert "0.5" in plan.argv

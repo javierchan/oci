@@ -29,5 +29,9 @@ def write_csv(records: Iterable[NormalizedRecord], path: Path, *, already_sorted
             row: List[str] = []
             for field in CSV_REPORT_FIELDS:
                 val = rec.get(field)
-                row.append("" if val is None else str(val))
+                if val is None:
+                    row.append("unknown")
+                    continue
+                text = str(val)
+                row.append("unknown" if not text.strip() else text)
             writer.writerow(row)

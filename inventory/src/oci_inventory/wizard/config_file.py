@@ -12,7 +12,6 @@ from .plan import (
     build_coverage_plan,
     build_run_plan,
     build_simple_plan,
-    build_genai_chat_plan,
 )
 
 
@@ -90,7 +89,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
     """Load a non-interactive wizard plan from a YAML/JSON file.
 
         Schema (minimal):
-            mode: run|diff|validate-auth|list-regions|list-compartments|list-genai-models|genai-chat|enrich-coverage
+            mode: run|diff|validate-auth|list-regions|list-compartments|list-genai-models|enrich-coverage
       auth: auto|config|instance|resource|security_token
       profile: optional
       tenancy_ocid: optional
@@ -102,7 +101,6 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       outdir: required (base directory)
       query: required
       regions: optional list or comma-separated string
-      parquet: optional bool
             genai_summary: optional bool
       prev: optional path
       workers_region: optional int
@@ -114,6 +112,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       diagrams: optional bool
       schema_validation: optional (auto|full|sampled|off)
       schema_sample_records: optional int
+      diagram_depth: optional int (1-3)
       diagram_max_networks: optional int
       diagram_max_workloads: optional int
       cost_report: optional bool
@@ -133,12 +132,6 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       curr: required path
       outdir: required path
 
-    For mode=genai-chat:
-      genai_api_format: optional (AUTO|GENERIC|COHERE)
-      genai_message: optional string
-      genai_report: optional path to report.md
-      genai_max_tokens: optional int
-      genai_temperature: optional float
     """
 
     cfg = _load_data(path)
@@ -164,36 +157,6 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             profile=profile,
             tenancy_ocid=tenancy_ocid,
             config_path=Path(config_path) if config_path else None,
-            json_logs=json_logs,
-            log_level=log_level,
-        )
-
-    if mode == "genai-chat":
-        config_path = _as_str(cfg.get("config"))
-        genai_api_format = _as_str(cfg.get("genai_api_format"))
-        genai_message = _as_str(cfg.get("genai_message"))
-        genai_report = _as_str(cfg.get("genai_report"))
-        genai_max_tokens = _as_int(cfg.get("genai_max_tokens"))
-        genai_temperature = cfg.get("genai_temperature")
-        if genai_temperature is not None:
-            try:
-                genai_temperature = float(genai_temperature)
-            except Exception:
-                genai_temperature = None
-
-        if not genai_message and not genai_report:
-            raise ValueError("Wizard genai-chat config requires: genai_message or genai_report")
-
-        return build_genai_chat_plan(
-            auth=auth,
-            profile=profile,
-            tenancy_ocid=tenancy_ocid,
-            config_path=Path(config_path) if config_path else None,
-            api_format=genai_api_format,
-            message=genai_message,
-            report=Path(genai_report) if genai_report else None,
-            max_tokens=genai_max_tokens,
-            temperature=genai_temperature,
             json_logs=json_logs,
             log_level=log_level,
         )
@@ -235,7 +198,6 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             raise ValueError("Wizard run config requires: outdir, query")
 
         regions = _as_regions(cfg.get("regions"))
-        parquet = _as_bool(cfg.get("parquet"))
         genai_summary = _as_bool(cfg.get("genai_summary"))
         prev_s = _as_str(cfg.get("prev"))
         workers_region = _as_int(cfg.get("workers_region"))
@@ -248,6 +210,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
         diagrams = _as_bool(cfg.get("diagrams"))
         schema_validation = _as_str(cfg.get("schema_validation"))
         schema_sample_records = _as_int(cfg.get("schema_sample_records"))
+        diagram_depth = _as_int(cfg.get("diagram_depth"))
         diagram_max_networks = _as_int(cfg.get("diagram_max_networks"))
         diagram_max_workloads = _as_int(cfg.get("diagram_max_workloads"))
         cost_report = _as_bool(cfg.get("cost_report"))
@@ -270,7 +233,6 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             outdir=Path(outdir),
             query=query,
             regions=regions,
-            parquet=parquet,
             genai_summary=genai_summary,
             prev=Path(prev_s) if prev_s else None,
             workers_region=workers_region,
@@ -283,6 +245,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             diagrams=diagrams,
             schema_validation=schema_validation,
             schema_sample_records=schema_sample_records,
+            diagram_depth=diagram_depth,
             diagram_max_networks=diagram_max_networks,
             diagram_max_workloads=diagram_max_workloads,
             cost_report=cost_report,

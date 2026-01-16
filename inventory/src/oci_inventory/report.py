@@ -451,7 +451,6 @@ def render_run_report_md(
     excluded_regions: List[Dict[str, str]],
     discovered_records: List[Dict[str, Any]],
     metrics: Optional[Dict[str, Any]],
-    parquet_warning: Optional[str] = None,
     diff_warning: Optional[str] = None,
     fatal_error: Optional[str] = None,
 ) -> str:
@@ -1130,7 +1129,7 @@ def render_run_report_md(
     lines.append("- Executed OCI Resource Search per region (Structured Search)")
     lines.append("- Normalized records and attached region metadata")
     lines.append("- Enriched records using read-only OCI SDK calls")
-    lines.append("- Exported artifacts (JSONL + CSV; optional Parquet)")
+    lines.append("- Exported artifacts (JSONL + CSV)")
     lines.append("")
 
     lines.append("### Run Configuration")
@@ -1141,7 +1140,6 @@ def render_run_report_md(
     if cfg_dict.get("tenancy_ocid"):
         lines.append(f"- Tenancy OCID: `{cfg_dict.get('tenancy_ocid')}`")
     lines.append(f"- Output dir: `{cfg_dict.get('outdir')}`")
-    lines.append(f"- Parquet: `{bool(cfg_dict.get('parquet'))}`")
     if cfg_dict.get("prev"):
         lines.append(f"- Prev inventory: `{cfg_dict.get('prev')}`")
     lines.append(f"- Workers (regions): `{cfg_dict.get('workers_region')}`")
@@ -1229,8 +1227,6 @@ def render_run_report_md(
     else:
         lines.append("- No regions were excluded during discovery.")
 
-    if parquet_warning:
-        lines.append(f"- Parquet export warning: {_truncate(parquet_warning, 300)}")
     if diff_warning:
         lines.append(f"- Diff warning: {_truncate(diff_warning, 300)}")
     if fatal_error:
@@ -1267,7 +1263,6 @@ def write_run_report_md(
     excluded_regions: List[Dict[str, str]],
     discovered_records: List[Dict[str, Any]],
     metrics: Optional[Dict[str, Any]],
-    parquet_warning: Optional[str] = None,
     diff_warning: Optional[str] = None,
     fatal_error: Optional[str] = None,
     executive_summary: Optional[str] = None,
@@ -1289,7 +1284,6 @@ def write_run_report_md(
             "tenancy_ocid": getattr(cfg, "tenancy_ocid", None),
             "query": getattr(cfg, "query", None),
             "outdir": str(getattr(cfg, "outdir", outdir)),
-            "parquet": getattr(cfg, "parquet", None),
             "prev": str(getattr(cfg, "prev", "") or "") or None,
             "workers_region": getattr(cfg, "workers_region", None),
             "workers_enrich": getattr(cfg, "workers_enrich", None),
@@ -1307,7 +1301,6 @@ def write_run_report_md(
         excluded_regions=list(excluded_regions),
         discovered_records=list(discovered_records),
         metrics=dict(metrics) if metrics else None,
-        parquet_warning=parquet_warning,
         diff_warning=diff_warning,
         fatal_error=fatal_error,
     )
@@ -1358,10 +1351,26 @@ def _usage_json_safe(value: Any) -> Any:
     return str(value)
 
 
-def _normalize_usage_value(value: Any) -> str:
+_NUMERIC_USAGE_FIELDS = {
+    "computed_amount",
+    "computed_quantity",
+    "attributed_cost",
+    "attributed_usage",
+    "discount",
+    "list_rate",
+    "overage",
+    "weight",
+}
+
+
+def _normalize_usage_value(value: Any, *, field: Optional[str] = None) -> str:
     safe_value = _usage_json_safe(value)
     if safe_value is None:
-        return ""
+        return "" if field in _NUMERIC_USAGE_FIELDS else "unknown"
+    if isinstance(safe_value, str):
+        if not safe_value.strip():
+            return "" if field in _NUMERIC_USAGE_FIELDS else "unknown"
+        return safe_value
     if isinstance(safe_value, (dict, list)):
         return json.dumps(safe_value, sort_keys=True, ensure_ascii=True)
     return str(safe_value)
@@ -1695,7 +1704,6 @@ def write_run_report_md(
     excluded_regions: List[Dict[str, str]],
     discovered_records: List[Dict[str, Any]],
     metrics: Optional[Dict[str, Any]],
-    parquet_warning: Optional[str] = None,
     diff_warning: Optional[str] = None,
     fatal_error: Optional[str] = None,
     executive_summary: Optional[str] = None,
@@ -1717,7 +1725,6 @@ def write_run_report_md(
             "tenancy_ocid": getattr(cfg, "tenancy_ocid", None),
             "query": getattr(cfg, "query", None),
             "outdir": str(getattr(cfg, "outdir", outdir)),
-            "parquet": getattr(cfg, "parquet", None),
             "prev": str(getattr(cfg, "prev", "") or "") or None,
             "workers_region": getattr(cfg, "workers_region", None),
             "workers_enrich": getattr(cfg, "workers_enrich", None),
@@ -1735,7 +1742,6 @@ def write_run_report_md(
         excluded_regions=list(excluded_regions),
         discovered_records=list(discovered_records),
         metrics=dict(metrics) if metrics else None,
-        parquet_warning=parquet_warning,
         diff_warning=diff_warning,
         fatal_error=fatal_error,
     )
@@ -1786,10 +1792,14 @@ def _usage_json_safe(value: Any) -> Any:
     return str(value)
 
 
-def _normalize_usage_value(value: Any) -> str:
+def _normalize_usage_value(value: Any, *, field: Optional[str] = None) -> str:
     safe_value = _usage_json_safe(value)
     if safe_value is None:
-        return ""
+        return "" if field in _NUMERIC_USAGE_FIELDS else "unknown"
+    if isinstance(safe_value, str):
+        if not safe_value.strip():
+            return "" if field in _NUMERIC_USAGE_FIELDS else "unknown"
+        return safe_value
     if isinstance(safe_value, (dict, list)):
         return json.dumps(safe_value, sort_keys=True, ensure_ascii=True)
     return str(safe_value)
@@ -2008,7 +2018,7 @@ def _write_cost_usage_csv(
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
-            writer.writerow({field: _normalize_usage_value(row.get(field)) for field in fieldnames})
+            writer.writerow({field: _normalize_usage_value(row.get(field), field=field) for field in fieldnames})
     return path
 
 
@@ -2097,7 +2107,7 @@ def write_cost_usage_views(
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
             for row in rows:
-                writer.writerow({field: _normalize_usage_value(row.get(field)) for field in fieldnames})
+                writer.writerow({field: _normalize_usage_value(row.get(field), field=field) for field in fieldnames})
         return path
 
     outputs: List[Path] = []

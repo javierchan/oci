@@ -12,7 +12,7 @@ license = { text = "Apache-2.0" }
 authors = [
   { name = "OCI Inventory Authors" }
 ]
-keywords = ["oci", "oracle", "cloud", "inventory", "resource search", "diff", "jsonl", "csv", "parquet"]
+keywords = ["oci", "oracle", "cloud", "inventory", "resource search", "diff", "jsonl", "csv"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -30,10 +30,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-parquet = [
-  "pyarrow>=14.0.0",
-]
-
 wizard = [
   "rich>=13.7.0",
 ]

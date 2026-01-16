@@ -21,10 +21,10 @@ DEFAULT_WORKERS_COST = 1
 DEFAULT_WORKERS_EXPORT = 1
 DEFAULT_SCHEMA_VALIDATION = "auto"
 DEFAULT_SCHEMA_SAMPLE_RECORDS = 5000
+DEFAULT_DIAGRAM_DEPTH = 3
 AUTH_METHODS = {"auto", "config", "instance", "resource", "security_token"}
 ALLOWED_CONFIG_KEYS = {
     "outdir",
-    "parquet",
     "prev",
     "curr",
     "query",
@@ -41,6 +41,7 @@ ALLOWED_CONFIG_KEYS = {
     "diagrams",
     "schema_validation",
     "schema_sample_records",
+    "diagram_depth",
     "diagram_max_networks",
     "diagram_max_workloads",
     "regions",
@@ -64,7 +65,6 @@ ALLOWED_CONFIG_KEYS = {
     "top",
 }
 BOOL_CONFIG_KEYS = {
-    "parquet",
     "include_terminated",
     "json_logs",
     "genai_summary",
@@ -79,6 +79,7 @@ INT_CONFIG_KEYS = {
     "workers_export",
     "client_connection_pool_size",
     "schema_sample_records",
+    "diagram_depth",
     "diagram_max_networks",
     "diagram_max_workloads",
     "top",
@@ -110,7 +111,6 @@ LIST_CONFIG_KEYS = {
 class RunConfig:
     # General
     outdir: Path
-    parquet: bool = False
     prev: Optional[Path] = None
     curr: Optional[Path] = None
     query: str = DEFAULT_QUERY
@@ -132,6 +132,7 @@ class RunConfig:
     diagrams: bool = True
     schema_validation: str = DEFAULT_SCHEMA_VALIDATION
     schema_sample_records: int = DEFAULT_SCHEMA_SAMPLE_RECORDS
+    diagram_depth: int = DEFAULT_DIAGRAM_DEPTH
     diagram_max_networks: Optional[int] = None
     diagram_max_workloads: Optional[int] = None
 
@@ -147,13 +148,6 @@ class RunConfig:
     assessment_target_scope: Optional[List[str]] = None
     assessment_lens_weights: Optional[List[str]] = None
     assessment_capabilities: Optional[List[str]] = None
-
-    # GenAI (used by genai-chat)
-    genai_api_format: Optional[str] = None  # AUTO|GENERIC|COHERE
-    genai_message: Optional[str] = None
-    genai_report: Optional[Path] = None
-    genai_max_tokens: Optional[int] = None
-    genai_temperature: Optional[float] = None
 
     # Enrichment coverage (used by enrich-coverage)
     inventory: Optional[Path] = None
@@ -331,7 +325,7 @@ def load_run_config(
 
     Returns:
             (command, RunConfig) where command is the subcommand selected:
-            run|diff|validate-auth|list-regions|list-compartments|list-genai-models|genai-chat|enrich-coverage
+            run|diff|validate-auth|list-regions|list-compartments|list-genai-models|enrich-coverage
     """
     parser = argparse.ArgumentParser(prog="oci-inv", description="OCI Inventory CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -371,12 +365,6 @@ def load_run_config(
     p_run = subparsers.add_parser("run", help="Run inventory collection")
     add_common(p_run)
     p_run.add_argument("--outdir", type=Path, default=None, help="Output base directory (out/TS)")
-    p_run.add_argument(
-        "--parquet",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Also write Parquet (pyarrow)",
-    )
     p_run.add_argument("--prev", type=Path, default=None, help="Previous inventory.jsonl for diff")
     p_run.add_argument(
         "--query",
@@ -465,6 +453,12 @@ def load_run_config(
         type=int,
         default=None,
         help="Limit workload diagram count; 0 disables workload views.",
+    )
+    p_run.add_argument(
+        "--diagram-depth",
+        type=int,
+        default=None,
+        help="Depth for consolidated diagrams (1=network, 2=workloads, 3=workloads+edges).",
     )
 
     p_run.add_argument(
@@ -561,32 +555,6 @@ def load_run_config(
     )
     add_common(p_lgm)
 
-    # genai-chat
-    # One-off chat probe for debugging the configured GenAI model/endpoint.
-    p_gc = subparsers.add_parser(
-        "genai-chat",
-        help=(
-            "Send a one-off GenAI chat request "
-            "(uses OCI_INV_GENAI_CONFIG, else ~/.config/oci-inv/genai.yaml, else inventory/.local/genai.yaml)"
-        ),
-    )
-    add_common(p_gc)
-    p_gc.add_argument(
-        "--api-format",
-        default=None,
-        choices=["AUTO", "GENERIC", "COHERE"],
-        help="Chat request format (default: AUTO)",
-    )
-    p_gc.add_argument("--message", default=None, help="Message to send (will be redacted)")
-    p_gc.add_argument(
-        "--report",
-        type=Path,
-        default=None,
-        help="Path to a report.md to use as context (will be redacted)",
-    )
-    p_gc.add_argument("--max-tokens", type=int, default=None, help="Max output tokens")
-    p_gc.add_argument("--temperature", type=float, default=None, help="Sampling temperature")
-
     # enrich-coverage
     p_ec = subparsers.add_parser(
         "enrich-coverage",
@@ -612,7 +580,6 @@ def load_run_config(
     # defaults
     base: Dict[str, Any] = {
         "outdir": None,
-        "parquet": False,
         "prev": None,
         "curr": None,
         "query": DEFAULT_QUERY,
@@ -629,13 +596,9 @@ def load_run_config(
         "diagrams": True,
         "schema_validation": DEFAULT_SCHEMA_VALIDATION,
         "schema_sample_records": DEFAULT_SCHEMA_SAMPLE_RECORDS,
+        "diagram_depth": DEFAULT_DIAGRAM_DEPTH,
         "diagram_max_networks": None,
         "diagram_max_workloads": None,
-        "genai_api_format": None,
-        "genai_message": None,
-        "genai_report": None,
-        "genai_max_tokens": None,
-        "genai_temperature": None,
         "inventory": None,
         "top": None,
         "auth": "auto",
@@ -663,7 +626,6 @@ def load_run_config(
     env_cfg: Dict[str, Any] = _compact_dict(
         {
             "outdir": _env_str("OCI_INV_OUTDIR"),
-            "parquet": _env_bool("OCI_INV_PARQUET"),
             "prev": _env_str("OCI_INV_PREV"),
             "curr": _env_str("OCI_INV_CURR"),
             "query": _env_str("OCI_INV_QUERY"),
@@ -680,6 +642,7 @@ def load_run_config(
             "diagrams": _env_bool("OCI_INV_DIAGRAMS"),
             "schema_validation": _env_str("OCI_INV_SCHEMA_VALIDATION"),
             "schema_sample_records": _env_int("OCI_INV_SCHEMA_SAMPLE_RECORDS"),
+            "diagram_depth": _env_int("OCI_INV_DIAGRAM_DEPTH"),
             "diagram_max_networks": _env_int("OCI_INV_DIAGRAM_MAX_NETWORKS"),
             "diagram_max_workloads": _env_int("OCI_INV_DIAGRAM_MAX_WORKLOADS"),
             "cost_report": _env_bool("OCI_INV_COST_REPORT"),
@@ -704,7 +667,6 @@ def load_run_config(
     cli_cfg: Dict[str, Any] = _compact_dict(
         {
             "outdir": getattr(ns, "outdir", None),
-            "parquet": getattr(ns, "parquet", None),
             "prev": getattr(ns, "prev", None),
             "curr": getattr(ns, "curr", None),
             "query": getattr(ns, "query", None),
@@ -721,6 +683,7 @@ def load_run_config(
             "diagrams": getattr(ns, "diagrams", None),
             "schema_validation": getattr(ns, "validate_schema", None),
             "schema_sample_records": getattr(ns, "validate_schema_sample", None),
+            "diagram_depth": getattr(ns, "diagram_depth", None),
             "diagram_max_networks": getattr(ns, "diagram_max_networks", None),
             "diagram_max_workloads": getattr(ns, "diagram_max_workloads", None),
             "cost_report": getattr(ns, "cost_report", None),
@@ -734,11 +697,6 @@ def load_run_config(
             "assessment_target_scope": getattr(ns, "assessment_target_scope", None),
             "assessment_lens_weights": getattr(ns, "assessment_lens_weight", None),
             "assessment_capabilities": getattr(ns, "assessment_capability", None),
-            "genai_api_format": getattr(ns, "api_format", None),
-            "genai_message": getattr(ns, "message", None),
-            "genai_report": getattr(ns, "report", None),
-            "genai_max_tokens": getattr(ns, "max_tokens", None),
-            "genai_temperature": getattr(ns, "temperature", None),
             "inventory": getattr(ns, "inventory", None),
             "top": getattr(ns, "top", None),
             "regions": getattr(ns, "regions", None),
@@ -820,6 +778,9 @@ def load_run_config(
     schema_sample_records = int(merged.get("schema_sample_records") or DEFAULT_SCHEMA_SAMPLE_RECORDS)
     if schema_sample_records < 1:
         schema_sample_records = DEFAULT_SCHEMA_SAMPLE_RECORDS
+    diagram_depth = int(merged.get("diagram_depth") or DEFAULT_DIAGRAM_DEPTH)
+    if diagram_depth not in {1, 2, 3}:
+        raise ValueError("diagram_depth must be 1, 2, or 3")
     diagram_max_networks = merged.get("diagram_max_networks")
     diagram_max_workloads = merged.get("diagram_max_workloads")
     if diagram_max_networks is not None:
@@ -833,7 +794,6 @@ def load_run_config(
 
     cfg = RunConfig(
         outdir=outdir,
-        parquet=bool(merged["parquet"]),
         prev=prev,
         curr=curr,
         query=str(merged.get("query") or DEFAULT_QUERY),
@@ -850,6 +810,7 @@ def load_run_config(
         diagrams=bool(merged.get("diagrams")),
         schema_validation=schema_validation,
         schema_sample_records=schema_sample_records,
+        diagram_depth=diagram_depth,
         diagram_max_networks=diagram_max_networks,
         diagram_max_workloads=diagram_max_workloads,
         cost_report=bool(merged.get("cost_report")),
@@ -867,11 +828,6 @@ def load_run_config(
         assessment_target_scope=assessment_target_scope,
         assessment_lens_weights=assessment_lens_weights,
         assessment_capabilities=assessment_capabilities,
-        genai_api_format=str(merged.get("genai_api_format")) if merged.get("genai_api_format") else None,
-        genai_message=str(merged.get("genai_message")) if merged.get("genai_message") else None,
-        genai_report=Path(merged.get("genai_report")) if merged.get("genai_report") else None,
-        genai_max_tokens=int(merged.get("genai_max_tokens")) if merged.get("genai_max_tokens") else None,
-        genai_temperature=float(merged.get("genai_temperature")) if merged.get("genai_temperature") else None,
         inventory=Path(merged.get("inventory")) if merged.get("inventory") else None,
         top=int(merged.get("top")) if merged.get("top") is not None else None,
         regions=regions or None,
@@ -885,7 +841,6 @@ def load_run_config(
 def dump_config(cfg: RunConfig) -> Dict[str, Any]:
     return {
         "outdir": str(cfg.outdir),
-        "parquet": cfg.parquet,
         "prev": str(cfg.prev) if cfg.prev else None,
         "curr": str(cfg.curr) if cfg.curr else None,
         "query": cfg.query,
@@ -902,6 +857,7 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "diagrams": cfg.diagrams,
         "schema_validation": cfg.schema_validation,
         "schema_sample_records": cfg.schema_sample_records,
+        "diagram_depth": cfg.diagram_depth,
         "diagram_max_networks": cfg.diagram_max_networks,
         "diagram_max_workloads": cfg.diagram_max_workloads,
         "cost_report": cfg.cost_report,
@@ -919,11 +875,6 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "auth": cfg.auth,
         "profile": cfg.profile,
         "tenancy_ocid": cfg.tenancy_ocid,
-        "genai_api_format": cfg.genai_api_format,
-        "genai_message": cfg.genai_message,
-        "genai_report": str(cfg.genai_report) if cfg.genai_report else None,
-        "genai_max_tokens": cfg.genai_max_tokens,
-        "genai_temperature": cfg.genai_temperature,
         "inventory": str(cfg.inventory) if cfg.inventory else None,
         "top": cfg.top,
         "collected_at": cfg.collected_at,

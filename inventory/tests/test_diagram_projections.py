@@ -51,7 +51,8 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
 
     assert (tmp_path / "diagram.tenancy.mmd").exists()
     assert (tmp_path / "diagram.network.prod_vcn.mmd").exists()
-    assert (tmp_path / "diagram.consolidated.mmd").exists()
+    assert (tmp_path / "diagram.consolidated.architecture.mmd").exists()
+    assert (tmp_path / "diagram.consolidated.flowchart.mmd").exists()
 
     # Sanity-check Mermaid structure.
     tenancy = (tmp_path / "diagram.tenancy.mmd").read_text(encoding="utf-8")
@@ -66,7 +67,7 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
 
     assert any(p.name == "diagram.network.prod_vcn.mmd" for p in paths)
 
-    consolidated = (tmp_path / "diagram.consolidated.mmd").read_text(encoding="utf-8")
+    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
     assert consolidated.startswith("architecture-beta")
     assert "group comp_" in consolidated
     assert "service" in consolidated
@@ -75,6 +76,9 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
     for line in consolidated.splitlines():
         if "-->" in line or "<--" in line:
             assert ":" in line
+
+    flowchart = (tmp_path / "diagram.consolidated.flowchart.mmd").read_text(encoding="utf-8")
+    assert flowchart.startswith("flowchart LR")
 
 
 def test_consolidated_subnet_group_id_scoped_by_vcn(tmp_path) -> None:
@@ -107,9 +111,31 @@ def test_consolidated_subnet_group_id_scoped_by_vcn(tmp_path) -> None:
     nodes, edges = build_graph(records, relationships=[])
     write_diagram_projections(tmp_path, nodes, edges)
 
-    consolidated = (tmp_path / "diagram.consolidated.mmd").read_text(encoding="utf-8")
+    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
     digest = hashlib.sha1(f"{comp_id}:{vcn_id}:{subnet_id}".encode("utf-8")).hexdigest()[:10]
     assert f"group subnet_{digest}" in consolidated
+
+
+def test_consolidated_flowchart_depth_excludes_edges(tmp_path) -> None:
+    records = [
+        {
+            "ocid": "ocid1.vcn.oc1..vcn",
+            "resourceType": "Vcn",
+            "displayName": "Prod-VCN",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        }
+    ]
+
+    nodes, edges = build_graph(records, relationships=[])
+    write_diagram_projections(tmp_path, nodes, edges, diagram_depth=1)
+
+    consolidated = (tmp_path / "diagram.consolidated.flowchart.mmd").read_text(encoding="utf-8")
+    assert consolidated.startswith("flowchart LR")
+    assert "-->" not in consolidated
 
 
 def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
@@ -214,7 +240,7 @@ def test_consolidated_defines_workload_anchor_nodes(tmp_path) -> None:
     nodes, edges = build_graph(records, relationships=[])
     write_diagram_projections(tmp_path, nodes, edges)
 
-    consolidated = (tmp_path / "diagram.consolidated.mmd").read_text(encoding="utf-8")
+    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
     assert "edge service 1 Instance" in consolidated
 
 
@@ -259,6 +285,6 @@ def test_write_diagram_projections_limits_views(tmp_path) -> None:
     )
 
     assert (tmp_path / "diagram.tenancy.mmd").exists()
-    assert (tmp_path / "diagram.consolidated.mmd").exists()
+    assert (tmp_path / "diagram.consolidated.architecture.mmd").exists()
     assert not any(p.name.startswith("diagram.network.") for p in paths)
     assert not any(p.name.startswith("diagram.workload.") for p in paths)
