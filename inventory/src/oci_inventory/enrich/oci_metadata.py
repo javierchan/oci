@@ -39,10 +39,97 @@ def _record_compartment_id(record: Dict[str, Any]) -> str:
 
 
 def _metadata_details(record: Dict[str, Any], metadata: Dict[str, Any]) -> Dict[str, Any]:
+    _merge_search_summary_metadata(record, metadata)
     details: Dict[str, Any] = {"metadata": metadata}
     if "searchSummary" in record:
         details["searchSummary"] = record["searchSummary"]
     return details
+
+
+def _search_summary_value(record: Dict[str, Any], *keys: str) -> str | None:
+    summary = record.get("searchSummary")
+    if not isinstance(summary, dict):
+        return None
+    for key in keys:
+        value = summary.get(key)
+        if isinstance(value, str) and value:
+            return value
+    extra = summary.get("additional_details") or summary.get("additionalDetails")
+    if isinstance(extra, dict):
+        for key in keys:
+            value = extra.get(key)
+            if isinstance(value, str) and value:
+                return value
+    return None
+
+
+def _search_summary_entry(record: Dict[str, Any], *keys: str) -> Any | None:
+    summary = record.get("searchSummary")
+    if not isinstance(summary, dict):
+        return None
+    for key in keys:
+        if key in summary and summary[key] is not None:
+            return summary[key]
+    extra = summary.get("additional_details") or summary.get("additionalDetails")
+    if isinstance(extra, dict):
+        for key in keys:
+            if key in extra and extra[key] is not None:
+                return extra[key]
+    return None
+
+
+def _is_missing_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, tuple, set, dict)):
+        return len(value) == 0
+    return False
+
+
+def _metadata_has_value(metadata: Dict[str, Any], *keys: str) -> bool:
+    for key in keys:
+        for candidate in {key, _to_camel(key), _to_snake(key)}:
+            if candidate in metadata and not _is_missing_value(metadata.get(candidate)):
+                return True
+    return False
+
+
+def _to_snake(key: str) -> str:
+    return "".join([("_" + ch.lower()) if ch.isupper() else ch for ch in key]).lstrip("_")
+
+
+def _to_camel(key: str) -> str:
+    parts = key.split("_")
+    return "".join([p[:1].upper() + p[1:] if i > 0 else p for i, p in enumerate(parts)])
+
+
+def _merge_search_summary_metadata(record: Dict[str, Any], metadata: Dict[str, Any]) -> None:
+    if not isinstance(metadata, dict):
+        return
+    keys = {
+        "vcnId": ("vcnId", "vcn_id", "networkId", "network_id"),
+        "vcnIds": ("vcnIds", "vcn_ids"),
+        "subnetId": ("subnetId", "subnet_id"),
+        "subnetIds": ("subnetIds", "subnet_ids"),
+        "dhcpOptionsId": ("dhcpOptionsId", "dhcp_options_id"),
+        "routeTableId": ("routeTableId", "route_table_id"),
+        "securityListIds": ("securityListIds", "security_list_ids"),
+        "nsgIds": ("nsgIds", "nsg_ids", "networkSecurityGroupIds", "network_security_group_ids"),
+        "drgId": ("drgId", "drg_id", "gatewayId", "gateway_id"),
+        "assignedEntityId": ("assignedEntityId", "assigned_entity_id"),
+    }
+    for canonical, aliases in keys.items():
+        if _metadata_has_value(metadata, *aliases):
+            continue
+        value = _search_summary_entry(record, *aliases)
+        if _is_missing_value(value):
+            continue
+        snake = _to_snake(canonical)
+        camel = _to_camel(canonical)
+        metadata.setdefault(snake, value)
+        metadata.setdefault(camel, value)
 
 
 def _sdk_data_to_dict(resp: Any) -> Dict[str, Any]:
@@ -131,7 +218,13 @@ def _fetch_vcn(record: Dict[str, Any]) -> Dict[str, Any]:
 def _fetch_subnet(record: Dict[str, Any]) -> Dict[str, Any]:
     ctx = get_enrich_context()
     client = oci_clients.get_virtual_network_client(ctx, _record_region(record))
-    return _sdk_data_to_dict(client.get_subnet(_record_ocid(record)))
+    metadata = _sdk_data_to_dict(client.get_subnet(_record_ocid(record)))
+    if not (metadata.get("dhcp_options_id") or metadata.get("dhcpOptionsId")):
+        dhcp_id = _search_summary_value(record, "dhcpOptionsId", "dhcp_options_id")
+        if dhcp_id:
+            metadata.setdefault("dhcp_options_id", dhcp_id)
+            metadata.setdefault("dhcpOptionsId", dhcp_id)
+    return metadata
 
 
 def _fetch_vnic(record: Dict[str, Any]) -> Dict[str, Any]:

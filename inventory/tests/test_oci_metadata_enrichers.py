@@ -84,3 +84,42 @@ def test_customer_dns_zone_aliases_dns_zone(monkeypatch: Any) -> None:
     res = enricher.enrich({"region": "mx-queretaro-1", "ocid": "ocid1.dnszone.oc1..bbbb"})
     assert res.enrichStatus == "OK"
     assert calls["n"] == 1
+
+
+def test_subnet_enricher_preserves_dhcp_options_id(monkeypatch: Any) -> None:
+    _set_dummy_ctx()
+
+    class _VcnClient:
+        def get_subnet(self, ocid: str) -> Any:
+            assert ocid == "ocid1.subnet.oc1..aaaa"
+            return SimpleNamespace(data={"id": ocid, "vcn_id": "ocid1.vcn.oc1..vcn"})
+
+    monkeypatch.setattr(meta.oci_clients, "get_virtual_network_client", lambda ctx, region: _VcnClient())
+
+    enricher = get_enricher_for("Subnet")
+    res = enricher.enrich(
+        {
+            "region": "mx-queretaro-1",
+            "ocid": "ocid1.subnet.oc1..aaaa",
+            "searchSummary": {"dhcpOptionsId": "ocid1.dhcpoptions.oc1..dhcp"},
+        }
+    )
+    assert res.enrichStatus == "OK"
+    assert res.details["metadata"]["dhcp_options_id"] == "ocid1.dhcpoptions.oc1..dhcp"
+
+
+def test_metadata_details_backfills_network_ids_from_search_summary() -> None:
+    record = {
+        "searchSummary": {
+            "additional_details": {
+                "vcnId": "ocid1.vcn.oc1..vcn",
+                "securityListIds": ["ocid1.securitylist.oc1..sec"],
+            }
+        }
+    }
+    details = meta._metadata_details(record, {})
+    metadata = details["metadata"]
+    assert metadata["vcn_id"] == "ocid1.vcn.oc1..vcn"
+    assert metadata["vcnId"] == "ocid1.vcn.oc1..vcn"
+    assert metadata["security_list_ids"] == ["ocid1.securitylist.oc1..sec"]
+    assert metadata["securityListIds"] == ["ocid1.securitylist.oc1..sec"]
