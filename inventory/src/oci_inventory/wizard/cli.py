@@ -12,7 +12,6 @@ from .plan import (
     build_coverage_plan,
     build_run_plan,
     build_simple_plan,
-    build_genai_chat_plan,
 )
 from .runner import execute_plan, summarize_outdir
 from .config_file import load_wizard_plan_from_file
@@ -502,7 +501,6 @@ def main() -> None:
                     ("List compartments", "List compartments in the tenancy."),
                     ("Enrichment coverage", "Report missing enrichers in an inventory.jsonl."),
                     ("List GenAI models", "List available OCI GenAI models and capabilities."),
-                    ("GenAI chat", "Send a one-off GenAI prompt."),
                 ],
                 default="Validate auth",
                 allow_back=True,
@@ -644,89 +642,6 @@ def main() -> None:
             }
             raise SystemExit(_confirm_and_run(plan, plan_data=plan_data))
 
-        if mode == "GenAI chat":
-            _section("GenAI Chat")
-            return_to_menu = False
-            while True:
-                api_format = _ask_choice(
-                    "GenAI API format",
-                    [
-                        ("AUTO", "Try GENERIC first, then COHERE if needed."),
-                        ("GENERIC", "Use the OCI GenAI generic format."),
-                        ("COHERE", "Use the OCI GenAI Cohere format."),
-                    ],
-                    default="AUTO",
-                    allow_back=True,
-                )
-                if api_format == "Back":
-                    start_in_troubleshooting = True
-                    return_to_menu = True
-                    break
-
-                message_mode = _ask_choice(
-                    "Message input",
-                    [
-                        ("Enter message", "Type a single-line prompt."),
-                        ("Load message from file", "Read prompt text from a local file."),
-                        ("Use report.md as context", "Send report.md as context without a manual prompt."),
-                    ],
-                    default="Enter message",
-                    allow_back=True,
-                )
-                if message_mode == "Back":
-                    continue
-                break
-
-            if return_to_menu:
-                continue
-
-            message: Optional[str] = None
-            report_path: Optional[Path] = None
-            if message_mode == "Enter message":
-                while True:
-                    message = _ask_str("Message", default="", allow_blank=True).strip()
-                    if message:
-                        break
-            elif message_mode == "Load message from file":
-                msg_path = _ask_existing_file("Message file path")
-                message = msg_path.read_text(encoding="utf-8")
-            else:
-                report_path = _ask_existing_file("report.md path")
-
-            advanced = _ask_bool("Advanced GenAI options?", default=False)
-            max_tokens: Optional[int] = None
-            temperature: Optional[float] = None
-            if advanced:
-                max_tokens = _ask_optional_int("Max tokens (blank = default)")
-                temperature = _ask_optional_float("Temperature (blank = default)")
-
-            plan = build_genai_chat_plan(
-                auth=auth,
-                profile=profile,
-                tenancy_ocid=tenancy_ocid,
-                api_format=api_format,
-                message=message,
-                report=report_path,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                json_logs=json_logs,
-                log_level=log_level,
-            )
-            plan_data = {
-                "mode": "genai-chat",
-                "auth": auth,
-                "profile": profile,
-                "tenancy_ocid": tenancy_ocid,
-                "json_logs": json_logs,
-                "log_level": log_level,
-                "genai_api_format": api_format,
-                "genai_message": message,
-                "genai_report": str(report_path) if report_path else None,
-                "genai_max_tokens": max_tokens,
-                "genai_temperature": temperature,
-            }
-            raise SystemExit(_confirm_and_run(plan, plan_data=plan_data))
-
         if mode == "Enrichment coverage":
             _section("Enrichment Coverage")
             inventory_path = _ask_existing_file("inventory.jsonl path")
@@ -839,8 +754,6 @@ def main() -> None:
             if query.strip():
                 break
 
-        parquet = _ask_bool("Write Parquet (requires pyarrow)?", default=False)
-
         include_terminated = _ask_bool("Include terminated resources?", default=False)
 
         prev_raw = _ask_str("Prev inventory.jsonl (optional)", default="", allow_blank=True).strip()
@@ -861,6 +774,7 @@ def main() -> None:
         diagrams: Optional[bool] = None
         schema_validation: Optional[str] = None
         schema_sample_records: Optional[int] = None
+        diagram_depth: Optional[int] = None
         diagram_max_networks: Optional[int] = None
         diagram_max_workloads: Optional[int] = None
         cost_report: Optional[bool] = None
@@ -925,6 +839,16 @@ def main() -> None:
                     "Schema sample records (blank = default)",
                     min_value=1,
                 )
+            diagram_depth_choice = _ask_choice(
+                "Consolidated diagram depth",
+                [
+                    ("1", "Tenancy + compartments + VCN/subnet/gateways only."),
+                    ("2", "Add workloads (no relationship edges)."),
+                    ("3", "Add workloads + relationship edges (full detail)."),
+                ],
+                default="3",
+            )
+            diagram_depth = int(diagram_depth_choice)
             diagram_max_networks = _ask_optional_int_with_min(
                 "Diagram max networks (blank = default, 0 disables network views)",
                 min_value=0,
@@ -1018,7 +942,6 @@ def main() -> None:
             outdir=outdir,
             query=query,
             regions=regions,
-            parquet=parquet,
             genai_summary=genai_summary,
             prev=prev,
             workers_region=workers_region,
@@ -1031,6 +954,7 @@ def main() -> None:
             diagrams=diagrams,
             schema_validation=schema_validation,
             schema_sample_records=schema_sample_records,
+            diagram_depth=diagram_depth,
             diagram_max_networks=diagram_max_networks,
             diagram_max_workloads=diagram_max_workloads,
             cost_report=cost_report,
@@ -1058,7 +982,6 @@ def main() -> None:
             "outdir": str(outdir),
             "query": query,
             "regions": regions,
-            "parquet": parquet,
             "genai_summary": genai_summary,
             "prev": str(prev) if prev else None,
             "workers_region": workers_region,
@@ -1071,6 +994,7 @@ def main() -> None:
             "diagrams": diagrams,
             "schema_validation": schema_validation,
             "schema_sample_records": schema_sample_records,
+            "diagram_depth": diagram_depth,
             "diagram_max_networks": diagram_max_networks,
             "diagram_max_workloads": diagram_max_workloads,
             "cost_report": cost_report,

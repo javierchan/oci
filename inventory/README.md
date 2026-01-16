@@ -4,8 +4,8 @@ Production-ready Python CLI to inventory Oracle Cloud Infrastructure (OCI) resou
 Phase 1 implements:
 - Tenancy-wide discovery using Resource Search (Structured Search) with default query: "query all resources"
 - Enricher registry + DefaultEnricher with per-service metadata enrichers for supported resource types
-- Exports: JSONL (default), CSV, and Parquet (pyarrow installed by preflight; enable with --parquet)
-- Graph + diagram projections (Mermaid flowchart + consolidated architecture-beta; disable with --no-diagrams)
+- Exports: JSONL (default) and CSV
+- Graph + diagram projections (Mermaid flowchart + consolidated architecture-beta + consolidated flowchart; disable with --no-diagrams)
 - Diffs and stable hashing (excluding collectedAt)
 - Coverage metrics and schema validation
 - Tests, docs, CI (ruff + pytest)
@@ -22,7 +22,7 @@ flowchart LR
   C --> D[Normalize records]
   D --> E[Enrich records + relationships]
   E --> F[Derive metadata relationships]
-  F --> G[Write inventory.jsonl inventory.csv parquet]
+  F --> G[Write inventory.jsonl inventory.csv]
   G --> H[Write run_summary.json]
   H --> I[Build graph nodes and edges optional]
   I --> J[Write diagram projections optional]
@@ -51,7 +51,7 @@ Manual install (inside `.venv`):
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -U pip
-pip install .[parquet,wizard]
+pip install .[wizard]
 pip install oci-cli
 npm install -g @mermaid-js/mermaid-cli
 ```
@@ -61,7 +61,7 @@ Use the preflight script to prepare a local or CI environment (macOS/Linux; may 
 - Verifies prerequisites (python3 ≥ 3.11, git, npm) and installs Mermaid CLI (mmdc) if missing
 - Creates or reuses a .venv virtual environment and upgrades pip/setuptools/wheel
 - Installs the project in editable mode, respecting pyproject.toml
-- Installs all extras defined in pyproject.toml (parquet, wizard)
+- Installs all extras defined in pyproject.toml (wizard)
 - Installs OCI CLI inside the virtual environment
 - Uses network access for pip/npm installs and dependency upgrades
 
@@ -106,7 +106,7 @@ oci-inv <subcommand> --help
 Commands:
 - Run inventory:
   ```
-  oci-inv run --outdir out --auth auto --profile DEFAULT --parquet --prev out/20240101T000000Z/inventory.jsonl \
+  oci-inv run --outdir out --auth auto --profile DEFAULT --prev out/20240101T000000Z/inventory.jsonl \
               --workers-region 6 --workers-enrich 24 --workers-cost 2 --workers-export 2 \
               --query "query all resources"
   ```
@@ -135,6 +135,7 @@ Commands:
 ## Performance tuning
 - Worker overrides are opt-in: `--config config/workers.yaml` (region/enrich/cost/export workers).
 - Schema validation modes: `--validate-schema auto|full|sampled|off` and `--validate-schema-sample N`.
+- Consolidated diagram depth: `--diagram-depth 1|2|3` (1=tenancy/compartments+VCN/subnet/gateways, 2=add workloads, 3=add workload edges). Applies to `diagram.consolidated.architecture.mmd` and `diagram.consolidated.flowchart.mmd`.
 - Diagram caps: `--diagram-max-networks N` and `--diagram-max-workloads N` (0 disables that view; use only for perf-focused runs).
 - Use `--no-diagrams` when you only need inventory/cost outputs.
 - OCI SDK clients are cached per service+region; set `OCI_INV_DISABLE_CLIENT_CACHE=1` to disable.
@@ -227,7 +228,7 @@ oci-inv diff --prev out/prev-run/inventory.jsonl --curr out/curr-run/inventory.j
 JSONL + CSV are always written. Parquet is optional and recommended for analytics.
 
 ```
-oci-inv run --auth auto --profile DEFAULT --outdir out --parquet --query "query all resources"
+oci-inv run --auth auto --profile DEFAULT --outdir out --query "query all resources"
 ```
 
 ### Notes
@@ -244,7 +245,7 @@ Flags and config precedence: defaults < config file < environment < CLI
 - Default search query: "query all resources" (MUST)
 - Workers defaults: regions=6, enrich=24
 - Output: creates a timestamped directory under `--outdir` (default `out/TS`) for run
-- Boolean flags accept `--no-<flag>` to override config/env (e.g., `--no-parquet`, `--no-json-logs`)
+- Boolean flags accept `--no-<flag>` to override config/env (e.g., `--no-json-logs`)
 - Limit discovery regions with `--regions` (comma-separated) or `OCI_INV_REGIONS`
 - Config files: `--config <path>` supports YAML/JSON and uses the same key names as CLI flags.
 
@@ -260,10 +261,6 @@ This section is a quick map of every user-facing component in the CLI, what it d
 - **GenAI model listing**: show OCI GenAI models and capabilities in CSV format.
   - Example: `oci-inv list-genai-models`
   - Config precedence: `OCI_INV_GENAI_CONFIG` env → `~/.config/oci-inv/genai.yaml` → `.local/genai.yaml`
-- **GenAI chat (one-off prompt tester)**: send a prompt using the configured GenAI endpoint/model; redacts OCIDs/URLs in requests/responses.
-  - Example: `oci-inv genai-chat --message "Summarize the latest inventory run"`
-  - Flags: `--api-format [AUTO|GENERIC|COHERE]`, `--report <report.md>`, `--max-tokens`, `--temperature`
-  - Config precedence: `OCI_INV_GENAI_CONFIG` env → `~/.config/oci-inv/genai.yaml` → `.local/genai.yaml` (gitignored). Missing config disables GenAI features gracefully.
 - **GenAI report summary**: optional second pass during `run` that appends an executive summary into report.md using the run’s own findings as context.
   - Enable with `--genai-summary` on `run`. If GenAI fails, report.md is still written with an error note.
 - **Cost report (optional)**: uses Usage API (home region) for totals and optional OneSubscription usage when `--osub-subscription-id` is provided; writes `cost_report.md`.
@@ -280,22 +277,21 @@ This section is a quick map of every user-facing component in the CLI, what it d
   - `cost_usage_items_grouped.csv` is written when `--cost-group-by` is set and contains only those grouped rows.
   - `cost_usage_items.jsonl` includes full Usage API items for auditability.
   - Per-view exports: `cost_usage_service.csv`, `cost_usage_region.csv`, `cost_usage_compartment.csv`.
+  - CSV exports replace missing/blank string or dimension values with `unknown`; numeric fields remain empty. JSONL retains nulls.
 - **Enrichment coverage**: reports which resource types in an inventory lack enrichers.
   - Example: `oci-inv enrich-coverage --inventory out/<timestamp>/inventory.jsonl --top 10`
 - **Interactive wizard**: guided, preview-first UX that builds/executes the same `oci-inv` commands; safe defaults and copy/pasteable outputs.
   - Run: `oci-inv-wizard`
   - Main modes: run, diff, troubleshooting
-  - Troubleshooting includes: validate-auth, list-regions, list-compartments, enrich-coverage, list-genai-models, genai-chat
+  - Troubleshooting includes: validate-auth, list-regions, list-compartments, enrich-coverage, list-genai-models
   - Advanced run options: diagram generation/validation, cost report inputs (including OneSubscription subscription ID), assessment metadata
   - Can save reusable wizard plan files (YAML/JSON) from the interactive flow
-- **Outputs**: deterministic artifacts per run under `out/<timestamp>/` (JSONL, CSV, optional Parquet, report.md, graph files, optional diff files when `--prev` is provided).
+- **Outputs**: deterministic artifacts per run under `out/<timestamp>/` (JSONL, CSV, report.md, graph files, optional diff files when `--prev` is provided).
   - Hashing excludes `collectedAt` to keep diffs stable.
 
 Notes for developers:
 - The CLI is read-only; all SDK calls are list/get style. No mutations are performed.
 - Region failures are tolerated and captured in report.md; GenAI is optional and isolated from the main run.
-- Parquet support is installed by preflight; enable output with `--parquet`.
-- Parquet write failures log a record index and a hashed OCID hint; rows that cannot be coerced are skipped so the run can complete.
 - Mermaid diagrams are generated as `.mmd` files unless `--no-diagrams` is set. Mermaid CLI (`mmdc`) is required and preflight installs it;
   validation runs automatically when diagrams are enabled.
   (During installation you may see npm warnings about Puppeteer deprecations; those are typically non-fatal.)
@@ -312,7 +308,6 @@ flowchart TB
 subgraph out_ts[out timestamp]
     inv[inventory.jsonl]
     csv[inventory.csv]
-    parquet[inventory.parquet when --parquet]
     rel[relationships.jsonl]
     nodes[graph_nodes.jsonl optional]
     edges[graph_edges.jsonl optional]
@@ -320,7 +315,8 @@ subgraph out_ts[out timestamp]
     ten[diagram.tenancy.mmd optional]
     net[diagram.network.vcn.mmd optional]
     wl[diagram.workload.workload.mmd optional]
-    cons[diagram.consolidated.mmd optional]
+    cons[diagram.consolidated.architecture.mmd optional]
+    cons_fc[diagram.consolidated.flowchart.mmd optional]
     rpt[report.md]
     sum[run_summary.json]
     diff[diff.json and diff_summary.json optional]
@@ -337,6 +333,8 @@ subgraph out_ts[out timestamp]
   edges --> wl
   nodes --> cons
   edges --> cons
+  nodes --> cons_fc
+  edges --> cons_fc
   nodes --> raw
   edges --> raw
 ```
@@ -345,8 +343,7 @@ subgraph out_ts[out timestamp]
 Each run writes to: `out/<timestamp>/`
 - report.md (execution steps, exclusions, findings, and optional GenAI summary)
 - inventory.jsonl (canonicalized, stable JSON lines)
-- inventory.csv (report fields)
-- inventory.parquet (enabled with `--parquet`; pyarrow installed by preflight)
+- inventory.csv (report fields; missing/blank values rendered as `unknown`)
 - relationships.jsonl (always written; may be empty)
 - graph_nodes.jsonl (diagram-ready nodes; optional)
 - graph_edges.jsonl (diagram-ready edges; optional)
@@ -354,15 +351,15 @@ Each run writes to: `out/<timestamp>/`
 - diagram.tenancy.mmd (Mermaid diagram; tenancy/compartment view; optional)
 - diagram.network.<vcn>.mmd (Mermaid diagram; per-VCN topology view; optional)
 - diagram.workload.<workload>.mmd (Mermaid diagram; workload/application view; optional)
-- diagram.consolidated.mmd (Mermaid architecture-beta diagram; all projections consolidated, edges are unlabelled by design; optional)
+- diagram.consolidated.architecture.mmd (Mermaid architecture-beta diagram; all projections consolidated, edges are unlabelled by design; optional; respects `--diagram-depth`)
+- diagram.consolidated.flowchart.mmd (Mermaid flowchart diagram; consolidated view with configurable depth; optional; respects `--diagram-depth`)
 - diff.json + diff_summary.json (when --prev provided)
 - run_summary.json (coverage metrics)
 
 Quick reference (artifacts → purpose):
 - report.md: human-readable run log + findings; holds GenAI summary when enabled.
 - inventory.jsonl: canonical per-resource records for downstream processing/diffing.
-- inventory.csv: tabular view aligned to report fields.
-- inventory.parquet: analytics-friendly columnar export (enable with `--parquet`; pyarrow installed by preflight).
+- inventory.csv: tabular view aligned to report fields; missing values are rendered as `unknown`.
 - relationships.jsonl: relationship edges from enrichers + derived metadata.
 - graph_nodes.jsonl / graph_edges.jsonl / diagram_raw.mmd: raw topology outputs (optional).
 - diagram.*.mmd: architecture-focused projected views (optional).
@@ -507,7 +504,7 @@ Signer-based auth also needs a region; set `OCI_REGION` (or `OCI_CLI_REGION`) wh
 
 Run locally:
 ```
-pip install -e .[parquet,wizard]
+pip install -e .[wizard]
 pip install ruff pytest
 ruff check .
 pytest
@@ -531,7 +528,7 @@ What it does:
 
 ## GenAI Configuration
 
-GenAI features are available today for `genai-chat`, `list-genai-models`, and `--genai-summary`. The tool redacts OCIDs/URLs in prompts and responses; if GenAI is misconfigured, main runs still complete and record the failure in report.md.
+GenAI features are available today for `list-genai-models` and `--genai-summary`. The tool redacts OCIDs/URLs in prompts and responses; if GenAI is misconfigured, main runs still complete and record the failure in report.md.
 
 Config precedence (first found wins):
 - `OCI_INV_GENAI_CONFIG` (env path)
@@ -559,7 +556,6 @@ json_logs: false
 outdir: out
 regions: [mx-queretaro-1]
 query: "query all resources"
-parquet: false
 workers_region: 6
 workers_enrich: 24
 workers_cost: 2

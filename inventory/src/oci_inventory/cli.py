@@ -110,6 +110,7 @@ def write_diagram_projections(
     nodes: Sequence[Dict[str, Any]],
     edges: Sequence[Dict[str, Any]],
     *,
+    diagram_depth: Optional[int] = None,
     max_network_views: Optional[int] = None,
     max_workload_views: Optional[int] = None,
 ) -> List[Path]:
@@ -119,6 +120,7 @@ def write_diagram_projections(
         outdir,
         nodes,
         edges,
+        diagram_depth=diagram_depth,
         max_network_views=max_network_views,
         max_workload_views=max_workload_views,
     )
@@ -184,58 +186,6 @@ def cmd_enrich_coverage(cfg: RunConfig) -> int:
             print(f"- {rtype}: {count}")
     return 0
 
-
-def cmd_genai_chat(cfg: RunConfig) -> int:
-    from .genai.config import try_load_genai_config
-    from .genai.executive_summary import run_genai_best_effort_prompt
-
-    genai_cfg = try_load_genai_config()
-    if genai_cfg is None:
-        print("SKIP: GenAI config not found or invalid; genai-chat disabled.")
-        return 0
-
-    if cfg.genai_report:
-        report_text = cfg.genai_report.read_text(encoding="utf-8")
-        message = (
-            "Use the following OCI inventory report as context. "
-            "Reply with a short Markdown response.\n\n"
-            + report_text
-        )
-    else:
-        message = cfg.genai_message or ""
-
-    if not message.strip():
-        raise ConfigError("genai-chat requires either --message or --report")
-
-    system = (
-        "You are an SRE/Cloud inventory assistant. "
-        "Output Markdown text only. Do not include secrets, OCIDs, or URLs."
-    )
-
-    api = (cfg.genai_api_format or "AUTO").strip().upper()
-    max_tokens = int(cfg.genai_max_tokens or 300)
-    temperature = float(cfg.genai_temperature) if cfg.genai_temperature is not None else None
-
-    try:
-        prompt = f"{system}\n\n{message}".strip()
-        out, runtime = run_genai_best_effort_prompt(
-            prompt=prompt,
-            genai_cfg=genai_cfg,
-            prefer_chat=True,
-            api_format=api,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-    except Exception as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        return 1
-
-    if not out.strip():
-        print(f"ERROR: GenAI chat returned empty text (runtime={runtime})", file=sys.stderr)
-        return 1
-
-    print(out)
-    return 0
 
 
 def _resolve_auth(cfg: RunConfig) -> AuthContext:
@@ -794,9 +744,9 @@ def _generate_cost_report_narratives(
         lines.append("Write the section now.")
         return "\n".join(lines)
 
-    api_format = (cfg.genai_api_format or "AUTO").strip().upper()
-    max_tokens = int(cfg.genai_max_tokens or 300)
-    temperature = float(cfg.genai_temperature) if cfg.genai_temperature is not None else 0.2
+    api_format = "AUTO"
+    max_tokens = 300
+    temperature = 0.2
 
     narratives: Dict[str, str] = {}
     errors: Dict[str, str] = {}
@@ -1639,7 +1589,6 @@ def cmd_run(cfg: RunConfig) -> int:
     from .export.csv import write_csv
     from .export.graph import build_graph, filter_edges_with_nodes, write_graph, write_mermaid
     from .export.jsonl import write_jsonl
-    from .export.parquet import ParquetNotAvailable, write_parquet
     from .report import (
         write_cost_report_md,
         write_cost_usage_csv,
@@ -1665,7 +1614,6 @@ def cmd_run(cfg: RunConfig) -> int:
     discovered_count = 0
     inventory_records: List[Dict[str, Any]] = []
     metrics: Optional[Dict[str, Any]] = None
-    parquet_warning: Optional[str] = None
     diff_warning: Optional[str] = None
 
     executive_summary: Optional[str] = None
@@ -1882,7 +1830,6 @@ def cmd_run(cfg: RunConfig) -> int:
             step="export",
             phase="start",
             timers=timers,
-            parquet=bool(cfg.parquet),
         )
         inventory_jsonl = cfg.outdir / "inventory.jsonl"
         inventory_csv = cfg.outdir / "inventory.csv"
@@ -1895,23 +1842,6 @@ def cmd_run(cfg: RunConfig) -> int:
         else:
             write_jsonl(inventory_records, inventory_jsonl)
             write_csv(inventory_records, inventory_csv)
-
-        if cfg.parquet:
-            try:
-                parquet_path = cfg.outdir / "inventory.parquet"
-                if chunk_paths:
-                    def _parquet_iter() -> Iterable[Dict[str, Any]]:
-                        return _iter_export_records(chunk_paths, derived_by_source)
-
-                    write_parquet(_parquet_iter(), parquet_path, already_sorted=True)
-                else:
-                    write_parquet(inventory_records, parquet_path)
-            except ParquetNotAvailable as e:
-                parquet_warning = str(e)
-                LOG.warning(
-                    str(e),
-                    extra={"step": "export", "phase": "warning", "artifact": "parquet"},
-                )
 
         _write_relationships(cfg.outdir, all_relationships)
         _log_event(
@@ -1989,10 +1919,21 @@ def cmd_run(cfg: RunConfig) -> int:
                     phase="warning",
                     timers=timers,
                 )
+            if cfg.diagram_depth < 3:
+                _log_event(
+                    LOG,
+                    logging.INFO,
+                    "Diagram depth limits consolidated diagram detail",
+                    step="diagrams",
+                    phase="info",
+                    timers=timers,
+                    diagram_depth=cfg.diagram_depth,
+                )
             diagram_paths = write_diagram_projections(
                 cfg.outdir,
                 nodes,
                 edges,
+                diagram_depth=cfg.diagram_depth,
                 max_network_views=cfg.diagram_max_networks,
                 max_workload_views=cfg.diagram_max_workloads,
             )
@@ -2191,7 +2132,6 @@ def cmd_run(cfg: RunConfig) -> int:
                 excluded_regions=excluded_regions,
                 discovered_records=inventory_records,
                 metrics=metrics,
-                parquet_warning=parquet_warning,
                 diff_warning=diff_warning,
                 fatal_error=fatal_error,
                 executive_summary=executive_summary,
@@ -2442,8 +2382,6 @@ def main() -> None:
             code = cmd_list_compartments(cfg)
         elif command == "list-genai-models":
             code = cmd_list_genai_models(cfg)
-        elif command == "genai-chat":
-            code = cmd_genai_chat(cfg)
         elif command == "enrich-coverage":
             code = cmd_enrich_coverage(cfg)
         else:

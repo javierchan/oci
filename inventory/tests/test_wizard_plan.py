@@ -5,7 +5,6 @@ from pathlib import Path
 from oci_inventory.wizard.plan import (
     build_coverage_plan,
     build_diff_plan,
-    build_genai_chat_plan,
     build_run_plan,
     build_simple_plan,
 )
@@ -20,7 +19,6 @@ def test_build_run_plan_contains_expected_flags() -> None:
         outdir=Path("out"),
         query="query all resources",
         regions=["mx-queretaro-1"],
-        parquet=True,
         genai_summary=True,
         prev=Path("out/prev/inventory.jsonl"),
         workers_region=3,
@@ -33,6 +31,7 @@ def test_build_run_plan_contains_expected_flags() -> None:
         diagrams=False,
         schema_validation="sampled",
         schema_sample_records=2500,
+        diagram_depth=2,
         diagram_max_networks=5,
         diagram_max_workloads=10,
         cost_report=True,
@@ -61,7 +60,6 @@ def test_build_run_plan_contains_expected_flags() -> None:
     assert "mx-queretaro-1" in plan.argv
     assert "--query" in plan.argv
     assert "query all resources" in plan.argv
-    assert "--parquet" in plan.argv
     assert "--genai-summary" in plan.argv
     assert "--prev" in plan.argv
     assert "out/prev/inventory.jsonl" in plan.argv
@@ -83,6 +81,8 @@ def test_build_run_plan_contains_expected_flags() -> None:
     assert "sampled" in plan.argv
     assert "--validate-schema-sample" in plan.argv
     assert "2500" in plan.argv
+    assert "--diagram-depth" in plan.argv
+    assert "2" in plan.argv
     assert "--diagram-max-networks" in plan.argv
     assert "5" in plan.argv
     assert "--diagram-max-workloads" in plan.argv
@@ -167,28 +167,3 @@ def test_build_simple_plan_list_genai_models() -> None:
     assert plan.argv[0] == "list-genai-models"
     assert "--auth" in plan.argv
 
-
-def test_build_genai_chat_plan() -> None:
-    plan = build_genai_chat_plan(
-        auth="config",
-        profile="DEFAULT",
-        tenancy_ocid=None,
-        api_format="AUTO",
-        message="hello",
-        report=Path("out/run/report.md"),
-        max_tokens=123,
-        temperature=0.7,
-        json_logs=False,
-        log_level="INFO",
-    )
-    assert plan.argv[0] == "genai-chat"
-    assert "--api-format" in plan.argv
-    assert "AUTO" in plan.argv
-    assert "--message" in plan.argv
-    assert "hello" in plan.argv
-    assert "--report" in plan.argv
-    assert "out/run/report.md" in plan.argv
-    assert "--max-tokens" in plan.argv
-    assert "123" in plan.argv
-    assert "--temperature" in plan.argv
-    assert "0.7" in plan.argv

@@ -22,7 +22,7 @@ python -m venv .venv
 pip install -U pip
 pip install .
 # Optional Parquet export support:
-pip install .[parquet]
+pip install .
 ```
 
 Verify installation:
@@ -59,10 +59,6 @@ oci-inv run --auth auto --profile DEFAULT --outdir out
 
 Optional flags:
 
-- Enable Parquet export (requires pyarrow):
-  ```
-  oci-inv run --parquet
-  ```
 - Use a custom search query:
   ```
   oci-inv run --query "query all resources where lifecycleState = 'ACTIVE'"
@@ -120,7 +116,6 @@ Output structure per run:
 out/<timestamp>/
   inventory.jsonl
   inventory.csv
-  inventory.parquet        # when --parquet and pyarrow installed
   cost_report.md           # when --cost-report
   cost_usage_items.csv     # when --cost-report; full Usage API rows
   cost_usage_items_grouped.csv # when --cost-group-by; grouped multi-dim rows
@@ -135,7 +130,7 @@ out/<timestamp>/
   diagram.tenancy.mmd      # Mermaid diagram (tenancy/compartment view; optional)
   diagram.network.<vcn>.mmd # Mermaid diagram (per-VCN topology view; optional)
   diagram.workload.<workload>.mmd # Mermaid diagram (workload/application view; optional)
-  diagram.consolidated.mmd # Mermaid diagram (all projections consolidated; optional)
+  diagram.consolidated.architecture.mmd # Mermaid diagram (all projections consolidated; optional)
   diff.json                # when --prev provided
   diff_summary.json        # when --prev provided
   run_summary.json         # coverage metrics
@@ -196,7 +191,6 @@ Common environment variables that influence behavior:
 
 - Ensure your ~/.oci/config has the correct profile and keys if using config-file auth.
 - Avoid printing secrets in logs or terminal history.
-- For Parquet errors, install pyarrow: `pip install .[parquet]`.
 - Increase log verbosity:
   ```
   OCI_INV_LOG_LEVEL=DEBUG oci-inv run ...

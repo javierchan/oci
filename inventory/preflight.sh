@@ -385,14 +385,6 @@ install_project() {
     info "OCI_INV_MODE=check: skipping project installation."
   fi
 
-  if printf ",%s," "${all_extras}" | grep -q ",parquet,"; then
-    if python -c 'import pyarrow' >/dev/null 2>&1; then
-      ok "pyarrow import check passed"
-    else
-      err "pyarrow not importable; Parquet support will fail."
-      exit 1
-    fi
-  fi
   if printf ",%s," "${all_extras}" | grep -q ",wizard,"; then
     if python -c 'import rich' >/dev/null 2>&1; then
       ok "rich import check passed"

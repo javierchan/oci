@@ -9,7 +9,6 @@ from typing import Optional, Tuple
 from ..cli import (
     cmd_diff,
     cmd_enrich_coverage,
-    cmd_genai_chat,
     cmd_list_compartments,
     cmd_list_genai_models,
     cmd_list_regions,
@@ -101,9 +100,6 @@ def execute_plan(plan: WizardPlan) -> Tuple[int, Optional[Path], str, str]:
             if command == "list-genai-models":
                 code = cmd_list_genai_models(cfg)
                 return code, None, stdout_buf.getvalue(), log_buf.getvalue()
-            if command == "genai-chat":
-                code = cmd_genai_chat(cfg)
-                return code, None, stdout_buf.getvalue(), log_buf.getvalue()
         return 2, None, f"Unsupported command: {command}\n", log_buf.getvalue()
     except Exception as exc:
         if not log_buf.getvalue().strip():
@@ -120,12 +116,11 @@ def summarize_outdir(outdir: Path) -> str:
         "report.md",
         "inventory.jsonl",
         "inventory.csv",
-        "inventory.parquet",
         "run_summary.json",
         "diff.json",
         "diff_summary.json",
         "diagram_raw.mmd",
-        "diagram.consolidated.mmd",
+        "diagram.consolidated.architecture.mmd",
         "graph_nodes.jsonl",
         "graph_edges.jsonl",
         "relationships.jsonl",

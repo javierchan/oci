@@ -71,7 +71,6 @@ def build_run_plan(
     outdir: Path,
     query: str,
     regions: Optional[List[str]] = None,
-    parquet: Optional[bool] = None,
     genai_summary: Optional[bool] = None,
     prev: Optional[Path] = None,
     workers_region: Optional[int] = None,
@@ -84,6 +83,7 @@ def build_run_plan(
     diagrams: Optional[bool] = None,
     schema_validation: Optional[str] = None,
     schema_sample_records: Optional[int] = None,
+    diagram_depth: Optional[int] = None,
     diagram_max_networks: Optional[int] = None,
     diagram_max_workloads: Optional[int] = None,
     cost_report: Optional[bool] = None,
@@ -118,11 +118,6 @@ def build_run_plan(
 
     if regions:
         argv.extend(["--regions", ",".join(regions)])
-
-    if parquet is True:
-        argv.append("--parquet")
-    elif parquet is False:
-        argv.append("--no-parquet")
 
     if genai_summary is True:
         argv.append("--genai-summary")
@@ -162,6 +157,8 @@ def build_run_plan(
     _maybe_add(argv, "--validate-schema", schema_validation)
     if schema_sample_records is not None:
         _maybe_add(argv, "--validate-schema-sample", str(int(schema_sample_records)))
+    if diagram_depth is not None:
+        _maybe_add(argv, "--diagram-depth", str(int(diagram_depth)))
     if diagram_max_networks is not None:
         _maybe_add(argv, "--diagram-max-networks", str(int(diagram_max_networks)))
     if diagram_max_workloads is not None:
@@ -258,36 +255,3 @@ def build_simple_plan(
     )
     return WizardPlan(argv=argv)
 
-
-def build_genai_chat_plan(
-    *,
-    auth: str,
-    profile: Optional[str],
-    tenancy_ocid: Optional[str],
-    config_path: Optional[Path] = None,
-    api_format: Optional[str] = None,
-    message: Optional[str] = None,
-    report: Optional[Path] = None,
-    max_tokens: Optional[int] = None,
-    temperature: Optional[float] = None,
-    json_logs: Optional[bool] = None,
-    log_level: Optional[str] = None,
-) -> WizardPlan:
-    argv: List[str] = ["genai-chat"]
-    argv.extend(
-        build_common_argv(
-            auth=auth,
-            profile=profile,
-            tenancy_ocid=tenancy_ocid,
-            log_level=log_level,
-            json_logs=json_logs,
-            config_path=config_path,
-        )
-    )
-
-    _maybe_add(argv, "--api-format", api_format)
-    _maybe_add(argv, "--message", message)
-    _maybe_add(argv, "--report", str(report) if report else None)
-    _maybe_add(argv, "--max-tokens", str(max_tokens) if max_tokens is not None else None)
-    _maybe_add(argv, "--temperature", str(temperature) if temperature is not None else None)
-    return WizardPlan(argv=argv)
