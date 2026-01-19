@@ -115,6 +115,7 @@ Output structure per run:
 out/<timestamp>/
   inventory.jsonl
   inventory.csv
+  debug.log              # run logs (same format as console)
   cost_report.md           # when --cost-report
   cost_usage_items.csv     # when --cost-report; full Usage API rows
   cost_usage_items_grouped.csv # when --cost-group-by; grouped multi-dim rows

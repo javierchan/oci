@@ -18,7 +18,7 @@ from .auth.providers import AuthContext, AuthError, get_tenancy_ocid, resolve_au
 from .config import RunConfig, load_run_config
 from .diff.diff import diff_files, write_diff
 from .enrich import get_enricher_for, set_enrich_context
-from .logging import LogConfig, get_logger, setup_logging
+from .logging import LogConfig, add_run_log_file, get_logger, setup_logging
 from .normalize.schema import CSV_REPORT_FIELDS
 from .normalize.transform import canonicalize_record, normalize_relationships, sort_relationships, stable_json_dumps
 from .oci.clients import (
@@ -1679,6 +1679,7 @@ def cmd_run(cfg: RunConfig) -> int:
 
     # Ensure the run directory exists early so we can always emit a report.
     cfg.outdir.mkdir(parents=True, exist_ok=True)
+    add_run_log_file(cfg.outdir / "debug.log")
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     run_collected_at = started_at
     timers = _StepTimers()

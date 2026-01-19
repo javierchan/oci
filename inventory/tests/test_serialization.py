@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 
 from oci_inventory.util.serialization import REDACTED_VALUE, sanitize_for_json
-from oci_inventory.logging import JsonFormatter
+from oci_inventory.logging import JsonFormatter, LogConfig, add_run_log_file, setup_logging
 
 
 def test_sanitize_for_json_redacts_sensitive_fields() -> None:
@@ -52,3 +52,18 @@ def test_json_formatter_skips_non_serializable_extras() -> None:
     assert payload["message"] == "hello"
     assert payload["good"] == {"a": 1, "b": [1, 2]}
     assert "bad" not in payload
+
+
+def test_add_run_log_file_writes(tmp_path) -> None:
+    if getattr(setup_logging, "_configured", False):
+        setattr(setup_logging, "_configured", False)
+    setup_logging(LogConfig(level="INFO", json_logs=False))
+
+    log_path = tmp_path / "debug.log"
+    add_run_log_file(log_path)
+
+    logger = logging.getLogger("unit.test")
+    logger.info("file log test")
+
+    content = log_path.read_text(encoding="utf-8")
+    assert "file log test" in content

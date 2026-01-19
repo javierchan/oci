@@ -6,6 +6,7 @@ import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 _JSON_SCALAR_TYPES = (str, int, float, bool)
@@ -136,6 +137,26 @@ def setup_logging(config: Optional[LogConfig] = None) -> None:
     logging.getLogger("botocore").setLevel(max(level, logging.WARNING))
 
     setattr(setup_logging, "_configured", True)
+
+
+def add_run_log_file(log_path: Path) -> None:
+    """
+    Attach a file handler for per-run logging without replacing existing handlers.
+    """
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    root = logging.getLogger()
+    for handler in root.handlers:
+        if isinstance(handler, logging.FileHandler) and handler.baseFilename == str(log_path):
+            return
+
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setLevel(root.level)
+    formatter = root.handlers[0].formatter if root.handlers else None
+    if formatter is not None:
+        handler.setFormatter(formatter)
+    else:
+        handler.setFormatter(PlainFormatter())
+    root.addHandler(handler)
 
 
 def get_logger(name: str) -> logging.Logger:

@@ -113,6 +113,7 @@ def summarize_outdir(outdir: Path) -> str:
         return f"Output directory not found: {outdir}"
 
     key_files = [
+        "debug.log",
         "report.md",
         "inventory.jsonl",
         "inventory.csv",

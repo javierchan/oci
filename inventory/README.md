@@ -404,6 +404,7 @@ Each run writes to: `out/<timestamp>/`
 - report.md (execution steps, exclusions, findings, and optional GenAI summary)
 - inventory.jsonl (canonicalized, stable JSON lines)
 - inventory.csv (report fields; missing/blank values rendered as `unknown`)
+- debug.log (per-run log output; same format as console)
 - relationships.jsonl (always written; may be empty)
 - graph_nodes.jsonl (diagram-ready nodes; optional)
 - graph_edges.jsonl (diagram-ready edges; optional)
@@ -420,6 +421,7 @@ Quick reference (artifacts → purpose):
 - report.md: human-readable run log + findings; holds GenAI summary when enabled.
 - inventory.jsonl: canonical per-resource records for downstream processing/diffing.
 - inventory.csv: tabular view aligned to report fields; missing values are rendered as `unknown`.
+- debug.log: per-run log output captured to the run directory.
 - relationships.jsonl: relationship edges from enrichers + derived metadata.
 - graph_nodes.jsonl / graph_edges.jsonl / diagram_raw.mmd: raw topology outputs (optional).
 - diagram.*.mmd: architecture-focused projected views (optional).
@@ -561,6 +563,7 @@ Signer-based auth also needs a region; set `OCI_REGION` (or `OCI_CLI_REGION`) wh
 - Std logging, INFO by default
 - Structured JSON logs toggled with `--json-logs` or `OCI_INV_JSON_LOGS=1`
 - JSON logs include `event`, `step`, `phase`, and `duration_ms` when available; plain logs prefix `[step:phase]`.
+- Each run writes `out/<timestamp>/debug.log` with the same formatting as console logs.
 
 ## Development
 - Linting: ruff
