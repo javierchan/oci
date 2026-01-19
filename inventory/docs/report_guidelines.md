@@ -1,10 +1,10 @@
 # Report Guidelines (Required)
 
-This document defines how `report.md` must be structured and written for OCI inventory runs.
+This document defines how `report/report.md` must be structured and written for OCI inventory runs.
 
 ## Scope
 
-- Applies to `out/<timestamp>/report.md`.
+- Applies to `out/<timestamp>/report/report.md`.
 - Output must be deterministic, readable, and evidence-based.
 
 ## Core Principles

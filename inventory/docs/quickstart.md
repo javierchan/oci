@@ -113,28 +113,36 @@ Output structure per run:
 
 ```
 out/<timestamp>/
-  inventory.jsonl
-  inventory.csv
-  debug.log              # run logs (same format as console)
-  cost_report.md           # when --cost-report
-  cost_usage_items.csv     # when --cost-report; full Usage API rows
-  cost_usage_items_grouped.csv # when --cost-group-by; grouped multi-dim rows
-  cost_usage_items.jsonl   # when --cost-report; full Usage API items
-  cost_usage_service.csv   # when --cost-report; service view
-  cost_usage_region.csv    # when --cost-report; region view
-  cost_usage_compartment.csv # when --cost-report; compartment view
-  relationships.jsonl      # always written (may be empty)
-  graph_nodes.jsonl        # diagram-ready nodes (optional)
-  graph_edges.jsonl        # diagram-ready edges (optional)
-  diagram_raw.mmd          # Mermaid diagram (raw graph; optional)
-  diagram.tenancy.mmd      # Mermaid diagram (tenancy/compartment view; optional)
-  diagram.network.<vcn>.mmd # Mermaid diagram (per-VCN topology view; optional)
-  diagram.workload.<workload>.mmd # Mermaid diagram (workload/application view; optional)
-  diagram.consolidated.architecture.mmd # Mermaid diagram (all projections consolidated; optional)
-  diagram.consolidated.flowchart.mmd # Mermaid diagram (consolidated flowchart; optional)
-  diff.json                # when --prev provided
-  diff_summary.json        # when --prev provided
-  run_summary.json         # coverage metrics
+  inventory/
+    inventory.jsonl
+    inventory.csv
+    relationships.jsonl      # always written (may be empty)
+  cost/
+    cost_report.md           # when --cost-report
+    cost_usage_items.csv     # when --cost-report; full Usage API rows
+    cost_usage_items_grouped.csv # when --cost-group-by; grouped multi-dim rows
+    cost_usage_items.jsonl   # when --cost-report; full Usage API items
+    cost_usage_service.csv   # when --cost-report; service view
+    cost_usage_region.csv    # when --cost-report; region view
+    cost_usage_compartment.csv # when --cost-report; compartment view
+  graph/
+    graph_nodes.jsonl        # diagram-ready nodes (optional)
+    graph_edges.jsonl        # diagram-ready edges (optional)
+  diagrams/
+    raw/diagram_raw.mmd       # Mermaid diagram (raw graph; optional)
+    tenancy/diagram.tenancy.mmd # Mermaid diagram (tenancy/compartment view; optional)
+    network/diagram.network.<vcn>.mmd # Mermaid diagram (per-VCN topology view; optional)
+    workload/diagram.workload.<workload>.mmd # Mermaid diagram (workload/application view; optional)
+    consolidated/diagram.consolidated.architecture.mmd # Mermaid diagram (all projections consolidated; optional)
+    consolidated/diagram.consolidated.flowchart.mmd # Mermaid diagram (consolidated flowchart; optional)
+  report/
+    report.md               # inventory report
+  diff/
+    diff.json               # when --prev provided
+    diff_summary.json       # when --prev provided
+  logs/
+    debug.log               # run logs (same format as console)
+  run_summary.json          # coverage metrics
 ```
 
 Notes:
@@ -146,8 +154,8 @@ Notes:
 Given two inventory JSONL files (prev and curr), produce a diff:
 
 ```
-oci-inv diff --prev out/20240101T000000Z/inventory.jsonl \
-             --curr out/20240102T000000Z/inventory.jsonl \
+oci-inv diff --prev out/20240101T000000Z/inventory/inventory.jsonl \
+             --curr out/20240102T000000Z/inventory/inventory.jsonl \
              --outdir out/diff_20240102
 ```
 

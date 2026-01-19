@@ -7,7 +7,7 @@ Phase 1 implements:
 - Exports: JSONL (default) and CSV
 - Graph + diagram projections (Mermaid flowchart + consolidated architecture-beta + consolidated flowchart; disable with --no-diagrams)
 - Cost snapshot reporting via Usage API with optional OneSubscription usage (opt-in)
-- Optional GenAI narratives for report.md and cost_report.md
+- Optional GenAI narratives for report/report.md and cost/cost_report.md
 - Diffs and stable hashing (excluding collectedAt)
 - Coverage metrics and schema validation
 - Tests, docs, CI (ruff + pytest)
@@ -24,14 +24,14 @@ flowchart LR
   C --> D[Normalize records]
   D --> E[Enrich records + relationships]
   E --> F[Derive metadata relationships]
-  F --> G[Write inventory.jsonl inventory.csv]
+  F --> G[Write inventory artifacts inventory/]
   G --> H[Write run_summary.json]
-  H --> I[Build graph nodes and edges optional]
-  I --> J[Write diagram projections optional]
+  H --> I[Build graph nodes and edges graph/]
+  I --> J[Write diagram projections diagrams/]
   J --> K[Validate out timestamp schema]
   K --> L[Validate diagrams if enabled]
   L --> M[Optional diff if prev]
-  M --> N[Write report.md always]
+  M --> N[Write report/report.md always]
 ```
 
 Key guarantees:
@@ -108,13 +108,13 @@ oci-inv <subcommand> --help
 Commands:
 - Run inventory:
   ```
-  oci-inv run --outdir out --auth auto --profile DEFAULT --prev out/20240101T000000Z/inventory.jsonl \
+  oci-inv run --outdir out --auth auto --profile DEFAULT --prev out/20240101T000000Z/inventory/inventory.jsonl \
               --query "query all resources"
   ```
   Default worker settings are loaded from `config/workers.yaml` when present. Override with `--workers-*` or a different `--config` file as needed.
 - Diff two inventories:
   ```
-  oci-inv diff --prev out/prev-run/inventory.jsonl --curr out/curr-run/inventory.jsonl --outdir out/diff
+  oci-inv diff --prev out/prev-run/inventory/inventory.jsonl --curr out/curr-run/inventory/inventory.jsonl --outdir out/diff
   ```
 - Validate authentication:
   ```
@@ -187,7 +187,7 @@ allow group <group-name> to read budgets in tenancy
 ```
 
 ### Validate and refine
-- If `report.md` shows `enrichStatus=ERROR` with NotAuthorized, expand read/inspect access for the affected services.
+- If `report/report.md` shows `enrichStatus=ERROR` with NotAuthorized, expand read/inspect access for the affected services.
 - If NotFound errors dominate, treat them as expected drift (resources deleted) and re-run to confirm.
 - If Throttling errors appear, reduce `--workers-enrich` or increase `--client-connection-pool-size`.
 
@@ -269,18 +269,18 @@ oci-inv run --auth auto --profile DEFAULT --regions mx-queretaro-1 --outdir out 
 
 ### 6) Produce a diff between two inventories
 
-Option A: Run a new inventory and diff against a previous `inventory.jsonl` in one command:
+Option A: Run a new inventory and diff against a previous `inventory/inventory.jsonl` in one command:
 
 ```
 oci-inv run --auth auto --profile DEFAULT --outdir out \
-  --prev out/prev-run/inventory.jsonl \
+  --prev out/prev-run/inventory/inventory.jsonl \
   --query "query all resources"
 ```
 
 Option B: Diff any two saved inventories:
 
 ```
-oci-inv diff --prev out/prev-run/inventory.jsonl --curr out/curr-run/inventory.jsonl --outdir out/diff
+oci-inv diff --prev out/prev-run/inventory/inventory.jsonl --curr out/curr-run/inventory/inventory.jsonl --outdir out/diff
 ```
 
 ### 7) Export formats used in reporting pipelines
@@ -294,7 +294,7 @@ oci-inv run --auth auto --profile DEFAULT --outdir out --query "query all resour
 ### Notes
 
 - `--regions` limits execution to a comma-separated list (e.g., `--regions mx-queretaro-1,us-phoenix-1`).
-- For consistent diffs, compare `inventory.jsonl` files. The stable hash excludes `collectedAt` by design.
+- For consistent diffs, compare `inventory/inventory.jsonl` files. The stable hash excludes `collectedAt` by design.
 - Queries are OCI Resource Search Structured Search strings. Keep the default query exactly `query all resources` unless you intentionally scope it.
 - `--include-terminated` is reserved for future filters and currently has no effect.
 - Cost reporting uses the tenancy home region for Usage API calls; if the home region cannot be resolved, Usage API cost collection is skipped and reported.
@@ -312,18 +312,18 @@ Flags and config precedence: defaults < config file < environment < CLI
 ## Components and Usage
 This section is a quick map of every user-facing component in the CLI, what it does, and a copy/paste example.
 
-- **Inventory run** (core): discover + enrich, always writes JSONL/CSV and report.md.
+- **Inventory run** (core): discover + enrich, always writes JSONL/CSV and report/report.md.
   - Example: `oci-inv run --auth config --profile DEFAULT --regions mx-queretaro-1 --outdir out --query "query all resources where compartmentId = '<compartment_ocid>'" --genai-summary`
 - **Diff**: compare two inventories; writes diff artifacts into an out directory.
-  - Example: `oci-inv diff --prev out/old/inventory.jsonl --curr out/new/inventory.jsonl --outdir out/diff`
+  - Example: `oci-inv diff --prev out/old/inventory/inventory.jsonl --curr out/new/inventory/inventory.jsonl --outdir out/diff`
 - **Auth validation and discovery helpers**: validate credentials and list tenancy-scoped data.
   - Examples: `oci-inv validate-auth --auth auto --profile DEFAULT`; `oci-inv list-regions --auth auto`; `oci-inv list-compartments --auth auto --tenancy <tenancy_ocid>`
 - **GenAI model listing**: show OCI GenAI models and capabilities in CSV format.
   - Example: `oci-inv list-genai-models`
   - Config precedence: `OCI_INV_GENAI_CONFIG` env → `~/.config/oci-inv/genai.yaml` → `.local/genai.yaml`
-- **GenAI report summary**: optional second pass during `run` that appends an executive summary into report.md using the run’s own findings as context.
-  - Enable with `--genai-summary` on `run`. If GenAI fails, report.md is still written with an error note.
-- **Cost report (optional)**: uses Usage API (home region) for totals and optional OneSubscription usage when `--osub-subscription-id` is provided; writes `cost_report.md`.
+- **GenAI report summary**: optional second pass during `run` that appends an executive summary into report/report.md using the run’s own findings as context.
+  - Enable with `--genai-summary` on `run`. If GenAI fails, report/report.md is still written with an error note.
+- **Cost report (optional)**: uses Usage API (home region) for totals and optional OneSubscription usage when `--osub-subscription-id` is provided; writes `cost/cost_report.md`.
   - Enable with `--cost-report` on `run`.
   - Example (no diagrams): `oci-inv run --no-diagrams --cost-report --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD`
   - Example (OneSubscription): `oci-inv run --cost-report --osub-subscription-id <subscription_id> --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD`
@@ -339,19 +339,19 @@ This section is a quick map of every user-facing component in the CLI, what it d
   - Per-view exports: `cost_usage_service.csv`, `cost_usage_region.csv`, `cost_usage_compartment.csv`.
   - CSV exports replace missing/blank string or dimension values with `unknown`; numeric fields remain empty. JSONL retains nulls.
 - **Enrichment coverage**: reports which resource types in an inventory lack enrichers.
-  - Example: `oci-inv enrich-coverage --inventory out/<timestamp>/inventory.jsonl --top 10`
+  - Example: `oci-inv enrich-coverage --inventory out/<timestamp>/inventory/inventory.jsonl --top 10`
 - **Interactive wizard**: guided, preview-first UX that builds/executes the same `oci-inv` commands; safe defaults and copy/pasteable outputs.
   - Run: `oci-inv-wizard`
   - Main modes: run, diff, troubleshooting
   - Troubleshooting includes: validate-auth, list-regions, list-compartments, enrich-coverage, list-genai-models
   - Advanced run options: diagram generation/validation, cost report inputs (including OneSubscription subscription ID), assessment metadata
   - Can save reusable wizard plan files (YAML/JSON) from the interactive flow
-- **Outputs**: deterministic artifacts per run under `out/<timestamp>/` (JSONL, CSV, report.md, graph files, optional diff files when `--prev` is provided).
+- **Outputs**: deterministic artifacts per run under `out/<timestamp>/` with structured subfolders for inventory, cost, diagrams, logs, and reports.
   - Hashing excludes `collectedAt` to keep diffs stable.
 
 Notes for developers:
 - The CLI is read-only; all SDK calls are list/get style. No mutations are performed.
-- Region failures are tolerated and captured in report.md; GenAI is optional and isolated from the main run.
+- Region failures are tolerated and captured in report/report.md; GenAI is optional and isolated from the main run.
 - Mermaid diagrams are generated as `.mmd` files unless `--no-diagrams` is set. Mermaid CLI (`mmdc`) is required and preflight installs it;
   validation runs automatically when diagrams are enabled.
   (During installation you may see npm warnings about Puppeteer deprecations; those are typically non-fatal.)
@@ -359,27 +359,29 @@ Notes for developers:
 
 ## Known Issues and Notes
 
-- Zero-cost `cost_report.md` outputs can occur when the Usage API returns no data for the specified range. Use a full-day UTC range aligned to the Cost Analysis console, set `--cost-end` to the next day (end is effectively exclusive), and confirm the tenancy home region is correct.
+- Zero-cost `cost/cost_report.md` outputs can occur when the Usage API returns no data for the specified range. Use a full-day UTC range aligned to the Cost Analysis console, set `--cost-end` to the next day (end is effectively exclusive), and confirm the tenancy home region is correct.
 - Large ranges can still time out; shorten the range or split it into smaller windows when validating data.
 
 ## Output flow (artifacts and consumers)
 ```mermaid
 flowchart TB
 subgraph out_ts[out timestamp]
-    inv[inventory.jsonl]
-    csv[inventory.csv]
-    rel[relationships.jsonl]
-    nodes[graph_nodes.jsonl optional]
-    edges[graph_edges.jsonl optional]
-    raw[diagram_raw.mmd optional]
-    ten[diagram.tenancy.mmd optional]
-    net[diagram.network.vcn.mmd optional]
-    wl[diagram.workload.workload.mmd optional]
-    cons[diagram.consolidated.architecture.mmd optional]
-    cons_fc[diagram.consolidated.flowchart.mmd optional]
-    rpt[report.md]
+    inv[inventory/inventory.jsonl]
+    csv[inventory/inventory.csv]
+    rel[inventory/relationships.jsonl]
+    nodes[graph/graph_nodes.jsonl optional]
+    edges[graph/graph_edges.jsonl optional]
+    raw[diagrams/raw/diagram_raw.mmd optional]
+    ten[diagrams/tenancy/diagram.tenancy.mmd optional]
+    net[diagrams/network/diagram.network.vcn.mmd optional]
+    wl[diagrams/workload/diagram.workload.workload.mmd optional]
+    cons[diagrams/consolidated/diagram.consolidated.architecture.mmd optional]
+    cons_fc[diagrams/consolidated/diagram.consolidated.flowchart.mmd optional]
+    rpt[report/report.md]
     sum[run_summary.json]
-    diff[diff.json and diff_summary.json optional]
+    cost[cost/cost_report.md optional]
+    diff[diff/diff.json diff_summary.json optional]
+    log[logs/debug.log]
   end
   inv --> rpt
   sum --> rpt
@@ -400,32 +402,36 @@ subgraph out_ts[out timestamp]
 ```
 
 ## Output Contract
-Each run writes to: `out/<timestamp>/`
-- report.md (execution steps, exclusions, findings, and optional GenAI summary)
-- inventory.jsonl (canonicalized, stable JSON lines)
-- inventory.csv (report fields; missing/blank values rendered as `unknown`)
-- debug.log (per-run log output; same format as console)
-- relationships.jsonl (always written; may be empty)
-- graph_nodes.jsonl (diagram-ready nodes; optional)
-- graph_edges.jsonl (diagram-ready edges; optional)
-- diagram_raw.mmd (Mermaid diagram; raw graph; optional)
-- diagram.tenancy.mmd (Mermaid diagram; tenancy/compartment view; optional)
-- diagram.network.<vcn>.mmd (Mermaid diagram; per-VCN topology view; optional)
-- diagram.workload.<workload>.mmd (Mermaid diagram; workload/application view; optional)
-- diagram.consolidated.architecture.mmd (Mermaid architecture-beta diagram; all projections consolidated, edges are unlabelled by design; optional; respects `--diagram-depth`)
-- diagram.consolidated.flowchart.mmd (Mermaid flowchart diagram; consolidated view with configurable depth; optional; respects `--diagram-depth`)
-- diff.json + diff_summary.json (when --prev provided)
+Each run writes to: `out/<timestamp>/` with structured subfolders.
+- report/report.md (execution steps, exclusions, findings, and optional GenAI summary)
+- inventory/inventory.jsonl (canonicalized, stable JSON lines)
+- inventory/inventory.csv (report fields; missing/blank values rendered as `unknown`)
+- logs/debug.log (per-run log output; same format as console)
+- inventory/relationships.jsonl (always written; may be empty)
+- graph/graph_nodes.jsonl (diagram-ready nodes; optional)
+- graph/graph_edges.jsonl (diagram-ready edges; optional)
+- diagrams/raw/diagram_raw.mmd (Mermaid diagram; raw graph; optional)
+- diagrams/tenancy/diagram.tenancy.mmd (Mermaid diagram; tenancy/compartment view; optional)
+- diagrams/network/diagram.network.<vcn>.mmd (Mermaid diagram; per-VCN topology view; optional)
+- diagrams/workload/diagram.workload.<workload>.mmd (Mermaid diagram; workload/application view; optional)
+- diagrams/consolidated/diagram.consolidated.architecture.mmd (Mermaid architecture-beta diagram; all projections consolidated, edges are unlabelled by design; optional; respects `--diagram-depth`)
+- diagrams/consolidated/diagram.consolidated.flowchart.mmd (Mermaid flowchart diagram; consolidated view with configurable depth; optional; respects `--diagram-depth`)
+- cost/cost_report.md (when --cost-report provided)
+- cost/cost_usage_items.csv + cost/cost_usage_items_grouped.csv + cost/cost_usage_items.jsonl (when --cost-report provided)
+- cost/cost_usage_service.csv + cost/cost_usage_region.csv + cost/cost_usage_compartment.csv (when --cost-report provided)
+- diff/diff.json + diff/diff_summary.json (when --prev provided)
 - run_summary.json (coverage metrics)
 
 Quick reference (artifacts → purpose):
-- report.md: human-readable run log + findings; holds GenAI summary when enabled.
-- inventory.jsonl: canonical per-resource records for downstream processing/diffing.
-- inventory.csv: tabular view aligned to report fields; missing values are rendered as `unknown`.
-- debug.log: per-run log output captured to the run directory.
-- relationships.jsonl: relationship edges from enrichers + derived metadata.
-- graph_nodes.jsonl / graph_edges.jsonl / diagram_raw.mmd: raw topology outputs (optional).
-- diagram.*.mmd: architecture-focused projected views (optional).
-- diff.json / diff_summary.json: change set when `--prev` is used.
+- report/report.md: human-readable run log + findings; holds GenAI summary when enabled.
+- inventory/inventory.jsonl: canonical per-resource records for downstream processing/diffing.
+- inventory/inventory.csv: tabular view aligned to report fields; missing values are rendered as `unknown`.
+- logs/debug.log: per-run log output captured to the run directory.
+- inventory/relationships.jsonl: relationship edges from enrichers + derived metadata.
+- graph/graph_nodes.jsonl / graph/graph_edges.jsonl / diagrams/raw/diagram_raw.mmd: raw topology outputs (optional).
+- diagrams/**/diagram*.mmd: architecture-focused projected views (optional).
+- cost/cost_report.md + cost/cost_usage_*.{csv,jsonl}: cost snapshot outputs (optional).
+- diff/diff.json / diff/diff_summary.json: change set when `--prev` is used.
 - run_summary.json: coverage/metrics snapshot for automation.
 
 JSONL stability notes:
@@ -435,8 +441,8 @@ JSONL stability notes:
 - Large runs may create a temporary `.inventory_chunks` directory inside the outdir while streaming records; it is removed on successful completion.
 
 Schema validation:
-- Every run validates `inventory.jsonl`, `relationships.jsonl`, and `run_summary.json`.
-- Graph artifacts (`graph_nodes.jsonl`, `graph_edges.jsonl`) are validated when diagrams are enabled.
+- Every run validates `inventory/inventory.jsonl`, `inventory/relationships.jsonl`, and `run_summary.json`.
+- Graph artifacts (`graph/graph_nodes.jsonl`, `graph/graph_edges.jsonl`) are validated when diagrams are enabled.
 - Validation warnings are logged; validation errors fail the run.
 
 ## Enrichment
@@ -563,7 +569,7 @@ Signer-based auth also needs a region; set `OCI_REGION` (or `OCI_CLI_REGION`) wh
 - Std logging, INFO by default (overridden by config/workers.yaml, env, or CLI)
 - Structured JSON logs toggled with `--json-logs` or `OCI_INV_JSON_LOGS=1`
 - JSON logs include `event`, `step`, `phase`, and `duration_ms` when available; plain logs prefix `[step:phase]`.
-- Each run writes `out/<timestamp>/debug.log` with the same formatting as console logs.
+- Each run writes `out/<timestamp>/logs/debug.log` with the same formatting as console logs.
 - Repo defaults: `config/workers.yaml` sets `log_level: DEBUG` and `json_logs: true`; edit that file to change the baseline.
 
 ## Development
@@ -589,7 +595,7 @@ oci-inv-wizard
 
 What it does:
 - Walks you through run/diff options, shows the exact `oci-inv` command before execution.
-- Writes the same outputs as the CLI (`out/<timestamp>/`), so artifacts remain consistent.
+- Writes the same outputs as the CLI (`out/<timestamp>/` with structured subfolders), so artifacts remain consistent.
 - Supports plan files for non-interactive use (see below for an example).
 - Covers all CLI modes, with advanced run options for diagram validation, schema validation, cost reporting, and assessments.
 - Lets you save interactive runs as plan files for reproducible execution.
@@ -597,7 +603,7 @@ What it does:
 
 ## GenAI Configuration
 
-GenAI features are available today for `list-genai-models` and `--genai-summary`. The tool redacts OCIDs/URLs in prompts and responses; if GenAI is misconfigured, main runs still complete and record the failure in report.md.
+GenAI features are available today for `list-genai-models` and `--genai-summary`. The tool redacts OCIDs/URLs in prompts and responses; if GenAI is misconfigured, main runs still complete and record the failure in report/report.md.
 
 Config precedence (first found wins):
 - `OCI_INV_GENAI_CONFIG` (env path)

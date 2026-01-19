@@ -510,7 +510,7 @@ def main() -> None:
                 "What do you want to do?",
                 [
                     ("Run inventory", "Discover resources and write a new inventory run."),
-                    ("Diff inventories", "Compare two inventory.jsonl files and write a diff."),
+                    ("Diff inventories", "Compare two inventory/inventory.jsonl files and write a diff."),
                     ("Troubleshooting", "Diagnostics and helper utilities."),
                     ("Exit", "Quit the wizard."),
                 ],
@@ -531,7 +531,7 @@ def main() -> None:
                     ("Validate auth", "Validate OCI credentials and auth configuration."),
                     ("List regions", "Show subscribed regions for the tenancy."),
                     ("List compartments", "List compartments in the tenancy."),
-                    ("Enrichment coverage", "Report missing enrichers in an inventory.jsonl."),
+                    ("Enrichment coverage", "Report missing enrichers in an inventory/inventory.jsonl."),
                     ("List GenAI models", "List available OCI GenAI models and capabilities."),
                 ],
                 default="Validate auth",
@@ -677,7 +677,7 @@ def main() -> None:
 
         if mode == "Enrichment coverage":
             _section("Enrichment Coverage")
-            inventory_path = _ask_existing_file("inventory.jsonl path")
+            inventory_path = _ask_existing_file("inventory/inventory.jsonl path")
             top_n = _ask_int("Top missing types to show", default=10, min_value=1)
             plan = build_coverage_plan(
                 inventory=inventory_path,
@@ -695,8 +695,8 @@ def main() -> None:
 
         if mode == "Diff inventories":
             _section("Diff Inventories")
-            prev = _ask_existing_file("Prev inventory.jsonl path")
-            curr = _ask_existing_file("Curr inventory.jsonl path")
+            prev = _ask_existing_file("Prev inventory/inventory.jsonl path")
+            curr = _ask_existing_file("Curr inventory/inventory.jsonl path")
             outdir = _ask_outdir_base("Diff output dir", default=str(Path("out") / "diff"))
             plan = build_diff_plan(
                 auth=auth,
@@ -778,7 +778,7 @@ def main() -> None:
                 console.print("[dim]Example: mx-queretaro-1,us-phoenix-1[/dim]")
 
         genai_summary = _ask_bool(
-            "Generate GenAI Executive Summary in report.md? (uses OCI_INV_GENAI_CONFIG, else ~/.config/oci-inv/genai.yaml, else inventory/.local/genai.yaml)",
+            "Generate GenAI Executive Summary in report/report.md? (uses OCI_INV_GENAI_CONFIG, else ~/.config/oci-inv/genai.yaml, else inventory/.local/genai.yaml)",
             default=False,
         )
 
@@ -789,7 +789,7 @@ def main() -> None:
 
         include_terminated = _ask_bool("Include terminated resources?", default=False)
 
-        prev_raw = _ask_str("Prev inventory.jsonl (optional)", default="", allow_blank=True).strip()
+        prev_raw = _ask_str("Prev inventory/inventory.jsonl (optional)", default="", allow_blank=True).strip()
         prev = Path(prev_raw) if prev_raw else None
         if prev and (not prev.exists() or not prev.is_file()):
             prev = None
@@ -882,7 +882,7 @@ def main() -> None:
             diagram_depth = int(diagram_depth_choice)
 
             cost_report_choice = _ask_choice(
-                "Generate cost_report.md (Usage API, read-only)?",
+                "Generate cost/cost_report.md (Usage API, read-only)?",
                 [
                     ("Default", "Use CLI/config defaults."),
                     ("Enable", "Generate cost report."),

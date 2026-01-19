@@ -12,6 +12,7 @@ from oci_inventory.export.graph import (
     write_mermaid,
 )
 from oci_inventory.export.jsonl import write_jsonl
+from oci_inventory.normalize.schema import resolve_output_paths
 from oci_inventory.normalize.transform import sort_relationships, stable_json_dumps
 
 
@@ -319,11 +320,17 @@ def test_coverage_metrics_include_type_status_matrix() -> None:
 
 def test_validate_outdir_schema_accepts_minimal_artifacts(tmp_path) -> None:
     outdir = tmp_path
-    inv = outdir / "inventory.jsonl"
-    rels = outdir / "relationships.jsonl"
-    nodes = outdir / "graph_nodes.jsonl"
-    edges = outdir / "graph_edges.jsonl"
-    summary = outdir / "run_summary.json"
+    paths = resolve_output_paths(outdir)
+    inv = paths.inventory_jsonl
+    rels = paths.relationships_jsonl
+    nodes = paths.graph_nodes_jsonl
+    edges = paths.graph_edges_jsonl
+    summary = paths.run_summary_json
+
+    inv.parent.mkdir(parents=True, exist_ok=True)
+    rels.parent.mkdir(parents=True, exist_ok=True)
+    nodes.parent.mkdir(parents=True, exist_ok=True)
+    edges.parent.mkdir(parents=True, exist_ok=True)
 
     inv_record = {
         "ocid": "ocid1.instance.oc1..inst",
@@ -408,9 +415,13 @@ def test_validate_outdir_schema_accepts_minimal_artifacts(tmp_path) -> None:
 
 def test_validate_outdir_schema_allows_missing_graph_when_disabled(tmp_path) -> None:
     outdir = tmp_path
-    inv = outdir / "inventory.jsonl"
-    rels = outdir / "relationships.jsonl"
-    summary = outdir / "run_summary.json"
+    paths = resolve_output_paths(outdir)
+    inv = paths.inventory_jsonl
+    rels = paths.relationships_jsonl
+    summary = paths.run_summary_json
+
+    inv.parent.mkdir(parents=True, exist_ok=True)
+    rels.parent.mkdir(parents=True, exist_ok=True)
 
     inv_record = {
         "ocid": "ocid1.instance.oc1..inst",
@@ -495,9 +506,15 @@ def test_offline_pipeline_writes_schema_artifacts(tmp_path) -> None:
         },
     ]
 
-    write_jsonl(records, outdir / "inventory.jsonl")
+    paths = resolve_output_paths(outdir)
+    paths.inventory_dir.mkdir(parents=True, exist_ok=True)
+    paths.graph_dir.mkdir(parents=True, exist_ok=True)
+    paths.diagrams_dir.mkdir(parents=True, exist_ok=True)
+    paths.diagrams_raw_dir.mkdir(parents=True, exist_ok=True)
 
-    rels_path = outdir / "relationships.jsonl"
+    write_jsonl(records, paths.inventory_jsonl)
+
+    rels_path = paths.relationships_jsonl
     rels_path.write_text(
         "\n".join(stable_json_dumps(r) for r in sort_relationships(relationships)) + "\n",
         encoding="utf-8",
@@ -506,12 +523,12 @@ def test_offline_pipeline_writes_schema_artifacts(tmp_path) -> None:
     metrics = _coverage_metrics(records)
     summary = dict(metrics)
     summary["schema_version"] = OUT_SCHEMA_VERSION
-    (outdir / "run_summary.json").write_text(stable_json_dumps(summary), encoding="utf-8")
+    paths.run_summary_json.write_text(stable_json_dumps(summary), encoding="utf-8")
 
     nodes, edges = build_graph(records, relationships)
-    write_graph(outdir, nodes, edges)
-    write_mermaid(outdir, nodes, edges)
-    write_diagram_projections(outdir, nodes, edges)
+    write_graph(paths.graph_dir, nodes, edges)
+    write_mermaid(paths.diagrams_raw_dir, nodes, edges)
+    write_diagram_projections(paths.diagrams_dir, nodes, edges)
 
     result = _validate_outdir_schema(outdir)
     assert result.errors == []

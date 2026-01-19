@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict
 
 
@@ -24,6 +26,73 @@ class NormalizedRecord(TypedDict, total=False):
     enrichError: Optional[str]
     details: Dict[str, Any]
     relationships: List[Relationship]
+
+
+@dataclass(frozen=True)
+class OutputPaths:
+    root: Path
+    inventory_dir: Path
+    cost_dir: Path
+    report_dir: Path
+    graph_dir: Path
+    diagrams_dir: Path
+    diagrams_raw_dir: Path
+    diagrams_tenancy_dir: Path
+    diagrams_network_dir: Path
+    diagrams_workload_dir: Path
+    diagrams_consolidated_dir: Path
+    diff_dir: Path
+    logs_dir: Path
+    inventory_jsonl: Path
+    inventory_csv: Path
+    relationships_jsonl: Path
+    graph_nodes_jsonl: Path
+    graph_edges_jsonl: Path
+    report_md: Path
+    cost_report_md: Path
+    run_summary_json: Path
+    debug_log: Path
+
+
+def resolve_output_paths(outdir: Path) -> OutputPaths:
+    root = outdir
+    inventory_dir = root / "inventory"
+    cost_dir = root / "cost"
+    report_dir = root / "report"
+    graph_dir = root / "graph"
+    diagrams_dir = root / "diagrams"
+    diagrams_raw_dir = diagrams_dir / "raw"
+    diagrams_tenancy_dir = diagrams_dir / "tenancy"
+    diagrams_network_dir = diagrams_dir / "network"
+    diagrams_workload_dir = diagrams_dir / "workload"
+    diagrams_consolidated_dir = diagrams_dir / "consolidated"
+    diff_dir = root / "diff"
+    logs_dir = root / "logs"
+
+    return OutputPaths(
+        root=root,
+        inventory_dir=inventory_dir,
+        cost_dir=cost_dir,
+        report_dir=report_dir,
+        graph_dir=graph_dir,
+        diagrams_dir=diagrams_dir,
+        diagrams_raw_dir=diagrams_raw_dir,
+        diagrams_tenancy_dir=diagrams_tenancy_dir,
+        diagrams_network_dir=diagrams_network_dir,
+        diagrams_workload_dir=diagrams_workload_dir,
+        diagrams_consolidated_dir=diagrams_consolidated_dir,
+        diff_dir=diff_dir,
+        logs_dir=logs_dir,
+        inventory_jsonl=inventory_dir / "inventory.jsonl",
+        inventory_csv=inventory_dir / "inventory.csv",
+        relationships_jsonl=inventory_dir / "relationships.jsonl",
+        graph_nodes_jsonl=graph_dir / "graph_nodes.jsonl",
+        graph_edges_jsonl=graph_dir / "graph_edges.jsonl",
+        report_md=report_dir / "report.md",
+        cost_report_md=cost_dir / "cost_report.md",
+        run_summary_json=root / "run_summary.json",
+        debug_log=logs_dir / "debug.log",
+    )
 
 
 # Fields to include in CSV export ("report fields only")
@@ -107,7 +176,7 @@ GRAPH_EDGE_FIELDS: List[str] = [
 ]
 
 OUT_SCHEMA_FIELD_DOCS: Dict[str, Dict[str, str]] = {
-    "inventory.jsonl": {
+    "inventory/inventory.jsonl": {
         "ocid": "Unique OCI resource OCID.",
         "resourceType": "Resource type from OCI Search summary.",
         "region": "Region identifier.",
@@ -116,7 +185,7 @@ OUT_SCHEMA_FIELD_DOCS: Dict[str, Dict[str, str]] = {
         "details": "Enricher-provided metadata payload (service-specific).",
         "relationships": "List of {source_ocid, relation_type, target_ocid}.",
     },
-    "relationships.jsonl": {
+    "inventory/relationships.jsonl": {
         "source_ocid": "Source resource OCID.",
         "relation_type": "Relationship type label.",
         "target_ocid": "Target resource OCID.",
@@ -131,7 +200,7 @@ OUT_SCHEMA_FIELD_DOCS: Dict[str, Dict[str, str]] = {
         "counts_by_enrich_status": "Map of enrichStatus -> count.",
         "counts_by_resource_type_and_status": "Nested map of resourceType -> enrichStatus -> count.",
     },
-    "graph_nodes.jsonl": {
+    "graph/graph_nodes.jsonl": {
         "nodeId": "Resource OCID.",
         "nodeType": "Categorized node type (e.g., network.Subnet).",
         "nodeCategory": "High-level class: compute/network/security/compartment/other.",
@@ -143,7 +212,7 @@ OUT_SCHEMA_FIELD_DOCS: Dict[str, Dict[str, str]] = {
         "enrichStatus": "Enrichment status.",
         "enrichError": "Enrichment error message, if any.",
     },
-    "graph_edges.jsonl": {
+    "graph/graph_edges.jsonl": {
         "source_ocid": "Source node OCID.",
         "target_ocid": "Target node OCID.",
         "relation_type": "Relationship type label.",

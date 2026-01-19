@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from .normalize.schema import resolve_output_paths
 from .normalize.transform import group_workload_candidates
 
 REPORT_GUIDELINES_PATHS = ("docs/report_guidelines.md",)
@@ -369,8 +370,9 @@ def _read_jsonl(path: Path, *, max_rows: int = 50_000) -> List[Dict[str, Any]]:
 def _graph_artifact_summary(outdir: Optional[Path]) -> Optional[Dict[str, Any]]:
     if not outdir:
         return None
-    nodes_path = outdir / "graph_nodes.jsonl"
-    edges_path = outdir / "graph_edges.jsonl"
+    paths = resolve_output_paths(outdir)
+    nodes_path = paths.graph_nodes_jsonl
+    edges_path = paths.graph_edges_jsonl
     if not nodes_path.is_file() or not edges_path.is_file():
         return None
 
@@ -677,10 +679,13 @@ def render_run_report_md(
 
     # Graph artifacts (nodes/edges) summary, if present.
     outdir = Path(str(cfg_dict.get("outdir") or "")).expanduser() if cfg_dict.get("outdir") else None
+    paths = resolve_output_paths(outdir) if outdir else None
     graph_summary = _graph_artifact_summary(outdir)
     if graph_summary:
         lines.append("## Graph Artifacts (Summary)")
-        lines.append("This section summarizes `graph_nodes.jsonl` and `graph_edges.jsonl` generated for this run.")
+        lines.append(
+            "This section summarizes `graph/graph_nodes.jsonl` and `graph/graph_edges.jsonl` generated for this run."
+        )
         lines.append("")
 
         node_rows: List[List[str]] = []
@@ -802,9 +807,9 @@ def render_run_report_md(
     # Network Architecture
     lines.append("## Network Architecture")
     lines.append("Diagram artifacts (generated in the output directory):")
-    lines.append("- `diagram_raw.mmd` (full graph export; intentionally noisy)")
-    lines.append("- `graph_nodes.jsonl` / `graph_edges.jsonl` (graph data)")
-    lines.append("- `diagram*.mmd` (architectural projections, if enabled)")
+    lines.append("- `diagrams/raw/diagram_raw.mmd` (full graph export; intentionally noisy)")
+    lines.append("- `graph/graph_nodes.jsonl` / `graph/graph_edges.jsonl` (graph data)")
+    lines.append("- `diagrams/**/diagram*.mmd` (architectural projections, if enabled)")
     lines.append("")
 
     # Graph-derived connectivity (only if edges include relationships beyond IN_COMPARTMENT)
@@ -1208,21 +1213,21 @@ def render_run_report_md(
         lines.append(f"- {r}")
     lines.append("")
 
-    # Complete inventory listing (for parity with inventory.csv)
+    # Complete inventory listing (for parity with inventory/inventory.csv)
     lines.append("## Inventory Listing (Complete)")
     lines.append(
-        "Complete list of resources discovered in scope (matches the exported `inventory.csv`; OCIDs omitted)."
+        "Complete list of resources discovered in scope (matches the exported `inventory/inventory.csv`; OCIDs omitted)."
     )
 
     csv_rows: Optional[int] = None
-    if outdir:
-        csv_rows = _count_csv_rows(outdir / "inventory.csv")
+    if paths:
+        csv_rows = _count_csv_rows(paths.inventory_csv)
     if csv_rows is not None:
         if csv_rows == len(discovered_records):
-            lines.append(f"Rows: {len(discovered_records)} (matches inventory.csv)")
+            lines.append(f"Rows: {len(discovered_records)} (matches inventory/inventory.csv)")
         else:
             lines.append(
-                f"Rows: {len(discovered_records)} (inventory.csv has {csv_rows}; investigate export/inputs mismatch)"
+                f"Rows: {len(discovered_records)} (inventory/inventory.csv has {csv_rows}; investigate export/inputs mismatch)"
             )
     else:
         lines.append(f"Rows: {len(discovered_records)}")
@@ -1436,6 +1441,7 @@ def write_run_report_md(
     finished_at: Optional[str] = None,
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
+    paths = resolve_output_paths(outdir)
     started = started_at or _utc_now_iso()
     finished = finished_at or _utc_now_iso()
 
@@ -1470,7 +1476,8 @@ def write_run_report_md(
         fatal_error=fatal_error,
     )
 
-    p = outdir / "report.md"
+    p = paths.report_md
+    p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text, encoding="utf-8")
     return p
 
@@ -1877,6 +1884,7 @@ def write_run_report_md(
     finished_at: Optional[str] = None,
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
+    paths = resolve_output_paths(outdir)
     started = started_at or _utc_now_iso()
     finished = finished_at or _utc_now_iso()
 
@@ -1911,7 +1919,8 @@ def write_run_report_md(
         fatal_error=fatal_error,
     )
 
-    p = outdir / "report.md"
+    p = paths.report_md
+    p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text, encoding="utf-8")
     return p
 
@@ -2090,6 +2099,7 @@ def write_cost_report_md(
     narrative_errors: Optional[Dict[str, str]] = None,
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
+    paths = resolve_output_paths(outdir)
     try:
         cfg_dict = asdict(cfg)
     except Exception:
@@ -2112,7 +2122,8 @@ def write_cost_report_md(
         narratives=narratives,
         narrative_errors=narrative_errors,
     )
-    p = outdir / "cost_report.md"
+    p = paths.cost_report_md
+    p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text, encoding="utf-8")
     return p
 
