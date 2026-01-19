@@ -19,9 +19,10 @@ DEFAULT_WORKERS_REGION = 6
 DEFAULT_WORKERS_ENRICH = 24
 DEFAULT_WORKERS_COST = 1
 DEFAULT_WORKERS_EXPORT = 1
+DEFAULT_CLIENT_CONNECTION_POOL_SIZE = 24
 DEFAULT_SCHEMA_VALIDATION = "auto"
 DEFAULT_SCHEMA_SAMPLE_RECORDS = 5000
-DEFAULT_DIAGRAM_DEPTH = 3
+DEFAULT_DIAGRAM_DEPTH = 2
 AUTH_METHODS = {"auto", "config", "instance", "resource", "security_token"}
 ALLOWED_CONFIG_KEYS = {
     "outdir",
@@ -119,7 +120,7 @@ class RunConfig:
     workers_enrich: int = DEFAULT_WORKERS_ENRICH
     workers_cost: int = DEFAULT_WORKERS_COST
     workers_export: int = DEFAULT_WORKERS_EXPORT
-    client_connection_pool_size: Optional[int] = None
+    client_connection_pool_size: Optional[int] = DEFAULT_CLIENT_CONNECTION_POOL_SIZE
     regions: Optional[List[str]] = None
 
     # Optional features
@@ -326,7 +327,11 @@ def load_run_config(
 
     # common flags builder
     def add_common(p: argparse.ArgumentParser) -> None:
-        p.add_argument("--config", type=Path, help="Optional YAML/JSON config file")
+        p.add_argument(
+            "--config",
+            type=Path,
+            help="Optional YAML/JSON config file (defaults to config/workers.yaml when present)",
+        )
         p.add_argument(
             "--json-logs",
             action=argparse.BooleanOptionalAction,
@@ -338,7 +343,10 @@ def load_run_config(
             "--client-connection-pool-size",
             type=int,
             default=None,
-            help="HTTP connection pool size per OCI SDK client (default: SDK default)",
+            help=(
+                "HTTP connection pool size per OCI SDK client "
+                f"(default {DEFAULT_CLIENT_CONNECTION_POOL_SIZE} when repo defaults are used)"
+            ),
         )
         # Auth
         p.add_argument(
@@ -572,7 +580,7 @@ def load_run_config(
         "workers_enrich": DEFAULT_WORKERS_ENRICH,
         "workers_cost": DEFAULT_WORKERS_COST,
         "workers_export": DEFAULT_WORKERS_EXPORT,
-        "client_connection_pool_size": None,
+        "client_connection_pool_size": DEFAULT_CLIENT_CONNECTION_POOL_SIZE,
         "genai_summary": False,
         "validate_diagrams": False,
         "diagrams": True,
@@ -597,10 +605,14 @@ def load_run_config(
         "assessment_capabilities": None,
     }
 
-    # config file
+    # config file (auto-load repo defaults when present)
     file_cfg: Dict[str, Any] = {}
     if getattr(ns, "config", None):
         file_cfg = _normalize_config_file(_parse_config_file(Path(ns.config)))
+    else:
+        default_cfg_path = Path("config") / "workers.yaml"
+        if default_cfg_path.exists():
+            file_cfg = _normalize_config_file(_parse_config_file(default_cfg_path))
 
     # env
     env_cfg: Dict[str, Any] = _compact_dict(

@@ -109,10 +109,9 @@ Commands:
 - Run inventory:
   ```
   oci-inv run --outdir out --auth auto --profile DEFAULT --prev out/20240101T000000Z/inventory.jsonl \
-              --workers-region 6 --workers-enrich 24 --workers-cost 2 --workers-export 2 \
               --query "query all resources"
   ```
-  Opt-in worker overrides for cost collection/export are available via `--workers-cost` and `--workers-export` (defaults are 1 unless explicitly set).
+  Default worker settings are loaded from `config/workers.yaml` when present. Override with `--workers-*` or a different `--config` file as needed.
 - Diff two inventories:
   ```
   oci-inv diff --prev out/prev-run/inventory.jsonl --curr out/curr-run/inventory.jsonl --outdir out/diff
@@ -193,14 +192,14 @@ allow group <group-name> to read budgets in tenancy
 - If Throttling errors appear, reduce `--workers-enrich` or increase `--client-connection-pool-size`.
 
 ## Performance tuning
-- Worker overrides are opt-in: `--config config/workers.yaml` (region/enrich/cost/export workers).
+- Default run settings are loaded from `config/workers.yaml` when present (region/enrich/cost/export workers, connection pool size, diagram depth). Use `--config` to override.
 - Schema validation modes: `--validate-schema auto|full|sampled|off` and `--validate-schema-sample N`.
-- Consolidated diagram depth: `--diagram-depth 1|2|3` (1=tenancy/compartments+VCN/subnet/gateways, 2=add workloads, 3=add workload edges). Applies to `diagram.consolidated.architecture.mmd` and `diagram.consolidated.flowchart.mmd`.
+- Consolidated diagram depth: `--diagram-depth 1|2|3` (1=tenancy/compartments+VCN/subnet/gateways, 2=add workloads, 3=add workload edges). Default is 2 when `config/workers.yaml` is loaded. Applies to `diagram.consolidated.architecture.mmd` and `diagram.consolidated.flowchart.mmd`.
 - Consolidated diagrams auto-reduce depth when Mermaid text limits are exceeded; a NOTE comment is added to the output when this happens.
 - Network/workload diagrams are skipped if a single diagram exceeds Mermaid text limits; the skip is logged for visibility.
 - Use `--no-diagrams` when you only need inventory/cost outputs.
 - OCI SDK clients are cached per service+region; set `OCI_INV_DISABLE_CLIENT_CACHE=1` to disable.
-- Increase OCI SDK HTTP connection pool size with `--client-connection-pool-size N` or `OCI_INV_CLIENT_CONNECTION_POOL_SIZE` to reduce pool churn in high-concurrency runs.
+- Increase OCI SDK HTTP connection pool size with `--client-connection-pool-size N` or `OCI_INV_CLIENT_CONNECTION_POOL_SIZE` to reduce pool churn in high-concurrency runs (repo default is 24).
 - Sizing tip: set `--client-connection-pool-size` to at least `--workers-enrich` when you see connection pool warnings.
 - The pool size applies to the OCI SDK vendored HTTP stack (`oci._vendor.requests`), so it targets the same connections that emit pool warnings.
 - If warnings persist, increase `--client-connection-pool-size` or reduce `--workers-enrich`.
@@ -590,7 +589,7 @@ What it does:
 - Supports plan files for non-interactive use (see below for an example).
 - Covers all CLI modes, with advanced run options for diagram validation, schema validation, cost reporting, and assessments.
 - Lets you save interactive runs as plan files for reproducible execution.
-- Prompts for an optional config file path (default `config/workers.yaml`; enter `none` to skip).
+- Defaults to `config/workers.yaml` (auto-loaded by the CLI when present); you can override it with a different config path.
 
 ## GenAI Configuration
 
@@ -635,7 +634,7 @@ oci-inv-wizard --from wizard-run.yaml --dry-run
 oci-inv-wizard --from wizard-run.yaml --yes
 ```
 
-Opt-in worker defaults are also provided in `config/workers.yaml` for reuse with `--config config/workers.yaml` (this file is not loaded automatically).
+`config/workers.yaml` is auto-loaded when present and provides safe default run settings; use `--config` to point at a different file.
 
 ## Docs
 - docs/quickstart.md: minimal getting started

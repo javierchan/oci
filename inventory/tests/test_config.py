@@ -9,18 +9,22 @@ from oci_inventory.config import DEFAULT_QUERY, RunConfig, load_run_config
 
 
 def test_default_query_and_workers_from_defaults(monkeypatch) -> None:
-    # No env, no config file, only "run" command
+    # No env, no explicit config file, only "run" command (repo defaults apply)
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(repo_root)
     command, cfg = load_run_config(argv=["run"])
     assert command == "run"
     assert isinstance(cfg, RunConfig)
     assert cfg.query == DEFAULT_QUERY  # must be "query all resources"
     assert cfg.workers_region > 0
     assert cfg.workers_enrich > 0
-    assert cfg.workers_cost > 0
-    assert cfg.workers_export > 0
+    assert cfg.workers_cost == 2
+    assert cfg.workers_export == 2
     assert cfg.auth == "auto"
     assert cfg.schema_validation == "auto"
     assert cfg.schema_sample_records > 0
+    assert cfg.client_connection_pool_size == 24
+    assert cfg.diagram_depth == 2
 
 
 def test_env_overrides_query(monkeypatch) -> None:
@@ -61,6 +65,9 @@ def test_repo_workers_config_file_loads() -> None:
     assert cfg.workers_enrich == 24
     assert cfg.workers_cost == 2
     assert cfg.workers_export == 2
+    assert cfg.client_connection_pool_size == 24
+    assert cfg.diagram_depth == 2
+    assert cfg.schema_validation == "auto"
 
 
 def test_env_overrides_config_file(monkeypatch, tmp_path) -> None:
