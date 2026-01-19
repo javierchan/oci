@@ -718,13 +718,13 @@ def main() -> None:
             )
         outdir = _ask_outdir_base("Output base dir", default="out")
         config_path = _ask_optional_existing_file(
-            "Config file path (enter 'none' to skip)",
+            "Config file path (blank = use repo default config/workers.yaml)",
             default="config/workers.yaml",
         )
         use_config_workers = False
         if config_path:
             use_config_workers = _ask_bool(
-                "Use worker values from config file (recommended)?",
+                "Use worker defaults from config file?",
                 default=True,
             )
         while True:

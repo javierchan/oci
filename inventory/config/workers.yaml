@@ -1,5 +1,8 @@
-# Worker knobs (opt-in). Use with --config config/workers.yaml.
+# Default run settings (auto-loaded when config/workers.yaml exists).
 workers_region: 6
 workers_enrich: 24
 workers_cost: 2
 workers_export: 2
+client_connection_pool_size: 24
+diagram_depth: 2
+schema_validation: auto

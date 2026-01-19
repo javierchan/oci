@@ -65,11 +65,11 @@ Optional flags:
   ```
   oci-inv run --workers-region 6 --workers-enrich 24
   ```
-  Opt-in cost/export workers:
+  Tune cost/export workers:
   ```
   oci-inv run --workers-cost 2 --workers-export 2
   ```
-  You can also reuse `config/workers.yaml` with `--config config/workers.yaml`.
+  `config/workers.yaml` is auto-loaded when present; use `--config` to override it.
 - Increase the OCI SDK HTTP connection pool size (reduces pool churn at higher concurrency):
   ```
   oci-inv run --client-connection-pool-size 25
