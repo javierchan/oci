@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import heapq
 import json
 import logging
@@ -18,6 +19,7 @@ from .config import RunConfig, load_run_config
 from .diff.diff import diff_files, write_diff
 from .enrich import get_enricher_for, set_enrich_context
 from .logging import LogConfig, get_logger, setup_logging
+from .normalize.schema import CSV_REPORT_FIELDS
 from .normalize.transform import canonicalize_record, normalize_relationships, sort_relationships, stable_json_dumps
 from .oci.clients import (
     get_budget_client,
@@ -27,9 +29,9 @@ from .oci.clients import (
     set_client_connection_pool_size,
 )
 from .oci.compartments import list_compartments as oci_list_compartments
-from .oci.discovery import discover_in_region
+from .oci.discovery import iter_discover_in_region
 from .oci.regions import get_subscribed_regions
-from .util.concurrency import parallel_map_ordered_iter
+from .util.concurrency import parallel_map_ordered, parallel_map_ordered_iter
 from .util.errors import (
     AuthResolutionError,
     ConfigError,
@@ -833,6 +835,14 @@ def _record_sort_key(record: Dict[str, Any]) -> Tuple[str, str]:
     return (str(record.get("ocid") or ""), str(record.get("resourceType") or ""))
 
 
+def _relationship_sort_key(rel: Dict[str, Any]) -> Tuple[str, str, str]:
+    return (
+        str(rel.get("source_ocid") or ""),
+        str(rel.get("relation_type") or ""),
+        str(rel.get("target_ocid") or ""),
+    )
+
+
 def _iter_jsonl_records(path: Path) -> Iterable[Dict[str, Any]]:
     with path.open("r", encoding="utf-8") as f:
         for line in f:
@@ -876,40 +886,57 @@ def _merge_sorted_inventory_chunks(paths: Sequence[Path]) -> Iterable[Dict[str, 
                 pass
 
 
-def _relationships_by_source(relationships: Sequence[Dict[str, str]]) -> Dict[str, List[Dict[str, str]]]:
-    by_source: Dict[str, List[Dict[str, str]]] = {}
-    for rel in relationships:
-        src = str(rel.get("source_ocid") or "")
-        if not src:
-            continue
-        by_source.setdefault(src, []).append(rel)
-    return by_source
+def _merge_sorted_relationship_chunks(paths: Sequence[Path]) -> Iterable[Dict[str, Any]]:
+    files: List[Any] = []
+    heap: List[Tuple[Tuple[str, str, str], int, Dict[str, Any]]] = []
+
+    def _read_next(fh: Any) -> Optional[Dict[str, Any]]:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            return json.loads(line)
+        return None
+
+    try:
+        for idx, path in enumerate(paths):
+            fh = path.open("r", encoding="utf-8")
+            files.append(fh)
+            rel = _read_next(fh)
+            if rel is not None:
+                heapq.heappush(heap, (_relationship_sort_key(rel), idx, rel))
+
+        last_key: Optional[Tuple[str, str, str]] = None
+        while heap:
+            key, idx, rel = heapq.heappop(heap)
+            if key != last_key:
+                yield rel
+                last_key = key
+            next_rel = _read_next(files[idx])
+            if next_rel is not None:
+                heapq.heappush(heap, (_relationship_sort_key(next_rel), idx, next_rel))
+    finally:
+        for fh in files:
+            try:
+                fh.close()
+            except Exception:
+                pass
 
 
-def _apply_derived_relationships(
+def _apply_derived_relationships_list(
     record: Dict[str, Any],
-    derived_by_source: Dict[str, List[Dict[str, str]]],
+    derived: List[Dict[str, str]],
 ) -> Dict[str, Any]:
-    ocid = str(record.get("ocid") or "")
-    extra = derived_by_source.get(ocid)
-    if not extra:
+    if not derived:
         return record
     current = record.get("relationships")
     if isinstance(current, list):
-        merged = list(current) + list(extra)
+        merged = list(current) + list(derived)
     else:
-        merged = list(extra)
+        merged = list(derived)
     updated = dict(record)
     updated["relationships"] = sort_relationships(merged)
     return updated
-
-
-def _iter_export_records(
-    chunk_paths: Sequence[Path],
-    derived_by_source: Dict[str, List[Dict[str, str]]],
-) -> Iterable[Dict[str, Any]]:
-    for rec in _merge_sorted_inventory_chunks(chunk_paths):
-        yield _apply_derived_relationships(rec, derived_by_source)
 
 
 def _write_inventory_chunk(records: List[Dict[str, Any]], path: Path) -> int:
@@ -921,6 +948,16 @@ def _write_inventory_chunk(records: List[Dict[str, Any]], path: Path) -> int:
             f.write(stable_json_dumps(obj))
             f.write("\n")
     return len(records)
+
+
+def _write_relationship_chunk(relationships: List[Dict[str, str]], path: Path) -> int:
+    rels = sort_relationships(relationships)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for rel in rels:
+            f.write(stable_json_dumps(rel))
+            f.write("\n")
+    return len(rels)
 
 
 def _load_inventory_chunks(paths: Sequence[Path]) -> List[Dict[str, Any]]:
@@ -1364,6 +1401,30 @@ def _coverage_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _coverage_metrics_from_counts(
+    *,
+    total: int,
+    counts_by_resource_type: Dict[str, int],
+    counts_by_enrich_status: Dict[str, int],
+    counts_by_resource_type_and_status: Dict[str, Dict[str, int]],
+) -> Dict[str, Any]:
+    enriched_ok = counts_by_enrich_status.get("OK", 0)
+    not_implemented = counts_by_enrich_status.get("NOT_IMPLEMENTED", 0)
+    errors = counts_by_enrich_status.get("ERROR", 0)
+
+    return {
+        "total_discovered": total,
+        "enriched_ok": enriched_ok,
+        "not_implemented": not_implemented,
+        "errors": errors,
+        "counts_by_resource_type": dict(sorted(counts_by_resource_type.items())),
+        "counts_by_enrich_status": dict(sorted(counts_by_enrich_status.items())),
+        "counts_by_resource_type_and_status": {
+            k: dict(sorted(v.items())) for k, v in sorted(counts_by_resource_type_and_status.items())
+        },
+    }
+
+
 def _write_run_summary(outdir: Path, metrics: Dict[str, Any], cfg: RunConfig) -> Path:
     summary = dict(metrics)
     # Only include required metrics; users can inspect config via logs/CLI
@@ -1377,11 +1438,17 @@ def _relationships_path(outdir: Path) -> Path:
     return outdir / "relationships.jsonl"
 
 
-def _write_relationships(outdir: Path, relationships: List[Dict[str, str]]) -> Path:
+def _write_relationships(
+    outdir: Path,
+    relationships: Iterable[Dict[str, str]],
+    *,
+    already_sorted: bool = False,
+) -> Path:
     p = _relationships_path(outdir)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w", encoding="utf-8") as f:
-        for rel in sort_relationships(relationships):
+        rels = relationships if already_sorted else sort_relationships(relationships)
+        for rel in rels:
             f.write(stable_json_dumps(rel))
             f.write("\n")
     return p
@@ -1416,17 +1483,18 @@ def _merge_relationships_into_records(
         rec["relationships"] = sort_relationships(merged)
 
 
-def _read_jsonl_dicts(
+def _scan_jsonl_records(
     path: Path,
     *,
     required_fields: set[str],
     errors: List[str],
     max_records: Optional[int] = None,
-) -> List[Tuple[int, Dict[str, Any]]]:
+    handler: Optional[Any] = None,
+) -> int:
     if not path.is_file():
         errors.append(f"{path.name}: file not found")
-        return []
-    records: List[Tuple[int, Dict[str, Any]]] = []
+        return 0
+    count = 0
     parse_errors: List[int] = []
     non_object: List[int] = []
     missing: List[Tuple[int, List[str]]] = []
@@ -1435,7 +1503,7 @@ def _read_jsonl_dicts(
             line = line.strip()
             if not line:
                 continue
-            if max_records is not None and len(records) >= max_records:
+            if max_records is not None and count >= max_records:
                 break
             try:
                 obj = json.loads(line)
@@ -1451,7 +1519,9 @@ def _read_jsonl_dicts(
             if missing_fields:
                 if len(missing) < 5:
                     missing.append((line_no, missing_fields))
-            records.append((line_no, obj))
+            if handler is not None:
+                handler(line_no, obj)
+            count += 1
     if parse_errors:
         errors.append(f"{path.name}: invalid JSON lines (examples: {', '.join(str(n) for n in parse_errors)})")
     if non_object:
@@ -1459,7 +1529,7 @@ def _read_jsonl_dicts(
     if missing:
         details = "; ".join(f"line {ln} missing {', '.join(fields)}" for ln, fields in missing)
         errors.append(f"{path.name}: records missing required fields ({details})")
-    return records
+    return count
 
 
 def _validate_outdir_schema(
@@ -1489,41 +1559,47 @@ def _validate_outdir_schema(
     max_records = sample_limit if mode == "sampled" else None
     if mode == "sampled":
         warnings.append(f"Schema validation sampled first {sample_limit} records.")
-    inventory_records = _read_jsonl_dicts(
+    collected_values: set[str] = set()
+    bad_relationships: List[int] = []
+
+    def _inventory_handler(line_no: int, obj: Dict[str, Any]) -> None:
+        collected = str(obj.get("collectedAt") or "")
+        if collected:
+            collected_values.add(collected)
+        rels = obj.get("relationships")
+        if not isinstance(rels, list):
+            if len(bad_relationships) < 5:
+                bad_relationships.append(line_no)
+            return
+        for rel in rels:
+            if not isinstance(rel, dict):
+                if len(bad_relationships) < 5:
+                    bad_relationships.append(line_no)
+                break
+            if any(k not in rel for k in REQUIRED_RELATIONSHIP_FIELDS):
+                if len(bad_relationships) < 5:
+                    bad_relationships.append(line_no)
+                break
+
+    inv_count = _scan_jsonl_records(
         inventory_path,
         required_fields=REQUIRED_INVENTORY_FIELDS,
         errors=errors,
         max_records=max_records,
+        handler=_inventory_handler,
     )
-    if inventory_records:
-        collected_values = {str(obj.get("collectedAt") or "") for _, obj in inventory_records if obj.get("collectedAt")}
+    if inv_count:
         if len(collected_values) > 1:
             warnings.append(
                 f"{inventory_path.name}: multiple collectedAt values detected ({len(collected_values)} unique)"
             )
-        bad_relationships: List[int] = []
-        for line_no, obj in inventory_records:
-            rels = obj.get("relationships")
-            if not isinstance(rels, list):
-                if len(bad_relationships) < 5:
-                    bad_relationships.append(line_no)
-                continue
-            for rel in rels:
-                if not isinstance(rel, dict):
-                    if len(bad_relationships) < 5:
-                        bad_relationships.append(line_no)
-                    break
-                if any(k not in rel for k in REQUIRED_RELATIONSHIP_FIELDS):
-                    if len(bad_relationships) < 5:
-                        bad_relationships.append(line_no)
-                    break
         if bad_relationships:
             warnings.append(
                 f"{inventory_path.name}: invalid relationships in records (examples: {', '.join(str(n) for n in bad_relationships)})"
             )
 
     relationships_path = outdir / "relationships.jsonl"
-    _read_jsonl_dicts(
+    _scan_jsonl_records(
         relationships_path,
         required_fields=REQUIRED_RELATIONSHIP_FIELDS,
         errors=errors,
@@ -1533,34 +1609,43 @@ def _validate_outdir_schema(
     nodes_path = outdir / "graph_nodes.jsonl"
     edges_path = outdir / "graph_edges.jsonl"
     if expect_graph or nodes_path.is_file() or edges_path.is_file():
-        node_records = _read_jsonl_dicts(
+        node_ids: set[str] = set()
+
+        def _node_handler(_line_no: int, obj: Dict[str, Any]) -> None:
+            node_id = str(obj.get("nodeId") or "")
+            if node_id:
+                node_ids.add(node_id)
+
+        _scan_jsonl_records(
             nodes_path,
             required_fields=REQUIRED_GRAPH_NODE_FIELDS,
             errors=errors,
             max_records=max_records,
+            handler=_node_handler,
         )
-        node_ids = {str(obj.get("nodeId") or "") for _, obj in node_records if obj.get("nodeId")}
 
-        edge_records = _read_jsonl_dicts(
+        missing_edges: List[int] = []
+
+        def _edge_handler(line_no: int, obj: Dict[str, Any]) -> None:
+            src = str(obj.get("source_ocid") or "")
+            dst = str(obj.get("target_ocid") or "")
+            if not src or not dst:
+                return
+            if src not in node_ids or dst not in node_ids:
+                if len(missing_edges) < 5:
+                    missing_edges.append(line_no)
+
+        edge_count = _scan_jsonl_records(
             edges_path,
             required_fields=REQUIRED_GRAPH_EDGE_FIELDS,
             errors=errors,
             max_records=max_records,
+            handler=_edge_handler,
         )
-        if node_ids and edge_records:
-            missing_edges: List[int] = []
-            for line_no, obj in edge_records:
-                src = str(obj.get("source_ocid") or "")
-                dst = str(obj.get("target_ocid") or "")
-                if not src or not dst:
-                    continue
-                if src not in node_ids or dst not in node_ids:
-                    if len(missing_edges) < 5:
-                        missing_edges.append(line_no)
-            if missing_edges:
-                warnings.append(
-                    f"{edges_path.name}: edges reference missing node IDs (examples: {', '.join(str(n) for n in missing_edges)})"
-                )
+        if node_ids and edge_count and missing_edges:
+            warnings.append(
+                f"{edges_path.name}: edges reference missing node IDs (examples: {', '.join(str(n) for n in missing_edges)})"
+            )
 
     summary_path = outdir / "run_summary.json"
     if not summary_path.is_file():
@@ -1582,9 +1667,7 @@ def _validate_outdir_schema(
 
 
 def cmd_run(cfg: RunConfig) -> int:
-    from .export.csv import write_csv
     from .export.graph import build_graph, filter_edges_with_nodes, write_graph, write_mermaid
-    from .export.jsonl import write_jsonl
     from .report import (
         write_cost_report_md,
         write_cost_usage_csv,
@@ -1609,6 +1692,8 @@ def cmd_run(cfg: RunConfig) -> int:
     excluded_regions: List[Dict[str, str]] = []
     discovered_count = 0
     inventory_records: List[Dict[str, Any]] = []
+    inventory_jsonl: Optional[Path] = None
+    inventory_csv: Optional[Path] = None
     metrics: Optional[Dict[str, Any]] = None
     diff_warning: Optional[str] = None
 
@@ -1676,7 +1761,7 @@ def cmd_run(cfg: RunConfig) -> int:
             count=len(regions),
         )
 
-        # Per-region discovery in parallel (ordered by region for determinism)
+        # Per-region discovery + enrichment (streamed to disk).
         regions = sorted([r for r in regions if r])
         _log_event(
             LOG,
@@ -1688,104 +1773,153 @@ def cmd_run(cfg: RunConfig) -> int:
             region_count=len(regions),
         )
 
-        def _disc(r: str) -> List[Dict[str, Any]]:
-            return discover_in_region(ctx, r, cfg.query, collected_at=run_collected_at)
-
-        all_relationships: List[Dict[str, str]] = []
         chunk_dir = cfg.outdir / ".inventory_chunks"
         chunk_paths: List[Path] = []
-        chunk_records: List[Dict[str, Any]] = []
-        chunk_index = 0
 
-        def _flush_chunk() -> None:
-            nonlocal chunk_index
-            if not chunk_records:
-                return
-            chunk_path = chunk_dir / f"inventory_chunk_{chunk_index:04d}.jsonl"
-            _write_inventory_chunk(chunk_records, chunk_path)
-            chunk_paths.append(chunk_path)
-            chunk_records.clear()
-            chunk_index += 1
+        rel_chunk_dir = cfg.outdir / ".relationship_chunks"
+        rel_chunk_paths: List[Path] = []
 
-        with ThreadPoolExecutor(max_workers=max(1, cfg.workers_region)) as pool:
-            futures_by_region = {r: pool.submit(_disc, r) for r in regions}
-            for r in regions:
-                timers.start(f"discovery:{r}")
+        def _enrich_and_collect(rec: Dict[str, Any]) -> Dict[str, Any]:
+            updated, rels = _enrich_record(rec)
+            return {"record": updated, "rels": rels}
 
-            for r in regions:
-                try:
-                    region_records = futures_by_region[r].result()
-                except Exception as e:
-                    excluded_regions.append({"region": r, "reason": str(e)})
-                    _log_event(
-                        LOG,
-                        logging.WARNING,
-                        f"Region discovery failed; skipping region {r}",
-                        step="discovery",
-                        phase="error",
-                        timers=timers,
-                        timer_key=f"discovery:{r}",
-                        region=r,
-                        error=str(e),
-                    )
-                    region_records = []
+        def _process_region(region: str) -> Dict[str, Any]:
+            region_timers = _StepTimers()
+            region_timers.start(f"discovery:{region}")
+            region_count = 0
+            region_chunk_records: List[Dict[str, Any]] = []
+            region_chunk_paths: List[Path] = []
+            region_rel_records: List[Dict[str, str]] = []
+            region_rel_paths: List[Path] = []
+            region_chunk_index = 0
+            region_rel_index = 0
 
-                discovered_count += len(region_records)
+            def _flush_region_chunk() -> None:
+                nonlocal region_chunk_index
+                if not region_chunk_records:
+                    return
+                chunk_path = chunk_dir / f"inventory_{region}_{region_chunk_index:04d}.jsonl"
+                _write_inventory_chunk(region_chunk_records, chunk_path)
+                region_chunk_paths.append(chunk_path)
+                region_chunk_records.clear()
+                region_chunk_index += 1
+
+            def _flush_region_relationship_chunk() -> None:
+                nonlocal region_rel_index
+                if not region_rel_records:
+                    return
+                chunk_path = rel_chunk_dir / f"relationships_{region}_{region_rel_index:04d}.jsonl"
+                _write_relationship_chunk(region_rel_records, chunk_path)
+                region_rel_paths.append(chunk_path)
+                region_rel_records.clear()
+                region_rel_index += 1
+
+            try:
+                region_iter = iter_discover_in_region(ctx, region, cfg.query, collected_at=run_collected_at)
                 _log_event(
                     LOG,
                     logging.INFO,
-                    f"Region discovery complete {r}",
-                    step="discovery",
-                    phase="complete",
-                    timers=timers,
-                    timer_key=f"discovery:{r}",
-                    region=r,
-                    count=len(region_records),
-                )
-                if not region_records:
-                    continue
-
-                # Enrichment in parallel per region (streamed to disk).
-                _log_event(
-                    LOG,
-                    logging.INFO,
-                    f"Region enrichment started {r}",
+                    f"Region enrichment started {region}",
                     step="enrich",
                     phase="start",
-                    timers=timers,
-                    timer_key=f"enrich:{r}",
-                    region=r,
-                    count=len(region_records),
+                    timers=region_timers,
+                    timer_key=f"enrich:{region}",
+                    region=region,
                 )
-                def _enrich_and_collect(rec: Dict[str, Any]) -> Dict[str, Any]:
-                    updated, rels = _enrich_record(rec)
-                    return {"record": updated, "rels": rels}
 
                 worker_results = parallel_map_ordered_iter(
                     _enrich_and_collect,
-                    region_records,
+                    region_iter,
                     max_workers=max(1, cfg.workers_enrich),
                     batch_size=ENRICH_BATCH_SIZE,
                 )
                 for item in worker_results:
+                    region_count += 1
                     record = item["record"]
-                    all_relationships.extend(item["rels"] or [])
-                    chunk_records.append(record)
-                    if len(chunk_records) >= STREAM_CHUNK_SIZE:
-                        _flush_chunk()
+                    rels = item["rels"] or []
+                    if rels:
+                        region_rel_records.extend(rels)
+                        if len(region_rel_records) >= STREAM_CHUNK_SIZE:
+                            _flush_region_relationship_chunk()
+                    region_chunk_records.append(record)
+                    if len(region_chunk_records) >= STREAM_CHUNK_SIZE:
+                        _flush_region_chunk()
+
+                _flush_region_chunk()
+                _flush_region_relationship_chunk()
+
                 _log_event(
                     LOG,
                     logging.INFO,
-                    f"Region enrichment complete {r}",
+                    f"Region discovery complete {region}",
+                    step="discovery",
+                    phase="complete",
+                    timers=region_timers,
+                    timer_key=f"discovery:{region}",
+                    region=region,
+                    count=region_count,
+                )
+                _log_event(
+                    LOG,
+                    logging.INFO,
+                    f"Region enrichment complete {region}",
                     step="enrich",
                     phase="complete",
-                    timers=timers,
-                    timer_key=f"enrich:{r}",
-                    region=r,
-                    count=len(region_records),
+                    timers=region_timers,
+                    timer_key=f"enrich:{region}",
+                    region=region,
+                    count=region_count,
                 )
+                return {
+                    "region": region,
+                    "count": region_count,
+                    "chunk_paths": region_chunk_paths,
+                    "rel_paths": region_rel_paths,
+                    "error": None,
+                }
+            except Exception as e:
+                for path in region_chunk_paths:
+                    try:
+                        path.unlink()
+                    except Exception:
+                        pass
+                for path in region_rel_paths:
+                    try:
+                        path.unlink()
+                    except Exception:
+                        pass
+                _log_event(
+                    LOG,
+                    logging.WARNING,
+                    f"Region discovery failed; skipping region {region}",
+                    step="discovery",
+                    phase="error",
+                    timers=region_timers,
+                    timer_key=f"discovery:{region}",
+                    region=region,
+                    error=str(e),
+                )
+                return {
+                    "region": region,
+                    "count": 0,
+                    "chunk_paths": [],
+                    "rel_paths": [],
+                    "error": str(e),
+                }
 
-        _flush_chunk()
+        region_results = parallel_map_ordered(
+            _process_region,
+            regions,
+            max_workers=max(1, cfg.workers_region),
+        )
+        for result in region_results:
+            err = result.get("error")
+            if err:
+                excluded_regions.append({"region": result.get("region", ""), "reason": err})
+                continue
+            discovered_count += int(result.get("count") or 0)
+            chunk_paths.extend(result.get("chunk_paths") or [])
+            rel_chunk_paths.extend(result.get("rel_paths") or [])
         _log_event(
             LOG,
             logging.INFO,
@@ -1797,7 +1931,6 @@ def cmd_run(cfg: RunConfig) -> int:
             excluded_regions=len(excluded_regions),
         )
 
-        inventory_records = _load_inventory_chunks(chunk_paths) if chunk_paths else []
         _log_event(
             LOG,
             logging.INFO,
@@ -1805,18 +1938,14 @@ def cmd_run(cfg: RunConfig) -> int:
             step="enrich",
             phase="complete",
             timers=timers,
-            count=len(inventory_records),
+            count=discovered_count,
         )
 
         # Derive additional relationships from record metadata (offline; no new OCI calls)
-        # to improve graph/report fidelity when enrichers did not emit relationships.
-        from .export.graph import derive_relationships_from_metadata
+        # using a two-pass index to avoid loading all records into memory.
+        from .export.graph import build_relationship_index, iter_relationships_for_record
 
-        derived_relationships = derive_relationships_from_metadata(inventory_records)
-        if derived_relationships:
-            _merge_relationships_into_records(inventory_records, derived_relationships)
-            all_relationships.extend(derived_relationships)
-        derived_by_source = _relationships_by_source(derived_relationships)
+        rel_index = build_relationship_index(_merge_sorted_inventory_chunks(chunk_paths))
 
         # Exports
         _log_event(
@@ -1829,17 +1958,81 @@ def cmd_run(cfg: RunConfig) -> int:
         )
         inventory_jsonl = cfg.outdir / "inventory.jsonl"
         inventory_csv = cfg.outdir / "inventory.csv"
-        if chunk_paths:
-            def _export_iter() -> Iterable[Dict[str, Any]]:
-                return _iter_export_records(chunk_paths, derived_by_source)
 
-            write_jsonl(_export_iter(), inventory_jsonl, already_sorted=True)
-            write_csv(_export_iter(), inventory_csv, already_sorted=True)
+        derived_chunk_dir = cfg.outdir / ".derived_relationship_chunks"
+        derived_chunk_paths: List[Path] = []
+        derived_chunk_records: List[Dict[str, str]] = []
+        derived_chunk_index = 0
+
+        def _flush_derived_chunk() -> None:
+            nonlocal derived_chunk_index
+            if not derived_chunk_records:
+                return
+            chunk_path = derived_chunk_dir / f"derived_relationships_chunk_{derived_chunk_index:04d}.jsonl"
+            _write_relationship_chunk(derived_chunk_records, chunk_path)
+            derived_chunk_paths.append(chunk_path)
+            derived_chunk_records.clear()
+            derived_chunk_index += 1
+
+        counts_by_resource_type: Dict[str, int] = {}
+        counts_by_enrich_status: Dict[str, int] = {}
+        counts_by_resource_type_and_status: Dict[str, Dict[str, int]] = {}
+        total_records = 0
+
+        inventory_jsonl.parent.mkdir(parents=True, exist_ok=True)
+        inventory_csv.parent.mkdir(parents=True, exist_ok=True)
+        with inventory_jsonl.open("w", encoding="utf-8") as jsonl_f, inventory_csv.open(
+            "w", encoding="utf-8", newline=""
+        ) as csv_f:
+            csv_writer = csv.writer(csv_f)
+            csv_writer.writerow(CSV_REPORT_FIELDS)
+
+            for rec in _merge_sorted_inventory_chunks(chunk_paths):
+                derived = list(iter_relationships_for_record(rec, rel_index))
+                if derived:
+                    derived_chunk_records.extend(derived)
+                    if len(derived_chunk_records) >= STREAM_CHUNK_SIZE:
+                        _flush_derived_chunk()
+                    rec = _apply_derived_relationships_list(rec, derived)
+
+                total_records += 1
+                rt = str(rec.get("resourceType") or "")
+                counts_by_resource_type[rt] = counts_by_resource_type.get(rt, 0) + 1
+                st = str(rec.get("enrichStatus") or "")
+                counts_by_enrich_status[st] = counts_by_enrich_status.get(st, 0) + 1
+                per_type = counts_by_resource_type_and_status.setdefault(rt, {})
+                per_type[st] = per_type.get(st, 0) + 1
+
+                obj = canonicalize_record(normalize_relationships(dict(rec)))
+                jsonl_f.write(stable_json_dumps(obj))
+                jsonl_f.write("\n")
+
+                row: List[str] = []
+                for field in CSV_REPORT_FIELDS:
+                    val = rec.get(field)
+                    if val is None:
+                        row.append("unknown")
+                        continue
+                    text = str(val)
+                    row.append("unknown" if not text.strip() else text)
+                csv_writer.writerow(row)
+
+        _flush_derived_chunk()
+
+        rel_paths = rel_chunk_paths + derived_chunk_paths
+        if rel_paths:
+            _write_relationships(
+                cfg.outdir,
+                _merge_sorted_relationship_chunks(rel_paths),
+                already_sorted=True,
+            )
         else:
-            write_jsonl(inventory_records, inventory_jsonl)
-            write_csv(inventory_records, inventory_csv)
+            _write_relationships(cfg.outdir, [], already_sorted=True)
 
-        _write_relationships(cfg.outdir, all_relationships)
+        _cleanup_chunk_dir(chunk_dir)
+        _cleanup_chunk_dir(rel_chunk_dir)
+        _cleanup_chunk_dir(derived_chunk_dir)
+
         _log_event(
             LOG,
             logging.INFO,
@@ -1847,7 +2040,7 @@ def cmd_run(cfg: RunConfig) -> int:
             step="export",
             phase="complete",
             timers=timers,
-            count=len(inventory_records),
+            count=total_records,
         )
 
         # Coverage metrics and summary
@@ -1859,7 +2052,12 @@ def cmd_run(cfg: RunConfig) -> int:
             phase="start",
             timers=timers,
         )
-        metrics = _coverage_metrics(inventory_records)
+        metrics = _coverage_metrics_from_counts(
+            total=total_records,
+            counts_by_resource_type=counts_by_resource_type,
+            counts_by_enrich_status=counts_by_enrich_status,
+            counts_by_resource_type_and_status=counts_by_resource_type_and_status,
+        )
         _write_run_summary(cfg.outdir, metrics, cfg)
         _log_event(
             LOG,
@@ -1880,7 +2078,11 @@ def cmd_run(cfg: RunConfig) -> int:
                 phase="start",
                 timers=timers,
             )
-            nodes, edges = build_graph(inventory_records, all_relationships)
+            relationships_path = _relationships_path(cfg.outdir)
+            nodes, edges = build_graph(
+                _iter_jsonl_records(inventory_jsonl),
+                _iter_jsonl_records(relationships_path),
+            )
             total_edges = len(edges)
             edges, dropped_edges = filter_edges_with_nodes(nodes, edges)
             if dropped_edges:
@@ -1924,8 +2126,6 @@ def cmd_run(cfg: RunConfig) -> int:
                 edges=len(edges),
                 diagrams=len(diagram_paths),
             )
-
-        _cleanup_chunk_dir(chunk_dir)
 
         _log_event(
             LOG,
@@ -2045,6 +2245,13 @@ def cmd_run(cfg: RunConfig) -> int:
     finally:
         # Always attempt to write a report for transparency.
         finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+        if not inventory_records and inventory_jsonl and inventory_jsonl.is_file():
+            try:
+                # TODO: Stream report generation to avoid full materialization for large runs.
+                inventory_records = list(_iter_jsonl_records(inventory_jsonl))
+            except Exception:
+                inventory_records = []
 
         if cfg.genai_summary and status == "OK":
             _log_event(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ..auth.providers import AuthContext
 from ..normalize.transform import normalize_from_search_summary
@@ -38,33 +38,29 @@ def _to_dict(obj: Any) -> Dict[str, Any]:
             except Exception:
                 continue
         return out
-    # Fallback: best-effort shallow conversion
-    out: Dict[str, Any] = {}
-    for k in dir(obj):
-        if k.startswith("_"):
-            continue
-        try:
-            v = getattr(obj, k)
-        except Exception:
-            continue
-        if callable(v):
-            continue
-        # Avoid including class descriptors / metadata
-        if k in ("swagger_types", "attribute_map"):
-            continue
-        out[k] = sanitize_for_json(v)
-    return out
+    # Fallback: prefer instance dict to avoid expensive dir() scanning.
+    data = getattr(obj, "__dict__", None)
+    if isinstance(data, dict):
+        out: Dict[str, Any] = {}
+        for k, v in data.items():
+            if k.startswith("_"):
+                continue
+            if k in ("swagger_types", "attribute_map"):
+                continue
+            out[k] = sanitize_for_json(v)
+        return out
+    return {}
 
 
-def discover_in_region(
+def iter_discover_in_region(
     ctx: AuthContext,
     region: str,
     query: str,
     *,
     collected_at: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+) -> Iterable[Dict[str, Any]]:
     """
-    Perform Structured Search in a single region and return a list of normalized records.
+    Perform Structured Search in a single region and yield normalized records.
     - Default query should be 'query all resources' unless caller overrides.
     - Injects region into each record explicitly.
     - Paginates until no opc-next-page is returned.
@@ -90,10 +86,21 @@ def discover_in_region(
         next_page = getattr(resp, "headers", {}).get("opc-next-page")  # type: ignore[assignment]
         return summaries, next_page
 
-    records: List[Dict[str, Any]] = []
     for summary in paginate(fetch):
         rec = normalize_from_search_summary(summary, region=region, collected_at=collected_at)
         # Attach raw summary for enricher use; will be removed before export
         rec["searchSummary"] = summary  # type: ignore[index]
-        records.append(rec)  # type: ignore[arg-type]
-    return records
+        yield rec  # type: ignore[misc]
+
+
+def discover_in_region(
+    ctx: AuthContext,
+    region: str,
+    query: str,
+    *,
+    collected_at: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Perform Structured Search in a single region and return a list of normalized records.
+    """
+    return list(iter_discover_in_region(ctx, region, query, collected_at=collected_at))

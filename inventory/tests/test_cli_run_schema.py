@@ -66,16 +66,14 @@ def test_cli_run_writes_schema_offline(tmp_path, monkeypatch) -> None:
                 "compartmentId": "ocid1.compartment.oc1..test",
             },
         ]
-        records = []
         for summary in summaries:
             rec = normalize_from_search_summary(summary, region=region, collected_at=collected_at)
             rec["searchSummary"] = summary
-            records.append(rec)
-        return records
+            yield rec
 
     monkeypatch.setattr(cli, "_resolve_auth", fake_resolve_auth)
     monkeypatch.setattr(cli, "get_subscribed_regions", lambda _ctx: ["test-region"])
-    monkeypatch.setattr(cli, "discover_in_region", fake_discover)
+    monkeypatch.setattr(cli, "iter_discover_in_region", fake_discover)
     monkeypatch.setattr(cli, "get_enricher_for", lambda _rtype: DefaultEnricher())
     monkeypatch.setattr(cli, "write_diagram_projections", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(cli, "is_mmdc_available", lambda: False)
@@ -132,16 +130,14 @@ def test_cli_run_can_skip_diagrams(tmp_path, monkeypatch) -> None:
                 "compartmentId": "ocid1.compartment.oc1..test",
             }
         ]
-        records = []
         for summary in summaries:
             rec = normalize_from_search_summary(summary, region=region, collected_at=collected_at)
             rec["searchSummary"] = summary
-            records.append(rec)
-        return records
+            yield rec
 
     monkeypatch.setattr(cli, "_resolve_auth", fake_resolve_auth)
     monkeypatch.setattr(cli, "get_subscribed_regions", lambda _ctx: ["test-region"])
-    monkeypatch.setattr(cli, "discover_in_region", fake_discover)
+    monkeypatch.setattr(cli, "iter_discover_in_region", fake_discover)
     monkeypatch.setattr(cli, "get_enricher_for", lambda _rtype: DefaultEnricher())
     monkeypatch.setattr(cli, "is_mmdc_available", lambda: False)
     monkeypatch.setattr(cli, "validate_mermaid_diagrams_with_mmdc", lambda _outdir: [])
@@ -457,6 +453,35 @@ def test_merge_sorted_inventory_chunks(tmp_path) -> None:
     merged = list(cli._merge_sorted_inventory_chunks([chunk1, chunk2]))
     ocids = [rec["ocid"] for rec in merged]
     assert ocids == ["ocid1.a", "ocid1.b", "ocid1.c", "ocid1.d"]
+
+
+def test_merge_sorted_relationship_chunks(tmp_path) -> None:
+    chunk1 = tmp_path / "rels1.jsonl"
+    chunk2 = tmp_path / "rels2.jsonl"
+    chunk1.write_text(
+        "\n".join(
+            [
+                '{"source_ocid":"a","relation_type":"X","target_ocid":"1"}',
+                '{"source_ocid":"b","relation_type":"X","target_ocid":"1"}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    chunk2.write_text(
+        "\n".join(
+            [
+                '{"source_ocid":"a","relation_type":"X","target_ocid":"1"}',
+                '{"source_ocid":"c","relation_type":"Y","target_ocid":"2"}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    merged = list(cli._merge_sorted_relationship_chunks([chunk1, chunk2]))
+    keys = [(r["source_ocid"], r["relation_type"], r["target_ocid"]) for r in merged]
+    assert keys == [("a", "X", "1"), ("b", "X", "1"), ("c", "Y", "2")]
 
 
 def test_validate_outdir_schema_sampled_warns(tmp_path) -> None:

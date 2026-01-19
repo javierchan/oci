@@ -69,6 +69,63 @@ If you have a temporary security token profile in `~/.oci/config`:
 oci-inv validate-auth --auth security_token --profile MY_SESSION
 ```
 
+## IAM scope for inventory + enrichment + cost
+
+Discovery uses Resource Search, and enrichment uses per-service `get` calls. Cost reporting uses the Usage API and Budgets API. To minimize `enrichStatus=ERROR`, the calling principal must have read/inspect access to the services present in scope.
+
+### Option A: Broad read-only (lowest friction)
+```
+allow group <group-name> to read all-resources in tenancy
+allow group <group-name> to read usage-reports in tenancy
+allow group <group-name> to read budgets in tenancy
+```
+
+### Option B: Least-privilege baseline (recommended if you manage IAM closely)
+```
+# Resource Search (discovery)
+allow group <group-name> to inspect resources in tenancy
+
+# Identity (users/groups/policies/compartments/tags)
+allow group <group-name> to read users in tenancy
+allow group <group-name> to read groups in tenancy
+allow group <group-name> to read policies in tenancy
+allow group <group-name> to read compartments in tenancy
+allow group <group-name> to read tag-namespaces in tenancy
+allow group <group-name> to read tag-defaults in tenancy
+
+# Core workload/services (common enrichment targets)
+allow group <group-name> to read virtual-network-family in tenancy
+allow group <group-name> to read instance-family in tenancy
+allow group <group-name> to read volume-family in tenancy
+allow group <group-name> to read load-balancers in tenancy
+allow group <group-name> to read objectstorage-family in tenancy
+allow group <group-name> to read functions-family in tenancy
+allow group <group-name> to read devops-family in tenancy
+allow group <group-name> to read dns in tenancy
+allow group <group-name> to read logging-family in tenancy
+allow group <group-name> to read loganalytics-family in tenancy
+allow group <group-name> to read cloud-guard-family in tenancy
+allow group <group-name> to read vaults in tenancy
+allow group <group-name> to read keys in tenancy
+allow group <group-name> to read secret-family in tenancy
+allow group <group-name> to read database-family in tenancy
+allow group <group-name> to read osmh-family in tenancy
+allow group <group-name> to read resource-manager-family in tenancy
+allow group <group-name> to read service-connector-hub-family in tenancy
+allow group <group-name> to read streams in tenancy
+allow group <group-name> to read bastion in tenancy
+allow group <group-name> to read waf-family in tenancy
+
+# Cost + budgets
+allow group <group-name> to read usage-reports in tenancy
+allow group <group-name> to read budgets in tenancy
+```
+
+### Validate and refine
+- If `report.md` shows NotAuthorized enrichment errors, expand read/inspect access for the affected services.
+- If NotFound errors dominate, treat them as expected drift (resources deleted) and re-run to confirm.
+- If Throttling errors appear, reduce `--workers-enrich` or increase `--client-connection-pool-size`.
+
 ## Validation and troubleshooting
 
 Validate your auth:

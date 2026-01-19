@@ -22,7 +22,7 @@ RULES:
    - Functional pipeline (discover → normalize → enrich → export → diff → report → genAI).
    - Data models / contracts (normalization, enrichers, export, diff, GenAI).
    - CLI commands (new commands, flags, or renamed commands).
-   - Export formats (JSONL/CSV/Parquet/Graph).
+   - Export formats (JSONL/CSV/Graph).
    - Diff/deterministic hashing.
    - Authentication, regions, GenAI configuration.
    - Relevant folder structure changes.
