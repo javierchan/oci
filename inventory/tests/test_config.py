@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,18 @@ from oci_inventory.config import DEFAULT_QUERY, RunConfig, load_run_config
 
 def test_default_query_and_workers_from_defaults(monkeypatch) -> None:
     # No env, no explicit config file, only "run" command (repo defaults apply)
+    for key in (
+        "OCI_INV_SCHEMA_VALIDATION",
+        "OCI_INV_DIAGRAM_DEPTH",
+        "OCI_INV_LOG_LEVEL",
+        "OCI_INV_JSON_LOGS",
+        "OCI_INV_CLIENT_CONNECTION_POOL_SIZE",
+        "OCI_INV_WORKERS_REGION",
+        "OCI_INV_WORKERS_ENRICH",
+        "OCI_INV_WORKERS_COST",
+        "OCI_INV_WORKERS_EXPORT",
+    ):
+        monkeypatch.delenv(key, raising=False)
     repo_root = Path(__file__).resolve().parents[1]
     monkeypatch.chdir(repo_root)
     command, cfg = load_run_config(argv=["run"])
@@ -24,7 +37,9 @@ def test_default_query_and_workers_from_defaults(monkeypatch) -> None:
     assert cfg.schema_validation == "auto"
     assert cfg.schema_sample_records > 0
     assert cfg.client_connection_pool_size == 24
-    assert cfg.diagram_depth == 2
+    assert cfg.diagram_depth == 1
+    assert cfg.log_level == "DEBUG"
+    assert cfg.json_logs is True
 
 
 def test_env_overrides_query(monkeypatch) -> None:
@@ -58,6 +73,18 @@ def test_config_file_used_when_env_and_cli_missing(tmp_path, monkeypatch) -> Non
 
 
 def test_repo_workers_config_file_loads() -> None:
+    for key in (
+        "OCI_INV_SCHEMA_VALIDATION",
+        "OCI_INV_DIAGRAM_DEPTH",
+        "OCI_INV_LOG_LEVEL",
+        "OCI_INV_JSON_LOGS",
+        "OCI_INV_CLIENT_CONNECTION_POOL_SIZE",
+        "OCI_INV_WORKERS_REGION",
+        "OCI_INV_WORKERS_ENRICH",
+        "OCI_INV_WORKERS_COST",
+        "OCI_INV_WORKERS_EXPORT",
+    ):
+        os.environ.pop(key, None)
     repo_root = Path(__file__).resolve().parents[1]
     cfg_path = repo_root / "config" / "workers.yaml"
     _, cfg = load_run_config(argv=["run", "--config", str(cfg_path)])
@@ -66,8 +93,10 @@ def test_repo_workers_config_file_loads() -> None:
     assert cfg.workers_cost == 2
     assert cfg.workers_export == 2
     assert cfg.client_connection_pool_size == 24
-    assert cfg.diagram_depth == 2
+    assert cfg.diagram_depth == 1
     assert cfg.schema_validation == "auto"
+    assert cfg.log_level == "DEBUG"
+    assert cfg.json_logs is True
 
 
 def test_env_overrides_config_file(monkeypatch, tmp_path) -> None:

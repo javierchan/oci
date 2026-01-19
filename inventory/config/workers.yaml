@@ -8,6 +8,8 @@
 # client_connection_pool_size: int >= 1. OCI SDK HTTP pool per client; keep >= workers_enrich to reduce churn.
 # diagram_depth: 1|2|3. Consolidated diagram detail (1=network only, 2=workloads, 3=workloads+edges).
 # schema_validation: auto|full|sampled|off. auto samples large outputs.
+# log_level: logging level (e.g., INFO, DEBUG).
+# json_logs: true|false. JSON logging format when true.
 #
 # Remove a key to fall back to built-in defaults.
 workers_region: 6
@@ -17,3 +19,5 @@ workers_export: 2
 client_connection_pool_size: 24
 diagram_depth: 1
 schema_validation: auto
+log_level: DEBUG
+json_logs: true
