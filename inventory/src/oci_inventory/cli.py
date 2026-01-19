@@ -19,7 +19,7 @@ from .config import RunConfig, load_run_config
 from .diff.diff import diff_files, write_diff
 from .enrich import get_enricher_for, set_enrich_context
 from .logging import LogConfig, add_run_log_file, get_logger, setup_logging
-from .normalize.schema import CSV_REPORT_FIELDS
+from .normalize.schema import CSV_REPORT_FIELDS, OutputPaths, resolve_output_paths
 from .normalize.transform import canonicalize_record, normalize_relationships, sort_relationships, stable_json_dumps
 from .oci.clients import (
     get_budget_client,
@@ -1429,13 +1429,14 @@ def _write_run_summary(outdir: Path, metrics: Dict[str, Any], cfg: RunConfig) ->
     summary = dict(metrics)
     # Only include required metrics; users can inspect config via logs/CLI
     summary["schema_version"] = OUT_SCHEMA_VERSION
-    path = outdir / "run_summary.json"
+    path = resolve_output_paths(outdir).run_summary_json
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(stable_json_dumps(summary), encoding="utf-8")
     return path
 
 
 def _relationships_path(outdir: Path) -> Path:
-    return outdir / "relationships.jsonl"
+    return resolve_output_paths(outdir).relationships_jsonl
 
 
 def _write_relationships(
@@ -1543,7 +1544,8 @@ def _validate_outdir_schema(
     errors: List[str] = []
     warnings: List[str] = []
 
-    inventory_path = outdir / "inventory.jsonl"
+    paths = resolve_output_paths(outdir)
+    inventory_path = paths.inventory_jsonl
     mode = (mode or "auto").strip().lower()
     if sample_limit < 1:
         sample_limit = 1
@@ -1598,7 +1600,7 @@ def _validate_outdir_schema(
                 f"{inventory_path.name}: invalid relationships in records (examples: {', '.join(str(n) for n in bad_relationships)})"
             )
 
-    relationships_path = outdir / "relationships.jsonl"
+    relationships_path = paths.relationships_jsonl
     _scan_jsonl_records(
         relationships_path,
         required_fields=REQUIRED_RELATIONSHIP_FIELDS,
@@ -1606,8 +1608,8 @@ def _validate_outdir_schema(
         max_records=max_records,
     )
 
-    nodes_path = outdir / "graph_nodes.jsonl"
-    edges_path = outdir / "graph_edges.jsonl"
+    nodes_path = paths.graph_nodes_jsonl
+    edges_path = paths.graph_edges_jsonl
     if expect_graph or nodes_path.is_file() or edges_path.is_file():
         node_ids: set[str] = set()
 
@@ -1647,7 +1649,7 @@ def _validate_outdir_schema(
                 f"{edges_path.name}: edges reference missing node IDs (examples: {', '.join(str(n) for n in missing_edges)})"
             )
 
-    summary_path = outdir / "run_summary.json"
+    summary_path = paths.run_summary_json
     if not summary_path.is_file():
         errors.append(f"{summary_path.name}: file not found")
     else:
@@ -1666,6 +1668,32 @@ def _validate_outdir_schema(
     return SchemaValidation(errors=errors, warnings=warnings)
 
 
+def _organize_diagrams(paths: OutputPaths) -> List[Path]:
+    if not paths.diagrams_dir.is_dir():
+        return []
+
+    buckets = (
+        ("diagram.tenancy.", paths.diagrams_tenancy_dir),
+        ("diagram.network.", paths.diagrams_network_dir),
+        ("diagram.workload.", paths.diagrams_workload_dir),
+        ("diagram.consolidated.", paths.diagrams_consolidated_dir),
+    )
+    moved: List[Path] = []
+    for entry in paths.diagrams_dir.iterdir():
+        if not entry.is_file():
+            continue
+        if entry.suffix != ".mmd":
+            continue
+        for prefix, target_dir in buckets:
+            if entry.name.startswith(prefix):
+                target_dir.mkdir(parents=True, exist_ok=True)
+                target = target_dir / entry.name
+                entry.replace(target)
+                moved.append(target)
+                break
+    return moved
+
+
 def cmd_run(cfg: RunConfig) -> int:
     from .export.graph import build_graph, filter_edges_with_nodes, write_graph, write_mermaid
     from .report import (
@@ -1678,8 +1706,9 @@ def cmd_run(cfg: RunConfig) -> int:
     )
 
     # Ensure the run directory exists early so we can always emit a report.
-    cfg.outdir.mkdir(parents=True, exist_ok=True)
-    add_run_log_file(cfg.outdir / "debug.log")
+    paths = resolve_output_paths(cfg.outdir)
+    paths.root.mkdir(parents=True, exist_ok=True)
+    add_run_log_file(paths.debug_log)
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     run_collected_at = started_at
     timers = _StepTimers()
@@ -1957,8 +1986,8 @@ def cmd_run(cfg: RunConfig) -> int:
             phase="start",
             timers=timers,
         )
-        inventory_jsonl = cfg.outdir / "inventory.jsonl"
-        inventory_csv = cfg.outdir / "inventory.csv"
+        inventory_jsonl = paths.inventory_jsonl
+        inventory_csv = paths.inventory_csv
 
         derived_chunk_dir = cfg.outdir / ".derived_relationship_chunks"
         derived_chunk_paths: List[Path] = []
@@ -2098,8 +2127,11 @@ def cmd_run(cfg: RunConfig) -> int:
                     remaining_edges=len(edges),
                     total_edges=total_edges,
                 )
-            write_graph(cfg.outdir, nodes, edges)
-            write_mermaid(cfg.outdir, nodes, edges)
+            paths.graph_dir.mkdir(parents=True, exist_ok=True)
+            paths.diagrams_dir.mkdir(parents=True, exist_ok=True)
+            paths.diagrams_raw_dir.mkdir(parents=True, exist_ok=True)
+            write_graph(paths.graph_dir, nodes, edges)
+            write_mermaid(paths.diagrams_raw_dir, nodes, edges)
             if cfg.diagram_depth < 3:
                 _log_event(
                     LOG,
@@ -2111,11 +2143,12 @@ def cmd_run(cfg: RunConfig) -> int:
                     diagram_depth=cfg.diagram_depth,
                 )
             diagram_paths = write_diagram_projections(
-                cfg.outdir,
+                paths.diagrams_dir,
                 nodes,
                 edges,
                 diagram_depth=cfg.diagram_depth,
             )
+            _organize_diagrams(paths)
             _log_event(
                 LOG,
                 logging.INFO,
@@ -2184,7 +2217,10 @@ def cmd_run(cfg: RunConfig) -> int:
                 phase="validate",
                 timers=timers,
             )
-            validated = validate_mermaid_diagrams_with_mmdc(cfg.outdir)
+            validated = validate_mermaid_diagrams_with_mmdc(
+                paths.diagrams_dir,
+                glob_pattern="**/*.mmd",
+            )
             _log_event(
                 LOG,
                 logging.INFO,
@@ -2207,7 +2243,7 @@ def cmd_run(cfg: RunConfig) -> int:
                     timers=timers,
                 )
                 diff_obj = diff_files(Path(cfg.prev), inventory_jsonl)
-                write_diff(cfg.outdir, diff_obj)
+                write_diff(paths.diff_dir, diff_obj)
                 _log_event(
                     LOG,
                     logging.INFO,
@@ -2420,19 +2456,23 @@ def cmd_run(cfg: RunConfig) -> int:
                             futures = [
                                 executor.submit(
                                     write_cost_usage_csv,
-                                    outdir=cfg.outdir,
+                                    outdir=paths.cost_dir,
                                     usage_items=usage_items,
                                 ),
                                 executor.submit(
                                     write_cost_usage_grouped_csv,
-                                    outdir=cfg.outdir,
+                                    outdir=paths.cost_dir,
                                     usage_items=usage_items,
                                     group_by_label=cost_group_by_label or None,
                                 ),
-                                executor.submit(write_cost_usage_jsonl, outdir=cfg.outdir, usage_items=usage_items),
+                                executor.submit(
+                                    write_cost_usage_jsonl,
+                                    outdir=paths.cost_dir,
+                                    usage_items=usage_items,
+                                ),
                                 executor.submit(
                                     write_cost_usage_views,
-                                    outdir=cfg.outdir,
+                                    outdir=paths.cost_dir,
                                     usage_items=usage_items,
                                     compartment_group_by=str(comp_group_by),
                                 ),
@@ -2441,17 +2481,17 @@ def cmd_run(cfg: RunConfig) -> int:
                                 future.result()
                     else:
                         write_cost_usage_csv(
-                            outdir=cfg.outdir,
+                            outdir=paths.cost_dir,
                             usage_items=usage_items,
                         )
                         write_cost_usage_grouped_csv(
-                            outdir=cfg.outdir,
+                            outdir=paths.cost_dir,
                             usage_items=usage_items,
                             group_by_label=cost_group_by_label or None,
                         )
-                        write_cost_usage_jsonl(outdir=cfg.outdir, usage_items=usage_items)
+                        write_cost_usage_jsonl(outdir=paths.cost_dir, usage_items=usage_items)
                         write_cost_usage_views(
-                            outdir=cfg.outdir,
+                            outdir=paths.cost_dir,
                             usage_items=usage_items,
                             compartment_group_by=str(comp_group_by),
                         )
@@ -2477,6 +2517,7 @@ def cmd_diff(cfg: RunConfig) -> int:
     timers = _StepTimers()
     prev_p = Path(prev)
     curr_p = Path(curr)
+    paths = resolve_output_paths(cfg.outdir)
     _log_event(
         LOG,
         logging.INFO,
@@ -2486,7 +2527,7 @@ def cmd_diff(cfg: RunConfig) -> int:
         timers=timers,
     )
     diff_obj = diff_files(prev_p, curr_p)
-    write_diff(cfg.outdir, diff_obj)
+    write_diff(paths.diff_dir, diff_obj)
     _log_event(
         LOG,
         logging.INFO,

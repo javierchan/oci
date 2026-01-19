@@ -4,7 +4,7 @@ This document defines how OCI account cost and usage data must be collected and 
 
 ## Scope
 
-- Applies to cost/usage reporting artifacts produced by the inventory pipeline (for example, `out/<timestamp>/cost_report.md`).
+- Applies to cost/usage reporting artifacts produced by the inventory pipeline (for example, `out/<timestamp>/cost/cost_report.md`).
 - Read-only by design; no OCI resource state changes.
 - Deterministic, reproducible output.
 - FinOps assessment alignment applies when reports claim maturity or capability scoring.

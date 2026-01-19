@@ -20,7 +20,7 @@ def test_build_run_plan_contains_expected_flags() -> None:
         query="query all resources",
         regions=["mx-queretaro-1"],
         genai_summary=True,
-        prev=Path("out/prev/inventory.jsonl"),
+        prev=Path("out/prev/inventory/inventory.jsonl"),
         workers_region=3,
         workers_enrich=9,
         workers_cost=4,
@@ -60,7 +60,7 @@ def test_build_run_plan_contains_expected_flags() -> None:
     assert "query all resources" in plan.argv
     assert "--genai-summary" in plan.argv
     assert "--prev" in plan.argv
-    assert "out/prev/inventory.jsonl" in plan.argv
+    assert "out/prev/inventory/inventory.jsonl" in plan.argv
     assert "--workers-region" in plan.argv
     assert "3" in plan.argv
     assert "--workers-enrich" in plan.argv
@@ -141,10 +141,10 @@ def test_build_simple_plan_rejects_unknown_subcommand() -> None:
 
 
 def test_build_coverage_plan() -> None:
-    plan = build_coverage_plan(inventory=Path("out/run/inventory.jsonl"), top=5)
+    plan = build_coverage_plan(inventory=Path("out/run/inventory/inventory.jsonl"), top=5)
     assert plan.argv[0] == "enrich-coverage"
     assert "--inventory" in plan.argv
-    assert "out/run/inventory.jsonl" in plan.argv
+    assert "out/run/inventory/inventory.jsonl" in plan.argv
     assert "--top" in plan.argv
     assert "5" in plan.argv
 

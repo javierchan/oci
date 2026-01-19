@@ -122,7 +122,7 @@ allow group <group-name> to read budgets in tenancy
 ```
 
 ### Validate and refine
-- If `report.md` shows NotAuthorized enrichment errors, expand read/inspect access for the affected services.
+- If `report/report.md` shows NotAuthorized enrichment errors, expand read/inspect access for the affected services.
 - If NotFound errors dominate, treat them as expected drift (resources deleted) and re-run to confirm.
 - If Throttling errors appear, reduce `--workers-enrich` or increase `--client-connection-pool-size`.
 

@@ -126,7 +126,7 @@
 - Exports: JSONL and CSV always; relationships and graph artifacts are written. (src/oci_inventory/cli.py:306; src/oci_inventory/cli.py:312; src/oci_inventory/cli.py:320; src/oci_inventory/cli.py:326)
 - Coverage metrics: counts by resource type and enrich status are computed and written to run_summary.json. (src/oci_inventory/cli.py:185; src/oci_inventory/cli.py:322; src/oci_inventory/cli.py:208)
 - Optional diff: when `--prev` is provided, diff.json and diff_summary.json are produced. (src/oci_inventory/cli.py:331; src/oci_inventory/diff/diff.py:100)
-- Report: report.md is always attempted in a finally block; GenAI executive summary is appended when enabled and successful. (src/oci_inventory/cli.py:346; src/oci_inventory/cli.py:350; src/oci_inventory/report.py:195)
+- Report: report/report.md is always attempted in a finally block; GenAI executive summary is appended when enabled and successful. (src/oci_inventory/cli.py:346; src/oci_inventory/cli.py:350; src/oci_inventory/report.py:195)
 - Errors: region-level discovery errors are logged and excluded; diff errors become warnings; fatal exceptions set status FAILED but still attempt report output. (src/oci_inventory/cli.py:277; src/oci_inventory/cli.py:316; src/oci_inventory/cli.py:342)
 
 ### 2) `oci-inv diff`
@@ -149,7 +149,7 @@
 - Auth methods: config-file, instance principals, resource principals, security token, and auto fallback; tenancy OCID may be required for list-regions and list-compartments. (docs/auth.md:5; src/oci_inventory/auth/providers.py:51; src/oci_inventory/oci/clients.py:162)
 - Read-only posture: CLI is documented as read-only and report notes reinforce no mutations; SDK calls are list/get style. (README.md:218; src/oci_inventory/report.py:189)
 - Security hygiene: redaction for sensitive keys during serialization and OCID/URL redaction for GenAI. (src/oci_inventory/util/serialization.py:7; src/oci_inventory/genai/redact.py:5)
-- Operational outputs: timestamped outdir for runs with report, inventory, graph, diff, coverage artifacts, and per-run debug.log. (README.md:223; src/oci_inventory/config.py:224; src/oci_inventory/cli.py:306)
+- Operational outputs: timestamped outdir for runs with report/report.md, inventory, graph, diff, coverage artifacts, and per-run logs/debug.log. (README.md:223; src/oci_inventory/config.py:224; src/oci_inventory/cli.py:306)
 
 ## 3.6 Quality, Testing, and Standards
 - Test suite covers config precedence and flags, hashing, diff computation, enrichers, coverage, serialization, graph export, pagination, compartments, report rendering, GenAI utilities, and wizard plans. (tests/test_config.py:8; tests/test_hash.py:6; tests/test_diff.py:8; tests/test_default_enricher.py:8; tests/test_enrich_coverage.py:28; tests/test_serialization.py:8; tests/test_graph.py:6; tests/test_pagination.py:6; tests/test_compartments.py:39; tests/test_report_md.py:9; tests/test_wizard_plan.py:13)
@@ -219,4 +219,4 @@
 3) Add an end-to-end pipeline test for `cmd_run` and a focused discovery test with mocked Resource Search responses to validate the full flow. (src/oci_inventory/cli.py:232; src/oci_inventory/oci/discovery.py:48)
 4) Enhance resiliency with explicit retry/backoff or rate-limit handling around discovery/enrichment beyond default SDK retry strategy. (src/oci_inventory/auth/providers.py:147; src/oci_inventory/oci/discovery.py:61)
 5) Grow relationship enrichment so graph outputs carry meaningful cross-resource edges beyond IN_COMPARTMENT. (src/oci_inventory/cli.py:320; src/oci_inventory/enrich/oci_metadata.py:58)
-6) Add richer run observability (per-step timings, per-region metrics) in report.md and/or run_summary.json. (src/oci_inventory/report.py:28; src/oci_inventory/cli.py:323)
+6) Add richer run observability (per-step timings, per-region metrics) in report/report.md and/or run_summary.json. (src/oci_inventory/report.py:28; src/oci_inventory/cli.py:323)

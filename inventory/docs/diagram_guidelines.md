@@ -68,8 +68,8 @@ reference zip files and are cited with file paths and line numbers.
 ### 1a) Consolidated Outputs and Depth Levels (Implementation)
 
 The pipeline emits two consolidated diagrams per run (both must follow the OCI abstraction rules above):
-- `diagram.consolidated.architecture.mmd` (Mermaid `architecture-beta`).
-- `diagram.consolidated.flowchart.mmd` (Mermaid `flowchart`).
+- `diagrams/consolidated/diagram.consolidated.architecture.mmd` (Mermaid `architecture-beta`).
+- `diagrams/consolidated/diagram.consolidated.flowchart.mmd` (Mermaid `flowchart`).
 
 Depth controls are a rendering knob for consolidated outputs only; per-VCN and workload-specific diagrams remain full detail.
 - Depth 1: tenancy/compartments + VCN/subnet/gateways only.
@@ -282,7 +282,7 @@ Renderer MUST:
 
 ### 7) Full-Detail Coverage (No Omission)
 
-- All nodes and edges from `graph_nodes.jsonl` and `graph_edges.jsonl` MUST be rendered in inventory diagrams unless a specific diagram exceeds Mermaid text limits, in which case that diagram is skipped and logged.
+- All nodes and edges from `graph/graph_nodes.jsonl` and `graph/graph_edges.jsonl` MUST be rendered in inventory diagrams unless a specific diagram exceeds Mermaid text limits, in which case that diagram is skipped and logged.
 - Consolidated diagrams MUST include the complete inventory scope without aggregation or omission; if depth is reduced due to Mermaid limits, it must be annotated in the diagram output.
 - Use grouping, lane structure, and layout (not summarization) to manage density.
 

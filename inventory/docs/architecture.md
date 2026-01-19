@@ -82,36 +82,36 @@ src/oci_inventory/
    - Writes `diff.json` and `diff_summary.json`.
 9. Cost reporting (optional):
    - Usage API summaries in the tenancy home region with deterministic aggregation.
-   - Writes `cost_report.md` and cost usage exports when enabled.
+   - Writes `cost/cost_report.md` and cost usage exports when enabled.
 
 ## Output Artifacts (out/<timestamp>/)
 
 Each `run` writes a deterministic set of artifacts. Fields below are the stable schema contract consumed by reports and diagrams.
 Canonical field requirements and definitions live in `src/oci_inventory/normalize/schema.py`.
 
-- `inventory.jsonl`
+- `inventory/inventory.jsonl`
   - One JSON object per resource record.
   - Required fields: `ocid`, `resourceType`, `region`, `collectedAt`, `enrichStatus`, `details`, `relationships`.
   - Common fields: `displayName`, `compartmentId`, `lifecycleState`, `timeCreated`, `definedTags`, `freeformTags`, `enrichError`.
   - `relationships` is a list of `{source_ocid, relation_type, target_ocid}` sorted by `(source_ocid, relation_type, target_ocid)`.
   - `collectedAt` is a run-level UTC timestamp applied consistently to all records.
 
-- `inventory.csv`
+- `inventory/inventory.csv`
   - Report fields only (see `CSV_REPORT_FIELDS` in `src/oci_inventory/normalize/schema.py`).
 
-- `cost_report.md`
+- `cost/cost_report.md`
   - Optional cost and usage assessment report when cost reporting is enabled.
   - Must follow `docs/cost_guidelines.md`.
-- `cost_usage_items.csv`
+- `cost/cost_usage_items.csv`
   - Optional Usage API rows with full fields for validation/export (group_by, time window, service/region/compartment).
-- `cost_usage_items.jsonl`
+- `cost/cost_usage_items.jsonl`
   - Optional full Usage API items for auditability.
-- `cost_usage_items_grouped.csv`
+- `cost/cost_usage_items_grouped.csv`
   - Optional combined group_by export when `--cost-group-by` is set.
-- `cost_usage_service.csv`, `cost_usage_region.csv`, `cost_usage_compartment.csv`
+- `cost/cost_usage_service.csv`, `cost/cost_usage_region.csv`, `cost/cost_usage_compartment.csv`
   - Optional per-view exports derived from Usage API groupings for stable FinOps reporting.
 
-- `relationships.jsonl`
+- `inventory/relationships.jsonl`
   - Derived + enricher relationships (graph edges), one per line.
   - Required fields: `source_ocid`, `relation_type`, `target_ocid`.
 
@@ -120,21 +120,21 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
   - Required fields: `schema_version`, `total_discovered`, `enriched_ok`, `not_implemented`, `errors`,
     `counts_by_resource_type`, `counts_by_enrich_status`, `counts_by_resource_type_and_status`.
 
-- `graph_nodes.jsonl` (optional; generated when diagrams are enabled)
+- `graph/graph_nodes.jsonl` (optional; generated when diagrams are enabled)
   - Node projection of inventory records.
   - Required fields: `nodeId`, `nodeType`, `nodeCategory`, `name`, `region`, `compartmentId`,
     `metadata`, `tags`, `enrichStatus`, `enrichError`.
 
-- `graph_edges.jsonl` (optional; generated when diagrams are enabled)
+- `graph/graph_edges.jsonl` (optional; generated when diagrams are enabled)
   - Graph edges (relationships) with node typing hints.
   - Required fields: `source_ocid`, `target_ocid`, `relation_type`, `source_type`, `target_type`, `region`.
 
-- `diagram_raw.mmd` (optional; generated when diagrams are enabled)
+- `diagrams/raw/diagram_raw.mmd` (optional; generated when diagrams are enabled)
   - Raw Mermaid graph export (full graph, intended for debugging).
 
-- `diagram.tenancy.mmd`, `diagram.network.*.mmd`, `diagram.workload.*.mmd`, `diagram.consolidated.architecture.mmd`, `diagram.consolidated.flowchart.mmd` (optional; generated when diagrams are enabled)
+- `diagrams/tenancy/diagram.tenancy.mmd`, `diagrams/network/diagram.network.*.mmd`, `diagrams/workload/diagram.workload.*.mmd`, `diagrams/consolidated/diagram.consolidated.architecture.mmd`, `diagrams/consolidated/diagram.consolidated.flowchart.mmd` (optional; generated when diagrams are enabled)
   - Mermaid projections derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
-  - `diagram.consolidated.architecture.mmd` uses Mermaid `architecture-beta` syntax for the high-level architecture view.
+  - `diagrams/consolidated/diagram.consolidated.architecture.mmd` uses Mermaid `architecture-beta` syntax for the high-level architecture view.
   - Consolidated diagrams honor `--diagram-depth` (1=network only, 2=add workloads, 3=add workload edges).
   - Per-VCN and workload diagrams are full-detail outputs; if a single diagram exceeds Mermaid text limits it is skipped and logged.
 

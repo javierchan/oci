@@ -3,7 +3,7 @@
 ## 4.1 Executive Summary (Planned)
 - Expand inventory analysis to include OCI best practices (CAF) and CIS health checks.
 - Improve enrichment coverage with relationships for network security controls and workloads.
-- Extend `report.md` with As-Is/To-Be and design-decision sections aligned to diagram/report guidelines.
+- Extend `report/report.md` with As-Is/To-Be and design-decision sections aligned to diagram/report guidelines.
 - Add skills artifacts (pptx) and OCI SDK usage guidance.
 
 ## 4.2 Planned Workstreams (Future Functionality)
@@ -37,7 +37,7 @@
 - Acceptance criteria: relationships are emitted and deterministically ordered; graph/report reflect associations; enrichers remain read-only.
 
 ### As-Is and To-Be section leveraging diagrams
-- Goal: add an As-Is/To-Be section in `report.md` that uses diagram outputs to explain current and proposed architecture.
+- Goal: add an As-Is/To-Be section in `report/report.md` that uses diagram outputs to explain current and proposed architecture.
 - Phase 1: text-only As-Is and To-Be summary.
 - Phase 2: diagram proposals using GenAI and validated architectures guided by `at_guidelines.md` (future).
 - Constraints: follow `docs/diagram_guidelines.md` and `docs/report_guidelines.md`; redact sensitive data.
@@ -48,7 +48,7 @@
 ### Design-decision inputs
 - Goal: incorporate meeting inputs that justify architectural choices.
 - Inputs: structured decision data (format TBD).
-- Outputs: `report.md` section summarizing decisions and rationale linked to workloads/diagrams.
+- Outputs: `report/report.md` section summarizing decisions and rationale linked to workloads/diagrams.
 - Constraints: deterministic ordering; avoid sensitive identifiers in the body.
 - Owner: TBD.
 - Milestones: M1 define input schema and storage location; M2 implement parsing and report section; M3 add tests and redaction checks.
@@ -84,5 +84,5 @@
 ## 4.5 Suggested Sequencing (High Level)
 1) Expand enrichment types and relationships for network controls and workloads.
 2) Define best-practices criteria and CIS integration outputs.
-3) Add `report.md` sections for As-Is/To-Be and design decisions.
+3) Add `report/report.md` sections for As-Is/To-Be and design decisions.
 4) Document SDK usage and add skills artifacts once referenced.

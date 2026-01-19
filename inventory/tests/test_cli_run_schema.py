@@ -15,6 +15,7 @@ from oci_inventory.cli import (
 )
 from oci_inventory.config import RunConfig, load_run_config
 from oci_inventory.enrich.default import DefaultEnricher
+from oci_inventory.normalize.schema import resolve_output_paths
 from oci_inventory.normalize.transform import normalize_from_search_summary
 import oci_inventory.cli as cli
 
@@ -85,11 +86,12 @@ def test_cli_run_writes_schema_offline(tmp_path, monkeypatch) -> None:
     validation = cli._validate_outdir_schema(cfg.outdir)
     assert not validation.errors
 
-    assert (cfg.outdir / "inventory.jsonl").is_file()
-    assert (cfg.outdir / "relationships.jsonl").is_file()
-    assert (cfg.outdir / "graph_nodes.jsonl").is_file()
-    assert (cfg.outdir / "graph_edges.jsonl").is_file()
-    assert (cfg.outdir / "run_summary.json").is_file()
+    paths = resolve_output_paths(cfg.outdir)
+    assert paths.inventory_jsonl.is_file()
+    assert paths.relationships_jsonl.is_file()
+    assert paths.graph_nodes_jsonl.is_file()
+    assert paths.graph_edges_jsonl.is_file()
+    assert paths.run_summary_json.is_file()
 
 
 def test_cli_run_can_skip_diagrams(tmp_path, monkeypatch) -> None:
@@ -148,8 +150,9 @@ def test_cli_run_can_skip_diagrams(tmp_path, monkeypatch) -> None:
     validation = cli._validate_outdir_schema(cfg.outdir, expect_graph=False)
     assert not validation.errors
 
-    assert (cfg.outdir / "graph_nodes.jsonl").exists() is False
-    assert (cfg.outdir / "graph_edges.jsonl").exists() is False
+    paths = resolve_output_paths(cfg.outdir)
+    assert paths.graph_nodes_jsonl.exists() is False
+    assert paths.graph_edges_jsonl.exists() is False
 
 
 def test_cost_report_skips_usage_api_without_home_region(tmp_path, monkeypatch) -> None:
@@ -485,9 +488,13 @@ def test_merge_sorted_relationship_chunks(tmp_path) -> None:
 
 
 def test_validate_outdir_schema_sampled_warns(tmp_path) -> None:
-    inv = tmp_path / "inventory.jsonl"
-    rels = tmp_path / "relationships.jsonl"
-    summary = tmp_path / "run_summary.json"
+    paths = resolve_output_paths(tmp_path)
+    inv = paths.inventory_jsonl
+    rels = paths.relationships_jsonl
+    summary = paths.run_summary_json
+
+    inv.parent.mkdir(parents=True, exist_ok=True)
+    rels.parent.mkdir(parents=True, exist_ok=True)
 
     inv.write_text(
         "\n".join(

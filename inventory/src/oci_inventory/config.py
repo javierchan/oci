@@ -366,8 +366,18 @@ def load_run_config(
     # run
     p_run = subparsers.add_parser("run", help="Run inventory collection")
     add_common(p_run)
-    p_run.add_argument("--outdir", type=Path, default=None, help="Output base directory (out/TS)")
-    p_run.add_argument("--prev", type=Path, default=None, help="Previous inventory.jsonl for diff")
+    p_run.add_argument(
+        "--outdir",
+        type=Path,
+        default=None,
+        help="Output base directory (out/TS with structured subfolders)",
+    )
+    p_run.add_argument(
+        "--prev",
+        type=Path,
+        default=None,
+        help="Previous inventory JSONL for diff (e.g., out/TS/inventory/inventory.jsonl)",
+    )
     p_run.add_argument(
         "--query",
         default=None,
@@ -408,7 +418,7 @@ def load_run_config(
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "Generate a GenAI Executive Summary and embed it into report.md "
+            "Generate a GenAI Executive Summary and embed it into report/report.md "
             "(uses OCI_INV_GENAI_CONFIG, else ~/.config/oci-inv/genai.yaml, else inventory/.local/genai.yaml)"
         ),
     )
@@ -435,7 +445,7 @@ def load_run_config(
         default=None,
         help=(
             "Schema validation mode for outputs: auto (default), full, sampled, or off. "
-            "Auto switches to sampling for large inventory.jsonl files."
+            "Auto switches to sampling for large inventory/inventory.jsonl files."
         ),
     )
     p_run.add_argument(
@@ -455,7 +465,7 @@ def load_run_config(
         "--cost-report",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Generate cost_report.md using OCI Usage API (read-only).",
+        help="Generate cost/cost_report.md using OCI Usage API (read-only).",
     )
     p_run.add_argument(
         "--cost-start",
@@ -518,8 +528,18 @@ def load_run_config(
     # diff
     p_diff = subparsers.add_parser("diff", help="Diff two inventory JSONL files")
     add_common(p_diff)
-    p_diff.add_argument("--prev", type=Path, required=False, help="Previous inventory.jsonl")
-    p_diff.add_argument("--curr", type=Path, required=False, help="Current inventory.jsonl")
+    p_diff.add_argument(
+        "--prev",
+        type=Path,
+        required=False,
+        help="Previous inventory JSONL (e.g., out/TS/inventory/inventory.jsonl)",
+    )
+    p_diff.add_argument(
+        "--curr",
+        type=Path,
+        required=False,
+        help="Current inventory JSONL (e.g., out/TS/inventory/inventory.jsonl)",
+    )
     p_diff.add_argument("--outdir", type=Path, default=None, help="Output dir for diff files")
 
     # validate-auth
@@ -548,14 +568,14 @@ def load_run_config(
     # enrich-coverage
     p_ec = subparsers.add_parser(
         "enrich-coverage",
-        help="Show which resource types are missing enrichers for a given inventory.jsonl",
+        help="Show which resource types are missing enrichers for a given inventory JSONL",
     )
     add_common(p_ec)
     p_ec.add_argument(
         "--inventory",
         type=Path,
         required=True,
-        help="Path to an inventory.jsonl file",
+        help="Path to an inventory JSONL file (e.g., out/TS/inventory/inventory.jsonl)",
     )
     p_ec.add_argument(
         "--top",

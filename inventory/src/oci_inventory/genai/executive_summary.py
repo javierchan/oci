@@ -46,7 +46,7 @@ def _build_prompt(
         txt = (report_md or "").strip()
         if len(txt) > 12000:
             txt = txt[:12000] + "\n... (truncated) ..."
-        lines.append("Context (report.md):")
+        lines.append("Context (report/report.md):")
         lines.append("```")
         lines.append(txt)
         lines.append("```")
@@ -657,7 +657,7 @@ def generate_executive_summary(
     if architecture_facts:
         arch_facts_red = {k: redact_text(str(v)) for k, v in architecture_facts.items()}
 
-    # Redact any report.md content before sending to GenAI.
+    # Redact any report/report.md content before sending to GenAI.
     report_md_red = redact_text(report_md).strip() if report_md else None
     prompt = _build_prompt(run_facts=run_facts, architecture_facts=arch_facts_red, report_md=report_md_red)
 

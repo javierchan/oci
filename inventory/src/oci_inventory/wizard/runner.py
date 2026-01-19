@@ -17,6 +17,7 @@ from ..cli import (
 )
 from ..config import load_run_config
 from ..logging import LogConfig, setup_logging
+from ..normalize.schema import resolve_output_paths
 from .plan import WizardPlan
 
 
@@ -112,25 +113,28 @@ def summarize_outdir(outdir: Path) -> str:
     if not outdir.exists() or not outdir.is_dir():
         return f"Output directory not found: {outdir}"
 
-    key_files = [
-        "debug.log",
-        "report.md",
-        "inventory.jsonl",
-        "inventory.csv",
-        "run_summary.json",
-        "diff.json",
-        "diff_summary.json",
-        "diagram_raw.mmd",
-        "diagram.consolidated.architecture.mmd",
-        "graph_nodes.jsonl",
-        "graph_edges.jsonl",
-        "relationships.jsonl",
+    paths = resolve_output_paths(outdir)
+    key_paths = [
+        paths.debug_log,
+        paths.report_md,
+        paths.inventory_jsonl,
+        paths.inventory_csv,
+        paths.run_summary_json,
+        paths.graph_nodes_jsonl,
+        paths.graph_edges_jsonl,
+        paths.relationships_jsonl,
+        paths.cost_report_md,
+        paths.diff_dir / "diff.json",
+        paths.diff_dir / "diff_summary.json",
+        paths.diagrams_raw_dir / "diagram_raw.mmd",
+        paths.diagrams_consolidated_dir / "diagram.consolidated.architecture.mmd",
+        paths.diagrams_consolidated_dir / "diagram.consolidated.flowchart.mmd",
     ]
 
-    # Include any architectural projection diagrams.
-    key_files.extend(sorted(p.name for p in outdir.glob("diagram.*.mmd")))
+    diagram_paths = sorted(p for p in paths.diagrams_dir.glob("**/diagram*.mmd") if p.is_file())
+    key_paths.extend(diagram_paths)
 
-    present = [name for name in key_files if (outdir / name).exists()]
+    present = [p for p in key_paths if p.exists()]
     if not present:
         return f"Wrote output directory: {outdir}"
-    return "Wrote:\n" + "\n".join(f"- {outdir / name}" for name in present)
+    return "Wrote:\n" + "\n".join(f"- {p}" for p in present)
