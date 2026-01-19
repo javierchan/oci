@@ -560,10 +560,11 @@ Signer-based auth also needs a region; set `OCI_REGION` (or `OCI_CLI_REGION`) wh
 - OCI_INV_DISABLE_CLIENT_CACHE (set to 1/true to disable client reuse)
 
 ## Logging
-- Std logging, INFO by default
+- Std logging, INFO by default (overridden by config/workers.yaml, env, or CLI)
 - Structured JSON logs toggled with `--json-logs` or `OCI_INV_JSON_LOGS=1`
 - JSON logs include `event`, `step`, `phase`, and `duration_ms` when available; plain logs prefix `[step:phase]`.
 - Each run writes `out/<timestamp>/debug.log` with the same formatting as console logs.
+- Repo defaults: `config/workers.yaml` sets `log_level: DEBUG` and `json_logs: true`; edit that file to change the baseline.
 
 ## Development
 - Linting: ruff

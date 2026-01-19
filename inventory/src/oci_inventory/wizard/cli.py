@@ -342,6 +342,38 @@ def _print_startup_status() -> None:
     console.print(table)
 
 
+def _default_logging_from_repo_config() -> Tuple[str, bool]:
+    default_level = "INFO"
+    default_json = False
+    cfg_path = Path("config") / "workers.yaml"
+    if not cfg_path.exists():
+        return default_level, default_json
+    try:
+        import yaml
+
+        data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return default_level, default_json
+    if not isinstance(data, dict):
+        return default_level, default_json
+
+    raw_level = data.get("log_level")
+    if isinstance(raw_level, str) and raw_level.strip():
+        default_level = raw_level.strip().upper()
+
+    raw_json = data.get("json_logs")
+    if isinstance(raw_json, bool):
+        default_json = raw_json
+    elif isinstance(raw_json, str):
+        raw = raw_json.strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            default_json = True
+        elif raw in {"0", "false", "no", "off"}:
+            default_json = False
+
+    return default_level, default_json
+
+
 def _section(title: str) -> None:
     from rich.console import Console
 
@@ -545,14 +577,15 @@ def main() -> None:
             tenancy_ocid = _ask_str("Tenancy OCID (optional)", default="", allow_blank=True).strip() or None
 
             # Logging toggles (keep simple)
-            json_logs = _ask_bool("Enable JSON logs?", default=False)
+            default_log_level, default_json_logs = _default_logging_from_repo_config()
+            json_logs = _ask_bool("Enable JSON logs?", default=default_json_logs)
             log_level = _ask_choice(
                 "Log level",
                 [
                     ("INFO", "Standard logs for normal operation."),
                     ("DEBUG", "Verbose logs for troubleshooting."),
                 ],
-                default="INFO",
+                default=default_log_level if default_log_level in {"INFO", "DEBUG"} else "INFO",
                 allow_back=True,
             )
             if log_level == "Back":
