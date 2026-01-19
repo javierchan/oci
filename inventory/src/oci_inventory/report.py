@@ -565,6 +565,7 @@ def render_run_report_md(
     metrics: Optional[Dict[str, Any]],
     diff_warning: Optional[str] = None,
     fatal_error: Optional[str] = None,
+    diagram_summary: Optional[Dict[str, Any]] = None,
 ) -> str:
     duration_note = ""
     try:
@@ -811,6 +812,50 @@ def render_run_report_md(
     lines.append("- `graph/graph_nodes.jsonl` / `graph/graph_edges.jsonl` (graph data)")
     lines.append("- `diagrams/**/diagram*.mmd` (architectural projections, if enabled)")
     lines.append("")
+
+    diagram_summary = diagram_summary or {}
+    skipped = diagram_summary.get("skipped") or []
+    split = diagram_summary.get("split") or []
+    if skipped or split:
+        def _reason_label(reason: str) -> str:
+            mapping = {
+                "exceeds_mermaid_limit": "exceeds Mermaid size limit",
+                "split_mermaid_limit": "split to stay within Mermaid limit",
+                "single_node_exceeds_limit": "single node exceeds Mermaid limit",
+                "split_region": "split by region",
+                "split_compartment": "split by compartment",
+            }
+            return mapping.get(reason, reason.replace("_", " "))
+
+        def _parts_label(parts: List[str], *, max_items: int = 5) -> str:
+            if not parts:
+                return "(none)"
+            if len(parts) <= max_items:
+                return ", ".join(parts)
+            return ", ".join(parts[:max_items]) + f", (+{len(parts) - max_items} more)"
+
+        lines.append("Diagram generation notes (best-effort):")
+        lines.append("")
+        if split:
+            split_rows: List[List[str]] = []
+            for item in sorted(split, key=lambda x: str(x.get("diagram") or "")):
+                diagram = str(item.get("diagram") or "")
+                parts = [str(p) for p in (item.get("parts") or [])]
+                reason = _reason_label(str(item.get("reason") or ""))
+                split_rows.append([diagram, _parts_label(parts), reason])
+            lines.extend(_md_table(["Diagram", "Split outputs", "Reason"], split_rows))
+            lines.append("")
+        if skipped:
+            skip_rows: List[List[str]] = []
+            for item in sorted(skipped, key=lambda x: str(x.get("diagram") or "")):
+                diagram = str(item.get("diagram") or "")
+                reason = _reason_label(str(item.get("reason") or ""))
+                size = str(item.get("size") or "")
+                limit = str(item.get("limit") or "")
+                size_label = f"{size}/{limit}" if size and limit else "(unknown)"
+                skip_rows.append([diagram, reason, size_label])
+            lines.extend(_md_table(["Diagram", "Reason", "Size/Limit"], skip_rows))
+            lines.append("")
 
     # Graph-derived connectivity (only if edges include relationships beyond IN_COMPARTMENT)
     if graph_summary:
@@ -1439,6 +1484,7 @@ def write_run_report_md(
     executive_summary_error: Optional[str] = None,
     started_at: Optional[str] = None,
     finished_at: Optional[str] = None,
+    diagram_summary: Optional[Dict[str, Any]] = None,
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
     paths = resolve_output_paths(outdir)
@@ -1474,6 +1520,7 @@ def write_run_report_md(
         metrics=dict(metrics) if metrics else None,
         diff_warning=diff_warning,
         fatal_error=fatal_error,
+        diagram_summary=dict(diagram_summary) if diagram_summary else None,
     )
 
     p = paths.report_md
@@ -1882,6 +1929,7 @@ def write_run_report_md(
     executive_summary_error: Optional[str] = None,
     started_at: Optional[str] = None,
     finished_at: Optional[str] = None,
+    diagram_summary: Optional[Dict[str, Any]] = None,
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
     paths = resolve_output_paths(outdir)
@@ -1917,6 +1965,7 @@ def write_run_report_md(
         metrics=dict(metrics) if metrics else None,
         diff_warning=diff_warning,
         fatal_error=fatal_error,
+        diagram_summary=dict(diagram_summary) if diagram_summary else None,
     )
 
     p = paths.report_md

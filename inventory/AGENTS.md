@@ -268,6 +268,7 @@ For any diagram creation or diagram-related task, use:
 `docs/diagram_guidelines.md`
 - Treat it as the source of truth for layout, abstraction level, and component grouping.
 - If there is any conflict between a request and the guidelines, follow the guidelines and call out the mismatch.
+- When Mermaid size limits are exceeded, the pipeline may split diagrams into deterministic overflow parts; ensure stub diagrams and report summaries align with the guidelines.
 
 ## Report Guidelines (Required)
 For any report.md creation or report-related task, use:

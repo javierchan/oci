@@ -132,11 +132,13 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
 - `diagrams/raw/diagram_raw.mmd` (optional; generated when diagrams are enabled)
   - Raw Mermaid graph export (full graph, intended for debugging).
 
-- `diagrams/tenancy/diagram.tenancy.mmd`, `diagrams/network/diagram.network.*.mmd`, `diagrams/workload/diagram.workload.*.mmd`, `diagrams/consolidated/diagram.consolidated.architecture.mmd`, `diagrams/consolidated/diagram.consolidated.flowchart.mmd` (optional; generated when diagrams are enabled)
+- `diagrams/tenancy/diagram.tenancy.mmd`, `diagrams/network/diagram.network.*.mmd`, `diagrams/workload/diagram.workload.*.mmd`, `diagrams/workload/diagram.workload.*.partNN.mmd`, `diagrams/consolidated/diagram.consolidated.architecture.mmd`, `diagrams/consolidated/diagram.consolidated.flowchart.mmd`, `diagrams/consolidated/diagram.consolidated.*.{region|compartment}.*.mmd` (optional; generated when diagrams are enabled)
   - Mermaid projections derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
   - `diagrams/consolidated/diagram.consolidated.architecture.mmd` uses Mermaid `architecture-beta` syntax for the high-level architecture view.
   - Consolidated diagrams honor `--diagram-depth` (1=network only, 2=add workloads, 3=add workload edges).
-  - Per-VCN and workload diagrams are full-detail outputs; if a single diagram exceeds Mermaid text limits it is skipped and logged.
+  - Consolidated diagrams auto-reduce depth when Mermaid limits are exceeded; if still oversized at depth 1, they are split by region (preferred) or top-level compartment and the base diagram becomes a stub that references the split outputs.
+  - Workload diagrams are full-detail for the workload scope; oversized diagrams are split into deterministic overflow parts, and single-node slices that still exceed Mermaid limits are skipped and summarized in the report.
+  - Per-VCN diagrams remain full-detail; oversized per-VCN diagrams are skipped and summarized in the report.
 
 ## CLI Commands
 
