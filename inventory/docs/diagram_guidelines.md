@@ -71,14 +71,21 @@ The pipeline emits two consolidated diagrams per run (both must follow the OCI a
 - `diagrams/consolidated/diagram.consolidated.architecture.mmd` (Mermaid `architecture-beta`).
 - `diagrams/consolidated/diagram.consolidated.flowchart.mmd` (Mermaid `flowchart`).
 
-Depth controls are a rendering knob for consolidated outputs only; per-VCN and workload-specific diagrams remain full detail.
+When Mermaid size limits are exceeded, additional split outputs may be emitted:
+- `diagrams/consolidated/diagram.consolidated.architecture.region.<region>.mmd` or `diagram.consolidated.architecture.compartment.<compartment>.mmd`
+- `diagrams/consolidated/diagram.consolidated.flowchart.region.<region>.mmd` or `diagram.consolidated.flowchart.compartment.<compartment>.mmd`
+- `diagrams/workload/diagram.workload.<workload>.partNN.mmd`
+
+Depth controls are a rendering knob for consolidated outputs only; per-VCN diagrams remain full detail and workload diagrams remain full detail for their workload scope.
 - Depth 1: tenancy/compartments + VCN/subnet/gateways only.
 - Depth 2: add workloads (no relationship edges).
 - Depth 3: add workloads + relationship edges (default; full detail).
 
 Depth is for readability/performance and does not override any required abstraction or containment rules.
 If consolidated output exceeds Mermaid text limits, the renderer reduces depth until it fits and annotates the diagram with a NOTE comment.
-Per-VCN and workload diagrams are generated at full detail; if an individual diagram exceeds Mermaid text limits, it is skipped and logged.
+If consolidated output still exceeds Mermaid text limits at depth 1, the renderer splits the consolidated view by region (preferred) or by top-level compartment and writes a stub consolidated diagram that references the split outputs.
+Per-VCN diagrams are generated at full detail; if an individual diagram exceeds Mermaid text limits, it is skipped and recorded in the report summary.
+Workload diagrams are generated at full detail for the workload scope; if a workload diagram exceeds Mermaid text limits, it is split into deterministic overflow parts. If a single-node slice still exceeds the limit, that node is skipped and recorded in the report summary.
 
 ---
 
@@ -276,14 +283,14 @@ Renderer MUST:
 
 - New overlays (IAM, tags, health) MUST update legend.
 - Grouping MUST still show at least one representative logical flow.
-- Summaries are not permitted; diagrams must remain full-detail when emitted.
+- Summaries are not permitted; diagrams must remain full-detail for the scope they represent when emitted.
 
 ---
 
 ### 7) Full-Detail Coverage (No Omission)
 
-- All nodes and edges from `graph/graph_nodes.jsonl` and `graph/graph_edges.jsonl` MUST be rendered in inventory diagrams unless a specific diagram exceeds Mermaid text limits, in which case that diagram is skipped and logged.
-- Consolidated diagrams MUST include the complete inventory scope without aggregation or omission; if depth is reduced due to Mermaid limits, it must be annotated in the diagram output.
+- All nodes and edges from `graph/graph_nodes.jsonl` and `graph/graph_edges.jsonl` MUST be rendered in inventory diagrams unless a specific diagram exceeds Mermaid text limits, in which case the diagram is split into deterministic overflow parts (preferred) or skipped only if a single-node slice still exceeds the limit. Skips and splits must be recorded in the report summary.
+- Consolidated diagrams MUST include the complete inventory scope without aggregation or omission; if depth is reduced due to Mermaid limits, it must be annotated in the diagram output. If the consolidated output still exceeds limits at depth 1, it must be split by region or top-level compartment with a stub diagram that references the split outputs.
 - Use grouping, lane structure, and layout (not summarization) to manage density.
 
 ---

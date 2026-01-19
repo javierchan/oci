@@ -82,7 +82,7 @@ Optional flags:
   ```
   oci-inv run --diagram-depth 2
   ```
-  Per-VCN and workload diagrams are skipped automatically if they exceed Mermaid text limits (the skip is logged).
+  Per-VCN diagrams are skipped automatically if they exceed Mermaid text limits (summarized in `report/report.md`). Workload diagrams are split into overflow parts when needed; single-node slices that still exceed limits are skipped and summarized in the report.
 - Tune schema validation for large outputs:
   ```
   oci-inv run --validate-schema sampled --validate-schema-sample 2000

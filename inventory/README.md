@@ -196,7 +196,9 @@ allow group <group-name> to read budgets in tenancy
 - Schema validation modes: `--validate-schema auto|full|sampled|off` and `--validate-schema-sample N`.
 - Consolidated diagram depth: `--diagram-depth 1|2|3` (1=tenancy/compartments+VCN/subnet/gateways, 2=add workloads, 3=add workload edges). Default is 2 when `config/workers.yaml` is loaded. Applies to `diagram.consolidated.architecture.mmd` and `diagram.consolidated.flowchart.mmd`.
 - Consolidated diagrams auto-reduce depth when Mermaid text limits are exceeded; a NOTE comment is added to the output when this happens.
-- Network/workload diagrams are skipped if a single diagram exceeds Mermaid text limits; the skip is logged for visibility.
+- If consolidated diagrams still exceed Mermaid limits at depth 1, they are split by region (preferred) or top-level compartment and the base diagram is replaced by a stub that links to split outputs.
+- Workload diagrams that exceed Mermaid limits are split into deterministic overflow parts; if a single-node slice still exceeds the limit, it is skipped and summarized in `report/report.md`.
+- Network diagrams are skipped if a single diagram exceeds Mermaid text limits; the skip is summarized in `report/report.md`.
 - Use `--no-diagrams` when you only need inventory/cost outputs.
 - OCI SDK clients are cached per service+region; set `OCI_INV_DISABLE_CLIENT_CACHE=1` to disable.
 - Increase OCI SDK HTTP connection pool size with `--client-connection-pool-size N` or `OCI_INV_CLIENT_CONNECTION_POOL_SIZE` to reduce pool churn in high-concurrency runs (repo default is 24).
@@ -375,8 +377,11 @@ subgraph out_ts[out timestamp]
     ten[diagrams/tenancy/diagram.tenancy.mmd optional]
     net[diagrams/network/diagram.network.vcn.mmd optional]
     wl[diagrams/workload/diagram.workload.workload.mmd optional]
+    wl_parts[diagrams/workload/diagram.workload.workload.partNN.mmd optional]
     cons[diagrams/consolidated/diagram.consolidated.architecture.mmd optional]
     cons_fc[diagrams/consolidated/diagram.consolidated.flowchart.mmd optional]
+    cons_split[diagrams/consolidated/diagram.consolidated.architecture.region_or_compartment.mmd optional]
+    cons_fc_split[diagrams/consolidated/diagram.consolidated.flowchart.region_or_compartment.mmd optional]
     rpt[report/report.md]
     sum[run_summary.json]
     cost[cost/cost_report.md optional]
@@ -397,6 +402,12 @@ subgraph out_ts[out timestamp]
   edges --> cons
   nodes --> cons_fc
   edges --> cons_fc
+  nodes --> wl_parts
+  edges --> wl_parts
+  nodes --> cons_split
+  edges --> cons_split
+  nodes --> cons_fc_split
+  edges --> cons_fc_split
   nodes --> raw
   edges --> raw
 ```
@@ -414,8 +425,13 @@ Each run writes to: `out/<timestamp>/` with structured subfolders.
 - diagrams/tenancy/diagram.tenancy.mmd (Mermaid diagram; tenancy/compartment view; optional)
 - diagrams/network/diagram.network.<vcn>.mmd (Mermaid diagram; per-VCN topology view; optional)
 - diagrams/workload/diagram.workload.<workload>.mmd (Mermaid diagram; workload/application view; optional)
+- diagrams/workload/diagram.workload.<workload>.partNN.mmd (Mermaid diagram; overflow parts when workload diagrams are split)
 - diagrams/consolidated/diagram.consolidated.architecture.mmd (Mermaid architecture-beta diagram; all projections consolidated, edges are unlabelled by design; optional; respects `--diagram-depth`)
 - diagrams/consolidated/diagram.consolidated.flowchart.mmd (Mermaid flowchart diagram; consolidated view with configurable depth; optional; respects `--diagram-depth`)
+- diagrams/consolidated/diagram.consolidated.architecture.region.<region>.mmd (Mermaid architecture-beta split by region when oversized)
+- diagrams/consolidated/diagram.consolidated.architecture.compartment.<compartment>.mmd (Mermaid architecture-beta split by compartment when oversized)
+- diagrams/consolidated/diagram.consolidated.flowchart.region.<region>.mmd (Mermaid flowchart split by region when oversized)
+- diagrams/consolidated/diagram.consolidated.flowchart.compartment.<compartment>.mmd (Mermaid flowchart split by compartment when oversized)
 - cost/cost_report.md (when --cost-report provided)
 - cost/cost_usage_items.csv + cost/cost_usage_items_grouped.csv + cost/cost_usage_items.jsonl (when --cost-report provided)
 - cost/cost_usage_service.csv + cost/cost_usage_region.csv + cost/cost_usage_compartment.csv (when --cost-report provided)

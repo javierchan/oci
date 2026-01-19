@@ -113,6 +113,7 @@ def write_diagram_projections(
     edges: Sequence[Dict[str, Any]],
     *,
     diagram_depth: Optional[int] = None,
+    summary: Optional[Dict[str, Any]] = None,
 ) -> List[Path]:
     from .export.diagram_projections import write_diagram_projections as _write_diagram_projections
 
@@ -121,6 +122,7 @@ def write_diagram_projections(
         nodes,
         edges,
         diagram_depth=diagram_depth,
+        summary=summary,
     )
 
 
@@ -1726,6 +1728,7 @@ def cmd_run(cfg: RunConfig) -> int:
     inventory_csv: Optional[Path] = None
     metrics: Optional[Dict[str, Any]] = None
     diff_warning: Optional[str] = None
+    diagram_summary: Optional[Dict[str, Any]] = None
 
     executive_summary: Optional[str] = None
     executive_summary_error: Optional[str] = None
@@ -2142,11 +2145,13 @@ def cmd_run(cfg: RunConfig) -> int:
                     timers=timers,
                     diagram_depth=cfg.diagram_depth,
                 )
+            diagram_summary = {}
             diagram_paths = write_diagram_projections(
                 paths.diagrams_dir,
                 nodes,
                 edges,
                 diagram_depth=cfg.diagram_depth,
+                summary=diagram_summary,
             )
             _organize_diagrams(paths)
             _log_event(
@@ -2358,6 +2363,7 @@ def cmd_run(cfg: RunConfig) -> int:
                 executive_summary_error=executive_summary_error,
                 started_at=started_at,
                 finished_at=finished_at,
+                diagram_summary=diagram_summary,
             )
         except Exception:
             # Report generation must never affect the run outcome.
