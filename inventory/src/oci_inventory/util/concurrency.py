@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from itertools import islice
 from typing import Callable, Iterable, List, Sequence, Tuple, TypeVar
 
 T = TypeVar("T")
@@ -45,17 +46,14 @@ def parallel_map_ordered_iter(
     Execute func over items in ordered batches, yielding results in input order.
     This bounds in-flight futures for large inputs.
     """
-    if not isinstance(items, Sequence):
-        items = list(items)
+    if batch_size <= 0:
+        batch_size = 1
 
-    total = len(items)
-    if batch_size <= 0 or batch_size >= total:
-        for item in parallel_map_ordered(func, items, max_workers=max_workers):
-            yield item
-        return
-
-    for start in range(0, total, batch_size):
-        batch = items[start : start + batch_size]
+    iterator = iter(items)
+    while True:
+        batch = list(islice(iterator, batch_size))
+        if not batch:
+            break
         for item in parallel_map_ordered(func, batch, max_workers=max_workers):
             yield item
 

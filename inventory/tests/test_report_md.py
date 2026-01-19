@@ -89,6 +89,72 @@ def test_render_run_report_includes_executive_summary_when_provided(tmp_path: Pa
     assert "Summary line 1" in text
 
 
+def test_render_run_report_includes_enrichment_error_classification(tmp_path: Path) -> None:
+    cfg = RunConfig(outdir=tmp_path, auth="config", profile="DEFAULT", query="query all resources")
+
+    discovered = [
+        {
+            "resourceType": "Log",
+            "displayName": "log-a",
+            "region": "us-ashburn-1",
+            "compartmentId": "ocid1.compartment.oc1..exampleuniqueID",
+            "enrichStatus": "ERROR",
+            "enrichError": "NotAuthorized",
+        },
+        {
+            "resourceType": "Group",
+            "displayName": "group-a",
+            "region": "us-ashburn-1",
+            "compartmentId": "ocid1.compartment.oc1..exampleuniqueID",
+            "enrichStatus": "ERROR",
+            "enrichError": "NotFound",
+        },
+        {
+            "resourceType": "Key",
+            "displayName": "key-a",
+            "region": "us-ashburn-1",
+            "compartmentId": "ocid1.compartment.oc1..exampleuniqueID",
+            "enrichStatus": "ERROR",
+            "enrichError": "TooManyRequests",
+        },
+        {
+            "resourceType": "DbNode",
+            "displayName": "dbnode-a",
+            "region": "us-ashburn-1",
+            "compartmentId": "ocid1.compartment.oc1..exampleuniqueID",
+            "enrichStatus": "ERROR",
+            "enrichError": "ServiceError: status: 500",
+        },
+    ]
+
+    text = render_run_report_md(
+        status="OK",
+        cfg_dict={
+            "auth": cfg.auth,
+            "profile": cfg.profile,
+            "tenancy_ocid": cfg.tenancy_ocid,
+            "query": cfg.query,
+            "outdir": str(cfg.outdir),
+            "prev": None,
+            "workers_region": cfg.workers_region,
+            "workers_enrich": cfg.workers_enrich,
+        },
+        started_at="2026-01-01T00:00:00+00:00",
+        finished_at="2026-01-01T00:01:00+00:00",
+        subscribed_regions=["us-ashburn-1"],
+        requested_regions=None,
+        excluded_regions=[],
+        discovered_records=discovered,
+        metrics={"counts_by_enrich_status": {"ERROR": 4}},
+    )
+
+    assert "Enrichment error categories (count):" in text
+    assert "NotAuthorized=1" in text
+    assert "NotFound=1" in text
+    assert "Throttling=1" in text
+    assert "ServiceError=1" in text
+
+
 def test_render_run_report_includes_complete_inventory_listing(tmp_path: Path) -> None:
     cfg = RunConfig(outdir=tmp_path, auth="config", profile="DEFAULT", query="query all resources")
 

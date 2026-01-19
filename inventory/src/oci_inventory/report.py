@@ -33,6 +33,116 @@ def _counts_by_key(records: Iterable[Dict[str, Any]], key: str) -> Dict[str, int
     return dict(sorted(out.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
+_ENRICH_ERROR_CATEGORY_ORDER = (
+    "NOT_AUTHORIZED",
+    "NOT_FOUND",
+    "THROTTLING",
+    "SERVICE_ERROR",
+    "OTHER",
+)
+_ENRICH_ERROR_CATEGORY_LABELS = {
+    "NOT_AUTHORIZED": "NotAuthorized",
+    "NOT_FOUND": "NotFound",
+    "THROTTLING": "Throttling",
+    "SERVICE_ERROR": "ServiceError",
+    "OTHER": "Other",
+}
+
+
+def _classify_enrich_error(msg: str) -> str:
+    text = (msg or "").strip().lower()
+    if not text:
+        return "OTHER"
+    # OCI SDK sometimes returns NotAuthorizedOrNotFound; treat as NotAuthorized to avoid under-reporting IAM gaps.
+    if "notauthorizedornotfound" in text:
+        return "NOT_AUTHORIZED"
+    if any(
+        token in text
+        for token in (
+            "notauthorized",
+            "not authorized",
+            "unauthorized",
+            "forbidden",
+            "not authenticated",
+            "authorization failed",
+            "status: 401",
+            "status 401",
+            "status: 403",
+            "status 403",
+        )
+    ):
+        return "NOT_AUTHORIZED"
+    if any(
+        token in text
+        for token in (
+            "notfound",
+            "not found",
+            "status: 404",
+            "status 404",
+            "no such",
+            "does not exist",
+        )
+    ):
+        return "NOT_FOUND"
+    if any(
+        token in text
+        for token in (
+            "toomanyrequests",
+            "too many requests",
+            "throttle",
+            "throttl",
+            "rate limit",
+            "limit exceeded",
+            "status: 429",
+            "status 429",
+        )
+    ):
+        return "THROTTLING"
+    if any(
+        token in text
+        for token in (
+            "serviceerror",
+            "internal server error",
+            "service unavailable",
+            "bad gateway",
+            "status: 500",
+            "status 500",
+            "status: 502",
+            "status 502",
+            "status: 503",
+            "status 503",
+            "status: 504",
+            "status 504",
+        )
+    ):
+        return "SERVICE_ERROR"
+    return "OTHER"
+
+
+def _summarize_enrich_errors(
+    records: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    by_category: Dict[str, int] = {k: 0 for k in _ENRICH_ERROR_CATEGORY_ORDER}
+    by_category_types: Dict[str, Dict[str, int]] = {k: {} for k in _ENRICH_ERROR_CATEGORY_ORDER}
+    total = 0
+    for r in records:
+        if str(r.get("enrichStatus") or "") != "ERROR":
+            continue
+        total += 1
+        msg = str(r.get("enrichError") or "")
+        category = _classify_enrich_error(msg)
+        by_category[category] = by_category.get(category, 0) + 1
+        rtype = _record_type(r)
+        if rtype:
+            cat_types = by_category_types.setdefault(category, {})
+            cat_types[rtype] = cat_types.get(rtype, 0) + 1
+    return {
+        "total": total,
+        "by_category": by_category,
+        "by_category_types": by_category_types,
+    }
+
+
 def _norm_name(s: Optional[str]) -> str:
     return (s or "").strip()
 
@@ -977,6 +1087,7 @@ def render_run_report_md(
     # Risks & Gaps
     lines.append("## Risks & Gaps (Non-blocking)")
     gaps: List[str] = []
+    error_summary = _summarize_enrich_errors(discovered_records)
     if excluded_regions:
         gaps.append("One or more regions were excluded due to errors during Resource Search; results may be partial. (Evidence: excluded regions list in Execution Metadata)")
     if metrics:
@@ -1006,6 +1117,36 @@ def render_run_report_md(
             if not_impl_types:
                 tops = ", ".join([f"{k}={v}" for k, v in _top_n(not_impl_types, 6)])
                 gaps.append(f"Top non-enriched resource types (count): {tops}. (Evidence: enrichStatus=NOT_IMPLEMENTED records)")
+        if error_summary.get("total"):
+            counts = []
+            by_category = error_summary.get("by_category") or {}
+            for key in _ENRICH_ERROR_CATEGORY_ORDER:
+                count = int(by_category.get(key, 0) or 0)
+                if count:
+                    label = _ENRICH_ERROR_CATEGORY_LABELS.get(key, key)
+                    counts.append(f"{label}={count}")
+            if counts:
+                gaps.append(
+                    "Enrichment error categories (count): "
+                    + ", ".join(counts)
+                    + ". (Evidence: enrichStatus=ERROR records)"
+                )
+            top_parts: List[str] = []
+            by_types = error_summary.get("by_category_types") or {}
+            for key in _ENRICH_ERROR_CATEGORY_ORDER:
+                type_counts = by_types.get(key) or {}
+                if not type_counts:
+                    continue
+                tops = ", ".join([f"{k}={v}" for k, v in _top_n(type_counts, 3)])
+                if tops:
+                    label = _ENRICH_ERROR_CATEGORY_LABELS.get(key, key)
+                    top_parts.append(f"{label}: {tops}")
+            if top_parts:
+                gaps.append(
+                    "Top error resource types by category (count): "
+                    + "; ".join(top_parts)
+                    + ". (Evidence: enrichStatus=ERROR records)"
+                )
 
     # Simple, observation-only checks (scoped to the queried inventory).
     if "LoadBalancer" not in types_in_scope:
@@ -1045,6 +1186,22 @@ def render_run_report_md(
         recs.append("If SSH/RDP access is required, consider using Bastion or other controlled access patterns instead of direct public administration.")
     if not_impl > 0:
         recs.append("Consider implementing additional enrichers for the most common NOT_IMPLEMENTED resource types to improve architectural fidelity.")
+    if error_summary.get("by_category", {}).get("NOT_AUTHORIZED"):
+        recs.append(
+            "If enrichment errors include NotAuthorized, expand read/inspect IAM permissions for the affected services (for example: Identity, Logging, KMS, Database, OSMH)."
+        )
+    if error_summary.get("by_category", {}).get("NOT_FOUND"):
+        recs.append(
+            "If enrichment errors include NotFound, treat them as expected drift (resource deleted) and re-run to confirm."
+        )
+    if error_summary.get("by_category", {}).get("THROTTLING"):
+        recs.append(
+            "If enrichment errors include Throttling, reduce `--workers-enrich` or increase `--client-connection-pool-size`."
+        )
+    if error_summary.get("by_category", {}).get("SERVICE_ERROR"):
+        recs.append(
+            "If enrichment errors include ServiceError/5xx, retry the run; persistent failures should be recorded as best-effort gaps."
+        )
     if not recs:
         recs.append("No non-binding recommendations were derived from the current inventory signals.")
     for r in recs[:6]:
@@ -1213,6 +1370,14 @@ def render_run_report_md(
             lines.append("- Enrichment failures (records kept in output):")
             for msg, count in sorted(error_types.items(), key=lambda kv: (-kv[1], kv[0]))[:10]:
                 lines.append(f"  - `{count}`: {msg}")
+        if error_summary.get("total"):
+            lines.append("- Enrichment error categories (count):")
+            by_category = error_summary.get("by_category") or {}
+            for key in _ENRICH_ERROR_CATEGORY_ORDER:
+                count = int(by_category.get(key, 0) or 0)
+                if count:
+                    label = _ENRICH_ERROR_CATEGORY_LABELS.get(key, key)
+                    lines.append(f"  - `{label}`: `{count}`")
     lines.append("")
 
     lines.append("### Findings")

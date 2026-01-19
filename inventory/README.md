@@ -134,6 +134,64 @@ Commands:
   oci-inv list-genai-models
   ```
 
+## IAM permissions (OCI)
+This tool is read-only and relies on Resource Search plus per-service `get` calls for enrichment. The most reliable way to avoid permission errors is to grant explicit read/inspect access to the services present in scope.
+
+Are these privileges appropriate? Yes, for a read-only inventory + cost snapshot. They do not grant write or modify actions. Use the least-privilege option when possible.
+
+### Option A: Broad read-only (lowest friction)
+```
+allow group <group-name> to read all-resources in tenancy
+allow group <group-name> to read usage-reports in tenancy
+allow group <group-name> to read budgets in tenancy
+```
+
+### Option B: Least-privilege baseline (recommended if you manage IAM closely)
+```
+# Resource Search (discovery)
+allow group <group-name> to inspect resources in tenancy
+
+# Identity (users/groups/policies/compartments/tags)
+allow group <group-name> to read users in tenancy
+allow group <group-name> to read groups in tenancy
+allow group <group-name> to read policies in tenancy
+allow group <group-name> to read compartments in tenancy
+allow group <group-name> to read tag-namespaces in tenancy
+allow group <group-name> to read tag-defaults in tenancy
+
+# Core workload/services (common enrichment targets)
+allow group <group-name> to read virtual-network-family in tenancy
+allow group <group-name> to read instance-family in tenancy
+allow group <group-name> to read volume-family in tenancy
+allow group <group-name> to read load-balancers in tenancy
+allow group <group-name> to read objectstorage-family in tenancy
+allow group <group-name> to read functions-family in tenancy
+allow group <group-name> to read devops-family in tenancy
+allow group <group-name> to read dns in tenancy
+allow group <group-name> to read logging-family in tenancy
+allow group <group-name> to read loganalytics-family in tenancy
+allow group <group-name> to read cloud-guard-family in tenancy
+allow group <group-name> to read vaults in tenancy
+allow group <group-name> to read keys in tenancy
+allow group <group-name> to read secret-family in tenancy
+allow group <group-name> to read database-family in tenancy
+allow group <group-name> to read osmh-family in tenancy
+allow group <group-name> to read resource-manager-family in tenancy
+allow group <group-name> to read service-connector-hub-family in tenancy
+allow group <group-name> to read streams in tenancy
+allow group <group-name> to read bastion in tenancy
+allow group <group-name> to read waf-family in tenancy
+
+# Cost + budgets
+allow group <group-name> to read usage-reports in tenancy
+allow group <group-name> to read budgets in tenancy
+```
+
+### Validate and refine
+- If `report.md` shows `enrichStatus=ERROR` with NotAuthorized, expand read/inspect access for the affected services.
+- If NotFound errors dominate, treat them as expected drift (resources deleted) and re-run to confirm.
+- If Throttling errors appear, reduce `--workers-enrich` or increase `--client-connection-pool-size`.
+
 ## Performance tuning
 - Worker overrides are opt-in: `--config config/workers.yaml` (region/enrich/cost/export workers).
 - Schema validation modes: `--validate-schema auto|full|sampled|off` and `--validate-schema-sample N`.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -105,35 +106,81 @@ def _get_meta(metadata: Mapping[str, Any], *keys: str) -> Any:
     return None
 
 
-def derive_relationships_from_metadata(records: Iterable[Dict[str, Any]]) -> List[Dict[str, str]]:
-    """Derive additional relationships from existing record metadata.
+@dataclass(frozen=True)
+class RelationshipIndex:
+    ocids: Set[str]
+    compartment_name_to_ocid: Dict[str, str]
+    subnet_to_vnics: Dict[str, Set[str]]
+    private_ip_by_addr: Dict[str, str]
+    public_ip_by_addr: Dict[str, str]
+    drg_to_vcns: Dict[str, Set[str]]
 
-    This is deterministic and offline (no new OCI calls). It is intended to enrich
-    the graph with architecture-relevant edges when enrichers did not provide any.
 
-    Only emits edges when both source and target OCIDs exist in the provided
-    records to avoid creating dangling references.
-    """
+def build_relationship_index(records: Iterable[Dict[str, Any]]) -> RelationshipIndex:
+    ocids: Set[str] = set()
+    compartment_name_to_ocid: Dict[str, str] = {}
+    subnet_to_vnics: Dict[str, Set[str]] = {}
+    private_ip_by_addr: Dict[str, str] = {}
+    public_ip_by_addr: Dict[str, str] = {}
+    drg_to_vcns: Dict[str, Set[str]] = {}
 
-    recs = list(records)
-    ocids: Set[str] = {str(r.get("ocid") or "") for r in recs if str(r.get("ocid") or "")}
-    compartment_ids: Set[str] = {
-        str(r.get("compartmentId") or "") for r in recs if str(r.get("compartmentId") or "")
-    }
-    ocids.update(compartment_ids)
+    for r in records:
+        ocid = str(r.get("ocid") or "")
+        if ocid:
+            ocids.add(ocid)
+        comp_id = str(r.get("compartmentId") or "")
+        if comp_id:
+            ocids.add(comp_id)
 
+        rtype = str(r.get("resourceType") or "")
+        if rtype == "Compartment":
+            name = str(r.get("displayName") or r.get("name") or "").strip()
+            if name and ocid:
+                compartment_name_to_ocid.setdefault(name.lower(), ocid)
+
+        if rtype == "Vnic":
+            md = _record_metadata(r)
+            subnet_id = _get_meta(md, "subnet_id", "subnetId")
+            if isinstance(subnet_id, str) and subnet_id:
+                subnet_to_vnics.setdefault(subnet_id, set()).add(ocid)
+
+        if rtype in {"PrivateIp", "PublicIp"}:
+            md = _record_metadata(r)
+            ip = _get_meta(md, "ip_address", "ipAddress")
+            if isinstance(ip, str) and ip and ocid:
+                if rtype == "PrivateIp":
+                    private_ip_by_addr.setdefault(ip, ocid)
+                else:
+                    public_ip_by_addr.setdefault(ip, ocid)
+
+        if rtype == "DrgAttachment":
+            md = _record_metadata(r)
+            drg_id = _get_meta(md, "drg_id", "drgId")
+            vcn_id = _get_meta(md, "vcn_id", "vcnId", "network_id", "networkId")
+            if isinstance(drg_id, str) and drg_id and isinstance(vcn_id, str) and vcn_id:
+                drg_to_vcns.setdefault(drg_id, set()).add(vcn_id)
+
+    return RelationshipIndex(
+        ocids=ocids,
+        compartment_name_to_ocid=compartment_name_to_ocid,
+        subnet_to_vnics=subnet_to_vnics,
+        private_ip_by_addr=private_ip_by_addr,
+        public_ip_by_addr=public_ip_by_addr,
+        drg_to_vcns=drg_to_vcns,
+    )
+
+
+def iter_relationships_for_record(
+    record: Dict[str, Any],
+    index: RelationshipIndex,
+) -> Iterable[Dict[str, str]]:
     out: List[Dict[str, str]] = []
-    seen: Set[Tuple[str, str, str]] = set()
 
     def _emit(src: str, rel: str, dst: str) -> None:
         if not src or not dst or not rel:
             return
-        if src not in ocids or dst not in ocids:
+        if src not in index.ocids or dst not in index.ocids:
             return
-        key = (src, rel, dst)
-        if key in seen:
-            return
-        seen.add(key)
         out.append({"source_ocid": src, "relation_type": rel, "target_ocid": dst})
 
     def _collect_ids(value: Any) -> List[str]:
@@ -184,219 +231,194 @@ def derive_relationships_from_metadata(records: Iterable[Dict[str, Any]]) -> Lis
         "IdentityDomainGroup",
     }
 
-    compartment_name_to_ocid: Dict[str, str] = {}
-    for r in recs:
-        if str(r.get("resourceType") or "") != "Compartment":
-            continue
-        name = str(r.get("displayName") or r.get("name") or "").strip()
-        ocid = str(r.get("ocid") or "").strip()
-        if name and ocid:
-            compartment_name_to_ocid.setdefault(name.lower(), ocid)
+    src = str(record.get("ocid") or "")
+    if not src:
+        return out
+    rt = str(record.get("resourceType") or "")
+    md = _record_metadata(record)
 
-    subnet_to_vnics: Dict[str, Set[str]] = {}
-    for r in recs:
-        if str(r.get("resourceType") or "") != "Vnic":
-            continue
-        vnic_id = str(r.get("ocid") or "")
-        if not vnic_id:
-            continue
-        md = _record_metadata(r)
-        subnet_id = _get_meta(md, "subnet_id", "subnetId")
-        if isinstance(subnet_id, str) and subnet_id:
-            subnet_to_vnics.setdefault(subnet_id, set()).add(vnic_id)
+    vcn_ids = _collect_ids(_get_meta(md, "vcn_id", "vcnId", "vcn_ids", "vcnIds"))
+    for vcn_id in vcn_ids:
+        _emit(src, "IN_VCN", vcn_id)
 
-    private_ip_by_addr: Dict[str, str] = {}
-    public_ip_by_addr: Dict[str, str] = {}
-    for r in recs:
-        rtype = str(r.get("resourceType") or "")
-        if rtype not in {"PrivateIp", "PublicIp"}:
-            continue
-        md = _record_metadata(r)
-        ip = _get_meta(md, "ip_address", "ipAddress")
-        if not isinstance(ip, str) or not ip:
-            continue
-        ocid = str(r.get("ocid") or "")
-        if not ocid:
-            continue
-        if rtype == "PrivateIp":
-            private_ip_by_addr.setdefault(ip, ocid)
-        else:
-            public_ip_by_addr.setdefault(ip, ocid)
+    subnet_ids = _collect_ids(_get_meta(md, "subnet_id", "subnetId", "subnet_ids", "subnetIds"))
+    for subnet_id in subnet_ids:
+        _emit(src, "IN_SUBNET", subnet_id)
 
-    drg_to_vcns: Dict[str, Set[str]] = {}
-    for r in recs:
-        if str(r.get("resourceType") or "") != "DrgAttachment":
-            continue
-        md = _record_metadata(r)
-        drg_id = _get_meta(md, "drg_id", "drgId")
-        vcn_id = _get_meta(md, "vcn_id", "vcnId", "network_id", "networkId")
-        if isinstance(drg_id, str) and drg_id and isinstance(vcn_id, str) and vcn_id:
-            drg_to_vcns.setdefault(drg_id, set()).add(vcn_id)
+    vnic_ids = _collect_ids(_get_meta(md, "vnic_id", "vnicId", "vnic_ids", "vnicIds"))
+    for vnic_id in vnic_ids:
+        _emit(src, "IN_VNIC", vnic_id)
 
-    for r in recs:
-        src = str(r.get("ocid") or "")
-        if not src:
-            continue
-        rt = str(r.get("resourceType") or "")
-        md = _record_metadata(r)
+    rt_id = _get_meta(md, "route_table_id", "routeTableId")
+    if isinstance(rt_id, str) and rt_id:
+        _emit(src, "USES_ROUTE_TABLE", rt_id)
 
-        vcn_ids = _collect_ids(_get_meta(md, "vcn_id", "vcnId", "vcn_ids", "vcnIds"))
-        for vcn_id in vcn_ids:
+    sl_ids = _get_meta(md, "security_list_ids", "securityListIds")
+    for sl_id in _collect_ids(sl_ids):
+        _emit(src, "USES_SECURITY_LIST", sl_id)
+
+    nsg_ids = _get_meta(md, "nsg_ids", "nsgIds", "network_security_group_ids", "networkSecurityGroupIds")
+    for nsg_id in _collect_ids(nsg_ids):
+        _emit(src, "USES_NSG", nsg_id)
+
+    dhcp_id = _get_meta(md, "dhcp_options_id", "dhcpOptionsId")
+    if isinstance(dhcp_id, str) and dhcp_id:
+        _emit(src, "USES_DHCP_OPTIONS", dhcp_id)
+
+    drg_id = _get_meta(md, "drg_id", "drgId", "gateway_id", "gatewayId")
+    if isinstance(drg_id, str) and drg_id:
+        _emit(src, "USES_DRG", drg_id)
+        for vcn_id in sorted(index.drg_to_vcns.get(drg_id, set())):
             _emit(src, "IN_VCN", vcn_id)
 
-        subnet_ids = _collect_ids(_get_meta(md, "subnet_id", "subnetId", "subnet_ids", "subnetIds"))
-        for subnet_id in subnet_ids:
-            _emit(src, "IN_SUBNET", subnet_id)
+    if rt == "Drg" and src in index.drg_to_vcns:
+        for vcn_id in sorted(index.drg_to_vcns.get(src, set())):
+            _emit(src, "IN_VCN", vcn_id)
 
-        vnic_ids = _collect_ids(_get_meta(md, "vnic_id", "vnicId", "vnic_ids", "vnicIds"))
-        for vnic_id in vnic_ids:
-            _emit(src, "IN_VNIC", vnic_id)
+    if rt == "DrgAttachment":
+        drg_id = _get_meta(md, "drg_id", "drgId")
+        if isinstance(drg_id, str) and drg_id:
+            _emit(src, "ATTACHED_TO_DRG", drg_id)
+        vcn_id = _get_meta(md, "vcn_id", "vcnId", "network_id", "networkId")
+        if isinstance(vcn_id, str) and vcn_id:
+            _emit(src, "ATTACHED_TO_VCN", vcn_id)
 
-        rt_id = _get_meta(md, "route_table_id", "routeTableId")
-        if isinstance(rt_id, str) and rt_id:
-            _emit(src, "USES_ROUTE_TABLE", rt_id)
+    assigned_id = _get_meta(md, "assigned_entity_id", "assignedEntityId")
+    for target_id in _collect_ids(assigned_id):
+        _emit(src, "ASSIGNED_TO", target_id)
+
+    private_ip_id = _get_meta(md, "private_ip_id", "privateIpId")
+    for target_id in _collect_ids(private_ip_id):
+        _emit(src, "ASSIGNED_TO", target_id)
+
+    # Network object placement
+    if rt in network_child_types:
+        vcn_id = _get_meta(md, "vcn_id", "vcnId")
+        if isinstance(vcn_id, str) and vcn_id:
+            _emit(src, "IN_VCN", vcn_id)
+
+    # Subnet wiring
+    if rt == "Subnet":
+        route_table_id = _get_meta(md, "route_table_id", "routeTableId")
+        if isinstance(route_table_id, str) and route_table_id:
+            _emit(src, "USES_ROUTE_TABLE", route_table_id)
 
         sl_ids = _get_meta(md, "security_list_ids", "securityListIds")
-        for sl_id in _collect_ids(sl_ids):
-            _emit(src, "USES_SECURITY_LIST", sl_id)
+        if isinstance(sl_ids, list):
+            for sid in sl_ids:
+                if isinstance(sid, str) and sid:
+                    _emit(src, "USES_SECURITY_LIST", sid)
 
-        nsg_ids = _get_meta(md, "nsg_ids", "nsgIds", "network_security_group_ids", "networkSecurityGroupIds")
-        for nsg_id in _collect_ids(nsg_ids):
-            _emit(src, "USES_NSG", nsg_id)
+        nsg_ids = _get_meta(md, "nsg_ids", "nsgIds")
+        if isinstance(nsg_ids, list):
+            for nid in nsg_ids:
+                if isinstance(nid, str) and nid:
+                    _emit(src, "USES_NSG", nid)
 
-        dhcp_id = _get_meta(md, "dhcp_options_id", "dhcpOptionsId")
-        if isinstance(dhcp_id, str) and dhcp_id:
-            _emit(src, "USES_DHCP_OPTIONS", dhcp_id)
+    # VNIC wiring
+    if rt == "Vnic":
+        subnet_id = _get_meta(md, "subnet_id", "subnetId")
+        if isinstance(subnet_id, str) and subnet_id:
+            _emit(src, "IN_SUBNET", subnet_id)
+        nsg_ids = _get_meta(md, "nsg_ids", "nsgIds")
+        if isinstance(nsg_ids, list):
+            for nid in nsg_ids:
+                if isinstance(nid, str) and nid:
+                    _emit(src, "USES_NSG", nid)
 
-        drg_id = _get_meta(md, "drg_id", "drgId", "gateway_id", "gatewayId")
-        if isinstance(drg_id, str) and drg_id:
-            _emit(src, "USES_DRG", drg_id)
-            for vcn_id in sorted(drg_to_vcns.get(drg_id, set())):
-                _emit(src, "IN_VCN", vcn_id)
+    if rt in firewall_types:
+        for subnet_id in subnet_ids:
+            for vnic_id in sorted(index.subnet_to_vnics.get(subnet_id, set())):
+                _emit(src, "PROTECTS_VNIC", vnic_id)
 
-        if rt == "Drg" and src in drg_to_vcns:
-            for vcn_id in sorted(drg_to_vcns.get(src, set())):
-                _emit(src, "IN_VCN", vcn_id)
+    if rt in iam_types:
+        comp_id = str(record.get("compartmentId") or "")
+        if comp_id:
+            _emit(src, "IAM_SCOPE", comp_id)
+        statements = _get_meta(md, "statements")
+        if isinstance(statements, list):
+            for stmt in statements:
+                if not isinstance(stmt, str):
+                    continue
+                stmt_lower = stmt.lower()
+                for ocid_match in re.findall(r"ocid1\\.compartment[\\w.:-]+", stmt_lower):
+                    _emit(src, "IAM_SCOPE", ocid_match)
+                if "in compartment" not in stmt_lower:
+                    continue
+                tail = stmt_lower.split("in compartment", 1)[1].strip()
+                tail = re.split(r"\\bwhere\\b|\\bwith\\b|\\b,\\b", tail, maxsplit=1)[0]
+                name = tail.strip().strip('"').strip("'")
+                if not name:
+                    continue
+                ocid = index.compartment_name_to_ocid.get(name)
+                if ocid:
+                    _emit(src, "IAM_SCOPE", ocid)
 
-        if rt == "DrgAttachment":
-            drg_id = _get_meta(md, "drg_id", "drgId")
-            if isinstance(drg_id, str) and drg_id:
-                _emit(src, "ATTACHED_TO_DRG", drg_id)
-            vcn_id = _get_meta(md, "vcn_id", "vcnId", "network_id", "networkId")
-            if isinstance(vcn_id, str) and vcn_id:
-                _emit(src, "ATTACHED_TO_VCN", vcn_id)
+    if rt == "LoadBalancer":
+        subnet_refs = _collect_ids(_get_meta(md, "subnet_ids", "subnetIds"))
+        for subnet_id in subnet_refs:
+            _emit(src, "IN_SUBNET", subnet_id)
 
-        assigned_id = _get_meta(md, "assigned_entity_id", "assignedEntityId")
-        for target_id in _collect_ids(assigned_id):
-            _emit(src, "ASSIGNED_TO", target_id)
+        lb_ip_addrs = _get_meta(md, "ip_addresses", "ipAddresses")
+        if isinstance(lb_ip_addrs, list):
+            for entry in lb_ip_addrs:
+                if not isinstance(entry, dict):
+                    continue
+                ip_addr = entry.get("ipAddress") or entry.get("ip_address")
+                if isinstance(ip_addr, str) and ip_addr in index.public_ip_by_addr:
+                    _emit(src, "EXPOSES_PUBLIC_IP", index.public_ip_by_addr[ip_addr])
 
-        private_ip_id = _get_meta(md, "private_ip_id", "privateIpId")
-        for target_id in _collect_ids(private_ip_id):
-            _emit(src, "ASSIGNED_TO", target_id)
-
-        # Network object placement
-        if rt in network_child_types:
-            vcn_id = _get_meta(md, "vcn_id", "vcnId")
-            if isinstance(vcn_id, str) and vcn_id:
-                _emit(src, "IN_VCN", vcn_id)
-
-        # Subnet wiring
-        if rt == "Subnet":
-            route_table_id = _get_meta(md, "route_table_id", "routeTableId")
-            if isinstance(route_table_id, str) and route_table_id:
-                _emit(src, "USES_ROUTE_TABLE", route_table_id)
-
-            sl_ids = _get_meta(md, "security_list_ids", "securityListIds")
-            if isinstance(sl_ids, list):
-                for sid in sl_ids:
-                    if isinstance(sid, str) and sid:
-                        _emit(src, "USES_SECURITY_LIST", sid)
-
-            nsg_ids = _get_meta(md, "nsg_ids", "nsgIds")
-            if isinstance(nsg_ids, list):
-                for nid in nsg_ids:
-                    if isinstance(nid, str) and nid:
-                        _emit(src, "USES_NSG", nid)
-
-        # VNIC wiring
-        if rt == "Vnic":
-            subnet_id = _get_meta(md, "subnet_id", "subnetId")
-            if isinstance(subnet_id, str) and subnet_id:
-                _emit(src, "IN_SUBNET", subnet_id)
-            nsg_ids = _get_meta(md, "nsg_ids", "nsgIds")
-            if isinstance(nsg_ids, list):
-                for nid in nsg_ids:
-                    if isinstance(nid, str) and nid:
-                        _emit(src, "USES_NSG", nid)
-
-        if rt in firewall_types:
-            for subnet_id in subnet_ids:
-                for vnic_id in sorted(subnet_to_vnics.get(subnet_id, set())):
-                    _emit(src, "PROTECTS_VNIC", vnic_id)
-
-        if rt in iam_types:
-            comp_id = str(r.get("compartmentId") or "")
-            if comp_id:
-                _emit(src, "IAM_SCOPE", comp_id)
-            statements = _get_meta(md, "statements")
-            if isinstance(statements, list):
-                for stmt in statements:
-                    if not isinstance(stmt, str):
+        backend_sets = md.get("backendSets") if isinstance(md, dict) else None
+        if backend_sets is None:
+            backend_sets = md.get("backend_sets") if isinstance(md, dict) else None
+        if isinstance(backend_sets, dict):
+            for bs in backend_sets.values():
+                if not isinstance(bs, dict):
+                    continue
+                backends = bs.get("backends")
+                if not isinstance(backends, list):
+                    continue
+                for backend in backends:
+                    if not isinstance(backend, dict):
                         continue
-                    stmt_lower = stmt.lower()
-                    for ocid_match in re.findall(r"ocid1\\.compartment[\\w.:-]+", stmt_lower):
-                        _emit(src, "IAM_SCOPE", ocid_match)
-                    if "in compartment" not in stmt_lower:
-                        continue
-                    tail = stmt_lower.split("in compartment", 1)[1].strip()
-                    tail = re.split(r"\\bwhere\\b|\\bwith\\b|\\b,\\b", tail, maxsplit=1)[0]
-                    name = tail.strip().strip('\"').strip("'")
-                    if not name:
-                        continue
-                    ocid = compartment_name_to_ocid.get(name)
-                    if ocid:
-                        _emit(src, "IAM_SCOPE", ocid)
+                    ip_addr = backend.get("ipAddress") or backend.get("ip_address")
+                    if isinstance(ip_addr, str) and ip_addr in index.private_ip_by_addr:
+                        _emit(src, "ROUTES_TO_PRIVATE_IP", index.private_ip_by_addr[ip_addr])
 
-        if rt == "LoadBalancer":
-            subnet_refs = _collect_ids(_get_meta(md, "subnet_ids", "subnetIds"))
-            for subnet_id in subnet_refs:
-                _emit(src, "IN_SUBNET", subnet_id)
+    if rt in {"WebAppFirewall", "WebAppFirewallPolicy"}:
+        lb_id = _get_meta(md, "load_balancer_id", "loadBalancerId")
+        for target_id in _collect_ids(lb_id):
+            _emit(src, "PROTECTS_LOAD_BALANCER", target_id)
 
-            lb_ip_addrs = _get_meta(md, "ip_addresses", "ipAddresses")
-            if isinstance(lb_ip_addrs, list):
-                for entry in lb_ip_addrs:
-                    if not isinstance(entry, dict):
-                        continue
-                    ip_addr = entry.get("ipAddress") or entry.get("ip_address")
-                    if isinstance(ip_addr, str) and ip_addr in public_ip_by_addr:
-                        _emit(src, "EXPOSES_PUBLIC_IP", public_ip_by_addr[ip_addr])
+    if rt == "NetworkFirewall":
+        policy_id = _get_meta(md, "network_firewall_policy_id", "networkFirewallPolicyId")
+        for target_id in _collect_ids(policy_id):
+            _emit(src, "USES_FIREWALL_POLICY", target_id)
 
-            backend_sets = md.get("backendSets") if isinstance(md, dict) else None
-            if backend_sets is None:
-                backend_sets = md.get("backend_sets") if isinstance(md, dict) else None
-            if isinstance(backend_sets, dict):
-                for bs in backend_sets.values():
-                    if not isinstance(bs, dict):
-                        continue
-                    backends = bs.get("backends")
-                    if not isinstance(backends, list):
-                        continue
-                    for backend in backends:
-                        if not isinstance(backend, dict):
-                            continue
-                        ip_addr = backend.get("ipAddress") or backend.get("ip_address")
-                        if isinstance(ip_addr, str) and ip_addr in private_ip_by_addr:
-                            _emit(src, "ROUTES_TO_PRIVATE_IP", private_ip_by_addr[ip_addr])
+    return out
 
-        if rt in {"WebAppFirewall", "WebAppFirewallPolicy"}:
-            lb_id = _get_meta(md, "load_balancer_id", "loadBalancerId")
-            for target_id in _collect_ids(lb_id):
-                _emit(src, "PROTECTS_LOAD_BALANCER", target_id)
 
-        if rt == "NetworkFirewall":
-            policy_id = _get_meta(md, "network_firewall_policy_id", "networkFirewallPolicyId")
-            for target_id in _collect_ids(policy_id):
-                _emit(src, "USES_FIREWALL_POLICY", target_id)
+def derive_relationships_from_metadata(records: Iterable[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Derive additional relationships from existing record metadata.
+
+    This is deterministic and offline (no new OCI calls). It is intended to enrich
+    the graph with architecture-relevant edges when enrichers did not provide any.
+
+    Only emits edges when both source and target OCIDs exist in the provided
+    records to avoid creating dangling references.
+    """
+
+    recs = list(records)
+    index = build_relationship_index(recs)
+    out: List[Dict[str, str]] = []
+    seen: Set[Tuple[str, str, str]] = set()
+    for r in recs:
+        for rel in iter_relationships_for_record(r, index):
+            key = (rel.get("source_ocid", ""), rel.get("relation_type", ""), rel.get("target_ocid", ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(rel)
 
     return sorted(out, key=lambda r: (r.get("source_ocid", ""), r.get("relation_type", ""), r.get("target_ocid", "")))
 
@@ -448,7 +470,7 @@ def _edge_key(edge: Edge) -> Tuple[str, str, str]:
 
 def build_graph(
     records: Iterable[Dict[str, Any]],
-    relationships: Sequence[Dict[str, str]],
+    relationships: Iterable[Dict[str, str]],
 ) -> Tuple[List[Node], List[Edge]]:
     nodes_by_id: Dict[str, Node] = {}
     edges: List[Edge] = []
@@ -541,18 +563,18 @@ def write_mermaid(outdir: Path, nodes: List[Node], edges: List[Edge]) -> Path:
     # Raw graph export is intentionally noisy and intended for debugging.
     # Keep it as a separate artifact from any architectural projections.
     path = outdir / "diagram_raw.mmd"
-    lines: List[str] = ["graph TD"]
-    for node in nodes:
-        node_id = _mermaid_id(str(node.get("nodeId") or ""))
-        label = _mermaid_label(node)
-        lines.append(f'  {node_id}["{label}"]')
-    for edge in edges:
-        src = _mermaid_id(str(edge.get("source_ocid") or ""))
-        tgt = _mermaid_id(str(edge.get("target_ocid") or ""))
-        rel = str(edge.get("relation_type") or "")
-        if rel:
-            lines.append(f"  {src} -->|{rel}| {tgt}")
-        else:
-            lines.append(f"  {src} --> {tgt}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with path.open("w", encoding="utf-8") as f:
+        f.write("graph TD\n")
+        for node in nodes:
+            node_id = _mermaid_id(str(node.get("nodeId") or ""))
+            label = _mermaid_label(node)
+            f.write(f'  {node_id}["{label}"]\n')
+        for edge in edges:
+            src = _mermaid_id(str(edge.get("source_ocid") or ""))
+            tgt = _mermaid_id(str(edge.get("target_ocid") or ""))
+            rel = str(edge.get("relation_type") or "")
+            if rel:
+                f.write(f"  {src} -->|{rel}| {tgt}\n")
+            else:
+                f.write(f"  {src} --> {tgt}\n")
     return path

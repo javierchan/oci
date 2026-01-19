@@ -5,8 +5,27 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
+
+_JSON_SCALAR_TYPES = (str, int, float, bool)
+
+
+def _is_json_safe(value: object, depth: int = 3) -> bool:
+    if isinstance(value, _JSON_SCALAR_TYPES):
+        return True
+    if depth <= 0:
+        return False
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if not isinstance(k, (str, int, float, bool)) and k is not None:
+                return False
+            if not _is_json_safe(v, depth - 1):
+                return False
+        return True
+    if isinstance(value, (list, tuple)):
+        return all(_is_json_safe(v, depth - 1) for v in value)
+    return False
 
 
 @dataclass(frozen=True)
@@ -18,7 +37,7 @@ class LogConfig:
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:  # type: ignore[override]
         payload = {
-            "timestamp": datetime.utcfromtimestamp(record.created).isoformat(timespec="milliseconds")
+            "timestamp": datetime.fromtimestamp(record.created, timezone.utc).isoformat(timespec="milliseconds")
             + "Z",
             "level": record.levelname,
             "name": record.name,
@@ -55,18 +74,14 @@ class JsonFormatter(logging.Formatter):
                 if isinstance(value, (str, int, float, bool)):
                     payload[key] = value
                     continue
-                try:
-                    json.dumps({key: value})
+                if _is_json_safe(value):
                     payload[key] = value
-                except Exception:
-                    # skip non-serializable extras
-                    pass
         return json.dumps(payload, sort_keys=True)
 
 
 class PlainFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:  # type: ignore[override]
-        timestamp = datetime.utcfromtimestamp(record.created).isoformat(timespec="seconds") + "Z"
+        timestamp = datetime.fromtimestamp(record.created, timezone.utc).isoformat(timespec="seconds") + "Z"
         step = getattr(record, "step", None)
         phase = getattr(record, "phase", None)
         duration_ms = getattr(record, "duration_ms", None)
