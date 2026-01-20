@@ -2784,87 +2784,87 @@ def _write_consolidated_mermaid(
                     else:
                         unknown_subnet_nodes.append(n)
 
-            if gateway_nodes:
-                gateways_id = _service_id("gateways_", vcn_ocid)
-                lines.append(f"    group {gateways_id}(cloud)[{_arch_label('Gateways', max_len=24)}] in {vcn_group_id}")
-                if aggregate_workloads:
-                    _add_aggregate_services(
-                        gateway_nodes,
-                        gateways_id,
-                        use_categories=comp_use_categories.get(cid, False),
-                    )
-                else:
-                    for n in sorted(gateway_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))):
-                        _add_service(n, gateways_id)
-
-            if vcn_level_nodes and include_vcn_level:
-                vcn_level_id = _service_id("vcn_level_", vcn_ocid)
-                lines.append(
-                    f"    group {vcn_level_id}(cloud)[{_arch_label('VCN-level Resources', max_len=48)}] in {vcn_group_id}"
-                )
-                for n in sorted(vcn_level_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))):
-                    _add_service(n, vcn_level_id)
-
-            vcn_subnet_ids: Set[str] = set()
-            for n in comp_nodes:
-                if _is_node_type(n, "Subnet") and n.get("nodeId"):
-                    sn_id = str(n.get("nodeId") or "")
-                    if subnet_to_vcn.get(sn_id) == vcn_ocid:
-                        vcn_subnet_ids.add(sn_id)
-                att = attach_by_res.get(str(n.get("nodeId") or ""))
-                if att and att.subnet_ocid and att.vcn_ocid == vcn_ocid:
-                    vcn_subnet_ids.add(att.subnet_ocid)
-
-            for sn_ocid in sorted(vcn_subnet_ids):
-                sn = node_by_id.get(sn_ocid, {"name": sn_ocid, "nodeType": "Subnet"})
-                subnet_group_id = _service_id("subnet_", f"{cid}:{vcn_ocid}:{sn_ocid}")
-                lines.append(f"    group {subnet_group_id}(cloud)[{_arch_label(_subnet_label(sn), max_len=80)}] in {vcn_group_id}")
-                _add_service(sn, subnet_group_id)
-
-                if include_workloads:
-                    attached = [
-                        n
-                        for n in comp_nodes
-                        if attach_by_res.get(str(n.get("nodeId") or ""))
-                        and attach_by_res[str(n.get("nodeId") or "")].subnet_ocid == sn_ocid
-                        and not _is_node_type(n, "Vcn", "Subnet")
-                    ]
+                if gateway_nodes:
+                    gateways_id = _service_id("gateways_", vcn_ocid)
+                    lines.append(f"    group {gateways_id}(cloud)[{_arch_label('Gateways', max_len=24)}] in {vcn_group_id}")
                     if aggregate_workloads:
                         _add_aggregate_services(
-                            attached,
-                            subnet_group_id,
+                            gateway_nodes,
+                            gateways_id,
                             use_categories=comp_use_categories.get(cid, False),
                         )
                     else:
-                        # Map to AD/FD if present
-                        nodes_by_ad: Dict[str, List[Node]] = {}
-                        for n in attached:
-                            meta = _node_metadata(n)
-                            ad_name = str(n.get("availabilityDomain") or _get_meta(meta, "availability_domain") or "Regional").strip()
-                            nodes_by_ad.setdefault(ad_name, []).append(n)
-                        
-                        for ad_name in sorted(nodes_by_ad.keys()):
-                            if ad_name == "Regional":
-                                for n in sorted(nodes_by_ad[ad_name], key=lambda x: str(x.get("name") or "")):
-                                    _add_service(n, subnet_group_id)
-                            else:
-                                ad_id = _service_id("ad_", f"{subnet_group_id}:{ad_name}")
-                                lines.append(f"    group {ad_id}(server)[{_arch_label(ad_name, max_len=40)}] in {subnet_group_id}")
-                                for n in sorted(nodes_by_ad[ad_name], key=lambda x: str(x.get("name") or "")):
-                                    _add_service(n, ad_id)
+                        for n in sorted(gateway_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))):
+                            _add_service(n, gateways_id)
 
-            if unknown_subnet_nodes:
-                unknown_id = _service_id("subnet_unknown_", f"{cid}:{vcn_ocid}")
-                lines.append(f"    group {unknown_id}(cloud)[{_arch_label('Subnet: Unknown', max_len=40)}] in {vcn_group_id}")
-                if aggregate_workloads:
-                    _add_aggregate_services(
-                        unknown_subnet_nodes,
-                        unknown_id,
-                        use_categories=comp_use_categories.get(cid, False),
+                if vcn_level_nodes and include_vcn_level:
+                    vcn_level_id = _service_id("vcn_level_", vcn_ocid)
+                    lines.append(
+                        f"    group {vcn_level_id}(cloud)[{_arch_label('VCN-level Resources', max_len=48)}] in {vcn_group_id}"
                     )
-                else:
-                    for n in sorted(unknown_subnet_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))):
-                        _add_service(n, unknown_id)
+                    for n in sorted(vcn_level_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))):
+                        _add_service(n, vcn_level_id)
+
+                vcn_subnet_ids: Set[str] = set()
+                for n in comp_nodes:
+                    if _is_node_type(n, "Subnet") and n.get("nodeId"):
+                        sn_id = str(n.get("nodeId") or "")
+                        if subnet_to_vcn.get(sn_id) == vcn_ocid:
+                            vcn_subnet_ids.add(sn_id)
+                    att = attach_by_res.get(str(n.get("nodeId") or ""))
+                    if att and att.subnet_ocid and att.vcn_ocid == vcn_ocid:
+                        vcn_subnet_ids.add(att.subnet_ocid)
+
+                for sn_ocid in sorted(vcn_subnet_ids):
+                    sn = node_by_id.get(sn_ocid, {"name": sn_ocid, "nodeType": "Subnet"})
+                    subnet_group_id = _service_id("subnet_", f"{cid}:{vcn_ocid}:{sn_ocid}")
+                    lines.append(f"    group {subnet_group_id}(cloud)[{_arch_label(_subnet_label(sn), max_len=80)}] in {vcn_group_id}")
+                    _add_service(sn, subnet_group_id)
+
+                    if include_workloads:
+                        attached = [
+                            n
+                            for n in comp_nodes
+                            if attach_by_res.get(str(n.get("nodeId") or ""))
+                            and attach_by_res[str(n.get("nodeId") or "")].subnet_ocid == sn_ocid
+                            and not _is_node_type(n, "Vcn", "Subnet")
+                        ]
+                        if aggregate_workloads:
+                            _add_aggregate_services(
+                                attached,
+                                subnet_group_id,
+                                use_categories=comp_use_categories.get(cid, False),
+                            )
+                        else:
+                            # Map to AD/FD if present
+                            nodes_by_ad: Dict[str, List[Node]] = {}
+                            for n in attached:
+                                meta = _node_metadata(n)
+                                ad_name = str(n.get("availabilityDomain") or _get_meta(meta, "availability_domain") or "Regional").strip()
+                                nodes_by_ad.setdefault(ad_name, []).append(n)
+                            
+                            for ad_name in sorted(nodes_by_ad.keys()):
+                                if ad_name == "Regional":
+                                    for n in sorted(nodes_by_ad[ad_name], key=lambda x: str(x.get("name") or "")):
+                                        _add_service(n, subnet_group_id)
+                                else:
+                                    ad_id = _service_id("ad_", f"{subnet_group_id}:{ad_name}")
+                                    lines.append(f"    group {ad_id}(server)[{_arch_label(ad_name, max_len=40)}] in {subnet_group_id}")
+                                    for n in sorted(nodes_by_ad[ad_name], key=lambda x: str(x.get("name") or "")):
+                                        _add_service(n, ad_id)
+
+                if unknown_subnet_nodes:
+                    unknown_id = _service_id("subnet_unknown_", f"{cid}:{vcn_ocid}")
+                    lines.append(f"    group {unknown_id}(cloud)[{_arch_label('Subnet: Unknown', max_len=40)}] in {vcn_group_id}")
+                    if aggregate_workloads:
+                        _add_aggregate_services(
+                            unknown_subnet_nodes,
+                            unknown_id,
+                            use_categories=comp_use_categories.get(cid, False),
+                        )
+                    else:
+                        for n in sorted(unknown_subnet_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))):
+                            _add_service(n, unknown_id)
 
         out_nodes: List[Node] = []
         for n in comp_nodes:
