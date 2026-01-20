@@ -1503,7 +1503,7 @@ def _write_network_views(
             node_ids=rendered_node_ids,
             node_id_map=edge_node_id_map,
             node_by_id=node_by_id,
-            include_admin_edges=True,
+            include_admin_edges=False,
         )
         lines.extend(rel_lines)
 
@@ -1940,7 +1940,7 @@ def _build_workload_diagram_lines(
         node_ids=rendered_node_ids,
         node_id_map=edge_node_id_map,
         node_by_id=node_by_id,
-        include_admin_edges=True,
+        include_admin_edges=False,
     )
     lines.extend(rel_lines)
 
@@ -2847,7 +2847,7 @@ def _write_consolidated_mermaid(
             edges,
             node_ids=rendered_node_ids,
             node_id_map=node_service_ids,
-            include_admin_edges=True,
+            include_admin_edges=False,
             seen_pairs=seen_arch_edges,
         )
         lines.extend(rel_lines)
