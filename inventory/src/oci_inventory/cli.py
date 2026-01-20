@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from time import perf_counter
+import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from .auth.providers import AuthContext, AuthError, get_tenancy_ocid, resolve_auth
@@ -85,6 +86,14 @@ REQUIRED_RUN_SUMMARY_FIELDS = {
     "counts_by_enrich_status",
     "counts_by_resource_type_and_status",
 }
+
+
+def _effective_enrich_batch_size(workers_enrich: int) -> int:
+    if workers_enrich >= 64:
+        return 100
+    if workers_enrich >= 32:
+        return 200
+    return ENRICH_BATCH_SIZE
 
 
 @dataclass(frozen=True)
@@ -321,24 +330,68 @@ def _request_summarized_usages(
             details_kwargs["compartment_depth"] = 6
     details = details_cls.RequestSummarizedUsagesDetails(**details_kwargs)
 
+    def _is_retryable_oci_error(err: Exception) -> bool:
+        status = getattr(err, "status", None)
+        if isinstance(status, int) and status in {429, 500, 502, 503, 504}:
+            return True
+        code = str(getattr(err, "code", "") or "")
+        if code in {"TooManyRequests", "LimitExceeded", "Throttling"}:
+            return True
+        msg = str(err).lower()
+        return any(token in msg for token in ("timeout", "timed out", "temporarily unavailable", "rate limit"))
+
+    def _request_page(page_token: Optional[str]) -> Any:
+        if page_token:
+            return client.request_summarized_usages(details, page=page_token)  # type: ignore[attr-defined]
+        return client.request_summarized_usages(details)  # type: ignore[attr-defined]
+
     totals_by_name: Dict[str, float] = {}
     meta_by_name: Dict[str, Dict[str, str]] = {}
     currency: Optional[str] = None
     page: Optional[str] = None
     while True:
         try:
-            if page:
-                resp = client.request_summarized_usages(details, page=page)  # type: ignore[attr-defined]
-            else:
-                resp = client.request_summarized_usages(details)  # type: ignore[attr-defined]
-        except TypeError as e:
-            if "page" in str(e):
-                resp = client.request_summarized_usages(details)  # type: ignore[attr-defined]
-                page = None
-            else:
-                return [], currency, str(e)
+            try:
+                resp = _request_page(page)
+            except TypeError as e:
+                if "page" in str(e):
+                    resp = _request_page(None)
+                    page = None
+                else:
+                    return [], currency, str(e)
         except Exception as e:
-            return [], currency, str(e)
+            from .genai.redact import redact_text
+
+            max_retries = 5
+            delay = 0.5
+            attempt = 0
+            while _is_retryable_oci_error(e) and attempt < max_retries:
+                redacted = redact_text(str(e))
+                LOG.warning(
+                    "Usage API request_summarized_usages failed; retrying in %.1fs (attempt %s/%s): %s",
+                    delay,
+                    attempt + 1,
+                    max_retries,
+                    redacted,
+                )
+                time.sleep(delay)
+                attempt += 1
+                delay = min(delay * 2, 8.0)
+                try:
+                    resp = _request_page(page)
+                    break
+                except TypeError as te:
+                    if "page" in str(te):
+                        resp = _request_page(None)
+                        page = None
+                        break
+                    e = te
+                except Exception as inner:
+                    e = inner
+            else:
+                redacted = redact_text(str(e))
+                LOG.exception("Usage API request_summarized_usages failed: %s", redacted)
+                return [], currency, redacted
 
         data = getattr(resp, "data", None)
         items: List[Any] = []
@@ -1870,7 +1923,7 @@ def cmd_run(cfg: RunConfig) -> int:
                     _enrich_and_collect,
                     region_iter,
                     max_workers=max(1, cfg.workers_enrich),
-                    batch_size=ENRICH_BATCH_SIZE,
+                    batch_size=_effective_enrich_batch_size(max(1, cfg.workers_enrich)),
                 )
                 for item in worker_results:
                     region_count += 1

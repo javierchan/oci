@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+import os
 import re
 import subprocess
-import tempfile
+import hashlib
 from dataclasses import dataclass
 import logging
 from pathlib import Path
@@ -2451,20 +2453,87 @@ def validate_mermaid_diagrams_with_mmdc(outdir: Path, *, glob_pattern: str = "di
     if not paths:
         return []
 
-    with tempfile.TemporaryDirectory(prefix="oci-inv-mmdc-") as td:
-        tmp_dir = Path(td)
-        for p in paths:
-            out_svg = tmp_dir / f"{p.stem}.svg"
-            proc = subprocess.run(
-                [mmdc, "-i", str(p), "-o", str(out_svg)],
-                text=True,
-                capture_output=True,
-            )
-            if proc.returncode != 0:
-                stderr = (proc.stderr or "").strip()
-                stdout = (proc.stdout or "").strip()
-                detail = stderr or stdout or f"mmdc exited with code {proc.returncode}"
-                raise ExportError(f"Mermaid validation failed for {p.name}: {detail}")
+    cache_dir = outdir / ".mmdc_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = outdir / ".mmdc_cache.json"
+
+    def _load_cache() -> Dict[str, Any]:
+        if not cache_path.exists():
+            return {"version": 1, "files": {}}
+        try:
+            data = json.loads(cache_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {"version": 1, "files": {}}
+        if not isinstance(data, dict):
+            return {"version": 1, "files": {}}
+        files = data.get("files")
+        if not isinstance(files, dict):
+            data["files"] = {}
+        data.setdefault("version", 1)
+        return data
+
+    def _cache_key(path: Path) -> str:
+        try:
+            return str(path.relative_to(outdir))
+        except Exception:
+            return path.name
+
+    cache = _load_cache()
+    cache_files: Dict[str, Any] = cache.get("files", {})
+
+    def _sha1(path: Path) -> str:
+        digest = hashlib.sha1()
+        digest.update(path.read_bytes())
+        return digest.hexdigest()
+
+    def _should_validate(path: Path, digest: str) -> bool:
+        key = _cache_key(path)
+        cached = cache_files.get(key) or {}
+        out_svg = cache_dir / f"{path.stem}.svg"
+        if not out_svg.exists():
+            return True
+        return cached.get("sha1") != digest
+
+    def _run_validation(path: Path) -> Tuple[Path, str, str, Optional[str]]:
+        digest = _sha1(path)
+        if not _should_validate(path, digest):
+            return path, _cache_key(path), digest, None
+        out_svg = cache_dir / f"{path.stem}.svg"
+        proc = subprocess.run(
+            [mmdc, "-i", str(path), "-o", str(out_svg)],
+            text=True,
+            capture_output=True,
+        )
+        if proc.returncode != 0:
+            stderr = (proc.stderr or "").strip()
+            stdout = (proc.stdout or "").strip()
+            detail = stderr or stdout or f"mmdc exited with code {proc.returncode}"
+            return path, _cache_key(path), digest, detail
+        return path, _cache_key(path), digest, None
+
+    max_workers = min(8, os.cpu_count() or 4)
+    errors: List[Tuple[str, str]] = []
+    results: List[Tuple[Path, str, str]] = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_run_validation, p): p for p in paths}
+        for fut in as_completed(futures):
+            path, key, digest, err = fut.result()
+            if err:
+                errors.append((path.name, err))
+            else:
+                results.append((path, key, digest))
+
+    if errors:
+        errors.sort(key=lambda item: item[0])
+        name, detail = errors[0]
+        raise ExportError(f"Mermaid validation failed for {name}: {detail}")
+
+    for _path, key, digest in results:
+        cache_files[key] = {"sha1": digest}
+    cache["files"] = cache_files
+    cache_path.write_text(json.dumps(cache, sort_keys=True, indent=2), encoding="utf-8")
 
     return paths
 
@@ -2579,29 +2648,172 @@ def _group_nodes_by_root_compartment(nodes: Sequence[Node]) -> Dict[str, List[No
     return {k: grouped[k] for k in sorted(grouped.keys())}
 
 
-def _consolidated_split_groups(nodes: Sequence[Node]) -> Tuple[str, Dict[str, List[Node]]]:
-    regions = sorted({str(n.get("region") or "") for n in nodes if n.get("region")})
-    if len(regions) > 1:
-        groups: Dict[str, List[Node]] = {r: [] for r in regions}
-        for n in nodes:
-            region = str(n.get("region") or "")
-            if region in groups:
-                groups[region].append(n)
-        for region, group_nodes in groups.items():
-            comp_ids = {
-                str(n.get("compartmentId") or "")
-                for n in group_nodes
-                if str(n.get("compartmentId") or "")
-            }
-            if not comp_ids:
+def _collect_compartment_ids_for_nodes(nodes: Sequence[Node], parents: Mapping[str, str]) -> Set[str]:
+    comp_ids: Set[str] = set()
+    for n in nodes:
+        cid = str(n.get("compartmentId") or "")
+        if not cid and _is_node_type(n, "Compartment"):
+            cid = str(n.get("nodeId") or "")
+        if not cid:
+            continue
+        current = cid
+        seen: Set[str] = set()
+        while current and current not in seen:
+            comp_ids.add(current)
+            seen.add(current)
+            current = parents.get(current, "")
+    return comp_ids
+
+
+def _attach_compartment_nodes(
+    groups: Dict[str, List[Node]],
+    *,
+    nodes: Sequence[Node],
+    parents: Mapping[str, str],
+) -> Dict[str, List[Node]]:
+    comp_nodes = {str(n.get("nodeId") or ""): n for n in nodes if _is_node_type(n, "Compartment") and n.get("nodeId")}
+    out: Dict[str, List[Node]] = {}
+    for key in sorted(groups.keys()):
+        group_nodes = list(groups[key])
+        comp_ids = _collect_compartment_ids_for_nodes(group_nodes, parents)
+        existing = {str(n.get("nodeId") or "") for n in group_nodes if n.get("nodeId")}
+        for cid in sorted(comp_ids):
+            comp_node = comp_nodes.get(cid)
+            if not comp_node:
                 continue
-            for n in nodes:
-                if not _is_node_type(n, "Compartment"):
-                    continue
-                if str(n.get("nodeId") or "") in comp_ids:
-                    group_nodes.append(n)
-        return "region", {k: groups[k] for k in sorted(groups.keys())}
-    return "compartment", _group_nodes_by_root_compartment(nodes)
+            node_id = str(comp_node.get("nodeId") or "")
+            if node_id and node_id not in existing:
+                group_nodes.append(comp_node)
+                existing.add(node_id)
+        out[key] = group_nodes
+    return out
+
+
+def _group_nodes_by_region(nodes: Sequence[Node]) -> Dict[str, List[Node]]:
+    parents = _compartment_parent_map(nodes)
+    regions = sorted({str(n.get("region") or "") for n in nodes if n.get("region")})
+    groups: Dict[str, List[Node]] = {r: [] for r in regions}
+    groups.setdefault("Global", [])
+    for n in nodes:
+        region = str(n.get("region") or "")
+        if region in groups:
+            groups[region].append(n)
+        else:
+            groups["Global"].append(n)
+    return _attach_compartment_nodes(groups, nodes=nodes, parents=parents)
+
+
+def _level1_compartment_id(ocid: str, parents: Mapping[str, str]) -> str:
+    if not ocid:
+        return "UNKNOWN"
+    current = ocid
+    seen: Set[str] = set()
+    chain: List[str] = []
+    while current in parents and current not in seen:
+        seen.add(current)
+        chain.append(current)
+        current = parents[current]
+    if not chain:
+        return ocid
+    return chain[-1]
+
+
+def _group_nodes_by_level1_compartment(nodes: Sequence[Node]) -> Dict[str, List[Node]]:
+    parents = _compartment_parent_map(nodes)
+    grouped: Dict[str, List[Node]] = {}
+    for n in nodes:
+        cid = str(n.get("compartmentId") or "")
+        if not cid and _is_node_type(n, "Compartment"):
+            cid = str(n.get("nodeId") or "")
+        level1 = _level1_compartment_id(cid, parents) if cid else "UNKNOWN"
+        grouped.setdefault(level1, []).append(n)
+    return _attach_compartment_nodes(grouped, nodes=nodes, parents=parents)
+
+
+def _group_nodes_by_vcn(nodes: Sequence[Node], edges: Optional[Sequence[Edge]] = None) -> Dict[str, List[Node]]:
+    parents = _compartment_parent_map(nodes)
+    edge_vcn_by_src: Dict[str, str] = {}
+    attach_by_res: Dict[str, _DerivedAttachment] = {}
+    if edges is not None:
+        edge_vcn_by_src = _edge_single_target_map(edges, "IN_VCN")
+        attachments = _derived_attachments(nodes, edges)
+        attach_by_res = {a.resource_ocid: a for a in attachments}
+    groups: Dict[str, List[Node]] = {}
+    for n in nodes:
+        ocid = str(n.get("nodeId") or "")
+        if _is_node_type(n, "Vcn") and ocid:
+            groups.setdefault(ocid, []).append(n)
+            continue
+        vcn_id = ""
+        if ocid:
+            att = attach_by_res.get(ocid)
+            if att and att.vcn_ocid:
+                vcn_id = att.vcn_ocid
+            if not vcn_id:
+                vcn_id = edge_vcn_by_src.get(ocid, "")
+        if not vcn_id:
+            meta = _node_metadata(n)
+            vcn_id = str(_get_meta(meta, "vcn_id") or "")
+        if vcn_id:
+            groups.setdefault(vcn_id, []).append(n)
+        else:
+            groups.setdefault("NO_VCN", []).append(n)
+    return _attach_compartment_nodes(groups, nodes=nodes, parents=parents)
+
+
+def _consolidated_split_groups(
+    nodes: Sequence[Node],
+    *,
+    edges: Optional[Sequence[Edge]] = None,
+    mode: str,
+) -> Dict[str, List[Node]]:
+    if mode == "region":
+        return _group_nodes_by_region(nodes)
+    if mode == "root_compartment":
+        parents = _compartment_parent_map(nodes)
+        groups = _group_nodes_by_root_compartment(nodes)
+        return _attach_compartment_nodes(groups, nodes=nodes, parents=parents)
+    if mode == "level1_compartment":
+        return _group_nodes_by_level1_compartment(nodes)
+    if mode == "vcn":
+        return _group_nodes_by_vcn(nodes, edges)
+    return _group_nodes_by_root_compartment(nodes)
+
+
+def _split_mode_candidates(nodes: Sequence[Node], edges: Optional[Sequence[Edge]] = None) -> List[str]:
+    modes: List[str] = []
+    regions = {str(n.get("region") or "") for n in nodes if n.get("region")}
+    if len(regions) > 1:
+        modes.append("region")
+    modes.append("root_compartment")
+    modes.append("level1_compartment")
+    vcn_count = len([n for n in nodes if _is_node_type(n, "Vcn") and n.get("nodeId")])
+    if vcn_count > 1 or edges:
+        modes.append("vcn")
+    return modes
+
+
+def _split_mode_label(mode: str) -> str:
+    labels = {
+        "root_compartment": "root compartment",
+        "level1_compartment": "level-1 compartment",
+        "vcn": "VCN",
+    }
+    return labels.get(mode, mode)
+
+
+def _next_split_groups(
+    nodes: Sequence[Node],
+    *,
+    edges: Optional[Sequence[Edge]],
+    split_modes: Sequence[str],
+) -> Tuple[Optional[str], Dict[str, List[Node]], List[str]]:
+    for idx, mode in enumerate(split_modes):
+        groups = _consolidated_split_groups(nodes, edges=edges, mode=mode)
+        groups = {k: groups[k] for k in sorted(groups.keys()) if groups[k]}
+        if len(groups) > 1:
+            return mode, groups, list(split_modes[idx + 1 :])
+    return None, {}, []
 
 
 def _write_consolidated_stub(
@@ -2642,6 +2854,7 @@ def _write_consolidated_mermaid(
     path: Optional[Path] = None,
     summary: Optional[DiagramSummary] = None,
     _allow_split: bool = True,
+    _split_modes: Optional[Sequence[str]] = None,
 ) -> List[Path]:
     consolidated = path or (outdir / "diagram.consolidated.architecture.mmd")
     # Architecture diagram (architecture-beta). Full-detail OCI containment view.
@@ -3183,8 +3396,9 @@ def _write_consolidated_mermaid(
 
     size = _mermaid_text_size(lines)
     if size > MAX_MERMAID_TEXT_CHARS and _allow_split:
-        split_mode, groups = _consolidated_split_groups(nodes)
-        if len(groups) > 1:
+        split_modes = list(_split_modes) if _split_modes is not None else _split_mode_candidates(nodes, edges)
+        split_mode, groups, remaining_modes = _next_split_groups(nodes, edges=edges, split_modes=split_modes)
+        if split_mode and len(groups) > 1:
             part_paths: List[Path] = []
             for key, group_nodes in groups.items():
                 if not group_nodes:
@@ -3203,10 +3417,11 @@ def _write_consolidated_mermaid(
                         _requested_depth=depth,
                         path=part_path,
                         summary=summary,
-                        _allow_split=False,
+                        _allow_split=True,
+                        _split_modes=remaining_modes,
                     )
                 )
-            note = f"Consolidated diagram split by {split_mode} due to Mermaid size limits."
+            note = f"Consolidated diagram split by {_split_mode_label(split_mode)} due to Mermaid size limits."
             stub_path = _write_consolidated_stub(
                 consolidated,
                 kind="architecture",
@@ -3240,6 +3455,7 @@ def _write_consolidated_mermaid(
             path=consolidated,
             summary=summary,
             _allow_split=_allow_split,
+            _split_modes=_split_modes,
         )
     if depth != requested_depth:
         lines.insert(
@@ -3276,6 +3492,7 @@ def _write_consolidated_flowchart(
     path: Optional[Path] = None,
     summary: Optional[DiagramSummary] = None,
     _allow_split: bool = True,
+    _split_modes: Optional[Sequence[str]] = None,
 ) -> List[Path]:
     path = path or (outdir / "diagram.consolidated.flowchart.mmd")
     requested_depth = depth if _requested_depth is None else _requested_depth
@@ -3286,8 +3503,9 @@ def _write_consolidated_flowchart(
     
     size = _mermaid_text_size(lines)
     if size > MAX_MERMAID_TEXT_CHARS and _allow_split:
-        split_mode, groups = _consolidated_split_groups(nodes)
-        if len(groups) > 1:
+        split_modes = list(_split_modes) if _split_modes is not None else _split_mode_candidates(nodes, edges)
+        split_mode, groups, remaining_modes = _next_split_groups(nodes, edges=edges, split_modes=split_modes)
+        if split_mode and len(groups) > 1:
             part_paths: List[Path] = []
             for key, group_nodes in groups.items():
                 if not group_nodes:
@@ -3305,10 +3523,11 @@ def _write_consolidated_flowchart(
                         _requested_depth=depth,
                         path=part_path,
                         summary=summary,
-                        _allow_split=False,
+                        _allow_split=True,
+                        _split_modes=remaining_modes,
                     )
                 )
-            note = f"Consolidated diagram split by {split_mode} due to Mermaid size limits."
+            note = f"Consolidated diagram split by {_split_mode_label(split_mode)} due to Mermaid size limits."
             stub_path = _write_consolidated_stub(
                 path,
                 kind="flowchart",
@@ -3341,6 +3560,7 @@ def _write_consolidated_flowchart(
             path=path,
             summary=summary,
             _allow_split=_allow_split,
+            _split_modes=_split_modes,
         )
     insert_at = 1 if lines else 0
     if requested_depth > 1:
