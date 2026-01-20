@@ -2,8 +2,22 @@ from __future__ import annotations
 
 import hashlib
 
+from pathlib import Path
+
 from oci_inventory.export.diagram_projections import _render_edge, write_diagram_projections
 from oci_inventory.export.graph import build_graph
+
+
+def _build_graph_lists(
+    scratch_dir: Path,
+    records: list[dict],
+    relationships: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    graph = build_graph(records, relationships, scratch_dir=scratch_dir)
+    nodes = graph.materialize_nodes()
+    edges = graph.materialize_edges(filtered=True)
+    graph.close()
+    return nodes, edges
 
 
 def test_write_diagram_projections_creates_views(tmp_path) -> None:
@@ -46,7 +60,7 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
         },
     ]
 
-    nodes, edges = build_graph(records, relationships=[])
+    nodes, edges = _build_graph_lists(tmp_path, records, [])
     paths = write_diagram_projections(tmp_path, nodes, edges)
 
     assert (tmp_path / "diagram.tenancy.mmd").exists()
@@ -110,7 +124,7 @@ def test_consolidated_subnet_group_id_scoped_by_vcn(tmp_path) -> None:
         },
     ]
 
-    nodes, edges = build_graph(records, relationships=[])
+    nodes, edges = _build_graph_lists(tmp_path, records, [])
     write_diagram_projections(tmp_path, nodes, edges)
 
     consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
@@ -143,7 +157,7 @@ def test_consolidated_architecture_dedupes_vcn_groups(tmp_path) -> None:
         },
     ]
 
-    nodes, edges = build_graph(records, relationships=[])
+    nodes, edges = _build_graph_lists(tmp_path, records, [])
     write_diagram_projections(tmp_path, nodes, edges)
 
     consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
@@ -165,7 +179,7 @@ def test_consolidated_flowchart_depth_excludes_edges(tmp_path) -> None:
         }
     ]
 
-    nodes, edges = build_graph(records, relationships=[])
+    nodes, edges = _build_graph_lists(tmp_path, records, [])
     write_diagram_projections(tmp_path, nodes, edges, diagram_depth=1)
 
     consolidated = (tmp_path / "diagram.consolidated.flowchart.mmd").read_text(encoding="utf-8")
@@ -190,7 +204,7 @@ def test_consolidated_flowchart_auto_reduces_depth_when_too_large(tmp_path, monk
         }
     ]
 
-    nodes, edges = build_graph(records, relationships=[])
+    nodes, edges = _build_graph_lists(tmp_path, records, [])
     write_diagram_projections(tmp_path, nodes, edges, diagram_depth=3)
 
     flowchart = (tmp_path / "diagram.consolidated.flowchart.mmd").read_text(encoding="utf-8")
@@ -224,7 +238,7 @@ def test_consolidated_architecture_splits_before_depth_reduction(tmp_path, monke
         },
     ]
 
-    nodes, edges = build_graph(records, relationships=[])
+    nodes, edges = _build_graph_lists(tmp_path, records, [])
     write_diagram_projections(tmp_path, nodes, edges, diagram_depth=3)
 
     consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
@@ -290,7 +304,7 @@ def test_consolidated_architecture_depth2_aggregates_network_attached(tmp_path) 
         },
     ]
 
-    nodes, edges = build_graph(records, relationships=[])
+    nodes, edges = _build_graph_lists(tmp_path, records, [])
     write_diagram_projections(tmp_path, nodes, edges, diagram_depth=2)
 
     consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
@@ -356,7 +370,7 @@ def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
         {"source_ocid": drg_id, "relation_type": "IN_VCN", "target_ocid": vcn_id},
     ]
 
-    nodes, edges = build_graph(records, relationships)
+    nodes, edges = _build_graph_lists(tmp_path, records, list(relationships))
     write_diagram_projections(tmp_path, nodes, edges)
 
     diagram = (tmp_path / "diagram.network.edge_vcn.mmd").read_text(encoding="utf-8")
@@ -399,7 +413,7 @@ def test_consolidated_defines_workload_anchor_nodes(tmp_path) -> None:
         },
     ]
 
-    nodes, edges = build_graph(records, relationships=[])
+    nodes, edges = _build_graph_lists(tmp_path, records, [])
     write_diagram_projections(tmp_path, nodes, edges)
 
     consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
@@ -440,7 +454,7 @@ def test_write_diagram_projections_skips_large_views(tmp_path, monkeypatch) -> N
         },
     ]
 
-    nodes, edges = build_graph(records, relationships=[])
+    nodes, edges = _build_graph_lists(tmp_path, records, [])
     paths = write_diagram_projections(tmp_path, nodes, edges)
 
     assert (tmp_path / "diagram.tenancy.mmd").exists()

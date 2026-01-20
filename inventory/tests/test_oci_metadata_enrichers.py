@@ -86,6 +86,38 @@ def test_customer_dns_zone_aliases_dns_zone(monkeypatch: Any) -> None:
     assert calls["n"] == 1
 
 
+def test_stream_pool_enricher_calls_stream_admin_client(monkeypatch: Any) -> None:
+    _set_dummy_ctx()
+
+    class _StreamAdminClient:
+        def get_stream_pool(self, ocid: str) -> Any:
+            assert ocid == "ocid1.streampool.oc1..aaaa"
+            return SimpleNamespace(data={"id": ocid, "kafka_settings": {"enabled": True}})
+
+    monkeypatch.setattr(meta.oci_clients, "get_stream_admin_client", lambda ctx, region: _StreamAdminClient())
+
+    enricher = get_enricher_for("StreamPool")
+    res = enricher.enrich({"region": "mx-queretaro-1", "ocid": "ocid1.streampool.oc1..aaaa"})
+    assert res.enrichStatus == "OK"
+    assert res.details["metadata"]["id"] == "ocid1.streampool.oc1..aaaa"
+
+
+def test_nosql_table_enricher_calls_nosql_client(monkeypatch: Any) -> None:
+    _set_dummy_ctx()
+
+    class _NosqlClient:
+        def get_table(self, ocid: str) -> Any:
+            assert ocid == "ocid1.nosqltable.oc1..aaaa"
+            return SimpleNamespace(data={"id": ocid, "table_limits": {"max_storage_in_gbs": 1}})
+
+    monkeypatch.setattr(meta.oci_clients, "get_nosql_client", lambda ctx, region: _NosqlClient())
+
+    enricher = get_enricher_for("NoSqlTable")
+    res = enricher.enrich({"region": "mx-queretaro-1", "ocid": "ocid1.nosqltable.oc1..aaaa"})
+    assert res.enrichStatus == "OK"
+    assert res.details["metadata"]["id"] == "ocid1.nosqltable.oc1..aaaa"
+
+
 def test_subnet_enricher_preserves_dhcp_options_id(monkeypatch: Any) -> None:
     _set_dummy_ctx()
 

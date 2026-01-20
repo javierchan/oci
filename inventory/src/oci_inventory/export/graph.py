@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import re
+import sqlite3
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Set, Tuple
 
 from ..normalize.transform import stable_json_dumps
 from ..util.serialization import sanitize_for_json
@@ -11,6 +14,46 @@ from ..util.serialization import sanitize_for_json
 Node = Dict[str, Any]
 Edge = Dict[str, Any]
 
+
+_IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+_IPV6_RE = re.compile(r"\b(?:[A-Fa-f0-9]{0,4}:){2,7}[A-Fa-f0-9]{0,4}\b")
+
+
+def _extract_ip_targets(value: Any, *, max_depth: int = 4) -> Set[str]:
+    found: Set[str] = set()
+
+    def _scan(val: Any, depth: int) -> None:
+        if depth > max_depth:
+            return
+        if isinstance(val, str):
+            found.update(_IPV4_RE.findall(val))
+            found.update(_IPV6_RE.findall(val))
+            return
+        if isinstance(val, dict):
+            for key, item in val.items():
+                key_str = str(key)
+                if key_str in {
+                    "rdata",
+                    "target",
+                    "targets",
+                    "answer",
+                    "answers",
+                    "address",
+                    "ip",
+                    "ip_address",
+                    "ipAddress",
+                    "value",
+                }:
+                    _scan(item, depth + 1)
+                elif key_str in {"records", "rrset", "items", "record", "data"}:
+                    _scan(item, depth + 1)
+            return
+        if isinstance(val, (list, tuple, set)):
+            for entry in val:
+                _scan(entry, depth + 1)
+
+    _scan(value, 0)
+    return found
 
 COMPUTE_TYPES = {
     "Instance",
@@ -314,6 +357,16 @@ def iter_relationships_for_record(
                 if isinstance(nid, str) and nid:
                     _emit(src, "USES_NSG", nid)
 
+    if rt == "RouteTable":
+        route_rules = _get_meta(md, "route_rules", "routeRules")
+        if isinstance(route_rules, list):
+            for rule in route_rules:
+                if not isinstance(rule, dict):
+                    continue
+                target_id = _get_meta(rule, "network_entity_id", "networkEntityId")
+                if isinstance(target_id, str) and target_id:
+                    _emit(src, "ROUTES_TO_GATEWAY", target_id)
+
     # VNIC wiring
     if rt == "Vnic":
         subnet_id = _get_meta(md, "subnet_id", "subnetId")
@@ -324,6 +377,23 @@ def iter_relationships_for_record(
             for nid in nsg_ids:
                 if isinstance(nid, str) and nid:
                     _emit(src, "USES_NSG", nid)
+        instance_id = _get_meta(md, "instance_id", "instanceId")
+        for target_id in _collect_ids(instance_id):
+            _emit(src, "ATTACHED_TO_INSTANCE", target_id)
+
+    if rt == "BootVolumeAttachment":
+        instance_id = _get_meta(md, "instance_id", "instanceId")
+        boot_id = _get_meta(md, "boot_volume_id", "bootVolumeId")
+        for target_id in _collect_ids(instance_id):
+            for vol_id in _collect_ids(boot_id):
+                _emit(target_id, "ATTACHED_BOOT_VOLUME", vol_id)
+
+    if rt == "VolumeAttachment":
+        instance_id = _get_meta(md, "instance_id", "instanceId")
+        volume_id = _get_meta(md, "volume_id", "volumeId")
+        for target_id in _collect_ids(instance_id):
+            for vol_id in _collect_ids(volume_id):
+                _emit(target_id, "ATTACHED_VOLUME", vol_id)
 
     if rt in firewall_types:
         for subnet_id in subnet_ids:
@@ -366,6 +436,8 @@ def iter_relationships_for_record(
                 ip_addr = entry.get("ipAddress") or entry.get("ip_address")
                 if isinstance(ip_addr, str) and ip_addr in index.public_ip_by_addr:
                     _emit(src, "EXPOSES_PUBLIC_IP", index.public_ip_by_addr[ip_addr])
+                if isinstance(ip_addr, str) and ip_addr in index.private_ip_by_addr:
+                    _emit(src, "EXPOSES_PRIVATE_IP", index.private_ip_by_addr[ip_addr])
 
         backend_sets = md.get("backendSets") if isinstance(md, dict) else None
         if backend_sets is None:
@@ -393,6 +465,13 @@ def iter_relationships_for_record(
         policy_id = _get_meta(md, "network_firewall_policy_id", "networkFirewallPolicyId")
         for target_id in _collect_ids(policy_id):
             _emit(src, "USES_FIREWALL_POLICY", target_id)
+
+    if "Dns" in rt or "Steering" in rt:
+        for ip in _extract_ip_targets(md):
+            if ip in index.private_ip_by_addr:
+                _emit(src, "RESOLVES_TO_PRIVATE_IP", index.private_ip_by_addr[ip])
+            if ip in index.public_ip_by_addr:
+                _emit(src, "RESOLVES_TO_PUBLIC_IP", index.public_ip_by_addr[ip])
 
     return out
 
@@ -467,26 +546,191 @@ def _edge_key(edge: Edge) -> Tuple[str, str, str]:
     )
 
 
+class GraphStore:
+    def __init__(self, db_path: Path, conn: sqlite3.Connection, *, delete_on_close: bool) -> None:
+        self._db_path = db_path
+        self._conn = conn
+        self._delete_on_close = delete_on_close
+        self._closed = False
+
+    @classmethod
+    def create(cls, *, scratch_dir: Path) -> GraphStore:
+        scratch_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix=".graph_store_",
+            suffix=".sqlite",
+            dir=str(scratch_dir),
+            delete=False,
+        ) as tmp:
+            db_path = Path(tmp.name)
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("PRAGMA journal_mode=OFF")
+        conn.execute("PRAGMA synchronous=OFF")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS nodes ("
+            "node_id TEXT PRIMARY KEY,"
+            "node_type TEXT,"
+            "region TEXT,"
+            "json TEXT NOT NULL"
+            ")"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS edges ("
+            "source_ocid TEXT NOT NULL,"
+            "relation_type TEXT NOT NULL,"
+            "target_ocid TEXT NOT NULL,"
+            "source_type TEXT,"
+            "target_type TEXT,"
+            "region TEXT,"
+            "json TEXT NOT NULL,"
+            "PRIMARY KEY (source_ocid, relation_type, target_ocid)"
+            ")"
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS edges_source_idx ON edges (source_ocid)")
+        conn.execute("CREATE INDEX IF NOT EXISTS edges_target_idx ON edges (target_ocid)")
+        return cls(db_path, conn, delete_on_close=True)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._conn.close()
+        self._closed = True
+        if self._delete_on_close:
+            try:
+                self._db_path.unlink()
+            except Exception:
+                pass
+
+    def insert_node(self, node: Node, *, replace: bool) -> None:
+        node_id = str(node.get("nodeId") or "")
+        if not node_id:
+            return
+        payload = stable_json_dumps(node)
+        sql = "INSERT OR REPLACE INTO nodes (node_id, node_type, region, json) VALUES (?, ?, ?, ?)"
+        if not replace:
+            sql = "INSERT OR IGNORE INTO nodes (node_id, node_type, region, json) VALUES (?, ?, ?, ?)"
+        self._conn.execute(
+            sql,
+            (
+                node_id,
+                str(node.get("nodeType") or "") or None,
+                str(node.get("region") or "") or None,
+                payload,
+            ),
+        )
+
+    def insert_edge(self, edge: Edge) -> None:
+        src = str(edge.get("source_ocid") or "")
+        rel = str(edge.get("relation_type") or "")
+        dst = str(edge.get("target_ocid") or "")
+        if not src or not rel or not dst:
+            return
+        payload = stable_json_dumps(edge)
+        self._conn.execute(
+            "INSERT OR REPLACE INTO edges "
+            "(source_ocid, relation_type, target_ocid, source_type, target_type, region, json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                src,
+                rel,
+                dst,
+                edge.get("source_type"),
+                edge.get("target_type"),
+                edge.get("region"),
+                payload,
+            ),
+        )
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def node_count(self) -> int:
+        row = self._conn.execute("SELECT COUNT(1) FROM nodes").fetchone()
+        return int(row[0]) if row else 0
+
+    def edge_count(self) -> int:
+        row = self._conn.execute("SELECT COUNT(1) FROM edges").fetchone()
+        return int(row[0]) if row else 0
+
+    def filtered_edge_count(self) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(1) FROM edges e "
+            "JOIN nodes s ON e.source_ocid = s.node_id "
+            "JOIN nodes t ON e.target_ocid = t.node_id"
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def iter_nodes(self) -> Iterator[Node]:
+        for (payload,) in self._conn.execute("SELECT json FROM nodes ORDER BY node_id"):
+            yield json.loads(payload)
+
+    def iter_edges(self, *, filtered: bool) -> Iterator[Edge]:
+        if filtered:
+            query = (
+                "SELECT e.json FROM edges e "
+                "JOIN nodes s ON e.source_ocid = s.node_id "
+                "JOIN nodes t ON e.target_ocid = t.node_id "
+                "ORDER BY e.source_ocid, e.relation_type, e.target_ocid"
+            )
+        else:
+            query = "SELECT json FROM edges ORDER BY source_ocid, relation_type, target_ocid"
+        for (payload,) in self._conn.execute(query):
+            yield json.loads(payload)
+
+    def materialize_nodes(self) -> List[Node]:
+        return list(self.iter_nodes())
+
+    def materialize_edges(self, *, filtered: bool) -> List[Edge]:
+        return list(self.iter_edges(filtered=filtered))
+
+    def node_meta(self, ocid: str) -> Tuple[Optional[str], Optional[str]]:
+        row = self._conn.execute(
+            "SELECT node_type, region FROM nodes WHERE node_id = ?",
+            (ocid,),
+        ).fetchone()
+        if not row:
+            return None, None
+        return row[0], row[1]
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
+
 def build_graph(
     records: Iterable[Dict[str, Any]],
     relationships: Iterable[Dict[str, str]],
-) -> Tuple[List[Node], List[Edge]]:
-    nodes_by_id: Dict[str, Node] = {}
-    edges: List[Edge] = []
+    *,
+    scratch_dir: Optional[Path] = None,
+) -> GraphStore:
+    store = GraphStore.create(scratch_dir=scratch_dir or Path.cwd())
+    node_meta_cache: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
+
+    def _lookup_meta(ocid: str) -> Tuple[Optional[str], Optional[str]]:
+        if ocid in node_meta_cache:
+            return node_meta_cache[ocid]
+        meta = store.node_meta(ocid)
+        if len(node_meta_cache) > 10000:
+            node_meta_cache.clear()
+        node_meta_cache[ocid] = meta
+        return meta
 
     for rec in records:
         ocid = str(rec.get("ocid") or "")
         if not ocid:
             continue
         node = _record_to_node(rec)
-        nodes_by_id[ocid] = node
+        store.insert_node(node, replace=True)
 
         comp_id = rec.get("compartmentId")
         if comp_id:
             comp_id = str(comp_id)
-            if comp_id not in nodes_by_id:
-                nodes_by_id[comp_id] = _compartment_node(comp_id)
-            edges.append(
+            store.insert_node(_compartment_node(comp_id), replace=False)
+            store.insert_edge(
                 {
                     "source_ocid": ocid,
                     "target_ocid": comp_id,
@@ -498,30 +742,36 @@ def build_graph(
             )
 
     for rel in relationships:
-        src = rel.get("source_ocid")
-        src_node = nodes_by_id.get(src or "", {})
-        edges.append(
+        src = str(rel.get("source_ocid") or "")
+        dst = str(rel.get("target_ocid") or "")
+        if not src or not dst:
+            continue
+        src_type, src_region = _lookup_meta(src)
+        target_type, _ = _lookup_meta(dst)
+        store.insert_edge(
             {
                 "source_ocid": src,
-                "target_ocid": rel.get("target_ocid"),
+                "target_ocid": dst,
                 "relation_type": rel.get("relation_type"),
-                "source_type": src_node.get("nodeType"),
-                "target_type": nodes_by_id.get(rel.get("target_ocid") or "", {}).get("nodeType"),
-                "region": src_node.get("region"),
+                "source_type": src_type,
+                "target_type": target_type,
+                "region": src_region,
             }
         )
 
-    # Deduplicate edges deterministically
-    dedup: Dict[Tuple[str, str, str], Edge] = {}
-    for edge in edges:
-        dedup[_edge_key(edge)] = edge
-    edges_out = [dedup[k] for k in sorted(dedup.keys())]
-
-    nodes_out = [nodes_by_id[k] for k in sorted(nodes_by_id.keys())]
-    return nodes_out, edges_out
+    store.commit()
+    return store
 
 
-def filter_edges_with_nodes(nodes: Sequence[Node], edges: Sequence[Edge]) -> Tuple[List[Edge], int]:
+def filter_edges_with_nodes(
+    nodes: Sequence[Node] | GraphStore,
+    edges: Optional[Sequence[Edge]] = None,
+) -> Tuple[Iterable[Edge], int]:
+    if isinstance(nodes, GraphStore):
+        filtered_count = nodes.filtered_edge_count()
+        return nodes.iter_edges(filtered=True), nodes.edge_count() - filtered_count
+    if edges is None:
+        raise ValueError("edges are required when filtering without a GraphStore")
     node_ids = {str(node.get("nodeId") or "") for node in nodes if node.get("nodeId")}
     filtered = [
         edge
@@ -532,7 +782,7 @@ def filter_edges_with_nodes(nodes: Sequence[Node], edges: Sequence[Edge]) -> Tup
     return filtered, len(edges) - len(filtered)
 
 
-def write_graph(outdir: Path, nodes: List[Node], edges: List[Edge]) -> Tuple[Path, Path]:
+def write_graph(outdir: Path, nodes: Iterable[Node], edges: Iterable[Edge]) -> Tuple[Path, Path]:
     nodes_path = outdir / "graph_nodes.jsonl"
     edges_path = outdir / "graph_edges.jsonl"
     with nodes_path.open("w", encoding="utf-8") as f:
@@ -544,4 +794,3 @@ def write_graph(outdir: Path, nodes: List[Node], edges: List[Edge]) -> Tuple[Pat
             f.write(stable_json_dumps(edge))
             f.write("\n")
     return nodes_path, edges_path
-
