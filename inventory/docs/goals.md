@@ -54,7 +54,7 @@
 ### export
 - Paths: `src/oci_inventory/export/jsonl.py`, `src/oci_inventory/export/csv.py`, `src/oci_inventory/export/graph.py`. (src/oci_inventory/export/jsonl.py:1; src/oci_inventory/export/csv.py:1; src/oci_inventory/export/graph.py:1)
 - Responsibility: write deterministic JSONL and CSV exports plus graph artifacts (nodes/edges + Mermaid). (src/oci_inventory/export/jsonl.py:10; src/oci_inventory/export/csv.py:11; src/oci_inventory/export/graph.py:113)
-- Interfaces: `write_jsonl`, `write_csv`, `build_graph`, `write_graph`, `write_mermaid`. (src/oci_inventory/export/jsonl.py:10; src/oci_inventory/export/csv.py:11; src/oci_inventory/export/graph.py:113; src/oci_inventory/export/graph.py:165; src/oci_inventory/export/graph.py:191)
+- Interfaces: `write_jsonl`, `write_csv`, `build_graph`, `write_graph`. (src/oci_inventory/export/jsonl.py:10; src/oci_inventory/export/csv.py:11; src/oci_inventory/export/graph.py:113; src/oci_inventory/export/graph.py:165)
 
 ### diff
 - Paths: `src/oci_inventory/diff/hash.py`, `src/oci_inventory/diff/diff.py`. (src/oci_inventory/diff/hash.py:1; src/oci_inventory/diff/diff.py:1)

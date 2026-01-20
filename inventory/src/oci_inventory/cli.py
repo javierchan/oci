@@ -1697,7 +1697,7 @@ def _organize_diagrams(paths: OutputPaths) -> List[Path]:
 
 
 def cmd_run(cfg: RunConfig) -> int:
-    from .export.graph import build_graph, filter_edges_with_nodes, write_graph, write_mermaid
+    from .export.graph import build_graph, filter_edges_with_nodes, write_graph
     from .report import (
         write_cost_report_md,
         write_cost_usage_csv,
@@ -2132,9 +2132,7 @@ def cmd_run(cfg: RunConfig) -> int:
                 )
             paths.graph_dir.mkdir(parents=True, exist_ok=True)
             paths.diagrams_dir.mkdir(parents=True, exist_ok=True)
-            paths.diagrams_raw_dir.mkdir(parents=True, exist_ok=True)
             write_graph(paths.graph_dir, nodes, edges)
-            write_mermaid(paths.diagrams_raw_dir, nodes, edges)
             if cfg.diagram_depth < 3:
                 _log_event(
                     LOG,

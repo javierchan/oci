@@ -194,7 +194,7 @@ allow group <group-name> to read budgets in tenancy
 ## Performance tuning
 - Default run settings are loaded from `config/workers.yaml` when present (region/enrich/cost/export workers, connection pool size, diagram depth). Use `--config` to override.
 - Schema validation modes: `--validate-schema auto|full|sampled|off` and `--validate-schema-sample N`.
-- Consolidated diagram depth: `--diagram-depth 1|2|3` (1=tenancy/compartments+VCN/subnet/gateways, 2=add workloads, 3=add workload edges). Default is 2 when `config/workers.yaml` is loaded. Applies to `diagram.consolidated.architecture.mmd` and `diagram.consolidated.flowchart.mmd`.
+- Diagram depth: `--diagram-depth 1|2|3` (1=global map: tenancy + regions, 2=regional abstraction with aggregated network-attached workloads, 3=full workloads + edges). Default is 2 when `config/workers.yaml` is loaded. Applies to consolidated outputs and the tenancy diagram (depth 1/2/3 controls the tenancy shell).
 - Consolidated diagrams auto-reduce depth when Mermaid text limits are exceeded; a NOTE comment is added to the output when this happens.
 - If consolidated diagrams still exceed Mermaid limits at depth 1, they are split by region (preferred) or top-level compartment and the base diagram is replaced by a stub that links to split outputs.
 - Workload diagrams that exceed Mermaid limits are split into deterministic overflow parts; if a single-node slice still exceeds the limit, it is skipped and summarized in `report/report.md`.
@@ -373,7 +373,6 @@ subgraph out_ts[out timestamp]
     rel[inventory/relationships.jsonl]
     nodes[graph/graph_nodes.jsonl optional]
     edges[graph/graph_edges.jsonl optional]
-    raw[diagrams/raw/diagram_raw.mmd optional]
     ten[diagrams/tenancy/diagram.tenancy.mmd optional]
     net[diagrams/network/diagram.network.vcn.mmd optional]
     wl[diagrams/workload/diagram.workload.workload.mmd optional]
@@ -408,8 +407,6 @@ subgraph out_ts[out timestamp]
   edges --> cons_split
   nodes --> cons_fc_split
   edges --> cons_fc_split
-  nodes --> raw
-  edges --> raw
 ```
 
 ## Output Contract
@@ -421,13 +418,12 @@ Each run writes to: `out/<timestamp>/` with structured subfolders.
 - inventory/relationships.jsonl (always written; may be empty)
 - graph/graph_nodes.jsonl (diagram-ready nodes; optional)
 - graph/graph_edges.jsonl (diagram-ready edges; optional)
-- diagrams/raw/diagram_raw.mmd (Mermaid diagram; raw graph; optional)
 - diagrams/tenancy/diagram.tenancy.mmd (Mermaid diagram; tenancy/compartment view; optional)
 - diagrams/network/diagram.network.<vcn>.mmd (Mermaid diagram; per-VCN topology view; optional)
 - diagrams/workload/diagram.workload.<workload>.mmd (Mermaid diagram; workload/application view; optional)
 - diagrams/workload/diagram.workload.<workload>.partNN.mmd (Mermaid diagram; overflow parts when workload diagrams are split)
-- diagrams/consolidated/diagram.consolidated.architecture.mmd (Mermaid architecture-beta diagram; all projections consolidated, edges are unlabelled by design; optional; respects `--diagram-depth`)
-- diagrams/consolidated/diagram.consolidated.flowchart.mmd (Mermaid flowchart diagram; consolidated view with configurable depth; optional; respects `--diagram-depth`)
+- diagrams/consolidated/diagram.consolidated.architecture.mmd (Mermaid architecture-beta diagram; regional abstraction and workloads; respects `--diagram-depth`)
+- diagrams/consolidated/diagram.consolidated.flowchart.mmd (Mermaid flowchart diagram; global tenancy + regions map; rendered at depth 1)
 - diagrams/consolidated/diagram.consolidated.architecture.region.<region>.mmd (Mermaid architecture-beta split by region when oversized)
 - diagrams/consolidated/diagram.consolidated.architecture.compartment.<compartment>.mmd (Mermaid architecture-beta split by compartment when oversized)
 - diagrams/consolidated/diagram.consolidated.flowchart.region.<region>.mmd (Mermaid flowchart split by region when oversized)
@@ -444,7 +440,7 @@ Quick reference (artifacts → purpose):
 - inventory/inventory.csv: tabular view aligned to report fields; missing values are rendered as `unknown`.
 - logs/debug.log: per-run log output captured to the run directory.
 - inventory/relationships.jsonl: relationship edges from enrichers + derived metadata.
-- graph/graph_nodes.jsonl / graph/graph_edges.jsonl / diagrams/raw/diagram_raw.mmd: raw topology outputs (optional).
+- graph/graph_nodes.jsonl / graph/graph_edges.jsonl: raw topology outputs (optional).
 - diagrams/**/diagram*.mmd: architecture-focused projected views (optional).
 - cost/cost_report.md + cost/cost_usage_*.{csv,jsonl}: cost snapshot outputs (optional).
 - diff/diff.json / diff/diff_summary.json: change set when `--prev` is used.
