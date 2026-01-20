@@ -2853,32 +2853,6 @@ def _write_consolidated_mermaid(
         lines.extend(rel_lines)
 
     size = _mermaid_text_size(lines)
-    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
-        LOG.warning(
-            "Architecture consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
-            size,
-            depth,
-            depth - 1,
-        )
-        return _write_consolidated_mermaid(
-            outdir,
-            nodes,
-            edges,
-            diagram_paths,
-            depth=depth - 1,
-            _requested_depth=requested_depth,
-            path=consolidated,
-            summary=summary,
-            _allow_split=_allow_split,
-        )
-    if depth != requested_depth:
-        lines.insert(
-            1,
-            (
-                f"%% NOTE: consolidated depth reduced from {requested_depth} to {depth} "
-                "to stay within Mermaid text size limits."
-            ),
-        )
     if size > MAX_MERMAID_TEXT_CHARS and _allow_split:
         split_mode, groups = _consolidated_split_groups(nodes)
         if len(groups) > 1:
@@ -2920,7 +2894,32 @@ def _write_consolidated_mermaid(
                 reason=f"split_{split_mode}",
             )
             return [stub_path] + part_paths
-
+    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
+        LOG.warning(
+            "Architecture consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
+            size,
+            depth,
+            depth - 1,
+        )
+        return _write_consolidated_mermaid(
+            outdir,
+            nodes,
+            edges,
+            diagram_paths,
+            depth=depth - 1,
+            _requested_depth=requested_depth,
+            path=consolidated,
+            summary=summary,
+            _allow_split=_allow_split,
+        )
+    if depth != requested_depth:
+        lines.insert(
+            1,
+            (
+                f"%% NOTE: consolidated depth reduced from {requested_depth} to {depth} "
+                "to stay within Mermaid text size limits."
+            ),
+        )
     if size > MAX_MERMAID_TEXT_CHARS:
         LOG.warning(
             "Architecture consolidated diagram exceeds Mermaid max text size (%s chars) at depth %s; diagram may not render.",
@@ -2953,36 +2952,6 @@ def _write_consolidated_flowchart(
     requested_depth = depth if _requested_depth is None else _requested_depth
     lines = _global_flowchart_lines(nodes)
     size = _mermaid_text_size(lines)
-    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
-        LOG.warning(
-            "Flowchart consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
-            size,
-            depth,
-            depth - 1,
-        )
-        return _write_consolidated_flowchart(
-            outdir,
-            nodes,
-            edges,
-            depth=depth - 1,
-            _requested_depth=requested_depth,
-            path=path,
-            summary=summary,
-            _allow_split=_allow_split,
-        )
-    insert_at = 1 if lines else 0
-    if requested_depth > 1:
-        lines.insert(insert_at, "%% NOTE: global map renders at depth 1 (tenancy + regions).")
-        insert_at += 1
-    if depth != requested_depth:
-        lines.insert(
-            insert_at,
-            (
-                f"%% NOTE: consolidated depth reduced from {requested_depth} to {depth} "
-                "to stay within Mermaid text size limits."
-            ),
-        )
-        insert_at += 1
     if size > MAX_MERMAID_TEXT_CHARS and _allow_split:
         split_mode, groups = _consolidated_split_groups(nodes)
         if len(groups) > 1:
@@ -3023,6 +2992,36 @@ def _write_consolidated_flowchart(
                 reason=f"split_{split_mode}",
             )
             return [stub_path] + part_paths
+    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
+        LOG.warning(
+            "Flowchart consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
+            size,
+            depth,
+            depth - 1,
+        )
+        return _write_consolidated_flowchart(
+            outdir,
+            nodes,
+            edges,
+            depth=depth - 1,
+            _requested_depth=requested_depth,
+            path=path,
+            summary=summary,
+            _allow_split=_allow_split,
+        )
+    insert_at = 1 if lines else 0
+    if requested_depth > 1:
+        lines.insert(insert_at, "%% NOTE: global map renders at depth 1 (tenancy + regions).")
+        insert_at += 1
+    if depth != requested_depth:
+        lines.insert(
+            insert_at,
+            (
+                f"%% NOTE: consolidated depth reduced from {requested_depth} to {depth} "
+                "to stay within Mermaid text size limits."
+            ),
+        )
+        insert_at += 1
     if size > MAX_MERMAID_TEXT_CHARS:
         LOG.warning(
             "Flowchart consolidated diagram exceeds Mermaid max text size (%s chars) at depth %s; diagram may not render.",

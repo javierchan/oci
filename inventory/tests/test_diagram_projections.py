@@ -197,6 +197,45 @@ def test_consolidated_flowchart_auto_reduces_depth_when_too_large(tmp_path, monk
     assert "NOTE: consolidated depth reduced" in flowchart
 
 
+def test_consolidated_architecture_splits_before_depth_reduction(tmp_path, monkeypatch) -> None:
+    from oci_inventory.export import diagram_projections
+
+    monkeypatch.setattr(diagram_projections, "MAX_MERMAID_TEXT_CHARS", 10)
+    records = [
+        {
+            "ocid": "ocid1.vcn.oc1..vcn1",
+            "resourceType": "Vcn",
+            "displayName": "VCN-ASH",
+            "region": "us-ashburn-1",
+            "compartmentId": "ocid1.compartment.oc1..comp1",
+            "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": "ocid1.vcn.oc1..vcn2",
+            "resourceType": "Vcn",
+            "displayName": "VCN-PHX",
+            "region": "us-phoenix-1",
+            "compartmentId": "ocid1.compartment.oc1..comp2",
+            "details": {"metadata": {"cidr_block": "10.1.0.0/16"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+    ]
+
+    nodes, edges = build_graph(records, relationships=[])
+    write_diagram_projections(tmp_path, nodes, edges, diagram_depth=3)
+
+    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
+    assert "NOTE: Consolidated diagram split by region" in consolidated
+    part_paths = sorted(tmp_path.glob("diagram.consolidated.architecture.region.*.mmd"))
+    assert len(part_paths) == 2
+    for part_path in part_paths:
+        part_text = part_path.read_text(encoding="utf-8")
+        assert "Depth reduced from 3 to 1" in part_text
+
+
 def test_consolidated_architecture_depth2_aggregates_network_attached(tmp_path) -> None:
     records = [
         {
