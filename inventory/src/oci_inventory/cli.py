@@ -1706,6 +1706,7 @@ def cmd_run(cfg: RunConfig) -> int:
         write_cost_usage_views,
         write_run_report_md,
     )
+    from .util.rich_progress import RunProgress, render_run_summary_table
 
     # Ensure the run directory exists early so we can always emit a report.
     paths = resolve_output_paths(cfg.outdir)
@@ -1714,6 +1715,8 @@ def cmd_run(cfg: RunConfig) -> int:
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     run_collected_at = started_at
     timers = _StepTimers()
+    rich_enabled = sys.stdout.isatty() and not cfg.json_logs
+    progress = RunProgress(enabled=rich_enabled)
 
     status = "OK"
     fatal_error: Optional[str] = None
@@ -1796,6 +1799,9 @@ def cmd_run(cfg: RunConfig) -> int:
 
         # Per-region discovery + enrichment (streamed to disk).
         regions = sorted([r for r in regions if r])
+        progress.start()
+        progress.start_discovery(regions)
+        progress.start_enrich()
         _log_event(
             LOG,
             logging.INFO,
@@ -1868,6 +1874,8 @@ def cmd_run(cfg: RunConfig) -> int:
                 )
                 for item in worker_results:
                     region_count += 1
+                    progress.advance_discovery(region)
+                    progress.advance_enrich()
                     record = item["record"]
                     rels = item["rels"] or []
                     if rels:
@@ -1989,6 +1997,7 @@ def cmd_run(cfg: RunConfig) -> int:
             phase="start",
             timers=timers,
         )
+        progress.start_export()
         inventory_jsonl = paths.inventory_jsonl
         inventory_csv = paths.inventory_csv
 
@@ -2029,6 +2038,7 @@ def cmd_run(cfg: RunConfig) -> int:
                     rec = _apply_derived_relationships_list(rec, derived)
 
                 total_records += 1
+                progress.advance_export()
                 rt = str(rec.get("resourceType") or "")
                 counts_by_resource_type[rt] = counts_by_resource_type.get(rt, 0) + 1
                 st = str(rec.get("enrichStatus") or "")
@@ -2075,6 +2085,7 @@ def cmd_run(cfg: RunConfig) -> int:
             timers=timers,
             count=total_records,
         )
+        progress.stop()
 
         # Coverage metrics and summary
         _log_event(
@@ -2112,12 +2123,13 @@ def cmd_run(cfg: RunConfig) -> int:
                 timers=timers,
             )
             relationships_path = _relationships_path(cfg.outdir)
-            nodes, edges = build_graph(
+            graph = build_graph(
                 _iter_jsonl_records(inventory_jsonl),
                 _iter_jsonl_records(relationships_path),
+                scratch_dir=cfg.outdir,
             )
-            total_edges = len(edges)
-            edges, dropped_edges = filter_edges_with_nodes(nodes, edges)
+            total_edges = graph.edge_count()
+            edges_iter, dropped_edges = filter_edges_with_nodes(graph)
             if dropped_edges:
                 _log_event(
                     LOG,
@@ -2127,12 +2139,12 @@ def cmd_run(cfg: RunConfig) -> int:
                     phase="warning",
                     timers=timers,
                     dropped_edges=dropped_edges,
-                    remaining_edges=len(edges),
+                    remaining_edges=total_edges - dropped_edges,
                     total_edges=total_edges,
                 )
             paths.graph_dir.mkdir(parents=True, exist_ok=True)
             paths.diagrams_dir.mkdir(parents=True, exist_ok=True)
-            write_graph(paths.graph_dir, nodes, edges)
+            write_graph(paths.graph_dir, graph.iter_nodes(), edges_iter)
             if cfg.diagram_depth < 3:
                 _log_event(
                     LOG,
@@ -2144,6 +2156,8 @@ def cmd_run(cfg: RunConfig) -> int:
                     diagram_depth=cfg.diagram_depth,
                 )
             diagram_summary = {}
+            nodes = graph.materialize_nodes()
+            edges = graph.materialize_edges(filtered=True)
             diagram_paths = write_diagram_projections(
                 paths.diagrams_dir,
                 nodes,
@@ -2159,10 +2173,11 @@ def cmd_run(cfg: RunConfig) -> int:
                 step="graph",
                 phase="complete",
                 timers=timers,
-                nodes=len(nodes),
-                edges=len(edges),
+                nodes=graph.node_count(),
+                edges=total_edges - dropped_edges,
                 diagrams=len(diagram_paths),
             )
+            graph.close()
 
         _log_event(
             LOG,
@@ -2277,6 +2292,14 @@ def cmd_run(cfg: RunConfig) -> int:
             outdir=str(cfg.outdir),
             excluded_regions=len(excluded_regions),
         )
+        if metrics:
+            render_run_summary_table(
+                enabled=rich_enabled,
+                status=status,
+                metrics=metrics,
+                regions=requested_regions or subscribed_regions,
+                outdir=str(cfg.outdir),
+            )
         return 0
     except Exception as e:
         status = "FAILED"
@@ -2284,6 +2307,7 @@ def cmd_run(cfg: RunConfig) -> int:
         raise
     finally:
         # Always attempt to write a report for transparency.
+        progress.stop()
         finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
         if not inventory_records and inventory_jsonl and inventory_jsonl.is_file():

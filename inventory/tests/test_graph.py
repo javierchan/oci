@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from oci_inventory.cli import OUT_SCHEMA_VERSION, _coverage_metrics, _validate_outdir_schema
 from oci_inventory.export.diagram_projections import write_diagram_projections
@@ -28,14 +29,17 @@ def test_build_graph_adds_compartment_edges(tmp_path) -> None:
             "enrichError": None,
         }
     ]
-    nodes, edges = build_graph(records, [])
+    graph = build_graph(records, [], scratch_dir=tmp_path)
+    nodes = graph.materialize_nodes()
+    edges = graph.materialize_edges(filtered=True)
 
     assert len(nodes) == 2
     assert edges[0]["relation_type"] == "IN_COMPARTMENT"
 
-    nodes_path, edges_path = write_graph(tmp_path, nodes, edges)
+    nodes_path, edges_path = write_graph(tmp_path, graph.iter_nodes(), graph.iter_edges(filtered=True))
     assert nodes_path.exists()
     assert edges_path.exists()
+    graph.close()
 
 
 def test_filter_edges_with_nodes_drops_missing_targets() -> None:
@@ -232,6 +236,80 @@ def test_derive_relationships_from_metadata_maps_load_balancer_backends() -> Non
     assert (lb_id, "ROUTES_TO_PRIVATE_IP", pip_id) in keys
 
 
+def test_derive_relationships_from_metadata_maps_route_table_gateways() -> None:
+    rt_id = "ocid1.routetable.oc1..rt"
+    igw_id = "ocid1.internetgateway.oc1..igw"
+
+    records = [
+        {"ocid": rt_id, "resourceType": "RouteTable", "details": {"metadata": {"routeRules": [{"networkEntityId": igw_id}]}}},
+        {"ocid": igw_id, "resourceType": "InternetGateway", "details": {"metadata": {"vcnId": "ocid1.vcn.oc1..vcn"}}},
+    ]
+
+    rels = derive_relationships_from_metadata(records)
+    keys = {(r["source_ocid"], r["relation_type"], r["target_ocid"]) for r in rels}
+
+    assert (rt_id, "ROUTES_TO_GATEWAY", igw_id) in keys
+
+
+def test_derive_relationships_from_metadata_maps_dns_ip_targets() -> None:
+    pip_id = "ocid1.privateip.oc1..pip"
+    pub_id = "ocid1.publicip.oc1..pub"
+    zone_id = "ocid1.dnszone.oc1..zone"
+
+    records = [
+        {"ocid": pip_id, "resourceType": "PrivateIp", "details": {"metadata": {"ipAddress": "10.0.0.10"}}},
+        {"ocid": pub_id, "resourceType": "PublicIp", "details": {"metadata": {"ipAddress": "203.0.113.10"}}},
+        {
+            "ocid": zone_id,
+            "resourceType": "DnsZone",
+            "details": {
+                "metadata": {
+                    "rrset": [
+                        {"rdata": "10.0.0.10"},
+                        {"rdata": "203.0.113.10"},
+                    ]
+                }
+            },
+        },
+    ]
+
+    rels = derive_relationships_from_metadata(records)
+    keys = {(r["source_ocid"], r["relation_type"], r["target_ocid"]) for r in rels}
+
+    assert (zone_id, "RESOLVES_TO_PRIVATE_IP", pip_id) in keys
+    assert (zone_id, "RESOLVES_TO_PUBLIC_IP", pub_id) in keys
+
+
+def test_derive_relationships_from_metadata_maps_volume_attachments() -> None:
+    inst_id = "ocid1.instance.oc1..inst"
+    boot_id = "ocid1.bootvolume.oc1..boot"
+    block_id = "ocid1.volume.oc1..vol"
+    boot_att_id = "ocid1.bootvolumeattachment.oc1..att"
+    block_att_id = "ocid1.volumeattachment.oc1..att"
+
+    records = [
+        {"ocid": inst_id, "resourceType": "Instance", "details": {"metadata": {}}},
+        {"ocid": boot_id, "resourceType": "BootVolume", "details": {"metadata": {}}},
+        {"ocid": block_id, "resourceType": "Volume", "details": {"metadata": {}}},
+        {
+            "ocid": boot_att_id,
+            "resourceType": "BootVolumeAttachment",
+            "details": {"metadata": {"instanceId": inst_id, "bootVolumeId": boot_id}},
+        },
+        {
+            "ocid": block_att_id,
+            "resourceType": "VolumeAttachment",
+            "details": {"metadata": {"instanceId": inst_id, "volumeId": block_id}},
+        },
+    ]
+
+    rels = derive_relationships_from_metadata(records)
+    keys = {(r["source_ocid"], r["relation_type"], r["target_ocid"]) for r in rels}
+
+    assert (inst_id, "ATTACHED_BOOT_VOLUME", boot_id) in keys
+    assert (inst_id, "ATTACHED_VOLUME", block_id) in keys
+
+
 def test_derive_relationships_from_metadata_maps_waf_and_firewall_policy() -> None:
     lb_id = "ocid1.loadbalancer.oc1..lb"
     waf_id = "ocid1.webappfirewall.oc1..waf"
@@ -286,9 +364,11 @@ def test_build_graph_sets_region_on_relationship_edges() -> None:
         },
     ]
     rels = [{"source_ocid": inst_id, "relation_type": "IN_SUBNET", "target_ocid": subnet_id}]
-    _, edges = build_graph(records, rels)
+    graph = build_graph(records, rels, scratch_dir=Path.cwd())
+    edges = graph.materialize_edges(filtered=True)
     rel_edge = next(e for e in edges if e.get("relation_type") == "IN_SUBNET")
     assert rel_edge["region"] == "mx-queretaro-1"
+    graph.close()
 
 
 def test_sort_relationships_dedupes_edges() -> None:
@@ -519,9 +599,12 @@ def test_offline_pipeline_writes_schema_artifacts(tmp_path) -> None:
     summary["schema_version"] = OUT_SCHEMA_VERSION
     paths.run_summary_json.write_text(stable_json_dumps(summary), encoding="utf-8")
 
-    nodes, edges = build_graph(records, relationships)
-    write_graph(paths.graph_dir, nodes, edges)
+    graph = build_graph(records, relationships, scratch_dir=paths.graph_dir)
+    nodes = graph.materialize_nodes()
+    edges = graph.materialize_edges(filtered=True)
+    write_graph(paths.graph_dir, graph.iter_nodes(), graph.iter_edges(filtered=True))
     write_diagram_projections(paths.diagrams_dir, nodes, edges)
+    graph.close()
 
     result = _validate_outdir_schema(outdir)
     assert result.errors == []

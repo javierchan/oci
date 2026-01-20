@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from itertools import islice
-from typing import Callable, Iterable, List, Sequence, Tuple, TypeVar
+from typing import Callable, Dict, Iterable, List, Sequence, Tuple, TypeVar
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -17,20 +17,46 @@ def parallel_map_ordered(
     Execute func over items in a thread pool and return results preserving the
     input order. Exceptions from workers are propagated.
 
-    For large iterables, prefer passing a Sequence to avoid materializing twice.
+    Uses a sliding window of futures so large iterables are not materialized.
     """
-    # Ensure we can index to preserve order deterministically
-    if not isinstance(items, Sequence):
-        items = list(items)
+    results: List[R] = []
+    iterator = iter(items)
+    inflight: Dict[Future[R], int] = {}
+    pending: Dict[int, R] = {}
+    next_index = 0
+    submitted = 0
 
-    results: List[R] = [None] * len(items)  # type: ignore[list-item]
+    def _submit_next() -> bool:
+        nonlocal submitted
+        try:
+            item = next(iterator)
+        except StopIteration:
+            return False
+        inflight[executor.submit(func, item)] = submitted
+        submitted += 1
+        return True
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures: List[Tuple[int, Future[R]]] = []
-        for idx, item in enumerate(items):
-            futures.append((idx, executor.submit(func, item)))
+        for _ in range(max_workers):
+            if not _submit_next():
+                break
 
-        for idx, fut in futures:
-            results[idx] = fut.result()
+        while inflight:
+            done, _ = wait(inflight.keys(), return_when=FIRST_COMPLETED)
+            for fut in done:
+                idx = inflight.pop(fut)
+                try:
+                    pending[idx] = fut.result()
+                except BaseException:
+                    for pending_fut in inflight:
+                        pending_fut.cancel()
+                    raise
+            for _ in range(len(done)):
+                if not _submit_next():
+                    break
+            while next_index in pending:
+                results.append(pending.pop(next_index))
+                next_index += 1
 
     return results
 

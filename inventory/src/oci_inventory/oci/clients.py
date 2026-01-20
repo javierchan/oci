@@ -453,6 +453,11 @@ def get_mysql_db_system_client(ctx: AuthContext, region: str) -> Any:
     return _cached_client(_load_client_class("oci.mysql", "DbSystemClient"), ctx, region=region)
 
 
+def get_nosql_client(ctx: AuthContext, region: str) -> Any:
+    """Create NosqlClient in the specified region."""
+    return _cached_client(_load_client_class("oci.nosql", "NosqlClient"), ctx, region=region)
+
+
 def get_oda_client(ctx: AuthContext, region: str) -> Any:
     """Create OdaClient in the specified region."""
     return _cached_client(_load_client_class("oci.oda", "OdaClient"), ctx, region=region)

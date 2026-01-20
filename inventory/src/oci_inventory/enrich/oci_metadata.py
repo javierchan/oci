@@ -540,11 +540,24 @@ def _fetch_analytics_instance(record: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _fetch_api_deployment(record: Dict[str, Any]) -> Dict[str, Any]:
-    return _fetch_by_ocid(record, oci_clients.get_api_gateway_deployment_client, "get_deployment")
+    metadata = _fetch_by_ocid(record, oci_clients.get_api_gateway_deployment_client, "get_deployment")
+    if not (metadata.get("endpoint") or metadata.get("endpoint_url") or metadata.get("endpointUrl")):
+        endpoint = _search_summary_value(record, "endpoint", "endpoint_url", "endpointUrl")
+        if endpoint:
+            metadata.setdefault("endpoint", endpoint)
+            metadata.setdefault("endpoint_url", endpoint)
+            metadata.setdefault("endpointUrl", endpoint)
+    return metadata
 
 
 def _fetch_api_gateway(record: Dict[str, Any]) -> Dict[str, Any]:
-    return _fetch_by_ocid(record, oci_clients.get_api_gateway_gateway_client, "get_gateway")
+    metadata = _fetch_by_ocid(record, oci_clients.get_api_gateway_gateway_client, "get_gateway")
+    if not (metadata.get("hostname") or metadata.get("hostnames")):
+        hostname = _search_summary_value(record, "hostname", "hostnames")
+        if hostname:
+            metadata.setdefault("hostname", hostname)
+            metadata.setdefault("hostnames", hostname)
+    return metadata
 
 
 def _fetch_api_gateway_api(record: Dict[str, Any]) -> Dict[str, Any]:
@@ -616,7 +629,13 @@ def _fetch_console_dashboard_group(record: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _fetch_container(record: Dict[str, Any]) -> Dict[str, Any]:
-    return _fetch_by_ocid(record, oci_clients.get_container_instance_client, "get_container")
+    metadata = _fetch_by_ocid(record, oci_clients.get_container_instance_client, "get_container")
+    if not (metadata.get("image_url") or metadata.get("imageUrl")):
+        image = _search_summary_value(record, "imageUrl", "image_url", "image")
+        if image:
+            metadata.setdefault("image_url", image)
+            metadata.setdefault("imageUrl", image)
+    return metadata
 
 
 def _fetch_container_image(record: Dict[str, Any]) -> Dict[str, Any]:
@@ -624,7 +643,19 @@ def _fetch_container_image(record: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _fetch_container_instance(record: Dict[str, Any]) -> Dict[str, Any]:
-    return _fetch_by_ocid(record, oci_clients.get_container_instance_client, "get_container_instance")
+    metadata = _fetch_by_ocid(record, oci_clients.get_container_instance_client, "get_container_instance")
+    if not (metadata.get("shape") or metadata.get("shape_name") or metadata.get("shapeName")):
+        shape = _search_summary_value(record, "shape", "shape_name", "shapeName")
+        if shape:
+            metadata.setdefault("shape", shape)
+            metadata.setdefault("shape_name", shape)
+            metadata.setdefault("shapeName", shape)
+    if not (metadata.get("container_images") or metadata.get("containerImages")):
+        images = _search_summary_entry(record, "containerImages", "container_images", "images")
+        if images:
+            metadata.setdefault("container_images", images)
+            metadata.setdefault("containerImages", images)
+    return metadata
 
 
 def _fetch_container_repo(record: Dict[str, Any]) -> Dict[str, Any]:
@@ -927,6 +958,26 @@ def _fetch_stream(record: Dict[str, Any]) -> Dict[str, Any]:
     return _fetch_by_ocid(record, oci_clients.get_stream_admin_client, "get_stream")
 
 
+def _fetch_stream_pool(record: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = _fetch_by_ocid(record, oci_clients.get_stream_admin_client, "get_stream_pool")
+    if not (metadata.get("kafka_settings") or metadata.get("kafkaSettings")):
+        kafka = _search_summary_entry(record, "kafkaSettings", "kafka_settings", "kafka")
+        if kafka:
+            metadata.setdefault("kafka_settings", kafka)
+            metadata.setdefault("kafkaSettings", kafka)
+    return metadata
+
+
+def _fetch_nosql_table(record: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = _fetch_by_ocid(record, oci_clients.get_nosql_client, "get_table")
+    if not (metadata.get("table_limits") or metadata.get("tableLimits")):
+        limits = _search_summary_entry(record, "tableLimits", "table_limits", "capacity")
+        if limits:
+            metadata.setdefault("table_limits", limits)
+            metadata.setdefault("tableLimits", limits)
+    return metadata
+
+
 def _fetch_tag_default(record: Dict[str, Any]) -> Dict[str, Any]:
     return _fetch_by_ocid(record, oci_clients.get_identity_client, "get_tag_default")
 
@@ -1178,6 +1229,8 @@ def register_metadata_enrichers() -> None:
         "PathAnalyzerTest": _fetch_path_analyzer_test,
         # PostgreSQL
         "PostgresqlConfiguration": _fetch_postgresql_configuration,
+        # NoSQL Database
+        "NoSqlTable": _fetch_nosql_table,
         # Recovery Service
         "ProtectedDatabase": _fetch_protected_database,
         "RecoveryServiceSubnet": _fetch_recovery_service_subnet,
@@ -1189,6 +1242,7 @@ def register_metadata_enrichers() -> None:
         "ServiceConnector": _fetch_service_connector,
         # Streaming
         "Stream": _fetch_stream,
+        "StreamPool": _fetch_stream_pool,
         # Tags
         "TagDefault": _fetch_tag_default,
         "TagNamespace": _fetch_tag_namespace,
