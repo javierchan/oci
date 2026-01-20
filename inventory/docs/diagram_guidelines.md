@@ -59,8 +59,13 @@ reference zip files and are cited with file paths and line numbers.
 ### 1) Consolidated Architecture Diagram (Regional, High-Level)
 
 - Applies to `diagram.consolidated.architecture.mmd` at depth 2+ (regional view).
-- Always show the Tenancy boundary and compartments at depth 2+. (oci-core-landingzone.drawio:197, 212)
-- Use functional compartments (Network, Security, App, Observability/Management) as the primary grouping axis.
+- Always show the Tenancy boundary and compartments at depth 2+.
+- **Mandatory Region Grouping**: Group by Region as the primary layer under Tenancy to correctly represent global footprints.
+- **Security Perimeter (Lane)**: Specialized ingress services (WAF, API GW, Bastion, Firewalls) MUST be grouped in a "Security Perimeter" zone at the region edge.
+- **Hub-and-Spoke Topology**: Hub VCNs (those with multiple DRG links or transit roles) MUST be rendered before/center of Spoke VCNs.
+- **Hybrid Cloud**: If on-premises nodes (CPE, IPSec) are found, a "Customer Data Center" group MUST be rendered outside the OCI Tenancy.
+- **Availability Domain (AD) Grouping**: Resources inside Subnets MUST be grouped by AD/FD (dashed boxes) to visualize high availability topologies.
+- Use functional compartments (Network, Security, App, Observability/Management) as the secondary grouping axis.
 - Inside Network compartments, show VCNs and named subnets.
 - Explicitly render Internet/DRG/gateways when present.
 - Provide a legend for symbols and status.
@@ -160,14 +165,16 @@ OCI containment MUST be reflected:
 
 ```
 
-Tenancy -> Region (optional) -> Compartment -> VCN -> Subnet -> Resource
+Tenancy -> Region -> Compartment -> VCN -> Subnet -> Availability Domain -> Resource
 
 ```
 
 Rules:
 
 - Tenancy boundary MUST be shown.
+- Region boundary MUST be shown as the primary container for multi-region inventories.
 - Subnets MUST be inside named VCNs.
+- Resources MUST be grouped by Availability Domain (AD) or Fault Domain (FD) when the mapping data is available.
 - Resources with VNIC MUST be inside subnets.
 - Managed services without VNIC MUST NOT be inside VCNs.
 
@@ -247,6 +254,24 @@ The abstraction rules do **NOT** prescribe:
 - Optional layers (traffic flows, SLOs, dependencies)
 - Rendering-density heuristics
 - Vendor tooling or syntax preferences
+
+### H) Professional Iconography & Styling
+
+To align with Oracle Reference Architectures, specialized services MUST use their specific Mermaid icons:
+- **Queue/Streaming**: `queue`
+- **Identity/IAM**: `identity`
+- **Notification/ONS**: `notification`
+- **Load Balancers**: `loadbalancer`
+- **Security (WAF/NSG)**: `security`
+- **Compute/Instances**: `compute`
+- **Storage/Volumes**: `storage`
+- **Databases**: `database`
+- **Gateways**: `cloud`
+- **External/Internet**: `cloud`
+
+**Dynamic Styling Rules**:
+- **Environment**: Nodes SHOULD be styled by environment tags (`prod` = orange border, `nonprod` = dashed gray).
+- **Health**: Nodes with errors MUST display a 🔴 badge and use the `alert` style class (red fill).
 
 These are **presentation layer** concerns and intentionally not part of OCI abstraction.
 
