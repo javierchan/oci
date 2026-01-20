@@ -212,6 +212,43 @@ def _is_iam_node(node: Node) -> bool:
     return any(k in nt for k in ("policy", "dynamicgroup", "dynamic_group", "group", "user", "identity", "domain"))
 
 
+def _extract_env_class(node: Node) -> str:
+    """Detect environment (Production, Non-prod) from tags."""
+    md = _node_metadata(node)
+    # Search for common environment tags in both freeform and defined tags
+    tags_dicts = [
+        _get_meta(md, "freeformTags", "freeform_tags") or {},
+        _get_meta(md, "definedTags", "defined_tags") or {},
+    ]
+    
+    env_candidate = ""
+    for tags in tags_dicts:
+        for k, v in tags.items():
+            k_lower = k.lower()
+            # If it's a defined tag namespace, look inside
+            if isinstance(v, dict) and any(x in k_lower for x in ("oracle", "tag", "env")):
+                for sk, sv in v.items():
+                    sk_lower = sk.lower()
+                    if any(x in sk_lower for x in ("env", "stage", "lifecycle")):
+                        env_candidate = str(sv).lower()
+                        break
+            elif any(x in k_lower for x in ("env", "stage", "lifecycle")):
+                env_candidate = str(v).lower()
+            
+            if env_candidate:
+                break
+        if env_candidate:
+            break
+            
+    if not env_candidate:
+        return ""
+    if "prod" in env_candidate:
+        return "prod"
+    if any(x in env_candidate for x in ("test", "dev", "stage", "staging", "lab")):
+        return "nonprod"
+    return ""
+
+
 def _arch_node_label(node: Node) -> str:
     name = str(node.get("name") or "").strip()
     node_type = str(node.get("nodeType") or "").strip()
@@ -239,6 +276,9 @@ def _style_block_lines() -> List[str]:
         "classDef storage stroke-width:2px;",
         "classDef policy stroke-width:2px;",
         "classDef summary stroke-dasharray: 3 3;",
+        "classDef prod stroke:#ff6600,stroke-width:4px;",
+        "classDef nonprod stroke:#666666,stroke-width:2px,stroke-dasharray: 5 5;",
+        "classDef alert stroke:#ff0000,stroke-width:4px,fill:#fff0f0;",
     ]
 
 
@@ -2441,8 +2481,34 @@ def _write_consolidated_mermaid(
         return f"{prefix}{digest[:10]}"
 
     def _service_icon(node: Node) -> str:
+        nt = str(node.get("nodeType") or "").lower()
+        cat = str(node.get("nodeCategory") or "").lower()
+        
+        if nt in {"vcn", "subnet", "drg", "internetgateway", "natgateway", "servicegateway", "localpeeringgateway", "remotepeeringconnection"}:
+            return "network"
+        if nt in {"instance", "instancepool", "containerinstance"} or cat == "compute":
+            return "compute"
+        if nt in {"bucket", "volume", "blockvolume", "bootvolume", "filesystem"}:
+            return "storage"
+        if "database" in nt or "db" in nt or cat == "storage":
+             return "database"
+        if nt in {"streampool", "stream", "queue"}:
+            return "queue"
+        if nt in {"policy", "user", "group", "identity"} or cat == "policy":
+            return "identity"
+        if nt in {"topic", "subscription", "ons"}:
+            return "notification"
+        if nt in {"loadbalancer", "networkloadbalancer"}:
+            return "loadbalancer"
+        if nt in {"waf", "securitylist", "nsg", "vault", "key"} or cat == "security":
+            return "security"
+        if "gateway" in nt:
+            return "cloud"
+        if "function" in nt:
+            return "server"
+            
         cls = _node_class(node)
-        if cls in {"network", "external"}:
+        if cls == "external":
             return "cloud"
         if cls == "storage":
             return "database"
@@ -2539,9 +2605,23 @@ def _write_consolidated_mermaid(
         if not ocid or ocid in node_service_ids:
             return
         sid = _service_id("node_", ocid)
-        label = _arch_label(_arch_node_label(node), max_len=None)
+        
+        raw_label = _arch_node_label(node)
+        # Apply health badge if enrichment failed
+        if node.get("enrichStatus") == "ERROR":
+            raw_label = f"🔴 {raw_label}"
+            
+        label = _arch_label(raw_label, max_len=None)
         icon = _service_icon(node)
         lines.append(f"    service {sid}({icon})[{label}] in {parent_id}")
+        
+        # Apply Environment Class
+        env_class = _extract_env_class(node)
+        if env_class:
+            lines.append(f"    class {sid} {env_class}")
+        if node.get("enrichStatus") == "ERROR":
+             lines.append(f"    class {sid} alert")
+             
         node_service_ids[ocid] = sid
         if _is_node_type(node, *_NETWORK_GATEWAY_NODETYPES):
             gateway_service_ids[ocid] = sid
@@ -2557,97 +2637,152 @@ def _write_consolidated_mermaid(
     tenancy_id = _service_id("tenancy_", tenancy_label)
     lines.append(f"    group {tenancy_id}(cloud)[{_arch_label(tenancy_label, max_len=80)}]")
 
-    nodes_by_comp: Dict[str, List[Node]] = {}
+    # Identify On-Prem / Hybrid nodes (Hybrid Cloud boundary)
+    on_prem_nodes = [n for n in nodes if _is_node_type(n, "Cpe", "IpSecConnection")]
+    if on_prem_nodes:
+        on_prem_id = _service_id("customer_dc_", "customer_dc")
+        lines.append(f"    group {on_prem_id}(cloud)[{_arch_label('Customer Data Center', max_len=40)}]")
+        for n in on_prem_nodes:
+            _add_service(n, on_prem_id)
+
+    nodes_by_region: Dict[str, List[Node]] = {}
     for n in nodes:
-        cid = str(n.get("compartmentId") or "")
-        if not cid and _is_node_type(n, "Compartment"):
-            cid = str(n.get("nodeId") or "")
-        nodes_by_comp.setdefault(cid or "UNKNOWN", []).append(n)
+        # Some resources like Compartments might not have a region at discovery time
+        # if they are global or inherited.
+        reg = str(n.get("region") or n.get("regionName") or "Global")
+        nodes_by_region.setdefault(reg, []).append(n)
 
-    comp_use_categories: Dict[str, bool] = {}
-    if aggregate_workloads:
-        for cid, comp_nodes in nodes_by_comp.items():
-            candidates = [
-                n
-                for n in comp_nodes
-                if _include_for_depth2(n) and not _is_node_type(n, "Vcn", "Subnet")
-            ]
-            type_labels = {_resource_type_label(n) for n in candidates}
-            comp_use_categories[cid] = len(type_labels) > 5
+    perim_types = {"Waf", "ApiGateway", "Bastion", "NetworkFirewall"}
 
-    for cid in sorted(nodes_by_comp.keys()):
-        comp_label = "Compartment: Unknown" if cid == "UNKNOWN" else _compartment_label(node_by_id.get(cid, {"name": cid}))
-        comp_group_id = _service_id("comp_", cid)
-        lines.append(f"    group {comp_group_id}(cloud)[{_arch_label(comp_label, max_len=80)}] in {tenancy_id}")
+    for reg in sorted(nodes_by_region.keys()):
+        region_id = _service_id("region_", reg)
+        lines.append(f"    group {region_id}(cloud)[{_arch_label('Region: ' + reg, max_len=80)}] in {tenancy_id}")
 
-        comp_node = node_by_id.get(cid)
-        if comp_node and comp_node.get("nodeId"):
-            _add_service(comp_node, comp_group_id)
+        region_nodes = nodes_by_region[reg]
+        
+        # Hub-and-Spoke Detection within region
+        hub_vcn_ids: Set[str] = set()
+        drg_vcn_map: Dict[str, Set[str]] = {}
+        for n in region_nodes:
+            if _is_node_type(n, "DrgAttachment"):
+                md = _node_metadata(n)
+                d_id = _get_meta(md, "drg_id")
+                v_id = _get_meta(md, "vcn_id")
+                if d_id and v_id:
+                    drg_vcn_map.setdefault(d_id, set()).add(v_id)
+        
+        for v_ids in drg_vcn_map.values():
+            if len(v_ids) > 1:
+                # Potential hub scenario. If a VCN name contains 'hub' or has a Firewall, mark it.
+                for vid in v_ids:
+                    node = node_by_id.get(vid, {})
+                    name = str(node.get("name") or "").lower()
+                    if "hub" in name or "transit" in name or "shared" in name:
+                        hub_vcn_ids.add(vid)
 
-        network_lane_id = _service_id("lane_network_", f"{cid}:network")
-        lines.append(f"    group {network_lane_id}(cloud)[{_arch_label('Network', max_len=24)}] in {comp_group_id}")
+        # Security Perimeter (Oracle Pattern)
+        perimeter_nodes = [n for n in region_nodes if _is_node_type(n, *perim_types)]
+        if perimeter_nodes:
+             perimeter_id = _service_id("perimeter_", f"{reg}:perimeter")
+             lines.append(f"    group {perimeter_id}(cloud)[{_arch_label('Security Perimeter', max_len=40)}] in {region_id}")
+             for n in perimeter_nodes:
+                 _add_service(n, perimeter_id)
 
-        in_group_id = _service_id("invcn_", cid)
-        lines.append(f"    group {in_group_id}(cloud)[{_arch_label('In-VCN', max_len=24)}] in {network_lane_id}")
-        out_group_id = ""
-        if include_out_of_vcn:
-            out_group_id = _service_id("outvcn_", cid)
-            lines.append(
-                f"    group {out_group_id}(cloud)[{_arch_label('Out-of-VCN Services', max_len=48)}] in {comp_group_id}"
-            )
+        region_nodes = nodes_by_region[reg]
+        nodes_by_comp: Dict[str, List[Node]] = {}
+        for n in region_nodes:
+            cid = str(n.get("compartmentId") or "")
+            if not cid and _is_node_type(n, "Compartment"):
+                cid = str(n.get("nodeId") or "")
+            nodes_by_comp.setdefault(cid or "UNKNOWN", []).append(n)
 
-        comp_nodes = [n for n in nodes_by_comp[cid] if not _is_node_type(n, "Compartment")]
+        comp_use_categories: Dict[str, bool] = {}
         if aggregate_workloads:
-            comp_nodes = [n for n in comp_nodes if _include_for_depth2(n)]
-        elif not include_workloads:
-            comp_nodes = [
-                n
+            for cid, comp_nodes in nodes_by_comp.items():
+                candidates = [
+                    n
+                    for n in comp_nodes
+                    if _include_for_depth2(n) and not _is_node_type(n, "Vcn", "Subnet")
+                ]
+                type_labels = {_resource_type_label(n) for n in candidates}
+                comp_use_categories[cid] = len(type_labels) > 5
+
+        for cid in sorted(nodes_by_comp.keys()):
+            comp_label = "Compartment: Unknown" if cid == "UNKNOWN" else _compartment_label(node_by_id.get(cid, {"name": cid}))
+            comp_group_id = _service_id("comp_", f"{reg}:{cid}")
+            lines.append(f"    group {comp_group_id}(cloud)[{_arch_label(comp_label, max_len=80)}] in {region_id}")
+
+            comp_node = node_by_id.get(cid)
+            if comp_node and comp_node.get("nodeId"):
+                _add_service(comp_node, comp_group_id)
+
+            network_lane_id = _service_id("lane_network_", f"{reg}:{cid}:network")
+            lines.append(f"    group {network_lane_id}(cloud)[{_arch_label('Network', max_len=24)}] in {comp_group_id}")
+
+            in_group_id = _service_id("invcn_", f"{reg}:{cid}")
+            lines.append(f"    group {in_group_id}(cloud)[{_arch_label('In-VCN', max_len=24)}] in {network_lane_id}")
+            out_group_id = ""
+            if include_out_of_vcn:
+                out_group_id = _service_id("outvcn_", f"{reg}:{cid}")
+                lines.append(
+                    f"    group {out_group_id}(cloud)[{_arch_label('Out-of-VCN Services', max_len=48)}] in {comp_group_id}"
+                )
+
+            comp_nodes = [n for n in nodes_by_comp[cid] if not _is_node_type(n, "Compartment")]
+            if aggregate_workloads:
+                comp_nodes = [n for n in comp_nodes if _include_for_depth2(n)]
+            elif not include_workloads:
+                comp_nodes = [
+                    n
+                    for n in comp_nodes
+                    if _is_node_type(n, "Vcn", "Subnet", *_NETWORK_GATEWAY_NODETYPES)
+                ]
+
+            comp_vcn_ids: List[str] = sorted(list({
+                str(n.get("nodeId") or "")
                 for n in comp_nodes
-                if _is_node_type(n, "Vcn", "Subnet", *_NETWORK_GATEWAY_NODETYPES)
-            ]
+                if _is_node_type(n, "Vcn") and n.get("nodeId")
+            }))
+            
+            # Sort VCNs: Hubs first, then Spokes
+            comp_vcn_ids.sort(key=lambda x: (0 if x in hub_vcn_ids else 1, x))
 
-        comp_vcn_ids: Set[str] = {
-            str(n.get("nodeId") or "")
-            for n in comp_nodes
-            if _is_node_type(n, "Vcn") and n.get("nodeId")
-        }
-
-        for vcn_ocid in sorted(comp_vcn_ids):
-            if not vcn_ocid:
-                continue
-            vcn_node = node_by_id.get(vcn_ocid, {"name": vcn_ocid, "nodeType": "Vcn"})
-            vcn_group_id = _service_id("vcn_", vcn_ocid)
-            lines.append(f"    group {vcn_group_id}(cloud)[{_arch_label(_vcn_label(vcn_node), max_len=80)}] in {in_group_id}")
-            _add_service(vcn_node, vcn_group_id)
-
-            gateway_nodes: List[Node] = []
-            vcn_level_nodes: List[Node] = []
-            unknown_subnet_nodes: List[Node] = []
-            for n in comp_nodes:
-                if _is_node_type(n, "Vcn", "Subnet"):
+            for vcn_ocid in comp_vcn_ids:
+                if not vcn_ocid:
                     continue
-                ocid = str(n.get("nodeId") or "")
-                if not ocid:
-                    continue
-                att = attach_by_res.get(ocid)
-                vcn_match = False
-                if att and att.vcn_ocid == vcn_ocid:
-                    vcn_match = True
-                    if att.subnet_ocid:
+                vcn_node = node_by_id.get(vcn_ocid, {"name": vcn_ocid, "nodeType": "Vcn"})
+                vcn_group_id = _service_id("vcn_", f"{reg}:{vcn_ocid}")
+                lines.append(f"    group {vcn_group_id}(cloud)[{_arch_label(_vcn_label(vcn_node), max_len=80)}] in {in_group_id}")
+                _add_service(vcn_node, vcn_group_id)
+
+                gateway_nodes: List[Node] = []
+                vcn_level_nodes: List[Node] = []
+                unknown_subnet_nodes: List[Node] = []
+                for n in comp_nodes:
+                    if _is_node_type(n, "Vcn", "Subnet"):
                         continue
-                else:
-                    meta = _node_metadata(n)
-                    vcn_ref = edge_vcn_by_src.get(ocid) or _get_meta(meta, "vcn_id")
-                    if isinstance(vcn_ref, str) and vcn_ref == vcn_ocid:
+                    ocid = str(n.get("nodeId") or "")
+                    if not ocid:
+                        continue
+                    att = attach_by_res.get(ocid)
+                    vcn_match = False
+                    if att and att.vcn_ocid == vcn_ocid:
                         vcn_match = True
-                if not vcn_match:
-                    continue
-                if _is_node_type(n, *_NETWORK_GATEWAY_NODETYPES):
-                    gateway_nodes.append(n)
-                elif _is_vcn_level_resource(n):
-                    vcn_level_nodes.append(n)
-                else:
-                    unknown_subnet_nodes.append(n)
+                        if att.subnet_ocid:
+                            continue
+                    else:
+                        meta = _node_metadata(n)
+                        vcn_ref = edge_vcn_by_src.get(ocid) or _get_meta(meta, "vcn_id")
+                        if isinstance(vcn_ref, str) and vcn_ref == vcn_ocid:
+                            vcn_match = True
+                    if not vcn_match:
+                        continue
+                    if _is_node_type(n, *_NETWORK_GATEWAY_NODETYPES):
+                        gateway_nodes.append(n)
+                    elif _is_vcn_level_resource(n):
+                        vcn_level_nodes.append(n)
+                    else:
+                        unknown_subnet_nodes.append(n)
 
             if gateway_nodes:
                 gateways_id = _service_id("gateways_", vcn_ocid)
@@ -2701,15 +2836,22 @@ def _write_consolidated_mermaid(
                             use_categories=comp_use_categories.get(cid, False),
                         )
                     else:
-                        for n in sorted(
-                            attached,
-                            key=lambda n: (
-                                str(n.get("nodeCategory") or ""),
-                                str(n.get("nodeType") or ""),
-                                str(n.get("name") or ""),
-                            ),
-                        ):
-                            _add_service(n, subnet_group_id)
+                        # Map to AD/FD if present
+                        nodes_by_ad: Dict[str, List[Node]] = {}
+                        for n in attached:
+                            meta = _node_metadata(n)
+                            ad_name = str(n.get("availabilityDomain") or _get_meta(meta, "availability_domain") or "Regional").strip()
+                            nodes_by_ad.setdefault(ad_name, []).append(n)
+                        
+                        for ad_name in sorted(nodes_by_ad.keys()):
+                            if ad_name == "Regional":
+                                for n in sorted(nodes_by_ad[ad_name], key=lambda x: str(x.get("name") or "")):
+                                    _add_service(n, subnet_group_id)
+                            else:
+                                ad_id = _service_id("ad_", f"{subnet_group_id}:{ad_name}")
+                                lines.append(f"    group {ad_id}(server)[{_arch_label(ad_name, max_len=40)}] in {subnet_group_id}")
+                                for n in sorted(nodes_by_ad[ad_name], key=lambda x: str(x.get("name") or "")):
+                                    _add_service(n, ad_id)
 
             if unknown_subnet_nodes:
                 unknown_id = _service_id("subnet_unknown_", f"{cid}:{vcn_ocid}")
