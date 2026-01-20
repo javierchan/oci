@@ -1060,7 +1060,6 @@ def _detailed_flowchart_lines(
 
             lines.append("      end")
         lines.append("    end")
-    lines.append("  end")
     lines.append("end")
 
     # Add RPC links between regions
