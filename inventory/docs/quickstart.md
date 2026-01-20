@@ -129,7 +129,6 @@ out/<timestamp>/
     graph_nodes.jsonl        # diagram-ready nodes (optional)
     graph_edges.jsonl        # diagram-ready edges (optional)
   diagrams/
-    raw/diagram_raw.mmd       # Mermaid diagram (raw graph; optional)
     tenancy/diagram.tenancy.mmd # Mermaid diagram (tenancy/compartment view; optional)
     network/diagram.network.<vcn>.mmd # Mermaid diagram (per-VCN topology view; optional)
     workload/diagram.workload.<workload>.mmd # Mermaid diagram (workload/application view; optional)

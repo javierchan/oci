@@ -873,9 +873,9 @@ def main() -> None:
             diagram_depth_choice = _ask_choice(
                 "Consolidated diagram depth",
                 [
-                    ("1", "Tenancy + compartments + VCN/subnet/gateways only."),
-                    ("2", "Add workloads (no relationship edges)."),
-                    ("3", "Add workloads + relationship edges (full detail)."),
+                    ("1", "Global map only (tenancy + regions)."),
+                    ("2", "Regional abstraction (compartments + VCN/subnet/gateways + aggregated workloads)."),
+                    ("3", "Full workloads + relationship edges."),
                 ],
                 default="3",
             )

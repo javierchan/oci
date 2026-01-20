@@ -56,13 +56,13 @@ reference zip files and are cited with file paths and line numbers.
 
 ---
 
-### 1) Consolidated Architecture Diagram (High-Level)
+### 1) Consolidated Architecture Diagram (Regional, High-Level)
 
-- Always show the Tenancy boundary and an enclosing compartment. (oci-core-landingzone.drawio:197, 212)
+- Applies to `diagram.consolidated.architecture.mmd` at depth 2+ (regional view).
+- Always show the Tenancy boundary and compartments at depth 2+. (oci-core-landingzone.drawio:197, 212)
 - Use functional compartments (Network, Security, App, Observability/Management) as the primary grouping axis.
 - Inside Network compartments, show VCNs and named subnets.
 - Explicitly render Internet/DRG/gateways when present.
-- Include IAM and Security Zone overlays at tenancy or boundary level.
 - Provide a legend for symbols and status.
 
 ### 1a) Consolidated Outputs and Depth Levels (Implementation)
@@ -70,22 +70,54 @@ reference zip files and are cited with file paths and line numbers.
 The pipeline emits two consolidated diagrams per run (both must follow the OCI abstraction rules above):
 - `diagrams/consolidated/diagram.consolidated.architecture.mmd` (Mermaid `architecture-beta`).
 - `diagrams/consolidated/diagram.consolidated.flowchart.mmd` (Mermaid `flowchart`).
+The flowchart output is the global connectivity map; the architecture output is the regional abstraction view.
 
 When Mermaid size limits are exceeded, additional split outputs may be emitted:
 - `diagrams/consolidated/diagram.consolidated.architecture.region.<region>.mmd` or `diagram.consolidated.architecture.compartment.<compartment>.mmd`
 - `diagrams/consolidated/diagram.consolidated.flowchart.region.<region>.mmd` or `diagram.consolidated.flowchart.compartment.<compartment>.mmd`
 - `diagrams/workload/diagram.workload.<workload>.partNN.mmd`
 
-Depth controls are a rendering knob for consolidated outputs only; per-VCN diagrams remain full detail and workload diagrams remain full detail for their workload scope.
-- Depth 1: tenancy/compartments + VCN/subnet/gateways only.
-- Depth 2: add workloads (no relationship edges).
-- Depth 3: add workloads + relationship edges (default; full detail).
+Depth controls are a rendering knob for consolidated outputs and the tenancy view; per-VCN diagrams remain full detail and workload diagrams remain full detail for their workload scope.
+- Depth 1 (Global Map): tenancy + regions only, rendered in `diagram.consolidated.flowchart.mmd`. No compartments at this level.
+- Depth 2 (Regional Abstraction): compartments + VCN/subnet/gateways, plus aggregated network-attached workloads by **resourceType** (e.g., `Instance (n=12)`).
+  - If a compartment has more than 5 distinct resource types, aggregate by **category** (Compute/Network/Storage/Security/Other).
+  - Non-networked services (IAM, Logging, Object Storage, etc.) are excluded unless explicitly connected via a Service Gateway.
+- Depth 3 (Deep): full workloads + relationship edges (default; full detail).
+Global flowchart uses `flowchart TD` for readability; regional/workload flowcharts continue to use `flowchart LR`.
 
-Depth is for readability/performance and does not override any required abstraction or containment rules.
+Depth is for readability/performance and does not override required abstraction or containment rules for regional and workload diagrams.
 If consolidated output exceeds Mermaid text limits, the renderer reduces depth until it fits and annotates the diagram with a NOTE comment.
 If consolidated output still exceeds Mermaid text limits at depth 1, the renderer splits the consolidated view by region (preferred) or by top-level compartment and writes a stub consolidated diagram that references the split outputs.
+Cross-region links in the global flowchart MUST be drawn only from explicit DRG/RPC constructs; inferred traffic lines are forbidden.
 Per-VCN diagrams are generated at full detail; if an individual diagram exceeds Mermaid text limits, it is skipped and recorded in the report summary.
 Workload diagrams are generated at full detail for the workload scope; if a workload diagram exceeds Mermaid text limits, it is split into deterministic overflow parts. If a single-node slice still exceeds the limit, that node is skipped and recorded in the report summary.
+
+---
+
+### 1b) Tenancy Diagram (High-Density Shell)
+
+Applies to `diagrams/tenancy/diagram.tenancy.mmd`. This diagram is designed to survive high-density tenancies without exceeding Mermaid limits.
+
+- Depth 1 (Tenancy Level): show Tenancy + Regions + top-level Compartments only. No resources.
+- Depth 2 (Compartment Level): inside each compartment, show only VCNs and Subnets.
+- Depth 3 (Resource Level): resources exist only inside Subnets or as an Out-of-VCN summary.
+
+Mandatory aggregation (per Subnet or Out-of-VCN container):
+- Instances → `Instances (n=X)`
+- Boot/Block volumes → `Block Storage (n=X)`
+- LogAnalyticsEntity + Alarm + Metric → `Observability Suite (n=X)`
+- Autonomous Database → `Autonomous DBs (n=X)`
+- Exadata VM Clusters → `Exadata VM Clusters (n=X)`
+- All other resource types → `<Type> (n=X)`
+
+Noise reduction:
+- No functional overlays or management flows.
+- Labels must exclude OCIDs, versions, and timestamps.
+- No edges from individual resources to OCI Services. Use a single edge from the VCN boundary to OCI Services when a Service Gateway exists.
+
+Visual requirements:
+- Global direction must be `LR`; inside compartments must be `TB`.
+- Mermaid node IDs must be semantic (no hashed/hex IDs).
 
 ---
 
@@ -103,7 +135,7 @@ Workload diagrams are generated at full detail for the workload scope; if a work
 - Label compartments and key zones.
 - Label subnets (role labels allowed).
 - Label Internet and DRG.
-- Aggregation is not permitted for inventory diagrams. Use grouping and layout to manage density.
+- Aggregation is not permitted for per-VCN and workload diagrams. Consolidated diagrams at depth 2 may aggregate counts by resourceType or category as defined above.
 
 ---
 
@@ -200,7 +232,7 @@ Diagrams MUST include:
 
 - Legend if using icons/colors/status
 - At least one logical flow line if relevant
-- No aggregation or omission; use grouping and layout to preserve readability
+- No aggregation or omission; use grouping and layout to preserve readability (exception: consolidated depth 2 aggregation rules above).
 
 ---
 
@@ -218,7 +250,7 @@ The abstraction rules do **NOT** prescribe:
 
 These are **presentation layer** concerns and intentionally not part of OCI abstraction.
 
-Note: consolidated diagram depth levels are an implementation detail for this pipeline and do not change any of the abstraction requirements above.
+Note: consolidated diagram depth levels are an implementation detail for this pipeline, but the depth-specific aggregation and scoping rules above are mandatory for consolidated outputs.
 
 ---
 
@@ -243,6 +275,7 @@ Unless stated otherwise, "the graph" refers to combined data from inventory, gra
 
 ### 2) IAM and Policy Relationships
 
+- IAM/policy overlays are enforced for workload diagrams and consolidated depth 3. Consolidated depth 2 may omit IAM/policy nodes to preserve the network-attached scope.
 - IAM constructs MUST be overlays with **relationships**, not isolated nodes.
 - Generator MUST:
   - Place IAM/policy nodes at correct scope.
@@ -290,7 +323,7 @@ Renderer MUST:
 ### 7) Full-Detail Coverage (No Omission)
 
 - All nodes and edges from `graph/graph_nodes.jsonl` and `graph/graph_edges.jsonl` MUST be rendered in inventory diagrams unless a specific diagram exceeds Mermaid text limits, in which case the diagram is split into deterministic overflow parts (preferred) or skipped only if a single-node slice still exceeds the limit. Skips and splits must be recorded in the report summary.
-- Consolidated diagrams MUST include the complete inventory scope without aggregation or omission; if depth is reduced due to Mermaid limits, it must be annotated in the diagram output. If the consolidated output still exceeds limits at depth 1, it must be split by region or top-level compartment with a stub diagram that references the split outputs.
+- Consolidated diagrams MUST include the complete inventory scope; depth 2 may aggregate counts by resourceType/category but must not omit resources. If depth is reduced due to Mermaid limits, it must be annotated in the diagram output. If the consolidated output still exceeds limits at depth 1, it must be split by region or top-level compartment with a stub diagram that references the split outputs.
 - Use grouping, lane structure, and layout (not summarization) to manage density.
 
 ---

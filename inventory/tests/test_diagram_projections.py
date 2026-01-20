@@ -56,10 +56,12 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
 
     # Sanity-check Mermaid structure.
     tenancy = (tmp_path / "diagram.tenancy.mmd").read_text(encoding="utf-8")
-    assert tenancy.startswith("flowchart")
+    assert tenancy.startswith("flowchart LR")
     assert "subgraph" in tenancy
-    assert "Functional Overlays" in tenancy
-    assert "IN_COMPARTMENT" in tenancy
+    assert "Functional Overlays" not in tenancy
+    assert "IN_COMPARTMENT" not in tenancy
+    assert "Region: mx-queretaro-1" in tenancy
+    assert "Instances (n=1)" in tenancy
     tenancy_lines = [line.strip() for line in tenancy.splitlines()]
     assert sum(1 for line in tenancy_lines if line.startswith("subgraph ")) == sum(
         1 for line in tenancy_lines if line == "end"
@@ -78,7 +80,7 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
             assert ":" in line
 
     flowchart = (tmp_path / "diagram.consolidated.flowchart.mmd").read_text(encoding="utf-8")
-    assert flowchart.startswith("flowchart LR")
+    assert flowchart.startswith("flowchart TD")
 
 
 def test_consolidated_subnet_group_id_scoped_by_vcn(tmp_path) -> None:
@@ -167,7 +169,7 @@ def test_consolidated_flowchart_depth_excludes_edges(tmp_path) -> None:
     write_diagram_projections(tmp_path, nodes, edges, diagram_depth=1)
 
     consolidated = (tmp_path / "diagram.consolidated.flowchart.mmd").read_text(encoding="utf-8")
-    assert consolidated.startswith("flowchart LR")
+    assert consolidated.startswith("flowchart TD")
     assert "-->" not in consolidated
 
 
@@ -193,6 +195,70 @@ def test_consolidated_flowchart_auto_reduces_depth_when_too_large(tmp_path, monk
 
     flowchart = (tmp_path / "diagram.consolidated.flowchart.mmd").read_text(encoding="utf-8")
     assert "NOTE: consolidated depth reduced" in flowchart
+
+
+def test_consolidated_architecture_depth2_aggregates_network_attached(tmp_path) -> None:
+    records = [
+        {
+            "ocid": "ocid1.vcn.oc1..vcn",
+            "resourceType": "Vcn",
+            "displayName": "Prod-VCN",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": "ocid1.subnet.oc1..subnet",
+            "resourceType": "Subnet",
+            "displayName": "Public-Subnet-1",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {"vcn_id": "ocid1.vcn.oc1..vcn", "cidr_block": "10.0.1.0/24"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": "ocid1.instance.oc1..inst1",
+            "resourceType": "Instance",
+            "displayName": "edge-service-1",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {"vcn_id": "ocid1.vcn.oc1..vcn", "subnet_id": "ocid1.subnet.oc1..subnet"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": "ocid1.instance.oc1..inst2",
+            "resourceType": "Instance",
+            "displayName": "edge-service-2",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {"vcn_id": "ocid1.vcn.oc1..vcn", "subnet_id": "ocid1.subnet.oc1..subnet"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": "ocid1.bucket.oc1..bucket",
+            "resourceType": "Bucket",
+            "displayName": "object-store",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+    ]
+
+    nodes, edges = build_graph(records, relationships=[])
+    write_diagram_projections(tmp_path, nodes, edges, diagram_depth=2)
+
+    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
+    assert "edge-service-1" not in consolidated
+    assert "edge-service-2" not in consolidated
+    assert "Out-of-VCN Services" not in consolidated
+    assert "Bucket" not in consolidated
 
 
 def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:

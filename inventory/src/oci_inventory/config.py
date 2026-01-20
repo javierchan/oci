@@ -458,7 +458,11 @@ def load_run_config(
         "--diagram-depth",
         type=int,
         default=None,
-        help="Depth for consolidated diagrams (1=network, 2=workloads, 3=workloads+edges).",
+        help=(
+            "Depth for consolidated diagrams (1=global regions only, "
+            "2=regional abstraction with aggregated network-attached workloads, "
+            "3=full workloads + edges)."
+        ),
     )
 
     p_run.add_argument(

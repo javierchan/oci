@@ -808,7 +808,6 @@ def render_run_report_md(
     # Network Architecture
     lines.append("## Network Architecture")
     lines.append("Diagram artifacts (generated in the output directory):")
-    lines.append("- `diagrams/raw/diagram_raw.mmd` (full graph export; intentionally noisy)")
     lines.append("- `graph/graph_nodes.jsonl` / `graph/graph_edges.jsonl` (graph data)")
     lines.append("- `diagrams/**/diagram*.mmd` (architectural projections, if enabled)")
     lines.append("")

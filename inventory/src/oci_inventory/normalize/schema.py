@@ -36,7 +36,6 @@ class OutputPaths:
     report_dir: Path
     graph_dir: Path
     diagrams_dir: Path
-    diagrams_raw_dir: Path
     diagrams_tenancy_dir: Path
     diagrams_network_dir: Path
     diagrams_workload_dir: Path
@@ -61,7 +60,6 @@ def resolve_output_paths(outdir: Path) -> OutputPaths:
     report_dir = root / "report"
     graph_dir = root / "graph"
     diagrams_dir = root / "diagrams"
-    diagrams_raw_dir = diagrams_dir / "raw"
     diagrams_tenancy_dir = diagrams_dir / "tenancy"
     diagrams_network_dir = diagrams_dir / "network"
     diagrams_workload_dir = diagrams_dir / "workload"
@@ -76,7 +74,6 @@ def resolve_output_paths(outdir: Path) -> OutputPaths:
         report_dir=report_dir,
         graph_dir=graph_dir,
         diagrams_dir=diagrams_dir,
-        diagrams_raw_dir=diagrams_raw_dir,
         diagrams_tenancy_dir=diagrams_tenancy_dir,
         diagrams_network_dir=diagrams_network_dir,
         diagrams_workload_dir=diagrams_workload_dir,

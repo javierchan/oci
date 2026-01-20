@@ -126,7 +126,6 @@ def summarize_outdir(outdir: Path) -> str:
         paths.cost_report_md,
         paths.diff_dir / "diff.json",
         paths.diff_dir / "diff_summary.json",
-        paths.diagrams_raw_dir / "diagram_raw.mmd",
         paths.diagrams_consolidated_dir / "diagram.consolidated.architecture.mmd",
         paths.diagrams_consolidated_dir / "diagram.consolidated.flowchart.mmd",
     ]

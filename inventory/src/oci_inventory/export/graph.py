@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -546,35 +545,3 @@ def write_graph(outdir: Path, nodes: List[Node], edges: List[Edge]) -> Tuple[Pat
             f.write("\n")
     return nodes_path, edges_path
 
-
-def _mermaid_id(ocid: str) -> str:
-    digest = hashlib.sha1(ocid.encode("utf-8")).hexdigest()
-    return f"N{digest[:12]}"
-
-
-def _mermaid_label(node: Node) -> str:
-    name = str(node.get("name") or node.get("nodeId") or "")
-    node_type = str(node.get("nodeType") or "")
-    label = f"{name}\\n{node_type}".strip()
-    return label.replace('"', "'")
-
-
-def write_mermaid(outdir: Path, nodes: List[Node], edges: List[Edge]) -> Path:
-    # Raw graph export is intentionally noisy and intended for debugging.
-    # Keep it as a separate artifact from any architectural projections.
-    path = outdir / "diagram_raw.mmd"
-    with path.open("w", encoding="utf-8") as f:
-        f.write("graph TD\n")
-        for node in nodes:
-            node_id = _mermaid_id(str(node.get("nodeId") or ""))
-            label = _mermaid_label(node)
-            f.write(f'  {node_id}["{label}"]\n')
-        for edge in edges:
-            src = _mermaid_id(str(edge.get("source_ocid") or ""))
-            tgt = _mermaid_id(str(edge.get("target_ocid") or ""))
-            rel = str(edge.get("relation_type") or "")
-            if rel:
-                f.write(f"  {src} -->|{rel}| {tgt}\n")
-            else:
-                f.write(f"  {src} --> {tgt}\n")
-    return path

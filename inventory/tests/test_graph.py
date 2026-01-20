@@ -9,7 +9,6 @@ from oci_inventory.export.graph import (
     derive_relationships_from_metadata,
     filter_edges_with_nodes,
     write_graph,
-    write_mermaid,
 )
 from oci_inventory.export.jsonl import write_jsonl
 from oci_inventory.normalize.schema import resolve_output_paths
@@ -37,10 +36,6 @@ def test_build_graph_adds_compartment_edges(tmp_path) -> None:
     nodes_path, edges_path = write_graph(tmp_path, nodes, edges)
     assert nodes_path.exists()
     assert edges_path.exists()
-
-    mmd_path = write_mermaid(tmp_path, nodes, edges)
-    assert mmd_path.read_text(encoding="utf-8").startswith("graph TD")
-    assert mmd_path.name == "diagram_raw.mmd"
 
 
 def test_filter_edges_with_nodes_drops_missing_targets() -> None:
@@ -510,7 +505,6 @@ def test_offline_pipeline_writes_schema_artifacts(tmp_path) -> None:
     paths.inventory_dir.mkdir(parents=True, exist_ok=True)
     paths.graph_dir.mkdir(parents=True, exist_ok=True)
     paths.diagrams_dir.mkdir(parents=True, exist_ok=True)
-    paths.diagrams_raw_dir.mkdir(parents=True, exist_ok=True)
 
     write_jsonl(records, paths.inventory_jsonl)
 
@@ -527,7 +521,6 @@ def test_offline_pipeline_writes_schema_artifacts(tmp_path) -> None:
 
     nodes, edges = build_graph(records, relationships)
     write_graph(paths.graph_dir, nodes, edges)
-    write_mermaid(paths.diagrams_raw_dir, nodes, edges)
     write_diagram_projections(paths.diagrams_dir, nodes, edges)
 
     result = _validate_outdir_schema(outdir)
