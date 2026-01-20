@@ -4,7 +4,6 @@ import json
 import os
 import re
 import subprocess
-import hashlib
 from dataclasses import dataclass
 import logging
 from pathlib import Path
@@ -147,6 +146,10 @@ def _short_ocid(ocid: str) -> str:
     return o
 
 
+def _semantic_id_key(value: str) -> str:
+    return str(value or "")
+
+
 def _get_meta(metadata: Mapping[str, Any], *keys: str) -> Any:
     for k in keys:
         if k in metadata:
@@ -175,12 +178,14 @@ def _is_node_type(node: Node, *suffixes: str) -> bool:
 
 
 def _mermaid_id(key: str) -> str:
-    # Keep stable across runs while avoiding raw OCIDs in Mermaid node IDs.
-    # Reuse the same 12-hex scheme as export.graph.
-    import hashlib
-
-    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()
-    return f"N{digest[:12]}"
+    # Semantic, deterministic Mermaid node IDs (no hashed/hex IDs).
+    clean = _semantic_id_key(key)
+    slug = _slugify(clean, max_len=160)
+    if not slug:
+        slug = "node"
+    if not slug[0].isalpha():
+        slug = f"n_{slug}"
+    return slug
 
 
 def _friendly_type(node_type: str) -> str:
@@ -282,6 +287,10 @@ def _style_block_lines() -> List[str]:
         "classDef nonprod stroke:#666666,stroke-width:2px,stroke-dasharray: 5 5;",
         "classDef alert stroke:#ff0000,stroke-width:4px,fill:#fff0f0;",
     ]
+
+
+def _flowchart_elk_init_line() -> str:
+    return "%%{init: {\"flowchart\": {\"defaultRenderer\": \"elk\"}} }%%"
 
 
 def _node_class(node: Node) -> str:
@@ -598,7 +607,11 @@ def _render_arch_relationship_edges(
 
 
 def _render_node_with_class(node_id: str, label: str, *, cls: str, shape: str = "rect") -> List[str]:
-    return [_render_node(node_id, label, shape=shape), f"  class {node_id} {cls}"]
+    lines = [_render_node(node_id, label, shape=shape)]
+    classes = [c for c in (cls or "").split() if c]
+    for class_name in classes:
+        lines.append(f"  class {node_id} {class_name}")
+    return lines
 
 
 def _summarize_many(nodes: Sequence[Node], *, title: str, keep: int = 2) -> Tuple[List[Node], Optional[str]]:
@@ -869,7 +882,7 @@ def _rpc_region_links(nodes: Sequence[Node]) -> Set[Tuple[str, str]]:
 
 def _global_flowchart_lines(nodes: Sequence[Node]) -> List[str]:
     regions = _region_list(nodes)
-    lines: List[str] = ["flowchart TD"]
+    lines: List[str] = [_flowchart_elk_init_line(), "flowchart TD"]
     lines.extend(_style_block_lines())
     lines.append("%% Global Connectivity Map")
 
@@ -902,7 +915,7 @@ def _detailed_flowchart_lines(
     *,
     depth: int = 3,
 ) -> List[str]:
-    lines: List[str] = ["flowchart TD"]
+    lines: List[str] = [_flowchart_elk_init_line(), "flowchart TD"]
     lines.extend(_style_block_lines())
     lines.append("%% Detailed Hierarchical Flowchart")
 
@@ -1316,7 +1329,7 @@ def _write_tenancy_view(
         gateways_by_vcn.setdefault(vcn_ref, {})
         gateways_by_vcn[vcn_ref][label] = gateways_by_vcn[vcn_ref].get(label, 0) + 1
 
-    lines: List[str] = ["flowchart LR"]
+    lines: List[str] = [_flowchart_elk_init_line(), "flowchart LR"]
     lines.extend(_style_block_lines())
     if title:
         lines.append(f"%% {title}")
@@ -1526,7 +1539,7 @@ def _write_network_views(
 
         rendered_node_ids: Set[str] = set()
         edge_node_id_map: Dict[str, str] = {}
-        lines: List[str] = ["flowchart LR"]
+        lines: List[str] = [_flowchart_elk_init_line(), "flowchart LR"]
         lines.extend(_style_block_lines())
         lines.append("%% ------------------ Network Topology ------------------")
 
@@ -1835,7 +1848,7 @@ def _build_workload_diagram_lines(
     has_internet = any(_is_node_type(n, "InternetGateway", "NatGateway") for n in gateway_nodes)
     has_customer_net = any(_is_node_type(n, "Drg", "VirtualCircuit", "IPSecConnection", "Cpe") for n in gateway_nodes)
 
-    lines: List[str] = ["flowchart LR"]
+    lines: List[str] = [_flowchart_elk_init_line(), "flowchart LR"]
     lines.extend(_style_block_lines())
     lines.append("%% ------------------ Workload / Application View ------------------")
 
@@ -2349,7 +2362,7 @@ def _write_workload_views(
             reason="split_mermaid_limit",
         )
 
-        note_lines = ["flowchart LR"]
+        note_lines = [_flowchart_elk_init_line(), "flowchart LR"]
         note_lines.extend(
             _split_note_lines(
                 f"Workload diagram split into {total_parts} parts due to Mermaid size limits.",
@@ -2833,7 +2846,7 @@ def _write_consolidated_stub(
             f"    service {notice_id}(server)[{_arch_label('See split diagrams for full detail', max_len=64)}] in {tenancy_id}"
         )
     else:
-        lines = ["flowchart TB"]
+        lines = [_flowchart_elk_init_line(), "flowchart TB"]
         lines.extend(_split_note_lines(note, part_paths))
         notice_id = _mermaid_id(f"consolidated:stub:notice:{tenancy_label}")
         label = _sanitize_edge_label("Consolidated diagram split; see split outputs.")
@@ -2874,10 +2887,10 @@ def _write_consolidated_mermaid(
         return [stub_path]
 
     def _service_id(prefix: str, value: str) -> str:
-        import hashlib
-
-        digest = hashlib.sha1(value.encode("utf-8")).hexdigest()
-        return f"{prefix}{digest[:10]}"
+        slug = _slugify(_semantic_id_key(value), max_len=160)
+        if not slug:
+            slug = "node"
+        return f"{prefix}{slug}"
 
     def _service_icon(node: Node) -> str:
         nt = str(node.get("nodeType") or "").lower()

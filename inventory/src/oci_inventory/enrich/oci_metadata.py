@@ -173,6 +173,22 @@ class SDKMetadataEnricher(Enricher):
             )
 
 
+class SearchSummaryEnricher(Enricher):
+    def __init__(self, resource_type: str, note: str) -> None:
+        self.resource_type = resource_type
+        self._note = note
+
+    def enrich(self, record: Dict[str, Any]) -> EnrichResult:
+        search_summary = dict(record.get("searchSummary") or {})
+        details = {"searchSummary": search_summary, "enrichNote": self._note}
+        return EnrichResult(
+            details=details,
+            relationships=[],
+            enrichStatus="OK",
+            enrichError=None,
+        )
+
+
 def _fetch_instance(record: Dict[str, Any]) -> Dict[str, Any]:
     ctx = get_enrich_context()
     client = oci_clients.get_compute_client(ctx, _record_region(record))
@@ -1260,13 +1276,19 @@ def register_metadata_enrichers() -> None:
         # Zero Trust
         "ZprPolicy": _fetch_zpr_policy,
     }
-    # TODO: SDK 2.164.2 does not expose get_* APIs for these resource types yet:
-    # - LimitsIncreaseRequest
-    # - ProcessAutomationInstance
-    # - QueryServiceProject
+    sdk_gap_types = {
+        "LimitsIncreaseRequest",
+        "ProcessAutomationInstance",
+        "QueryServiceProject",
+    }
 
     for resource_type, fetch in mapping.items():
         register_enricher(
             resource_type,
             lambda rt=resource_type, fn=fetch: SDKMetadataEnricher(rt, fn),
+        )
+    for resource_type in sorted(sdk_gap_types):
+        register_enricher(
+            resource_type,
+            lambda rt=resource_type: SearchSummaryEnricher(rt, "SDK gap: search summary only"),
         )
