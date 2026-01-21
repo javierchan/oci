@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import hashlib
-
 from pathlib import Path
 
-from oci_inventory.export.diagram_projections import _render_edge, write_diagram_projections
+from oci_inventory.export.diagram_projections import (
+    _render_edge,
+    _semantic_id_key,
+    _slugify,
+    write_diagram_projections,
+)
 from oci_inventory.export.graph import build_graph
 
 
@@ -70,7 +73,7 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
 
     # Sanity-check Mermaid structure.
     tenancy = (tmp_path / "diagram.tenancy.mmd").read_text(encoding="utf-8")
-    assert tenancy.startswith("flowchart LR")
+    assert "flowchart LR" in tenancy.splitlines()[1]
     assert "subgraph" in tenancy
     assert "Functional Overlays" not in tenancy
     assert "IN_COMPARTMENT" not in tenancy
@@ -94,7 +97,7 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
             assert ":" in line
 
     flowchart = (tmp_path / "diagram.consolidated.flowchart.mmd").read_text(encoding="utf-8")
-    assert flowchart.startswith("flowchart TD")
+    assert any(line.strip() == "flowchart TD" for line in flowchart.splitlines())
 
 
 def test_consolidated_subnet_group_id_scoped_by_vcn(tmp_path) -> None:
@@ -128,8 +131,8 @@ def test_consolidated_subnet_group_id_scoped_by_vcn(tmp_path) -> None:
     write_diagram_projections(tmp_path, nodes, edges)
 
     consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
-    digest = hashlib.sha1(f"{comp_id}:{vcn_id}:{subnet_id}".encode("utf-8")).hexdigest()[:10]
-    assert f"group subnet_{digest}" in consolidated
+    slug = _slugify(_semantic_id_key(f"{comp_id}:{vcn_id}:{subnet_id}"), max_len=160)
+    assert f"group subnet_{slug}" in consolidated
 
 
 def test_consolidated_architecture_dedupes_vcn_groups(tmp_path) -> None:
@@ -161,8 +164,8 @@ def test_consolidated_architecture_dedupes_vcn_groups(tmp_path) -> None:
     write_diagram_projections(tmp_path, nodes, edges)
 
     consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
-    digest = hashlib.sha1(vcn_id.encode("utf-8")).hexdigest()[:10]
-    assert consolidated.count(f"group vcn_{digest}") == 1
+    slug = _slugify(_semantic_id_key(vcn_id), max_len=160)
+    assert consolidated.count(f"group vcn_{slug}") == 1
 
 
 def test_consolidated_flowchart_depth_excludes_edges(tmp_path) -> None:
@@ -183,11 +186,11 @@ def test_consolidated_flowchart_depth_excludes_edges(tmp_path) -> None:
     write_diagram_projections(tmp_path, nodes, edges, diagram_depth=1)
 
     consolidated = (tmp_path / "diagram.consolidated.flowchart.mmd").read_text(encoding="utf-8")
-    assert consolidated.startswith("flowchart TD")
+    assert "flowchart TD" in consolidated.splitlines()[1]
     assert "-->" not in consolidated
 
 
-def test_consolidated_flowchart_auto_reduces_depth_when_too_large(tmp_path, monkeypatch) -> None:
+def test_consolidated_flowchart_splits_by_vcn_when_too_large(tmp_path, monkeypatch) -> None:
     from oci_inventory.export import diagram_projections
 
     monkeypatch.setattr(diagram_projections, "MAX_MERMAID_TEXT_CHARS", 10)
@@ -208,7 +211,9 @@ def test_consolidated_flowchart_auto_reduces_depth_when_too_large(tmp_path, monk
     write_diagram_projections(tmp_path, nodes, edges, diagram_depth=3)
 
     flowchart = (tmp_path / "diagram.consolidated.flowchart.mmd").read_text(encoding="utf-8")
-    assert "NOTE: consolidated depth reduced" in flowchart
+    assert "NOTE: Consolidated diagram split by VCN" in flowchart
+    part_paths = sorted(tmp_path.glob("diagram.consolidated.flowchart.vcn.*.mmd"))
+    assert len(part_paths) == 2
 
 
 def test_consolidated_architecture_splits_before_depth_reduction(tmp_path, monkeypatch) -> None:
@@ -244,10 +249,50 @@ def test_consolidated_architecture_splits_before_depth_reduction(tmp_path, monke
     consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
     assert "NOTE: Consolidated diagram split by region" in consolidated
     part_paths = sorted(tmp_path.glob("diagram.consolidated.architecture.region.*.mmd"))
-    assert len(part_paths) == 2
+    assert len(part_paths) == 3
     for part_path in part_paths:
         part_text = part_path.read_text(encoding="utf-8")
-        assert "Depth reduced from 3 to 1" in part_text
+        assert (
+            "Depth reduced from 3 to 1" in part_text
+            or "NOTE: Consolidated diagram split by root compartment" in part_text
+            or "NOTE: Consolidated diagram split by VCN" in part_text
+        )
+
+
+def test_consolidated_architecture_splits_by_root_compartment_single_region(tmp_path, monkeypatch) -> None:
+    from oci_inventory.export import diagram_projections
+
+    monkeypatch.setattr(diagram_projections, "MAX_MERMAID_TEXT_CHARS", 10)
+    records = [
+        {
+            "ocid": "ocid1.vcn.oc1..vcn1",
+            "resourceType": "Vcn",
+            "displayName": "VCN-A",
+            "region": "us-ashburn-1",
+            "compartmentId": "ocid1.compartment.oc1..comp1",
+            "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+        {
+            "ocid": "ocid1.vcn.oc1..vcn2",
+            "resourceType": "Vcn",
+            "displayName": "VCN-B",
+            "region": "us-ashburn-1",
+            "compartmentId": "ocid1.compartment.oc1..comp2",
+            "details": {"metadata": {"cidr_block": "10.1.0.0/16"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        },
+    ]
+
+    nodes, edges = _build_graph_lists(tmp_path, records, [])
+    write_diagram_projections(tmp_path, nodes, edges, diagram_depth=3)
+
+    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
+    assert "NOTE: Consolidated diagram split by root compartment" in consolidated
+    part_paths = sorted(tmp_path.glob("diagram.consolidated.architecture.root_compartment.*.mmd"))
+    assert len(part_paths) == 2
 
 
 def test_consolidated_architecture_depth2_aggregates_network_attached(tmp_path) -> None:

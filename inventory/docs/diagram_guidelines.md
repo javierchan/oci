@@ -75,7 +75,8 @@ reference zip files and are cited with file paths and line numbers.
 The pipeline emits two consolidated diagrams per run (both must follow the OCI abstraction rules above):
 - `diagrams/consolidated/diagram.consolidated.architecture.mmd` (Mermaid `architecture-beta`).
 - `diagrams/consolidated/diagram.consolidated.flowchart.mmd` (Mermaid `flowchart`).
-The flowchart output is the global connectivity map; the architecture output is the regional abstraction view.
+The flowchart output is the global connectivity map at depth 1; at depth > 1 it renders a consolidated summary hierarchy
+(Tenancy → Region → Compartment → VCN → Subnet) with category counts. The architecture output is the regional abstraction view.
 
 When Mermaid size limits are exceeded, additional split outputs may be emitted:
 - `diagrams/consolidated/diagram.consolidated.architecture.region.<region>.mmd` or `diagram.consolidated.architecture.compartment.<compartment>.mmd`
@@ -84,11 +85,13 @@ When Mermaid size limits are exceeded, additional split outputs may be emitted:
 
 Depth controls are a rendering knob for consolidated outputs and the tenancy view; per-VCN diagrams remain full detail and workload diagrams remain full detail for their workload scope.
 - Depth 1 (Global Map): tenancy + regions only, rendered in `diagram.consolidated.flowchart.mmd`. No compartments at this level.
-- Depth 2 (Regional Abstraction): compartments + VCN/subnet/gateways, plus aggregated network-attached workloads by **resourceType** (e.g., `Instance (n=12)`).
+- Depth 2 (Regional Abstraction, architecture diagram): compartments + VCN/subnet/gateways, plus aggregated network-attached workloads by **resourceType** (e.g., `Instance (n=12)`).
   - If a compartment has more than 5 distinct resource types, aggregate by **category** (Compute/Network/Storage/Security/Other).
   - Non-networked services (IAM, Logging, Object Storage, etc.) are excluded unless explicitly connected via a Service Gateway.
-- Depth 3 (Deep): full workloads + relationship edges (default; full detail).
-Global flowchart uses `flowchart TD` for readability; regional/workload flowcharts continue to use `flowchart LR`.
+- Depth 2+ (Consolidated flowchart): summary hierarchy with category counts (Compute/Network/Storage/Policy/Other) inside VCN-level,
+  subnet, and out-of-VCN containers; no per-resource nodes or relationship edges.
+- Depth 3 (Deep, architecture diagram): full workloads + relationship edges (default; full detail).
+Global and consolidated flowcharts use `flowchart TD` for readability; regional/workload flowcharts continue to use `flowchart LR`.
 
 Depth is for readability/performance and does not override required abstraction or containment rules for regional and workload diagrams.
 If consolidated output exceeds Mermaid text limits, the renderer reduces depth until it fits and annotates the diagram with a NOTE comment.
