@@ -874,8 +874,8 @@ def main() -> None:
                 "Consolidated diagram depth",
                 [
                     ("1", "Global map only (tenancy + regions)."),
-                    ("2", "Regional abstraction (compartments + VCN/subnet/gateways + aggregated workloads)."),
-                    ("3", "Full workloads + relationship edges."),
+                    ("2", "Summary hierarchy with category counts (no per-resource nodes/edges)."),
+                    ("3", "Same summary hierarchy as depth 2 (reserved for future detail)."),
                 ],
                 default="3",
             )

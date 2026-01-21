@@ -5,7 +5,7 @@ Phase 1 implements:
 - Tenancy-wide discovery using Resource Search (Structured Search) with default query: "query all resources"
 - Enricher registry + DefaultEnricher with per-service metadata enrichers for supported resource types
 - Exports: JSONL (default) and CSV
-- Graph + diagram projections (Mermaid flowchart + consolidated architecture-beta + consolidated flowchart; disable with --no-diagrams)
+- Graph + diagram projections (Mermaid flowchart + consolidated flowchart; disable with --no-diagrams)
 - Cost snapshot reporting via Usage API with optional OneSubscription usage (opt-in)
 - Optional GenAI narratives for report/report.md and cost/cost_report.md
 - Diffs and stable hashing (excluding collectedAt)
@@ -377,9 +377,7 @@ subgraph out_ts[out timestamp]
     net[diagrams/network/diagram.network.vcn.mmd optional]
     wl[diagrams/workload/diagram.workload.workload.mmd optional]
     wl_parts[diagrams/workload/diagram.workload.workload.partNN.mmd optional]
-    cons[diagrams/consolidated/diagram.consolidated.architecture.mmd optional]
     cons_fc[diagrams/consolidated/diagram.consolidated.flowchart.mmd optional]
-    cons_split[diagrams/consolidated/diagram.consolidated.architecture.region_or_compartment.mmd optional]
     cons_fc_split[diagrams/consolidated/diagram.consolidated.flowchart.region_or_compartment.mmd optional]
     rpt[report/report.md]
     sum[run_summary.json]
@@ -397,14 +395,10 @@ subgraph out_ts[out timestamp]
   edges --> net
   nodes --> wl
   edges --> wl
-  nodes --> cons
-  edges --> cons
   nodes --> cons_fc
   edges --> cons_fc
   nodes --> wl_parts
   edges --> wl_parts
-  nodes --> cons_split
-  edges --> cons_split
   nodes --> cons_fc_split
   edges --> cons_fc_split
 ```
@@ -422,10 +416,7 @@ Each run writes to: `out/<timestamp>/` with structured subfolders.
 - diagrams/network/diagram.network.<vcn>.mmd (Mermaid diagram; per-VCN topology view; optional)
 - diagrams/workload/diagram.workload.<workload>.mmd (Mermaid diagram; workload/application view; optional)
 - diagrams/workload/diagram.workload.<workload>.partNN.mmd (Mermaid diagram; overflow parts when workload diagrams are split)
-- diagrams/consolidated/diagram.consolidated.architecture.mmd (Mermaid architecture-beta diagram; regional abstraction and workloads; respects `--diagram-depth`)
 - diagrams/consolidated/diagram.consolidated.flowchart.mmd (Mermaid flowchart diagram; depth 1 is global tenancy + regions map; depth > 1 is a summary hierarchy with category counts)
-- diagrams/consolidated/diagram.consolidated.architecture.region.<region>.mmd (Mermaid architecture-beta split by region when oversized)
-- diagrams/consolidated/diagram.consolidated.architecture.compartment.<compartment>.mmd (Mermaid architecture-beta split by compartment when oversized)
 - diagrams/consolidated/diagram.consolidated.flowchart.region.<region>.mmd (Mermaid flowchart split by region when oversized)
 - diagrams/consolidated/diagram.consolidated.flowchart.compartment.<compartment>.mmd (Mermaid flowchart split by compartment when oversized)
 - cost/cost_report.md (when --cost-report provided)
