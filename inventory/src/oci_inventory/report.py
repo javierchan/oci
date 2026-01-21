@@ -810,6 +810,7 @@ def render_run_report_md(
     lines.append("Diagram artifacts (generated in the output directory):")
     lines.append("- `graph/graph_nodes.jsonl` / `graph/graph_edges.jsonl` (graph data)")
     lines.append("- `diagrams/**/diagram*.mmd` (architectural projections, if enabled)")
+    lines.append("- `diagrams/architecture/diagram.arch.*.svg` (architecture SVGs, if enabled)")
     lines.append("")
 
     diagram_summary = diagram_summary or {}

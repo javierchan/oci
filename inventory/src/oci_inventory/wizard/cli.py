@@ -805,6 +805,7 @@ def main() -> None:
 
         validate_diagrams: Optional[bool] = None
         diagrams: Optional[bool] = None
+        architecture_diagrams: Optional[bool] = None
         schema_validation: Optional[str] = None
         schema_sample_records: Optional[int] = None
         diagram_depth: Optional[int] = None
@@ -841,6 +842,19 @@ def main() -> None:
                 diagrams = True
             elif diagrams_choice == "Disable":
                 diagrams = False
+            architecture_choice = _ask_choice(
+                "Generate architecture diagrams (SVG, Graphviz)?",
+                [
+                    ("Default", "Use CLI/config defaults."),
+                    ("Enable", "Always generate architecture diagrams."),
+                    ("Disable", "Disable architecture diagrams for this run."),
+                ],
+                default="Default",
+            )
+            if architecture_choice == "Enable":
+                architecture_diagrams = True
+            elif architecture_choice == "Disable":
+                architecture_diagrams = False
             validate_choice = _ask_choice(
                 "Validate Mermaid diagrams with mmdc?",
                 [
@@ -975,6 +989,7 @@ def main() -> None:
             include_terminated=include_terminated,
             validate_diagrams=validate_diagrams,
             diagrams=diagrams,
+            architecture_diagrams=architecture_diagrams,
             schema_validation=schema_validation,
             schema_sample_records=schema_sample_records,
             diagram_depth=diagram_depth,
@@ -1013,6 +1028,7 @@ def main() -> None:
             "include_terminated": include_terminated,
             "validate_diagrams": validate_diagrams,
             "diagrams": diagrams,
+            "architecture_diagrams": architecture_diagrams,
             "schema_validation": schema_validation,
             "schema_sample_records": schema_sample_records,
             "diagram_depth": diagram_depth,

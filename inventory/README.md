@@ -5,7 +5,7 @@ Phase 1 implements:
 - Tenancy-wide discovery using Resource Search (Structured Search) with default query: "query all resources"
 - Enricher registry + DefaultEnricher with per-service metadata enrichers for supported resource types
 - Exports: JSONL (default) and CSV
-- Graph + diagram projections (Mermaid flowchart + consolidated flowchart; disable with --no-diagrams)
+- Graph + diagram projections (Mermaid flowcharts + architecture SVGs; disable with --no-diagrams / --no-architecture-diagrams)
 - Cost snapshot reporting via Usage API with optional OneSubscription usage (opt-in)
 - Optional GenAI narratives for report/report.md and cost/cost_report.md
 - Diffs and stable hashing (excluding collectedAt)
@@ -44,18 +44,20 @@ Key guarantees:
 - Python 3.11+
 - Git
 - Node.js + npm (required for Mermaid CLI)
+- Graphviz (required for architecture SVG diagrams)
 - Use a `.venv` for all Python dependencies (required)
 
-Recommended: `./preflight.sh` (installs all required components).
+Recommended: `./preflight.sh` (installs most required components; Graphviz is still required for architecture SVGs).
 
 Manual install (inside `.venv`):
 ```
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -U pip
-pip install .[wizard]
+pip install .[wizard,diagrams]
 pip install oci-cli
 npm install -g @mermaid-js/mermaid-cli
+dot -V  # ensure Graphviz is installed and on PATH
 ```
 
 ## Preflight setup
@@ -63,7 +65,7 @@ Use the preflight script to prepare a local or CI environment (macOS/Linux; may 
 - Verifies prerequisites (python3 ≥ 3.11, git, npm) and installs Mermaid CLI (mmdc) if missing
 - Creates or reuses a .venv virtual environment and upgrades pip/setuptools/wheel
 - Installs the project in editable mode, respecting pyproject.toml
-- Installs all extras defined in pyproject.toml (wizard)
+- Installs all extras defined in pyproject.toml (wizard, diagrams)
 - Installs OCI CLI inside the virtual environment
 - Uses network access for pip/npm installs and dependency upgrades
 
@@ -199,7 +201,7 @@ allow group <group-name> to read budgets in tenancy
 - If consolidated diagrams still exceed Mermaid limits at depth 1, they are split by region (preferred) or top-level compartment and the base diagram is replaced by a stub that links to split outputs.
 - Workload diagrams that exceed Mermaid limits are split into deterministic overflow parts; if a single-node slice still exceeds the limit, it is skipped and summarized in `report/report.md`.
 - Network diagrams are skipped if a single diagram exceeds Mermaid text limits; the skip is summarized in `report/report.md`.
-- Use `--no-diagrams` when you only need inventory/cost outputs.
+- Use `--no-diagrams` and/or `--no-architecture-diagrams` when you only need inventory/cost outputs.
 - OCI SDK clients are cached per service+region; set `OCI_INV_DISABLE_CLIENT_CACHE=1` to disable.
 - Increase OCI SDK HTTP connection pool size with `--client-connection-pool-size N` or `OCI_INV_CLIENT_CONNECTION_POOL_SIZE` to reduce pool churn in high-concurrency runs (repo default is 24).
 - Sizing tip: set `--client-connection-pool-size` to at least `--workers-enrich` when you see connection pool warnings.
@@ -327,7 +329,7 @@ This section is a quick map of every user-facing component in the CLI, what it d
   - Enable with `--genai-summary` on `run`. If GenAI fails, report/report.md is still written with an error note.
 - **Cost report (optional)**: uses Usage API (home region) for totals and optional OneSubscription usage when `--osub-subscription-id` is provided; writes `cost/cost_report.md`.
   - Enable with `--cost-report` on `run`.
-  - Example (no diagrams): `oci-inv run --no-diagrams --cost-report --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD`
+  - Example (no diagrams): `oci-inv run --no-diagrams --no-architecture-diagrams --cost-report --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD`
   - Example (OneSubscription): `oci-inv run --cost-report --osub-subscription-id <subscription_id> --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD`
   - Data model: Cost Management → Cost Analysis via `UsageapiClient.request_summarized_usages`. This reflects tenancy cost/usage and does not read Subscription Usage or Universal Credits usage.
   - Aggregation: `_extract_usage_amount` reads `computed_amount/cost/amount` from each Usage API item; `_request_summarized_usages` sums values per group (service, compartmentId, region, or total). `total_cost` is the sum across all buckets for the time range.
@@ -356,6 +358,8 @@ Notes for developers:
 - Region failures are tolerated and captured in report/report.md; GenAI is optional and isolated from the main run.
 - Mermaid diagrams are generated as `.mmd` files unless `--no-diagrams` is set. Mermaid CLI (`mmdc`) is required and preflight installs it;
   validation runs automatically when diagrams are enabled.
+- Architecture diagrams are generated as `.svg` files unless `--no-architecture-diagrams` is set. Graphviz (`dot`) and the Python
+  diagrams extra are required (`pip install -e ".[diagrams]"`).
   (During installation you may see npm warnings about Puppeteer deprecations; those are typically non-fatal.)
 - Diagram and report rules are documented in `docs/diagram_guidelines.md` and `docs/report_guidelines.md`.
 
@@ -419,6 +423,7 @@ Each run writes to: `out/<timestamp>/` with structured subfolders.
 - diagrams/consolidated/diagram.consolidated.flowchart.mmd (Mermaid flowchart diagram; depth 1 is global tenancy + regions map; depth > 1 is a summary hierarchy with category counts)
 - diagrams/consolidated/diagram.consolidated.flowchart.region.<region>.mmd (Mermaid flowchart split by region when oversized)
 - diagrams/consolidated/diagram.consolidated.flowchart.compartment.<compartment>.mmd (Mermaid flowchart split by compartment when oversized)
+- diagrams/architecture/diagram.arch.*.svg (Architecture SVG diagrams; optional)
 - cost/cost_report.md (when --cost-report provided)
 - cost/cost_usage_items.csv + cost/cost_usage_items_grouped.csv + cost/cost_usage_items.jsonl (when --cost-report provided)
 - cost/cost_usage_service.csv + cost/cost_usage_region.csv + cost/cost_usage_compartment.csv (when --cost-report provided)
@@ -432,7 +437,8 @@ Quick reference (artifacts → purpose):
 - logs/debug.log: per-run log output captured to the run directory.
 - inventory/relationships.jsonl: relationship edges from enrichers + derived metadata.
 - graph/graph_nodes.jsonl / graph/graph_edges.jsonl: raw topology outputs (optional).
-- diagrams/**/diagram*.mmd: architecture-focused projected views (optional).
+- diagrams/**/diagram*.mmd: Mermaid projected views (optional).
+- diagrams/architecture/diagram.arch.*.svg: architecture SVGs rendered via Graphviz (optional).
 - cost/cost_report.md + cost/cost_usage_*.{csv,jsonl}: cost snapshot outputs (optional).
 - diff/diff.json / diff/diff_summary.json: change set when `--prev` is used.
 - run_summary.json: coverage/metrics snapshot for automation.
@@ -445,7 +451,7 @@ JSONL stability notes:
 
 Schema validation:
 - Every run validates `inventory/inventory.jsonl`, `inventory/relationships.jsonl`, and `run_summary.json`.
-- Graph artifacts (`graph/graph_nodes.jsonl`, `graph/graph_edges.jsonl`) are validated when diagrams are enabled.
+- Graph artifacts (`graph/graph_nodes.jsonl`, `graph/graph_edges.jsonl`) are validated when Mermaid or architecture diagrams are enabled.
 - Validation warnings are logged; validation errors fail the run.
 
 ## Enrichment

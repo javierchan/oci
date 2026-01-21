@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import hashlib
+import importlib
 from dataclasses import dataclass
 import logging
 from pathlib import Path
@@ -3027,6 +3028,346 @@ def write_diagram_projections(
                 len(split),
             )
     return out
+
+
+def is_graphviz_available() -> bool:
+    return which("dot") is not None
+
+
+def _import_node_class(module_path: str, class_name: str) -> Optional[Any]:
+    try:
+        mod = importlib.import_module(module_path)
+        return getattr(mod, class_name, None)
+    except Exception:
+        return None
+
+
+def _first_node_class(candidates: Sequence[Tuple[str, str]]) -> Optional[Any]:
+    for module_path, class_name in candidates:
+        cls = _import_node_class(module_path, class_name)
+        if cls is not None:
+            return cls
+    return None
+
+
+def _load_diagrams_classes() -> Optional[Tuple[Any, Any, Dict[str, Any], Any]]:
+    try:
+        diagrams_mod = importlib.import_module("diagrams")
+        Diagram = getattr(diagrams_mod, "Diagram")
+        Cluster = getattr(diagrams_mod, "Cluster")
+    except Exception as exc:
+        LOG.warning("Architecture diagrams skipped; diagrams library import failed: %s", exc)
+        return None
+
+    fallback = _first_node_class(
+        [
+            ("diagrams.generic.compute", "Rack"),
+            ("diagrams.generic.compute", "Server"),
+            ("diagrams.generic.storage", "Storage"),
+        ]
+    )
+    if fallback is None:
+        fallback = getattr(diagrams_mod, "Node", None)
+    if fallback is None:
+        LOG.warning("Architecture diagrams skipped; no usable node classes available.")
+        return None
+
+    lane_classes = {
+        "network": _first_node_class(
+            [
+                ("diagrams.generic.network", "Router"),
+                ("diagrams.generic.network", "Switch"),
+            ]
+        ),
+        "security": _first_node_class(
+            [
+                ("diagrams.generic.security", "Firewall"),
+            ]
+        ),
+        "iam": _first_node_class(
+            [
+                ("diagrams.generic.user", "User"),
+                ("diagrams.generic.user", "Users"),
+            ]
+        ),
+        "app": _first_node_class(
+            [
+                ("diagrams.generic.compute", "Rack"),
+                ("diagrams.generic.compute", "Server"),
+            ]
+        ),
+        "data": _first_node_class(
+            [
+                ("diagrams.generic.database", "SQL"),
+                ("diagrams.generic.storage", "Storage"),
+            ]
+        ),
+        "observability": _first_node_class(
+            [
+                ("diagrams.generic.monitoring", "Monitor"),
+            ]
+        ),
+        "other": _first_node_class(
+            [
+                ("diagrams.generic.blank", "Blank"),
+                ("diagrams.generic.storage", "Storage"),
+            ]
+        ),
+    }
+    lane_classes = {k: v for k, v in lane_classes.items() if v is not None}
+    return Diagram, Cluster, lane_classes, fallback
+
+
+def _arch_lane_counts(nodes: Sequence[Node]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for n in nodes:
+        if _is_node_type(n, "Compartment", "Vcn", "Subnet"):
+            continue
+        lane = _lane_for_node(n)
+        if lane in {"tenancy"}:
+            continue
+        counts[lane] = counts.get(lane, 0) + 1
+    return counts
+
+
+def _arch_compartment_label(label: str) -> str:
+    safe = _compact_label(label, max_len=64)
+    if "ocid1" in safe:
+        return "Compartment: Redacted"
+    return safe
+
+
+def _arch_node_for_lane(
+    lane: str,
+    label: str,
+    *,
+    lane_classes: Mapping[str, Any],
+    fallback: Any,
+) -> Any:
+    cls = lane_classes.get(lane) or fallback
+    return cls(label)
+
+
+def _render_architecture_tenancy(
+    Diagram: Any,
+    Cluster: Any,
+    lane_classes: Mapping[str, Any],
+    fallback: Any,
+    *,
+    outdir: Path,
+    nodes: Sequence[Node],
+) -> Optional[Path]:
+    tenancy_label = _tenancy_label(nodes)
+    node_by_id = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
+    alias_by_comp = _compartment_alias_map(nodes)
+    comp_groups = _group_nodes_by_level1_compartment(nodes)
+    if not comp_groups:
+        return None
+
+    arch_dir = outdir / "architecture"
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    path = arch_dir / "diagram.arch.tenancy.svg"
+    filename = str(path.with_suffix(""))
+    graph_attr = {"rankdir": "LR", "splines": "ortho"}
+    with Diagram(
+        f"{tenancy_label} Architecture (Overview)",
+        filename=filename,
+        outformat="svg",
+        show=False,
+        graph_attr=graph_attr,
+    ):
+        for comp_id in sorted(comp_groups.keys()):
+            comp_nodes = comp_groups[comp_id]
+            comp_label = _arch_compartment_label(
+                _compartment_label_by_id(comp_id, node_by_id=node_by_id, alias_by_id=alias_by_comp)
+            )
+            with Cluster(comp_label):
+                vcns = sorted(
+                    (n for n in comp_nodes if _is_node_type(n, "Vcn")),
+                    key=lambda n: str(n.get("name") or n.get("nodeId") or ""),
+                )
+                for vcn in vcns:
+                    _arch_node_for_lane(
+                        "network",
+                        _vcn_label_compact(vcn),
+                        lane_classes=lane_classes,
+                        fallback=fallback,
+                    )
+                counts = _arch_lane_counts(comp_nodes)
+                for lane in sorted(counts.keys()):
+                    label = f"{_lane_label(lane)} (n={counts[lane]})"
+                    _arch_node_for_lane(
+                        lane,
+                        label,
+                        lane_classes=lane_classes,
+                        fallback=fallback,
+                    )
+    return path
+
+
+def _render_architecture_vcn(
+    Diagram: Any,
+    Cluster: Any,
+    lane_classes: Mapping[str, Any],
+    fallback: Any,
+    *,
+    outdir: Path,
+    vcn_name: str,
+    vcn_nodes: Sequence[Node],
+) -> Optional[Path]:
+    if not vcn_nodes:
+        return None
+    vcn_label = _compact_label(vcn_name, max_len=64) or "VCN"
+    arch_dir = outdir / "architecture"
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    path = arch_dir / f"diagram.arch.vcn.{_slugify(vcn_label)}.svg"
+    filename = str(path.with_suffix(""))
+    graph_attr = {"rankdir": "LR", "splines": "ortho"}
+    with Diagram(
+        f"VCN Architecture: {vcn_label}",
+        filename=filename,
+        outformat="svg",
+        show=False,
+        graph_attr=graph_attr,
+    ):
+        with Cluster(f"VCN: {vcn_label}"):
+            subnets = sorted(
+                (n for n in vcn_nodes if _is_node_type(n, "Subnet")),
+                key=lambda n: str(n.get("name") or n.get("nodeId") or ""),
+            )
+            for sn in subnets:
+                _arch_node_for_lane(
+                    "network",
+                    _subnet_label_compact(sn),
+                    lane_classes=lane_classes,
+                    fallback=fallback,
+                )
+            counts = _arch_lane_counts(vcn_nodes)
+            for lane in sorted(counts.keys()):
+                label = f"{_lane_label(lane)} (n={counts[lane]})"
+                _arch_node_for_lane(
+                    lane,
+                    label,
+                    lane_classes=lane_classes,
+                    fallback=fallback,
+                )
+    return path
+
+
+def _render_architecture_workload(
+    Diagram: Any,
+    Cluster: Any,
+    lane_classes: Mapping[str, Any],
+    fallback: Any,
+    *,
+    outdir: Path,
+    workload: str,
+    workload_nodes: Sequence[Node],
+) -> Optional[Path]:
+    if not workload_nodes:
+        return None
+    wl_label = _compact_label(workload, max_len=64) or "Workload"
+    arch_dir = outdir / "architecture"
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    path = arch_dir / f"diagram.arch.workload.{_slugify(wl_label)}.svg"
+    filename = str(path.with_suffix(""))
+    graph_attr = {"rankdir": "LR", "splines": "ortho"}
+    with Diagram(
+        f"Workload Architecture: {wl_label}",
+        filename=filename,
+        outformat="svg",
+        show=False,
+        graph_attr=graph_attr,
+    ):
+        with Cluster(f"Workload: {wl_label}"):
+            vcns = sorted(
+                (n for n in workload_nodes if _is_node_type(n, "Vcn")),
+                key=lambda n: str(n.get("name") or n.get("nodeId") or ""),
+            )
+            for vcn in vcns:
+                _arch_node_for_lane(
+                    "network",
+                    _vcn_label_compact(vcn),
+                    lane_classes=lane_classes,
+                    fallback=fallback,
+                )
+            counts = _arch_lane_counts(workload_nodes)
+            for lane in sorted(counts.keys()):
+                label = f"{_lane_label(lane)} (n={counts[lane]})"
+                _arch_node_for_lane(
+                    lane,
+                    label,
+                    lane_classes=lane_classes,
+                    fallback=fallback,
+                )
+    return path
+
+
+def write_architecture_diagrams(
+    outdir: Path,
+    nodes: Sequence[Node],
+    edges: Sequence[Edge],
+    *,
+    summary: Optional[DiagramSummary] = None,
+) -> List[Path]:
+    if not is_graphviz_available():
+        LOG.warning("Architecture diagrams skipped; Graphviz 'dot' not found on PATH.")
+        return []
+
+    loaded = _load_diagrams_classes()
+    if loaded is None:
+        return []
+    Diagram, Cluster, lane_classes, fallback = loaded
+
+    out_paths: List[Path] = []
+    tenancy_path = _render_architecture_tenancy(
+        Diagram,
+        Cluster,
+        lane_classes,
+        fallback,
+        outdir=outdir,
+        nodes=nodes,
+    )
+    if tenancy_path is not None:
+        out_paths.append(tenancy_path)
+
+    vcn_groups = _group_nodes_by_vcn(nodes, edges)
+    for vcn_id in sorted(vcn_groups.keys()):
+        group_nodes = vcn_groups[vcn_id]
+        vcn_name = ""
+        for n in group_nodes:
+            if _is_node_type(n, "Vcn"):
+                vcn_name = str(n.get("name") or "")
+                break
+        if not vcn_name:
+            vcn_name = "VCN"
+        path = _render_architecture_vcn(
+            Diagram,
+            Cluster,
+            lane_classes,
+            fallback,
+            outdir=outdir,
+            vcn_name=vcn_name,
+            vcn_nodes=group_nodes,
+        )
+        if path is not None:
+            out_paths.append(path)
+
+    workload_candidates = [n for n in nodes if n.get("nodeId")]
+    wl_groups = {k: list(v) for k, v in group_workload_candidates(workload_candidates).items()}
+    for wl_name in sorted(wl_groups.keys()):
+        path = _render_architecture_workload(
+            Diagram,
+            Cluster,
+            lane_classes,
+            fallback,
+            outdir=outdir,
+            workload=wl_name,
+            workload_nodes=wl_groups[wl_name],
+        )
+        if path is not None:
+            out_paths.append(path)
+    return out_paths
 
 
 def is_mmdc_available() -> bool:
