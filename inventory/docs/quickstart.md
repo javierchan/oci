@@ -82,7 +82,7 @@ Optional flags:
   ```
   oci-inv run --diagram-depth 2
   ```
-  Per-VCN diagrams are skipped automatically if they exceed Mermaid text limits (summarized in `report/report.md`). Workload diagrams are split into overflow parts when needed; single-node slices that still exceed limits are skipped and summarized in the report.
+  Consolidated flowcharts at depth > 1 render a summary hierarchy with category counts (Compute/Network/Storage/Policy/Other) and no per-resource edges. Per-VCN diagrams are skipped automatically if they exceed Mermaid text limits (summarized in `report/report.md`). Workload diagrams are split into overflow parts when needed; single-node slices that still exceed limits are skipped and summarized in the report.
 - Tune schema validation for large outputs:
   ```
   oci-inv run --validate-schema sampled --validate-schema-sample 2000
@@ -133,7 +133,7 @@ out/<timestamp>/
     network/diagram.network.<vcn>.mmd # Mermaid diagram (per-VCN topology view; optional)
     workload/diagram.workload.<workload>.mmd # Mermaid diagram (workload/application view; optional)
     consolidated/diagram.consolidated.architecture.mmd # Mermaid diagram (all projections consolidated; optional)
-    consolidated/diagram.consolidated.flowchart.mmd # Mermaid diagram (consolidated flowchart; optional)
+    consolidated/diagram.consolidated.flowchart.mmd # Mermaid diagram (depth 1 global map; depth >1 summary hierarchy; optional)
   report/
     report.md               # inventory report
   diff/
