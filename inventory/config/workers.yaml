@@ -17,7 +17,7 @@ workers_enrich: 24
 workers_cost: 2
 workers_export: 2
 client_connection_pool_size: 24
-diagram_depth: 3
+diagram_depth: 1
 schema_validation: auto
 log_level: DEBUG
 json_logs: true

@@ -3763,24 +3763,6 @@ def _write_consolidated_mermaid(
         lines.extend(rel_lines)
 
     size = _mermaid_text_size(lines)
-    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
-        LOG.warning(
-            "Architecture consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
-            size,
-            depth,
-            depth - 1,
-        )
-        return _write_consolidated_mermaid(
-            outdir,
-            nodes,
-            edges,
-            diagram_paths,
-            depth=depth - 1,
-            _requested_depth=requested_depth,
-            path=consolidated,
-            summary=summary,
-            _allow_split=_allow_split,
-        )
     if size > MAX_MERMAID_TEXT_CHARS and _allow_split:
         split_modes = list(_split_modes) if _split_modes is not None else _split_mode_candidates(nodes, edges)
         split_mode, groups, remaining_modes = _next_split_groups(nodes, edges=edges, split_modes=split_modes)
@@ -3824,6 +3806,24 @@ def _write_consolidated_mermaid(
                 reason=f"split_{split_mode}",
             )
             return [stub_path] + part_paths
+    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
+        LOG.warning(
+            "Architecture consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
+            size,
+            depth,
+            depth - 1,
+        )
+        return _write_consolidated_mermaid(
+            outdir,
+            nodes,
+            edges,
+            diagram_paths,
+            depth=depth - 1,
+            _requested_depth=requested_depth,
+            path=consolidated,
+            summary=summary,
+            _allow_split=_allow_split,
+        )
     if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
         LOG.warning(
             "Architecture consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
