@@ -764,6 +764,42 @@ def _compartment_label(node: Node) -> str:
     return f"Compartment: {name}" if name else "Compartment"
 
 
+def _compartment_alias_map(nodes: Sequence[Node]) -> Dict[str, str]:
+    ids: Set[str] = set()
+    for n in nodes:
+        cid = str(n.get("compartmentId") or "")
+        if cid:
+            ids.add(cid)
+        if _is_node_type(n, "Compartment") and n.get("nodeId"):
+            ids.add(str(n.get("nodeId") or ""))
+    ordered = sorted(ids)
+    return {cid: f"Compartment-{i:02d}" for i, cid in enumerate(ordered, start=1)}
+
+
+def _compartment_label_by_id(
+    compartment_id: str,
+    *,
+    node_by_id: Mapping[str, Node],
+    alias_by_id: Mapping[str, str],
+) -> str:
+    cid = str(compartment_id or "")
+    if not cid or cid == "UNKNOWN":
+        return "Compartment: Unknown"
+    node = node_by_id.get(cid, {})
+    name = str(node.get("name") or "").strip()
+    if name and not name.startswith("ocid1"):
+        alias = alias_by_id.get(cid)
+        if alias:
+            return f"Compartment: {name} ({alias})"
+        return f"Compartment: {name}"
+    alias = alias_by_id.get(cid)
+    if alias:
+        return f"Compartment: {alias}"
+    if name:
+        return f"Compartment: {name}"
+    return "Compartment: Unknown"
+
+
 def _vcn_label(node: Node) -> str:
     meta = _node_metadata(node)
     cidr = _get_meta(meta, "cidr_block")
@@ -1066,12 +1102,15 @@ def _write_tenancy_view(
     path: Optional[Path] = None,
     legend_prefix: str = "tenancy",
     title: Optional[str] = None,
+    _requested_depth: Optional[int] = None,
 ) -> Path:
     path = path or (outdir / "diagram.tenancy.mmd")
 
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
     counters: Dict[str, int] = {}
     depth = max(1, min(depth, 3))
+    requested_depth = depth if _requested_depth is None else _requested_depth
+    alias_by_comp = _compartment_alias_map(nodes)
 
     comp_nodes = [n for n in nodes if _is_node_type(n, "Compartment") and n.get("nodeId")]
     comp_ids = {str(n.get("nodeId") or "") for n in comp_nodes}
@@ -1149,19 +1188,28 @@ def _write_tenancy_view(
     lines.append("  direction LR")
 
     if regions:
+        region_group_id = _tenancy_mermaid_id("Regions", "Regions", counters)
+        lines.append(f"  subgraph {region_group_id}[\"Regions\"]")
+        lines.append("    direction TB")
         for region in regions:
             region_label = _tenancy_safe_label("Region", region)
             region_id = _tenancy_mermaid_id("Region", region_label, counters)
-            lines.append(f"  {region_id}[\"{region_label}\"]")
+            lines.append(f"    {region_id}[\"{region_label}\"]")
+        lines.append("  end")
+
+    comp_group_id = _tenancy_mermaid_id("Compartments", "Compartments", counters)
+    lines.append(f"  subgraph {comp_group_id}[\"Compartments\"]")
+    lines.append("    direction TB")
 
     vcn_node_ids: Dict[str, str] = {}
-    for cid in sorted(top_level_ids):
-        comp_node = node_by_id.get(cid, {"name": cid})
-        comp_name = str(comp_node.get("name") or "").strip()
-        comp_label = _tenancy_safe_label("Compartment", comp_name)
+    comp_labels: Dict[str, str] = {
+        cid: _compartment_label_by_id(cid, node_by_id=node_by_id, alias_by_id=alias_by_comp) for cid in top_level_ids
+    }
+    for cid in sorted(top_level_ids, key=lambda c: (comp_labels.get(c, ""), c)):
+        comp_label = comp_labels.get(cid) or "Compartment: Unknown"
         comp_id = _tenancy_mermaid_id("Comp", comp_label, counters)
-        lines.append(f"  subgraph {comp_id}[\"{comp_label}\"]")
-        lines.append("    direction TB")
+        lines.append(f"    subgraph {comp_id}[\"{comp_label}\"]")
+        lines.append("      direction TB")
 
         if depth >= 2:
             comp_nodes_list = [n for n in nodes_by_root.get(cid, []) if not _is_node_type(n, "Compartment")]
@@ -1171,10 +1219,10 @@ def _write_tenancy_view(
                 vcn_name = str(vcn.get("name") or "").strip()
                 vcn_label = _tenancy_safe_label("VCN", vcn_name)
                 vcn_group_id = _tenancy_mermaid_id("VCN", vcn_label, counters)
-                lines.append(f"    subgraph {vcn_group_id}[\"{vcn_label}\"]")
-                lines.append("      direction TB")
+                lines.append(f"      subgraph {vcn_group_id}[\"{vcn_label}\"]")
+                lines.append("        direction TB")
                 vcn_node_id = _tenancy_mermaid_id("VCNNode", vcn_label, counters)
-                lines.append(f"      {vcn_node_id}[\"{vcn_label}\"]")
+                lines.append(f"        {vcn_node_id}[\"{vcn_label}\"]")
                 vcn_node_ids[vcn_id] = vcn_node_id
 
                 if depth >= 3:
@@ -1183,13 +1231,13 @@ def _write_tenancy_view(
                     gateway_counts = {k: v for k, v in gateway_counts.items() if k in gateway_keys}
                     if gateway_counts:
                         edge_id = _tenancy_mermaid_id("Edge", f"{vcn_label}_edge", counters)
-                        lines.append(f"      subgraph {edge_id}[\"Network Edge\"]")
-                        lines.append("        direction TB")
+                        lines.append(f"        subgraph {edge_id}[\"Network Edge\"]")
+                        lines.append("          direction TB")
                         for gw_label in sorted(gateway_counts.keys()):
                             count = gateway_counts[gw_label]
                             gw_id = _tenancy_mermaid_id("Gateway", f"{vcn_label}_{gw_label}", counters)
-                            lines.append(f"        {gw_id}[\"{gw_label} (n={count})\"]")
-                        lines.append("      end")
+                            lines.append(f"          {gw_id}[\"{gw_label} (n={count})\"]")
+                        lines.append("        end")
 
                 vcn_subnets = [
                     sn
@@ -1202,8 +1250,8 @@ def _write_tenancy_view(
                     sn_name = str(sn.get("name") or "").strip()
                     subnet_label = _tenancy_safe_label("Subnet", sn_name)
                     subnet_group_id = _tenancy_mermaid_id("Subnet", subnet_label, counters)
-                    lines.append(f"      subgraph {subnet_group_id}[\"{subnet_label}\"]")
-                    lines.append("        direction TB")
+                    lines.append(f"        subgraph {subnet_group_id}[\"{subnet_label}\"]")
+                    lines.append("          direction TB")
 
                     if depth >= 3:
                         attached = [
@@ -1220,11 +1268,11 @@ def _write_tenancy_view(
                         for label in sorted(buckets.keys()):
                             count = buckets[label]
                             agg_id = _tenancy_mermaid_id("Agg", f"{subnet_label}_{label}", counters)
-                            lines.append(f"        {agg_id}[\"{label} (n={count})\"]")
+                            lines.append(f"          {agg_id}[\"{label} (n={count})\"]")
 
-                    lines.append("      end")
+                    lines.append("        end")
 
-                lines.append("    end")
+                lines.append("      end")
 
             if depth >= 3:
                 out_nodes: List[Node] = []
@@ -1239,8 +1287,8 @@ def _write_tenancy_view(
 
                 if out_nodes:
                     out_id = _tenancy_mermaid_id("OutOfVcn", f"{comp_label}_out", counters)
-                    lines.append(f"    subgraph {out_id}[\"Out-of-VCN\"]")
-                    lines.append("      direction TB")
+                    lines.append(f"      subgraph {out_id}[\"Out-of-VCN\"]")
+                    lines.append("        direction TB")
                     buckets: Dict[str, int] = {}
                     for n in out_nodes:
                         label = _tenancy_aggregate_label(n)
@@ -1248,11 +1296,12 @@ def _write_tenancy_view(
                     for label in sorted(buckets.keys()):
                         count = buckets[label]
                         agg_id = _tenancy_mermaid_id("Agg", f"{comp_label}_{label}", counters)
-                        lines.append(f"      {agg_id}[\"{label} (n={count})\"]")
-                    lines.append("    end")
+                        lines.append(f"        {agg_id}[\"{label} (n={count})\"]")
+                    lines.append("      end")
 
-        lines.append("  end")
+        lines.append("    end")
 
+    lines.append("  end")
     lines.append("end")
 
     if depth >= 3:
@@ -1283,6 +1332,46 @@ def _write_tenancy_view(
                 lines.append(_render_edge(vcn_node_id, oci_services_id, "SGW", dotted=False))
             if "Drg" in gateways:
                 lines.append(_render_edge(vcn_node_id, customer_net_id, "DRG", dotted=False))
+
+    size = _mermaid_text_size(lines)
+    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
+        LOG.warning(
+            "Tenancy diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
+            size,
+            depth,
+            depth - 1,
+        )
+        return _write_tenancy_view(
+            outdir,
+            nodes,
+            edges,
+            depth=depth - 1,
+            path=path,
+            legend_prefix=legend_prefix,
+            title=title,
+            _requested_depth=requested_depth,
+        )
+    if depth != requested_depth:
+        lines.insert(
+            1,
+            (
+                f"%% NOTE: tenancy depth reduced from {requested_depth} to {depth} "
+                "to stay within Mermaid text size limits."
+            ),
+        )
+    if size > MAX_MERMAID_TEXT_CHARS:
+        LOG.warning(
+            "Tenancy diagram exceeds Mermaid max text size (%s chars) at depth %s; diagram may not render.",
+            size,
+            depth,
+        )
+        lines.insert(
+            1,
+            (
+                f"%% WARNING: diagram text size {size} exceeds Mermaid limit {MAX_MERMAID_TEXT_CHARS} "
+                "and may not render."
+            ),
+        )
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
@@ -2515,13 +2604,17 @@ def _write_consolidated_mermaid(
         return "server"
 
     include_workloads = depth >= 2
-    include_edges = depth >= 3
+    include_edges = depth >= 2
     aggregate_workloads = depth == 2
     include_out_of_vcn = depth >= 3
     include_vcn_level = depth >= 3
+    edge_allowlist: Optional[Set[str]] = None
+    if depth == 2:
+        edge_allowlist = {"IN_VCN", "IN_SUBNET", "ATTACHED_TO_VCN", "ATTACHED_TO_DRG"}
 
     lines: List[str] = ["architecture-beta"]
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
+    alias_by_comp = _compartment_alias_map(nodes)
     vcn_owner_by_id: Dict[str, str] = {
         str(n.get("nodeId") or ""): str(n.get("compartmentId") or "") or "UNKNOWN"
         for n in nodes
@@ -2607,6 +2700,8 @@ def _write_consolidated_mermaid(
         sid = _service_id("node_", ocid)
         
         raw_label = _arch_node_label(node)
+        if _is_node_type(node, "Compartment"):
+            raw_label = _compartment_label_by_id(ocid, node_by_id=node_by_id, alias_by_id=alias_by_comp)
         # Apply health badge if enrichment failed
         if node.get("enrichStatus") == "ERROR":
             raw_label = f"🔴 {raw_label}"
@@ -2707,8 +2802,12 @@ def _write_consolidated_mermaid(
                 type_labels = {_resource_type_label(n) for n in candidates}
                 comp_use_categories[cid] = len(type_labels) > 5
 
-        for cid in sorted(nodes_by_comp.keys()):
-            comp_label = "Compartment: Unknown" if cid == "UNKNOWN" else _compartment_label(node_by_id.get(cid, {"name": cid}))
+        comp_labels: Dict[str, str] = {
+            cid: _compartment_label_by_id(cid, node_by_id=node_by_id, alias_by_id=alias_by_comp)
+            for cid in nodes_by_comp.keys()
+        }
+        for cid in sorted(nodes_by_comp.keys(), key=lambda c: (comp_labels.get(c, ""), c)):
+            comp_label = comp_labels.get(cid) or "Compartment: Unknown"
             comp_group_id = _service_id("comp_", f"{reg}:{cid}")
             lines.append(f"    group {comp_group_id}(cloud)[{_arch_label(comp_label, max_len=80)}] in {region_id}")
 
@@ -2738,14 +2837,21 @@ def _write_consolidated_mermaid(
                     if _is_node_type(n, "Vcn", "Subnet", *_NETWORK_GATEWAY_NODETYPES)
                 ]
 
-            comp_vcn_ids: List[str] = sorted(list({
-                str(n.get("nodeId") or "")
-                for n in comp_nodes
-                if _is_node_type(n, "Vcn") and n.get("nodeId")
-            }))
-            
-            # Sort VCNs: Hubs first, then Spokes
-            comp_vcn_ids.sort(key=lambda x: (0 if x in hub_vcn_ids else 1, x))
+            comp_vcn_ids: List[str] = sorted(
+                {
+                    str(n.get("nodeId") or "")
+                    for n in comp_nodes
+                    if _is_node_type(n, "Vcn") and n.get("nodeId")
+                }
+            )
+
+            # Sort VCNs: hubs first, then name, then OCID for stability.
+            def _vcn_sort_key(ocid: str) -> Tuple[int, str, str]:
+                node = node_by_id.get(ocid, {})
+                name = str(node.get("name") or "")
+                return (0 if ocid in hub_vcn_ids else 1, name, ocid)
+
+            comp_vcn_ids.sort(key=_vcn_sort_key)
 
             for vcn_ocid in comp_vcn_ids:
                 if not vcn_ocid:
@@ -2815,7 +2921,11 @@ def _write_consolidated_mermaid(
                     if att and att.subnet_ocid and att.vcn_ocid == vcn_ocid:
                         vcn_subnet_ids.add(att.subnet_ocid)
 
-                for sn_ocid in sorted(vcn_subnet_ids):
+                def _subnet_sort_key(ocid: str) -> Tuple[str, str]:
+                    node = node_by_id.get(ocid, {})
+                    return (str(node.get("name") or ""), ocid)
+
+                for sn_ocid in sorted(vcn_subnet_ids, key=_subnet_sort_key):
                     sn = node_by_id.get(sn_ocid, {"name": sn_ocid, "nodeType": "Subnet"})
                     subnet_group_id = _service_id("subnet_", f"{cid}:{vcn_ocid}:{sn_ocid}")
                     lines.append(f"    group {subnet_group_id}(cloud)[{_arch_label(_subnet_label(sn), max_len=80)}] in {vcn_group_id}")
@@ -2989,12 +3099,31 @@ def _write_consolidated_mermaid(
             edges,
             node_ids=rendered_node_ids,
             node_id_map=node_service_ids,
+            allowlist=edge_allowlist,
             include_admin_edges=False,
             seen_pairs=seen_arch_edges,
         )
         lines.extend(rel_lines)
 
     size = _mermaid_text_size(lines)
+    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
+        LOG.warning(
+            "Architecture consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
+            size,
+            depth,
+            depth - 1,
+        )
+        return _write_consolidated_mermaid(
+            outdir,
+            nodes,
+            edges,
+            diagram_paths,
+            depth=depth - 1,
+            _requested_depth=requested_depth,
+            path=consolidated,
+            summary=summary,
+            _allow_split=_allow_split,
+        )
     if size > MAX_MERMAID_TEXT_CHARS and _allow_split:
         split_mode, groups = _consolidated_split_groups(nodes)
         if len(groups) > 1:
@@ -3036,24 +3165,6 @@ def _write_consolidated_mermaid(
                 reason=f"split_{split_mode}",
             )
             return [stub_path] + part_paths
-    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
-        LOG.warning(
-            "Architecture consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
-            size,
-            depth,
-            depth - 1,
-        )
-        return _write_consolidated_mermaid(
-            outdir,
-            nodes,
-            edges,
-            diagram_paths,
-            depth=depth - 1,
-            _requested_depth=requested_depth,
-            path=consolidated,
-            summary=summary,
-            _allow_split=_allow_split,
-        )
     if depth != requested_depth:
         lines.insert(
             1,
@@ -3094,6 +3205,23 @@ def _write_consolidated_flowchart(
     requested_depth = depth if _requested_depth is None else _requested_depth
     lines = _global_flowchart_lines(nodes)
     size = _mermaid_text_size(lines)
+    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
+        LOG.warning(
+            "Flowchart consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
+            size,
+            depth,
+            depth - 1,
+        )
+        return _write_consolidated_flowchart(
+            outdir,
+            nodes,
+            edges,
+            depth=depth - 1,
+            _requested_depth=requested_depth,
+            path=path,
+            summary=summary,
+            _allow_split=_allow_split,
+        )
     if size > MAX_MERMAID_TEXT_CHARS and _allow_split:
         split_mode, groups = _consolidated_split_groups(nodes)
         if len(groups) > 1:
@@ -3134,23 +3262,6 @@ def _write_consolidated_flowchart(
                 reason=f"split_{split_mode}",
             )
             return [stub_path] + part_paths
-    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
-        LOG.warning(
-            "Flowchart consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
-            size,
-            depth,
-            depth - 1,
-        )
-        return _write_consolidated_flowchart(
-            outdir,
-            nodes,
-            edges,
-            depth=depth - 1,
-            _requested_depth=requested_depth,
-            path=path,
-            summary=summary,
-            _allow_split=_allow_split,
-        )
     insert_at = 1 if lines else 0
     if requested_depth > 1:
         lines.insert(insert_at, "%% NOTE: global map renders at depth 1 (tenancy + regions).")
