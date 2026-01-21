@@ -20,7 +20,8 @@ Create a fresh virtual environment and install the package:
 python -m venv .venv
 . .venv/bin/activate
 pip install -U pip
-pip install .
+pip install .[diagrams]
+dot -V  # ensure Graphviz is installed and on PATH
 ```
 
 Verify installation:
@@ -76,7 +77,7 @@ Optional flags:
   ```
 - Disable diagram generation:
   ```
-  oci-inv run --no-diagrams
+  oci-inv run --no-diagrams --no-architecture-diagrams
   ```
 - Limit diagram volume (large tenancies):
   ```
@@ -94,7 +95,7 @@ Optional flags:
   Default time range (if omitted) is month-to-date, normalized to 00:00:00 UTC.
 - Cost report without diagrams:
   ```
-  oci-inv run --no-diagrams --cost-report --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD
+  oci-inv run --no-diagrams --no-architecture-diagrams --cost-report --cost-start 2026-01-01T00:00:00Z --cost-end 2026-01-31T00:00:00Z --cost-currency USD
   ```
 - Cost report with OneSubscription usage:
   ```
@@ -133,6 +134,7 @@ out/<timestamp>/
     network/diagram.network.<vcn>.mmd # Mermaid diagram (per-VCN topology view; optional)
     workload/diagram.workload.<workload>.mmd # Mermaid diagram (workload/application view; optional)
     consolidated/diagram.consolidated.flowchart.mmd # Mermaid diagram (depth 1 global map; depth >1 summary hierarchy; optional)
+    architecture/diagram.arch.*.svg # Architecture SVG diagrams (optional; Graphviz required)
   report/
     report.md               # inventory report
   diff/

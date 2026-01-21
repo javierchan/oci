@@ -50,6 +50,14 @@ reference zip files and are cited with file paths and line numbers.
 
 ---
 
+### Tooling Requirements
+
+- Mermaid diagrams require Mermaid CLI (`mmdc`) on PATH.
+- Architecture SVG diagrams require Graphviz (`dot`) on PATH and the Python diagrams extra
+  installed in the repo `.venv` (`pip install -e ".[diagrams]"`).
+
+---
+
 ### 1) Consolidated Flowchart Diagram (Global Summary)
 
 - Applies to `diagram.consolidated.flowchart.mmd`.
@@ -112,6 +120,21 @@ Noise reduction:
 Visual requirements:
 - Global direction must be LR; inside compartments must be TB.
 - Mermaid node IDs must be semantic (no hashed/hex IDs).
+
+---
+
+### 1c) Architecture SVG Diagrams (Overview)
+
+Applies to `diagrams/architecture/diagram.arch.*.svg`. These are optional, overview-oriented SVG diagrams rendered via
+Graphviz and the Python diagrams library.
+
+- Architecture diagrams are additive and do not replace Mermaid flowchart outputs.
+- Scope is expressed in the filename:
+  - `diagram.arch.tenancy.svg` (tenancy overview)
+  - `diagram.arch.vcn.<vcn>.svg` (VCN scope overview)
+  - `diagram.arch.workload.<workload>.svg` (workload scope overview)
+- These views MAY aggregate or summarize resources (e.g., per-lane counts). They are intended for readability, not full-detail.
+- Regions and AD/FD remain overlays; do not introduce extra containment levels solely for geography.
 
 ---
 
@@ -330,6 +353,7 @@ Common scope types include:
 Each diagram MUST have an implied or documented scope, expressed via its filename and/or comments in the `.mmd` output
 (`diagram.workload.<workload>.mmd`, `diagram.network.<vcn>.mmd`, `diagram.tenancy.mmd`, split parts, etc.).
 The diagram content SHOULD align with how the scope was derived from nodes, tags, and relationships.
+Architecture SVGs express scope via filename (`diagram.arch.tenancy.svg`, `diagram.arch.vcn.<vcn>.svg`, `diagram.arch.workload.<workload>.svg`).
 
 The generator emits `%% Scope:` and `%% View:` comments near the top of each `.mmd` file to make scope and detail level explicit.
 

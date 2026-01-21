@@ -33,6 +33,9 @@ dependencies = [
 wizard = [
   "rich>=13.7.0",
 ]
+diagrams = [
+  "diagrams>=0.23.4",
+]
 
 [project.scripts]
 oci-inv = "oci_inventory.cli:main"

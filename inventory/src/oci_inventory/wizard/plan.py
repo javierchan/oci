@@ -81,6 +81,7 @@ def build_run_plan(
     include_terminated: Optional[bool] = None,
     validate_diagrams: Optional[bool] = None,
     diagrams: Optional[bool] = None,
+    architecture_diagrams: Optional[bool] = None,
     schema_validation: Optional[str] = None,
     schema_sample_records: Optional[int] = None,
     diagram_depth: Optional[int] = None,
@@ -151,6 +152,10 @@ def build_run_plan(
         argv.append("--diagrams")
     elif diagrams is False:
         argv.append("--no-diagrams")
+    if architecture_diagrams is True:
+        argv.append("--architecture-diagrams")
+    elif architecture_diagrams is False:
+        argv.append("--no-architecture-diagrams")
 
     _maybe_add(argv, "--validate-schema", schema_validation)
     if schema_sample_records is not None:

@@ -108,6 +108,12 @@ def is_mmdc_available() -> bool:
     return _is_mmdc_available()
 
 
+def is_graphviz_available() -> bool:
+    from .export.diagram_projections import is_graphviz_available as _is_graphviz_available
+
+    return _is_graphviz_available()
+
+
 def validate_mermaid_diagrams_with_mmdc(outdir: Path, *, glob_pattern: str = "diagram*.mmd") -> List[Path]:
     from .export.diagram_projections import (
         validate_mermaid_diagrams_with_mmdc as _validate_mermaid_diagrams_with_mmdc,
@@ -133,6 +139,18 @@ def write_diagram_projections(
         diagram_depth=diagram_depth,
         summary=summary,
     )
+
+
+def write_architecture_diagrams(
+    outdir: Path,
+    nodes: Sequence[Dict[str, Any]],
+    edges: Sequence[Dict[str, Any]],
+    *,
+    summary: Optional[Dict[str, Any]] = None,
+) -> List[Path]:
+    from .export.diagram_projections import write_architecture_diagrams as _write_architecture_diagrams
+
+    return _write_architecture_diagrams(outdir, nodes, edges, summary=summary)
 
 
 class _StepTimers:
@@ -1732,12 +1750,13 @@ def _organize_diagrams(paths: OutputPaths) -> List[Path]:
         ("diagram.network.", paths.diagrams_network_dir),
         ("diagram.workload.", paths.diagrams_workload_dir),
         ("diagram.consolidated.", paths.diagrams_consolidated_dir),
+        ("diagram.arch.", paths.diagrams_architecture_dir),
     )
     moved: List[Path] = []
     for entry in paths.diagrams_dir.iterdir():
         if not entry.is_file():
             continue
-        if entry.suffix != ".mmd":
+        if entry.suffix not in {".mmd", ".svg"}:
             continue
         for prefix, target_dir in buckets:
             if entry.name.startswith(prefix):
@@ -2165,8 +2184,9 @@ def cmd_run(cfg: RunConfig) -> int:
             timers=timers,
         )
 
-        # Graph artifacts (nodes/edges + Mermaid)
-        if cfg.diagrams:
+        # Graph artifacts (nodes/edges + diagrams)
+        diagrams_enabled = cfg.diagrams or cfg.architecture_diagrams
+        if diagrams_enabled:
             _log_event(
                 LOG,
                 logging.INFO,
@@ -2198,7 +2218,7 @@ def cmd_run(cfg: RunConfig) -> int:
             paths.graph_dir.mkdir(parents=True, exist_ok=True)
             paths.diagrams_dir.mkdir(parents=True, exist_ok=True)
             write_graph(paths.graph_dir, graph.iter_nodes(), edges_iter)
-            if cfg.diagram_depth < 3:
+            if cfg.diagrams and cfg.diagram_depth < 3:
                 _log_event(
                     LOG,
                     logging.INFO,
@@ -2211,13 +2231,36 @@ def cmd_run(cfg: RunConfig) -> int:
             diagram_summary = {}
             nodes = graph.materialize_nodes()
             edges = graph.materialize_edges(filtered=True)
-            diagram_paths = write_diagram_projections(
-                paths.diagrams_dir,
-                nodes,
-                edges,
-                diagram_depth=cfg.diagram_depth,
-                summary=diagram_summary,
-            )
+            diagram_paths: List[Path] = []
+            if cfg.diagrams:
+                diagram_paths.extend(
+                    write_diagram_projections(
+                        paths.diagrams_dir,
+                        nodes,
+                        edges,
+                        diagram_depth=cfg.diagram_depth,
+                        summary=diagram_summary,
+                    )
+                )
+            if cfg.architecture_diagrams:
+                if not is_graphviz_available():
+                    _log_event(
+                        LOG,
+                        logging.WARNING,
+                        "Architecture diagrams requested but Graphviz 'dot' was not found on PATH",
+                        step="diagrams",
+                        phase="warning",
+                        timers=timers,
+                    )
+                else:
+                    diagram_paths.extend(
+                        write_architecture_diagrams(
+                            paths.diagrams_dir,
+                            nodes,
+                            edges,
+                            summary=diagram_summary,
+                        )
+                    )
             _organize_diagrams(paths)
             _log_event(
                 LOG,
@@ -2239,13 +2282,13 @@ def cmd_run(cfg: RunConfig) -> int:
             step="schema",
             phase="start",
             timers=timers,
-            expect_graph=cfg.diagrams,
+            expect_graph=diagrams_enabled,
             mode=cfg.schema_validation,
             sample_records=cfg.schema_sample_records,
         )
         validation = _validate_outdir_schema(
             cfg.outdir,
-            expect_graph=cfg.diagrams,
+            expect_graph=diagrams_enabled,
             mode=cfg.schema_validation,
             sample_limit=cfg.schema_sample_records,
         )

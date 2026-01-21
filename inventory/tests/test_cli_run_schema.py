@@ -110,6 +110,7 @@ def test_cli_run_can_skip_diagrams(tmp_path, monkeypatch) -> None:
             "--query",
             "query all resources",
             "--no-diagrams",
+            "--no-architecture-diagrams",
         ]
     )
     assert command == "run"

@@ -120,19 +120,21 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
   - Required fields: `schema_version`, `total_discovered`, `enriched_ok`, `not_implemented`, `errors`,
     `counts_by_resource_type`, `counts_by_enrich_status`, `counts_by_resource_type_and_status`.
 
-- `graph/graph_nodes.jsonl` (optional; generated when diagrams are enabled)
+- `graph/graph_nodes.jsonl` (optional; generated when Mermaid or architecture diagrams are enabled)
   - Node projection of inventory records.
   - Required fields: `nodeId`, `nodeType`, `nodeCategory`, `name`, `region`, `compartmentId`,
     `metadata`, `tags`, `enrichStatus`, `enrichError`.
 
-- `graph/graph_edges.jsonl` (optional; generated when diagrams are enabled)
+- `graph/graph_edges.jsonl` (optional; generated when Mermaid or architecture diagrams are enabled)
   - Graph edges (relationships) with node typing hints.
   - Required fields: `source_ocid`, `target_ocid`, `relation_type`, `source_type`, `target_type`, `region`.
 
   - Raw Mermaid graph export (full graph, intended for debugging).
 
-- `diagrams/tenancy/diagram.tenancy.mmd`, `diagrams/network/diagram.network.*.mmd`, `diagrams/workload/diagram.workload.*.mmd`, `diagrams/workload/diagram.workload.*.partNN.mmd`, `diagrams/consolidated/diagram.consolidated.flowchart.mmd`, `diagrams/consolidated/diagram.consolidated.flowchart.{region|compartment}.*.mmd` (optional; generated when diagrams are enabled)
+- `diagrams/tenancy/diagram.tenancy.mmd`, `diagrams/network/diagram.network.*.mmd`, `diagrams/workload/diagram.workload.*.mmd`, `diagrams/workload/diagram.workload.*.partNN.mmd`, `diagrams/consolidated/diagram.consolidated.flowchart.mmd`, `diagrams/consolidated/diagram.consolidated.flowchart.{region|compartment}.*.mmd` (optional; generated when Mermaid diagrams are enabled)
   - Mermaid projections derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
+- `diagrams/architecture/diagram.arch.*.svg` (optional; generated when architecture diagrams are enabled)
+  - SVG architecture projections rendered via Graphviz (`dot`) and the Python diagrams library.
 - Consolidated flowcharts honor `--diagram-depth` (1=global regions only, 2+=summary hierarchy with category counts and no per-resource edges).
   - Consolidated flowcharts auto-reduce depth when Mermaid limits are exceeded; if still oversized at depth 1, they are split by region (preferred) or top-level compartment and the base diagram becomes a stub that references the split outputs.
   - Workload diagrams are full-detail for the workload scope; oversized diagrams are split into deterministic overflow parts, and single-node slices that still exceed Mermaid limits are skipped and summarized in the report.

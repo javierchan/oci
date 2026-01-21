@@ -40,6 +40,7 @@ class OutputPaths:
     diagrams_network_dir: Path
     diagrams_workload_dir: Path
     diagrams_consolidated_dir: Path
+    diagrams_architecture_dir: Path
     diff_dir: Path
     logs_dir: Path
     inventory_jsonl: Path
@@ -64,6 +65,7 @@ def resolve_output_paths(outdir: Path) -> OutputPaths:
     diagrams_network_dir = diagrams_dir / "network"
     diagrams_workload_dir = diagrams_dir / "workload"
     diagrams_consolidated_dir = diagrams_dir / "consolidated"
+    diagrams_architecture_dir = diagrams_dir / "architecture"
     diff_dir = root / "diff"
     logs_dir = root / "logs"
 
@@ -78,6 +80,7 @@ def resolve_output_paths(outdir: Path) -> OutputPaths:
         diagrams_network_dir=diagrams_network_dir,
         diagrams_workload_dir=diagrams_workload_dir,
         diagrams_consolidated_dir=diagrams_consolidated_dir,
+        diagrams_architecture_dir=diagrams_architecture_dir,
         diff_dir=diff_dir,
         logs_dir=logs_dir,
         inventory_jsonl=inventory_dir / "inventory.jsonl",

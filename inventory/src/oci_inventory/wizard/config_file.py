@@ -110,6 +110,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       client_connection_pool_size: optional int
       validate_diagrams: optional bool
       diagrams: optional bool
+      architecture_diagrams: optional bool
       schema_validation: optional (auto|full|sampled|off)
       schema_sample_records: optional int
       diagram_depth: optional int (1-3)
@@ -206,6 +207,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
         include_terminated = _as_bool(cfg.get("include_terminated"))
         validate_diagrams = _as_bool(cfg.get("validate_diagrams"))
         diagrams = _as_bool(cfg.get("diagrams"))
+        architecture_diagrams = _as_bool(cfg.get("architecture_diagrams"))
         schema_validation = _as_str(cfg.get("schema_validation"))
         schema_sample_records = _as_int(cfg.get("schema_sample_records"))
         diagram_depth = _as_int(cfg.get("diagram_depth"))
@@ -239,6 +241,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             include_terminated=include_terminated,
             validate_diagrams=validate_diagrams,
             diagrams=diagrams,
+            architecture_diagrams=architecture_diagrams,
             schema_validation=schema_validation,
             schema_sample_records=schema_sample_records,
             diagram_depth=diagram_depth,

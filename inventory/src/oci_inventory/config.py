@@ -40,6 +40,7 @@ ALLOWED_CONFIG_KEYS = {
     "genai_summary",
     "validate_diagrams",
     "diagrams",
+    "architecture_diagrams",
     "schema_validation",
     "schema_sample_records",
     "diagram_depth",
@@ -69,6 +70,7 @@ BOOL_CONFIG_KEYS = {
     "genai_summary",
     "validate_diagrams",
     "diagrams",
+    "architecture_diagrams",
     "cost_report",
 }
 INT_CONFIG_KEYS = {
@@ -127,6 +129,7 @@ class RunConfig:
     genai_summary: bool = False
     validate_diagrams: bool = False
     diagrams: bool = True
+    architecture_diagrams: bool = True
     schema_validation: str = DEFAULT_SCHEMA_VALIDATION
     schema_sample_records: int = DEFAULT_SCHEMA_SAMPLE_RECORDS
     diagram_depth: int = DEFAULT_DIAGRAM_DEPTH
@@ -440,6 +443,15 @@ def load_run_config(
         help="Generate graph artifacts and Mermaid diagram projections (disable with --no-diagrams).",
     )
     p_run.add_argument(
+        "--architecture-diagrams",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Generate architecture diagrams (SVG) using the diagrams library + Graphviz "
+            "(disable with --no-architecture-diagrams)."
+        ),
+    )
+    p_run.add_argument(
         "--validate-schema",
         choices=["auto", "full", "sampled", "off"],
         default=None,
@@ -608,6 +620,7 @@ def load_run_config(
         "genai_summary": False,
         "validate_diagrams": False,
         "diagrams": True,
+        "architecture_diagrams": True,
         "schema_validation": DEFAULT_SCHEMA_VALIDATION,
         "schema_sample_records": DEFAULT_SCHEMA_SAMPLE_RECORDS,
         "diagram_depth": DEFAULT_DIAGRAM_DEPTH,
@@ -656,6 +669,7 @@ def load_run_config(
             "genai_summary": _env_bool("OCI_INV_GENAI_SUMMARY"),
             "validate_diagrams": _env_bool("OCI_INV_VALIDATE_DIAGRAMS"),
             "diagrams": _env_bool("OCI_INV_DIAGRAMS"),
+            "architecture_diagrams": _env_bool("OCI_INV_ARCHITECTURE_DIAGRAMS"),
             "schema_validation": _env_str("OCI_INV_SCHEMA_VALIDATION"),
             "schema_sample_records": _env_int("OCI_INV_SCHEMA_SAMPLE_RECORDS"),
             "diagram_depth": _env_int("OCI_INV_DIAGRAM_DEPTH"),
@@ -695,6 +709,7 @@ def load_run_config(
             "genai_summary": getattr(ns, "genai_summary", None),
             "validate_diagrams": getattr(ns, "validate_diagrams", None),
             "diagrams": getattr(ns, "diagrams", None),
+            "architecture_diagrams": getattr(ns, "architecture_diagrams", None),
             "schema_validation": getattr(ns, "validate_schema", None),
             "schema_sample_records": getattr(ns, "validate_schema_sample", None),
             "diagram_depth": getattr(ns, "diagram_depth", None),
@@ -810,6 +825,7 @@ def load_run_config(
         genai_summary=bool(merged.get("genai_summary")),
         validate_diagrams=bool(merged.get("validate_diagrams")),
         diagrams=bool(merged.get("diagrams")),
+        architecture_diagrams=bool(merged.get("architecture_diagrams")),
         schema_validation=schema_validation,
         schema_sample_records=schema_sample_records,
         diagram_depth=diagram_depth,
@@ -855,6 +871,7 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "genai_summary": cfg.genai_summary,
         "validate_diagrams": cfg.validate_diagrams,
         "diagrams": cfg.diagrams,
+        "architecture_diagrams": cfg.architecture_diagrams,
         "schema_validation": cfg.schema_validation,
         "schema_sample_records": cfg.schema_sample_records,
         "diagram_depth": cfg.diagram_depth,
