@@ -132,7 +132,6 @@ out/<timestamp>/
     tenancy/diagram.tenancy.mmd # Mermaid diagram (tenancy/compartment view; optional)
     network/diagram.network.<vcn>.mmd # Mermaid diagram (per-VCN topology view; optional)
     workload/diagram.workload.<workload>.mmd # Mermaid diagram (workload/application view; optional)
-    consolidated/diagram.consolidated.architecture.mmd # Mermaid diagram (all projections consolidated; optional)
     consolidated/diagram.consolidated.flowchart.mmd # Mermaid diagram (depth 1 global map; depth >1 summary hierarchy; optional)
   report/
     report.md               # inventory report

@@ -68,12 +68,13 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
 
     assert (tmp_path / "diagram.tenancy.mmd").exists()
     assert (tmp_path / "diagram.network.prod_vcn.mmd").exists()
-    assert (tmp_path / "diagram.consolidated.architecture.mmd").exists()
     assert (tmp_path / "diagram.consolidated.flowchart.mmd").exists()
 
     # Sanity-check Mermaid structure.
     tenancy = (tmp_path / "diagram.tenancy.mmd").read_text(encoding="utf-8")
     assert "flowchart LR" in tenancy.splitlines()[1]
+    assert "%% Scope: tenancy" in tenancy
+    assert "%% View: overview" in tenancy
     assert "subgraph" in tenancy
     assert "Functional Overlays" not in tenancy
     assert "IN_COMPARTMENT" not in tenancy
@@ -86,86 +87,14 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
 
     assert any(p.name == "diagram.network.prod_vcn.mmd" for p in paths)
 
-    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
-    assert consolidated.startswith("architecture-beta")
-    assert "group comp_" in consolidated
-    assert "service" in consolidated
-    assert "|IN_COMPARTMENT|" not in consolidated
-    assert "-.->" not in consolidated
-    for line in consolidated.splitlines():
-        if "-->" in line or "<--" in line:
-            assert ":" in line
+    network = (tmp_path / "diagram.network.prod_vcn.mmd").read_text(encoding="utf-8")
+    assert "%% Scope: vcn:Prod-VCN" in network
+    assert "%% View: full-detail" in network
 
     flowchart = (tmp_path / "diagram.consolidated.flowchart.mmd").read_text(encoding="utf-8")
     assert any(line.strip() == "flowchart TD" for line in flowchart.splitlines())
-
-
-def test_consolidated_subnet_group_id_scoped_by_vcn(tmp_path) -> None:
-    vcn_id = "ocid1.vcn.oc1..vcn"
-    subnet_id = "ocid1.subnet.oc1..subnet"
-    comp_id = "ocid1.compartment.oc1..comp"
-    records = [
-        {
-            "ocid": vcn_id,
-            "resourceType": "Vcn",
-            "displayName": "Prod-VCN",
-            "region": "mx-queretaro-1",
-            "compartmentId": comp_id,
-            "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
-            "enrichStatus": "OK",
-            "enrichError": None,
-        },
-        {
-            "ocid": subnet_id,
-            "resourceType": "Subnet",
-            "displayName": "Public-Subnet-1",
-            "region": "mx-queretaro-1",
-            "compartmentId": comp_id,
-            "details": {"metadata": {"vcn_id": vcn_id, "cidr_block": "10.0.1.0/24"}},
-            "enrichStatus": "OK",
-            "enrichError": None,
-        },
-    ]
-
-    nodes, edges = _build_graph_lists(tmp_path, records, [])
-    write_diagram_projections(tmp_path, nodes, edges)
-
-    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
-    slug = _slugify(_semantic_id_key(f"{comp_id}:{vcn_id}:{subnet_id}"), max_len=160)
-    assert f"group subnet_{slug}" in consolidated
-
-
-def test_consolidated_architecture_dedupes_vcn_groups(tmp_path) -> None:
-    vcn_id = "ocid1.vcn.oc1..vcn"
-    records = [
-        {
-            "ocid": vcn_id,
-            "resourceType": "Vcn",
-            "displayName": "Shared-VCN",
-            "region": "mx-queretaro-1",
-            "compartmentId": "ocid1.compartment.oc1..comp-a",
-            "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
-            "enrichStatus": "OK",
-            "enrichError": None,
-        },
-        {
-            "ocid": "ocid1.instance.oc1..inst",
-            "resourceType": "Instance",
-            "displayName": "consumer",
-            "region": "mx-queretaro-1",
-            "compartmentId": "ocid1.compartment.oc1..comp-b",
-            "details": {"metadata": {"vcn_id": vcn_id}},
-            "enrichStatus": "OK",
-            "enrichError": None,
-        },
-    ]
-
-    nodes, edges = _build_graph_lists(tmp_path, records, [])
-    write_diagram_projections(tmp_path, nodes, edges)
-
-    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
-    slug = _slugify(_semantic_id_key(vcn_id), max_len=160)
-    assert consolidated.count(f"group vcn_{slug}") == 1
+    assert "%% Scope: tenancy" in flowchart
+    assert "%% View: overview" in flowchart
 
 
 def test_consolidated_flowchart_depth_excludes_edges(tmp_path) -> None:
@@ -216,86 +145,29 @@ def test_consolidated_flowchart_splits_by_vcn_when_too_large(tmp_path, monkeypat
     assert len(part_paths) == 2
 
 
-def test_consolidated_architecture_splits_before_depth_reduction(tmp_path, monkeypatch) -> None:
-    from oci_inventory.export import diagram_projections
-
-    monkeypatch.setattr(diagram_projections, "MAX_MERMAID_TEXT_CHARS", 10)
+def test_diagram_guideline_checks_flag_ocid_labels(tmp_path) -> None:
     records = [
         {
-            "ocid": "ocid1.vcn.oc1..vcn1",
+            "ocid": "ocid1.vcn.oc1..vcn",
             "resourceType": "Vcn",
-            "displayName": "VCN-ASH",
-            "region": "us-ashburn-1",
-            "compartmentId": "ocid1.compartment.oc1..comp1",
+            "displayName": "team-ocid1.test-vcn",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
             "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
             "enrichStatus": "OK",
             "enrichError": None,
-        },
-        {
-            "ocid": "ocid1.vcn.oc1..vcn2",
-            "resourceType": "Vcn",
-            "displayName": "VCN-PHX",
-            "region": "us-phoenix-1",
-            "compartmentId": "ocid1.compartment.oc1..comp2",
-            "details": {"metadata": {"cidr_block": "10.1.0.0/16"}},
-            "enrichStatus": "OK",
-            "enrichError": None,
-        },
+        }
     ]
 
     nodes, edges = _build_graph_lists(tmp_path, records, [])
-    write_diagram_projections(tmp_path, nodes, edges, diagram_depth=3)
+    summary: dict = {}
+    write_diagram_projections(tmp_path, nodes, edges, summary=summary)
 
-    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
-    assert "NOTE: Consolidated diagram split by region" in consolidated
-    part_paths = sorted(tmp_path.glob("diagram.consolidated.architecture.region.*.mmd"))
-    assert len(part_paths) == 3
-    for part_path in part_paths:
-        part_text = part_path.read_text(encoding="utf-8")
-        assert (
-            "Depth reduced from 3 to 1" in part_text
-            or "NOTE: Consolidated diagram split by root compartment" in part_text
-            or "NOTE: Consolidated diagram split by VCN" in part_text
-        )
+    violations = summary.get("violations") or []
+    assert any(v.get("rule") == "no_ocids_in_labels" for v in violations)
 
 
-def test_consolidated_architecture_splits_by_root_compartment_single_region(tmp_path, monkeypatch) -> None:
-    from oci_inventory.export import diagram_projections
-
-    monkeypatch.setattr(diagram_projections, "MAX_MERMAID_TEXT_CHARS", 10)
-    records = [
-        {
-            "ocid": "ocid1.vcn.oc1..vcn1",
-            "resourceType": "Vcn",
-            "displayName": "VCN-A",
-            "region": "us-ashburn-1",
-            "compartmentId": "ocid1.compartment.oc1..comp1",
-            "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
-            "enrichStatus": "OK",
-            "enrichError": None,
-        },
-        {
-            "ocid": "ocid1.vcn.oc1..vcn2",
-            "resourceType": "Vcn",
-            "displayName": "VCN-B",
-            "region": "us-ashburn-1",
-            "compartmentId": "ocid1.compartment.oc1..comp2",
-            "details": {"metadata": {"cidr_block": "10.1.0.0/16"}},
-            "enrichStatus": "OK",
-            "enrichError": None,
-        },
-    ]
-
-    nodes, edges = _build_graph_lists(tmp_path, records, [])
-    write_diagram_projections(tmp_path, nodes, edges, diagram_depth=3)
-
-    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
-    assert "NOTE: Consolidated diagram split by root compartment" in consolidated
-    part_paths = sorted(tmp_path.glob("diagram.consolidated.architecture.root_compartment.*.mmd"))
-    assert len(part_paths) == 2
-
-
-def test_consolidated_architecture_depth2_aggregates_network_attached(tmp_path) -> None:
+def test_workload_diagram_includes_scope_view_comments(tmp_path) -> None:
     records = [
         {
             "ocid": "ocid1.vcn.oc1..vcn",
@@ -313,14 +185,20 @@ def test_consolidated_architecture_depth2_aggregates_network_attached(tmp_path) 
             "displayName": "Public-Subnet-1",
             "region": "mx-queretaro-1",
             "compartmentId": "ocid1.compartment.oc1..comp",
-            "details": {"metadata": {"vcn_id": "ocid1.vcn.oc1..vcn", "cidr_block": "10.0.1.0/24"}},
+            "details": {
+                "metadata": {
+                    "vcn_id": "ocid1.vcn.oc1..vcn",
+                    "cidr_block": "10.0.1.0/24",
+                    "prohibit_public_ip_on_vnic": False,
+                }
+            },
             "enrichStatus": "OK",
             "enrichError": None,
         },
         {
             "ocid": "ocid1.instance.oc1..inst1",
             "resourceType": "Instance",
-            "displayName": "edge-service-1",
+            "displayName": "demo-app-1",
             "region": "mx-queretaro-1",
             "compartmentId": "ocid1.compartment.oc1..comp",
             "details": {"metadata": {"vcn_id": "ocid1.vcn.oc1..vcn", "subnet_id": "ocid1.subnet.oc1..subnet"}},
@@ -330,7 +208,7 @@ def test_consolidated_architecture_depth2_aggregates_network_attached(tmp_path) 
         {
             "ocid": "ocid1.instance.oc1..inst2",
             "resourceType": "Instance",
-            "displayName": "edge-service-2",
+            "displayName": "demo-app-2",
             "region": "mx-queretaro-1",
             "compartmentId": "ocid1.compartment.oc1..comp",
             "details": {"metadata": {"vcn_id": "ocid1.vcn.oc1..vcn", "subnet_id": "ocid1.subnet.oc1..subnet"}},
@@ -338,25 +216,27 @@ def test_consolidated_architecture_depth2_aggregates_network_attached(tmp_path) 
             "enrichError": None,
         },
         {
-            "ocid": "ocid1.bucket.oc1..bucket",
-            "resourceType": "Bucket",
-            "displayName": "object-store",
+            "ocid": "ocid1.instance.oc1..inst3",
+            "resourceType": "Instance",
+            "displayName": "demo-app-3",
             "region": "mx-queretaro-1",
             "compartmentId": "ocid1.compartment.oc1..comp",
-            "details": {"metadata": {}},
+            "details": {"metadata": {"vcn_id": "ocid1.vcn.oc1..vcn", "subnet_id": "ocid1.subnet.oc1..subnet"}},
             "enrichStatus": "OK",
             "enrichError": None,
         },
     ]
 
     nodes, edges = _build_graph_lists(tmp_path, records, [])
-    write_diagram_projections(tmp_path, nodes, edges, diagram_depth=2)
+    write_diagram_projections(tmp_path, nodes, edges)
 
-    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
-    assert "edge-service-1" not in consolidated
-    assert "edge-service-2" not in consolidated
-    assert "Out-of-VCN Services" not in consolidated
-    assert "Bucket" not in consolidated
+    workload_path = tmp_path / "diagram.workload.demo.mmd"
+    assert workload_path.exists()
+    workload = workload_path.read_text(encoding="utf-8")
+    assert "%% Scope: workload:demo" in workload
+    assert "%% View: full-detail" in workload
+
+
 
 
 def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
@@ -424,45 +304,6 @@ def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
     assert "Customer Network" in diagram
 
 
-def test_consolidated_defines_workload_anchor_nodes(tmp_path) -> None:
-    records = [
-        {
-            "ocid": "ocid1.instance.oc1..edge1",
-            "resourceType": "Instance",
-            "displayName": "edge-service-1",
-            "region": "mx-queretaro-1",
-            "compartmentId": "ocid1.compartment.oc1..comp",
-            "details": {"metadata": {}},
-            "enrichStatus": "OK",
-            "enrichError": None,
-        },
-        {
-            "ocid": "ocid1.instance.oc1..edge2",
-            "resourceType": "Instance",
-            "displayName": "edge-service-2",
-            "region": "mx-queretaro-1",
-            "compartmentId": "ocid1.compartment.oc1..comp",
-            "details": {"metadata": {}},
-            "enrichStatus": "OK",
-            "enrichError": None,
-        },
-        {
-            "ocid": "ocid1.instance.oc1..edge3",
-            "resourceType": "Instance",
-            "displayName": "edge-service-3",
-            "region": "mx-queretaro-1",
-            "compartmentId": "ocid1.compartment.oc1..comp",
-            "details": {"metadata": {}},
-            "enrichStatus": "OK",
-            "enrichError": None,
-        },
-    ]
-
-    nodes, edges = _build_graph_lists(tmp_path, records, [])
-    write_diagram_projections(tmp_path, nodes, edges)
-
-    consolidated = (tmp_path / "diagram.consolidated.architecture.mmd").read_text(encoding="utf-8")
-    assert "edge service 1 Instance" in consolidated
 
 
 def test_render_edge_sanitizes_label() -> None:
@@ -503,6 +344,6 @@ def test_write_diagram_projections_skips_large_views(tmp_path, monkeypatch) -> N
     paths = write_diagram_projections(tmp_path, nodes, edges)
 
     assert (tmp_path / "diagram.tenancy.mmd").exists()
-    assert (tmp_path / "diagram.consolidated.architecture.mmd").exists()
+    assert (tmp_path / "diagram.consolidated.flowchart.mmd").exists()
     assert not any(p.name.startswith("diagram.network.") for p in paths)
     assert not any(p.name.startswith("diagram.workload.") for p in paths)

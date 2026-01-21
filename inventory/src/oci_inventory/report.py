@@ -815,7 +815,8 @@ def render_run_report_md(
     diagram_summary = diagram_summary or {}
     skipped = diagram_summary.get("skipped") or []
     split = diagram_summary.get("split") or []
-    if skipped or split:
+    violations = diagram_summary.get("violations") or []
+    if skipped or split or violations:
         def _reason_label(reason: str) -> str:
             mapping = {
                 "exceeds_mermaid_limit": "exceeds Mermaid size limit",
@@ -835,6 +836,15 @@ def render_run_report_md(
 
         lines.append("Diagram generation notes (best-effort):")
         lines.append("")
+        if violations:
+            violation_rows: List[List[str]] = []
+            for item in sorted(violations, key=lambda x: str(x.get("diagram") or "")):
+                diagram = str(item.get("diagram") or "")
+                rule = str(item.get("rule") or "")
+                detail = str(item.get("detail") or "")
+                violation_rows.append([diagram, rule or "(unknown)", detail or "(none)"])
+            lines.extend(_md_table(["Diagram", "Rule", "Detail"], violation_rows))
+            lines.append("")
         if split:
             split_rows: List[List[str]] = []
             for item in sorted(split, key=lambda x: str(x.get("diagram") or "")):

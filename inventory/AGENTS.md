@@ -296,6 +296,7 @@ Agents operate in one or more of the following modes, depending on the prompt:
    - Compare current pipeline outputs (reports/diagrams) against `docs/diagram_guidelines.md` and `docs/report_guidelines.md`.
    - Detect violations of abstraction, data usage, readability, or formatting rules.
    - Surface violations clearly; do NOT silently ignore them.
+   - Review diagram guideline violations recorded in `report/report.md` and address any drift.
 
 2. **Render**
    - Generate reports and diagrams from inventory+graph sources.
@@ -317,9 +318,11 @@ Inventory → Code → Report → Diagrams MUST support at least these views:
 - **Tenancy View**: tenancy/region/compartment structure (no workloads)
 - **Network View**: VCNs, subnets, gateways, DRG, edge services
 - **Workload View(s)**: flows, relationships, assets, services
-- **Consolidated View**: functional compartments + network + workloads
+- **Consolidated Flowchart View**: global map + summary hierarchy (overview only)
 
 Failure to produce a required view is considered drift.
+
+Full-detail coverage is expected across the set of diagrams for a scope; overview views may aggregate or filter as long as scope is explicit and full-detail coverage exists elsewhere.
 
 ## Determinism Requirements
 
