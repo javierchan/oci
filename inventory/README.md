@@ -194,7 +194,7 @@ allow group <group-name> to read budgets in tenancy
 ## Performance tuning
 - Default run settings are loaded from `config/workers.yaml` when present (region/enrich/cost/export workers, connection pool size, diagram depth). Use `--config` to override.
 - Schema validation modes: `--validate-schema auto|full|sampled|off` and `--validate-schema-sample N`.
-- Diagram depth: `--diagram-depth 1|2|3` (1=global map: tenancy + regions, 2=regional abstraction with aggregated network-attached workloads, 3=full workloads + edges). Default is 2 when `config/workers.yaml` is loaded. Applies to consolidated outputs and the tenancy diagram (depth 1/2/3 controls the tenancy shell).
+- Diagram depth: `--diagram-depth 1|2|3` (1=global map: tenancy + regions, 2=regional abstraction with aggregated network-attached workloads, 3=full workloads + edges). Default is 2 when `config/workers.yaml` is loaded. Applies to consolidated outputs and the tenancy diagram (depth 1/2/3 controls the tenancy shell). Consolidated flowchart at depth > 1 renders a summary hierarchy with category counts (Compute/Network/Storage/Policy/Other) and no per-resource edges.
 - Consolidated diagrams auto-reduce depth when Mermaid text limits are exceeded; a NOTE comment is added to the output when this happens.
 - If consolidated diagrams still exceed Mermaid limits at depth 1, they are split by region (preferred) or top-level compartment and the base diagram is replaced by a stub that links to split outputs.
 - Workload diagrams that exceed Mermaid limits are split into deterministic overflow parts; if a single-node slice still exceeds the limit, it is skipped and summarized in `report/report.md`.
@@ -423,7 +423,7 @@ Each run writes to: `out/<timestamp>/` with structured subfolders.
 - diagrams/workload/diagram.workload.<workload>.mmd (Mermaid diagram; workload/application view; optional)
 - diagrams/workload/diagram.workload.<workload>.partNN.mmd (Mermaid diagram; overflow parts when workload diagrams are split)
 - diagrams/consolidated/diagram.consolidated.architecture.mmd (Mermaid architecture-beta diagram; regional abstraction and workloads; respects `--diagram-depth`)
-- diagrams/consolidated/diagram.consolidated.flowchart.mmd (Mermaid flowchart diagram; global tenancy + regions map; rendered at depth 1)
+- diagrams/consolidated/diagram.consolidated.flowchart.mmd (Mermaid flowchart diagram; depth 1 is global tenancy + regions map; depth > 1 is a summary hierarchy with category counts)
 - diagrams/consolidated/diagram.consolidated.architecture.region.<region>.mmd (Mermaid architecture-beta split by region when oversized)
 - diagrams/consolidated/diagram.consolidated.architecture.compartment.<compartment>.mmd (Mermaid architecture-beta split by compartment when oversized)
 - diagrams/consolidated/diagram.consolidated.flowchart.region.<region>.mmd (Mermaid flowchart split by region when oversized)
