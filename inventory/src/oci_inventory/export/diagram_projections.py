@@ -4,6 +4,7 @@ import json
 import os
 import re
 import subprocess
+import hashlib
 from dataclasses import dataclass
 import logging
 from pathlib import Path
