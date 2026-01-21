@@ -6,7 +6,7 @@
 # workers_cost: int >= 1. Max parallel cost API tasks (used only when --cost-report).
 # workers_export: int >= 1. Max parallel export tasks.
 # client_connection_pool_size: int >= 1. OCI SDK HTTP pool per client; keep >= workers_enrich to reduce churn.
-# diagram_depth: 1|2|3. Consolidated diagram detail (1=global regions only, 2=regional abstraction, 3=full workloads+edges).
+# diagram_depth: 1|2|3. Consolidated flowchart detail (1=global regions only, 2+=summary hierarchy with category counts).
 # schema_validation: auto|full|sampled|off. auto samples large outputs.
 # log_level: logging level (e.g., INFO, DEBUG).
 # json_logs: true|false. JSON logging format when true.
@@ -17,7 +17,7 @@ workers_enrich: 24
 workers_cost: 2
 workers_export: 2
 client_connection_pool_size: 24
-diagram_depth: 1
+diagram_depth: 3
 schema_validation: auto
 log_level: DEBUG
 json_logs: true
