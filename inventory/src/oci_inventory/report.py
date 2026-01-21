@@ -1751,6 +1751,11 @@ def render_cost_report_md(
     raw_compartments = cost_context.get("compartments", [])
     comp_rows = _normalize_cost_rows(raw_compartments, "compartment_id")
     compartment_group_by = str(cost_context.get("compartment_group_by") or "compartmentId")
+    aggregation_dims = cost_context.get("aggregation_dimensions") or ["service", compartment_group_by, "region"]
+    if isinstance(aggregation_dims, (list, tuple)):
+        aggregation_label = ", ".join([str(v) for v in aggregation_dims if str(v)])
+    else:
+        aggregation_label = str(aggregation_dims or "")
 
     total_cost = _money_decimal(cost_context.get("total_cost") or 0)
     if total_cost == Decimal("0") and services:
@@ -1767,6 +1772,26 @@ def render_cost_report_md(
         alias_by_comp = _compartment_alias_map(compartment_ids)
         name_by_comp = cost_context.get("compartment_names") or {}
 
+    def _sanitize_cost_narrative(text: str) -> str:
+        lowered = text.lower()
+        banned = (
+            "recommend",
+            "should ",
+            "optimiz",
+            "reduce ",
+            "increase ",
+            "forecast",
+            "predict",
+            "save ",
+            "savings",
+            "right-size",
+            "rightsizing",
+            "cut ",
+        )
+        if any(token in lowered for token in banned):
+            return "(Narrative omitted: non-descriptive content detected.)"
+        return text
+
     def _narrative_text(key: str) -> str:
         text = (narratives or {}).get(key, "").strip()
         if text:
@@ -1775,6 +1800,8 @@ def render_cost_report_md(
                     lines_local = text.splitlines()
                     text = "\n".join(lines_local[1:]).strip()
                     break
+            if key != "next_steps":
+                text = _sanitize_cost_narrative(text)
             return text
         err_txt = (narrative_errors or {}).get(key)
         if err_txt:
@@ -1840,6 +1867,7 @@ def render_cost_report_md(
                 ["Total cost", f"{_money_fmt(total_cost)} {currency}"],
                 ["Currency", currency],
                 ["Time range (UTC)", f"{time_start} to {time_end}"],
+                ["Grouping dimensions", aggregation_label or "(unknown)"],
                 ["Services covered", str(service_count)],
                 ["Compartments covered", str(compartment_count)],
                 ["Regions covered", str(region_count)],

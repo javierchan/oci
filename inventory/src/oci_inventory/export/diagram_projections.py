@@ -195,6 +195,78 @@ def _extract_scope_view(text: str) -> Tuple[str, str, str]:
     return scope, view, part
 
 
+def _render_overlay_lanes(
+    lines: List[str],
+    *,
+    scope_key: str,
+    make_group_id: Callable[[str], str],
+    overlay_nodes: Sequence[Node],
+    edge_node_id_map: Mapping[str, str],
+    indent: str = "    ",
+) -> None:
+    overlay_groups = _group_nodes_by_lane(overlay_nodes)
+    overlay_groups = {k: v for k, v in overlay_groups.items() if k in {"iam", "security"}}
+    if not overlay_groups:
+        return
+
+    overlay_id = make_group_id(f"{scope_key}:overlays")
+    lines.append(f"{indent}subgraph {overlay_id}[\"Functional Overlays\"]")
+    lines.append(f"{indent}  direction TB")
+    for lane, lane_nodes in overlay_groups.items():
+        lane_id = make_group_id(f"{scope_key}:overlays:{lane}")
+        lane_label = _lane_label(lane)
+        lines.append(f"{indent}  subgraph {lane_id}[\"{lane_label}\"]")
+        lines.append(f"{indent}    direction TB")
+        for n in lane_nodes:
+            ocid = str(n.get("nodeId") or "")
+            if not ocid:
+                continue
+            overlay_node_id = _mermaid_id(f"overlay:{scope_key}:{ocid}")
+            lines.extend(
+                _render_node_with_class(
+                    overlay_node_id,
+                    _mermaid_label_for(n),
+                    cls=_node_class(n),
+                    shape=_node_shape(n),
+                )
+            )
+            canonical_id = edge_node_id_map.get(ocid)
+            if canonical_id:
+                lines.append(_render_edge(overlay_node_id, canonical_id, dotted=True))
+        lines.append(f"{indent}  end")
+    lines.append(f"{indent}end")
+
+
+def _render_overlay_summary(
+    lines: List[str],
+    *,
+    scope_key: str,
+    make_group_id: Callable[[str], str],
+    overlay_nodes: Sequence[Node],
+    indent: str = "    ",
+) -> None:
+    counts: Dict[str, int] = {"iam": 0, "security": 0}
+    for n in overlay_nodes:
+        lane = _lane_for_node(n)
+        if lane in counts:
+            counts[lane] += 1
+    if not any(counts.values()):
+        return
+
+    overlay_id = make_group_id(f"{scope_key}:overlays")
+    lines.append(f"{indent}subgraph {overlay_id}[\"Functional Overlays\"]")
+    lines.append(f"{indent}  direction TB")
+    for lane, count in counts.items():
+        if count <= 0:
+            continue
+        lane_id = make_group_id(f"{scope_key}:overlays:{lane}")
+        lane_label = _lane_label(lane)
+        label = f"{lane_label} ({count})"
+        cls = "policy" if lane == "iam" else "security"
+        lines.extend(_render_node_with_class(lane_id, label, cls=cls, shape="rect"))
+    lines.append(f"{indent}end")
+
+
 def _scan_guideline_violations(
     path: Path,
     *,
@@ -1393,8 +1465,7 @@ def _consolidated_flowchart_summary_lines(
     for reg in sorted(nodes_by_region.keys()):
         region_id = make_group_id(f"flow:region:{reg}")
         region_id_map[reg] = region_id
-        lines.append(f"  subgraph {region_id}[\"Region: {reg}\"]")
-        lines.append("    direction TB")
+        lines.extend(_render_node_with_class(region_id, f"Region: {reg}", cls="region", shape="round"))
 
         region_nodes = nodes_by_region[reg]
         nodes_by_comp: Dict[str, List[Node]] = {}
@@ -1404,13 +1475,14 @@ def _consolidated_flowchart_summary_lines(
                 cid = str(n.get("nodeId") or "")
             nodes_by_comp.setdefault(cid or "UNKNOWN", []).append(n)
 
+        lines.append(f"  %% Region overlay: {reg}")
         for cid in sorted(nodes_by_comp.keys()):
             comp_node = node_by_id.get(cid, {"name": cid, "nodeType": "Compartment"})
             comp_name = _compact_label(str(comp_node.get("name") or cid), max_len=48)
             comp_label = _compartment_label({"name": comp_name})
             comp_id = make_group_id(f"flow:comp:{reg}:{cid}")
-            lines.append(f"    subgraph {comp_id}[\"{comp_label}\"]")
-            lines.append("      direction TB")
+            lines.append(f"  subgraph {comp_id}[\"{comp_label}\"]")
+            lines.append("    direction TB")
 
             comp_nodes = nodes_by_comp[cid]
             vcns = [n for n in comp_nodes if _is_node_type(n, "Vcn")]
@@ -1418,8 +1490,8 @@ def _consolidated_flowchart_summary_lines(
                 vcn_ocid = str(vcn.get("nodeId") or "")
                 vcn_id = make_group_id(vcn_ocid)
                 vcn_label = _vcn_label_compact(vcn)
-                lines.append(f"      subgraph {vcn_id}[\"{vcn_label}\"]")
-                lines.append("        direction TB")
+                lines.append(f"    subgraph {vcn_id}[\"{vcn_label}\"]")
+                lines.append("      direction TB")
 
                 vcn_resources: List[Node] = []
                 for n in comp_nodes:
@@ -1440,7 +1512,7 @@ def _consolidated_flowchart_summary_lines(
                     lines.append(f"        subgraph {vcn_level_id}[\"VCN-level Resources\"]")
                     lines.append("          direction TB")
                     _render_summary_nodes(f"vcn:{vcn_ocid}", vcn_resources)
-                    lines.append("        end")
+                    lines.append("      end")
 
                 comp_subnets = [
                     n
@@ -1461,8 +1533,8 @@ def _consolidated_flowchart_summary_lines(
                         and not _is_node_type(n, "Vcn", "Subnet")
                     ]
                     _render_summary_nodes(f"subnet:{sn_ocid}", attached)
-                    lines.append("        end")
-                lines.append("      end")
+                    lines.append("      end")
+                lines.append("    end")
 
             other_nodes = [
                 n
@@ -1472,13 +1544,12 @@ def _consolidated_flowchart_summary_lines(
             ]
             if other_nodes:
                 out_id = make_group_id(f"flow:comp:{reg}:{cid}:out_vcn")
-                lines.append(f"      subgraph {out_id}[\"Out-of-VCN Services\"]")
-                lines.append("        direction TB")
+                lines.append(f"    subgraph {out_id}[\"Out-of-VCN Services\"]")
+                lines.append("      direction TB")
                 _render_summary_nodes(f"out:{reg}:{cid}", other_nodes)
-                lines.append("      end")
+                lines.append("    end")
 
-            lines.append("      end")
-        lines.append("    end")
+            lines.append("  end")
     lines.append("end")
 
     for region_a, region_b in sorted(_rpc_region_links(nodes)):
@@ -1664,6 +1735,7 @@ def _write_tenancy_view(
     title: Optional[str] = None,
     _requested_depth: Optional[int] = None,
 ) -> Path:
+    # Scope: tenancy (overview). View: overview with aggregation for density.
     path = path or (outdir / "diagram.tenancy.mmd")
 
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
@@ -1857,6 +1929,19 @@ def _write_tenancy_view(
                         lines.append(f"        {agg_id}[\"{label} (n={count})\"]")
                     lines.append("      end")
 
+            overlay_candidates = [
+                n
+                for n in comp_nodes_list
+                if n.get("nodeId") and _lane_for_node(n) in {"iam", "security"}
+            ]
+            _render_overlay_summary(
+                lines,
+                scope_key=f"tenancy:{cid}",
+                make_group_id=lambda key: _tenancy_mermaid_id("Overlay", key, counters),
+                overlay_nodes=overlay_candidates,
+                indent="      ",
+            )
+
         lines.append("    end")
 
     lines.append("  end")
@@ -1942,6 +2027,7 @@ def _write_network_views(
     *,
     summary: Optional[DiagramSummary] = None,
 ) -> List[Path]:
+    # Scope: VCN (full-detail). View: full-detail per VCN, split/skip on Mermaid limits.
     summary = _ensure_diagram_summary(summary)
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
 
@@ -2183,6 +2269,51 @@ def _write_network_views(
             lines.append("        end")
 
         lines.append("      end")
+
+        out_nodes: List[Node] = []
+        for n in nodes:
+            cid = str(n.get("compartmentId") or "")
+            if cid != comp_id:
+                continue
+            if _is_node_type(n, "Vcn", "Subnet", *_NETWORK_GATEWAY_NODETYPES):
+                continue
+            ocid = str(n.get("nodeId") or "")
+            if not ocid:
+                continue
+            att = attach_by_res.get(ocid)
+            if att and (att.vcn_ocid or att.subnet_ocid):
+                continue
+            out_nodes.append(n)
+
+        if out_nodes:
+            out_id = make_group_id(f"comp:{comp_id}:network:{vcn_ocid}:out_vcn")
+            lines.append(f"    subgraph {out_id}[\"Out-of-VCN\"]")
+            lines.append("      direction TB")
+            for n in sorted(out_nodes, key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or ""))):
+                nid = _mermaid_id(str(n.get("nodeId") or ""))
+                lines.extend(_render_node_with_class(nid, _mermaid_label_for(n), cls=_node_class(n), shape=_node_shape(n)))
+                if n.get("nodeId"):
+                    raw_id = str(n.get("nodeId") or "")
+                    rendered_node_ids.add(raw_id)
+                    edge_node_id_map.setdefault(raw_id, nid)
+            lines.append("    end")
+
+        overlay_candidates = [
+            n
+            for n in nodes
+            if str(n.get("compartmentId") or "") == comp_id
+            and n.get("nodeId")
+            and str(n.get("nodeId") or "") in rendered_node_ids
+            and _lane_for_node(n) in {"iam", "security"}
+        ]
+        _render_overlay_lanes(
+            lines,
+            scope_key=f"network:{vcn_ocid}:comp:{comp_id}",
+            make_group_id=make_group_id,
+            overlay_nodes=overlay_candidates,
+            edge_node_id_map=edge_node_id_map,
+            indent="    ",
+        )
         lines.append("    end")
         lines.append("  end")
 
@@ -2260,6 +2391,7 @@ def _build_workload_diagram_lines(
     nodes: Sequence[Node],
     edges: Sequence[Edge],
 ) -> List[str]:
+    # Scope: workload (full-detail). View: full-detail per workload scope.
     reserved_ids = {_mermaid_id(str(n.get("nodeId") or "")) for n in nodes if n.get("nodeId")}
     make_group_id = _unique_mermaid_id_factory(reserved_ids)
     attachments = _derived_attachments(nodes, edges)
@@ -2668,6 +2800,7 @@ def _write_workload_views(
     *,
     summary: Optional[DiagramSummary] = None,
 ) -> List[Path]:
+    # Scope: workload (full-detail). View: full-detail, split/skip on Mermaid limits.
     # Identify candidate workloads using shared grouping logic.
     candidates: List[Node] = []
     for n in nodes:
@@ -3312,6 +3445,7 @@ def _write_consolidated_flowchart(
     _allow_split: bool = True,
     _split_modes: Optional[Sequence[str]] = None,
 ) -> List[Path]:
+    # Scope: tenancy (overview). View: overview with global map (depth 1) or summary hierarchy (depth >1).
     path = path or (outdir / "diagram.consolidated.flowchart.mmd")
     requested_depth = depth if _requested_depth is None else _requested_depth
     if depth > 1:
