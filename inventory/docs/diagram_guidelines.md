@@ -134,6 +134,7 @@ Graphviz and the Python diagrams library.
   - `diagram.arch.vcn.<vcn>.svg` (VCN scope overview)
   - `diagram.arch.workload.<workload>.svg` (workload scope overview)
 - These views MAY aggregate or summarize resources (e.g., per-lane counts). They are intended for readability, not full-detail.
+- Tenancy/workload/VCN architecture SVGs may cap scope (top-N by resource count) and roll up the remainder as "Other".
 - Regions and AD/FD remain overlays; do not introduce extra containment levels solely for geography.
 
 ---
