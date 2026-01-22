@@ -70,6 +70,15 @@ _LANE_LABELS: Mapping[str, str] = {
     "other": "Other",
 }
 
+ARCH_MAX_COMPARTMENTS = 20
+ARCH_MAX_VCNS_PER_COMPARTMENT = 12
+ARCH_MAX_WORKLOADS = 60
+ARCH_MAX_VCNS = 60
+ARCH_MAX_TIER_NODES = 8
+ARCH_MIN_WORKLOAD_NODES = 5
+
+CONSOLIDATED_WORKLOAD_TOP_N = 8
+
 
 @dataclass(frozen=True)
 class _DerivedAttachment:
@@ -1734,10 +1743,17 @@ def _write_tenancy_view(
     path: Optional[Path] = None,
     legend_prefix: str = "tenancy",
     title: Optional[str] = None,
+    summary: Optional[DiagramSummary] = None,
     _requested_depth: Optional[int] = None,
+    _allow_split: bool = True,
+    _split_modes: Optional[Sequence[str]] = None,
+    _split_scope_label: Optional[str] = None,
+    _split_reason: Optional[str] = None,
+    _split_purpose: Optional[str] = None,
 ) -> Path:
     # Scope: tenancy (overview). View: overview with aggregation for density.
     path = path or (outdir / "diagram.tenancy.mmd")
+    summary = _ensure_diagram_summary(summary)
 
     node_by_id: Dict[str, Node] = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
     counters: Dict[str, int] = {}
@@ -1805,6 +1821,12 @@ def _write_tenancy_view(
     lines.extend(_style_block_lines())
     if title:
         lines.append(f"%% {title}")
+    if _split_scope_label:
+        lines.append(f"%% Split scope: {_split_scope_label}")
+    if _split_reason:
+        lines.append(f"%% Split rationale: {_split_reason}")
+    if _split_purpose:
+        lines.append(f"%% Split purpose: {_split_purpose}")
     lines.append("%% ------------------ Tenancy / Regions / Compartments ------------------")
 
     tenancy_name = ""
@@ -1978,6 +2000,53 @@ def _write_tenancy_view(
                 lines.append(_render_edge(vcn_node_id, customer_net_id, "DRG", dotted=False))
 
     size = _mermaid_text_size(lines)
+    if size > MAX_MERMAID_TEXT_CHARS and _allow_split:
+        split_modes = list(_split_modes) if _split_modes is not None else _split_mode_candidates(nodes, edges)
+        split_mode, groups, remaining_modes = _next_split_groups(nodes, edges=edges, split_modes=split_modes)
+        if split_mode and len(groups) > 1:
+            part_paths: List[Path] = []
+            for key, group_nodes in groups.items():
+                if not group_nodes:
+                    continue
+                group_ids = {str(n.get("nodeId") or "") for n in group_nodes if n.get("nodeId")}
+                group_edges = _filter_edges_for_nodes(edges, group_ids)
+                slug = _slugify(key, max_len=32)
+                part_path = outdir / f"diagram.tenancy.{split_mode}.{slug}.mmd"
+                part_paths.append(
+                    _write_tenancy_view(
+                        outdir,
+                        group_nodes,
+                        group_edges,
+                        depth=depth,
+                        path=part_path,
+                        legend_prefix=legend_prefix,
+                        title=title,
+                        summary=summary,
+                        _requested_depth=depth,
+                        _allow_split=True,
+                        _split_modes=remaining_modes,
+                        _split_scope_label=f"{_split_mode_label(split_mode)}={key}",
+                        _split_reason=f"Split by {_split_mode_label(split_mode)} to keep tenancy view readable.",
+                        _split_purpose=_split_mode_purpose(split_mode),
+                    )
+                )
+            note = f"Tenancy diagram split by {_split_mode_label(split_mode)} due to Mermaid size limits."
+            stub_lines: List[str] = [_flowchart_elk_init_line(), "flowchart LR"]
+            _insert_scope_view_comments(stub_lines, scope="tenancy", view="overview")
+            stub_lines.append(f"%% Split rationale: {note}")
+            stub_lines.append(f"%% Split purpose: {_split_mode_purpose(split_mode)}")
+            stub_lines.extend(_split_note_lines(note, part_paths))
+            stub_path = path or (outdir / "diagram.tenancy.mmd")
+            stub_path.write_text("\n".join(stub_lines).rstrip() + "\n", encoding="utf-8")
+            _record_diagram_split(
+                summary,
+                diagram=stub_path.name,
+                parts=sorted({p.name for p in part_paths}),
+                size=size,
+                limit=MAX_MERMAID_TEXT_CHARS,
+                reason=f"split_{split_mode}",
+            )
+            return stub_path
     if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
         LOG.warning(
             "Tenancy diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
@@ -1993,7 +2062,13 @@ def _write_tenancy_view(
             path=path,
             legend_prefix=legend_prefix,
             title=title,
+            summary=summary,
             _requested_depth=requested_depth,
+            _allow_split=_allow_split,
+            _split_modes=_split_modes,
+            _split_scope_label=_split_scope_label,
+            _split_reason=_split_reason,
+            _split_purpose=_split_purpose,
         )
     if depth != requested_depth:
         lines.insert(
@@ -2997,7 +3072,7 @@ def write_diagram_projections(
     depth = int(diagram_depth or 3)
     out: List[Path] = []
     summary = _ensure_diagram_summary(summary)
-    out.append(_write_tenancy_view(outdir, nodes, edges, depth=depth))
+    out.append(_write_tenancy_view(outdir, nodes, edges, depth=depth, summary=summary))
     out.extend(_write_network_views(outdir, nodes, edges, summary=summary))
     out.extend(_write_workload_views(outdir, nodes, edges, summary=summary))
 
@@ -3050,11 +3125,12 @@ def _first_node_class(candidates: Sequence[Tuple[str, str]]) -> Optional[Any]:
     return None
 
 
-def _load_diagrams_classes() -> Optional[Tuple[Any, Any, Dict[str, Any], Any]]:
+def _load_diagrams_classes() -> Optional[Tuple[Any, Any, Any, Dict[str, Any], Any]]:
     try:
         diagrams_mod = importlib.import_module("diagrams")
         Diagram = getattr(diagrams_mod, "Diagram")
         Cluster = getattr(diagrams_mod, "Cluster")
+        Edge = getattr(diagrams_mod, "Edge")
     except Exception as exc:
         LOG.warning("Architecture diagrams skipped; diagrams library import failed: %s", exc)
         return None
@@ -3115,7 +3191,7 @@ def _load_diagrams_classes() -> Optional[Tuple[Any, Any, Dict[str, Any], Any]]:
         ),
     }
     lane_classes = {k: v for k, v in lane_classes.items() if v is not None}
-    return Diagram, Cluster, lane_classes, fallback
+    return Diagram, Cluster, Edge, lane_classes, fallback
 
 
 def _arch_lane_counts(nodes: Sequence[Node]) -> Dict[str, int]:
@@ -3130,11 +3206,128 @@ def _arch_lane_counts(nodes: Sequence[Node]) -> Dict[str, int]:
     return counts
 
 
+def _arch_safe_label(value: str, *, default: str = "Unknown") -> str:
+    safe = _compact_label(value, max_len=64)
+    if not safe:
+        return default
+    if safe.startswith("ocid1") or "ocid1" in safe:
+        return "Redacted"
+    return safe
+
+
 def _arch_compartment_label(label: str) -> str:
     safe = _compact_label(label, max_len=64)
     if "ocid1" in safe:
         return "Compartment: Redacted"
     return safe
+
+
+def _arch_count_nodes(nodes: Sequence[Node]) -> int:
+    count = 0
+    for n in nodes:
+        if _is_node_type(n, "Compartment"):
+            continue
+        count += 1
+    return count
+
+
+def _arch_is_gateway(node: Node) -> bool:
+    return str(node.get("nodeType") or "") in _NETWORK_GATEWAY_NODETYPES
+
+
+def _arch_is_load_balancer(node: Node) -> bool:
+    t = str(node.get("nodeType") or "")
+    return "LoadBalancer" in t or t in {"Nlb", "NetworkLoadBalancer", "ApiGateway", "Gateway"}
+
+
+def _arch_is_database(node: Node) -> bool:
+    t = str(node.get("nodeType") or "").lower()
+    return any(k in t for k in ("database", "dbsystem", "autonomous", "mysql", "postgres", "nosql"))
+
+
+def _arch_workload_name_is_generic(name: str) -> bool:
+    low = name.lower().strip()
+    if not low:
+        return True
+    if low.startswith("ocid1"):
+        return True
+    if len(low) <= 2:
+        return True
+    stop = {
+        "vcn",
+        "subnet",
+        "network",
+        "gateway",
+        "security",
+        "policy",
+        "route",
+        "dhcp",
+        "compartment",
+        "instance",
+        "volume",
+        "bucket",
+        "database",
+        "storage",
+        "object",
+        "oci",
+        "default",
+    }
+    if low in stop:
+        return True
+    return False
+
+
+def _arch_workload_has_tags(nodes: Sequence[Node]) -> bool:
+    for n in nodes:
+        tags = n.get("tags") or {}
+        for bucket in ("definedTags", "freeformTags"):
+            items = tags.get(bucket)
+            if isinstance(items, dict) and items:
+                for k in items.keys():
+                    key = str(k).lower()
+                    if any(token in key for token in ("workload", "application", "app", "service")):
+                        return True
+    return False
+
+
+def _workload_summary_lines(
+    nodes: Sequence[Node],
+    *,
+    top_n: int = CONSOLIDATED_WORKLOAD_TOP_N,
+    prefix: str = "%% Workloads",
+) -> List[str]:
+    candidates = [n for n in nodes if n.get("nodeId")]
+    groups = {k: list(v) for k, v in group_workload_candidates(candidates).items()}
+    filtered: Dict[str, List[Node]] = {}
+    for name, items in groups.items():
+        if len(items) < ARCH_MIN_WORKLOAD_NODES:
+            continue
+        if _arch_workload_name_is_generic(name) and not _arch_workload_has_tags(items):
+            continue
+        filtered[name] = items
+    if not filtered:
+        return [f"{prefix}: (none)"]
+    ranked = sorted(filtered.items(), key=lambda kv: (-len(kv[1]), kv[0].lower()))
+    top = ranked[:top_n]
+    rest = ranked[top_n:]
+    parts = [f"{_compact_scope_label(name)} (n={len(items)})" for name, items in top]
+    if rest:
+        parts.append(f"Other (n={sum(len(items) for _, items in rest)})")
+    return [f"{prefix}: " + ", ".join(parts)]
+
+
+def _arch_select_top_groups(
+    groups: Mapping[str, Sequence[Node]],
+    *,
+    limit: int,
+) -> Tuple[List[Tuple[str, Sequence[Node]]], List[Tuple[str, Sequence[Node]]]]:
+    ranked = sorted(
+        groups.items(),
+        key=lambda kv: (-_arch_count_nodes(list(kv[1])), str(kv[0]).lower()),
+    )
+    top = ranked[:limit]
+    rest = ranked[limit:]
+    return top, rest
 
 
 def _arch_node_for_lane(
@@ -3151,6 +3344,7 @@ def _arch_node_for_lane(
 def _render_architecture_tenancy(
     Diagram: Any,
     Cluster: Any,
+    Edge: Any,
     lane_classes: Mapping[str, Any],
     fallback: Any,
     *,
@@ -3164,6 +3358,11 @@ def _render_architecture_tenancy(
     if not comp_groups:
         return None
 
+    top_groups, other_groups = _arch_select_top_groups(
+        comp_groups,
+        limit=ARCH_MAX_COMPARTMENTS,
+    )
+
     arch_dir = outdir / "architecture"
     arch_dir.mkdir(parents=True, exist_ok=True)
     path = arch_dir / "diagram.arch.tenancy.svg"
@@ -3176,8 +3375,7 @@ def _render_architecture_tenancy(
         show=False,
         graph_attr=graph_attr,
     ):
-        for comp_id in sorted(comp_groups.keys()):
-            comp_nodes = comp_groups[comp_id]
+        for comp_id, comp_nodes in top_groups:
             comp_label = _arch_compartment_label(
                 _compartment_label_by_id(comp_id, node_by_id=node_by_id, alias_by_id=alias_by_comp)
             )
@@ -3186,14 +3384,52 @@ def _render_architecture_tenancy(
                     (n for n in comp_nodes if _is_node_type(n, "Vcn")),
                     key=lambda n: str(n.get("name") or n.get("nodeId") or ""),
                 )
-                for vcn in vcns:
+                if len(vcns) > ARCH_MAX_VCNS_PER_COMPARTMENT:
+                    shown = vcns[:ARCH_MAX_VCNS_PER_COMPARTMENT]
+                    remainder = len(vcns) - len(shown)
+                else:
+                    shown = vcns
+                    remainder = 0
+                for vcn in shown:
                     _arch_node_for_lane(
                         "network",
                         _vcn_label_compact(vcn),
                         lane_classes=lane_classes,
                         fallback=fallback,
                     )
+                if remainder:
+                    _arch_node_for_lane(
+                        "network",
+                        f"Other VCNs (n={remainder})",
+                        lane_classes=lane_classes,
+                        fallback=fallback,
+                    )
                 counts = _arch_lane_counts(comp_nodes)
+                for lane in sorted(counts.keys()):
+                    label = f"{_lane_label(lane)} (n={counts[lane]})"
+                    _arch_node_for_lane(
+                        lane,
+                        label,
+                        lane_classes=lane_classes,
+                        fallback=fallback,
+                    )
+        if other_groups:
+            other_nodes: List[Node] = []
+            other_comp_count = 0
+            for _cid, group_nodes in other_groups:
+                other_nodes.extend(group_nodes)
+                other_comp_count += 1
+            other_label = f"Other Compartments (n={other_comp_count})"
+            with Cluster(other_label):
+                vcn_count = sum(1 for n in other_nodes if _is_node_type(n, "Vcn"))
+                if vcn_count:
+                    _arch_node_for_lane(
+                        "network",
+                        f"VCNs (n={vcn_count})",
+                        lane_classes=lane_classes,
+                        fallback=fallback,
+                    )
+                counts = _arch_lane_counts(other_nodes)
                 for lane in sorted(counts.keys()):
                     label = f"{_lane_label(lane)} (n={counts[lane]})"
                     _arch_node_for_lane(
@@ -3208,6 +3444,7 @@ def _render_architecture_tenancy(
 def _render_architecture_vcn(
     Diagram: Any,
     Cluster: Any,
+    Edge: Any,
     lane_classes: Mapping[str, Any],
     fallback: Any,
     *,
@@ -3235,14 +3472,61 @@ def _render_architecture_vcn(
                 (n for n in vcn_nodes if _is_node_type(n, "Subnet")),
                 key=lambda n: str(n.get("name") or n.get("nodeId") or ""),
             )
+            public_subnets: List[Node] = []
+            private_subnets: List[Node] = []
+            other_subnets: List[Node] = []
             for sn in subnets:
-                _arch_node_for_lane(
-                    "network",
-                    _subnet_label_compact(sn),
-                    lane_classes=lane_classes,
-                    fallback=fallback,
-                )
+                meta = _node_metadata(sn)
+                prohibit = _get_meta(meta, "prohibit_public_ip_on_vnic")
+                if prohibit is True:
+                    private_subnets.append(sn)
+                elif prohibit is False:
+                    public_subnets.append(sn)
+                else:
+                    other_subnets.append(sn)
+
+            subnet_nodes: Dict[str, Any] = {}
+            for label, group in (
+                ("Public Subnets", public_subnets),
+                ("Private Subnets", private_subnets),
+                ("Subnets", other_subnets),
+            ):
+                if not group:
+                    continue
+                with Cluster(label):
+                    for sn in group:
+                        node = _arch_node_for_lane(
+                            "network",
+                            _subnet_label_compact(sn),
+                            lane_classes=lane_classes,
+                            fallback=fallback,
+                        )
+                        subnet_nodes[str(sn.get("nodeId") or _subnet_label_compact(sn))] = node
+
+            gateways = sorted(
+                (n for n in vcn_nodes if _arch_is_gateway(n)),
+                key=lambda n: str(n.get("nodeType") or ""),
+            )
+            gateway_nodes: Dict[str, Any] = {}
+            if gateways:
+                with Cluster("Gateways"):
+                    for gw in gateways:
+                        label = _friendly_type(str(gw.get("nodeType") or "Gateway"))
+                        gw_node = _arch_node_for_lane(
+                            "network",
+                            label,
+                            lane_classes=lane_classes,
+                            fallback=fallback,
+                        )
+                        gateway_nodes[label] = gw_node
+
             counts = _arch_lane_counts(vcn_nodes)
+            gateway_count = len(gateways)
+            if gateway_count and counts.get("network"):
+                counts["network"] = max(0, counts["network"] - gateway_count)
+                if counts["network"] == 0:
+                    counts.pop("network", None)
+
             for lane in sorted(counts.keys()):
                 label = f"{_lane_label(lane)} (n={counts[lane]})"
                 _arch_node_for_lane(
@@ -3251,12 +3535,34 @@ def _render_architecture_vcn(
                     lane_classes=lane_classes,
                     fallback=fallback,
                 )
+
+            # Minimal flow hints (best-effort).
+            def _first_subnet_node(candidates: List[Node]) -> Optional[Any]:
+                if not candidates:
+                    return None
+                key = str(candidates[0].get("nodeId") or _subnet_label_compact(candidates[0]))
+                return subnet_nodes.get(key)
+
+            public_node = _first_subnet_node(public_subnets)
+            private_node = _first_subnet_node(private_subnets) or _first_subnet_node(other_subnets)
+            any_node = public_node or private_node
+
+            for label, gw_node in gateway_nodes.items():
+                if "Internet" in label and public_node is not None:
+                    gw_node >> Edge(color="gray") >> public_node
+                elif "Nat" in label and private_node is not None:
+                    gw_node >> Edge(color="gray") >> private_node
+                elif "Service" in label and private_node is not None:
+                    gw_node >> Edge(color="gray") >> private_node
+                elif "Drg" in label and any_node is not None:
+                    gw_node >> Edge(color="gray") >> any_node
     return path
 
 
 def _render_architecture_workload(
     Diagram: Any,
     Cluster: Any,
+    Edge: Any,
     lane_classes: Mapping[str, Any],
     fallback: Any,
     *,
@@ -3266,7 +3572,7 @@ def _render_architecture_workload(
 ) -> Optional[Path]:
     if not workload_nodes:
         return None
-    wl_label = _compact_label(workload, max_len=64) or "Workload"
+    wl_label = _arch_safe_label(_compact_label(workload, max_len=64), default="Workload")
     arch_dir = outdir / "architecture"
     arch_dir.mkdir(parents=True, exist_ok=True)
     path = arch_dir / f"diagram.arch.workload.{_slugify(wl_label)}.svg"
@@ -3284,14 +3590,68 @@ def _render_architecture_workload(
                 (n for n in workload_nodes if _is_node_type(n, "Vcn")),
                 key=lambda n: str(n.get("name") or n.get("nodeId") or ""),
             )
-            for vcn in vcns:
+            for vcn in vcns[:ARCH_MAX_TIER_NODES]:
                 _arch_node_for_lane(
                     "network",
                     _vcn_label_compact(vcn),
                     lane_classes=lane_classes,
                     fallback=fallback,
                 )
+            if len(vcns) > ARCH_MAX_TIER_NODES:
+                _arch_node_for_lane(
+                    "network",
+                    f"Other VCNs (n={len(vcns) - ARCH_MAX_TIER_NODES})",
+                    lane_classes=lane_classes,
+                    fallback=fallback,
+                )
+
+            # Tier nodes (best-effort, capped)
+            ingress_nodes = [n for n in workload_nodes if _arch_is_load_balancer(n)]
+            compute_nodes = [n for n in workload_nodes if str(n.get("nodeCategory") or "") == "compute"]
+            data_nodes = [n for n in workload_nodes if _arch_is_database(n) or str(n.get("nodeCategory") or "") == "storage"]
+            security_nodes = [n for n in workload_nodes if str(n.get("nodeCategory") or "") == "security"]
+
+            ingress = None
+            if ingress_nodes:
+                ingress = _arch_node_for_lane(
+                    "network",
+                    f"Ingress (n={len(ingress_nodes)})",
+                    lane_classes=lane_classes,
+                    fallback=fallback,
+                )
+            compute = None
+            if compute_nodes:
+                compute = _arch_node_for_lane(
+                    "app",
+                    f"Compute (n={len(compute_nodes)})",
+                    lane_classes=lane_classes,
+                    fallback=fallback,
+                )
+            data = None
+            if data_nodes:
+                data = _arch_node_for_lane(
+                    "data",
+                    f"Data (n={len(data_nodes)})",
+                    lane_classes=lane_classes,
+                    fallback=fallback,
+                )
+            if security_nodes:
+                _arch_node_for_lane(
+                    "security",
+                    f"Security (n={len(security_nodes)})",
+                    lane_classes=lane_classes,
+                    fallback=fallback,
+                )
+
+            if ingress is not None and compute is not None:
+                ingress >> Edge(color="gray") >> compute
+            if compute is not None and data is not None:
+                compute >> Edge(color="gray") >> data
+
             counts = _arch_lane_counts(workload_nodes)
+            # Remove lanes represented explicitly above
+            for lane in ("network", "app", "data", "security"):
+                counts.pop(lane, None)
             for lane in sorted(counts.keys()):
                 label = f"{_lane_label(lane)} (n={counts[lane]})"
                 _arch_node_for_lane(
@@ -3317,12 +3677,13 @@ def write_architecture_diagrams(
     loaded = _load_diagrams_classes()
     if loaded is None:
         return []
-    Diagram, Cluster, lane_classes, fallback = loaded
+    Diagram, Cluster, Edge, lane_classes, fallback = loaded
 
     out_paths: List[Path] = []
     tenancy_path = _render_architecture_tenancy(
         Diagram,
         Cluster,
+        Edge,
         lane_classes,
         fallback,
         outdir=outdir,
@@ -3332,8 +3693,14 @@ def write_architecture_diagrams(
         out_paths.append(tenancy_path)
 
     vcn_groups = _group_nodes_by_vcn(nodes, edges)
-    for vcn_id in sorted(vcn_groups.keys()):
-        group_nodes = vcn_groups[vcn_id]
+    top_vcns, other_vcns = _arch_select_top_groups(vcn_groups, limit=ARCH_MAX_VCNS)
+    if other_vcns:
+        LOG.info(
+            "Architecture diagrams capped VCN views at %s (skipped %s).",
+            ARCH_MAX_VCNS,
+            len(other_vcns),
+        )
+    for vcn_id, group_nodes in top_vcns:
         vcn_name = ""
         for n in group_nodes:
             if _is_node_type(n, "Vcn"):
@@ -3344,6 +3711,7 @@ def write_architecture_diagrams(
         path = _render_architecture_vcn(
             Diagram,
             Cluster,
+            Edge,
             lane_classes,
             fallback,
             outdir=outdir,
@@ -3355,15 +3723,30 @@ def write_architecture_diagrams(
 
     workload_candidates = [n for n in nodes if n.get("nodeId")]
     wl_groups = {k: list(v) for k, v in group_workload_candidates(workload_candidates).items()}
-    for wl_name in sorted(wl_groups.keys()):
+    filtered_wl: Dict[str, List[Node]] = {}
+    for wl_name, wl_nodes in wl_groups.items():
+        if len(wl_nodes) < ARCH_MIN_WORKLOAD_NODES:
+            continue
+        if _arch_workload_name_is_generic(wl_name) and not _arch_workload_has_tags(wl_nodes):
+            continue
+        filtered_wl[wl_name] = wl_nodes
+    top_wl, other_wl = _arch_select_top_groups(filtered_wl, limit=ARCH_MAX_WORKLOADS)
+    if other_wl:
+        LOG.info(
+            "Architecture diagrams capped workload views at %s (skipped %s).",
+            ARCH_MAX_WORKLOADS,
+            len(other_wl),
+        )
+    for wl_name, wl_nodes in top_wl:
         path = _render_architecture_workload(
             Diagram,
             Cluster,
+            Edge,
             lane_classes,
             fallback,
             outdir=outdir,
             workload=wl_name,
-            workload_nodes=wl_groups[wl_name],
+            workload_nodes=wl_nodes,
         )
         if path is not None:
             out_paths.append(path)
@@ -3736,11 +4119,21 @@ def _split_mode_candidates(nodes: Sequence[Node], edges: Optional[Sequence[Edge]
 
 def _split_mode_label(mode: str) -> str:
     labels = {
+        "region": "region",
         "root_compartment": "root compartment",
         "level1_compartment": "level-1 compartment",
         "vcn": "VCN",
     }
     return labels.get(mode, mode)
+
+
+def _split_mode_purpose(mode: str) -> str:
+    return {
+        "region": "Show regional footprint and high-level topology for a single region.",
+        "root_compartment": "Show ownership boundaries and network layout per top-level compartment.",
+        "level1_compartment": "Show functional compartment slices with consistent topology and counts.",
+        "vcn": "Show network layout within a single VCN (subnets, gateways, and counts).",
+    }.get(mode, "Provide a smaller, readable slice of the full diagram.")
 
 
 def _next_split_groups(
@@ -3763,9 +4156,13 @@ def _write_consolidated_stub(
     note: str,
     part_paths: Sequence[Path],
     tenancy_label: str,
+    purpose: Optional[str] = None,
 ) -> Path:
     lines = [_flowchart_elk_init_line(), "flowchart TB"]
     _insert_scope_view_comments(lines, scope="tenancy", view="overview")
+    if purpose:
+        lines.append(f"%% Split purpose: {purpose}")
+    lines.extend(_workload_summary_lines(nodes, prefix="%% Workloads (top)"))
     lines.extend(_split_note_lines(note, part_paths))
     notice_id = _mermaid_id(f"consolidated:stub:notice:{tenancy_label}")
     label = _sanitize_edge_label("Consolidated diagram split; see split outputs.")
@@ -3785,6 +4182,9 @@ def _write_consolidated_flowchart(
     summary: Optional[DiagramSummary] = None,
     _allow_split: bool = True,
     _split_modes: Optional[Sequence[str]] = None,
+    _split_scope_label: Optional[str] = None,
+    _split_reason: Optional[str] = None,
+    _split_purpose: Optional[str] = None,
 ) -> List[Path]:
     # Scope: tenancy (overview). View: overview with global map (depth 1) or summary hierarchy (depth >1).
     path = path or (outdir / "diagram.consolidated.flowchart.mmd")
@@ -3793,25 +4193,9 @@ def _write_consolidated_flowchart(
         lines = _consolidated_flowchart_summary_lines(nodes, edges, depth=depth)
     else:
         lines = _global_flowchart_lines(nodes)
+    lines.extend(_workload_summary_lines(nodes, prefix="%% Workloads (top)"))
     
     size = _mermaid_text_size(lines)
-    if size > MAX_MERMAID_TEXT_CHARS and depth > 1:
-        LOG.warning(
-            "Flowchart consolidated diagram exceeds Mermaid max text size (%s chars); reducing depth from %s to %s.",
-            size,
-            depth,
-            depth - 1,
-        )
-        return _write_consolidated_flowchart(
-            outdir,
-            nodes,
-            edges,
-            depth=depth - 1,
-            _requested_depth=requested_depth,
-            path=path,
-            summary=summary,
-            _allow_split=_allow_split,
-        )
     if size > MAX_MERMAID_TEXT_CHARS and _allow_split:
         split_modes = list(_split_modes) if _split_modes is not None else _split_mode_candidates(nodes, edges)
         split_mode, groups, remaining_modes = _next_split_groups(nodes, edges=edges, split_modes=split_modes)
@@ -3835,6 +4219,9 @@ def _write_consolidated_flowchart(
                         summary=summary,
                         _allow_split=True,
                         _split_modes=remaining_modes,
+                        _split_scope_label=f"{_split_mode_label(split_mode)}={key}",
+                        _split_reason=f"Split by {_split_mode_label(split_mode)} to keep consolidated view readable.",
+                        _split_purpose=_split_mode_purpose(split_mode),
                     )
                 )
             note = f"Consolidated diagram split by {_split_mode_label(split_mode)} due to Mermaid size limits."
@@ -3843,6 +4230,7 @@ def _write_consolidated_flowchart(
                 note=note,
                 part_paths=part_paths,
                 tenancy_label=_tenancy_label(nodes),
+                purpose=_split_mode_purpose(split_mode),
             )
             _record_diagram_split(
                 summary,
@@ -3869,10 +4257,22 @@ def _write_consolidated_flowchart(
             path=path,
             summary=summary,
             _allow_split=_allow_split,
+            _split_scope_label=_split_scope_label,
+            _split_reason=_split_reason,
+            _split_purpose=_split_purpose,
         )
     insert_at = 1 if lines else 0
     if requested_depth > 1:
         lines.insert(insert_at, "%% NOTE: global map renders at depth 1 (tenancy + regions).")
+        insert_at += 1
+    if _split_scope_label:
+        lines.insert(insert_at, f"%% Split scope: {_split_scope_label}")
+        insert_at += 1
+    if _split_reason:
+        lines.insert(insert_at, f"%% Split rationale: {_split_reason}")
+        insert_at += 1
+    if _split_purpose:
+        lines.insert(insert_at, f"%% Split purpose: {_split_purpose}")
         insert_at += 1
     if depth != requested_depth:
         lines.insert(
