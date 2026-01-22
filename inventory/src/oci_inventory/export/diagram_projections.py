@@ -6,6 +6,7 @@ import re
 import subprocess
 import hashlib
 import importlib
+import time
 from dataclasses import dataclass
 import logging
 from pathlib import Path
@@ -76,6 +77,9 @@ ARCH_MAX_WORKLOADS = 60
 ARCH_MAX_VCNS = 60
 ARCH_MAX_TIER_NODES = 8
 ARCH_MIN_WORKLOAD_NODES = 5
+ARCH_MAX_ARCH_NODES = 220
+ARCH_MAX_ARCH_EDGES = 320
+ARCH_ARCH_OVERVIEW_PARTS = 10
 
 CONSOLIDATED_WORKLOAD_TOP_N = 8
 
@@ -2136,6 +2140,7 @@ def _write_network_views(
             gateways_by_vcn.setdefault(vcn_ref, []).append(n)
 
     out_paths: List[Path] = []
+    summary = _ensure_diagram_summary(summary)
 
     vcns_sorted = sorted(vcns, key=lambda n: str(n.get("name") or ""))
 
@@ -3151,35 +3156,52 @@ def _load_diagrams_classes() -> Optional[Tuple[Any, Any, Any, Dict[str, Any], An
     lane_classes = {
         "network": _first_node_class(
             [
+                ("diagrams.oci.network", "VirtualCloudNetwork"),
+                ("diagrams.oci.network", "Subnet"),
+                ("diagrams.oci.network", "RouteTable"),
+                ("diagrams.oci.network", "InternetGateway"),
                 ("diagrams.generic.network", "Router"),
                 ("diagrams.generic.network", "Switch"),
             ]
         ),
         "security": _first_node_class(
             [
+                ("diagrams.oci.security", "Firewall"),
+                ("diagrams.oci.identity", "Policy"),
                 ("diagrams.generic.security", "Firewall"),
             ]
         ),
         "iam": _first_node_class(
             [
+                ("diagrams.oci.identity", "User"),
+                ("diagrams.oci.identity", "Users"),
                 ("diagrams.generic.user", "User"),
                 ("diagrams.generic.user", "Users"),
             ]
         ),
         "app": _first_node_class(
             [
+                ("diagrams.oci.compute", "Instance"),
+                ("diagrams.oci.compute", "BareMetal"),
+                ("diagrams.oci.functions", "Functions"),
                 ("diagrams.generic.compute", "Rack"),
                 ("diagrams.generic.compute", "Server"),
             ]
         ),
         "data": _first_node_class(
             [
+                ("diagrams.oci.database", "AutonomousDatabase"),
+                ("diagrams.oci.database", "Database"),
+                ("diagrams.oci.storage", "ObjectStorage"),
+                ("diagrams.oci.storage", "BlockStorage"),
                 ("diagrams.generic.database", "SQL"),
                 ("diagrams.generic.storage", "Storage"),
             ]
         ),
         "observability": _first_node_class(
             [
+                ("diagrams.oci.monitoring", "Monitoring"),
+                ("diagrams.oci.logging", "Logging"),
                 ("diagrams.generic.monitoring", "Monitor"),
             ]
         ),
@@ -3341,6 +3363,184 @@ def _arch_node_for_lane(
     return cls(label)
 
 
+def _arch_node_label(node: Node) -> str:
+    name = _compact_label(str(node.get("name") or ""), max_len=48)
+    if not name:
+        name = _friendly_type(str(node.get("nodeType") or "Resource"))
+    if name.startswith("ocid1") or "ocid1" in name:
+        name = _friendly_type(str(node.get("nodeType") or "Resource"))
+    return name
+
+
+def _arch_short_hash(values: Sequence[str]) -> str:
+    digest = hashlib.sha1()
+    for value in values:
+        digest.update(value.encode("utf-8", errors="ignore"))
+        digest.update(b"|")
+    return digest.hexdigest()[:8]
+
+
+def _arch_graph_attrs() -> Tuple[Dict[str, str], Dict[str, str]]:
+    graph_attr = {
+        "rankdir": "LR",
+        "splines": "ortho",
+        "nodesep": "0.9",
+        "ranksep": "1.0",
+        "pad": "1.6",
+    }
+    node_attr = {
+        "fixedsize": "false",
+    }
+    return graph_attr, node_attr
+
+
+def _chunked(items: Sequence[str], size: int) -> Iterable[Sequence[str]]:
+    if size <= 0:
+        size = 1
+    for idx in range(0, len(items), size):
+        yield items[idx : idx + size]
+
+
+def _arch_split_by_lanes(
+    nodes_by_id: Mapping[str, Node],
+    node_ids: Sequence[str],
+    *,
+    max_nodes: int,
+) -> List[List[str]]:
+    lane_groups: Dict[str, List[str]] = {}
+    for node_id in node_ids:
+        node = nodes_by_id.get(node_id)
+        if not node:
+            continue
+        lane = _lane_for_node(node)
+        lane_groups.setdefault(lane, []).append(node_id)
+    parts: List[List[str]] = []
+    for lane in sorted(lane_groups.keys()):
+        lane_ids = sorted(lane_groups[lane])
+        for chunk in _chunked(lane_ids, max_nodes):
+            parts.append(list(chunk))
+    return parts
+
+
+def _arch_split_with_budget(
+    nodes_by_id: Mapping[str, Node],
+    edges: Sequence[Edge],
+    node_ids: Sequence[str],
+    *,
+    max_nodes: int,
+    max_edges: int,
+) -> List[List[str]]:
+    if not node_ids:
+        return []
+    unique_ids = sorted(set(node_ids))
+    parts: List[List[str]] = []
+    chunk_size = max_nodes
+    while True:
+        parts = _arch_split_by_lanes(nodes_by_id, unique_ids, max_nodes=chunk_size)
+        if not parts:
+            break
+        oversized = False
+        for part in parts:
+            part_edges = _filter_edges_for_nodes(edges, set(part))
+            if len(part) > max_nodes or len(part_edges) > max_edges:
+                oversized = True
+                break
+        if not oversized or chunk_size <= 1:
+            break
+        chunk_size = max(1, chunk_size // 2)
+    return parts
+
+
+def _arch_split_vcn_parts(
+    vcn_nodes: Sequence[Node],
+    vcn_edges: Sequence[Edge],
+    *,
+    max_nodes: int,
+) -> List[List[str]]:
+    nodes_by_id = {str(n.get("nodeId") or ""): n for n in vcn_nodes if n.get("nodeId")}
+    subnet_nodes = [n for n in vcn_nodes if _is_node_type(n, "Subnet") and n.get("nodeId")]
+    subnet_ids = [str(n.get("nodeId") or "") for n in subnet_nodes]
+    attachments = _derived_attachments(vcn_nodes, vcn_edges)
+    attach_by_res = {a.resource_ocid: a for a in attachments}
+
+    gateway_ids = sorted(
+        str(n.get("nodeId") or "")
+        for n in vcn_nodes
+        if n.get("nodeId") and _arch_is_gateway(n)
+    )
+
+    groups: List[Tuple[str, List[str]]] = []
+    for subnet_id in sorted(subnet_ids):
+        attached = [
+            str(n.get("nodeId") or "")
+            for n in vcn_nodes
+            if n.get("nodeId")
+            and attach_by_res.get(str(n.get("nodeId") or ""))
+            and attach_by_res[str(n.get("nodeId") or "")].subnet_ocid == subnet_id
+            and not _is_node_type(n, "Vcn", "Subnet", "Compartment")
+        ]
+        group_ids = [subnet_id] + sorted({*attached})
+        groups.append((f"subnet:{subnet_id}", group_ids))
+
+    other_ids = [
+        str(n.get("nodeId") or "")
+        for n in vcn_nodes
+        if n.get("nodeId")
+        and not _is_node_type(n, "Vcn", "Subnet", "Compartment")
+        and str(n.get("nodeId") or "") not in subnet_ids
+        and str(n.get("nodeId") or "") not in {nid for _, ids in groups for nid in ids}
+        and str(n.get("nodeId") or "") not in gateway_ids
+    ]
+    if other_ids:
+        groups.append(("out-of-subnet", sorted(other_ids)))
+
+    def _pack_groups() -> List[List[str]]:
+        packed: List[List[str]] = []
+        current: List[str] = []
+        for _label, group_ids in groups:
+            base_ids = sorted(set(group_ids))
+            if not base_ids:
+                continue
+            # If a single group is too large, split it first.
+            group_parts = _arch_split_with_budget(
+                nodes_by_id,
+                vcn_edges,
+                base_ids,
+                max_nodes=max_nodes,
+                max_edges=ARCH_MAX_ARCH_EDGES,
+            )
+            for sub_ids in group_parts:
+                if not sub_ids:
+                    continue
+                candidate = sorted(set(current + sub_ids))
+                candidate_edges = _filter_edges_for_nodes(vcn_edges, set(candidate))
+                if current and (len(candidate) > max_nodes or len(candidate_edges) > ARCH_MAX_ARCH_EDGES):
+                    packed.append(current)
+                    current = []
+                current = sorted(set(current + sub_ids))
+        if current:
+            packed.append(current)
+        return packed
+
+    parts = _pack_groups()
+    if gateway_ids:
+        parts = [sorted(set(part + gateway_ids)) for part in parts]
+
+    if not parts:
+        all_ids = sorted(nodes_by_id.keys())
+        if len(all_ids) <= max_nodes:
+            parts = [all_ids]
+        else:
+            parts = _arch_split_with_budget(
+                nodes_by_id,
+                vcn_edges,
+                all_ids,
+                max_nodes=max_nodes,
+                max_edges=ARCH_MAX_ARCH_EDGES,
+            )
+    return parts
+
+
 def _render_architecture_tenancy(
     Diagram: Any,
     Cluster: Any,
@@ -3367,13 +3567,14 @@ def _render_architecture_tenancy(
     arch_dir.mkdir(parents=True, exist_ok=True)
     path = arch_dir / "diagram.arch.tenancy.svg"
     filename = str(path.with_suffix(""))
-    graph_attr = {"rankdir": "LR", "splines": "ortho"}
+    graph_attr, node_attr = _arch_graph_attrs()
     with Diagram(
         f"{tenancy_label} Architecture (Overview)",
         filename=filename,
         outformat="svg",
         show=False,
         graph_attr=graph_attr,
+        node_attr=node_attr,
     ):
         for comp_id, comp_nodes in top_groups:
             comp_label = _arch_compartment_label(
@@ -3451,21 +3652,31 @@ def _render_architecture_vcn(
     outdir: Path,
     vcn_name: str,
     vcn_nodes: Sequence[Node],
+    vcn_edges: Sequence[Edge],
+    vcn_suffix: str,
+    part_idx: Optional[int] = None,
+    part_total: Optional[int] = None,
 ) -> Optional[Path]:
     if not vcn_nodes:
         return None
     vcn_label = _compact_label(vcn_name, max_len=64) or "VCN"
     arch_dir = outdir / "architecture"
     arch_dir.mkdir(parents=True, exist_ok=True)
-    path = arch_dir / f"diagram.arch.vcn.{_slugify(vcn_label)}.svg"
+    suffix = f".{vcn_suffix}" if vcn_suffix else ""
+    part_suffix = f".part{part_idx:02d}" if part_idx is not None else ""
+    path = arch_dir / f"diagram.arch.vcn.{_slugify(vcn_label)}{suffix}{part_suffix}.svg"
     filename = str(path.with_suffix(""))
-    graph_attr = {"rankdir": "LR", "splines": "ortho"}
+    graph_attr, node_attr = _arch_graph_attrs()
+    title = f"VCN Architecture: {vcn_label}"
+    if part_idx is not None and part_total:
+        title = f"{title} (Part {part_idx}/{part_total})"
     with Diagram(
-        f"VCN Architecture: {vcn_label}",
+        title,
         filename=filename,
         outformat="svg",
         show=False,
         graph_attr=graph_attr,
+        node_attr=node_attr,
     ):
         with Cluster(f"VCN: {vcn_label}"):
             subnets = sorted(
@@ -3485,7 +3696,11 @@ def _render_architecture_vcn(
                 else:
                     other_subnets.append(sn)
 
-            subnet_nodes: Dict[str, Any] = {}
+            attachments = _derived_attachments(vcn_nodes, vcn_edges)
+            attach_by_res = {a.resource_ocid: a for a in attachments}
+            subnet_ids = {str(sn.get("nodeId") or "") for sn in subnets if sn.get("nodeId")}
+
+            node_map: Dict[str, Any] = {}
             for label, group in (
                 ("Public Subnets", public_subnets),
                 ("Private Subnets", private_subnets),
@@ -3493,23 +3708,48 @@ def _render_architecture_vcn(
             ):
                 if not group:
                     continue
-                with Cluster(label):
+                with Cluster(label, graph_attr={"rank": "same"}):
                     for sn in group:
-                        node = _arch_node_for_lane(
-                            "network",
-                            _subnet_label_compact(sn),
-                            lane_classes=lane_classes,
-                            fallback=fallback,
-                        )
-                        subnet_nodes[str(sn.get("nodeId") or _subnet_label_compact(sn))] = node
+                        sn_id = str(sn.get("nodeId") or "")
+                        sn_label = _subnet_label_compact(sn)
+                        with Cluster(sn_label, graph_attr={"rank": "same"}):
+                            sn_node = _arch_node_for_lane(
+                                "network",
+                                sn_label,
+                                lane_classes=lane_classes,
+                                fallback=fallback,
+                            )
+                            if sn_id:
+                                node_map[sn_id] = sn_node
+                            # Render nodes attached to this subnet inside the subnet cluster.
+                            attached = [
+                                n
+                                for n in vcn_nodes
+                                if n.get("nodeId")
+                                and attach_by_res.get(str(n.get("nodeId") or ""))
+                                and attach_by_res[str(n.get("nodeId") or "")].subnet_ocid == sn_id
+                                and not _is_node_type(n, "Vcn", "Subnet", "Compartment")
+                            ]
+                            for n in sorted(
+                                attached,
+                                key=lambda x: (str(x.get("nodeType") or ""), str(x.get("name") or "")),
+                            ):
+                                label = _arch_node_label(n)
+                                lane = _lane_for_node(n)
+                                node = _arch_node_for_lane(
+                                    lane,
+                                    label,
+                                    lane_classes=lane_classes,
+                                    fallback=fallback,
+                                )
+                                node_map[str(n.get("nodeId") or "")] = node
 
             gateways = sorted(
                 (n for n in vcn_nodes if _arch_is_gateway(n)),
                 key=lambda n: str(n.get("nodeType") or ""),
             )
-            gateway_nodes: Dict[str, Any] = {}
             if gateways:
-                with Cluster("Gateways"):
+                with Cluster("Gateways", graph_attr={"rank": "same"}):
                     for gw in gateways:
                         label = _friendly_type(str(gw.get("nodeType") or "Gateway"))
                         gw_node = _arch_node_for_lane(
@@ -3518,44 +3758,43 @@ def _render_architecture_vcn(
                             lane_classes=lane_classes,
                             fallback=fallback,
                         )
-                        gateway_nodes[label] = gw_node
+                        gw_id = str(gw.get("nodeId") or "")
+                        if gw_id:
+                            node_map[gw_id] = gw_node
 
-            counts = _arch_lane_counts(vcn_nodes)
-            gateway_count = len(gateways)
-            if gateway_count and counts.get("network"):
-                counts["network"] = max(0, counts["network"] - gateway_count)
-                if counts["network"] == 0:
-                    counts.pop("network", None)
+            other_nodes = [
+                n
+                for n in vcn_nodes
+                if n.get("nodeId")
+                and not _is_node_type(n, "Vcn", "Subnet", "Compartment")
+                and str(n.get("nodeId") or "") not in node_map
+            ]
 
-            for lane in sorted(counts.keys()):
-                label = f"{_lane_label(lane)} (n={counts[lane]})"
-                _arch_node_for_lane(
-                    lane,
-                    label,
-                    lane_classes=lane_classes,
-                    fallback=fallback,
-                )
+            # Render remaining nodes (not attached to a subnet) in an "Out-of-subnet" cluster
+            remaining = [n for n in other_nodes if str(n.get("nodeId") or "") not in node_map]
+            if remaining:
+                with Cluster("Out-of-Subnet", graph_attr={"rank": "same"}):
+                    for n in remaining:
+                        label = _arch_node_label(n)
+                        lane = _lane_for_node(n)
+                        node = _arch_node_for_lane(
+                            lane,
+                            label,
+                            lane_classes=lane_classes,
+                            fallback=fallback,
+                        )
+                        node_map[str(n.get("nodeId") or "")] = node
 
-            # Minimal flow hints (best-effort).
-            def _first_subnet_node(candidates: List[Node]) -> Optional[Any]:
-                if not candidates:
-                    return None
-                key = str(candidates[0].get("nodeId") or _subnet_label_compact(candidates[0]))
-                return subnet_nodes.get(key)
-
-            public_node = _first_subnet_node(public_subnets)
-            private_node = _first_subnet_node(private_subnets) or _first_subnet_node(other_subnets)
-            any_node = public_node or private_node
-
-            for label, gw_node in gateway_nodes.items():
-                if "Internet" in label and public_node is not None:
-                    gw_node >> Edge(color="gray") >> public_node
-                elif "Nat" in label and private_node is not None:
-                    gw_node >> Edge(color="gray") >> private_node
-                elif "Service" in label and private_node is not None:
-                    gw_node >> Edge(color="gray") >> private_node
-                elif "Drg" in label and any_node is not None:
-                    gw_node >> Edge(color="gray") >> any_node
+            for e in sorted(
+                vcn_edges,
+                key=lambda e: (str(e.get("source_ocid") or ""), str(e.get("target_ocid") or ""), str(e.get("relation_type") or "")),
+            ):
+                if str(e.get("relation_type") or "") in _ADMIN_RELATION_TYPES:
+                    continue
+                src = str(e.get("source_ocid") or "")
+                dst = str(e.get("target_ocid") or "")
+                if src in node_map and dst in node_map:
+                    node_map[src] >> Edge(color="gray") >> node_map[dst]
     return path
 
 
@@ -3569,89 +3808,193 @@ def _render_architecture_workload(
     outdir: Path,
     workload: str,
     workload_nodes: Sequence[Node],
+    workload_edges: Sequence[Edge],
+    workload_suffix: str,
+    part_idx: Optional[int] = None,
+    part_total: Optional[int] = None,
 ) -> Optional[Path]:
     if not workload_nodes:
         return None
     wl_label = _arch_safe_label(_compact_label(workload, max_len=64), default="Workload")
     arch_dir = outdir / "architecture"
     arch_dir.mkdir(parents=True, exist_ok=True)
-    path = arch_dir / f"diagram.arch.workload.{_slugify(wl_label)}.svg"
+    suffix = f".{workload_suffix}" if workload_suffix else ""
+    part_suffix = f".part{part_idx:02d}" if part_idx is not None else ""
+    path = arch_dir / f"diagram.arch.workload.{_slugify(wl_label)}{suffix}{part_suffix}.svg"
     filename = str(path.with_suffix(""))
-    graph_attr = {"rankdir": "LR", "splines": "ortho"}
+    graph_attr, node_attr = _arch_graph_attrs()
+    title = f"Workload Architecture: {wl_label}"
+    if part_idx is not None and part_total:
+        title = f"{title} (Part {part_idx}/{part_total})"
     with Diagram(
-        f"Workload Architecture: {wl_label}",
+        title,
         filename=filename,
         outformat="svg",
         show=False,
         graph_attr=graph_attr,
+        node_attr=node_attr,
     ):
         with Cluster(f"Workload: {wl_label}"):
-            vcns = sorted(
-                (n for n in workload_nodes if _is_node_type(n, "Vcn")),
+            node_map: Dict[str, Any] = {}
+            lane_groups: Dict[str, List[Node]] = {}
+            for node in workload_nodes:
+                if not node.get("nodeId"):
+                    continue
+                if _is_node_type(node, "Compartment"):
+                    continue
+                lane = _lane_for_node(node)
+                lane_groups.setdefault(lane, []).append(node)
+
+            for lane in sorted(lane_groups.keys()):
+                label = _lane_label(lane)
+                with Cluster(label, graph_attr={"rank": "same"}):
+                    for node in sorted(
+                        lane_groups[lane],
+                        key=lambda n: (str(n.get("nodeType") or ""), str(n.get("name") or "")),
+                    ):
+                        node_id = str(node.get("nodeId") or "")
+                        if not node_id or node_id in node_map:
+                            continue
+                        node_label = _arch_node_label(node)
+                        node_map[node_id] = _arch_node_for_lane(
+                            lane,
+                            node_label,
+                            lane_classes=lane_classes,
+                            fallback=fallback,
+                        )
+
+            for e in sorted(
+                workload_edges,
+                key=lambda e: (str(e.get("source_ocid") or ""), str(e.get("target_ocid") or ""), str(e.get("relation_type") or "")),
+            ):
+                if str(e.get("relation_type") or "") in _ADMIN_RELATION_TYPES:
+                    continue
+                src = str(e.get("source_ocid") or "")
+                dst = str(e.get("target_ocid") or "")
+                if src in node_map and dst in node_map:
+                    node_map[src] >> Edge(color="gray") >> node_map[dst]
+    return path
+
+
+def _render_architecture_vcn_overview(
+    Diagram: Any,
+    Cluster: Any,
+    Edge: Any,
+    lane_classes: Mapping[str, Any],
+    fallback: Any,
+    *,
+    outdir: Path,
+    vcn_name: str,
+    vcn_nodes: Sequence[Node],
+    vcn_edges: Sequence[Edge],
+    vcn_suffix: str,
+    part_count: int,
+) -> Optional[Path]:
+    if not vcn_nodes:
+        return None
+    vcn_label = _compact_label(vcn_name, max_len=64) or "VCN"
+    arch_dir = outdir / "architecture"
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    path = arch_dir / f"diagram.arch.vcn.{_slugify(vcn_label)}.{vcn_suffix}.overview.svg"
+    filename = str(path.with_suffix(""))
+    graph_attr, node_attr = _arch_graph_attrs()
+    title = f"VCN Architecture: {vcn_label} (Overview)"
+    with Diagram(
+        title,
+        filename=filename,
+        outformat="svg",
+        show=False,
+        graph_attr=graph_attr,
+        node_attr=node_attr,
+    ):
+        with Cluster(f"VCN: {vcn_label} (Overview)"):
+            subnets = sorted(
+                (n for n in vcn_nodes if _is_node_type(n, "Subnet")),
                 key=lambda n: str(n.get("name") or n.get("nodeId") or ""),
             )
-            for vcn in vcns[:ARCH_MAX_TIER_NODES]:
+            attachments = _derived_attachments(vcn_nodes, vcn_edges)
+            attach_by_res = {a.resource_ocid: a for a in attachments}
+            for sn in subnets:
+                sn_id = str(sn.get("nodeId") or "")
+                sn_label = _subnet_label_compact(sn)
+                attached = [
+                    n
+                    for n in vcn_nodes
+                    if n.get("nodeId")
+                    and attach_by_res.get(str(n.get("nodeId") or ""))
+                    and attach_by_res[str(n.get("nodeId") or "")].subnet_ocid == sn_id
+                    and not _is_node_type(n, "Vcn", "Subnet", "Compartment")
+                ]
+                label = f"{sn_label} (n={len(attached)})"
                 _arch_node_for_lane(
                     "network",
-                    _vcn_label_compact(vcn),
+                    label,
                     lane_classes=lane_classes,
                     fallback=fallback,
                 )
-            if len(vcns) > ARCH_MAX_TIER_NODES:
+            gateways = [n for n in vcn_nodes if _arch_is_gateway(n)]
+            if gateways:
                 _arch_node_for_lane(
                     "network",
-                    f"Other VCNs (n={len(vcns) - ARCH_MAX_TIER_NODES})",
+                    f"Gateways (n={len(gateways)})",
                     lane_classes=lane_classes,
                     fallback=fallback,
                 )
-
-            # Tier nodes (best-effort, capped)
-            ingress_nodes = [n for n in workload_nodes if _arch_is_load_balancer(n)]
-            compute_nodes = [n for n in workload_nodes if str(n.get("nodeCategory") or "") == "compute"]
-            data_nodes = [n for n in workload_nodes if _arch_is_database(n) or str(n.get("nodeCategory") or "") == "storage"]
-            security_nodes = [n for n in workload_nodes if str(n.get("nodeCategory") or "") == "security"]
-
-            ingress = None
-            if ingress_nodes:
-                ingress = _arch_node_for_lane(
-                    "network",
-                    f"Ingress (n={len(ingress_nodes)})",
-                    lane_classes=lane_classes,
-                    fallback=fallback,
-                )
-            compute = None
-            if compute_nodes:
-                compute = _arch_node_for_lane(
-                    "app",
-                    f"Compute (n={len(compute_nodes)})",
-                    lane_classes=lane_classes,
-                    fallback=fallback,
-                )
-            data = None
-            if data_nodes:
-                data = _arch_node_for_lane(
-                    "data",
-                    f"Data (n={len(data_nodes)})",
-                    lane_classes=lane_classes,
-                    fallback=fallback,
-                )
-            if security_nodes:
+            other_nodes = [
+                n
+                for n in vcn_nodes
+                if n.get("nodeId")
+                and not _is_node_type(n, "Vcn", "Subnet", "Compartment")
+                and str(n.get("nodeId") or "") not in {str(sn.get("nodeId") or "") for sn in subnets}
+            ]
+            if other_nodes:
                 _arch_node_for_lane(
-                    "security",
-                    f"Security (n={len(security_nodes)})",
+                    "other",
+                    f"Out-of-Subnet (n={len(other_nodes)})",
                     lane_classes=lane_classes,
                     fallback=fallback,
                 )
+            _arch_node_for_lane(
+                "other",
+                f"Parts: {part_count}",
+                lane_classes=lane_classes,
+                fallback=fallback,
+            )
+    return path
 
-            if ingress is not None and compute is not None:
-                ingress >> Edge(color="gray") >> compute
-            if compute is not None and data is not None:
-                compute >> Edge(color="gray") >> data
 
+def _render_architecture_workload_overview(
+    Diagram: Any,
+    Cluster: Any,
+    Edge: Any,
+    lane_classes: Mapping[str, Any],
+    fallback: Any,
+    *,
+    outdir: Path,
+    workload: str,
+    workload_nodes: Sequence[Node],
+    workload_suffix: str,
+    part_count: int,
+) -> Optional[Path]:
+    if not workload_nodes:
+        return None
+    wl_label = _arch_safe_label(_compact_label(workload, max_len=64), default="Workload")
+    arch_dir = outdir / "architecture"
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    path = arch_dir / f"diagram.arch.workload.{_slugify(wl_label)}.{workload_suffix}.overview.svg"
+    filename = str(path.with_suffix(""))
+    graph_attr, node_attr = _arch_graph_attrs()
+    title = f"Workload Architecture: {wl_label} (Overview)"
+    with Diagram(
+        title,
+        filename=filename,
+        outformat="svg",
+        show=False,
+        graph_attr=graph_attr,
+        node_attr=node_attr,
+    ):
+        with Cluster(f"Workload: {wl_label} (Overview)"):
             counts = _arch_lane_counts(workload_nodes)
-            # Remove lanes represented explicitly above
-            for lane in ("network", "app", "data", "security"):
-                counts.pop(lane, None)
             for lane in sorted(counts.keys()):
                 label = f"{_lane_label(lane)} (n={counts[lane]})"
                 _arch_node_for_lane(
@@ -3660,8 +4003,13 @@ def _render_architecture_workload(
                     lane_classes=lane_classes,
                     fallback=fallback,
                 )
+            _arch_node_for_lane(
+                "other",
+                f"Parts: {part_count}",
+                lane_classes=lane_classes,
+                fallback=fallback,
+            )
     return path
-
 
 def write_architecture_diagrams(
     outdir: Path,
@@ -3700,6 +4048,14 @@ def write_architecture_diagrams(
             ARCH_MAX_VCNS,
             len(other_vcns),
         )
+        _record_diagram_skip(
+            summary,
+            diagram="architecture.vcn",
+            kind="vcn",
+            size=len(other_vcns),
+            limit=ARCH_MAX_VCNS,
+            reason="limit",
+        )
     for vcn_id, group_nodes in top_vcns:
         vcn_name = ""
         for n in group_nodes:
@@ -3708,18 +4064,84 @@ def write_architecture_diagrams(
                 break
         if not vcn_name:
             vcn_name = "VCN"
-        path = _render_architecture_vcn(
-            Diagram,
-            Cluster,
-            Edge,
-            lane_classes,
-            fallback,
-            outdir=outdir,
-            vcn_name=vcn_name,
-            vcn_nodes=group_nodes,
-        )
-        if path is not None:
-            out_paths.append(path)
+        node_ids = [str(n.get("nodeId") or "") for n in group_nodes if n.get("nodeId")]
+        node_ids = [nid for nid in node_ids if nid]
+        vcn_suffix = _arch_short_hash([vcn_id] if vcn_id else sorted(node_ids))
+        vcn_edges = _filter_edges_for_nodes(edges, set(node_ids))
+        parts = [sorted(set(node_ids))]
+        if len(node_ids) > ARCH_MAX_ARCH_NODES or len(vcn_edges) > ARCH_MAX_ARCH_EDGES:
+            parts = _arch_split_vcn_parts(
+                group_nodes,
+                vcn_edges,
+                max_nodes=ARCH_MAX_ARCH_NODES,
+            )
+        if len(parts) > 1:
+            part_names = [
+                f"diagram.arch.vcn.{_slugify(vcn_name)}.{vcn_suffix}.part{idx:02d}.svg"
+                for idx in range(1, len(parts) + 1)
+            ]
+            _record_diagram_split(
+                summary,
+                diagram=f"architecture.vcn.{vcn_name}",
+                parts=part_names,
+                size=len(node_ids),
+                limit=ARCH_MAX_ARCH_NODES,
+                reason="node_or_edge_budget",
+            )
+        if len(parts) >= ARCH_ARCH_OVERVIEW_PARTS:
+            try:
+                overview = _render_architecture_vcn_overview(
+                    Diagram,
+                    Cluster,
+                    Edge,
+                    lane_classes,
+                    fallback,
+                    outdir=outdir,
+                    vcn_name=vcn_name,
+                    vcn_nodes=group_nodes,
+                    vcn_edges=vcn_edges,
+                    vcn_suffix=vcn_suffix,
+                    part_count=len(parts),
+                )
+                if overview is not None:
+                    out_paths.append(overview)
+            except Exception as exc:
+                LOG.warning(
+                    "Architecture VCN overview failed for %s: %s",
+                    vcn_name,
+                    exc,
+                )
+        for idx, part_ids in enumerate(parts, start=1):
+            if not part_ids:
+                continue
+            part_nodes = [n for n in group_nodes if str(n.get("nodeId") or "") in set(part_ids)]
+            part_edges = _filter_edges_for_nodes(vcn_edges, set(part_ids))
+            try:
+                path = _render_architecture_vcn(
+                    Diagram,
+                    Cluster,
+                    Edge,
+                    lane_classes,
+                    fallback,
+                    outdir=outdir,
+                    vcn_name=vcn_name,
+                    vcn_nodes=part_nodes,
+                    vcn_edges=part_edges,
+                    vcn_suffix=vcn_suffix,
+                    part_idx=idx if len(parts) > 1 else None,
+                    part_total=len(parts) if len(parts) > 1 else None,
+                )
+            except Exception as exc:
+                LOG.warning(
+                    "Architecture VCN diagram failed for %s (part %s/%s): %s",
+                    vcn_name,
+                    idx,
+                    len(parts),
+                    exc,
+                )
+                continue
+            if path is not None:
+                out_paths.append(path)
 
     workload_candidates = [n for n in nodes if n.get("nodeId")]
     wl_groups = {k: list(v) for k, v in group_workload_candidates(workload_candidates).items()}
@@ -3730,26 +4152,111 @@ def write_architecture_diagrams(
         if _arch_workload_name_is_generic(wl_name) and not _arch_workload_has_tags(wl_nodes):
             continue
         filtered_wl[wl_name] = wl_nodes
-    top_wl, other_wl = _arch_select_top_groups(filtered_wl, limit=ARCH_MAX_WORKLOADS)
+    workload_ranked: List[Tuple[str, List[Node], int]] = []
+    for wl_name, wl_nodes in filtered_wl.items():
+        node_ids = {str(n.get("nodeId") or "") for n in wl_nodes if n.get("nodeId")}
+        wl_edges = _filter_edges_for_nodes(edges, node_ids)
+        workload_ranked.append((wl_name, wl_nodes, len(wl_edges)))
+    workload_ranked.sort(
+        key=lambda item: (-item[2], -_arch_count_nodes(item[1]), str(item[0]).lower())
+    )
+    top_wl = [(name, nodes) for name, nodes, _cnt in workload_ranked[:ARCH_MAX_WORKLOADS]]
+    other_wl = [(name, nodes) for name, nodes, _cnt in workload_ranked[ARCH_MAX_WORKLOADS:]]
     if other_wl:
         LOG.info(
             "Architecture diagrams capped workload views at %s (skipped %s).",
             ARCH_MAX_WORKLOADS,
             len(other_wl),
         )
-    for wl_name, wl_nodes in top_wl:
-        path = _render_architecture_workload(
-            Diagram,
-            Cluster,
-            Edge,
-            lane_classes,
-            fallback,
-            outdir=outdir,
-            workload=wl_name,
-            workload_nodes=wl_nodes,
+        _record_diagram_skip(
+            summary,
+            diagram="architecture.workload",
+            kind="workload",
+            size=len(other_wl),
+            limit=ARCH_MAX_WORKLOADS,
+            reason="limit",
         )
-        if path is not None:
-            out_paths.append(path)
+    for wl_name, wl_nodes in top_wl:
+        node_ids = [str(n.get("nodeId") or "") for n in wl_nodes if n.get("nodeId")]
+        node_ids = [nid for nid in node_ids if nid]
+        workload_suffix = _arch_short_hash([wl_name] + sorted(node_ids))
+        workload_edges = _filter_edges_for_nodes(edges, set(node_ids))
+        parts = [sorted(set(node_ids))]
+        if len(node_ids) > ARCH_MAX_ARCH_NODES or len(workload_edges) > ARCH_MAX_ARCH_EDGES:
+            nodes_by_id = {str(n.get("nodeId") or ""): n for n in wl_nodes if n.get("nodeId")}
+            parts = _arch_split_with_budget(
+                nodes_by_id,
+                workload_edges,
+                sorted(set(node_ids)),
+                max_nodes=ARCH_MAX_ARCH_NODES,
+                max_edges=ARCH_MAX_ARCH_EDGES,
+            )
+        if len(parts) > 1:
+            part_names = [
+                f"diagram.arch.workload.{_slugify(wl_name)}.{workload_suffix}.part{idx:02d}.svg"
+                for idx in range(1, len(parts) + 1)
+            ]
+            _record_diagram_split(
+                summary,
+                diagram=f"architecture.workload.{wl_name}",
+                parts=part_names,
+                size=len(node_ids),
+                limit=ARCH_MAX_ARCH_NODES,
+                reason="node_or_edge_budget",
+            )
+        if len(parts) >= ARCH_ARCH_OVERVIEW_PARTS:
+            try:
+                overview = _render_architecture_workload_overview(
+                    Diagram,
+                    Cluster,
+                    Edge,
+                    lane_classes,
+                    fallback,
+                    outdir=outdir,
+                    workload=wl_name,
+                    workload_nodes=wl_nodes,
+                    workload_suffix=workload_suffix,
+                    part_count=len(parts),
+                )
+                if overview is not None:
+                    out_paths.append(overview)
+            except Exception as exc:
+                LOG.warning(
+                    "Architecture workload overview failed for %s: %s",
+                    wl_name,
+                    exc,
+                )
+        for idx, part_ids in enumerate(parts, start=1):
+            if not part_ids:
+                continue
+            part_nodes = [n for n in wl_nodes if str(n.get("nodeId") or "") in set(part_ids)]
+            part_edges = _filter_edges_for_nodes(workload_edges, set(part_ids))
+            try:
+                path = _render_architecture_workload(
+                    Diagram,
+                    Cluster,
+                    Edge,
+                    lane_classes,
+                    fallback,
+                    outdir=outdir,
+                    workload=wl_name,
+                    workload_nodes=part_nodes,
+                    workload_edges=part_edges,
+                    workload_suffix=workload_suffix,
+                    part_idx=idx if len(parts) > 1 else None,
+                    part_total=len(parts) if len(parts) > 1 else None,
+                )
+            except Exception as exc:
+                LOG.warning(
+                    "Architecture workload diagram failed for %s (part %s/%s): %s",
+                    wl_name,
+                    idx,
+                    len(parts),
+                    exc,
+                )
+                continue
+            if path is not None:
+                out_paths.append(path)
     return out_paths
 
 
@@ -3823,15 +4330,32 @@ def validate_mermaid_diagrams_with_mmdc(outdir: Path, *, glob_pattern: str = "di
         if not _should_validate(path, digest):
             return path, _cache_key(path), digest, None
         out_svg = cache_dir / f"{path.stem}.svg"
-        proc = subprocess.run(
-            [mmdc, "-i", str(path), "-o", str(out_svg)],
-            text=True,
-            capture_output=True,
-        )
-        if proc.returncode != 0:
+        backoffs = (0.5, 1.0, 2.0)
+        attempts = 1 + len(backoffs)
+        for idx in range(attempts):
+            proc = subprocess.run(
+                [mmdc, "-i", str(path), "-o", str(out_svg)],
+                text=True,
+                capture_output=True,
+            )
+            if proc.returncode == 0:
+                return path, _cache_key(path), digest, None
             stderr = (proc.stderr or "").strip()
             stdout = (proc.stdout or "").strip()
             detail = stderr or stdout or f"mmdc exited with code {proc.returncode}"
+            retryable = any(
+                token in detail.lower()
+                for token in ("protocol error", "connection closed", "target closed", "page has been closed")
+            )
+            if retryable and idx < len(backoffs):
+                LOG.warning(
+                    "Mermaid validation retry %s/%s for %s due to transient mmdc error.",
+                    idx + 1,
+                    attempts - 1,
+                    path.name,
+                )
+                time.sleep(backoffs[idx])
+                continue
             return path, _cache_key(path), digest, detail
         return path, _cache_key(path), digest, None
 
