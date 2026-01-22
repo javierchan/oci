@@ -4156,6 +4156,7 @@ def _write_consolidated_stub(
     note: str,
     part_paths: Sequence[Path],
     tenancy_label: str,
+    nodes: Sequence[Node],
     purpose: Optional[str] = None,
 ) -> Path:
     lines = [_flowchart_elk_init_line(), "flowchart TB"]
@@ -4230,6 +4231,7 @@ def _write_consolidated_flowchart(
                 note=note,
                 part_paths=part_paths,
                 tenancy_label=_tenancy_label(nodes),
+                nodes=nodes,
                 purpose=_split_mode_purpose(split_mode),
             )
             _record_diagram_split(

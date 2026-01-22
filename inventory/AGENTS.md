@@ -86,6 +86,8 @@ Forbidden (mutating):
 - Avoid network calls, real OCI access, or external dependencies.
 - Run smallest relevant subset of tests; expand only if needed.
 - Always run pytest using the repo `.venv` (e.g., `./.venv/bin/python -m pytest`).
+- After any code change, run at least one relevant test target and report the exact command and outcome.
+- Before merging to main, run the full pytest suite and report the exact command and outcome.
 
 ---
 
