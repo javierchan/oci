@@ -16,6 +16,7 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Seque
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from .graph import Edge, Node
+from .architecture_concepts import build_scope_concepts, build_workload_concepts, build_workload_context
 from ..normalize.transform import group_workload_candidates
 from ..util.errors import ExportError
 
@@ -59,6 +60,15 @@ _LANE_ORDER: Tuple[str, ...] = (
     "network",
     "app",
     "data",
+    "observability",
+    "other",
+)
+
+ARCH_SVG_LANE_ORDER: Tuple[str, ...] = (
+    "network",
+    "app",
+    "data",
+    "security",
     "observability",
     "other",
 )
@@ -3654,13 +3664,65 @@ def _drawio_doc(title: str, cells: Callable[[Any], None]) -> str:
     return tostring(mxfile, encoding="utf-8").decode("utf-8")
 
 
+def _concept_lane_labels(concepts: Sequence[Any], *, lane: str, limit: int) -> Tuple[List[str], int]:
+    items = [c for c in concepts if c.lane == lane]
+    items.sort(key=lambda c: (-c.count, c.label))
+    labels = [c.label for c in items]
+    top = labels[:limit]
+    rest = max(0, len(labels) - len(top))
+    return top, rest
+
+
+def _concepts_for_scope(
+    concepts: Sequence[Any],
+    *,
+    lane: str,
+    placement: Optional[str] = None,
+    compartment_id: Optional[str] = None,
+    vcn_name: Optional[str] = None,
+) -> List[Any]:
+    normalized_vcn = _normalize_concept_label(vcn_name) if vcn_name else None
+    items: List[Any] = []
+    for c in concepts:
+        if c.lane != lane:
+            continue
+        if placement and c.placement != placement:
+            continue
+        if compartment_id and c.compartment_id != compartment_id:
+            continue
+        if normalized_vcn and normalized_vcn not in c.vcn_names:
+            continue
+        items.append(c)
+    items.sort(key=lambda c: (-c.count, c.label))
+    return items
+
+
+def _normalize_concept_label(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    cleaned = str(value)
+    if "ocid1" in cleaned:
+        cleaned = "Redacted"
+    cleaned = re.sub(r"\d{4}-\d{2}-\d{2}(?:[T _-]?\d{2}[:_-]?\d{2}[:_-]?\d{2})?", "", cleaned)
+    cleaned = re.sub(r"\d{8,14}", "", cleaned)
+    cleaned = re.sub(r"[-_ ]{2,}", " ", cleaned)
+    return cleaned.strip(" -_") or str(value)
+
+
 def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> Path:
     title = "Tenancy Architecture Overview"
     comp_items = _top_compartment_counts(nodes)
     top_compartments, rest_compartments = _overview_top_counts(comp_items, ARCH_TENANCY_TOP_N)
     vcn_items = _top_vcn_counts(nodes)
     top_vcns, rest_vcns = _overview_top_counts(vcn_items, ARCH_TENANCY_TOP_N)
-    lane_summaries = _arch_lane_summaries(nodes)
+    concepts = build_scope_concepts(nodes=nodes, edges=[], scope_nodes=nodes)
+    node_by_id = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
+    alias_by_comp = _compartment_alias_map(nodes)
+    comp_groups = _group_nodes_by_level1_compartment(nodes)
+    top_comp_groups, other_comp_groups = _arch_select_top_groups(
+        comp_groups,
+        limit=ARCH_TENANCY_TOP_N,
+    )
 
     row_h = 34
     header_h = 32
@@ -3669,13 +3731,14 @@ def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> P
     comp_w, vcn_w, lane_w = 360, 360, 520
     comp_rows = len(top_compartments) + (1 if rest_compartments else 0)
     vcn_rows = len(top_vcns) + (1 if rest_vcns else 0)
-    lane_rows = sum(
-        (len(_arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[0])
-         + (1 if _arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[1] else 0)
-         + 1)
-        for lane in _LANE_ORDER
-        if lane_summaries.get(lane)
-    )
+    lane_rows = 0
+    for lane in ARCH_SVG_LANE_ORDER:
+        top_labels, rest = _concept_lane_labels(concepts, lane=lane, limit=ARCH_LANE_TOP_N)
+        if not top_labels:
+            continue
+        lane_rows += 1 + len(top_labels)
+        if rest:
+            lane_rows += 1
     comp_h = header_h + max(1, comp_rows) * row_h + 16
     vcn_h = header_h + max(1, vcn_rows) * row_h + 16
     lane_h = header_h + max(1, lane_rows) * row_h + 16
@@ -3733,11 +3796,11 @@ def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> P
         )
 
         y = y0 + 40 + header_h
-        for label, count in top_compartments:
+        for label, _count in top_compartments:
             _drawio_cell(
                 root,
                 cell_id=f"comp_{y}",
-                value=f"{label} (n={count})",
+                value=f"{label}",
                 style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
                 x=x0 + 30,
                 y=y,
@@ -3750,7 +3813,7 @@ def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> P
             _drawio_cell(
                 root,
                 cell_id="comp_other",
-                value=f"Other Compartments (n={rest_compartments})",
+                value="Other Compartments",
                 style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
                 x=x0 + 30,
                 y=y,
@@ -3760,11 +3823,11 @@ def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> P
             )
 
         y = y0 + 40 + header_h
-        for label, count in top_vcns:
+        for label, _count in top_vcns:
             _drawio_cell(
                 root,
                 cell_id=f"vcn_{y}",
-                value=f"{label} (n={count})",
+                value=f"{label}",
                 style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
                 x=x0 + 30 + comp_w + col_gap,
                 y=y,
@@ -3777,7 +3840,7 @@ def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> P
             _drawio_cell(
                 root,
                 cell_id="vcn_other",
-                value=f"Other VCNs (n={rest_vcns})",
+                value="Other VCNs",
                 style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
                 x=x0 + 30 + comp_w + col_gap,
                 y=y,
@@ -3787,11 +3850,10 @@ def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> P
             )
 
         y = y0 + 40 + header_h
-        for lane in _LANE_ORDER:
-            labels = lane_summaries.get(lane)
-            if not labels:
+        for lane in ARCH_SVG_LANE_ORDER:
+            top_labels, rest = _concept_lane_labels(concepts, lane=lane, limit=ARCH_LANE_TOP_N)
+            if not top_labels:
                 continue
-            top_labels, rest = _arch_lane_top(labels, ARCH_LANE_TOP_N)
             lane_header_id = f"lane_{lane}"
             _drawio_cell(
                 root,
@@ -3805,11 +3867,11 @@ def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> P
                 parent=lane_id,
             )
             y += row_h
-            for label, count in top_labels:
+            for label in top_labels:
                 _drawio_cell(
                     root,
                     cell_id=f"lane_{lane}_{y}",
-                    value=f"{label} (n={count})",
+                    value=f"{label}",
                     style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
                     x=x0 + 40 + comp_w + vcn_w + (col_gap * 2),
                     y=y,
@@ -3822,7 +3884,7 @@ def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> P
                 _drawio_cell(
                     root,
                     cell_id=f"lane_{lane}_other",
-                    value=f"Other (n={rest})",
+                    value="Other Services",
                     style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
                     x=x0 + 40 + comp_w + vcn_w + (col_gap * 2),
                     y=y,
@@ -3836,7 +3898,9 @@ def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> P
         _drawio_edge(root, edge_id="edge_vcn_to_lanes", source=vcn_id, target=lane_id)
 
     content = _drawio_doc(title, _cells)
-    path = outdir / "architecture" / "diagram.arch.tenancy.drawio"
+    arch_dir = outdir / "architecture"
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    path = arch_dir / "diagram.arch.tenancy.drawio"
     path.write_text(content, encoding="utf-8")
     return path
 
@@ -3845,20 +3909,21 @@ def _write_architecture_drawio_vcn(outdir: Path, *, vcn_name: str, vcn_nodes: Se
     title = f"VCN Architecture Overview: {vcn_name}"
     subnets = [n for n in vcn_nodes if _is_node_type(n, "Subnet")]
     gateways = [n for n in vcn_nodes if _arch_is_gateway(n)]
-    lane_summaries = _arch_lane_summaries(vcn_nodes)
+    concepts = build_scope_concepts(nodes=vcn_nodes, edges=[], scope_nodes=vcn_nodes)
 
     row_h = 34
     header_h = 32
     x0, y0 = 40, 40
     left_w, right_w = 360, 520
     col_gap = 20
-    lane_rows = sum(
-        (len(_arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[0])
-         + (1 if _arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[1] else 0)
-         + 1)
-        for lane in _LANE_ORDER
-        if lane_summaries.get(lane)
-    )
+    lane_rows = 0
+    for lane in ARCH_SVG_LANE_ORDER:
+        top_labels, rest = _concept_lane_labels(concepts, lane=lane, limit=ARCH_LANE_TOP_N)
+        if not top_labels:
+            continue
+        lane_rows += 1 + len(top_labels)
+        if rest:
+            lane_rows += 1
     left_rows = 2 + (1 if subnets else 0) + (1 if gateways else 0)
     left_h = header_h + max(1, left_rows) * row_h + 16
     right_h = header_h + max(1, lane_rows) * row_h + 16
@@ -3907,7 +3972,7 @@ def _write_architecture_drawio_vcn(outdir: Path, *, vcn_name: str, vcn_nodes: Se
         _drawio_cell(
             root,
             cell_id="net_subnets",
-            value=f"Subnets (n={len(subnets)})",
+            value="Subnets",
             style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
             x=x0 + 30,
             y=y,
@@ -3919,7 +3984,7 @@ def _write_architecture_drawio_vcn(outdir: Path, *, vcn_name: str, vcn_nodes: Se
         _drawio_cell(
             root,
             cell_id="net_gateways",
-            value=f"Gateways (n={len(gateways)})",
+            value="Gateways",
             style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
             x=x0 + 30,
             y=y,
@@ -3929,11 +3994,10 @@ def _write_architecture_drawio_vcn(outdir: Path, *, vcn_name: str, vcn_nodes: Se
         )
 
         y = y0 + 40 + header_h
-        for lane in _LANE_ORDER:
-            labels = lane_summaries.get(lane)
-            if not labels:
+        for lane in ARCH_SVG_LANE_ORDER:
+            top_labels, rest = _concept_lane_labels(concepts, lane=lane, limit=ARCH_LANE_TOP_N)
+            if not top_labels:
                 continue
-            top_labels, rest = _arch_lane_top(labels, ARCH_LANE_TOP_N)
             lane_header_id = f"lane_{lane}"
             _drawio_cell(
                 root,
@@ -3947,11 +4011,11 @@ def _write_architecture_drawio_vcn(outdir: Path, *, vcn_name: str, vcn_nodes: Se
                 parent=lane_id,
             )
             y += row_h
-            for label, count in top_labels:
+            for label in top_labels:
                 _drawio_cell(
                     root,
                     cell_id=f"lane_{lane}_{y}",
-                    value=f"{label} (n={count})",
+                    value=f"{label}",
                     style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
                     x=x0 + 40 + left_w + col_gap,
                     y=y,
@@ -3964,7 +4028,7 @@ def _write_architecture_drawio_vcn(outdir: Path, *, vcn_name: str, vcn_nodes: Se
                 _drawio_cell(
                     root,
                     cell_id=f"lane_{lane}_other",
-                    value=f"Other (n={rest})",
+                    value="Other Services",
                     style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
                     x=x0 + 40 + left_w + col_gap,
                     y=y,
@@ -3977,26 +4041,54 @@ def _write_architecture_drawio_vcn(outdir: Path, *, vcn_name: str, vcn_nodes: Se
         _drawio_edge(root, edge_id="edge_net_to_lanes", source=net_id, target=lane_id)
 
     content = _drawio_doc(title, _cells)
-    path = outdir / "architecture" / f"diagram.arch.vcn.{_slugify(vcn_name)}.drawio"
+    arch_dir = outdir / "architecture"
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    path = arch_dir / f"diagram.arch.vcn.{_slugify(vcn_name)}.drawio"
     path.write_text(content, encoding="utf-8")
     return path
 
 
-def _write_architecture_drawio_workload(outdir: Path, *, workload: str, workload_nodes: Sequence[Node]) -> Path:
+def _write_architecture_drawio_workload(
+    outdir: Path,
+    *,
+    workload: str,
+    nodes: Sequence[Node],
+    edges: Sequence[Edge],
+    workload_nodes: Sequence[Node],
+) -> Path:
     title = f"Workload Architecture Overview: {workload}"
-    lane_summaries = _arch_lane_summaries(workload_nodes)
+    concepts = build_workload_concepts(nodes=nodes, edges=edges, workload_nodes=workload_nodes)
+    context = build_workload_context(nodes=nodes, edges=edges, workload_nodes=workload_nodes)
+    node_by_id = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
+    alias_by_comp = _compartment_alias_map(nodes)
+
     row_h = 34
     header_h = 32
     x0, y0 = 40, 40
-    lane_w = 720
-    lane_rows = sum(
-        (len(_arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[0])
-         + (1 if _arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[1] else 0)
-         + 1)
-        for lane in _LANE_ORDER
-        if lane_summaries.get(lane)
-    )
-    total_h = header_h + max(1, lane_rows) * row_h + 120
+    comp_w, vcn_w, lane_w = 300, 300, 520
+    col_gap = 20
+    comp_blocks = list(context.compartment_ids) if context.compartment_ids else ("UNKNOWN",)
+
+    def _lane_rows_for(comp_id: str) -> int:
+        lanes = {}
+        for c in concepts:
+            if c.compartment_id != comp_id:
+                continue
+            lanes.setdefault(c.lane, []).append(c)
+        rows = 0
+        for lane in ARCH_SVG_LANE_ORDER:
+            items = lanes.get(lane)
+            if not items:
+                continue
+            rows += 1
+            rows += min(len(items), ARCH_LANE_TOP_N)
+            if len(items) > ARCH_LANE_TOP_N:
+                rows += 1
+        return max(1, rows)
+
+    comp_heights = {cid: header_h + _lane_rows_for(cid) * row_h + 80 for cid in comp_blocks}
+    block_h = sum(comp_heights.values()) + (len(comp_blocks) - 1) * 30 + 120
+    total_w = comp_w + vcn_w + lane_w + (col_gap * 2) + 80
 
     def _cells(root: Any) -> None:
         wl_id = "wl_block"
@@ -4007,70 +4099,138 @@ def _write_architecture_drawio_workload(outdir: Path, *, workload: str, workload
             style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#ffffff;",
             x=x0,
             y=y0,
-            width=lane_w + 60,
-            height=total_h,
+            width=total_w,
+            height=block_h,
             parent="1",
         )
-        lane_id = "lane_block"
-        _drawio_cell(
-            root,
-            cell_id=lane_id,
-            value="Service Lanes",
-            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=1;fillColor=#f5f5f5;",
-            x=x0 + 20,
-            y=y0 + 40,
-            width=lane_w,
-            height=total_h - 80,
-            parent=wl_id,
-        )
-        y = y0 + 40 + header_h
-        for lane in _LANE_ORDER:
-            labels = lane_summaries.get(lane)
-            if not labels:
-                continue
-            top_labels, rest = _arch_lane_top(labels, ARCH_LANE_TOP_N)
-            lane_header_id = f"lane_{lane}"
+
+        current_y = y0 + 40
+        for comp_id in comp_blocks:
+            comp_label = _compartment_label_by_id(
+                comp_id,
+                node_by_id=node_by_id,
+                alias_by_id=alias_by_comp,
+            )
+            comp_label = _arch_compartment_label(comp_label)
+            comp_id_cell = f"comp_{comp_id}"
+            comp_h = comp_heights.get(comp_id, header_h + row_h * 4)
             _drawio_cell(
                 root,
-                cell_id=lane_header_id,
-                value=_lane_label(lane),
-                style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeWidth=1;",
-                x=x0 + 30,
-                y=y,
-                width=lane_w - 20,
-                height=row_h - 6,
-                parent=lane_id,
+                cell_id=comp_id_cell,
+                value=comp_label,
+                style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=1;fillColor=#f5f5f5;",
+                x=x0 + 20,
+                y=current_y,
+                width=total_w - 40,
+                height=comp_h,
+                parent=wl_id,
             )
-            y += row_h
-            for label, count in top_labels:
+
+            vcn_id = f"{comp_id_cell}_vcn"
+            _drawio_cell(
+                root,
+                cell_id=vcn_id,
+                value="VCN Context",
+                style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=1;fillColor=#ffffff;",
+                x=x0 + 40,
+                y=current_y + 30,
+                width=vcn_w,
+                height=comp_h - 60,
+                parent=comp_id_cell,
+            )
+            vcn_names = context.vcn_names_by_compartment.get(comp_id, ())
+            vcn_y = current_y + 30 + header_h
+            for vcn_name in vcn_names:
                 _drawio_cell(
                     root,
-                    cell_id=f"lane_{lane}_{y}",
-                    value=f"{label} (n={count})",
+                    cell_id=f"{vcn_id}_{vcn_y}",
+                    value=f"VCN: {vcn_name}",
                     style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
-                    x=x0 + 40,
-                    y=y,
-                    width=lane_w - 40,
+                    x=x0 + 50,
+                    y=vcn_y,
+                    width=vcn_w - 20,
+                    height=row_h - 6,
+                    parent=vcn_id,
+                )
+                vcn_y += row_h
+            if not vcn_names:
+                _drawio_cell(
+                    root,
+                    cell_id=f"{vcn_id}_none",
+                    value="VCN: (none)",
+                    style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                    x=x0 + 50,
+                    y=vcn_y,
+                    width=vcn_w - 20,
+                    height=row_h - 6,
+                    parent=vcn_id,
+                )
+
+            lane_id = f"{comp_id_cell}_lane"
+            _drawio_cell(
+                root,
+                cell_id=lane_id,
+                value="Service Lanes",
+                style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=1;fillColor=#ffffff;",
+                x=x0 + 40 + vcn_w + col_gap,
+                y=current_y + 30,
+                width=lane_w,
+                height=comp_h - 60,
+                parent=comp_id_cell,
+            )
+            lane_y = current_y + 30 + header_h
+            for lane in ARCH_SVG_LANE_ORDER:
+                lane_items = [c for c in concepts if c.compartment_id == comp_id and c.lane == lane]
+                if not lane_items:
+                    continue
+                lane_items.sort(key=lambda c: (-c.count, c.label))
+                top = lane_items[:ARCH_LANE_TOP_N]
+                rest = lane_items[ARCH_LANE_TOP_N:]
+                _drawio_cell(
+                    root,
+                    cell_id=f"{lane_id}_{lane}_header",
+                    value=_lane_label(lane),
+                    style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeWidth=1;",
+                    x=x0 + 50 + vcn_w + col_gap,
+                    y=lane_y,
+                    width=lane_w - 20,
                     height=row_h - 6,
                     parent=lane_id,
                 )
-                y += row_h
-            if rest:
-                _drawio_cell(
-                    root,
-                    cell_id=f"lane_{lane}_other",
-                    value=f"Other (n={rest})",
-                    style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
-                    x=x0 + 40,
-                    y=y,
-                    width=lane_w - 40,
-                    height=row_h - 6,
-                    parent=lane_id,
-                )
-                y += row_h
+                lane_y += row_h
+                for concept in top:
+                    _drawio_cell(
+                        root,
+                        cell_id=f"{lane_id}_{lane}_{lane_y}",
+                        value=concept.label,
+                        style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                        x=x0 + 60 + vcn_w + col_gap,
+                        y=lane_y,
+                        width=lane_w - 40,
+                        height=row_h - 6,
+                        parent=lane_id,
+                    )
+                    lane_y += row_h
+                if rest:
+                    _drawio_cell(
+                        root,
+                        cell_id=f"{lane_id}_{lane}_other",
+                        value="Other Services",
+                        style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                        x=x0 + 60 + vcn_w + col_gap,
+                        y=lane_y,
+                        width=lane_w - 40,
+                        height=row_h - 6,
+                        parent=lane_id,
+                    )
+                    lane_y += row_h
+
+            current_y += comp_h + 30
 
     content = _drawio_doc(title, _cells)
-    path = outdir / "architecture" / f"diagram.arch.workload.{_slugify(workload)}.drawio"
+    arch_dir = outdir / "architecture"
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    path = arch_dir / f"diagram.arch.workload.{_slugify(workload)}.drawio"
     path.write_text(content, encoding="utf-8")
     return path
 
@@ -4085,7 +4245,7 @@ def _write_architecture_drawio_compartment(
     title = f"Compartment Architecture Overview: {compartment_label}"
     vcn_items = _top_vcn_counts(comp_nodes)
     top_vcns, rest_vcns = _overview_top_counts(vcn_items, top_n)
-    lane_summaries = _arch_lane_summaries(comp_nodes)
+    concepts = build_scope_concepts(nodes=comp_nodes, edges=[], scope_nodes=comp_nodes)
 
     row_h = 34
     header_h = 32
@@ -4093,13 +4253,14 @@ def _write_architecture_drawio_compartment(
     left_w, right_w = 360, 520
     col_gap = 20
     vcn_rows = len(top_vcns) + (1 if rest_vcns else 0)
-    lane_rows = sum(
-        (len(_arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[0])
-         + (1 if _arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[1] else 0)
-         + 1)
-        for lane in _LANE_ORDER
-        if lane_summaries.get(lane)
-    )
+    lane_rows = 0
+    for lane in ARCH_SVG_LANE_ORDER:
+        top_labels, rest = _concept_lane_labels(concepts, lane=lane, limit=max(1, ARCH_LANE_TOP_N))
+        if not top_labels:
+            continue
+        lane_rows += 1 + len(top_labels)
+        if rest:
+            lane_rows += 1
     left_h = header_h + max(1, vcn_rows) * row_h + 16
     right_h = header_h + max(1, lane_rows) * row_h + 16
     total_w = left_w + right_w + col_gap + 80
@@ -4144,11 +4305,11 @@ def _write_architecture_drawio_compartment(
         )
 
         y = y0 + 40 + header_h
-        for label, count in top_vcns:
+        for label, _count in top_vcns:
             _drawio_cell(
                 root,
                 cell_id=f"vcn_{y}",
-                value=f"{label} (n={count})",
+                value=f"{label}",
                 style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
                 x=x0 + 30,
                 y=y,
@@ -4161,7 +4322,7 @@ def _write_architecture_drawio_compartment(
             _drawio_cell(
                 root,
                 cell_id="vcn_other",
-                value=f"Other VCNs (n={rest_vcns})",
+                value="Other VCNs",
                 style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
                 x=x0 + 30,
                 y=y,
@@ -4171,11 +4332,10 @@ def _write_architecture_drawio_compartment(
             )
 
         y = y0 + 40 + header_h
-        for lane in _LANE_ORDER:
-            labels = lane_summaries.get(lane)
-            if not labels:
+        for lane in ARCH_SVG_LANE_ORDER:
+            top_labels, rest = _concept_lane_labels(concepts, lane=lane, limit=ARCH_LANE_TOP_N)
+            if not top_labels:
                 continue
-            top_labels, rest = _arch_lane_top(labels, max(len(labels), ARCH_LANE_TOP_N))
             lane_header_id = f"lane_{lane}"
             _drawio_cell(
                 root,
@@ -4189,11 +4349,11 @@ def _write_architecture_drawio_compartment(
                 parent=lane_id,
             )
             y += row_h
-            for label, count in top_labels:
+            for label in top_labels:
                 _drawio_cell(
                     root,
                     cell_id=f"lane_{lane}_{y}",
-                    value=f"{label} (n={count})",
+                    value=f"{label}",
                     style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
                     x=x0 + 40 + left_w + col_gap,
                     y=y,
@@ -4206,7 +4366,7 @@ def _write_architecture_drawio_compartment(
                 _drawio_cell(
                     root,
                     cell_id=f"lane_{lane}_other",
-                    value=f"Other (n={rest})",
+                    value="Other Services",
                     style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
                     x=x0 + 40 + left_w + col_gap,
                     y=y,
@@ -4219,7 +4379,9 @@ def _write_architecture_drawio_compartment(
         _drawio_edge(root, edge_id="edge_vcn_to_lanes", source=vcn_id, target=lane_id)
 
     content = _drawio_doc(title, _cells)
-    path = outdir / "architecture" / f"diagram.arch.compartment.{_slugify(compartment_label)}.drawio"
+    arch_dir = outdir / "architecture"
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    path = arch_dir / f"diagram.arch.compartment.{_slugify(compartment_label)}.drawio"
     path.write_text(content, encoding="utf-8")
     return path
 
@@ -4379,7 +4541,7 @@ def _arch_add_legend(
     fallback: Any,
     title: str,
     scope: str,
-    counts: Mapping[str, int],
+    counts: Optional[Mapping[str, int]] = None,
     part_label: Optional[str] = None,
 ) -> None:
     with Cluster("Legend"):
@@ -4402,10 +4564,10 @@ def _arch_add_legend(
                 lane_classes=lane_classes,
                 fallback=fallback,
             )
-        for lane in sorted(counts.keys()):
+        for lane in sorted((counts or {}).keys()):
             _arch_node_for_lane(
                 "other",
-                f"{_lane_label(lane)}: {counts[lane]}",
+                _lane_label(lane),
                 lane_classes=lane_classes,
                 fallback=fallback,
             )
@@ -4579,13 +4741,14 @@ def _render_architecture_tenancy(
     *,
     outdir: Path,
     nodes: Sequence[Node],
+    edges: Sequence[Edge],
 ) -> Optional[Path]:
     tenancy_label = _tenancy_label(nodes)
     comp_items = _top_compartment_counts(nodes)
     top_compartments, rest_compartments = _overview_top_counts(comp_items, ARCH_TENANCY_TOP_N)
     vcn_items = _top_vcn_counts(nodes)
     top_vcns, rest_vcns = _overview_top_counts(vcn_items, ARCH_TENANCY_TOP_N)
-    lane_summaries = _arch_lane_summaries(nodes)
+    concepts = build_scope_concepts(nodes=nodes, edges=[], scope_nodes=nodes)
 
     arch_dir = outdir / "architecture"
     arch_dir.mkdir(parents=True, exist_ok=True)
@@ -4606,93 +4769,199 @@ def _render_architecture_tenancy(
             fallback=fallback,
             title="Tenancy Architecture (Overview)",
             scope="tenancy",
-            counts=_arch_lane_counts(nodes),
+            counts=None,
         )
         with Cluster(f"Tenancy: {tenancy_label}"):
             zone_anchors: List[Any] = []
-            with Cluster("Top Compartments"):
-                row_nodes: List[Any] = []
-                for label, count in top_compartments:
-                    row_nodes.append(
-                        _arch_node_for_lane(
-                            "other",
-                            f"{label} (n={count})",
-                            lane_classes=lane_classes,
-                            fallback=fallback,
-                        )
+            external_gateway_nodes: List[Any] = []
+            for comp_id, comp_nodes in top_comp_groups:
+                comp_label = _compartment_label_by_id(
+                    comp_id,
+                    node_by_id=node_by_id,
+                    alias_by_id=alias_by_comp,
+                )
+                comp_label = _arch_compartment_label(comp_label)
+                with Cluster(comp_label):
+                    comp_anchors: List[Any] = []
+                    vcn_groups = _group_nodes_by_vcn(comp_nodes, edges)
+                    vcn_groups = {k: v for k, v in vcn_groups.items() if k != "NO_VCN"}
+                    vcn_ranked, _other_vcns = _arch_select_top_groups(
+                        vcn_groups,
+                        limit=ARCH_MAX_VCNS_PER_COMPARTMENT,
                     )
-                if rest_compartments:
-                    row_nodes.append(
-                        _arch_node_for_lane(
-                            "other",
-                            f"Other Compartments (n={rest_compartments})",
-                            lane_classes=lane_classes,
-                            fallback=fallback,
-                        )
-                    )
-                if row_nodes:
-                    zone_anchors.append(row_nodes[0])
-                    _arch_invisible_chain(row_nodes, Edge)
+                    for vcn_id, vcn_nodes in vcn_ranked:
+                        vcn_label = "VCN"
+                        for n in vcn_nodes:
+                            if _is_node_type(n, "Vcn") and n.get("name"):
+                                vcn_label = str(n.get("name") or "")
+                                break
+                        vcn_label = _normalize_concept_label(_compact_label(vcn_label, max_len=64) or "VCN")
+                        with Cluster(f"VCN: {vcn_label}"):
+                            vcn_anchors: List[Any] = []
+                            edge_nodes: List[Any] = []
+                            with Cluster("Network Edge"):
+                                for concept in _concepts_for_scope(
+                                    concepts,
+                                    lane="network",
+                                    placement="edge",
+                                    compartment_id=comp_id,
+                                    vcn_name=vcn_label,
+                                ):
+                                    node = _arch_node_for_lane(
+                                        "network",
+                                        concept.label,
+                                        lane_classes=lane_classes,
+                                        fallback=fallback,
+                                    )
+                                    edge_nodes.append(node)
+                                    if concept.label in {"DRG", "FastConnect", "VPN Connection", "Customer Premises Equipment"}:
+                                        external_gateway_nodes.append(node)
+                                if edge_nodes:
+                                    vcn_anchors.append(edge_nodes[0])
+                                    _arch_invisible_chain(edge_nodes, Edge)
 
-            with Cluster("Top VCNs"):
-                row_nodes = []
-                for label, count in top_vcns:
-                    row_nodes.append(
-                        _arch_node_for_lane(
-                            "network",
-                            f"{label} (n={count})",
-                            lane_classes=lane_classes,
-                            fallback=fallback,
-                        )
-                    )
-                if rest_vcns:
-                    row_nodes.append(
-                        _arch_node_for_lane(
-                            "network",
-                            f"Other VCNs (n={rest_vcns})",
-                            lane_classes=lane_classes,
-                            fallback=fallback,
-                        )
-                    )
-                if row_nodes:
-                    zone_anchors.append(row_nodes[0])
-                    _arch_invisible_chain(row_nodes, Edge)
+                            with Cluster("Service Lanes"):
+                                lane_anchors: List[Any] = []
+                                lane_nodes_map: Dict[str, Any] = {}
+                                for lane in ARCH_SVG_LANE_ORDER:
+                                    lane_items = _concepts_for_scope(
+                                        concepts,
+                                        lane=lane,
+                                        placement="in_vcn",
+                                        compartment_id=comp_id,
+                                        vcn_name=vcn_label,
+                                    )
+                                    if not lane_items:
+                                        continue
+                                    top = lane_items[:ARCH_LANE_TOP_N]
+                                    rest = lane_items[ARCH_LANE_TOP_N:]
+                                    with Cluster(_lane_label(lane), graph_attr={"rank": "same"}):
+                                        lane_nodes: List[Any] = []
+                                        for concept in top:
+                                            node = _arch_node_for_lane(
+                                                lane,
+                                                concept.label,
+                                                lane_classes=lane_classes,
+                                                fallback=fallback,
+                                            )
+                                            lane_nodes.append(node)
+                                        if rest:
+                                            lane_nodes.append(
+                                                _arch_node_for_lane(
+                                                    lane,
+                                                    "Other Services",
+                                                    lane_classes=lane_classes,
+                                                    fallback=fallback,
+                                                )
+                                            )
+                                        if lane_nodes:
+                                            lane_nodes_map[lane] = lane_nodes[0]
+                                            lane_anchors.append(lane_nodes[0])
+                                            _arch_invisible_chain(lane_nodes, Edge)
+                                if lane_anchors:
+                                    vcn_anchors.append(lane_anchors[0])
+                                    _arch_invisible_chain(lane_anchors, Edge)
 
-            with Cluster("Service Lanes"):
-                lane_anchors: List[Any] = []
-                for lane in _LANE_ORDER:
-                    labels = lane_summaries.get(lane)
-                    if not labels:
-                        continue
-                    top_labels, rest = _arch_lane_top(labels, ARCH_LANE_TOP_N)
-                    with Cluster(_lane_label(lane), graph_attr={"rank": "same"}):
-                        lane_nodes: List[Any] = []
-                        for label, count in top_labels:
-                            lane_nodes.append(
-                                _arch_node_for_lane(
-                                    lane,
-                                    f"{label} (n={count})",
-                                    lane_classes=lane_classes,
-                                    fallback=fallback,
-                                )
+                                if "network" in lane_nodes_map and "app" in lane_nodes_map:
+                                    lane_nodes_map["network"] >> Edge() >> lane_nodes_map["app"]
+                                if "app" in lane_nodes_map and "data" in lane_nodes_map:
+                                    lane_nodes_map["app"] >> Edge() >> lane_nodes_map["data"]
+
+                            if vcn_anchors:
+                                comp_anchors.append(vcn_anchors[0])
+                                _arch_invisible_chain(vcn_anchors, Edge)
+
+                    out_nodes = []
+                    for lane in ARCH_SVG_LANE_ORDER:
+                        out_nodes.extend(
+                            _concepts_for_scope(
+                                concepts,
+                                lane=lane,
+                                placement="out_of_vcn",
+                                compartment_id=comp_id,
                             )
-                        if rest:
-                            lane_nodes.append(
-                                _arch_node_for_lane(
-                                    lane,
-                                    f"Other (n={rest})",
-                                    lane_classes=lane_classes,
-                                    fallback=fallback,
-                                )
+                        )
+                        out_nodes.extend(
+                            _concepts_for_scope(
+                                concepts,
+                                lane=lane,
+                                placement="unknown",
+                                compartment_id=comp_id,
                             )
-                        if lane_nodes:
-                            lane_anchors.append(lane_nodes[0])
-                            _arch_invisible_chain(lane_nodes, Edge)
-                if lane_anchors:
-                    zone_anchors.append(lane_anchors[0])
-                    _arch_invisible_chain(lane_anchors, Edge)
+                        )
+                    if out_nodes:
+                        with Cluster("Tenancy Services"):
+                            lane_anchors: List[Any] = []
+                            for lane in ARCH_SVG_LANE_ORDER:
+                                lane_items = _concepts_for_scope(
+                                    concepts,
+                                    lane=lane,
+                                    placement="out_of_vcn",
+                                    compartment_id=comp_id,
+                                )
+                                lane_items += _concepts_for_scope(
+                                    concepts,
+                                    lane=lane,
+                                    placement="unknown",
+                                    compartment_id=comp_id,
+                                )
+                                if not lane_items:
+                                    continue
+                                top = lane_items[:ARCH_LANE_TOP_N]
+                                rest = lane_items[ARCH_LANE_TOP_N:]
+                                with Cluster(_lane_label(lane), graph_attr={"rank": "same"}):
+                                    lane_nodes: List[Any] = []
+                                    for concept in top:
+                                        lane_nodes.append(
+                                            _arch_node_for_lane(
+                                                lane,
+                                                concept.label,
+                                                lane_classes=lane_classes,
+                                                fallback=fallback,
+                                            )
+                                        )
+                                    if rest:
+                                        lane_nodes.append(
+                                            _arch_node_for_lane(
+                                                lane,
+                                                "Other Services",
+                                                lane_classes=lane_classes,
+                                                fallback=fallback,
+                                            )
+                                        )
+                                    if lane_nodes:
+                                        lane_anchors.append(lane_nodes[0])
+                                        _arch_invisible_chain(lane_nodes, Edge)
+                            if lane_anchors:
+                                comp_anchors.append(lane_anchors[0])
+                                _arch_invisible_chain(lane_anchors, Edge)
+
+                    if comp_anchors:
+                        zone_anchors.append(comp_anchors[0])
+                        _arch_invisible_chain(comp_anchors, Edge)
+
+            if other_comp_groups:
+                zone_anchors.append(
+                    _arch_node_for_lane(
+                        "other",
+                        "Other Compartments",
+                        lane_classes=lane_classes,
+                        fallback=fallback,
+                    )
+                )
 
             _arch_invisible_chain(zone_anchors, Edge)
+
+            if external_gateway_nodes:
+                with Cluster("External: Customer Network", graph_attr={"style": "dashed"}):
+                    external = _arch_node_for_lane(
+                        "other",
+                        "On-Prem",
+                        lane_classes=lane_classes,
+                        fallback=fallback,
+                    )
+                for gw in external_gateway_nodes:
+                    gw >> Edge() >> external
     return path
 
 
@@ -4713,7 +4982,7 @@ def _render_architecture_vcn(
 ) -> Optional[Path]:
     if not vcn_nodes:
         return None
-    vcn_label = _compact_label(vcn_name, max_len=64) or "VCN"
+    vcn_label = _normalize_concept_label(_compact_label(vcn_name, max_len=64) or "VCN")
     arch_dir = outdir / "architecture"
     arch_dir.mkdir(parents=True, exist_ok=True)
     suffix = f".{vcn_suffix}" if vcn_suffix else ""
@@ -4721,6 +4990,17 @@ def _render_architecture_vcn(
     filename = str(path.with_suffix(""))
     graph_attr, node_attr = _arch_graph_attrs()
     title = f"VCN Architecture: {vcn_label} (Curated)"
+    node_by_id = {str(n.get("nodeId") or ""): n for n in vcn_nodes if n.get("nodeId")}
+    alias_by_comp = _compartment_alias_map(vcn_nodes)
+    comp_id = ""
+    for n in vcn_nodes:
+        if _is_node_type(n, "Vcn") and n.get("compartmentId"):
+            comp_id = str(n.get("compartmentId") or "")
+            break
+    comp_label = _compartment_label_by_id(comp_id, node_by_id=node_by_id, alias_by_id=alias_by_comp)
+    comp_label = _arch_compartment_label(comp_label)
+    tenancy_label = _tenancy_label(vcn_nodes)
+
     with Diagram(
         title,
         filename=filename,
@@ -4735,72 +5015,165 @@ def _render_architecture_vcn(
             fallback=fallback,
             title="VCN Architecture (Curated Overview)",
             scope=f"vcn:{vcn_label}",
-            counts=_arch_lane_counts(vcn_nodes),
+            counts=None,
         )
-        with Cluster(f"VCN Scope: {vcn_label}"):
-            zone_anchors: List[Any] = []
-            with Cluster("Network Components"):
-                row_nodes: List[Any] = []
-                subnets = [n for n in vcn_nodes if _is_node_type(n, "Subnet")]
-                gateways = [n for n in vcn_nodes if _arch_is_gateway(n)]
-                if subnets:
-                    row_nodes.append(
-                        _arch_node_for_lane(
-                            "network",
-                            f"Subnets (n={len(subnets)})",
-                            lane_classes=lane_classes,
-                            fallback=fallback,
+        concepts = build_scope_concepts(nodes=vcn_nodes, edges=vcn_edges, scope_nodes=vcn_nodes)
+        external_gateway_nodes: List[Any] = []
+        with Cluster(f"Tenancy: {tenancy_label}"):
+            with Cluster(comp_label):
+                comp_anchors: List[Any] = []
+                with Cluster(f"VCN: {vcn_label}"):
+                    vcn_anchors: List[Any] = []
+                    edge_nodes: List[Any] = []
+                    with Cluster("Network Edge"):
+                        for concept in _concepts_for_scope(
+                            concepts,
+                            lane="network",
+                            placement="edge",
+                            compartment_id=comp_id or None,
+                            vcn_name=vcn_label,
+                        ):
+                            node = _arch_node_for_lane(
+                                "network",
+                                concept.label,
+                                lane_classes=lane_classes,
+                                fallback=fallback,
+                            )
+                            edge_nodes.append(node)
+                            if concept.label in {"DRG", "FastConnect", "VPN Connection", "Customer Premises Equipment"}:
+                                external_gateway_nodes.append(node)
+                        if edge_nodes:
+                            vcn_anchors.append(edge_nodes[0])
+                            _arch_invisible_chain(edge_nodes, Edge)
+
+                    with Cluster("Service Lanes"):
+                        lane_anchors: List[Any] = []
+                        lane_nodes_map: Dict[str, Any] = {}
+                        for lane in ARCH_SVG_LANE_ORDER:
+                            lane_items = _concepts_for_scope(
+                                concepts,
+                                lane=lane,
+                                placement="in_vcn",
+                                compartment_id=comp_id or None,
+                                vcn_name=vcn_label,
+                            )
+                            if not lane_items:
+                                continue
+                            top = lane_items[:ARCH_LANE_TOP_N]
+                            rest = lane_items[ARCH_LANE_TOP_N:]
+                            with Cluster(_lane_label(lane), graph_attr={"rank": "same"}):
+                                lane_nodes: List[Any] = []
+                                for concept in top:
+                                    node = _arch_node_for_lane(
+                                        lane,
+                                        concept.label,
+                                        lane_classes=lane_classes,
+                                        fallback=fallback,
+                                    )
+                                    lane_nodes.append(node)
+                                if rest:
+                                    lane_nodes.append(
+                                        _arch_node_for_lane(
+                                            lane,
+                                            "Other Services",
+                                            lane_classes=lane_classes,
+                                            fallback=fallback,
+                                        )
+                                    )
+                                if lane_nodes:
+                                    lane_nodes_map[lane] = lane_nodes[0]
+                                    lane_anchors.append(lane_nodes[0])
+                                    _arch_invisible_chain(lane_nodes, Edge)
+                        if lane_anchors:
+                            vcn_anchors.append(lane_anchors[0])
+                            _arch_invisible_chain(lane_anchors, Edge)
+
+                        if "network" in lane_nodes_map and "app" in lane_nodes_map:
+                            lane_nodes_map["network"] >> Edge() >> lane_nodes_map["app"]
+                        if "app" in lane_nodes_map and "data" in lane_nodes_map:
+                            lane_nodes_map["app"] >> Edge() >> lane_nodes_map["data"]
+
+                    if vcn_anchors:
+                        comp_anchors.append(vcn_anchors[0])
+                        _arch_invisible_chain(vcn_anchors, Edge)
+
+                out_nodes = []
+                for lane in ARCH_SVG_LANE_ORDER:
+                    out_nodes.extend(
+                        _concepts_for_scope(
+                            concepts,
+                            lane=lane,
+                            placement="out_of_vcn",
+                            compartment_id=comp_id or None,
                         )
                     )
-                if gateways:
-                    row_nodes.append(
-                        _arch_node_for_lane(
-                            "network",
-                            f"Gateways (n={len(gateways)})",
-                            lane_classes=lane_classes,
-                            fallback=fallback,
+                    out_nodes.extend(
+                        _concepts_for_scope(
+                            concepts,
+                            lane=lane,
+                            placement="unknown",
+                            compartment_id=comp_id or None,
                         )
                     )
-                if row_nodes:
-                    zone_anchors.append(row_nodes[0])
-                    _arch_invisible_chain(row_nodes, Edge)
-
-            with Cluster("Service Lanes"):
-                lane_summaries = _arch_lane_summaries(vcn_nodes)
-                lane_anchors: List[Any] = []
-                for lane in _LANE_ORDER:
-                    labels = lane_summaries.get(lane)
-                    if not labels:
-                        continue
-                    top_labels, rest = _arch_lane_top(labels, ARCH_LANE_TOP_N)
-                    with Cluster(_lane_label(lane), graph_attr={"rank": "same"}):
-                        lane_nodes: List[Any] = []
-                        for label, count in top_labels:
-                            lane_nodes.append(
-                                _arch_node_for_lane(
-                                    lane,
-                                    f"{label} (n={count})",
-                                    lane_classes=lane_classes,
-                                    fallback=fallback,
-                                )
+                if out_nodes:
+                    with Cluster("Tenancy Services"):
+                        lane_anchors: List[Any] = []
+                        for lane in ARCH_SVG_LANE_ORDER:
+                            lane_items = _concepts_for_scope(
+                                concepts,
+                                lane=lane,
+                                placement="out_of_vcn",
+                                compartment_id=comp_id or None,
                             )
-                        if rest:
-                            lane_nodes.append(
-                                _arch_node_for_lane(
-                                    lane,
-                                    f"Other (n={rest})",
-                                    lane_classes=lane_classes,
-                                    fallback=fallback,
-                                )
+                            lane_items += _concepts_for_scope(
+                                concepts,
+                                lane=lane,
+                                placement="unknown",
+                                compartment_id=comp_id or None,
                             )
-                        if lane_nodes:
-                            lane_anchors.append(lane_nodes[0])
-                            _arch_invisible_chain(lane_nodes, Edge)
-                if lane_anchors:
-                    zone_anchors.append(lane_anchors[0])
-                    _arch_invisible_chain(lane_anchors, Edge)
+                            if not lane_items:
+                                continue
+                            top = lane_items[:ARCH_LANE_TOP_N]
+                            rest = lane_items[ARCH_LANE_TOP_N:]
+                            with Cluster(_lane_label(lane), graph_attr={"rank": "same"}):
+                                lane_nodes: List[Any] = []
+                                for concept in top:
+                                    lane_nodes.append(
+                                        _arch_node_for_lane(
+                                            lane,
+                                            concept.label,
+                                            lane_classes=lane_classes,
+                                            fallback=fallback,
+                                        )
+                                    )
+                                if rest:
+                                    lane_nodes.append(
+                                        _arch_node_for_lane(
+                                            lane,
+                                            "Other Services",
+                                            lane_classes=lane_classes,
+                                            fallback=fallback,
+                                        )
+                                    )
+                                if lane_nodes:
+                                    lane_anchors.append(lane_nodes[0])
+                                    _arch_invisible_chain(lane_nodes, Edge)
+                        if lane_anchors:
+                            comp_anchors.append(lane_anchors[0])
+                            _arch_invisible_chain(lane_anchors, Edge)
 
-            _arch_invisible_chain(zone_anchors, Edge)
+                _arch_invisible_chain(comp_anchors, Edge)
+
+        if external_gateway_nodes:
+            with Cluster("External: Customer Network", graph_attr={"style": "dashed"}):
+                external = _arch_node_for_lane(
+                    "other",
+                    "On-Prem",
+                    lane_classes=lane_classes,
+                    fallback=fallback,
+                )
+            for gw in external_gateway_nodes:
+                gw >> Edge() >> external
     return path
 
 
@@ -4813,8 +5186,9 @@ def _render_architecture_workload(
     *,
     outdir: Path,
     workload: str,
+    nodes: Sequence[Node],
+    edges: Sequence[Edge],
     workload_nodes: Sequence[Node],
-    workload_edges: Sequence[Edge],
     workload_suffix: str,
     part_idx: Optional[int] = None,
     part_total: Optional[int] = None,
@@ -4829,6 +5203,11 @@ def _render_architecture_workload(
     filename = str(path.with_suffix(""))
     graph_attr, node_attr = _arch_graph_attrs()
     title = f"Workload Architecture: {wl_label} (Curated)"
+    concepts = build_workload_concepts(nodes=nodes, edges=edges, workload_nodes=workload_nodes)
+    context = build_workload_context(nodes=nodes, edges=edges, workload_nodes=workload_nodes)
+
+    node_by_id = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
+    alias_by_comp = _compartment_alias_map(nodes)
     with Diagram(
         title,
         filename=filename,
@@ -4843,45 +5222,182 @@ def _render_architecture_workload(
             fallback=fallback,
             title="Workload Architecture (Curated Overview)",
             scope=f"workload:{wl_label}",
-            counts=_arch_lane_counts(workload_nodes),
+            counts=None,
         )
-        with Cluster(f"Workload Scope: {wl_label}"):
-            zone_anchors: List[Any] = []
-            with Cluster("Service Lanes"):
-                lane_summaries = _arch_lane_summaries(workload_nodes)
-                lane_anchors: List[Any] = []
-                for lane in _LANE_ORDER:
-                    labels = lane_summaries.get(lane)
-                    if not labels:
-                        continue
-                    top_labels, rest = _arch_lane_top(labels, ARCH_LANE_TOP_N)
-                    with Cluster(_lane_label(lane), graph_attr={"rank": "same"}):
-                        lane_nodes: List[Any] = []
-                        for label, count in top_labels:
-                            lane_nodes.append(
-                                _arch_node_for_lane(
-                                    lane,
-                                    f"{label} (n={count})",
-                                    lane_classes=lane_classes,
-                                    fallback=fallback,
+        tenancy_label = _tenancy_label(nodes)
+        external_gateway_nodes: List[Any] = []
+        with Cluster(tenancy_label):
+            with Cluster(f"Workload: {wl_label}"):
+                zone_anchors: List[Any] = []
+                comp_ids = list(context.compartment_ids) if context.compartment_ids else []
+                if not comp_ids:
+                    comp_ids = sorted({str(n.get("compartmentId") or "") for n in workload_nodes if n.get("compartmentId")})
+                for comp_id in comp_ids:
+                    comp_label = _compartment_label_by_id(
+                        comp_id,
+                        node_by_id=node_by_id,
+                        alias_by_id=alias_by_comp,
+                    )
+                    comp_label = _arch_compartment_label(comp_label)
+                    with Cluster(comp_label):
+                        comp_anchors: List[Any] = []
+                        vcn_names = context.vcn_names_by_compartment.get(comp_id, ())
+                        for vcn_name in vcn_names:
+                            vcn_label = _normalize_concept_label(vcn_name)
+                            with Cluster(f"VCN: {vcn_label}"):
+                                vcn_anchors: List[Any] = []
+                                edge_nodes: List[Any] = []
+                                with Cluster("Network Edge"):
+                                    for concept in _concepts_for_scope(
+                                        concepts,
+                                        lane="network",
+                                        placement="edge",
+                                        compartment_id=comp_id,
+                                        vcn_name=vcn_label,
+                                    ):
+                                        node = _arch_node_for_lane(
+                                            "network",
+                                            concept.label,
+                                            lane_classes=lane_classes,
+                                            fallback=fallback,
+                                        )
+                                        edge_nodes.append(node)
+                                        if concept.label in {"DRG", "FastConnect", "VPN Connection", "Customer Premises Equipment"}:
+                                            external_gateway_nodes.append(node)
+                                    if edge_nodes:
+                                        vcn_anchors.append(edge_nodes[0])
+                                        _arch_invisible_chain(edge_nodes, Edge)
+
+                                with Cluster("Service Lanes"):
+                                    lane_anchors: List[Any] = []
+                                    lane_nodes_map: Dict[str, Any] = {}
+                                    for lane in ARCH_SVG_LANE_ORDER:
+                                        lane_items = _concepts_for_scope(
+                                            concepts,
+                                            lane=lane,
+                                            placement="in_vcn",
+                                            compartment_id=comp_id,
+                                        vcn_name=vcn_label,
+                                        )
+                                        if not lane_items:
+                                            continue
+                                        top = lane_items[:ARCH_LANE_TOP_N]
+                                        rest = lane_items[ARCH_LANE_TOP_N:]
+                                        with Cluster(_lane_label(lane), graph_attr={"rank": "same"}):
+                                            lane_nodes: List[Any] = []
+                                            for concept in top:
+                                                node = _arch_node_for_lane(
+                                                    lane,
+                                                    concept.label,
+                                                    lane_classes=lane_classes,
+                                                    fallback=fallback,
+                                                )
+                                                lane_nodes.append(node)
+                                            if rest:
+                                                lane_nodes.append(
+                                                    _arch_node_for_lane(
+                                                        lane,
+                                                        "Other Services",
+                                                        lane_classes=lane_classes,
+                                                        fallback=fallback,
+                                                    )
+                                                )
+                                            if lane_nodes:
+                                                lane_nodes_map[lane] = lane_nodes[0]
+                                                lane_anchors.append(lane_nodes[0])
+                                                _arch_invisible_chain(lane_nodes, Edge)
+                                    if lane_anchors:
+                                        vcn_anchors.append(lane_anchors[0])
+                                        _arch_invisible_chain(lane_anchors, Edge)
+
+                                    if "network" in lane_nodes_map and "app" in lane_nodes_map:
+                                        lane_nodes_map["network"] >> Edge() >> lane_nodes_map["app"]
+                                    if "app" in lane_nodes_map and "data" in lane_nodes_map:
+                                        lane_nodes_map["app"] >> Edge() >> lane_nodes_map["data"]
+
+                                if vcn_anchors:
+                                    comp_anchors.append(vcn_anchors[0])
+                                    _arch_invisible_chain(vcn_anchors, Edge)
+
+                        out_nodes = []
+                        for lane in ARCH_SVG_LANE_ORDER:
+                            out_nodes.extend(
+                                _concepts_for_scope(
+                                    concepts,
+                                    lane=lane,
+                                    placement="out_of_vcn",
+                                    compartment_id=comp_id,
                                 )
                             )
-                        if rest:
-                            lane_nodes.append(
-                                _arch_node_for_lane(
-                                    lane,
-                                    f"Other (n={rest})",
-                                    lane_classes=lane_classes,
-                                    fallback=fallback,
+                            out_nodes.extend(
+                                _concepts_for_scope(
+                                    concepts,
+                                    lane=lane,
+                                    placement="unknown",
+                                    compartment_id=comp_id,
                                 )
                             )
-                        if lane_nodes:
-                            lane_anchors.append(lane_nodes[0])
-                            _arch_invisible_chain(lane_nodes, Edge)
-                if lane_anchors:
-                    zone_anchors.append(lane_anchors[0])
-                    _arch_invisible_chain(lane_anchors, Edge)
-            _arch_invisible_chain(zone_anchors, Edge)
+                        if out_nodes:
+                            with Cluster("Tenancy Services"):
+                                lane_anchors: List[Any] = []
+                                for lane in ARCH_SVG_LANE_ORDER:
+                                    lane_items = _concepts_for_scope(
+                                        concepts,
+                                        lane=lane,
+                                        placement="out_of_vcn",
+                                        compartment_id=comp_id,
+                                    )
+                                    lane_items += _concepts_for_scope(
+                                        concepts,
+                                        lane=lane,
+                                        placement="unknown",
+                                        compartment_id=comp_id,
+                                    )
+                                    if not lane_items:
+                                        continue
+                                    top = lane_items[:ARCH_LANE_TOP_N]
+                                    rest = lane_items[ARCH_LANE_TOP_N:]
+                                    with Cluster(_lane_label(lane), graph_attr={"rank": "same"}):
+                                        lane_nodes: List[Any] = []
+                                        for concept in top:
+                                            lane_nodes.append(
+                                                _arch_node_for_lane(
+                                                    lane,
+                                                    concept.label,
+                                                    lane_classes=lane_classes,
+                                                    fallback=fallback,
+                                                )
+                                            )
+                                        if rest:
+                                            lane_nodes.append(
+                                                _arch_node_for_lane(
+                                                    lane,
+                                                    "Other Services",
+                                                    lane_classes=lane_classes,
+                                                    fallback=fallback,
+                                                )
+                                            )
+                                        if lane_nodes:
+                                            lane_anchors.append(lane_nodes[0])
+                                            _arch_invisible_chain(lane_nodes, Edge)
+                                if lane_anchors:
+                                    comp_anchors.append(lane_anchors[0])
+                                    _arch_invisible_chain(lane_anchors, Edge)
+
+                        if comp_anchors:
+                            zone_anchors.append(comp_anchors[0])
+                            _arch_invisible_chain(comp_anchors, Edge)
+                _arch_invisible_chain(zone_anchors, Edge)
+        if external_gateway_nodes:
+            with Cluster("External: Customer Network", graph_attr={"style": "dashed"}):
+                external = _arch_node_for_lane(
+                    "other",
+                    "On-Prem",
+                    lane_classes=lane_classes,
+                    fallback=fallback,
+                )
+            for gw in external_gateway_nodes:
+                gw >> Edge() >> external
     return path
 
 
@@ -4922,7 +5438,7 @@ def _render_architecture_vcn_overview(
             fallback=fallback,
             title="VCN Architecture (Overview)",
             scope=f"vcn:{vcn_label}",
-            counts=_arch_lane_counts(vcn_nodes),
+            counts=None,
             part_label=f"parts={part_count}",
         )
         with Cluster(f"VCN: {vcn_label} (Overview)"):
@@ -4950,7 +5466,7 @@ def _render_architecture_vcn_overview(
                     and attach_by_res[str(n.get("nodeId") or "")].subnet_ocid == sn_id
                     and not _is_node_type(n, "Vcn", "Subnet", "Compartment")
                 ]
-                label = f"{sn_label} (n={len(attached)})"
+                label = f"{sn_label}"
                 row_nodes.append(
                     _arch_node_for_lane(
                         "network",
@@ -4963,7 +5479,7 @@ def _render_architecture_vcn_overview(
                 row_nodes.append(
                     _arch_node_for_lane(
                         "network",
-                        f"Other Subnets (n={remainder})",
+                        "Other Subnets",
                         lane_classes=lane_classes,
                         fallback=fallback,
                     )
@@ -4973,7 +5489,7 @@ def _render_architecture_vcn_overview(
                 row_nodes.append(
                     _arch_node_for_lane(
                         "network",
-                        f"Gateways (n={len(gateways)})",
+                        "Gateways",
                         lane_classes=lane_classes,
                         fallback=fallback,
                     )
@@ -4989,7 +5505,7 @@ def _render_architecture_vcn_overview(
                 row_nodes.append(
                     _arch_node_for_lane(
                         "other",
-                        f"Out-of-Subnet (n={len(other_nodes)})",
+                        "Out-of-Subnet",
                         lane_classes=lane_classes,
                         fallback=fallback,
                     )
@@ -5042,14 +5558,14 @@ def _render_architecture_workload_overview(
             fallback=fallback,
             title="Workload Architecture (Overview)",
             scope=f"workload:{wl_label}",
-            counts=_arch_lane_counts(workload_nodes),
+            counts=None,
             part_label=f"parts={part_count}",
         )
         with Cluster(f"Workload: {wl_label} (Overview)"):
             counts = _arch_lane_counts(workload_nodes)
             row_nodes: List[Any] = []
             for lane in sorted(counts.keys()):
-                label = f"{_lane_label(lane)} (n={counts[lane]})"
+                label = _lane_label(lane)
                 row_nodes.append(
                     _arch_node_for_lane(
                         lane,
@@ -5101,6 +5617,7 @@ def write_architecture_diagrams(
         fallback,
         outdir=outdir,
         nodes=filtered_nodes,
+        edges=filtered_edges,
     )
     if tenancy_path is not None:
         _arch_inline_svg_images(tenancy_path)
@@ -5222,7 +5739,6 @@ def write_architecture_diagrams(
         node_ids = [str(n.get("nodeId") or "") for n in wl_nodes if n.get("nodeId")]
         node_ids = [nid for nid in node_ids if nid]
         workload_suffix = _arch_short_hash([wl_name] + sorted(node_ids))
-        workload_edges = _filter_edges_for_nodes(filtered_edges, set(node_ids))
         try:
             path = _render_architecture_workload(
                 Diagram,
@@ -5232,8 +5748,9 @@ def write_architecture_diagrams(
                 fallback,
                 outdir=outdir,
                 workload=wl_name,
+                nodes=filtered_nodes,
+                edges=filtered_edges,
                 workload_nodes=wl_nodes,
-                workload_edges=workload_edges,
                 workload_suffix=workload_suffix,
             )
         except Exception as exc:
@@ -5250,6 +5767,8 @@ def write_architecture_diagrams(
                 _write_architecture_drawio_workload(
                     outdir,
                     workload=wl_name,
+                    nodes=filtered_nodes,
+                    edges=filtered_edges,
                     workload_nodes=wl_nodes,
                 )
             )

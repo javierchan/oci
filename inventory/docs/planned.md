@@ -40,7 +40,7 @@
 - Goal: add an As-Is/To-Be section in `report/report.md` that uses diagram outputs to explain current and proposed architecture.
 - Phase 1: text-only As-Is and To-Be summary.
 - Phase 2: diagram proposals using GenAI and validated architectures guided by `at_guidelines.md` (future).
-- Constraints: follow `docs/diagram_guidelines.md` and `docs/report_guidelines.md`; redact sensitive data.
+- Constraints: follow `docs/diagram_guidelines.md`, `docs/architecture_visual_style.md`, and `docs/report_guidelines.md`; redact sensitive data.
 - Owner: TBD.
 - Milestones: M1 define section schema and wording rules; M2 render text-only output; M3 design diagram proposal inputs.
 - Acceptance criteria: report includes As-Is/To-Be sections in required order; content is deterministic and redacted; phase 1 stays text-only.

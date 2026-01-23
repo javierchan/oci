@@ -2,9 +2,12 @@
 
 ## Scope
 
-This report distills layout and abstraction guidance from the reference diagrams in
-`project/architecture_references/`. The sources are drawio assets inside the
-reference zip files and are cited with file paths and line numbers.
+This report distills abstraction and structural layout guidance from the reference
+diagrams in `project/architecture_references/`. The sources are drawio assets
+inside the reference zip files and are cited with file paths and line numbers.
+
+Visual styling and lane layout for curated architecture SVG/Draw.io diagrams are
+defined in `docs/architecture_visual_style.md`.
 
 ## Evidence Sources
 
@@ -47,6 +50,7 @@ reference zip files and are cited with file paths and line numbers.
 - Treat the requirements in "Additional Abstraction Requirements (OCI-Aligned)" and "Data-Driven Rendering Requirements" as mandatory.
 - Use "Observed Patterns (Evidence-Based)" as supporting evidence, not as hard requirements.
 - If any guidance conflicts, the OCI-aligned abstraction and data-driven requirements take precedence.
+- For architecture SVG/Draw.io diagram appearance (layout, lanes, typography, colors), use `docs/architecture_visual_style.md`.
 
 ---
 
@@ -142,13 +146,10 @@ Graphviz and the Python diagrams library.
 - Full-detail architecture variants are not required and may be omitted for large scopes to preserve readability.
 - Tenancy/workload/VCN architecture SVGs may cap scope (top-N by resource count) and roll up the remainder as "Other".
 - Regions and AD/FD remain overlays; do not introduce extra containment levels solely for geography.
-- Use a fixed template layout:
-  - Zone blocks: Tenancy → (Top Compartments, Top VCNs) → Service Lanes.
-  - Lanes are ordered left-to-right (Network / App / Data / Security / Observability / Other).
-  - Within each lane, show top-N service/resource labels and roll up the remainder as “Other”.
+- Visual layout, lane order, typography, and styling follow `docs/architecture_visual_style.md`.
 - Draw.io (`.drawio`) architecture diagrams are supported for:
   - Tenancy, VCN, workload, and **per-compartment** overviews.
-  - Use the same fixed template layout and top-N rollups.
+  - Use the same layout and lane conventions from `docs/architecture_visual_style.md`.
 
 ---
 
@@ -286,6 +287,7 @@ Dynamic Styling Rules (best-effort):
 - Health: Nodes with errors SHOULD display an alert badge and use an alert style class.
 
 These are presentation layer concerns and intentionally not part of OCI abstraction.
+For architecture SVG/Draw.io visual styling, see `docs/architecture_visual_style.md`.
 
 Note: consolidated diagram depth levels are an implementation detail for this pipeline, but the depth-specific aggregation and scoping rules above are mandatory for consolidated outputs.
 
@@ -415,11 +417,15 @@ The abstraction rules do NOT prescribe:
 - Rendering-density heuristics
 - Vendor tooling or syntax preferences
 
+Those presentation concerns are defined for architecture SVG/Draw.io outputs in
+`docs/architecture_visual_style.md`.
+
 ---
 
 ## Change Control
 
 If diagram structure or section expectations change, update:
 - `docs/diagram_guidelines.md`
+- `docs/architecture_visual_style.md`
 - `docs/architecture.md`
 - `AGENTS.md`
