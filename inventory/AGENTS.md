@@ -259,6 +259,7 @@ Agents MUST NOT:
 ## Docs
 - docs/quickstart.md: minimal getting started
 - docs/architecture.md: layout and design
+- docs/architecture_visual_style.md: visual style for curated architecture diagrams
 - docs/auth.md: authentication options and safety
 - docs/cost_guidelines.md: cost report structure and FinOps assessment alignment
 - docs/report_guidelines.md: report.md structure and content requirements
@@ -268,9 +269,15 @@ Agents MUST NOT:
 ## Diagram Guidelines (Required)
 For any diagram creation or diagram-related task, use:
 `docs/diagram_guidelines.md`
-- Treat it as the source of truth for layout, abstraction level, and component grouping.
+- Treat it as the source of truth for abstraction level, data usage, and component grouping.
 - If there is any conflict between a request and the guidelines, follow the guidelines and call out the mismatch.
 - When Mermaid size limits are exceeded, the pipeline may split diagrams into deterministic overflow parts; ensure stub diagrams and report summaries align with the guidelines.
+
+## Architecture Visual Style (Required for Curated SVG/Draw.io)
+For curated architecture diagrams, use:
+`docs/architecture_visual_style.md`
+- Treat it as the source of truth for visual layout, lane order, typography, and styling.
+- If a request conflicts with `docs/diagram_guidelines.md`, the abstraction rules win.
 
 ## Report Guidelines (Required)
 For any report.md creation or report-related task, use:
@@ -358,6 +365,7 @@ The following conditions are considered drift and MUST trigger **Validate → Re
 ## Alignment Rules
 
 - `docs/diagram_guidelines.md` defines **what** to draw and **how** to abstract.
+- `docs/architecture_visual_style.md` defines **how** curated architecture SVG/Draw.io diagrams should look.
 - `docs/report_guidelines.md` defines **what** to write and **how** to structure.
 - The **inventory model and graph** define **what exists in reality**.
 - The report is authoritative for **workloads & counts**.

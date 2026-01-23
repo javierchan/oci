@@ -4,6 +4,7 @@
 # - Creates/uses .venv tied to the current Python major.minor
 # - Installs project (editable) with all defined extras
 # - Installs and verifies CLI tools (oci-inv, oci, mmdc)
+# - Ensures Graphviz and Python diagrams extra for architecture diagrams
 # - Idempotent and CI-friendly
 set -euo pipefail
 
@@ -259,6 +260,30 @@ ensure_mmdc() {
   ok "mmdc installed: $(mmdc --version 2>/dev/null | tr -d '\n')"
 }
 
+ensure_graphviz() {
+  if command -v dot >/dev/null 2>&1; then
+    ok "graphviz detected: $(dot -V 2>&1 | tr -d '\n')"
+    return 0
+  fi
+  if ! is_bootstrap; then
+    err "Graphviz 'dot' is required but missing (OCI_INV_MODE=check)."
+    exit 1
+  fi
+  if [ "${OS_NAME}" = "Darwin" ]; then
+    brew_install graphviz
+  elif [ "${OS_NAME}" = "Linux" ]; then
+    apt_install graphviz
+  else
+    err "Unsupported OS for automatic Graphviz install: ${OS_NAME}"
+    exit 1
+  fi
+  if ! command -v dot >/dev/null 2>&1; then
+    err "Graphviz installation completed but 'dot' not found on PATH."
+    exit 1
+  fi
+  ok "graphviz installed: $(dot -V 2>&1 | tr -d '\n')"
+}
+
 ensure_local_bin_path() {
   if [ "${MMDC_USED_LOCAL_PREFIX}" -ne 1 ]; then
     return 0
@@ -380,6 +405,10 @@ install_project() {
       info "No extras defined; installing project only"
       python -m pip install -e "${REPO_ROOT}"
     fi
+    if printf ",%s," "${all_extras}" | grep -q ",diagrams,"; then
+      info "Ensuring diagrams extra is installed"
+      python -m pip install -e "${REPO_ROOT}[diagrams]"
+    fi
     ok "Project installed (editable)"
   else
     info "OCI_INV_MODE=check: skipping project installation."
@@ -390,6 +419,14 @@ install_project() {
       ok "rich import check passed"
     else
       err "rich not importable; wizard CLI will fail."
+      exit 1
+    fi
+  fi
+  if printf ",%s," "${all_extras}" | grep -q ",diagrams,"; then
+    if python -c 'import diagrams' >/dev/null 2>&1; then
+      ok "diagrams import check passed"
+    else
+      err "diagrams not importable; architecture diagrams will be skipped."
       exit 1
     fi
   fi
@@ -453,6 +490,7 @@ ensure_python
 ensure_git
 ensure_nodejs
 ensure_mmdc
+ensure_graphviz
 ensure_local_bin_path
 ensure_venv
 ensure_pip

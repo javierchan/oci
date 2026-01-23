@@ -135,6 +135,7 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
   - Mermaid projections derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
 - `diagrams/architecture/diagram.arch.*.svg` (optional; generated when architecture diagrams are enabled)
   - SVG architecture projections rendered via Graphviz (`dot`) and the Python diagrams library.
+  - Visual layout and styling follow `docs/architecture_visual_style.md`.
 - Consolidated flowcharts honor `--diagram-depth` (1=global regions only, 2+=summary hierarchy with category counts and no per-resource edges).
   - Consolidated flowcharts auto-reduce depth when Mermaid limits are exceeded; if still oversized at depth 1, they are split by region (preferred) or top-level compartment and the base diagram becomes a stub that references the split outputs.
   - Workload diagrams are full-detail for the workload scope; oversized diagrams are split into deterministic overflow parts, and single-node slices that still exceed Mermaid limits are skipped and summarized in the report.
@@ -192,7 +193,7 @@ Secrets are never printed. The docs include operational guidance.
 
 ## Diagram Reference Guidelines
 
-The repository includes reference architecture diagrams and a distilled set of layout guidelines in
-`docs/diagram_guidelines.md`.
-- This is the required source of truth for any diagram creation or diagram-related task.
-- If a request conflicts with these guidelines, follow the guidelines and call out the mismatch.
+The repository includes diagram guidance documents:
+- `docs/diagram_guidelines.md` defines diagram abstraction, data usage, and required views.
+- `docs/architecture_visual_style.md` defines visual style and lane layout for curated architecture SVG/Draw.io views.
+- If a request conflicts with these guidelines, follow them and call out the mismatch.

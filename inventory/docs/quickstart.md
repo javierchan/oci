@@ -148,6 +148,7 @@ out/<timestamp>/
 Notes:
 - JSONL lines are stable and canonicalized (sorted keys).
 - Hashes used for diff exclude `collectedAt` to minimize noise.
+- Diagram abstraction rules live in `docs/diagram_guidelines.md`; curated architecture SVG/Draw.io visual style lives in `docs/architecture_visual_style.md`.
 
 ## Diff two inventories
 
