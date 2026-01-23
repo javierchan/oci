@@ -94,6 +94,7 @@ CONSOLIDATED_SPLIT_TOP_N = 25
 ARCH_TENANCY_TOP_N = 10
 ARCH_LANE_TOP_N = 6
 ARCH_CONSOLIDATED_TOP_N = 10
+ARCH_COMPARTMENT_TOP_N = 12
 
 _ARCH_FILTER_NODETYPES: Set[str] = {
     "LogAnalyticsEntity",
@@ -3614,6 +3615,18 @@ def _drawio_cell(
     })
 
 
+def _drawio_edge(root: Any, *, edge_id: str, source: str, target: str, parent: str = "1") -> None:
+    cell = SubElement(root, "mxCell", {
+        "id": edge_id,
+        "edge": "1",
+        "parent": parent,
+        "source": source,
+        "target": target,
+        "style": "endArrow=block;endFill=1;strokeWidth=1;rounded=1;",
+    })
+    SubElement(cell, "mxGeometry", {"relative": "1", "as": "geometry"})
+
+
 def _drawio_doc(title: str, cells: Callable[[Any], None]) -> str:
     mxfile = Element("mxfile", {"host": "app.diagrams.net"})
     diagram = SubElement(mxfile, "diagram", {"name": _drawio_escape(title)})
@@ -3779,9 +3792,10 @@ def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> P
             if not labels:
                 continue
             top_labels, rest = _arch_lane_top(labels, ARCH_LANE_TOP_N)
+            lane_header_id = f"lane_{lane}"
             _drawio_cell(
                 root,
-                cell_id=f"lane_{lane}",
+                cell_id=lane_header_id,
                 value=_lane_label(lane),
                 style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeWidth=1;",
                 x=x0 + 30 + comp_w + vcn_w + (col_gap * 2),
@@ -3817,6 +3831,9 @@ def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> P
                     parent=lane_id,
                 )
                 y += row_h
+
+        _drawio_edge(root, edge_id="edge_comp_to_vcn", source=comp_id, target=vcn_id)
+        _drawio_edge(root, edge_id="edge_vcn_to_lanes", source=vcn_id, target=lane_id)
 
     content = _drawio_doc(title, _cells)
     path = outdir / "architecture" / "diagram.arch.tenancy.drawio"
@@ -3917,9 +3934,10 @@ def _write_architecture_drawio_vcn(outdir: Path, *, vcn_name: str, vcn_nodes: Se
             if not labels:
                 continue
             top_labels, rest = _arch_lane_top(labels, ARCH_LANE_TOP_N)
+            lane_header_id = f"lane_{lane}"
             _drawio_cell(
                 root,
-                cell_id=f"lane_{lane}",
+                cell_id=lane_header_id,
                 value=_lane_label(lane),
                 style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeWidth=1;",
                 x=x0 + 30 + left_w + col_gap,
@@ -3955,6 +3973,8 @@ def _write_architecture_drawio_vcn(outdir: Path, *, vcn_name: str, vcn_nodes: Se
                     parent=lane_id,
                 )
                 y += row_h
+
+        _drawio_edge(root, edge_id="edge_net_to_lanes", source=net_id, target=lane_id)
 
     content = _drawio_doc(title, _cells)
     path = outdir / "architecture" / f"diagram.arch.vcn.{_slugify(vcn_name)}.drawio"
@@ -4009,9 +4029,10 @@ def _write_architecture_drawio_workload(outdir: Path, *, workload: str, workload
             if not labels:
                 continue
             top_labels, rest = _arch_lane_top(labels, ARCH_LANE_TOP_N)
+            lane_header_id = f"lane_{lane}"
             _drawio_cell(
                 root,
-                cell_id=f"lane_{lane}",
+                cell_id=lane_header_id,
                 value=_lane_label(lane),
                 style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeWidth=1;",
                 x=x0 + 30,
@@ -4050,6 +4071,155 @@ def _write_architecture_drawio_workload(outdir: Path, *, workload: str, workload
 
     content = _drawio_doc(title, _cells)
     path = outdir / "architecture" / f"diagram.arch.workload.{_slugify(workload)}.drawio"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def _write_architecture_drawio_compartment(
+    outdir: Path,
+    *,
+    compartment_label: str,
+    comp_nodes: Sequence[Node],
+    top_n: int,
+) -> Path:
+    title = f"Compartment Architecture Overview: {compartment_label}"
+    vcn_items = _top_vcn_counts(comp_nodes)
+    top_vcns, rest_vcns = _overview_top_counts(vcn_items, top_n)
+    lane_summaries = _arch_lane_summaries(comp_nodes)
+
+    row_h = 34
+    header_h = 32
+    x0, y0 = 40, 40
+    left_w, right_w = 360, 520
+    col_gap = 20
+    vcn_rows = len(top_vcns) + (1 if rest_vcns else 0)
+    lane_rows = sum(
+        (len(_arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[0])
+         + (1 if _arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[1] else 0)
+         + 1)
+        for lane in _LANE_ORDER
+        if lane_summaries.get(lane)
+    )
+    left_h = header_h + max(1, vcn_rows) * row_h + 16
+    right_h = header_h + max(1, lane_rows) * row_h + 16
+    total_w = left_w + right_w + col_gap + 80
+    total_h = max(left_h, right_h) + 80
+
+    def _cells(root: Any) -> None:
+        comp_id = "comp_block"
+        _drawio_cell(
+            root,
+            cell_id=comp_id,
+            value=f"Compartment: {compartment_label}",
+            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#ffffff;",
+            x=x0,
+            y=y0,
+            width=total_w,
+            height=total_h,
+            parent="1",
+        )
+        vcn_id = "vcn_block"
+        _drawio_cell(
+            root,
+            cell_id=vcn_id,
+            value="Top VCNs",
+            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=1;fillColor=#f5f5f5;",
+            x=x0 + 20,
+            y=y0 + 40,
+            width=left_w,
+            height=left_h,
+            parent=comp_id,
+        )
+        lane_id = "lane_block"
+        _drawio_cell(
+            root,
+            cell_id=lane_id,
+            value="Service Lanes",
+            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=1;fillColor=#f5f5f5;",
+            x=x0 + 20 + left_w + col_gap,
+            y=y0 + 40,
+            width=right_w,
+            height=right_h,
+            parent=comp_id,
+        )
+
+        y = y0 + 40 + header_h
+        for label, count in top_vcns:
+            _drawio_cell(
+                root,
+                cell_id=f"vcn_{y}",
+                value=f"{label} (n={count})",
+                style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                x=x0 + 30,
+                y=y,
+                width=left_w - 20,
+                height=row_h - 6,
+                parent=vcn_id,
+            )
+            y += row_h
+        if rest_vcns:
+            _drawio_cell(
+                root,
+                cell_id="vcn_other",
+                value=f"Other VCNs (n={rest_vcns})",
+                style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                x=x0 + 30,
+                y=y,
+                width=left_w - 20,
+                height=row_h - 6,
+                parent=vcn_id,
+            )
+
+        y = y0 + 40 + header_h
+        for lane in _LANE_ORDER:
+            labels = lane_summaries.get(lane)
+            if not labels:
+                continue
+            top_labels, rest = _arch_lane_top(labels, max(len(labels), ARCH_LANE_TOP_N))
+            lane_header_id = f"lane_{lane}"
+            _drawio_cell(
+                root,
+                cell_id=lane_header_id,
+                value=_lane_label(lane),
+                style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeWidth=1;",
+                x=x0 + 30 + left_w + col_gap,
+                y=y,
+                width=right_w - 20,
+                height=row_h - 6,
+                parent=lane_id,
+            )
+            y += row_h
+            for label, count in top_labels:
+                _drawio_cell(
+                    root,
+                    cell_id=f"lane_{lane}_{y}",
+                    value=f"{label} (n={count})",
+                    style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                    x=x0 + 40 + left_w + col_gap,
+                    y=y,
+                    width=right_w - 40,
+                    height=row_h - 6,
+                    parent=lane_id,
+                )
+                y += row_h
+            if rest:
+                _drawio_cell(
+                    root,
+                    cell_id=f"lane_{lane}_other",
+                    value=f"Other (n={rest})",
+                    style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                    x=x0 + 40 + left_w + col_gap,
+                    y=y,
+                    width=right_w - 40,
+                    height=row_h - 6,
+                    parent=lane_id,
+                )
+                y += row_h
+
+        _drawio_edge(root, edge_id="edge_vcn_to_lanes", source=vcn_id, target=lane_id)
+
+    content = _drawio_doc(title, _cells)
+    path = outdir / "architecture" / f"diagram.arch.compartment.{_slugify(compartment_label)}.drawio"
     path.write_text(content, encoding="utf-8")
     return path
 
@@ -4936,6 +5106,25 @@ def write_architecture_diagrams(
         _arch_inline_svg_images(tenancy_path)
         out_paths.append(tenancy_path)
         out_paths.append(_write_architecture_drawio_tenancy(outdir, filtered_nodes))
+
+    comp_groups = _group_nodes_by_level1_compartment(filtered_nodes)
+    if comp_groups:
+        node_by_id = {str(n.get("nodeId") or ""): n for n in filtered_nodes if n.get("nodeId")}
+        alias_by_comp = _compartment_alias_map(filtered_nodes)
+        for comp_id in sorted(comp_groups.keys()):
+            comp_nodes = comp_groups.get(comp_id) or []
+            if not comp_nodes:
+                continue
+            label = _compartment_label_by_id(comp_id, node_by_id=node_by_id, alias_by_id=alias_by_comp)
+            label = _tenancy_safe_label("", label)
+            out_paths.append(
+                _write_architecture_drawio_compartment(
+                    outdir,
+                    compartment_label=label,
+                    comp_nodes=comp_nodes,
+                    top_n=ARCH_COMPARTMENT_TOP_N,
+                )
+            )
 
     vcn_groups = _group_nodes_by_vcn(filtered_nodes, filtered_edges)
     top_vcns, other_vcns = _arch_select_top_groups(vcn_groups, limit=ARCH_MAX_VCNS)

@@ -142,10 +142,13 @@ Graphviz and the Python diagrams library.
 - Full-detail architecture variants are not required and may be omitted for large scopes to preserve readability.
 - Tenancy/workload/VCN architecture SVGs may cap scope (top-N by resource count) and roll up the remainder as "Other".
 - Regions and AD/FD remain overlays; do not introduce extra containment levels solely for geography.
- - Use a fixed template layout:
-   - Zone blocks: Tenancy → (Top Compartments, Top VCNs) → Service Lanes.
-   - Lanes are ordered left-to-right (Network / App / Data / Security / Observability / Other).
-   - Within each lane, show top-N service/resource labels and roll up the remainder as “Other”.
+- Use a fixed template layout:
+  - Zone blocks: Tenancy → (Top Compartments, Top VCNs) → Service Lanes.
+  - Lanes are ordered left-to-right (Network / App / Data / Security / Observability / Other).
+  - Within each lane, show top-N service/resource labels and roll up the remainder as “Other”.
+- Draw.io (`.drawio`) architecture diagrams are supported for:
+  - Tenancy, VCN, workload, and **per-compartment** overviews.
+  - Use the same fixed template layout and top-N rollups.
 
 ---
 
