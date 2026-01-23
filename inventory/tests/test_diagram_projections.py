@@ -79,7 +79,8 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
     assert "Functional Overlays" not in tenancy
     assert "IN_COMPARTMENT" not in tenancy
     assert "Region: mx-queretaro-1" in tenancy
-    assert "Instances (n=1)" in tenancy
+    assert "Top Compartments" in tenancy
+    assert "Top VCNs" in tenancy
     tenancy_lines = [line.strip() for line in tenancy.splitlines()]
     assert sum(1 for line in tenancy_lines if line.startswith("subgraph ")) == sum(
         1 for line in tenancy_lines if line == "end"
@@ -140,7 +141,8 @@ def test_consolidated_flowchart_splits_by_vcn_when_too_large(tmp_path, monkeypat
     write_diagram_projections(tmp_path, nodes, edges, diagram_depth=3)
 
     flowchart = (tmp_path / "diagram.consolidated.flowchart.mmd").read_text(encoding="utf-8")
-    assert "NOTE: Consolidated diagram split by VCN" in flowchart
+    assert "Consolidated diagram split; see split outputs." in flowchart
+    assert "diagram.consolidated.flowchart.index.mmd" in flowchart
     part_paths = sorted(tmp_path.glob("diagram.consolidated.flowchart.vcn.*.mmd"))
     assert len(part_paths) == 2
 

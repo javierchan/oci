@@ -77,6 +77,8 @@ The flowchart output is the global connectivity map at depth 1; at depth > 1 it 
 When Mermaid size limits are exceeded, additional split outputs may be emitted:
 - `diagrams/consolidated/diagram.consolidated.flowchart.region.<region>.mmd` or `diagram.consolidated.flowchart.compartment.<compartment>.mmd`
 - `diagrams/workload/diagram.workload.<workload>.partNN.mmd`
+When split outputs are emitted, the stub diagram links to an index file:
+- `diagrams/consolidated/diagram.consolidated.flowchart.index.mmd` (full split list)
 
 Depth controls are a rendering knob for consolidated outputs and the tenancy view; per-VCN diagrams remain full detail and workload diagrams remain full detail for their workload scope.
 - Depth 1 (Global Map): tenancy + regions only, rendered in `diagram.consolidated.flowchart.mmd`. No compartments at this level.
@@ -117,13 +119,16 @@ Noise reduction:
 - Labels must exclude OCIDs, versions, and timestamps.
 - No edges from individual resources to OCI Services. Use a single edge from the VCN boundary to OCI Services when a Service Gateway exists.
 
+When split outputs are emitted, the stub diagram links to an index file:
+- `diagrams/tenancy/diagram.tenancy.index.mmd` (full split list)
+
 Visual requirements:
 - Global direction must be LR; inside compartments must be TB.
 - Mermaid node IDs must be semantic (no hashed/hex IDs).
 
 ---
 
-### 1c) Architecture SVG Diagrams (Overview)
+### 1c) Architecture SVG Diagrams (Curated Overview)
 
 Applies to `diagrams/architecture/diagram.arch.*.svg`. These are optional, overview-oriented SVG diagrams rendered via
 Graphviz and the Python diagrams library.
@@ -133,9 +138,14 @@ Graphviz and the Python diagrams library.
   - `diagram.arch.tenancy.svg` (tenancy overview)
   - `diagram.arch.vcn.<vcn>.svg` (VCN scope overview)
   - `diagram.arch.workload.<workload>.svg` (workload scope overview)
-- These views MAY aggregate or summarize resources (e.g., per-lane counts). They are intended for readability, not full-detail.
+- These views are curated overviews and MAY aggregate or summarize resources (e.g., per-lane counts and top-N labels).
+- Full-detail architecture variants are not required and may be omitted for large scopes to preserve readability.
 - Tenancy/workload/VCN architecture SVGs may cap scope (top-N by resource count) and roll up the remainder as "Other".
 - Regions and AD/FD remain overlays; do not introduce extra containment levels solely for geography.
+ - Use a fixed template layout:
+   - Zone blocks: Tenancy → (Top Compartments, Top VCNs) → Service Lanes.
+   - Lanes are ordered left-to-right (Network / App / Data / Security / Observability / Other).
+   - Within each lane, show top-N service/resource labels and roll up the remainder as “Other”.
 
 ---
 
@@ -153,7 +163,7 @@ Graphviz and the Python diagrams library.
 - Label compartments and key zones.
 - Label subnets (role labels allowed).
 - Label Internet and DRG.
-- Aggregation is not permitted for per-VCN and workload diagrams. Consolidated diagrams at depth 2 may aggregate counts by resourceType or category as defined above.
+- Aggregation is permitted for architecture VCN/workload overview diagrams. Mermaid network/workload diagrams remain the full-detail source of truth.
 
 ---
 

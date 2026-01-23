@@ -1812,6 +1812,11 @@ def render_cost_report_md(
                 f"This report provides a point-in-time OCI cost snapshot for {time_start} to {time_end} UTC, "
                 f"grouped by {aggregation_label or 'service, compartment, region'}."
             )
+        if key == "data_sources":
+            return (
+                "Data is sourced from OCI Usage API summarized usage results for the selected time range. "
+                f"Totals are grouped by {aggregation_label or 'service, compartment, region'} in {currency}."
+            )
         if key == "report_summary":
             return (
                 f"Total cost is {total_cost} {currency} across {service_count} services, "
@@ -1822,10 +1827,25 @@ def render_cost_report_md(
                 f"Top service by cost: {top_service}. Top region by cost: {top_region}. "
                 f"Top compartment by cost: {top_comp}."
             )
+        if key == "consumption_insights":
+            return (
+                f"Spend is concentrated in {service_count} services and {region_count} regions. "
+                f"Top service: {top_service}; top region: {top_region}."
+            )
+        if key == "coverage_gaps":
+            return (
+                f"This snapshot covers {service_count} services, {region_count} regions, and "
+                f"{compartment_count} compartments for the selected window."
+            )
         if key == "intended_audience":
             return (
                 "This snapshot is intended for architecture, finance, and operations stakeholders to "
                 "review allocation by service, region, and compartment."
+            )
+        if key == "next_steps":
+            return (
+                "Optional next steps include reviewing tag coverage and validating allocations "
+                "for the highest-spend services and regions."
             )
         return "(Narrative unavailable for this section.)"
 

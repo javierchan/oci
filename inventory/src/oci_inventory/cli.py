@@ -1849,6 +1849,31 @@ def _organize_diagrams(paths: OutputPaths) -> List[Path]:
     return moved
 
 
+def _clean_diagram_outputs(paths: OutputPaths) -> None:
+    targets = [
+        paths.diagrams_dir,
+        paths.diagrams_tenancy_dir,
+        paths.diagrams_network_dir,
+        paths.diagrams_workload_dir,
+        paths.diagrams_consolidated_dir,
+        paths.diagrams_architecture_dir,
+    ]
+    for base in targets:
+        if not base.exists():
+            continue
+        for entry in base.rglob("*"):
+            if not entry.is_file():
+                continue
+            if not entry.name.startswith("diagram."):
+                continue
+            if entry.suffix not in {".mmd", ".svg"}:
+                continue
+            try:
+                entry.unlink()
+            except Exception:
+                continue
+
+
 def cmd_run(cfg: RunConfig) -> int:
     from .export.graph import build_graph, filter_edges_with_nodes, write_graph
     from .report import (
@@ -2732,6 +2757,8 @@ def cmd_rebuild(cfg: RunConfig) -> int:
     edges = list(_iter_jsonl_records(edges_path))
 
     diagram_summary: Dict[str, Any] = {}
+    if cfg.diagrams or cfg.architecture_diagrams:
+        _clean_diagram_outputs(paths)
     if cfg.diagrams:
         write_diagram_projections(
             paths.diagrams_dir,
