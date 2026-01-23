@@ -1775,6 +1775,8 @@ def render_cost_report_md(
 
     def _sanitize_cost_narrative(text: str) -> str:
         lowered = text.lower()
+        if "narrative omitted" in lowered or "non-descriptive content detected" in lowered:
+            return ""
         banned = (
             "recommend",
             "should ",
@@ -1817,6 +1819,9 @@ def render_cost_report_md(
     def _narrative_text(key: str) -> str:
         text = (narratives or {}).get(key, "").strip()
         if text:
+            lowered = text.lower()
+            if "narrative omitted" in lowered or "non-descriptive content detected" in lowered:
+                text = ""
             for prefix in ("### ", "## ", "# "):
                 if text.startswith(prefix):
                     lines_local = text.splitlines()
