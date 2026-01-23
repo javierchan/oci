@@ -3697,6 +3697,52 @@ def _concepts_for_scope(
     return items
 
 
+def _security_overlay_items(
+    concepts: Sequence[Any],
+    *,
+    scope: str,
+    compartment_id: Optional[str] = None,
+    vcn_name: Optional[str] = None,
+) -> List[Any]:
+    normalized_vcn = _normalize_concept_label(vcn_name) if vcn_name else None
+    items: List[Any] = []
+    for c in concepts:
+        if getattr(c, "lane", None) != "security":
+            continue
+        if getattr(c, "security_scope", None) != scope:
+            continue
+        if compartment_id and getattr(c, "compartment_id", None) != compartment_id:
+            continue
+        if normalized_vcn and normalized_vcn not in getattr(c, "vcn_names", ()):
+            continue
+        items.append(c)
+    items.sort(key=lambda c: (-getattr(c, "count", 0), getattr(c, "label", "")))
+    return items
+
+
+def _arch_overlay_cluster_attrs() -> Dict[str, str]:
+    return {
+        "style": "dashed",
+        "color": "#666666",
+        "fontcolor": "#333333",
+        "fontsize": "10",
+    }
+
+
+def _arch_external_cluster_attrs() -> Dict[str, str]:
+    return {
+        "style": "dashed",
+        "color": "#666666",
+        "fontcolor": "#333333",
+        "fontsize": "10",
+        "bgcolor": "white",
+    }
+
+
+def _has_security_overlay(concepts: Sequence[Any]) -> bool:
+    return any(getattr(c, "security_scope", None) for c in concepts)
+
+
 def _normalize_concept_label(value: Optional[str]) -> str:
     if not value:
         return ""
@@ -4405,7 +4451,8 @@ def _arch_graph_attrs() -> Tuple[Dict[str, str], Dict[str, str]]:
         "ratio": "compress",
         "pack": "true",
         "packmode": "graph",
-        "fontsize": "9",
+        "fontsize": "12",
+        "fontname": "Helvetica",
     }
     node_attr = {
         "fixedsize": "true",
@@ -4414,7 +4461,12 @@ def _arch_graph_attrs() -> Tuple[Dict[str, str], Dict[str, str]]:
         "imagescale": "true",
         "labelloc": "b",
         "imagepos": "tc",
-        "fontsize": "8",
+        "fontsize": "12",
+        "fontname": "Helvetica",
+        "shape": "box",
+        "style": "rounded,filled",
+        "fillcolor": "white",
+        "color": "#333333",
         "margin": "0.03,0.02",
     }
     return graph_attr, node_attr
@@ -4543,6 +4595,7 @@ def _arch_add_legend(
     scope: str,
     counts: Optional[Mapping[str, int]] = None,
     part_label: Optional[str] = None,
+    overlays: Optional[Sequence[str]] = None,
 ) -> None:
     with Cluster("Legend"):
         _arch_node_for_lane(
@@ -4571,6 +4624,14 @@ def _arch_add_legend(
                 lane_classes=lane_classes,
                 fallback=fallback,
             )
+        if overlays:
+            for overlay in overlays:
+                _arch_node_for_lane(
+                    "other",
+                    f"Overlay: {overlay}",
+                    lane_classes=lane_classes,
+                    fallback=fallback,
+                )
 
 
 def _arch_split_by_lanes(
@@ -4770,10 +4831,21 @@ def _render_architecture_tenancy(
             title="Tenancy Architecture (Overview)",
             scope="tenancy",
             counts=None,
+            overlays=overlays,
         )
         with Cluster(f"Tenancy: {tenancy_label}"):
             zone_anchors: List[Any] = []
             external_gateway_nodes: List[Any] = []
+            tenancy_overlay = _security_overlay_items(concepts, scope="tenancy")
+            if tenancy_overlay:
+                with Cluster("IAM/Security Overlay", graph_attr=_arch_overlay_cluster_attrs()):
+                    tenancy_node = _arch_node_for_lane(
+                        "security",
+                        "Tenancy IAM & Policies",
+                        lane_classes=lane_classes,
+                        fallback=fallback,
+                    )
+                zone_anchors.append(tenancy_node)
             for comp_id, comp_nodes in top_comp_groups:
                 comp_label = _compartment_label_by_id(
                     comp_id,
@@ -4783,6 +4855,20 @@ def _render_architecture_tenancy(
                 comp_label = _arch_compartment_label(comp_label)
                 with Cluster(comp_label):
                     comp_anchors: List[Any] = []
+                    comp_overlay = _security_overlay_items(
+                        concepts,
+                        scope="compartment",
+                        compartment_id=comp_id,
+                    )
+                    if comp_overlay:
+                        with Cluster("IAM/Security Overlay", graph_attr=_arch_overlay_cluster_attrs()):
+                            comp_node = _arch_node_for_lane(
+                                "security",
+                                "Compartment Security Controls",
+                                lane_classes=lane_classes,
+                                fallback=fallback,
+                            )
+                        comp_anchors.append(comp_node)
                     vcn_groups = _group_nodes_by_vcn(comp_nodes, edges)
                     vcn_groups = {k: v for k, v in vcn_groups.items() if k != "NO_VCN"}
                     vcn_ranked, _other_vcns = _arch_select_top_groups(
@@ -4799,6 +4885,21 @@ def _render_architecture_tenancy(
                         with Cluster(f"VCN: {vcn_label}"):
                             vcn_anchors: List[Any] = []
                             edge_nodes: List[Any] = []
+                            vcn_overlay = _security_overlay_items(
+                                concepts,
+                                scope="vcn",
+                                compartment_id=comp_id,
+                                vcn_name=vcn_label,
+                            )
+                            if vcn_overlay:
+                                with Cluster("IAM/Security Overlay", graph_attr=_arch_overlay_cluster_attrs()):
+                                    vcn_node = _arch_node_for_lane(
+                                        "security",
+                                        "VCN Network Security",
+                                        lane_classes=lane_classes,
+                                        fallback=fallback,
+                                    )
+                                vcn_anchors.append(vcn_node)
                             with Cluster("Network Edge"):
                                 for concept in _concepts_for_scope(
                                     concepts,
@@ -4953,7 +5054,7 @@ def _render_architecture_tenancy(
             _arch_invisible_chain(zone_anchors, Edge)
 
             if external_gateway_nodes:
-                with Cluster("External: Customer Network", graph_attr={"style": "dashed"}):
+                with Cluster("External: Customer Network", graph_attr=_arch_external_cluster_attrs()):
                     external = _arch_node_for_lane(
                         "other",
                         "On-Prem",
@@ -5000,6 +5101,8 @@ def _render_architecture_vcn(
     comp_label = _compartment_label_by_id(comp_id, node_by_id=node_by_id, alias_by_id=alias_by_comp)
     comp_label = _arch_compartment_label(comp_label)
     tenancy_label = _tenancy_label(vcn_nodes)
+    concepts = build_scope_concepts(nodes=vcn_nodes, edges=vcn_edges, scope_nodes=vcn_nodes)
+    overlays = ["IAM/Security Overlay"] if _has_security_overlay(concepts) else None
 
     with Diagram(
         title,
@@ -5016,15 +5119,53 @@ def _render_architecture_vcn(
             title="VCN Architecture (Curated Overview)",
             scope=f"vcn:{vcn_label}",
             counts=None,
+            overlays=overlays,
         )
-        concepts = build_scope_concepts(nodes=vcn_nodes, edges=vcn_edges, scope_nodes=vcn_nodes)
         external_gateway_nodes: List[Any] = []
         with Cluster(f"Tenancy: {tenancy_label}"):
+            tenancy_overlay = _security_overlay_items(concepts, scope="tenancy")
+            if tenancy_overlay:
+                with Cluster("IAM/Security Overlay", graph_attr=_arch_overlay_cluster_attrs()):
+                    tenancy_node = _arch_node_for_lane(
+                        "security",
+                        "Tenancy IAM & Policies",
+                        lane_classes=lane_classes,
+                        fallback=fallback,
+                    )
             with Cluster(comp_label):
                 comp_anchors: List[Any] = []
+                comp_overlay = _security_overlay_items(
+                    concepts,
+                    scope="compartment",
+                    compartment_id=comp_id or None,
+                )
+                if comp_overlay:
+                    with Cluster("IAM/Security Overlay", graph_attr=_arch_overlay_cluster_attrs()):
+                        comp_node = _arch_node_for_lane(
+                            "security",
+                            "Compartment Security Controls",
+                            lane_classes=lane_classes,
+                            fallback=fallback,
+                        )
+                    comp_anchors.append(comp_node)
                 with Cluster(f"VCN: {vcn_label}"):
                     vcn_anchors: List[Any] = []
                     edge_nodes: List[Any] = []
+                    vcn_overlay = _security_overlay_items(
+                        concepts,
+                        scope="vcn",
+                        compartment_id=comp_id or None,
+                        vcn_name=vcn_label,
+                    )
+                    if vcn_overlay:
+                        with Cluster("IAM/Security Overlay", graph_attr=_arch_overlay_cluster_attrs()):
+                            vcn_node = _arch_node_for_lane(
+                                "security",
+                                "VCN Network Security",
+                                lane_classes=lane_classes,
+                                fallback=fallback,
+                            )
+                        vcn_anchors.append(vcn_node)
                     with Cluster("Network Edge"):
                         for concept in _concepts_for_scope(
                             concepts,
@@ -5165,7 +5306,7 @@ def _render_architecture_vcn(
                 _arch_invisible_chain(comp_anchors, Edge)
 
         if external_gateway_nodes:
-            with Cluster("External: Customer Network", graph_attr={"style": "dashed"}):
+            with Cluster("External: Customer Network", graph_attr=_arch_external_cluster_attrs()):
                 external = _arch_node_for_lane(
                     "other",
                     "On-Prem",
@@ -5205,6 +5346,7 @@ def _render_architecture_workload(
     title = f"Workload Architecture: {wl_label} (Curated)"
     concepts = build_workload_concepts(nodes=nodes, edges=edges, workload_nodes=workload_nodes)
     context = build_workload_context(nodes=nodes, edges=edges, workload_nodes=workload_nodes)
+    overlays = ["IAM/Security Overlay"] if _has_security_overlay(concepts) else None
 
     node_by_id = {str(n.get("nodeId") or ""): n for n in nodes if n.get("nodeId")}
     alias_by_comp = _compartment_alias_map(nodes)
@@ -5223,10 +5365,20 @@ def _render_architecture_workload(
             title="Workload Architecture (Curated Overview)",
             scope=f"workload:{wl_label}",
             counts=None,
+            overlays=overlays,
         )
         tenancy_label = _tenancy_label(nodes)
         external_gateway_nodes: List[Any] = []
         with Cluster(tenancy_label):
+            tenancy_overlay = _security_overlay_items(concepts, scope="tenancy")
+            if tenancy_overlay:
+                with Cluster("IAM/Security Overlay", graph_attr=_arch_overlay_cluster_attrs()):
+                    _arch_node_for_lane(
+                        "security",
+                        "Tenancy IAM & Policies",
+                        lane_classes=lane_classes,
+                        fallback=fallback,
+                    )
             with Cluster(f"Workload: {wl_label}"):
                 zone_anchors: List[Any] = []
                 comp_ids = list(context.compartment_ids) if context.compartment_ids else []
@@ -5241,12 +5393,41 @@ def _render_architecture_workload(
                     comp_label = _arch_compartment_label(comp_label)
                     with Cluster(comp_label):
                         comp_anchors: List[Any] = []
+                        comp_overlay = _security_overlay_items(
+                            concepts,
+                            scope="compartment",
+                            compartment_id=comp_id,
+                        )
+                        if comp_overlay:
+                            with Cluster("IAM/Security Overlay", graph_attr=_arch_overlay_cluster_attrs()):
+                                comp_node = _arch_node_for_lane(
+                                    "security",
+                                    "Compartment Security Controls",
+                                    lane_classes=lane_classes,
+                                    fallback=fallback,
+                                )
+                            comp_anchors.append(comp_node)
                         vcn_names = context.vcn_names_by_compartment.get(comp_id, ())
                         for vcn_name in vcn_names:
                             vcn_label = _normalize_concept_label(vcn_name)
                             with Cluster(f"VCN: {vcn_label}"):
                                 vcn_anchors: List[Any] = []
                                 edge_nodes: List[Any] = []
+                                vcn_overlay = _security_overlay_items(
+                                    concepts,
+                                    scope="vcn",
+                                    compartment_id=comp_id,
+                                    vcn_name=vcn_label,
+                                )
+                                if vcn_overlay:
+                                    with Cluster("IAM/Security Overlay", graph_attr=_arch_overlay_cluster_attrs()):
+                                        vcn_node = _arch_node_for_lane(
+                                            "security",
+                                            "VCN Network Security",
+                                            lane_classes=lane_classes,
+                                            fallback=fallback,
+                                        )
+                                    vcn_anchors.append(vcn_node)
                                 with Cluster("Network Edge"):
                                     for concept in _concepts_for_scope(
                                         concepts,
@@ -5389,7 +5570,7 @@ def _render_architecture_workload(
                             _arch_invisible_chain(comp_anchors, Edge)
                 _arch_invisible_chain(zone_anchors, Edge)
         if external_gateway_nodes:
-            with Cluster("External: Customer Network", graph_attr={"style": "dashed"}):
+            with Cluster("External: Customer Network", graph_attr=_arch_external_cluster_attrs()):
                 external = _arch_node_for_lane(
                     "other",
                     "On-Prem",
