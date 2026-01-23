@@ -541,6 +541,71 @@ def load_run_config(
         ),
     )
 
+    # rebuild
+    p_rebuild = subparsers.add_parser(
+        "rebuild",
+        help="Rebuild reports/diagrams from an existing outdir (no OCI API calls).",
+    )
+    add_common(p_rebuild)
+    p_rebuild.add_argument(
+        "--outdir",
+        type=Path,
+        required=True,
+        help="Existing output directory to rebuild from (e.g., out/20260122T233924Z).",
+    )
+    p_rebuild.add_argument(
+        "--genai-summary",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Generate a GenAI Executive Summary for the rebuilt report.",
+    )
+    p_rebuild.add_argument(
+        "--validate-diagrams",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Validate Mermaid diagrams during rebuild (requires mmdc).",
+    )
+    p_rebuild.add_argument(
+        "--diagrams",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Regenerate Mermaid diagram projections.",
+    )
+    p_rebuild.add_argument(
+        "--architecture-diagrams",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Regenerate architecture SVG diagrams (Graphviz required).",
+    )
+    p_rebuild.add_argument(
+        "--diagram-depth",
+        type=int,
+        default=None,
+        help="Depth for consolidated diagrams (1, 2, or 3).",
+    )
+    p_rebuild.add_argument(
+        "--cost-report",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Regenerate cost/cost_report.md from existing cost artifacts.",
+    )
+    p_rebuild.add_argument(
+        "--cost-compartment-group-by",
+        choices=("compartmentId", "compartmentName", "compartmentPath"),
+        default=None,
+        help="Group cost by compartmentId (default), compartmentName, or compartmentPath.",
+    )
+    p_rebuild.add_argument(
+        "--cost-group-by",
+        default=None,
+        help="Comma-separated Usage API group_by list for cost summaries.",
+    )
+    p_rebuild.add_argument(
+        "--cost-currency",
+        default=None,
+        help="Override currency code for cost report (optional).",
+    )
+
     # diff
     p_diff = subparsers.add_parser("diff", help="Diff two inventory JSONL files")
     add_common(p_diff)
@@ -738,6 +803,8 @@ def load_run_config(
     # Normalize/construct types
     outdir_raw = merged.get("outdir")
     outdir = _timestamp_dir(outdir_raw) if command == "run" else Path(outdir_raw) if outdir_raw else Path.cwd()
+    if command == "rebuild" and not outdir_raw:
+        raise ValueError("rebuild requires --outdir")
     prev = Path(merged["prev"]) if merged.get("prev") else None
     curr = Path(merged["curr"]) if merged.get("curr") else None
     profile = merged.get("profile")

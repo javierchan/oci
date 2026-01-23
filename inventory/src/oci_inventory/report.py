@@ -1790,8 +1790,29 @@ def render_cost_report_md(
             "cut ",
         )
         if any(token in lowered for token in banned):
-            return "(Narrative omitted: non-descriptive content detected.)"
+            return ""
         return text
+
+    def _fallback_cost_narrative(key: str) -> str:
+        top_service = services[0]["name"] if services else "N/A"
+        top_region = regions[0]["name"] if regions else "N/A"
+        top_comp = comp_rows[0]["name"] if comp_rows else "N/A"
+        if key == "report_summary":
+            return (
+                f"Total cost is {total_cost} {currency} across {service_count} services, "
+                f"{region_count} regions, and {compartment_count} compartments for the selected period."
+            )
+        if key == "executive_summary":
+            return (
+                f"Top service by cost: {top_service}. Top region by cost: {top_region}. "
+                f"Top compartment by cost: {top_comp}."
+            )
+        if key == "intended_audience":
+            return (
+                "This snapshot is intended for architecture, finance, and operations stakeholders to "
+                "review allocation by service, region, and compartment."
+            )
+        return "(Narrative unavailable for this section.)"
 
     def _narrative_text(key: str) -> str:
         text = (narratives or {}).get(key, "").strip()
@@ -1803,11 +1824,13 @@ def render_cost_report_md(
                     break
             if key != "next_steps":
                 text = _sanitize_cost_narrative(text)
-            return text
+            if text:
+                return text
+            return _fallback_cost_narrative(key)
         err_txt = (narrative_errors or {}).get(key)
         if err_txt:
             return f"(GenAI narrative unavailable: {_truncate(str(err_txt), 200)})"
-        return "(GenAI narrative unavailable for this run.)"
+        return _fallback_cost_narrative(key)
 
     def _snapshot_status() -> str:
         steps = cost_context.get("steps") or []

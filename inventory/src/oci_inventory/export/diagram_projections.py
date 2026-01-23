@@ -7,6 +7,7 @@ import subprocess
 import hashlib
 import importlib
 import time
+import base64
 from dataclasses import dataclass
 import logging
 from pathlib import Path
@@ -80,6 +81,15 @@ ARCH_MIN_WORKLOAD_NODES = 5
 ARCH_MAX_ARCH_NODES = 220
 ARCH_MAX_ARCH_EDGES = 320
 ARCH_ARCH_OVERVIEW_PARTS = 10
+ARCH_MAX_ARCH_PARTS = 25
+
+_ARCH_FILTER_NODETYPES: Set[str] = {
+    "LogAnalyticsEntity",
+    "Log",
+    "LogGroup",
+    "LogAnalyticsLogGroup",
+    "ServiceConnector",
+}
 
 CONSOLIDATED_WORKLOAD_TOP_N = 8
 
@@ -3394,6 +3404,34 @@ def _arch_graph_attrs() -> Tuple[Dict[str, str], Dict[str, str]]:
     return graph_attr, node_attr
 
 
+def _arch_inline_svg_images(path: Path) -> None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:
+        return
+
+    def _replace(match: re.Match[str]) -> str:
+        raw_path = match.group(1)
+        if raw_path.startswith("data:"):
+            return match.group(0)
+        img_path = Path(raw_path)
+        if not img_path.exists():
+            return match.group(0)
+        try:
+            data = img_path.read_bytes()
+        except Exception:
+            return match.group(0)
+        b64 = base64.b64encode(data).decode("ascii")
+        return f'xlink:href="data:image/png;base64,{b64}"'
+
+    updated = re.sub(r'xlink:href="([^"]+)"', _replace, text)
+    if updated != text:
+        try:
+            path.write_text(updated, encoding="utf-8")
+        except Exception:
+            return
+
+
 def _chunked(items: Sequence[str], size: int) -> Iterable[Sequence[str]]:
     if size <= 0:
         size = 1
@@ -4027,7 +4065,14 @@ def write_architecture_diagrams(
         return []
     Diagram, Cluster, Edge, lane_classes, fallback = loaded
 
+    filtered_nodes = [n for n in nodes if str(n.get("nodeType") or "") not in _ARCH_FILTER_NODETYPES]
+    filtered_edges = _filter_edges_for_nodes(
+        edges,
+        {str(n.get("nodeId") or "") for n in filtered_nodes if n.get("nodeId")},
+    )
+
     out_paths: List[Path] = []
+    summary = _ensure_diagram_summary(summary)
     tenancy_path = _render_architecture_tenancy(
         Diagram,
         Cluster,
@@ -4035,12 +4080,13 @@ def write_architecture_diagrams(
         lane_classes,
         fallback,
         outdir=outdir,
-        nodes=nodes,
+        nodes=filtered_nodes,
     )
     if tenancy_path is not None:
+        _arch_inline_svg_images(tenancy_path)
         out_paths.append(tenancy_path)
 
-    vcn_groups = _group_nodes_by_vcn(nodes, edges)
+    vcn_groups = _group_nodes_by_vcn(filtered_nodes, filtered_edges)
     top_vcns, other_vcns = _arch_select_top_groups(vcn_groups, limit=ARCH_MAX_VCNS)
     if other_vcns:
         LOG.info(
@@ -4067,7 +4113,7 @@ def write_architecture_diagrams(
         node_ids = [str(n.get("nodeId") or "") for n in group_nodes if n.get("nodeId")]
         node_ids = [nid for nid in node_ids if nid]
         vcn_suffix = _arch_short_hash([vcn_id] if vcn_id else sorted(node_ids))
-        vcn_edges = _filter_edges_for_nodes(edges, set(node_ids))
+        vcn_edges = _filter_edges_for_nodes(filtered_edges, set(node_ids))
         parts = [sorted(set(node_ids))]
         if len(node_ids) > ARCH_MAX_ARCH_NODES or len(vcn_edges) > ARCH_MAX_ARCH_EDGES:
             parts = _arch_split_vcn_parts(
@@ -4104,6 +4150,7 @@ def write_architecture_diagrams(
                     part_count=len(parts),
                 )
                 if overview is not None:
+                    _arch_inline_svg_images(overview)
                     out_paths.append(overview)
             except Exception as exc:
                 LOG.warning(
@@ -4111,6 +4158,16 @@ def write_architecture_diagrams(
                     vcn_name,
                     exc,
                 )
+        if len(parts) > ARCH_MAX_ARCH_PARTS:
+            _record_diagram_skip(
+                summary,
+                diagram=f"architecture.vcn.{vcn_name}",
+                kind="vcn_part",
+                size=len(parts),
+                limit=ARCH_MAX_ARCH_PARTS,
+                reason="part_cap",
+            )
+            parts = parts[:ARCH_MAX_ARCH_PARTS]
         for idx, part_ids in enumerate(parts, start=1):
             if not part_ids:
                 continue
@@ -4141,9 +4198,10 @@ def write_architecture_diagrams(
                 )
                 continue
             if path is not None:
+                _arch_inline_svg_images(path)
                 out_paths.append(path)
 
-    workload_candidates = [n for n in nodes if n.get("nodeId")]
+    workload_candidates = [n for n in filtered_nodes if n.get("nodeId")]
     wl_groups = {k: list(v) for k, v in group_workload_candidates(workload_candidates).items()}
     filtered_wl: Dict[str, List[Node]] = {}
     for wl_name, wl_nodes in wl_groups.items():
@@ -4155,7 +4213,7 @@ def write_architecture_diagrams(
     workload_ranked: List[Tuple[str, List[Node], int]] = []
     for wl_name, wl_nodes in filtered_wl.items():
         node_ids = {str(n.get("nodeId") or "") for n in wl_nodes if n.get("nodeId")}
-        wl_edges = _filter_edges_for_nodes(edges, node_ids)
+        wl_edges = _filter_edges_for_nodes(filtered_edges, node_ids)
         workload_ranked.append((wl_name, wl_nodes, len(wl_edges)))
     workload_ranked.sort(
         key=lambda item: (-item[2], -_arch_count_nodes(item[1]), str(item[0]).lower())
@@ -4180,7 +4238,7 @@ def write_architecture_diagrams(
         node_ids = [str(n.get("nodeId") or "") for n in wl_nodes if n.get("nodeId")]
         node_ids = [nid for nid in node_ids if nid]
         workload_suffix = _arch_short_hash([wl_name] + sorted(node_ids))
-        workload_edges = _filter_edges_for_nodes(edges, set(node_ids))
+        workload_edges = _filter_edges_for_nodes(filtered_edges, set(node_ids))
         parts = [sorted(set(node_ids))]
         if len(node_ids) > ARCH_MAX_ARCH_NODES or len(workload_edges) > ARCH_MAX_ARCH_EDGES:
             nodes_by_id = {str(n.get("nodeId") or ""): n for n in wl_nodes if n.get("nodeId")}
@@ -4219,6 +4277,7 @@ def write_architecture_diagrams(
                     part_count=len(parts),
                 )
                 if overview is not None:
+                    _arch_inline_svg_images(overview)
                     out_paths.append(overview)
             except Exception as exc:
                 LOG.warning(
@@ -4226,6 +4285,16 @@ def write_architecture_diagrams(
                     wl_name,
                     exc,
                 )
+        if len(parts) > ARCH_MAX_ARCH_PARTS:
+            _record_diagram_skip(
+                summary,
+                diagram=f"architecture.workload.{wl_name}",
+                kind="workload_part",
+                size=len(parts),
+                limit=ARCH_MAX_ARCH_PARTS,
+                reason="part_cap",
+            )
+            parts = parts[:ARCH_MAX_ARCH_PARTS]
         for idx, part_ids in enumerate(parts, start=1):
             if not part_ids:
                 continue
@@ -4256,6 +4325,7 @@ def write_architecture_diagrams(
                 )
                 continue
             if path is not None:
+                _arch_inline_svg_images(path)
                 out_paths.append(path)
     return out_paths
 
