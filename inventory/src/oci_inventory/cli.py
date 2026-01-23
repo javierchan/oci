@@ -904,6 +904,87 @@ def _generate_cost_report_narratives(
     return narratives, errors
 
 
+def _load_cost_context_from_outdir(paths: OutputPaths, cfg: RunConfig) -> Dict[str, Any]:
+    cost_dir = paths.cost_dir
+    service_path = cost_dir / "cost_usage_service.csv"
+    region_path = cost_dir / "cost_usage_region.csv"
+    compartment_path = cost_dir / "cost_usage_compartment.csv"
+
+    if not (service_path.is_file() and region_path.is_file() and compartment_path.is_file()):
+        raise ConfigError("Cost artifacts missing; expected cost_usage_service.csv, cost_usage_region.csv, cost_usage_compartment.csv.")
+
+    def _load_rows(path: Path, *, key_field: str, extra_fields: Optional[List[str]] = None) -> Tuple[List[Dict[str, Any]], str, str, str]:
+        rows: List[Dict[str, Any]] = []
+        time_start = ""
+        time_end = ""
+        currency = ""
+        with path.open("r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if not time_start:
+                    time_start = str(row.get("time_usage_started") or row.get("timeUsageStarted") or "")
+                if not time_end:
+                    time_end = str(row.get("time_usage_ended") or row.get("timeUsageEnded") or "")
+                if not currency:
+                    currency = str(row.get("currency") or "")
+                name = str(row.get(key_field) or "")
+                amount = _money_decimal(row.get("computed_amount") or row.get("computedAmount") or row.get("amount") or 0)
+                entry: Dict[str, Any] = {"name": name, "amount": amount}
+                if extra_fields:
+                    for field in extra_fields:
+                        entry[field] = row.get(field)
+                rows.append(entry)
+        rows.sort(key=lambda r: (-_money_decimal(r.get("amount") or 0), str(r.get("name") or "").lower()))
+        return rows, time_start, time_end, currency
+
+    services, time_start, time_end, currency = _load_rows(service_path, key_field="service")
+    regions, _rs, _re, _rc = _load_rows(region_path, key_field="region")
+    compartments, _cs, _ce, _cc = _load_rows(
+        compartment_path,
+        key_field="compartment_id",
+        extra_fields=["compartment_id", "compartment_name", "compartment_path"],
+    )
+
+    if not time_start:
+        time_start = _rs or _cs
+    if not time_end:
+        time_end = _re or _ce
+    if not currency:
+        currency = _rc or _cc
+
+    if cfg.cost_currency:
+        currency = cfg.cost_currency
+
+    group_by = cfg.cost_group_by or ["service", "compartmentId", "region"]
+    comp_group_by = cfg.cost_compartment_group_by or "compartmentId"
+    steps = [
+        {"name": "usage_api_service", "status": "OK"},
+        {"name": "usage_api_compartment", "status": "OK"},
+        {"name": "usage_api_region", "status": "OK"},
+        {"name": "usage_api_total", "status": "OK"},
+    ]
+    total_cost = sum((_money_decimal(r.get("amount") or 0) for r in services), Decimal("0"))
+
+    return {
+        "time_start": time_start,
+        "time_end": time_end,
+        "currency": currency or "UNKNOWN",
+        "services": services,
+        "regions": regions,
+        "compartments": compartments,
+        "compartment_group_by": comp_group_by,
+        "aggregation_dimensions": group_by,
+        "query_inputs": {"group_by": group_by, "granularity": "DAILY", "compartment_depth": None},
+        "steps": steps,
+        "warnings": [],
+        "errors": [],
+        "budgets": [],
+        "osub_usage": None,
+        "usage_items": [],
+        "total_cost": total_cost,
+    }
+
+
 def _record_sort_key(record: Dict[str, Any]) -> Tuple[str, str]:
     return (str(record.get("ocid") or ""), str(record.get("resourceType") or ""))
 
@@ -2633,6 +2714,140 @@ def cmd_run(cfg: RunConfig) -> int:
                 )
 
 
+def cmd_rebuild(cfg: RunConfig) -> int:
+    paths = resolve_output_paths(cfg.outdir)
+    inventory_jsonl = paths.inventory_jsonl
+    nodes_path = paths.graph_nodes_jsonl
+    edges_path = paths.graph_edges_jsonl
+
+    if not inventory_jsonl.is_file():
+        raise ConfigError(f"Missing inventory JSONL: {inventory_jsonl}")
+    if not nodes_path.is_file() or not edges_path.is_file():
+        raise ConfigError(f"Missing graph JSONL files: {nodes_path} or {edges_path}")
+
+    inventory_records = list(_iter_jsonl_records(inventory_jsonl))
+    nodes = list(_iter_jsonl_records(nodes_path))
+    edges = list(_iter_jsonl_records(edges_path))
+
+    diagram_summary: Dict[str, Any] = {}
+    if cfg.diagrams:
+        write_diagram_projections(
+            paths.diagrams_dir,
+            nodes,
+            edges,
+            diagram_depth=cfg.diagram_depth,
+            summary=diagram_summary,
+        )
+    if cfg.architecture_diagrams:
+        if not is_graphviz_available():
+            _log_event(
+                LOG,
+                logging.WARNING,
+                "Architecture diagrams requested but Graphviz 'dot' was not found on PATH",
+                step="diagrams",
+                phase="warning",
+                timers=None,
+            )
+        else:
+            write_architecture_diagrams(
+                paths.diagrams_dir,
+                nodes,
+                edges,
+                summary=diagram_summary,
+            )
+    if cfg.diagrams or cfg.architecture_diagrams:
+        _organize_diagrams(paths)
+    if cfg.validate_diagrams:
+        validate_mermaid_diagrams_with_mmdc(paths.diagrams_dir)
+
+    metrics: Optional[Dict[str, Any]] = None
+    if paths.run_summary_json.is_file():
+        summary = json.loads(paths.run_summary_json.read_text(encoding="utf-8"))
+        metrics = _coverage_metrics_from_counts(
+            total=int(summary.get("total_discovered") or 0),
+            counts_by_resource_type=summary.get("counts_by_resource_type") or {},
+            counts_by_enrich_status=summary.get("counts_by_enrich_status") or {},
+            counts_by_resource_type_and_status=summary.get("counts_by_resource_type_and_status") or {},
+        )
+    else:
+        metrics = _coverage_metrics(inventory_records)
+
+    subscribed_regions = sorted(
+        {str(r.get("region") or "") for r in inventory_records if str(r.get("region") or "")}
+    )
+    requested_regions: Optional[List[str]] = None
+    excluded_regions: List[Dict[str, str]] = []
+
+    status = "OK"
+    started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    executive_summary: Optional[str] = None
+    executive_summary_error: Optional[str] = None
+
+    if cfg.genai_summary:
+        try:
+            from .genai import generate_executive_summary  # lazy import
+            from .report import build_architecture_facts  # lazy import
+
+            arch_facts = build_architecture_facts(
+                discovered_records=inventory_records,
+                subscribed_regions=subscribed_regions,
+                requested_regions=requested_regions,
+                excluded_regions=excluded_regions,
+                metrics=metrics,
+            )
+            executive_summary = generate_executive_summary(
+                status=status,
+                started_at=started_at,
+                finished_at=finished_at,
+                subscribed_regions=subscribed_regions,
+                requested_regions=requested_regions,
+                excluded_regions=excluded_regions,
+                metrics=metrics,
+                architecture_facts=arch_facts,
+            )
+        except Exception as exc:
+            executive_summary_error = str(exc)
+
+    write_run_report_md(
+        outdir=cfg.outdir,
+        status=status,
+        cfg=cfg,
+        subscribed_regions=subscribed_regions,
+        requested_regions=requested_regions,
+        excluded_regions=excluded_regions,
+        discovered_records=inventory_records,
+        metrics=metrics,
+        diff_warning=None,
+        fatal_error=None,
+        executive_summary=executive_summary,
+        executive_summary_error=executive_summary_error,
+        started_at=started_at,
+        finished_at=finished_at,
+        diagram_summary=diagram_summary,
+    )
+
+    if cfg.cost_report:
+        cost_context = _load_cost_context_from_outdir(paths, cfg)
+        narratives: Optional[Dict[str, str]] = None
+        narrative_errors: Optional[Dict[str, str]] = None
+        if cfg.genai_summary:
+            narratives, narrative_errors = _generate_cost_report_narratives(
+                cost_context=cost_context,
+                cfg=cfg,
+            )
+        write_cost_report_md(
+            outdir=cfg.outdir,
+            status=status,
+            cfg=cfg,
+            cost_context=cost_context,
+            narratives=narratives,
+            narrative_errors=narrative_errors,
+        )
+
+    return 0
+
+
 def cmd_diff(cfg: RunConfig) -> int:
     prev = cfg.prev
     curr = cfg.curr
@@ -2721,6 +2936,8 @@ def main() -> None:
 
         if command == "run":
             code = cmd_run(cfg)
+        elif command == "rebuild":
+            code = cmd_rebuild(cfg)
         elif command == "diff":
             code = cmd_diff(cfg)
         elif command == "validate-auth":
