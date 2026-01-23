@@ -13,6 +13,7 @@ import logging
 from pathlib import Path
 from shutil import which
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+from xml.etree.ElementTree import Element, SubElement, tostring
 
 from .graph import Edge, Node
 from ..normalize.transform import group_workload_candidates
@@ -3576,6 +3577,483 @@ def _arch_lane_top(labels: Dict[str, int], top_n: int) -> Tuple[List[Tuple[str, 
     return top, rest
 
 
+def _drawio_escape(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _drawio_cell(
+    root: Any,
+    *,
+    cell_id: str,
+    value: str,
+    style: str,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    parent: str = "1",
+) -> None:
+    cell = SubElement(root, "mxCell", {
+        "id": cell_id,
+        "value": _drawio_escape(value),
+        "style": style,
+        "vertex": "1",
+        "parent": parent,
+    })
+    SubElement(cell, "mxGeometry", {
+        "x": f"{x}",
+        "y": f"{y}",
+        "width": f"{width}",
+        "height": f"{height}",
+        "as": "geometry",
+    })
+
+
+def _drawio_doc(title: str, cells: Callable[[Any], None]) -> str:
+    mxfile = Element("mxfile", {"host": "app.diagrams.net"})
+    diagram = SubElement(mxfile, "diagram", {"name": _drawio_escape(title)})
+    model = SubElement(diagram, "mxGraphModel", {
+        "dx": "1200",
+        "dy": "800",
+        "grid": "1",
+        "gridSize": "10",
+        "guides": "1",
+        "tooltips": "1",
+        "connect": "0",
+        "arrows": "0",
+        "fold": "1",
+        "page": "1",
+        "pageScale": "1",
+        "pageWidth": "1600",
+        "pageHeight": "900",
+        "math": "0",
+        "shadow": "0",
+    })
+    root = SubElement(model, "root")
+    SubElement(root, "mxCell", {"id": "0"})
+    SubElement(root, "mxCell", {"id": "1", "parent": "0"})
+    cells(root)
+    return tostring(mxfile, encoding="utf-8").decode("utf-8")
+
+
+def _write_architecture_drawio_tenancy(outdir: Path, nodes: Sequence[Node]) -> Path:
+    title = "Tenancy Architecture Overview"
+    comp_items = _top_compartment_counts(nodes)
+    top_compartments, rest_compartments = _overview_top_counts(comp_items, ARCH_TENANCY_TOP_N)
+    vcn_items = _top_vcn_counts(nodes)
+    top_vcns, rest_vcns = _overview_top_counts(vcn_items, ARCH_TENANCY_TOP_N)
+    lane_summaries = _arch_lane_summaries(nodes)
+
+    row_h = 34
+    header_h = 32
+    col_gap = 20
+    x0, y0 = 40, 40
+    comp_w, vcn_w, lane_w = 360, 360, 520
+    comp_rows = len(top_compartments) + (1 if rest_compartments else 0)
+    vcn_rows = len(top_vcns) + (1 if rest_vcns else 0)
+    lane_rows = sum(
+        (len(_arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[0])
+         + (1 if _arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[1] else 0)
+         + 1)
+        for lane in _LANE_ORDER
+        if lane_summaries.get(lane)
+    )
+    comp_h = header_h + max(1, comp_rows) * row_h + 16
+    vcn_h = header_h + max(1, vcn_rows) * row_h + 16
+    lane_h = header_h + max(1, lane_rows) * row_h + 16
+    tenancy_w = comp_w + vcn_w + lane_w + (col_gap * 2) + 40
+    tenancy_h = max(comp_h, vcn_h, lane_h) + 80
+
+    def _cells(root: Any) -> None:
+        tenancy_id = "tenancy_block"
+        _drawio_cell(
+            root,
+            cell_id=tenancy_id,
+            value="Tenancy",
+            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#ffffff;",
+            x=x0,
+            y=y0,
+            width=tenancy_w,
+            height=tenancy_h,
+            parent="1",
+        )
+        comp_id = "comp_block"
+        _drawio_cell(
+            root,
+            cell_id=comp_id,
+            value="Top Compartments",
+            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=1;fillColor=#f5f5f5;",
+            x=x0 + 20,
+            y=y0 + 40,
+            width=comp_w,
+            height=comp_h,
+            parent=tenancy_id,
+        )
+        vcn_id = "vcn_block"
+        _drawio_cell(
+            root,
+            cell_id=vcn_id,
+            value="Top VCNs",
+            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=1;fillColor=#f5f5f5;",
+            x=x0 + 20 + comp_w + col_gap,
+            y=y0 + 40,
+            width=vcn_w,
+            height=vcn_h,
+            parent=tenancy_id,
+        )
+        lane_id = "lane_block"
+        _drawio_cell(
+            root,
+            cell_id=lane_id,
+            value="Service Lanes",
+            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=1;fillColor=#f5f5f5;",
+            x=x0 + 20 + comp_w + vcn_w + (col_gap * 2),
+            y=y0 + 40,
+            width=lane_w,
+            height=lane_h,
+            parent=tenancy_id,
+        )
+
+        y = y0 + 40 + header_h
+        for label, count in top_compartments:
+            _drawio_cell(
+                root,
+                cell_id=f"comp_{y}",
+                value=f"{label} (n={count})",
+                style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                x=x0 + 30,
+                y=y,
+                width=comp_w - 20,
+                height=row_h - 6,
+                parent=comp_id,
+            )
+            y += row_h
+        if rest_compartments:
+            _drawio_cell(
+                root,
+                cell_id="comp_other",
+                value=f"Other Compartments (n={rest_compartments})",
+                style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                x=x0 + 30,
+                y=y,
+                width=comp_w - 20,
+                height=row_h - 6,
+                parent=comp_id,
+            )
+
+        y = y0 + 40 + header_h
+        for label, count in top_vcns:
+            _drawio_cell(
+                root,
+                cell_id=f"vcn_{y}",
+                value=f"{label} (n={count})",
+                style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                x=x0 + 30 + comp_w + col_gap,
+                y=y,
+                width=vcn_w - 20,
+                height=row_h - 6,
+                parent=vcn_id,
+            )
+            y += row_h
+        if rest_vcns:
+            _drawio_cell(
+                root,
+                cell_id="vcn_other",
+                value=f"Other VCNs (n={rest_vcns})",
+                style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                x=x0 + 30 + comp_w + col_gap,
+                y=y,
+                width=vcn_w - 20,
+                height=row_h - 6,
+                parent=vcn_id,
+            )
+
+        y = y0 + 40 + header_h
+        for lane in _LANE_ORDER:
+            labels = lane_summaries.get(lane)
+            if not labels:
+                continue
+            top_labels, rest = _arch_lane_top(labels, ARCH_LANE_TOP_N)
+            _drawio_cell(
+                root,
+                cell_id=f"lane_{lane}",
+                value=_lane_label(lane),
+                style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeWidth=1;",
+                x=x0 + 30 + comp_w + vcn_w + (col_gap * 2),
+                y=y,
+                width=lane_w - 20,
+                height=row_h - 6,
+                parent=lane_id,
+            )
+            y += row_h
+            for label, count in top_labels:
+                _drawio_cell(
+                    root,
+                    cell_id=f"lane_{lane}_{y}",
+                    value=f"{label} (n={count})",
+                    style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                    x=x0 + 40 + comp_w + vcn_w + (col_gap * 2),
+                    y=y,
+                    width=lane_w - 40,
+                    height=row_h - 6,
+                    parent=lane_id,
+                )
+                y += row_h
+            if rest:
+                _drawio_cell(
+                    root,
+                    cell_id=f"lane_{lane}_other",
+                    value=f"Other (n={rest})",
+                    style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                    x=x0 + 40 + comp_w + vcn_w + (col_gap * 2),
+                    y=y,
+                    width=lane_w - 40,
+                    height=row_h - 6,
+                    parent=lane_id,
+                )
+                y += row_h
+
+    content = _drawio_doc(title, _cells)
+    path = outdir / "architecture" / "diagram.arch.tenancy.drawio"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def _write_architecture_drawio_vcn(outdir: Path, *, vcn_name: str, vcn_nodes: Sequence[Node]) -> Path:
+    title = f"VCN Architecture Overview: {vcn_name}"
+    subnets = [n for n in vcn_nodes if _is_node_type(n, "Subnet")]
+    gateways = [n for n in vcn_nodes if _arch_is_gateway(n)]
+    lane_summaries = _arch_lane_summaries(vcn_nodes)
+
+    row_h = 34
+    header_h = 32
+    x0, y0 = 40, 40
+    left_w, right_w = 360, 520
+    col_gap = 20
+    lane_rows = sum(
+        (len(_arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[0])
+         + (1 if _arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[1] else 0)
+         + 1)
+        for lane in _LANE_ORDER
+        if lane_summaries.get(lane)
+    )
+    left_rows = 2 + (1 if subnets else 0) + (1 if gateways else 0)
+    left_h = header_h + max(1, left_rows) * row_h + 16
+    right_h = header_h + max(1, lane_rows) * row_h + 16
+    total_w = left_w + right_w + col_gap + 80
+    total_h = max(left_h, right_h) + 80
+
+    def _cells(root: Any) -> None:
+        vcn_id = "vcn_block"
+        _drawio_cell(
+            root,
+            cell_id=vcn_id,
+            value=f"VCN: {vcn_name}",
+            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#ffffff;",
+            x=x0,
+            y=y0,
+            width=total_w,
+            height=total_h,
+            parent="1",
+        )
+        net_id = "net_block"
+        _drawio_cell(
+            root,
+            cell_id=net_id,
+            value="Network Components",
+            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=1;fillColor=#f5f5f5;",
+            x=x0 + 20,
+            y=y0 + 40,
+            width=left_w,
+            height=left_h,
+            parent=vcn_id,
+        )
+        lane_id = "lane_block"
+        _drawio_cell(
+            root,
+            cell_id=lane_id,
+            value="Service Lanes",
+            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=1;fillColor=#f5f5f5;",
+            x=x0 + 20 + left_w + col_gap,
+            y=y0 + 40,
+            width=right_w,
+            height=right_h,
+            parent=vcn_id,
+        )
+
+        y = y0 + 40 + header_h
+        _drawio_cell(
+            root,
+            cell_id="net_subnets",
+            value=f"Subnets (n={len(subnets)})",
+            style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+            x=x0 + 30,
+            y=y,
+            width=left_w - 20,
+            height=row_h - 6,
+            parent=net_id,
+        )
+        y += row_h
+        _drawio_cell(
+            root,
+            cell_id="net_gateways",
+            value=f"Gateways (n={len(gateways)})",
+            style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+            x=x0 + 30,
+            y=y,
+            width=left_w - 20,
+            height=row_h - 6,
+            parent=net_id,
+        )
+
+        y = y0 + 40 + header_h
+        for lane in _LANE_ORDER:
+            labels = lane_summaries.get(lane)
+            if not labels:
+                continue
+            top_labels, rest = _arch_lane_top(labels, ARCH_LANE_TOP_N)
+            _drawio_cell(
+                root,
+                cell_id=f"lane_{lane}",
+                value=_lane_label(lane),
+                style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeWidth=1;",
+                x=x0 + 30 + left_w + col_gap,
+                y=y,
+                width=right_w - 20,
+                height=row_h - 6,
+                parent=lane_id,
+            )
+            y += row_h
+            for label, count in top_labels:
+                _drawio_cell(
+                    root,
+                    cell_id=f"lane_{lane}_{y}",
+                    value=f"{label} (n={count})",
+                    style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                    x=x0 + 40 + left_w + col_gap,
+                    y=y,
+                    width=right_w - 40,
+                    height=row_h - 6,
+                    parent=lane_id,
+                )
+                y += row_h
+            if rest:
+                _drawio_cell(
+                    root,
+                    cell_id=f"lane_{lane}_other",
+                    value=f"Other (n={rest})",
+                    style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                    x=x0 + 40 + left_w + col_gap,
+                    y=y,
+                    width=right_w - 40,
+                    height=row_h - 6,
+                    parent=lane_id,
+                )
+                y += row_h
+
+    content = _drawio_doc(title, _cells)
+    path = outdir / "architecture" / f"diagram.arch.vcn.{_slugify(vcn_name)}.drawio"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def _write_architecture_drawio_workload(outdir: Path, *, workload: str, workload_nodes: Sequence[Node]) -> Path:
+    title = f"Workload Architecture Overview: {workload}"
+    lane_summaries = _arch_lane_summaries(workload_nodes)
+    row_h = 34
+    header_h = 32
+    x0, y0 = 40, 40
+    lane_w = 720
+    lane_rows = sum(
+        (len(_arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[0])
+         + (1 if _arch_lane_top(lane_summaries.get(lane, {}), ARCH_LANE_TOP_N)[1] else 0)
+         + 1)
+        for lane in _LANE_ORDER
+        if lane_summaries.get(lane)
+    )
+    total_h = header_h + max(1, lane_rows) * row_h + 120
+
+    def _cells(root: Any) -> None:
+        wl_id = "wl_block"
+        _drawio_cell(
+            root,
+            cell_id=wl_id,
+            value=f"Workload: {workload}",
+            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#ffffff;",
+            x=x0,
+            y=y0,
+            width=lane_w + 60,
+            height=total_h,
+            parent="1",
+        )
+        lane_id = "lane_block"
+        _drawio_cell(
+            root,
+            cell_id=lane_id,
+            value="Service Lanes",
+            style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=1;fillColor=#f5f5f5;",
+            x=x0 + 20,
+            y=y0 + 40,
+            width=lane_w,
+            height=total_h - 80,
+            parent=wl_id,
+        )
+        y = y0 + 40 + header_h
+        for lane in _LANE_ORDER:
+            labels = lane_summaries.get(lane)
+            if not labels:
+                continue
+            top_labels, rest = _arch_lane_top(labels, ARCH_LANE_TOP_N)
+            _drawio_cell(
+                root,
+                cell_id=f"lane_{lane}",
+                value=_lane_label(lane),
+                style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeWidth=1;",
+                x=x0 + 30,
+                y=y,
+                width=lane_w - 20,
+                height=row_h - 6,
+                parent=lane_id,
+            )
+            y += row_h
+            for label, count in top_labels:
+                _drawio_cell(
+                    root,
+                    cell_id=f"lane_{lane}_{y}",
+                    value=f"{label} (n={count})",
+                    style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                    x=x0 + 40,
+                    y=y,
+                    width=lane_w - 40,
+                    height=row_h - 6,
+                    parent=lane_id,
+                )
+                y += row_h
+            if rest:
+                _drawio_cell(
+                    root,
+                    cell_id=f"lane_{lane}_other",
+                    value=f"Other (n={rest})",
+                    style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;",
+                    x=x0 + 40,
+                    y=y,
+                    width=lane_w - 40,
+                    height=row_h - 6,
+                    parent=lane_id,
+                )
+                y += row_h
+
+    content = _drawio_doc(title, _cells)
+    path = outdir / "architecture" / f"diagram.arch.workload.{_slugify(workload)}.drawio"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
 def _arch_short_hash(values: Sequence[str]) -> str:
     digest = hashlib.sha1()
     for value in values:
@@ -4457,6 +4935,7 @@ def write_architecture_diagrams(
     if tenancy_path is not None:
         _arch_inline_svg_images(tenancy_path)
         out_paths.append(tenancy_path)
+        out_paths.append(_write_architecture_drawio_tenancy(outdir, filtered_nodes))
 
     vcn_groups = _group_nodes_by_vcn(filtered_nodes, filtered_edges)
     top_vcns, other_vcns = _arch_select_top_groups(vcn_groups, limit=ARCH_MAX_VCNS)
@@ -4509,6 +4988,13 @@ def write_architecture_diagrams(
         if path is not None:
             _arch_inline_svg_images(path)
             out_paths.append(path)
+            out_paths.append(
+                _write_architecture_drawio_vcn(
+                    outdir,
+                    vcn_name=vcn_name,
+                    vcn_nodes=group_nodes,
+                )
+            )
 
     workload_candidates = [n for n in filtered_nodes if n.get("nodeId")]
     wl_groups = {k: list(v) for k, v in group_workload_candidates(workload_candidates).items()}
@@ -4571,6 +5057,13 @@ def write_architecture_diagrams(
         if path is not None:
             _arch_inline_svg_images(path)
             out_paths.append(path)
+            out_paths.append(
+                _write_architecture_drawio_workload(
+                    outdir,
+                    workload=wl_name,
+                    workload_nodes=wl_nodes,
+                )
+            )
     return out_paths
 
 
