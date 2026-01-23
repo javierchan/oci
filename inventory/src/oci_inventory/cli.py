@@ -2715,6 +2715,8 @@ def cmd_run(cfg: RunConfig) -> int:
 
 
 def cmd_rebuild(cfg: RunConfig) -> int:
+    from .report import write_cost_report_md, write_run_report_md
+
     paths = resolve_output_paths(cfg.outdir)
     inventory_jsonl = paths.inventory_jsonl
     nodes_path = paths.graph_nodes_jsonl
