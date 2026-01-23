@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from oci_inventory.export.architecture_concepts import (
     build_workload_concepts,
     build_workload_context,
@@ -9,6 +11,7 @@ from oci_inventory.export.diagram_projections import (
     _write_architecture_drawio_tenancy,
     _write_architecture_drawio_vcn,
     _write_architecture_drawio_workload,
+    validate_architecture_diagrams,
 )
 
 
@@ -203,3 +206,119 @@ def test_drawio_tenancy_vcn_compartment_have_no_counts(tmp_path) -> None:
     for path in (tenancy_path, vcn_path, comp_path):
         content = path.read_text(encoding="utf-8")
         assert "(n=" not in content
+
+
+def test_validate_architecture_svgs_passes_minimum_rules(tmp_path) -> None:
+    arch_dir = tmp_path / "architecture"
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    svg = """<svg>
+<text>Tenancy: Demo</text>
+<text>Compartment: App</text>
+<text>VCN: DemoVCN</text>
+<text>Network</text>
+<text>App / Compute</text>
+<text>Data / Storage</text>
+<text>Security</text>
+<text>Observability</text>
+<text>Other</text>
+</svg>
+"""
+    (arch_dir / "diagram.arch.tenancy.svg").write_text(svg, encoding="utf-8")
+    nodes = [
+        {"nodeId": "ocid1.compartment.oc1..root", "nodeType": "Compartment", "name": "TenancyRoot"},
+        {"nodeId": "ocid1.vcn.oc1..vcn", "nodeType": "Vcn", "name": "DemoVCN"},
+    ]
+    issues = validate_architecture_diagrams(tmp_path, nodes=nodes, edges=[])
+    assert issues == []
+
+
+def test_validate_architecture_svgs_flags_missing_security_overlay(tmp_path) -> None:
+    arch_dir = tmp_path / "architecture"
+    arch_dir.mkdir(parents=True, exist_ok=True)
+    svg = """<svg>
+<text>Tenancy: Demo</text>
+<text>Compartment: App</text>
+<text>VCN: DemoVCN</text>
+<text>Network</text>
+<text>App / Compute</text>
+<text>Data / Storage</text>
+<text>Security</text>
+<text>Observability</text>
+<text>Other</text>
+</svg>
+"""
+    (arch_dir / "diagram.arch.tenancy.svg").write_text(svg, encoding="utf-8")
+    nodes = [
+        {"nodeId": "ocid1.compartment.oc1..root", "nodeType": "Compartment", "name": "TenancyRoot"},
+        {"nodeId": "ocid1.vcn.oc1..vcn", "nodeType": "Vcn", "name": "DemoVCN"},
+        {
+            "nodeId": "ocid1.policy.oc1..policy",
+            "nodeType": "Policy",
+            "name": "root-policy",
+            "nodeCategory": "iam",
+            "compartmentId": "ocid1.compartment.oc1..root",
+        },
+    ]
+    issues = validate_architecture_diagrams(tmp_path, nodes=nodes, edges=[])
+    assert any(issue.rule_id == "ARCH_OVERLAY_TENANCY_MISSING" for issue in issues)
+
+
+def test_cmd_rebuild_creates_diagrams_dir(tmp_path, monkeypatch) -> None:
+    from oci_inventory.cli import cmd_rebuild
+    from oci_inventory.config import RunConfig
+    import oci_inventory.report as report
+
+    monkeypatch.setattr(report, "write_run_report_md", lambda **_: None)
+    monkeypatch.setattr(report, "write_cost_report_md", lambda **_: None)
+
+    outdir = tmp_path
+    inventory_dir = outdir / "inventory"
+    graph_dir = outdir / "graph"
+    inventory_dir.mkdir(parents=True, exist_ok=True)
+    graph_dir.mkdir(parents=True, exist_ok=True)
+
+    inventory_record = {
+        "ocid": "ocid1.instance.oc1..demo",
+        "resourceType": "Instance",
+        "region": "us-ashburn-1",
+        "collectedAt": "2026-01-01T00:00:00Z",
+        "enrichStatus": "OK",
+        "details": {},
+        "relationships": [],
+    }
+    (inventory_dir / "inventory.jsonl").write_text(
+        json.dumps(inventory_record) + "\n",
+        encoding="utf-8",
+    )
+    node = {
+        "nodeId": "ocid1.compartment.oc1..root",
+        "nodeType": "Compartment",
+        "nodeCategory": "identity",
+        "name": "TenancyRoot",
+        "region": "us-ashburn-1",
+        "compartmentId": "",
+        "metadata": {},
+        "tags": {},
+        "enrichStatus": "OK",
+        "enrichError": "",
+    }
+    (graph_dir / "graph_nodes.jsonl").write_text(
+        json.dumps(node) + "\n",
+        encoding="utf-8",
+    )
+    (graph_dir / "graph_edges.jsonl").write_text("", encoding="utf-8")
+
+    cfg = RunConfig(
+        outdir=outdir,
+        diagrams=True,
+        architecture_diagrams=False,
+        validate_diagrams=False,
+        diagram_depth=1,
+        cost_report=False,
+        genai_summary=False,
+    )
+
+    result = cmd_rebuild(cfg)
+    assert result == 0
+    assert (outdir / "diagrams").is_dir()
+    assert (outdir / "diagrams" / "tenancy" / "diagram.tenancy.mmd").is_file()
