@@ -1795,10 +1795,23 @@ def render_cost_report_md(
             return ""
         return text
 
+    def _safe_compartment_label(value: str) -> str:
+        cleaned = str(value or "").strip()
+        if not cleaned:
+            return "N/A"
+        if cleaned.startswith("ocid1") and alias_by_comp:
+            return _compartment_label(cleaned, alias_by_id=alias_by_comp, name_by_id=name_by_comp)
+        return cleaned
+
     def _fallback_cost_narrative(key: str) -> str:
         top_service = services[0]["name"] if services else "N/A"
         top_region = regions[0]["name"] if regions else "N/A"
-        top_comp = comp_rows[0]["name"] if comp_rows else "N/A"
+        top_comp = _safe_compartment_label(comp_rows[0]["name"]) if comp_rows else "N/A"
+        if key == "intro":
+            return (
+                f"This report provides a point-in-time OCI cost snapshot for {time_start} to {time_end} UTC, "
+                f"grouped by {aggregation_label or 'service, compartment, region'}."
+            )
         if key == "report_summary":
             return (
                 f"Total cost is {total_cost} {currency} across {service_count} services, "
@@ -1829,6 +1842,13 @@ def render_cost_report_md(
                     break
             if key != "next_steps":
                 text = _sanitize_cost_narrative(text)
+            if text:
+                try:
+                    from .genai.redact import redact_text
+
+                    text = redact_text(text)
+                except Exception:
+                    pass
             if text:
                 return text
             return _fallback_cost_narrative(key)

@@ -80,6 +80,8 @@ ARCH_MAX_TIER_NODES = 8
 ARCH_MIN_WORKLOAD_NODES = 5
 ARCH_MAX_ARCH_NODES = 220
 ARCH_MAX_ARCH_EDGES = 320
+ARCH_MAX_ARCH_LANE_NODES = 60
+ARCH_ARCH_IMAGE_PX = 48
 ARCH_ARCH_OVERVIEW_PARTS = 10
 ARCH_MAX_ARCH_PARTS = 25
 
@@ -2049,6 +2051,22 @@ def _write_tenancy_view(
             _insert_scope_view_comments(stub_lines, scope="tenancy", view="overview")
             stub_lines.append(f"%% Split rationale: {note}")
             stub_lines.append(f"%% Split purpose: {_split_mode_purpose(split_mode)}")
+            stub_lines.append("%% Overview: split group summary (counts per group).")
+            stub_lines.append("subgraph tenancy_split_overview[\"Tenancy Split Overview\"]")
+            stub_lines.append("  direction TB")
+            group_counters: Dict[str, int] = {}
+            group_labels: List[Tuple[str, str]] = []
+            for key, group_nodes in groups.items():
+                label = key
+                if key.startswith("ocid1") or key in node_by_id:
+                    label = _compartment_label_by_id(key, node_by_id=node_by_id, alias_by_id=alias_by_comp)
+                label = _tenancy_safe_label(_split_mode_label(split_mode), label)
+                count = len([n for n in group_nodes if not _is_node_type(n, "Compartment")])
+                group_labels.append((label, f"{label} (n={count})"))
+            for label, display in sorted(group_labels, key=lambda item: item[0].lower()):
+                node_id = _tenancy_mermaid_id("Split", label, group_counters)
+                stub_lines.append(f"  {node_id}[\"{display}\"]")
+            stub_lines.append("end")
             stub_lines.extend(_split_note_lines(note, part_paths))
             stub_path = path or (outdir / "diagram.tenancy.mmd")
             stub_path.write_text("\n".join(stub_lines).rstrip() + "\n", encoding="utf-8")
@@ -3394,9 +3412,10 @@ def _arch_graph_attrs() -> Tuple[Dict[str, str], Dict[str, str]]:
     graph_attr = {
         "rankdir": "LR",
         "splines": "ortho",
-        "nodesep": "0.9",
-        "ranksep": "1.0",
-        "pad": "1.6",
+        "nodesep": "0.5",
+        "ranksep": "0.6",
+        "pad": "0.8",
+        "ratio": "compress",
     }
     node_attr = {
         "fixedsize": "false",
@@ -3425,6 +3444,12 @@ def _arch_inline_svg_images(path: Path) -> None:
         return f'xlink:href="data:image/png;base64,{b64}"'
 
     updated = re.sub(r'xlink:href="([^"]+)"', _replace, text)
+    if ARCH_ARCH_IMAGE_PX:
+        updated = re.sub(
+            r'(<image[^>]*?)\\swidth="\\d+px"\\sheight="\\d+px"',
+            rf'\\1 width="{ARCH_ARCH_IMAGE_PX}px" height="{ARCH_ARCH_IMAGE_PX}px"',
+            updated,
+        )
     if updated != text:
         try:
             path.write_text(updated, encoding="utf-8")
@@ -3444,6 +3469,7 @@ def _arch_split_by_lanes(
     node_ids: Sequence[str],
     *,
     max_nodes: int,
+    max_lane_nodes: int,
 ) -> List[List[str]]:
     lane_groups: Dict[str, List[str]] = {}
     for node_id in node_ids:
@@ -3453,9 +3479,12 @@ def _arch_split_by_lanes(
         lane = _lane_for_node(node)
         lane_groups.setdefault(lane, []).append(node_id)
     parts: List[List[str]] = []
+    lane_chunk = max_nodes
+    if max_lane_nodes > 0:
+        lane_chunk = min(max_nodes, max_lane_nodes)
     for lane in sorted(lane_groups.keys()):
         lane_ids = sorted(lane_groups[lane])
-        for chunk in _chunked(lane_ids, max_nodes):
+        for chunk in _chunked(lane_ids, lane_chunk):
             parts.append(list(chunk))
     return parts
 
@@ -3467,6 +3496,7 @@ def _arch_split_with_budget(
     *,
     max_nodes: int,
     max_edges: int,
+    max_lane_nodes: int,
 ) -> List[List[str]]:
     if not node_ids:
         return []
@@ -3474,7 +3504,12 @@ def _arch_split_with_budget(
     parts: List[List[str]] = []
     chunk_size = max_nodes
     while True:
-        parts = _arch_split_by_lanes(nodes_by_id, unique_ids, max_nodes=chunk_size)
+        parts = _arch_split_by_lanes(
+            nodes_by_id,
+            unique_ids,
+            max_nodes=chunk_size,
+            max_lane_nodes=max_lane_nodes,
+        )
         if not parts:
             break
         oversized = False
@@ -3546,6 +3581,7 @@ def _arch_split_vcn_parts(
                 base_ids,
                 max_nodes=max_nodes,
                 max_edges=ARCH_MAX_ARCH_EDGES,
+                max_lane_nodes=ARCH_MAX_ARCH_LANE_NODES,
             )
             for sub_ids in group_parts:
                 if not sub_ids:
@@ -3575,6 +3611,7 @@ def _arch_split_vcn_parts(
                 all_ids,
                 max_nodes=max_nodes,
                 max_edges=ARCH_MAX_ARCH_EDGES,
+                max_lane_nodes=ARCH_MAX_ARCH_LANE_NODES,
             )
     return parts
 
@@ -4248,6 +4285,7 @@ def write_architecture_diagrams(
                 sorted(set(node_ids)),
                 max_nodes=ARCH_MAX_ARCH_NODES,
                 max_edges=ARCH_MAX_ARCH_EDGES,
+                max_lane_nodes=ARCH_MAX_ARCH_LANE_NODES,
             )
         if len(parts) > 1:
             part_names = [
