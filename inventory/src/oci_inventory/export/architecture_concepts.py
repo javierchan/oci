@@ -16,6 +16,7 @@ class ConceptNode:
     vcn_names: Tuple[str, ...]
     source_types: Tuple[str, ...]
     placement: str
+    security_scope: Optional[str]
     count: int
 
 
@@ -126,19 +127,22 @@ def build_workload_concepts(
         vcn_name = vcn_name_by_id.get(vcn_id) if vcn_id else None
         vcn_names = {_sanitize_label(vcn_name)} if vcn_name else set()
         placement = _placement_for_node(node, vcn_id=vcn_id)
-        key = (compartment_id, lane, label, placement)
+        security_scope = _security_scope_for_node(node, vcn_id=vcn_id)
+        key = (compartment_id, lane, label, placement, security_scope or "none")
         bucket = buckets.setdefault(key, {
             "vcn_names": set(),
             "source_types": set(),
             "count": 0,
+            "security_scope": security_scope,
         })
         bucket["count"] += 1
         bucket["source_types"].add(str(node.get("nodeType") or ""))
         bucket["vcn_names"].update(vcn_names)
 
     concepts: List[ConceptNode] = []
-    for (compartment_id, lane, label, placement), data in sorted(buckets.items()):
-        concept_id = _concept_id(compartment_id, lane, label, placement)
+    for (compartment_id, lane, label, placement, _scope_key), data in sorted(buckets.items()):
+        security_scope = data.get("security_scope")
+        concept_id = _concept_id(compartment_id, lane, label, placement, security_scope)
         concepts.append(
             ConceptNode(
                 concept_id=concept_id,
@@ -148,6 +152,7 @@ def build_workload_concepts(
                 vcn_names=tuple(sorted(data["vcn_names"])),
                 source_types=tuple(sorted(data["source_types"])),
                 placement=placement,
+                security_scope=security_scope,
                 count=int(data["count"]),
             )
         )
@@ -352,8 +357,42 @@ def _placement_for_node(node: Node, *, vcn_id: Optional[str]) -> str:
     return "unknown"
 
 
-def _concept_id(compartment_id: str, lane: str, label: str, placement: str) -> str:
-    base = f"{compartment_id}:{lane}:{placement}:{label}".lower()
+def _security_scope_for_node(node: Node, *, vcn_id: Optional[str]) -> Optional[str]:
+    category = str(node.get("nodeCategory") or "").lower()
+    node_type_lower = str(node.get("nodeType") or "").lower()
+    name_lower = str(node.get("name") or "").lower()
+
+    if category not in {"security", "iam", "governance"} and not any(
+        token in node_type_lower for token in ("policy", "identity", "security", "iam")
+    ):
+        return None
+
+    if any(token in node_type_lower for token in ("networksecuritygroup", "securitylist")):
+        return "vcn"
+    if "nsg" in node_type_lower or "security list" in name_lower:
+        return "vcn"
+    if "securityzone" in node_type_lower or "security zone" in name_lower:
+        return "compartment"
+    if category in {"iam", "governance"} or any(
+        token in node_type_lower for token in ("policy", "identity", "domain", "group", "user", "dynamicgroup")
+    ):
+        return "tenancy"
+    if vcn_id:
+        return "vcn"
+    if category == "security":
+        return "compartment"
+    return None
+
+
+def _concept_id(
+    compartment_id: str,
+    lane: str,
+    label: str,
+    placement: str,
+    security_scope: Optional[str],
+) -> str:
+    scope = security_scope or "none"
+    base = f"{compartment_id}:{lane}:{placement}:{scope}:{label}".lower()
     base = re.sub(r"[^a-z0-9]+", "-", base).strip("-")
     return base[:96] if base else "concept"
 
