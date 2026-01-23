@@ -122,6 +122,19 @@ def validate_mermaid_diagrams_with_mmdc(outdir: Path, *, glob_pattern: str = "di
     return _validate_mermaid_diagrams_with_mmdc(outdir, glob_pattern=glob_pattern)
 
 
+def validate_architecture_diagrams(
+    outdir: Path,
+    *,
+    nodes: Sequence[Dict[str, Any]],
+    edges: Sequence[Dict[str, Any]],
+) -> List[Any]:
+    from .export.diagram_projections import (
+        validate_architecture_diagrams as _validate_architecture_diagrams,
+    )
+
+    return _validate_architecture_diagrams(outdir, nodes=nodes, edges=edges)
+
+
 def write_diagram_projections(
     outdir: Path,
     nodes: Sequence[Dict[str, Any]],
@@ -2450,6 +2463,36 @@ def cmd_run(cfg: RunConfig) -> int:
                 timers=timers,
                 count=len(validated),
             )
+        if cfg.validate_diagrams and cfg.architecture_diagrams:
+            _log_event(
+                LOG,
+                logging.INFO,
+                "Architecture SVG validation started",
+                step="diagrams",
+                phase="validate",
+                timers=timers,
+            )
+            issues = validate_architecture_diagrams(
+                paths.diagrams_dir,
+                nodes=nodes,
+                edges=edges,
+            )
+            _log_event(
+                LOG,
+                logging.INFO,
+                "Architecture SVG validation complete",
+                step="diagrams",
+                phase="validated",
+                timers=timers,
+                error_count=len(issues),
+            )
+            if issues:
+                preview = "; ".join(
+                    [f"{issue.rule_id}@{Path(issue.file).name}" for issue in issues[:5]]
+                )
+                if len(issues) > 5:
+                    preview = f"{preview}; (and {len(issues) - 5} more)"
+                raise ExportError(f"Architecture diagram validation failed: {preview}")
 
         # Optional diff against previous
         if cfg.prev:
@@ -2759,6 +2802,7 @@ def cmd_rebuild(cfg: RunConfig) -> int:
     diagram_summary: Dict[str, Any] = {}
     if cfg.diagrams or cfg.architecture_diagrams:
         _clean_diagram_outputs(paths)
+        paths.diagrams_dir.mkdir(parents=True, exist_ok=True)
     if cfg.diagrams:
         write_diagram_projections(
             paths.diagrams_dir,
@@ -2788,6 +2832,19 @@ def cmd_rebuild(cfg: RunConfig) -> int:
         _organize_diagrams(paths)
     if cfg.validate_diagrams:
         validate_mermaid_diagrams_with_mmdc(paths.diagrams_dir)
+        if cfg.architecture_diagrams:
+            issues = validate_architecture_diagrams(
+                paths.diagrams_dir,
+                nodes=nodes,
+                edges=edges,
+            )
+            if issues:
+                preview = "; ".join(
+                    [f"{issue.rule_id}@{Path(issue.file).name}" for issue in issues[:5]]
+                )
+                if len(issues) > 5:
+                    preview = f"{preview}; (and {len(issues) - 5} more)"
+                raise ExportError(f"Architecture diagram validation failed: {preview}")
 
     metrics: Optional[Dict[str, Any]] = None
     if paths.run_summary_json.is_file():

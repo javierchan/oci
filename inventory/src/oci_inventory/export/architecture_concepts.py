@@ -412,6 +412,7 @@ def _sanitize_label(value: str) -> str:
     if "ocid1" in value:
         return "Redacted"
     cleaned = value
+    cleaned = re.sub(r"\(n=[^)]*\)", "", cleaned)
     cleaned = re.sub(r"\d{4}-\d{2}-\d{2}(?:[T _-]?\d{2}[:_-]?\d{2}[:_-]?\d{2})?", "", cleaned)
     cleaned = re.sub(r"\d{8,14}", "", cleaned)
     cleaned = re.sub(r"[-_ ]{2,}", " ", cleaned)

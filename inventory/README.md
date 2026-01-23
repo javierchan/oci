@@ -196,7 +196,10 @@ allow group <group-name> to read budgets in tenancy
 ## Performance tuning
 - Default run settings are loaded from `config/workers.yaml` when present (region/enrich/cost/export workers, connection pool size, diagram depth). Use `--config` to override.
 - Schema validation modes: `--validate-schema auto|full|sampled|off` and `--validate-schema-sample N`.
-- Diagram depth: `--diagram-depth 1|2|3` (1=global map: tenancy + regions, 2=regional abstraction with aggregated network-attached workloads, 3=full workloads + edges). Default is 1 when `config/workers.yaml` is loaded. Applies to consolidated outputs and the tenancy diagram (depth 1/2/3 controls the tenancy shell). Consolidated flowchart at depth > 1 renders a summary hierarchy with category counts (Compute/Network/Storage/Policy/Other) and no per-resource edges.
+- Diagram depth: `--diagram-depth 1|2|3`. Applies to consolidated outputs and the tenancy diagram.
+  - Depth 1: tenancy + regions only (global map).
+  - Depth 2+: summary hierarchy with category counts (Compute/Network/Storage/Policy/Other) under Compartment -> VCN -> Subnet (no per-resource nodes or edges).
+  - Tenancy diagram depth controls the tenancy shell density (depth 1/2/3 per `docs/diagram_guidelines.md`).
 - Consolidated diagrams auto-reduce depth when Mermaid text limits are exceeded; a NOTE comment is added to the output when this happens.
 - If consolidated diagrams still exceed Mermaid limits at depth 1, they are split by region (preferred) or top-level compartment and the base diagram is replaced by a stub that links to split outputs.
 - Workload diagrams that exceed Mermaid limits are split into deterministic overflow parts; if a single-node slice still exceeds the limit, it is skipped and summarized in `report/report.md`.
@@ -357,11 +360,11 @@ Notes for developers:
 - The CLI is read-only; all SDK calls are list/get style. No mutations are performed.
 - Region failures are tolerated and captured in report/report.md; GenAI is optional and isolated from the main run.
 - Mermaid diagrams are generated as `.mmd` files unless `--no-diagrams` is set. Mermaid CLI (`mmdc`) is required and preflight installs it;
-  validation runs automatically when diagrams are enabled.
+  validation runs when `mmdc` is available or when `--validate-diagrams` is explicitly enabled.
 - Architecture diagrams are generated as `.svg` files unless `--no-architecture-diagrams` is set. Graphviz (`dot`) and the Python
   diagrams extra are required (`pip install -e ".[diagrams]"`).
   (During installation you may see npm warnings about Puppeteer deprecations; those are typically non-fatal.)
-- Diagram and report rules are documented in `docs/diagram_guidelines.md` and `docs/report_guidelines.md`.
+- Diagram and report rules are documented in `docs/diagram_guidelines.md`, `docs/architecture_visual_style.md`, and `docs/report_guidelines.md`.
 
 ## Known Issues and Notes
 
@@ -658,6 +661,7 @@ oci-inv-wizard --from wizard-run.yaml --yes
 ## Docs
 - docs/quickstart.md: minimal getting started
 - docs/architecture.md: layout and design
+- docs/architecture_visual_style.md: visual style for curated architecture diagrams
 - docs/auth.md: authentication options and safety
 - docs/cost_guidelines.md: cost reporting rules and constraints
 - docs/diagram_guidelines.md: diagram rules and OCI-aligned abstraction
