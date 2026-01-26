@@ -3273,25 +3273,32 @@ def write_diagram_projections(
     *,
     diagram_depth: Optional[int] = None,
     summary: Optional[DiagramSummary] = None,
+    enable_tenancy: bool = True,
+    enable_network: bool = True,
+    enable_workload: bool = True,
+    enable_consolidated: bool = True,
 ) -> List[Path]:
     # Edges drive placement and relationship hints in projections.
     depth = int(diagram_depth or 3)
     out: List[Path] = []
     summary = _ensure_diagram_summary(summary)
-    out.append(_write_tenancy_view(outdir, nodes, edges, depth=depth, summary=summary))
-    out.extend(_write_network_views(outdir, nodes, edges, summary=summary))
-    out.extend(_write_workload_views(outdir, nodes, edges, summary=summary))
-
-    # Consolidated, end-user-friendly artifact: one Mermaid diagram that contains all the views.
-    out.extend(
-        _write_consolidated_flowchart(
-            outdir,
-            nodes,
-            edges,
-            depth=depth,
-            summary=summary,
+    if enable_tenancy:
+        out.append(_write_tenancy_view(outdir, nodes, edges, depth=depth, summary=summary))
+    if enable_network:
+        out.extend(_write_network_views(outdir, nodes, edges, summary=summary))
+    if enable_workload:
+        out.extend(_write_workload_views(outdir, nodes, edges, summary=summary))
+    if enable_consolidated:
+        # Consolidated, end-user-friendly artifact: one Mermaid diagram that contains all the views.
+        out.extend(
+            _write_consolidated_flowchart(
+                outdir,
+                nodes,
+                edges,
+                depth=depth,
+                summary=summary,
+            )
         )
-    )
     if summary is not None:
         for path in out:
             _scan_guideline_violations(path, nodes=nodes, summary=summary)

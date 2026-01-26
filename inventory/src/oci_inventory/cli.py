@@ -2304,7 +2304,14 @@ def cmd_run(cfg: RunConfig) -> int:
         )
 
         # Graph artifacts (nodes/edges + diagrams)
-        diagrams_enabled = cfg.diagrams or cfg.architecture_diagrams
+        tenancy_diagrams = cfg.diagrams and cfg.tenancy_diagrams
+        network_diagrams = cfg.diagrams and cfg.network_diagrams
+        workload_diagrams = cfg.diagrams and cfg.workload_diagrams
+        consolidated_diagrams = cfg.diagrams and cfg.consolidated_diagrams
+        mermaid_diagrams_enabled = any(
+            [tenancy_diagrams, network_diagrams, workload_diagrams, consolidated_diagrams]
+        )
+        diagrams_enabled = mermaid_diagrams_enabled or cfg.architecture_diagrams
         if diagrams_enabled:
             _log_event(
                 LOG,
@@ -2351,7 +2358,7 @@ def cmd_run(cfg: RunConfig) -> int:
             nodes = graph.materialize_nodes()
             edges = graph.materialize_edges(filtered=True)
             diagram_paths: List[Path] = []
-            if cfg.diagrams:
+            if mermaid_diagrams_enabled:
                 diagram_paths.extend(
                     write_diagram_projections(
                         paths.diagrams_dir,
@@ -2359,6 +2366,10 @@ def cmd_run(cfg: RunConfig) -> int:
                         edges,
                         diagram_depth=cfg.diagram_depth,
                         summary=diagram_summary,
+                        enable_tenancy=tenancy_diagrams,
+                        enable_network=network_diagrams,
+                        enable_workload=workload_diagrams,
+                        enable_consolidated=consolidated_diagrams,
                     )
                 )
             if cfg.architecture_diagrams:
@@ -2441,7 +2452,7 @@ def cmd_run(cfg: RunConfig) -> int:
         # - If --validate-diagrams is enabled, require mmdc and fail if missing.
         # - Otherwise, if mmdc is available, validate all diagram*.mmd outputs and fail
         #   on invalid Mermaid so we don't ship broken artifacts.
-        if cfg.diagrams and (cfg.validate_diagrams or is_mmdc_available()):
+        if mermaid_diagrams_enabled and (cfg.validate_diagrams or is_mmdc_available()):
             _log_event(
                 LOG,
                 logging.INFO,
@@ -2800,16 +2811,27 @@ def cmd_rebuild(cfg: RunConfig) -> int:
     edges = list(_iter_jsonl_records(edges_path))
 
     diagram_summary: Dict[str, Any] = {}
-    if cfg.diagrams or cfg.architecture_diagrams:
+    tenancy_diagrams = cfg.diagrams and cfg.tenancy_diagrams
+    network_diagrams = cfg.diagrams and cfg.network_diagrams
+    workload_diagrams = cfg.diagrams and cfg.workload_diagrams
+    consolidated_diagrams = cfg.diagrams and cfg.consolidated_diagrams
+    mermaid_diagrams_enabled = any(
+        [tenancy_diagrams, network_diagrams, workload_diagrams, consolidated_diagrams]
+    )
+    if mermaid_diagrams_enabled or cfg.architecture_diagrams:
         _clean_diagram_outputs(paths)
         paths.diagrams_dir.mkdir(parents=True, exist_ok=True)
-    if cfg.diagrams:
+    if mermaid_diagrams_enabled:
         write_diagram_projections(
             paths.diagrams_dir,
             nodes,
             edges,
             diagram_depth=cfg.diagram_depth,
             summary=diagram_summary,
+            enable_tenancy=tenancy_diagrams,
+            enable_network=network_diagrams,
+            enable_workload=workload_diagrams,
+            enable_consolidated=consolidated_diagrams,
         )
     if cfg.architecture_diagrams:
         if not is_graphviz_available():
@@ -2828,10 +2850,11 @@ def cmd_rebuild(cfg: RunConfig) -> int:
                 edges,
                 summary=diagram_summary,
             )
-    if cfg.diagrams or cfg.architecture_diagrams:
+    if mermaid_diagrams_enabled or cfg.architecture_diagrams:
         _organize_diagrams(paths)
     if cfg.validate_diagrams:
-        validate_mermaid_diagrams_with_mmdc(paths.diagrams_dir)
+        if mermaid_diagrams_enabled:
+            validate_mermaid_diagrams_with_mmdc(paths.diagrams_dir)
         if cfg.architecture_diagrams:
             issues = validate_architecture_diagrams(
                 paths.diagrams_dir,
