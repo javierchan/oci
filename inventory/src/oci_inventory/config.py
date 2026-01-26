@@ -40,6 +40,10 @@ ALLOWED_CONFIG_KEYS = {
     "genai_summary",
     "validate_diagrams",
     "diagrams",
+    "tenancy_diagrams",
+    "network_diagrams",
+    "workload_diagrams",
+    "consolidated_diagrams",
     "architecture_diagrams",
     "schema_validation",
     "schema_sample_records",
@@ -129,6 +133,10 @@ class RunConfig:
     genai_summary: bool = False
     validate_diagrams: bool = False
     diagrams: bool = True
+    tenancy_diagrams: bool = True
+    network_diagrams: bool = True
+    workload_diagrams: bool = True
+    consolidated_diagrams: bool = True
     architecture_diagrams: bool = True
     schema_validation: str = DEFAULT_SCHEMA_VALIDATION
     schema_sample_records: int = DEFAULT_SCHEMA_SAMPLE_RECORDS
@@ -443,6 +451,30 @@ def load_run_config(
         help="Generate graph artifacts and Mermaid diagram projections (disable with --no-diagrams).",
     )
     p_run.add_argument(
+        "--tenancy-diagrams",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Generate tenancy Mermaid diagrams (disable with --no-tenancy-diagrams).",
+    )
+    p_run.add_argument(
+        "--network-diagrams",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Generate VCN/network Mermaid diagrams (disable with --no-network-diagrams).",
+    )
+    p_run.add_argument(
+        "--workload-diagrams",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Generate workload Mermaid diagrams (disable with --no-workload-diagrams).",
+    )
+    p_run.add_argument(
+        "--consolidated-diagrams",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Generate consolidated/flowchart Mermaid diagrams (disable with --no-consolidated-diagrams).",
+    )
+    p_run.add_argument(
         "--architecture-diagrams",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -685,6 +717,10 @@ def load_run_config(
         "genai_summary": False,
         "validate_diagrams": False,
         "diagrams": True,
+        "tenancy_diagrams": True,
+        "network_diagrams": True,
+        "workload_diagrams": True,
+        "consolidated_diagrams": True,
         "architecture_diagrams": True,
         "schema_validation": DEFAULT_SCHEMA_VALIDATION,
         "schema_sample_records": DEFAULT_SCHEMA_SAMPLE_RECORDS,
@@ -734,6 +770,10 @@ def load_run_config(
             "genai_summary": _env_bool("OCI_INV_GENAI_SUMMARY"),
             "validate_diagrams": _env_bool("OCI_INV_VALIDATE_DIAGRAMS"),
             "diagrams": _env_bool("OCI_INV_DIAGRAMS"),
+            "tenancy_diagrams": _env_bool("OCI_INV_TENANCY_DIAGRAMS"),
+            "network_diagrams": _env_bool("OCI_INV_NETWORK_DIAGRAMS"),
+            "workload_diagrams": _env_bool("OCI_INV_WORKLOAD_DIAGRAMS"),
+            "consolidated_diagrams": _env_bool("OCI_INV_CONSOLIDATED_DIAGRAMS"),
             "architecture_diagrams": _env_bool("OCI_INV_ARCHITECTURE_DIAGRAMS"),
             "schema_validation": _env_str("OCI_INV_SCHEMA_VALIDATION"),
             "schema_sample_records": _env_int("OCI_INV_SCHEMA_SAMPLE_RECORDS"),
@@ -774,6 +814,10 @@ def load_run_config(
             "genai_summary": getattr(ns, "genai_summary", None),
             "validate_diagrams": getattr(ns, "validate_diagrams", None),
             "diagrams": getattr(ns, "diagrams", None),
+            "tenancy_diagrams": getattr(ns, "tenancy_diagrams", None),
+            "network_diagrams": getattr(ns, "network_diagrams", None),
+            "workload_diagrams": getattr(ns, "workload_diagrams", None),
+            "consolidated_diagrams": getattr(ns, "consolidated_diagrams", None),
             "architecture_diagrams": getattr(ns, "architecture_diagrams", None),
             "schema_validation": getattr(ns, "validate_schema", None),
             "schema_sample_records": getattr(ns, "validate_schema_sample", None),
@@ -892,6 +936,10 @@ def load_run_config(
         genai_summary=bool(merged.get("genai_summary")),
         validate_diagrams=bool(merged.get("validate_diagrams")),
         diagrams=bool(merged.get("diagrams")),
+        tenancy_diagrams=bool(merged.get("tenancy_diagrams")),
+        network_diagrams=bool(merged.get("network_diagrams")),
+        workload_diagrams=bool(merged.get("workload_diagrams")),
+        consolidated_diagrams=bool(merged.get("consolidated_diagrams")),
         architecture_diagrams=bool(merged.get("architecture_diagrams")),
         schema_validation=schema_validation,
         schema_sample_records=schema_sample_records,
@@ -938,6 +986,10 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "genai_summary": cfg.genai_summary,
         "validate_diagrams": cfg.validate_diagrams,
         "diagrams": cfg.diagrams,
+        "tenancy_diagrams": cfg.tenancy_diagrams,
+        "network_diagrams": cfg.network_diagrams,
+        "workload_diagrams": cfg.workload_diagrams,
+        "consolidated_diagrams": cfg.consolidated_diagrams,
         "architecture_diagrams": cfg.architecture_diagrams,
         "schema_validation": cfg.schema_validation,
         "schema_sample_records": cfg.schema_sample_records,

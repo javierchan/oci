@@ -98,6 +98,36 @@ def test_write_diagram_projections_creates_views(tmp_path) -> None:
     assert "%% View: overview" in flowchart
 
 
+def test_write_diagram_projections_respects_type_flags(tmp_path) -> None:
+    records = [
+        {
+            "ocid": "ocid1.vcn.oc1..vcn",
+            "resourceType": "Vcn",
+            "displayName": "Prod-VCN",
+            "region": "mx-queretaro-1",
+            "compartmentId": "ocid1.compartment.oc1..comp",
+            "details": {"metadata": {"cidr_block": "10.0.0.0/16"}},
+            "enrichStatus": "OK",
+            "enrichError": None,
+        }
+    ]
+
+    nodes, edges = _build_graph_lists(tmp_path, records, [])
+    write_diagram_projections(
+        tmp_path,
+        nodes,
+        edges,
+        enable_tenancy=True,
+        enable_network=False,
+        enable_workload=False,
+        enable_consolidated=False,
+    )
+
+    assert (tmp_path / "diagram.tenancy.mmd").exists()
+    assert not (tmp_path / "diagram.network.prod_vcn.mmd").exists()
+    assert not (tmp_path / "diagram.consolidated.flowchart.mmd").exists()
+
+
 def test_consolidated_flowchart_depth_excludes_edges(tmp_path) -> None:
     records = [
         {
