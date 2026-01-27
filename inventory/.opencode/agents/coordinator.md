@@ -3,7 +3,7 @@ description: Orchestrates and coordinates OCI Inventory tasks; entrypoint for hu
 mode: primary
 model: oca/oca/gpt5
 temperature: 0.2
-maxSteps: 10
+maxSteps: 100
 
 tools:
   write: false
