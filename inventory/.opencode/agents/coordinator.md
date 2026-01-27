@@ -1,7 +1,8 @@
 ---
 description: Orchestrates and coordinates OCI Inventory tasks; entrypoint for human interaction.
 mode: primary
-model: openai/gpt-5.2-codex
+model: oca/oca/gpt5
+#model: openai/gpt-5.2-codex
 temperature: 0.2
 maxSteps: 100
 
