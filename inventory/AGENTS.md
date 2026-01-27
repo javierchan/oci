@@ -273,7 +273,7 @@ For any diagram creation or diagram-related task, use:
 - If there is any conflict between a request and the guidelines, follow the guidelines and call out the mismatch.
 - When Mermaid size limits are exceeded, the pipeline may split diagrams into deterministic overflow parts; ensure stub diagrams and report summaries align with the guidelines.
 
-## Architecture Visual Style (Required for Curated SVG/Draw.io)
+## Architecture Visual Style (Required for Curated Mermaid)
 For curated architecture diagrams, use:
 `docs/architecture_visual_style.md`
 - Treat it as the source of truth for visual layout, lane order, typography, and styling.
@@ -365,7 +365,7 @@ The following conditions are considered drift and MUST trigger **Validate → Re
 ## Alignment Rules
 
 - `docs/diagram_guidelines.md` defines **what** to draw and **how** to abstract.
-- `docs/architecture_visual_style.md` defines **how** curated architecture SVG/Draw.io diagrams should look.
+- `docs/architecture_visual_style.md` defines **how** curated architecture Mermaid diagrams should look.
 - `docs/report_guidelines.md` defines **what** to write and **how** to structure.
 - The **inventory model and graph** define **what exists in reality**.
 - The report is authoritative for **workloads & counts**.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import html
 import json
 from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import asdict
@@ -810,7 +811,7 @@ def render_run_report_md(
     lines.append("Diagram artifacts (generated in the output directory):")
     lines.append("- `graph/graph_nodes.jsonl` / `graph/graph_edges.jsonl` (graph data)")
     lines.append("- `diagrams/**/diagram*.mmd` (architectural projections, if enabled)")
-    lines.append("- `diagrams/architecture/diagram.arch.*.svg` (architecture SVGs, if enabled)")
+    lines.append("- `diagrams/architecture/diagram.arch.*.mmd` (architecture Mermaid diagrams, if enabled)")
     lines.append("")
 
     diagram_summary = diagram_summary or {}
@@ -1539,6 +1540,420 @@ def write_run_report_md(
     return p
 
 
+def _html_escape(value: Any) -> str:
+    return html.escape(str(value or ""), quote=True)
+
+
+def render_run_report_html(
+    *,
+    status: str,
+    cfg_dict: Dict[str, Any],
+    started_at: str,
+    finished_at: str,
+    subscribed_regions: List[str],
+    requested_regions: Optional[List[str]],
+    excluded_regions: List[Dict[str, str]],
+    discovered_records: List[Dict[str, Any]],
+    metrics: Optional[Dict[str, Any]],
+    diff_warning: Optional[str] = None,
+    fatal_error: Optional[str] = None,
+    diagram_summary: Optional[Dict[str, Any]] = None,
+) -> str:
+    del excluded_regions, diff_warning, fatal_error, diagram_summary
+
+    counts_by_type: Dict[str, int] = {}
+    if metrics and isinstance(metrics, dict):
+        cbrt = metrics.get("counts_by_resource_type") or {}
+        if isinstance(cbrt, dict):
+            counts_by_type = {str(k): int(v or 0) for k, v in cbrt.items()}
+    if not counts_by_type:
+        for r in discovered_records:
+            rt = _record_type(r)
+            if rt:
+                counts_by_type[rt] = counts_by_type.get(rt, 0) + 1
+
+    resource_data = [
+        {"label": k, "count": v} for k, v in _top_n(counts_by_type, 10)
+    ]
+
+    comp_counts: Dict[str, int] = {}
+    comp_ids: List[str] = []
+    for r in discovered_records:
+        cid = _record_compartment_id(r)
+        if not cid:
+            continue
+        comp_ids.append(cid)
+        comp_counts[cid] = comp_counts.get(cid, 0) + 1
+    alias_by_id = _compartment_alias_map(comp_ids)
+    name_by_id = _compartment_name_map(discovered_records)
+    comp_data = [
+        {"label": _compartment_label(cid, alias_by_id=alias_by_id, name_by_id=name_by_id), "count": v}
+        for cid, v in _top_n(comp_counts, 10)
+    ]
+
+    enrich_counts: Dict[str, int] = {}
+    if metrics and isinstance(metrics, dict):
+        cbes = metrics.get("counts_by_enrich_status") or {}
+        if isinstance(cbes, dict):
+            enrich_counts = {str(k): int(v or 0) for k, v in cbes.items()}
+    if not enrich_counts:
+        for r in discovered_records:
+            key = str(r.get("enrichStatus") or "")
+            if key:
+                enrich_counts[key] = enrich_counts.get(key, 0) + 1
+    enrich_data = [{"label": k, "count": v} for k, v in sorted(enrich_counts.items())]
+
+    scope_regions = requested_regions if requested_regions else subscribed_regions
+    regions_txt = ", ".join(scope_regions) if scope_regions else "(none)"
+
+    vcn_count = counts_by_type.get("Vcn", 0)
+    subnet_count = counts_by_type.get("Subnet", 0)
+    instance_count = counts_by_type.get("Instance", 0)
+    bucket_count = counts_by_type.get("Bucket", 0)
+    volume_count = counts_by_type.get("Volume", 0) + counts_by_type.get("BootVolume", 0)
+    policy_count = counts_by_type.get("Policy", 0)
+    log_group_count = counts_by_type.get("LogGroup", 0)
+    loga_count = counts_by_type.get("LogAnalyticsEntity", 0)
+
+    summary = {
+        "status": status,
+        "regions": regions_txt,
+        "resources": len(discovered_records),
+        "compartments": len({cid for cid in comp_counts.keys() if cid}),
+        "vcns": vcn_count,
+        "subnets": subnet_count,
+        "instances": instance_count,
+        "buckets": bucket_count,
+        "volumes": volume_count,
+        "policies": policy_count,
+        "log_groups": log_group_count,
+        "log_analytics": loga_count,
+    }
+
+    title = "OCI Inventory Report (HTML)"
+    outdir = str(cfg_dict.get("outdir") or "")
+    comp_type_counts: Dict[str, Dict[str, int]] = {}
+    comp_totals: Dict[str, int] = {}
+    for r in discovered_records:
+        cid = _record_compartment_id(r)
+        if not cid:
+            continue
+        comp_label = _compartment_label(cid, alias_by_id=alias_by_id, name_by_id=name_by_id)
+        rtype = _record_type(r) or "(unknown)"
+        comp_type_counts.setdefault(comp_label, {})
+        comp_type_counts[comp_label][rtype] = comp_type_counts[comp_label].get(rtype, 0) + 1
+        comp_totals[comp_label] = comp_totals.get(comp_label, 0) + 1
+
+    top_compartments = [k for k, _v in _top_n(comp_totals, 12)]
+    top_types = [k for k, _v in _top_n(counts_by_type, 12)]
+    sunburst_children: List[Dict[str, Any]] = []
+    link_data: List[Dict[str, Any]] = []
+    for comp in top_compartments:
+        type_counts = comp_type_counts.get(comp, {})
+        comp_children = []
+        for t, v in _top_n(type_counts, 6):
+            comp_children.append({"name": t, "value": v})
+            link_data.append({"source": comp, "target": t, "value": v})
+        if comp_children:
+            sunburst_children.append({"name": comp, "children": comp_children})
+
+    hierarchy = {"name": "Tenancy", "children": sunburst_children}
+
+    data_payload = {
+        "resourceData": resource_data,
+        "compartmentData": comp_data,
+        "enrichData": enrich_data,
+        "summary": summary,
+        "sunburst": hierarchy,
+        "tangled": {
+            "compartments": top_compartments,
+            "types": top_types,
+            "links": link_data,
+        },
+    }
+
+    return (
+        "<!doctype html>\n"
+        "<html lang=\"en\">\n"
+        "<head>\n"
+        "  <meta charset=\"utf-8\" />\n"
+        f"  <title>{_html_escape(title)}</title>\n"
+        "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n"
+        "  <style>\n"
+        "    :root { color-scheme: light; }\n"
+        "    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; background: #f7f7f8; color: #111; }\n"
+        "    header { background: #111827; color: #fff; padding: 24px 28px; }\n"
+        "    header h1 { margin: 0 0 6px 0; font-size: 20px; }\n"
+        "    header p { margin: 0; opacity: 0.8; }\n"
+        "    main { padding: 24px 28px 48px; }\n"
+        "    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }\n"
+        "    .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }\n"
+        "    .card h3 { margin: 0 0 8px; font-size: 14px; color: #374151; text-transform: uppercase; letter-spacing: 0.04em; }\n"
+        "    .card .value { font-size: 24px; font-weight: 600; }\n"
+        "    .chart { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 20px; }\n"
+        "    .chart h2 { margin: 0 0 12px; font-size: 16px; }\n"
+        "    .note { font-size: 12px; color: #6b7280; }\n"
+        "  </style>\n"
+        "</head>\n"
+        "<body>\n"
+        "  <header>\n"
+        f"    <h1>{_html_escape(title)}</h1>\n"
+        f"    <p>Status: {_html_escape(status)} · Output: {_html_escape(outdir)}</p>\n"
+        "  </header>\n"
+        "  <main>\n"
+        "    <section class=\"grid\" id=\"summary-cards\"></section>\n"
+        "    <section class=\"chart\">\n"
+        "      <h2>Top Resource Types</h2>\n"
+        "      <div id=\"chart-resource\"></div>\n"
+        "    </section>\n"
+        "    <section class=\"chart\">\n"
+        "      <h2>Top Compartments (by resource count)</h2>\n"
+        "      <div id=\"chart-compartment\"></div>\n"
+        "    </section>\n"
+        "    <section class=\"chart\">\n"
+        "      <h2>Enrichment Status</h2>\n"
+        "      <div id=\"chart-enrich\"></div>\n"
+        "    </section>\n"
+        "    <section class=\"chart\">\n"
+        "      <h2>Inventory Sunburst (Tenancy → Compartment → Type)</h2>\n"
+        "      <div id=\"chart-sunburst\"></div>\n"
+        "    </section>\n"
+        "    <section class=\"chart\">\n"
+        "      <h2>Compartment ↔ Resource Type Links (Tangled View)</h2>\n"
+        "      <div id=\"chart-tangled\"></div>\n"
+        "    </section>\n"
+        "    <p class=\"note\">Generated from inventory metrics; redacted to avoid OCIDs.</p>\n"
+        "  </main>\n"
+        "  <script src=\"https://d3js.org/d3.v7.min.js\"></script>\n"
+        "  <script>\n"
+        f"    const data = {json.dumps(data_payload)};\n"
+        "    const summary = data.summary || {};\n"
+        "    const cards = [\n"
+        "      {label: 'Regions', value: summary.regions},\n"
+        "      {label: 'Resources', value: summary.resources},\n"
+        "      {label: 'Compartments', value: summary.compartments},\n"
+        "      {label: 'VCNs', value: summary.vcns},\n"
+        "      {label: 'Subnets', value: summary.subnets},\n"
+        "      {label: 'Instances', value: summary.instances},\n"
+        "      {label: 'Buckets', value: summary.buckets},\n"
+        "      {label: 'Volumes', value: summary.volumes},\n"
+        "      {label: 'Policies', value: summary.policies},\n"
+        "      {label: 'Log Groups', value: summary.log_groups},\n"
+        "      {label: 'Log Analytics', value: summary.log_analytics},\n"
+        "    ];\n"
+        "    const cardRoot = d3.select('#summary-cards');\n"
+        "    cards.forEach(item => {\n"
+        "      const c = cardRoot.append('div').attr('class', 'card');\n"
+        "      c.append('h3').text(item.label);\n"
+        "      c.append('div').attr('class', 'value').text(item.value ?? '0');\n"
+        "    });\n"
+        "\n"
+        "    function renderBarChart(selector, chartData) {\n"
+        "      const container = d3.select(selector);\n"
+        "      container.selectAll('*').remove();\n"
+        "      if (!chartData || chartData.length === 0) {\n"
+        "        container.append('div').text('No data available.');\n"
+        "        return;\n"
+        "      }\n"
+        "      const width = 740;\n"
+        "      const barHeight = 26;\n"
+        "      const height = chartData.length * barHeight + 30;\n"
+        "      const svg = container.append('svg')\n"
+        "        .attr('width', '100%')\n"
+        "        .attr('viewBox', `0 0 ${width} ${height}`);\n"
+        "      const max = d3.max(chartData, d => d.count) || 1;\n"
+        "      const x = d3.scaleLinear().domain([0, max]).range([0, width - 220]);\n"
+        "      const y = d3.scaleBand().domain(chartData.map(d => d.label)).range([0, height - 20]).padding(0.2);\n"
+        "      const g = svg.append('g').attr('transform', 'translate(200,10)');\n"
+        "      g.selectAll('rect')\n"
+        "        .data(chartData)\n"
+        "        .enter()\n"
+        "        .append('rect')\n"
+        "        .attr('x', 0)\n"
+        "        .attr('y', d => y(d.label))\n"
+        "        .attr('height', y.bandwidth())\n"
+        "        .attr('width', d => x(d.count))\n"
+        "        .attr('fill', '#2563eb');\n"
+        "      g.selectAll('text.count')\n"
+        "        .data(chartData)\n"
+        "        .enter()\n"
+        "        .append('text')\n"
+        "        .attr('class', 'count')\n"
+        "        .attr('x', d => x(d.count) + 6)\n"
+        "        .attr('y', d => (y(d.label) || 0) + y.bandwidth() / 2 + 4)\n"
+        "        .text(d => d.count);\n"
+        "      const axis = d3.axisLeft(y).tickSize(0);\n"
+        "      svg.append('g')\n"
+        "        .attr('transform', 'translate(190,10)')\n"
+        "        .call(axis)\n"
+        "        .selectAll('text')\n"
+        "        .style('font-size', '12px');\n"
+        "    }\n"
+        "\n"
+        "    renderBarChart('#chart-resource', data.resourceData || []);\n"
+        "    renderBarChart('#chart-compartment', data.compartmentData || []);\n"
+        "    renderBarChart('#chart-enrich', data.enrichData || []);\n"
+        "\n"
+        "    function renderSunburst(selector, rootData) {\n"
+        "      const container = d3.select(selector);\n"
+        "      container.selectAll('*').remove();\n"
+        "      if (!rootData || !rootData.children || rootData.children.length === 0) {\n"
+        "        container.append('div').text('No data available.');\n"
+        "        return;\n"
+        "      }\n"
+        "      const width = 700;\n"
+        "      const radius = width / 2;\n"
+        "      const root = d3.hierarchy(rootData).sum(d => d.value || 0).sort((a, b) => b.value - a.value);\n"
+        "      d3.partition().size([2 * Math.PI, radius])(root);\n"
+        "      const svg = container.append('svg')\n"
+        "        .attr('width', '100%')\n"
+        "        .attr('viewBox', `${-radius} ${-radius} ${width} ${width}`)\n"
+        "        .style('font', '12px sans-serif');\n"
+        "      const arc = d3.arc()\n"
+        "        .startAngle(d => d.x0)\n"
+        "        .endAngle(d => d.x1)\n"
+        "        .innerRadius(d => d.y0)\n"
+        "        .outerRadius(d => d.y1);\n"
+        "      const color = d3.scaleOrdinal(d3.quantize(d3.interpolateBlues, root.children.length + 1));\n"
+        "      svg.append('g')\n"
+        "        .selectAll('path')\n"
+        "        .data(root.descendants().filter(d => d.depth))\n"
+        "        .enter()\n"
+        "        .append('path')\n"
+        "        .attr('fill', d => color((d.children ? d : d.parent).data.name))\n"
+        "        .attr('d', arc)\n"
+        "        .append('title')\n"
+        "        .text(d => `${d.ancestors().map(a => a.data.name).reverse().join(' → ')}: ${d.value}`);\n"
+        "    }\n"
+        "\n"
+        "    function renderTangled(selector, tangled) {\n"
+        "      const container = d3.select(selector);\n"
+        "      container.selectAll('*').remove();\n"
+        "      if (!tangled || tangled.links.length === 0) {\n"
+        "        container.append('div').text('No data available.');\n"
+        "        return;\n"
+        "      }\n"
+        "      const width = 740;\n"
+        "      const rowHeight = 18;\n"
+        "      const left = tangled.compartments || [];\n"
+        "      const right = tangled.types || [];\n"
+        "      const height = Math.max(left.length, right.length) * rowHeight + 40;\n"
+        "      const svg = container.append('svg')\n"
+        "        .attr('width', '100%')\n"
+        "        .attr('viewBox', `0 0 ${width} ${height}`);\n"
+        "      const leftScale = d3.scalePoint().domain(left).range([20, height - 20]);\n"
+        "      const rightScale = d3.scalePoint().domain(right).range([20, height - 20]);\n"
+        "\n"
+        "      svg.selectAll('text.left')\n"
+        "        .data(left)\n"
+        "        .enter()\n"
+        "        .append('text')\n"
+        "        .attr('class', 'left')\n"
+        "        .attr('x', 10)\n"
+        "        .attr('y', d => leftScale(d))\n"
+        "        .attr('dy', '0.35em')\n"
+        "        .style('font-size', '11px')\n"
+        "        .text(d => d);\n"
+        "\n"
+        "      svg.selectAll('text.right')\n"
+        "        .data(right)\n"
+        "        .enter()\n"
+        "        .append('text')\n"
+        "        .attr('class', 'right')\n"
+        "        .attr('x', width - 10)\n"
+        "        .attr('y', d => rightScale(d))\n"
+        "        .attr('dy', '0.35em')\n"
+        "        .style('font-size', '11px')\n"
+        "        .attr('text-anchor', 'end')\n"
+        "        .text(d => d);\n"
+        "\n"
+        "      const max = d3.max(tangled.links, d => d.value) || 1;\n"
+        "      const strokeScale = d3.scaleLinear().domain([0, max]).range([0.5, 4]);\n"
+        "      svg.append('g')\n"
+        "        .selectAll('path')\n"
+        "        .data(tangled.links)\n"
+        "        .enter()\n"
+        "        .append('path')\n"
+        "        .attr('d', d => {\n"
+        "          const x1 = 180;\n"
+        "          const x2 = width - 180;\n"
+        "          const y1 = leftScale(d.source) || 0;\n"
+        "          const y2 = rightScale(d.target) || 0;\n"
+        "          const mid = (x1 + x2) / 2;\n"
+        "          return `M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`;\n"
+        "        })\n"
+        "        .attr('fill', 'none')\n"
+        "        .attr('stroke', '#2563eb')\n"
+        "        .attr('stroke-opacity', 0.4)\n"
+        "        .attr('stroke-width', d => strokeScale(d.value))\n"
+        "        .append('title')\n"
+        "        .text(d => `${d.source} → ${d.target}: ${d.value}`);\n"
+        "    }\n"
+        "\n"
+        "    renderSunburst('#chart-sunburst', data.sunburst || null);\n"
+        "    renderTangled('#chart-tangled', data.tangled || {links: []});\n"
+        "  </script>\n"
+        "</body>\n"
+        "</html>\n"
+    )
+
+
+def write_run_report_html(
+    *,
+    outdir: Path,
+    status: str,
+    cfg: Any,
+    subscribed_regions: List[str],
+    requested_regions: Optional[List[str]],
+    excluded_regions: List[Dict[str, str]],
+    discovered_records: List[Dict[str, Any]],
+    metrics: Optional[Dict[str, Any]],
+    diff_warning: Optional[str] = None,
+    fatal_error: Optional[str] = None,
+    started_at: Optional[str] = None,
+    finished_at: Optional[str] = None,
+    diagram_summary: Optional[Dict[str, Any]] = None,
+) -> Path:
+    outdir.mkdir(parents=True, exist_ok=True)
+    paths = resolve_output_paths(outdir)
+    started = started_at or _utc_now_iso()
+    finished = finished_at or _utc_now_iso()
+
+    try:
+        cfg_dict = asdict(cfg)
+    except Exception:
+        cfg_dict = {
+            "auth": getattr(cfg, "auth", None),
+            "profile": getattr(cfg, "profile", None),
+            "tenancy_ocid": getattr(cfg, "tenancy_ocid", None),
+            "query": getattr(cfg, "query", None),
+            "outdir": str(getattr(cfg, "outdir", outdir)),
+            "prev": str(getattr(cfg, "prev", "") or "") or None,
+            "workers_region": getattr(cfg, "workers_region", None),
+            "workers_enrich": getattr(cfg, "workers_enrich", None),
+        }
+
+    text = render_run_report_html(
+        status=status,
+        cfg_dict={**cfg_dict, "outdir": str(cfg_dict.get("outdir") or outdir)},
+        started_at=started,
+        finished_at=finished,
+        subscribed_regions=list(subscribed_regions),
+        requested_regions=list(requested_regions) if requested_regions else None,
+        excluded_regions=list(excluded_regions),
+        discovered_records=list(discovered_records),
+        metrics=dict(metrics) if metrics else None,
+        diff_warning=diff_warning,
+        fatal_error=fatal_error,
+        diagram_summary=dict(diagram_summary) if diagram_summary else None,
+    )
+
+    p = paths.report_html
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
 def _money_decimal(value: Any) -> Decimal:
     try:
         return Decimal(str(value))
@@ -1837,7 +2252,7 @@ def render_cost_report_md(
                 f"This snapshot covers {service_count} services, {region_count} regions, and "
                 f"{compartment_count} compartments for the selected window."
             )
-        if key == "intended_audience":
+        if key in ("audience", "intended_audience"):
             return (
                 "This snapshot is intended for architecture, finance, and operations stakeholders to "
                 "review allocation by service, region, and compartment."
@@ -1874,7 +2289,7 @@ def render_cost_report_md(
             return _fallback_cost_narrative(key)
         err_txt = (narrative_errors or {}).get(key)
         if err_txt:
-            return f"(GenAI narrative unavailable: {_truncate(str(err_txt), 200)})"
+            return _fallback_cost_narrative(key)
         return _fallback_cost_narrative(key)
 
     def _snapshot_status() -> str:

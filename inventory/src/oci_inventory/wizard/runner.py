@@ -117,6 +117,7 @@ def summarize_outdir(outdir: Path) -> str:
     key_paths = [
         paths.debug_log,
         paths.report_md,
+        paths.report_html,
         paths.inventory_jsonl,
         paths.inventory_csv,
         paths.run_summary_json,
@@ -127,14 +128,11 @@ def summarize_outdir(outdir: Path) -> str:
         paths.diff_dir / "diff.json",
         paths.diff_dir / "diff_summary.json",
         paths.diagrams_consolidated_dir / "diagram.consolidated.flowchart.mmd",
-        paths.diagrams_architecture_dir / "diagram.arch.tenancy.svg",
+        paths.diagrams_architecture_dir / "diagram.arch.tenancy.mmd",
     ]
 
     diagram_paths = sorted(
         p for p in paths.diagrams_dir.glob("**/diagram*.mmd") if p.is_file()
-    )
-    diagram_paths.extend(
-        sorted(p for p in paths.diagrams_dir.glob("**/diagram*.svg") if p.is_file())
     )
     key_paths.extend(diagram_paths)
 

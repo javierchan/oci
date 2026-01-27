@@ -108,12 +108,6 @@ def is_mmdc_available() -> bool:
     return _is_mmdc_available()
 
 
-def is_graphviz_available() -> bool:
-    from .export.diagram_projections import is_graphviz_available as _is_graphviz_available
-
-    return _is_graphviz_available()
-
-
 def validate_mermaid_diagrams_with_mmdc(outdir: Path, *, glob_pattern: str = "diagram*.mmd") -> List[Path]:
     from .export.diagram_projections import (
         validate_mermaid_diagrams_with_mmdc as _validate_mermaid_diagrams_with_mmdc,
@@ -142,6 +136,10 @@ def write_diagram_projections(
     *,
     diagram_depth: Optional[int] = None,
     summary: Optional[Dict[str, Any]] = None,
+    enable_tenancy: bool = True,
+    enable_network: bool = True,
+    enable_workload: bool = True,
+    enable_consolidated: bool = True,
 ) -> List[Path]:
     from .export.diagram_projections import write_diagram_projections as _write_diagram_projections
 
@@ -151,6 +149,10 @@ def write_diagram_projections(
         edges,
         diagram_depth=diagram_depth,
         summary=summary,
+        enable_tenancy=enable_tenancy,
+        enable_network=enable_network,
+        enable_workload=enable_workload,
+        enable_consolidated=enable_consolidated,
     )
 
 
@@ -1850,7 +1852,7 @@ def _organize_diagrams(paths: OutputPaths) -> List[Path]:
     for entry in paths.diagrams_dir.iterdir():
         if not entry.is_file():
             continue
-        if entry.suffix not in {".mmd", ".svg"}:
+        if entry.suffix != ".mmd":
             continue
         for prefix, target_dir in buckets:
             if entry.name.startswith(prefix):
@@ -1879,7 +1881,7 @@ def _clean_diagram_outputs(paths: OutputPaths) -> None:
                 continue
             if not entry.name.startswith("diagram."):
                 continue
-            if entry.suffix not in {".mmd", ".svg"}:
+            if entry.suffix != ".mmd":
                 continue
             try:
                 entry.unlink()
@@ -1895,6 +1897,7 @@ def cmd_run(cfg: RunConfig) -> int:
         write_cost_usage_grouped_csv,
         write_cost_usage_jsonl,
         write_cost_usage_views,
+        write_run_report_html,
         write_run_report_md,
     )
     from .util.rich_progress import RunProgress, render_run_summary_table
@@ -2373,24 +2376,14 @@ def cmd_run(cfg: RunConfig) -> int:
                     )
                 )
             if cfg.architecture_diagrams:
-                if not is_graphviz_available():
-                    _log_event(
-                        LOG,
-                        logging.WARNING,
-                        "Architecture diagrams requested but Graphviz 'dot' was not found on PATH",
-                        step="diagrams",
-                        phase="warning",
-                        timers=timers,
+                diagram_paths.extend(
+                    write_architecture_diagrams(
+                        paths.diagrams_dir,
+                        nodes,
+                        edges,
+                        summary=diagram_summary,
                     )
-                else:
-                    diagram_paths.extend(
-                        write_architecture_diagrams(
-                            paths.diagrams_dir,
-                            nodes,
-                            edges,
-                            summary=diagram_summary,
-                        )
-                    )
+                )
             _organize_diagrams(paths)
             _log_event(
                 LOG,
@@ -2478,7 +2471,7 @@ def cmd_run(cfg: RunConfig) -> int:
             _log_event(
                 LOG,
                 logging.INFO,
-                "Architecture SVG validation started",
+                "Architecture Mermaid validation started",
                 step="diagrams",
                 phase="validate",
                 timers=timers,
@@ -2491,7 +2484,7 @@ def cmd_run(cfg: RunConfig) -> int:
             _log_event(
                 LOG,
                 logging.INFO,
-                "Architecture SVG validation complete",
+                "Architecture Mermaid validation complete",
                 step="diagrams",
                 phase="validated",
                 timers=timers,
@@ -2639,6 +2632,21 @@ def cmd_run(cfg: RunConfig) -> int:
                 fatal_error=fatal_error,
                 executive_summary=executive_summary,
                 executive_summary_error=executive_summary_error,
+                started_at=started_at,
+                finished_at=finished_at,
+                diagram_summary=diagram_summary,
+            )
+            write_run_report_html(
+                outdir=cfg.outdir,
+                status=status,
+                cfg=cfg,
+                subscribed_regions=subscribed_regions,
+                requested_regions=requested_regions,
+                excluded_regions=excluded_regions,
+                discovered_records=inventory_records,
+                metrics=metrics,
+                diff_warning=diff_warning,
+                fatal_error=fatal_error,
                 started_at=started_at,
                 finished_at=finished_at,
                 diagram_summary=diagram_summary,
@@ -2794,7 +2802,7 @@ def cmd_run(cfg: RunConfig) -> int:
 
 
 def cmd_rebuild(cfg: RunConfig) -> int:
-    from .report import write_cost_report_md, write_run_report_md
+    from .report import write_cost_report_md, write_run_report_html, write_run_report_md
 
     paths = resolve_output_paths(cfg.outdir)
     inventory_jsonl = paths.inventory_jsonl
@@ -2834,22 +2842,12 @@ def cmd_rebuild(cfg: RunConfig) -> int:
             enable_consolidated=consolidated_diagrams,
         )
     if cfg.architecture_diagrams:
-        if not is_graphviz_available():
-            _log_event(
-                LOG,
-                logging.WARNING,
-                "Architecture diagrams requested but Graphviz 'dot' was not found on PATH",
-                step="diagrams",
-                phase="warning",
-                timers=None,
-            )
-        else:
-            write_architecture_diagrams(
-                paths.diagrams_dir,
-                nodes,
-                edges,
-                summary=diagram_summary,
-            )
+        write_architecture_diagrams(
+            paths.diagrams_dir,
+            nodes,
+            edges,
+            summary=diagram_summary,
+        )
     if mermaid_diagrams_enabled or cfg.architecture_diagrams:
         _organize_diagrams(paths)
     if cfg.validate_diagrams:
@@ -2931,6 +2929,21 @@ def cmd_rebuild(cfg: RunConfig) -> int:
         fatal_error=None,
         executive_summary=executive_summary,
         executive_summary_error=executive_summary_error,
+        started_at=started_at,
+        finished_at=finished_at,
+        diagram_summary=diagram_summary,
+    )
+    write_run_report_html(
+        outdir=cfg.outdir,
+        status=status,
+        cfg=cfg,
+        subscribed_regions=subscribed_regions,
+        requested_regions=requested_regions,
+        excluded_regions=excluded_regions,
+        discovered_records=inventory_records,
+        metrics=metrics,
+        diff_warning=None,
+        fatal_error=None,
         started_at=started_at,
         finished_at=finished_at,
         diagram_summary=diagram_summary,

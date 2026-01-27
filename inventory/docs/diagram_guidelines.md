@@ -3,43 +3,42 @@
 ## Scope
 
 This report distills abstraction and structural layout guidance from the reference
-diagrams in `project/architecture_references/`. The sources are drawio assets
-inside the reference zip files and are cited with file paths and line numbers.
+diagrams in `project/architecture_references/`.
 
-Visual styling and lane layout for curated architecture SVG/Draw.io diagrams are
+Visual layout and lane guidance for curated architecture Mermaid diagrams are
 defined in `docs/architecture_visual_style.md`.
 
 ## Evidence Sources
 
-- Core landing zone reference: `project/architecture_references/oci-core-landingzone-oracle.zip:oci-core-landingzone-oracle/oci-core-landingzone.drawio`
-- JMS topology reference: `project/architecture_references/jms-oci-topology-oracle.zip:jms-oci-topology-oracle/jms-oci-topology.drawio`
-- Integration pattern reference: `project/architecture_references/integration-architecture-pattern-1-oracle.zip:integration-architecture-pattern-1-oracle/integration-architecture-pattern-1.drawio`
-- AI workflow reference: `project/architecture_references/ai-llm-workflow-architecture-oracle.zip:ai-llm-workflow-architecture-oracle/ai-llm-workflow-architecture.drawio`
+- Core landing zone reference: `project/architecture_references/oci-core-landingzone-oracle.zip`
+- JMS topology reference: `project/architecture_references/jms-oci-topology-oracle.zip`
+- Integration pattern reference: `project/architecture_references/integration-architecture-pattern-1-oracle.zip`
+- AI workflow reference: `project/architecture_references/ai-llm-workflow-architecture-oracle.zip`
 
 ## Observed Patterns (Evidence-Based)
 
 1) Tenancy and compartment hierarchy is explicit.
-   - Tenancy boundary is labeled as the root compartment. (oci-core-landingzone.drawio:197)
-   - An enclosing compartment wraps functional compartments. (oci-core-landingzone.drawio:212)
+   - Tenancy boundary is labeled as the root compartment.
+   - An enclosing compartment wraps functional compartments.
 2) Functional compartments are named and separated by responsibility.
-   - Network, Security, and App compartments are explicitly labeled. (oci-core-landingzone.drawio:277, 3897, 4752)
-   - Observability and Management is also a distinct compartment. (jms-oci-topology.drawio:3437)
+   - Network, Security, and App compartments are explicitly labeled.
+   - Observability and Management is also a distinct compartment.
 3) Network topology is modeled with explicit VCNs and subnets.
-   - VCN grouping is emphasized in the core landing zone. (oci-core-landingzone.drawio:1382)
-   - Subnets are named and shown as distinct layers. (oci-core-landingzone.drawio:1622, 1767, 1912)
-   - Simple workloads still show VCNs and subnets. (integration-pattern.drawio:62, 77, 172)
+   - VCN grouping is emphasized in the core landing zone.
+   - Subnets are named and shown as distinct layers.
+   - Simple workloads still show VCNs and subnets.
 4) External connectivity is explicit and labeled.
-   - Internet and DRG are called out. (oci-core-landingzone.drawio:1482, 322)
-   - Internet and gateways are also explicit in other references. (jms-oci-topology.drawio:227, ai-workflow.drawio:87, 312)
+   - Internet and DRG are called out.
+   - Internet and gateways are also explicit in other references.
 5) Security and IAM overlays are represented as first-class elements.
-   - IAM Identity Domain is called out. (oci-core-landingzone.drawio:7032)
-   - Security Zone appears in multiple diagrams. (oci-core-landingzone.drawio:8107, jms-oci-topology.drawio:6697)
-   - IAM is explicitly represented. (jms-oci-topology.drawio:6022)
+   - IAM Identity Domain is called out.
+   - Security Zone appears in multiple diagrams.
+   - IAM is explicitly represented.
 6) Legends are used to explain notation or status.
-   - The landing zone includes a legend block. (oci-core-landingzone.drawio:162)
+   - The landing zone includes a legend block.
 7) Workload-specific compartments are still explicitly labeled.
-   - Data Integration Compartment is a clear boundary. (integration-pattern.drawio:337)
-   - Generic Compartment boundary is labeled in AI workflow. (ai-workflow.drawio:32)
+   - Data Integration Compartment is a clear boundary.
+   - Generic Compartment boundary is labeled in AI workflow.
 
 ---
 
@@ -50,15 +49,14 @@ defined in `docs/architecture_visual_style.md`.
 - Treat the requirements in "Additional Abstraction Requirements (OCI-Aligned)" and "Data-Driven Rendering Requirements" as mandatory.
 - Use "Observed Patterns (Evidence-Based)" as supporting evidence, not as hard requirements.
 - If any guidance conflicts, the OCI-aligned abstraction and data-driven requirements take precedence.
-- For architecture SVG/Draw.io diagram appearance (layout, lanes, typography, colors), use `docs/architecture_visual_style.md`.
+- For architecture Mermaid diagram appearance (layout, lanes, labeling), use `docs/architecture_visual_style.md`.
 
 ---
 
 ### Tooling Requirements
 
 - Mermaid diagrams require Mermaid CLI (`mmdc`) on PATH.
-- Architecture SVG diagrams require Graphviz (`dot`) on PATH and the Python diagrams extra
-  installed in the repo `.venv` (`pip install -e ".[diagrams]"`).
+- Architecture Mermaid diagrams use the same Mermaid tooling (C4 + flowchart).
 
 ---
 
@@ -132,24 +130,23 @@ Visual requirements:
 
 ---
 
-### 1c) Architecture SVG Diagrams (Curated Overview)
+### 1c) Architecture Mermaid Diagrams (Curated Overview)
 
-Applies to `diagrams/architecture/diagram.arch.*.svg`. These are optional, overview-oriented SVG diagrams rendered via
-Graphviz and the Python diagrams library.
+Applies to `diagrams/architecture/diagram.arch.*.mmd`. These are optional, overview-oriented Mermaid diagrams rendered as:
+- `C4Container` for tenancy and workload scopes
+- `flowchart LR` for VCN and compartment scopes
 
-- Architecture diagrams are additive and do not replace Mermaid flowchart outputs.
+- Architecture diagrams are additive and do not replace Mermaid flowchart outputs in other views.
 - Scope is expressed in the filename:
-  - `diagram.arch.tenancy.svg` (tenancy overview)
-  - `diagram.arch.vcn.<vcn>.svg` (VCN scope overview)
-  - `diagram.arch.workload.<workload>.svg` (workload scope overview)
-- These views are curated overviews and MAY aggregate or summarize resources (e.g., per-lane counts and top-N labels).
+  - `diagram.arch.tenancy.mmd` (tenancy overview, C4Container)
+  - `diagram.arch.vcn.<vcn>.<suffix>.mmd` (VCN scope overview, flowchart)
+  - `diagram.arch.workload.<workload>.<suffix>.mmd` (workload scope overview, C4Container)
+  - `diagram.arch.compartment.<compartment>.mmd` (compartment overview, flowchart)
+- These views are curated overviews and MAY aggregate or summarize resources (for example, top-N labels).
 - Full-detail architecture variants are not required and may be omitted for large scopes to preserve readability.
-- Tenancy/workload/VCN architecture SVGs may cap scope (top-N by resource count) and roll up the remainder as "Other".
+- Tenancy/workload/VCN architecture Mermaid diagrams may cap scope (top-N by resource count) and roll up the remainder as "Other".
 - Regions and AD/FD remain overlays; do not introduce extra containment levels solely for geography.
-- Visual layout, lane order, typography, and styling follow `docs/architecture_visual_style.md`.
-- Draw.io (`.drawio`) architecture diagrams are supported for:
-  - Tenancy, VCN, workload, and **per-compartment** overviews.
-  - Use the same layout and lane conventions from `docs/architecture_visual_style.md`.
+- Visual layout, lane order, and labeling follow `docs/architecture_visual_style.md`.
 
 ---
 
@@ -287,7 +284,7 @@ Dynamic Styling Rules (best-effort):
 - Health: Nodes with errors SHOULD display an alert badge and use an alert style class.
 
 These are presentation layer concerns and intentionally not part of OCI abstraction.
-For architecture SVG/Draw.io visual styling, see `docs/architecture_visual_style.md`.
+For architecture Mermaid visual styling, see `docs/architecture_visual_style.md`.
 
 Note: consolidated diagram depth levels are an implementation detail for this pipeline, but the depth-specific aggregation and scoping rules above are mandatory for consolidated outputs.
 
@@ -369,7 +366,7 @@ Common scope types include:
 Each diagram MUST have an implied or documented scope, expressed via its filename and/or comments in the `.mmd` output
 (`diagram.workload.<workload>.mmd`, `diagram.network.<vcn>.mmd`, `diagram.tenancy.mmd`, split parts, etc.).
 The diagram content SHOULD align with how the scope was derived from nodes, tags, and relationships.
-Architecture SVGs express scope via filename (`diagram.arch.tenancy.svg`, `diagram.arch.vcn.<vcn>.svg`, `diagram.arch.workload.<workload>.svg`).
+Architecture Mermaid diagrams express scope via filename (`diagram.arch.tenancy.mmd`, `diagram.arch.vcn.<vcn>.<suffix>.mmd`, `diagram.arch.workload.<workload>.<suffix>.mmd`, `diagram.arch.compartment.<compartment>.mmd`).
 
 The generator emits `%% Scope:` and `%% View:` comments near the top of each `.mmd` file to make scope and detail level explicit.
 
@@ -417,7 +414,7 @@ The abstraction rules do NOT prescribe:
 - Rendering-density heuristics
 - Vendor tooling or syntax preferences
 
-Those presentation concerns are defined for architecture SVG/Draw.io outputs in
+Those presentation concerns are defined for architecture Mermaid outputs in
 `docs/architecture_visual_style.md`.
 
 ---

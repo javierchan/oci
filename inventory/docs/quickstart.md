@@ -21,7 +21,7 @@ python -m venv .venv
 . .venv/bin/activate
 pip install -U pip
 pip install .[diagrams]
-dot -V  # ensure Graphviz is installed and on PATH
+    mmdc --version  # optional: validate Mermaid diagrams (requires Mermaid CLI)
 ```
 
 Verify installation:
@@ -134,7 +134,7 @@ out/<timestamp>/
     network/diagram.network.<vcn>.mmd # Mermaid diagram (per-VCN topology view; optional)
     workload/diagram.workload.<workload>.mmd # Mermaid diagram (workload/application view; optional)
     consolidated/diagram.consolidated.flowchart.mmd # Mermaid diagram (depth 1 global map; depth >1 summary hierarchy; optional)
-    architecture/diagram.arch.*.svg # Architecture SVG diagrams (optional; Graphviz required)
+    architecture/diagram.arch.*.mmd # Architecture Mermaid diagrams (optional)
   report/
     report.md               # inventory report
   diff/
@@ -148,7 +148,7 @@ out/<timestamp>/
 Notes:
 - JSONL lines are stable and canonicalized (sorted keys).
 - Hashes used for diff exclude `collectedAt` to minimize noise.
-- Diagram abstraction rules live in `docs/diagram_guidelines.md`; curated architecture SVG/Draw.io visual style lives in `docs/architecture_visual_style.md`.
+- Diagram abstraction rules live in `docs/diagram_guidelines.md`; curated architecture Mermaid visual style lives in `docs/architecture_visual_style.md`.
 
 ## Diff two inventories
 

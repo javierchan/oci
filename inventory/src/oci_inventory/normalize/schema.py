@@ -49,6 +49,7 @@ class OutputPaths:
     graph_nodes_jsonl: Path
     graph_edges_jsonl: Path
     report_md: Path
+    report_html: Path
     cost_report_md: Path
     run_summary_json: Path
     debug_log: Path
@@ -89,6 +90,7 @@ def resolve_output_paths(outdir: Path) -> OutputPaths:
         graph_nodes_jsonl=graph_dir / "graph_nodes.jsonl",
         graph_edges_jsonl=graph_dir / "graph_edges.jsonl",
         report_md=report_dir / "report.md",
+        report_html=report_dir / "report.html",
         cost_report_md=cost_dir / "cost_report.md",
         run_summary_json=root / "run_summary.json",
         debug_log=logs_dir / "debug.log",
