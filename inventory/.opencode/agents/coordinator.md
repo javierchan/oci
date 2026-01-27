@@ -1,7 +1,7 @@
 ---
 description: Orchestrates and coordinates OCI Inventory tasks; entrypoint for human interaction.
 mode: primary
-model: oca/gpt5
+model: oca/oca/gpt5
 temperature: 0.2
 maxSteps: 10
 
