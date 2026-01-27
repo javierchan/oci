@@ -1,7 +1,7 @@
 ---
 description: Prepares and reviews cost_report.md and cost CSVs from inventory outputs.
 mode: subagent
-model: oca/gpt5
+model: oca/oca/gpt5
 temperature: 0.2
 tools:
   write: true

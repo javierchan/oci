@@ -1,7 +1,7 @@
 ---
 description: Builds features and fixes for oci-inventory; runs lint, tests, and CLI checks.
 mode: primary
-model: oca/gpt5
+model: oca/oca/gpt5
 temperature: 0.2
 maxSteps: 8
 tools:

@@ -1,7 +1,7 @@
 ---
 description: Writes and maintains documentation and report.md aligned with docs/.
 mode: subagent
-model: oca/gpt5
+model: oca/oca/gpt5
 temperature: 0.3
 tools:
   write: true
