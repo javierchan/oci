@@ -5,7 +5,7 @@ Phase 1 implements:
 - Tenancy-wide discovery using Resource Search (Structured Search) with default query: "query all resources"
 - Enricher registry + DefaultEnricher with per-service metadata enrichers for supported resource types
 - Exports: JSONL (default) and CSV
-- Graph + diagram projections (Mermaid flowcharts + architecture SVGs; disable with --no-diagrams / --no-architecture-diagrams)
+- Graph + diagram projections (Mermaid flowcharts + architecture Mermaid views; disable with --no-diagrams / --no-architecture-diagrams)
 - Cost snapshot reporting via Usage API with optional OneSubscription usage (opt-in)
 - Optional GenAI narratives for report/report.md and cost/cost_report.md
 - Diffs and stable hashing (excluding collectedAt)
@@ -44,10 +44,10 @@ Key guarantees:
 - Python 3.11+
 - Git
 - Node.js + npm (required for Mermaid CLI)
-- Graphviz (required for architecture SVG diagrams)
+- Mermaid CLI (optional; required only for diagram validation via `mmdc`)
 - Use a `.venv` for all Python dependencies (required)
 
-Recommended: `./preflight.sh` (installs most required components; Graphviz is still required for architecture SVGs).
+Recommended: `./preflight.sh` (installs most required components).
 
 Manual install (inside `.venv`):
 ```
@@ -57,7 +57,7 @@ pip install -U pip
 pip install .[wizard,diagrams]
 pip install oci-cli
 npm install -g @mermaid-js/mermaid-cli
-dot -V  # ensure Graphviz is installed and on PATH
+mmdc --version  # optional: validate Mermaid diagrams (requires Mermaid CLI)
 ```
 
 ## Preflight setup
@@ -361,7 +361,7 @@ Notes for developers:
 - Region failures are tolerated and captured in report/report.md; GenAI is optional and isolated from the main run.
 - Mermaid diagrams are generated as `.mmd` files unless `--no-diagrams` is set. Mermaid CLI (`mmdc`) is required and preflight installs it;
   validation runs when `mmdc` is available or when `--validate-diagrams` is explicitly enabled.
-- Architecture diagrams are generated as `.svg` files unless `--no-architecture-diagrams` is set. Graphviz (`dot`) and the Python
+- Architecture diagrams are generated as Mermaid `.mmd` files unless `--no-architecture-diagrams` is set.
   diagrams extra are required (`pip install -e ".[diagrams]"`).
   (During installation you may see npm warnings about Puppeteer deprecations; those are typically non-fatal.)
 - Diagram and report rules are documented in `docs/diagram_guidelines.md`, `docs/architecture_visual_style.md`, and `docs/report_guidelines.md`.
@@ -426,7 +426,7 @@ Each run writes to: `out/<timestamp>/` with structured subfolders.
 - diagrams/consolidated/diagram.consolidated.flowchart.mmd (Mermaid flowchart diagram; depth 1 is global tenancy + regions map; depth > 1 is a summary hierarchy with category counts)
 - diagrams/consolidated/diagram.consolidated.flowchart.region.<region>.mmd (Mermaid flowchart split by region when oversized)
 - diagrams/consolidated/diagram.consolidated.flowchart.compartment.<compartment>.mmd (Mermaid flowchart split by compartment when oversized)
-- diagrams/architecture/diagram.arch.*.svg (Architecture SVG diagrams; optional)
+- diagrams/architecture/diagram.arch.*.mmd (Architecture Mermaid diagrams; optional)
 - cost/cost_report.md (when --cost-report provided)
 - cost/cost_usage_items.csv + cost/cost_usage_items_grouped.csv + cost/cost_usage_items.jsonl (when --cost-report provided)
 - cost/cost_usage_service.csv + cost/cost_usage_region.csv + cost/cost_usage_compartment.csv (when --cost-report provided)
@@ -441,7 +441,7 @@ Quick reference (artifacts → purpose):
 - inventory/relationships.jsonl: relationship edges from enrichers + derived metadata.
 - graph/graph_nodes.jsonl / graph/graph_edges.jsonl: raw topology outputs (optional).
 - diagrams/**/diagram*.mmd: Mermaid projected views (optional).
-- diagrams/architecture/diagram.arch.*.svg: architecture SVGs rendered via Graphviz (optional).
+- diagrams/architecture/diagram.arch.*.mmd: architecture Mermaid diagrams (C4 + flowchart).
 - cost/cost_report.md + cost/cost_usage_*.{csv,jsonl}: cost snapshot outputs (optional).
 - diff/diff.json / diff/diff_summary.json: change set when `--prev` is used.
 - run_summary.json: coverage/metrics snapshot for automation.

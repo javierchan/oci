@@ -10,6 +10,7 @@ from oci_inventory.export.csv import write_csv
 from oci_inventory.normalize.schema import CSV_REPORT_FIELDS
 from oci_inventory.report import (
     render_cost_report_md,
+    render_run_report_html,
     render_run_report_md,
     write_cost_usage_csv,
     write_cost_usage_grouped_csv,
@@ -58,6 +59,44 @@ def test_render_run_report_includes_excluded_regions_and_query(tmp_path: Path) -
     # New architecture-oriented sections exist
     assert "## Network Architecture" in text
     assert "## Workloads & Services" in text
+
+
+def test_render_run_report_html_redacts_ocids(tmp_path: Path) -> None:
+    cfg = RunConfig(outdir=tmp_path, auth="config", profile="DEFAULT", query="query all resources")
+    records = [
+        {
+            "ocid": "ocid1.instance.oc1..demo",
+            "resourceType": "Instance",
+            "region": "us-ashburn-1",
+            "compartmentId": "ocid1.compartment.oc1..example",
+            "displayName": "demo-instance",
+            "enrichStatus": "OK",
+            "details": {"metadata": {}},
+            "relationships": [],
+        }
+    ]
+    html = render_run_report_html(
+        status="OK",
+        cfg_dict={
+            "auth": cfg.auth,
+            "profile": cfg.profile,
+            "tenancy_ocid": cfg.tenancy_ocid,
+            "query": cfg.query,
+            "outdir": str(cfg.outdir),
+            "prev": None,
+            "workers_region": cfg.workers_region,
+            "workers_enrich": cfg.workers_enrich,
+        },
+        started_at="2026-01-01T00:00:00+00:00",
+        finished_at="2026-01-01T00:01:00+00:00",
+        subscribed_regions=["us-ashburn-1"],
+        requested_regions=None,
+        excluded_regions=[],
+        discovered_records=records,
+        metrics={"counts_by_resource_type": {"Instance": 1}, "counts_by_enrich_status": {"OK": 1}},
+    )
+    assert "d3.v7.min.js" in html
+    assert "ocid1." not in html
 
 
 def test_render_run_report_includes_executive_summary_when_provided(tmp_path: Path) -> None:
@@ -380,6 +419,42 @@ def test_render_cost_report_embeds_genai_narratives(tmp_path: Path) -> None:
     assert "- Bullet one" in text
     assert "Intro line." in text
     assert "Data sources line." in text
+
+
+def test_render_cost_report_fallbacks_when_genai_missing(tmp_path: Path) -> None:
+    cost_context = {
+        "time_start": "2026-02-01T00:00:00+00:00",
+        "time_end": "2026-02-15T00:00:00+00:00",
+        "currency": "USD",
+        "currency_source": "cli",
+        "total_cost": 12.34,
+        "services": [{"name": "ServiceA", "amount": 12.34}],
+        "compartments": [{"compartment_id": "ocid1.compartment.oc1..exampleuniqueID", "amount": 12.34}],
+        "regions": [{"name": "us-ashburn-1", "amount": 12.34}],
+        "budgets": [],
+        "budget_alert_rule_counts": {},
+        "errors": [],
+        "warnings": [],
+        "steps": [{"name": "usage_api_total", "status": "OK"}],
+        "query_inputs": {"tenant_id": "ocid1.tenancy.oc1..exampleTenancy", "group_by": ["service"]},
+        "compartment_names": {"ocid1.compartment.oc1..exampleuniqueID": "Prod"},
+    }
+
+    text = render_cost_report_md(
+        status="OK",
+        cfg_dict={
+            "cost_report": True,
+            "cost_start": None,
+            "cost_end": None,
+            "cost_currency": "USD",
+        },
+        cost_context=cost_context,
+        narratives={},
+        narrative_errors={"audience": "GenAI failed"},
+    )
+
+    assert "Intended Audience & Usage Guidelines" in text
+    assert "This snapshot is intended for architecture, finance, and operations stakeholders" in text
 
 
 def test_write_cost_usage_exports(tmp_path: Path) -> None:

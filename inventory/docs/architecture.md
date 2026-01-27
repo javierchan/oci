@@ -99,6 +99,11 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
 - `inventory/inventory.csv`
   - Report fields only (see `CSV_REPORT_FIELDS` in `src/oci_inventory/normalize/schema.py`).
 
+- `report/report.md`
+  - Markdown architectural assessment summary for the run.
+- `report/report.html`
+  - Optional HTML report with embedded charts (D3) for quick visual review.
+
 - `cost/cost_report.md`
   - Optional cost and usage assessment report when cost reporting is enabled.
   - Must follow `docs/cost_guidelines.md`.
@@ -133,9 +138,9 @@ Canonical field requirements and definitions live in `src/oci_inventory/normaliz
 
 - `diagrams/tenancy/diagram.tenancy.mmd`, `diagrams/network/diagram.network.*.mmd`, `diagrams/workload/diagram.workload.*.mmd`, `diagrams/workload/diagram.workload.*.partNN.mmd`, `diagrams/consolidated/diagram.consolidated.flowchart.mmd`, `diagrams/consolidated/diagram.consolidated.flowchart.{region|compartment}.*.mmd` (optional; generated when Mermaid diagrams are enabled)
   - Mermaid projections derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
-- `diagrams/architecture/diagram.arch.*.svg` (optional; generated when architecture diagrams are enabled)
-  - SVG architecture projections rendered via Graphviz (`dot`) and the Python diagrams library.
-  - Visual layout and styling follow `docs/architecture_visual_style.md`.
+- `diagrams/architecture/diagram.arch.*.mmd` (optional; generated when architecture diagrams are enabled)
+  - Mermaid architecture projections (C4 + flowchart) derived from `graph_nodes.jsonl` and `graph_edges.jsonl`.
+  - Visual layout and abstraction follow `docs/diagram_guidelines.md` (lane order and labels align with `docs/architecture_visual_style.md`).
 - Consolidated flowcharts honor `--diagram-depth` (1=global regions only, 2+=summary hierarchy with category counts and no per-resource edges).
   - Consolidated flowcharts auto-reduce depth when Mermaid limits are exceeded; if still oversized at depth 1, they are split by region (preferred) or top-level compartment and the base diagram becomes a stub that references the split outputs.
   - Workload diagrams are full-detail for the workload scope; oversized diagrams are split into deterministic overflow parts, and single-node slices that still exceed Mermaid limits are skipped and summarized in the report.
@@ -195,5 +200,5 @@ Secrets are never printed. The docs include operational guidance.
 
 The repository includes diagram guidance documents:
 - `docs/diagram_guidelines.md` defines diagram abstraction, data usage, and required views.
-- `docs/architecture_visual_style.md` defines visual style and lane layout for curated architecture SVG/Draw.io views.
+- `docs/architecture_visual_style.md` defines visual style and lane layout for curated architecture Mermaid views.
 - If a request conflicts with these guidelines, follow them and call out the mismatch.

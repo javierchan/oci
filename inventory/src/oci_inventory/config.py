@@ -479,7 +479,7 @@ def load_run_config(
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "Generate architecture diagrams (SVG) using the diagrams library + Graphviz "
+            "Generate architecture diagrams (Mermaid C4 + flowchart) "
             "(disable with --no-architecture-diagrams)."
         ),
     )
@@ -607,7 +607,7 @@ def load_run_config(
         "--architecture-diagrams",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Regenerate architecture SVG diagrams (Graphviz required).",
+        help="Regenerate architecture Mermaid diagrams (C4 + flowchart).",
     )
     p_rebuild.add_argument(
         "--diagram-depth",

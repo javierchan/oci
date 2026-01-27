@@ -7,10 +7,10 @@ from oci_inventory.export.architecture_concepts import (
     build_workload_context,
 )
 from oci_inventory.export.diagram_projections import (
-    _write_architecture_drawio_compartment,
-    _write_architecture_drawio_tenancy,
-    _write_architecture_drawio_vcn,
-    _write_architecture_drawio_workload,
+    _write_architecture_mermaid_compartment,
+    _write_architecture_mermaid_tenancy,
+    _write_architecture_mermaid_vcn,
+    _write_architecture_mermaid_workload,
     validate_architecture_diagrams,
 )
 
@@ -126,7 +126,7 @@ def test_build_workload_context_reports_vcn_names_by_compartment() -> None:
     assert "Prod-VCN" in context.vcn_names_by_compartment["ocid1.compartment.oc1..comp"]
 
 
-def test_drawio_workload_architecture_has_no_counts(tmp_path) -> None:
+def test_mermaid_workload_architecture_has_no_counts(tmp_path) -> None:
     nodes = [
         {
             "nodeId": "ocid1.compartment.oc1..comp",
@@ -147,7 +147,7 @@ def test_drawio_workload_architecture_has_no_counts(tmp_path) -> None:
             "metadata": {"vcn_id": "ocid1.vcn.oc1..vcn"},
         },
     ]
-    path = _write_architecture_drawio_workload(
+    path = _write_architecture_mermaid_workload(
         tmp_path,
         workload="demo",
         nodes=nodes,
@@ -158,9 +158,10 @@ def test_drawio_workload_architecture_has_no_counts(tmp_path) -> None:
     assert "(n=" not in content
     assert "Compartment:" in content
     assert "VCN:" in content
+    assert "Workload Architecture:" in content
 
 
-def test_drawio_tenancy_vcn_compartment_have_no_counts(tmp_path) -> None:
+def test_mermaid_tenancy_vcn_compartment_have_no_counts(tmp_path) -> None:
     nodes = [
         {
             "nodeId": "ocid1.compartment.oc1..root",
@@ -194,13 +195,18 @@ def test_drawio_tenancy_vcn_compartment_have_no_counts(tmp_path) -> None:
             "metadata": {"vcn_id": "ocid1.vcn.oc1..vcn"},
         },
     ]
-    tenancy_path = _write_architecture_drawio_tenancy(tmp_path, nodes)
-    vcn_path = _write_architecture_drawio_vcn(tmp_path, vcn_name="Prod-VCN", vcn_nodes=nodes)
-    comp_path = _write_architecture_drawio_compartment(
+    tenancy_path = _write_architecture_mermaid_tenancy(tmp_path, nodes=nodes, edges=[])
+    vcn_path = _write_architecture_mermaid_vcn(
+        tmp_path,
+        vcn_label="Prod-VCN",
+        vcn_nodes=nodes,
+        vcn_edges=[],
+    )
+    comp_path = _write_architecture_mermaid_compartment(
         tmp_path,
         compartment_label="Compartment: App",
         comp_nodes=nodes,
-        top_n=5,
+        comp_edges=[],
     )
 
     for path in (tenancy_path, vcn_path, comp_path):
@@ -208,22 +214,20 @@ def test_drawio_tenancy_vcn_compartment_have_no_counts(tmp_path) -> None:
         assert "(n=" not in content
 
 
-def test_validate_architecture_svgs_passes_minimum_rules(tmp_path) -> None:
+def test_validate_architecture_mermaid_passes_minimum_rules(tmp_path) -> None:
     arch_dir = tmp_path / "architecture"
     arch_dir.mkdir(parents=True, exist_ok=True)
-    svg = """<svg>
-<text>Tenancy: Demo</text>
-<text>Compartment: App</text>
-<text>VCN: DemoVCN</text>
-<text>Network</text>
-<text>App / Compute</text>
-<text>Data / Storage</text>
-<text>Security</text>
-<text>Observability</text>
-<text>Other</text>
-</svg>
+    mmd = """C4Container
+title Tenancy Architecture (Mermaid)
+System_Boundary(tenancy, "Tenancy: Demo") {
+  System_Boundary(comp, "Compartment: App") {
+    Container_Boundary(lane_network, "Network") {
+      Container(net, "Network Services", "Network", "In VCN")
+    }
+  }
+}
 """
-    (arch_dir / "diagram.arch.tenancy.svg").write_text(svg, encoding="utf-8")
+    (arch_dir / "diagram.arch.tenancy.mmd").write_text(mmd, encoding="utf-8")
     nodes = [
         {"nodeId": "ocid1.compartment.oc1..root", "nodeType": "Compartment", "name": "TenancyRoot"},
         {"nodeId": "ocid1.vcn.oc1..vcn", "nodeType": "Vcn", "name": "DemoVCN"},
@@ -232,35 +236,25 @@ def test_validate_architecture_svgs_passes_minimum_rules(tmp_path) -> None:
     assert issues == []
 
 
-def test_validate_architecture_svgs_flags_missing_security_overlay(tmp_path) -> None:
+def test_validate_architecture_mermaid_flags_missing_vcn_label(tmp_path) -> None:
     arch_dir = tmp_path / "architecture"
     arch_dir.mkdir(parents=True, exist_ok=True)
-    svg = """<svg>
-<text>Tenancy: Demo</text>
-<text>Compartment: App</text>
-<text>VCN: DemoVCN</text>
-<text>Network</text>
-<text>App / Compute</text>
-<text>Data / Storage</text>
-<text>Security</text>
-<text>Observability</text>
-<text>Other</text>
-</svg>
+    mmd = """flowchart LR
+subgraph tenancy["Tenancy: Demo"]
+  subgraph comp["Compartment: App"]
+    subgraph lane["Network"]
+      net["Network Services"]
+    end
+  end
+end
 """
-    (arch_dir / "diagram.arch.tenancy.svg").write_text(svg, encoding="utf-8")
+    (arch_dir / "diagram.arch.vcn.demo.mmd").write_text(mmd, encoding="utf-8")
     nodes = [
         {"nodeId": "ocid1.compartment.oc1..root", "nodeType": "Compartment", "name": "TenancyRoot"},
         {"nodeId": "ocid1.vcn.oc1..vcn", "nodeType": "Vcn", "name": "DemoVCN"},
-        {
-            "nodeId": "ocid1.policy.oc1..policy",
-            "nodeType": "Policy",
-            "name": "root-policy",
-            "nodeCategory": "iam",
-            "compartmentId": "ocid1.compartment.oc1..root",
-        },
     ]
     issues = validate_architecture_diagrams(tmp_path, nodes=nodes, edges=[])
-    assert any(issue.rule_id == "ARCH_OVERLAY_TENANCY_MISSING" for issue in issues)
+    assert any(issue.rule_id == "ARCH_LABEL_VCN_MISSING" for issue in issues)
 
 
 def test_cmd_rebuild_creates_diagrams_dir(tmp_path, monkeypatch) -> None:
@@ -269,6 +263,7 @@ def test_cmd_rebuild_creates_diagrams_dir(tmp_path, monkeypatch) -> None:
     import oci_inventory.report as report
 
     monkeypatch.setattr(report, "write_run_report_md", lambda **_: None)
+    monkeypatch.setattr(report, "write_run_report_html", lambda **_: None)
     monkeypatch.setattr(report, "write_cost_report_md", lambda **_: None)
 
     outdir = tmp_path

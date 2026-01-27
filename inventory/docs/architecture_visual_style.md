@@ -1,19 +1,17 @@
 # OCI Architecture Visual Style Guide
 
-This document defines the visual layout and styling conventions for curated OCI
-architecture diagrams (SVG or Draw.io). It complements the abstraction and
+This document defines the visual layout and labeling conventions for curated OCI
+architecture diagrams (Mermaid `.mmd`). It complements the abstraction and
 containment rules in `docs/diagram_guidelines.md`.
 
 If a visual rule here conflicts with abstraction or data rules in
 `docs/diagram_guidelines.md`, the abstraction rules win.
 
 Applies to:
-- `diagrams/architecture/diagram.arch.tenancy.svg`
-- `diagrams/architecture/diagram.arch.vcn.<vcn>.svg`
-- `diagrams/architecture/diagram.arch.workload.<workload>.svg`
-- Optional `.drawio` variants for the same scopes.
-
-Does not apply to Mermaid `.mmd` diagrams.
+- `diagrams/architecture/diagram.arch.tenancy.mmd`
+- `diagrams/architecture/diagram.arch.vcn.<vcn>.<suffix>.mmd`
+- `diagrams/architecture/diagram.arch.workload.<workload>.<suffix>.mmd`
+- `diagrams/architecture/diagram.arch.compartment.<compartment>.mmd`
 
 ---
 
@@ -39,11 +37,11 @@ explicit and keeps functional lanes readable:
 +-------------------------------------------------------------+
 ```
 
-Required boundaries:
+Required boundaries (Mermaid C4 or flowchart subgraphs):
 - L0 Tenancy: scope header or light frame.
 - L1 Compartment(s): labeled boxes with clear boundaries.
 - L2 VCN(s): labeled boxes inside the owning compartment.
-- L3 Lanes: horizontal swimlanes for functional domains.
+- L3 Lanes: subgraphs or container boundaries for functional domains.
 
 If a workload spans multiple compartments:
 - Each compartment MUST appear as its own L1 box.
@@ -77,10 +75,8 @@ A concept node is a logical building block (for example, "OKE Cluster",
 "Ingress Load Balancer", "Object Storage", "Autonomous Database").
 
 Visual requirements:
-- Shape: rounded rectangle.
-- Fill: white or light neutral.
-- Border: solid, 1px, dark gray or black.
-- Label font: regular, 12-14pt depending on output size.
+- Use Mermaid `Container` or boxed flowchart nodes for concepts.
+- Keep labels concise and human-readable.
 - Labels MUST NOT include counts, OCIDs, timestamps, or resource IDs.
 
 Acceptable labels:
@@ -117,17 +113,15 @@ Network boundaries:
 
 Neutral palette is recommended to avoid visual overload.
 
-Optional layer coloring:
-- Tenancy frame: very light gray background.
-- Compartment frames: white background, solid border.
-- VCN frame: light blue background.
-- Lanes: alternating very light neutrals.
-- External domains: light orange/yellow border.
+Optional layer coloring (if Mermaid themes are used):
+- Tenancy boundary: light neutral.
+- Compartment boundaries: subtle neutral.
+- VCN boundary: light blue.
+- Lanes: alternating light neutrals.
+- External domains: light orange/yellow.
 
 Iconography (optional):
-- Use OCI official icons if available (LB, OKE, Autonomous DB, Object Storage,
-  Security Zone, Logging/Monitoring, DRG/Gateways).
-- If icons are unavailable, use labeled node boxes.
+- Mermaid C4 supports sprites/icons only when configured; default to labeled nodes.
 
 ---
 
@@ -242,7 +236,7 @@ Do not:
 - Show job history (runs, executions, tasks).
 - Show boot volumes as components.
 - Use `(n=X)` in labels.
-- Render every subnet in SVG.
+- Render every subnet node.
 - Merge multiple compartments into a single unlabeled block.
 
 ---

@@ -843,7 +843,7 @@ def main() -> None:
             elif diagrams_choice == "Disable":
                 diagrams = False
             architecture_choice = _ask_choice(
-                "Generate architecture diagrams (SVG, Graphviz)?",
+                "Generate architecture diagrams (Mermaid C4 + flowchart)?",
                 [
                     ("Default", "Use CLI/config defaults."),
                     ("Enable", "Always generate architecture diagrams."),
