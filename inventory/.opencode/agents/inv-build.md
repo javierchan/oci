@@ -3,7 +3,7 @@ description: Builds features, fixes, and improvements for OCI Inventory; execute
 mode: primary
 model: oca/oca/gpt5
 temperature: 0.25
-maxSteps: 8
+maxSteps: 30
 
 tools:
   write: true

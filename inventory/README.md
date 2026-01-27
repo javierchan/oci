@@ -8,6 +8,9 @@ Phase 1 implements:
 - Graph + diagram projections (Mermaid flowcharts + architecture Mermaid views; disable with --no-diagrams / --no-architecture-diagrams)
 - Cost snapshot reporting via Usage API with optional OneSubscription usage (opt-in)
 - Optional GenAI narratives for report/report.md and cost/cost_report.md
+- HTML report (report/report.html) with summary charts (D3), written alongside report.md
+- Offline rebuild command to regenerate reports/diagrams/cost from an existing out/<timestamp>/ (no OCI API calls)
+- Fine-grained diagram toggles per view (tenancy, network, workload, consolidated) and architecture diagrams
 - Diffs and stable hashing (excluding collectedAt)
 - Coverage metrics and schema validation
 - Tests, docs, CI (ruff + pytest)
@@ -118,6 +121,15 @@ Commands:
   ```
   oci-inv diff --prev out/prev-run/inventory/inventory.jsonl --curr out/curr-run/inventory/inventory.jsonl --outdir out/diff
   ```
+- Rebuild from an existing output (offline):
+  Rebuild reports and diagrams from an existing `out/<timestamp>/` without calling OCI APIs. Requires `inventory/inventory.jsonl` and `graph/graph_nodes.jsonl` + `graph/graph_edges.jsonl` to exist; otherwise the command fails.
+  ```
+  oci-inv rebuild --outdir out/20260122T233924Z \
+    --diagrams --architecture-diagrams --validate-diagrams \
+    --diagram-depth 2 --cost-report --cost-group-by service,region \
+    --genai-summary
+  ```
+  Flags (rebuild): `--genai-summary`, `--validate-diagrams`, `--diagrams`, `--architecture-diagrams`, `--diagram-depth 1|2|3`, `--cost-report`, `--cost-compartment-group-by [compartmentId|compartmentName|compartmentPath]`, `--cost-group-by`, `--cost-currency`.
 - Validate authentication:
   ```
   oci-inv validate-auth --auth auto --profile DEFAULT
@@ -204,7 +216,8 @@ allow group <group-name> to read budgets in tenancy
 - If consolidated diagrams still exceed Mermaid limits at depth 1, they are split by region (preferred) or top-level compartment and the base diagram is replaced by a stub that links to split outputs.
 - Workload diagrams that exceed Mermaid limits are split into deterministic overflow parts; if a single-node slice still exceeds the limit, it is skipped and summarized in `report/report.md`.
 - Network diagrams are skipped if a single diagram exceeds Mermaid text limits; the skip is summarized in `report/report.md`.
-- Use `--no-diagrams` and/or `--no-architecture-diagrams` when you only need inventory/cost outputs.
+- Use `--no-diagrams` and/or `--no-architecture-diagrams` when you only need inventory/cost outputs. Per-view toggles are also available for tenancy, network, workload, and consolidated diagrams.
+- When `--validate-diagrams` is enabled and Mermaid CLI (`mmdc`) is on PATH, Mermaid diagrams are validated during run and rebuild. Architecture Mermaid diagrams include an internal validation step that surfaces guideline violations; see `docs/architecture_visual_style.md` and `docs/diagram_guidelines.md`.
 - OCI SDK clients are cached per service+region; set `OCI_INV_DISABLE_CLIENT_CACHE=1` to disable.
 - Increase OCI SDK HTTP connection pool size with `--client-connection-pool-size N` or `OCI_INV_CLIENT_CONNECTION_POOL_SIZE` to reduce pool churn in high-concurrency runs (repo default is 24).
 - Sizing tip: set `--client-connection-pool-size` to at least `--workers-enrich` when you see connection pool warnings.
@@ -364,7 +377,7 @@ Notes for developers:
 - Architecture diagrams are generated as Mermaid `.mmd` files unless `--no-architecture-diagrams` is set.
   diagrams extra are required (`pip install -e ".[diagrams]"`).
   (During installation you may see npm warnings about Puppeteer deprecations; those are typically non-fatal.)
-- Diagram and report rules are documented in `docs/diagram_guidelines.md`, `docs/architecture_visual_style.md`, and `docs/report_guidelines.md`.
+- Diagram and report rules are documented in `docs/diagram_guidelines.md`, `docs/architecture_visual_style.md`, and `docs/report_guidelines.md`. Curated architecture Mermaid views are validated against these guidelines when requested.
 
 ## Known Issues and Notes
 
@@ -387,6 +400,7 @@ subgraph out_ts[out timestamp]
     cons_fc[diagrams/consolidated/diagram.consolidated.flowchart.mmd optional]
     cons_fc_split[diagrams/consolidated/diagram.consolidated.flowchart.region_or_compartment.mmd optional]
     rpt[report/report.md]
+    rpt_html[report/report.html]
     sum[run_summary.json]
     cost[cost/cost_report.md optional]
     diff[diff/diff.json diff_summary.json optional]
@@ -394,6 +408,8 @@ subgraph out_ts[out timestamp]
   end
   inv --> rpt
   sum --> rpt
+  inv --> rpt_html
+  sum --> rpt_html
   inv --> nodes
   rel --> edges
   nodes --> ten
@@ -413,6 +429,7 @@ subgraph out_ts[out timestamp]
 ## Output Contract
 Each run writes to: `out/<timestamp>/` with structured subfolders.
 - report/report.md (execution steps, exclusions, findings, and optional GenAI summary)
+- report/report.html (HTML report with summary charts; always written)
 - inventory/inventory.jsonl (canonicalized, stable JSON lines)
 - inventory/inventory.csv (report fields; missing/blank values rendered as `unknown`)
 - logs/debug.log (per-run log output; same format as console)
@@ -435,6 +452,7 @@ Each run writes to: `out/<timestamp>/` with structured subfolders.
 
 Quick reference (artifacts → purpose):
 - report/report.md: human-readable run log + findings; holds GenAI summary when enabled.
+- report/report.html: HTML report with top-N summaries and charts; OCIDs redacted.
 - inventory/inventory.jsonl: canonical per-resource records for downstream processing/diffing.
 - inventory/inventory.csv: tabular view aligned to report fields; missing values are rendered as `unknown`.
 - logs/debug.log: per-run log output captured to the run directory.
@@ -557,6 +575,11 @@ Signer-based auth also needs a region; set `OCI_REGION` (or `OCI_CLI_REGION`) wh
 - OCI_INV_GENAI_SUMMARY
 - OCI_INV_VALIDATE_DIAGRAMS
 - OCI_INV_DIAGRAMS
+- OCI_INV_TENANCY_DIAGRAMS
+- OCI_INV_NETWORK_DIAGRAMS
+- OCI_INV_WORKLOAD_DIAGRAMS
+- OCI_INV_CONSOLIDATED_DIAGRAMS
+- OCI_INV_ARCHITECTURE_DIAGRAMS
 - OCI_INV_SCHEMA_VALIDATION
 - OCI_INV_SCHEMA_SAMPLE_RECORDS
 - OCI_INV_DIAGRAM_DEPTH
