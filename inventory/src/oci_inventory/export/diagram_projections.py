@@ -201,6 +201,13 @@ def _insert_scope_view_comments(
     part: Optional[str] = None,
 ) -> None:
     insert_at = 2 if len(lines) >= 2 else len(lines)
+    if (
+        len(lines) >= 3
+        and lines[0].strip() == "C4Container"
+        and lines[1].strip() == "LAYOUT_LEFT_RIGHT()"
+        and lines[2].lstrip().startswith("title ")
+    ):
+        insert_at = 3
     safe_scope = _redact_ocids_for_label(scope)
     comments = [f"%% Scope: {safe_scope}", f"%% View: {view}"]
     if part:
