@@ -323,6 +323,19 @@ def _scan_guideline_violations(
             rule="no_ocids_in_labels",
             detail=f"Detected {ocid_hits} ocid1.* occurrences in diagram text.",
         )
+    else:
+        name_hits = sum(
+            1
+            for n in nodes
+            if "ocid1" in str(n.get("name") or "")
+        )
+        if name_hits:
+            _record_diagram_violation(
+                summary,
+                diagram=path.name,
+                rule="no_ocids_in_labels",
+                detail=f"Detected {name_hits} ocid1.* occurrences in source names for diagram.",
+            )
 
     if path.name == "diagram.consolidated.flowchart.mmd":
         scope, view, _part = _extract_scope_view(text)
@@ -3483,7 +3496,7 @@ def _arch_mermaid_label(value: str) -> str:
     text = " ".join(str(value or "").split())
     if not text:
         return "Unknown"
-    text = _redact_ocids_for_label(text)
+    # text = _redact_ocids_for_label(text)
     return text.replace('"', "'")
 
 def _arch_mermaid_container_desc(placement: str) -> str:
@@ -3618,7 +3631,7 @@ def _write_architecture_mermaid_tenancy(
     arch_dir = outdir / "architecture"
     arch_dir.mkdir(parents=True, exist_ok=True)
     path = arch_dir / "diagram.arch.tenancy.mmd"
-    lines: List[str] = ["C4Container", "title Tenancy Architecture (Mermaid)"]
+    lines: List[str] = ["C4Container", "LAYOUT_LEFT_RIGHT()", "title Tenancy Architecture (Mermaid)"]
     _insert_scope_view_comments(lines, scope="architecture:tenancy", view="c4-container")
 
     make_id = _unique_mermaid_id_factory()
@@ -3777,43 +3790,37 @@ def _write_architecture_mermaid_vcn(
     slug = _slugify(vcn_label)
     suffix_label = f".{suffix}" if suffix else ""
     path = arch_dir / f"diagram.arch.vcn.{slug}{suffix_label}.mmd"
-    lines: List[str] = ["flowchart LR"]
-    _insert_scope_view_comments(lines, scope=f"architecture:vcn:{vcn_label}", view="flowchart")
+    lines: List[str] = [
+        "C4Container",
+        "LAYOUT_LEFT_RIGHT()",
+        f"title VCN Architecture: {vcn_label} (Mermaid)",
+    ]
+    _insert_scope_view_comments(lines, scope=f"architecture:vcn:{vcn_label}", view="c4-container")
     make_id = _unique_mermaid_id_factory()
 
     node_by_id = {str(n.get("nodeId") or ""): n for n in vcn_nodes if n.get("nodeId")}
     alias_by_comp = _compartment_alias_map(vcn_nodes)
     comp_ids = [str(n.get("compartmentId") or "") for n in vcn_nodes if n.get("compartmentId")]
     comp_id = sorted({cid for cid in comp_ids if cid})[0] if comp_ids else ""
+    tenancy_label = _arch_mermaid_label(_tenancy_label(vcn_nodes))
     comp_label = _compartment_label_by_id(comp_id, node_by_id=node_by_id, alias_by_id=alias_by_comp)
     comp_label = _arch_mermaid_label(_tenancy_safe_label("", comp_label))
-
-    tenancy_label = _arch_mermaid_label(_tenancy_label(vcn_nodes))
-    tenancy_id = make_id("tenancy")
-    comp_id_node = make_id(f"compartment:{comp_id}")
-    vcn_id_node = make_id(f"vcn:{vcn_label}")
-    lines.append(f'subgraph {tenancy_id}["{tenancy_label}"]')
-    lines.append(f'  subgraph {comp_id_node}["{comp_label}"]')
-    lines.append(f'    subgraph {vcn_id_node}["VCN: {vcn_label}"]')
-    lines.append("      direction TB")
+    lines.append(f'System_Boundary({make_id("tenancy")}, "{tenancy_label}") {{')
+    comp_boundary = make_id(f"compartment:{comp_id}")
+    lines.append(f'  System_Boundary({comp_boundary}, "{comp_label}") {{')
     concepts = build_scope_concepts(nodes=vcn_nodes, edges=vcn_edges, scope_nodes=vcn_nodes)
-    _render_arch_mermaid_flowchart_lanes(
-        lines,
-        make_id=make_id,
+    comp_has_content = False
+    vcn_boundary = make_id(f"vcn:{comp_id}:{vcn_label}")
+    vcn_has_lanes = _arch_c4_has_lanes(
         concepts=concepts,
         placement="in_vcn",
         compartment_id=comp_id,
         vcn_name=vcn_label,
-        indent="      ",
-    )
-    _render_arch_mermaid_flowchart_lanes(
-        lines,
-        make_id=make_id,
+    ) or _arch_c4_has_lanes(
         concepts=concepts,
         placement="edge",
         compartment_id=comp_id,
         vcn_name=vcn_label,
-        indent="      ",
     )
     overlay_items = _arch_overlay_concepts(
         concepts,
@@ -3821,33 +3828,86 @@ def _write_architecture_mermaid_vcn(
         compartment_id=comp_id,
         vcn_name=vcn_label,
     )
+    lines.append(f'    Container_Boundary({vcn_boundary}, "VCN: {vcn_label}") {{')
+    if vcn_has_lanes:
+        _render_arch_mermaid_c4_lanes(
+            lines,
+            make_id=make_id,
+            concepts=concepts,
+            placement="in_vcn",
+            compartment_id=comp_id,
+            vcn_name=vcn_label,
+            indent="      ",
+        )
+        _render_arch_mermaid_c4_lanes(
+            lines,
+            make_id=make_id,
+            concepts=concepts,
+            placement="edge",
+            compartment_id=comp_id,
+            vcn_name=vcn_label,
+            indent="      ",
+        )
     if overlay_items:
         overlay_id = make_id(f"overlay:vcn:{comp_id}:{vcn_label}")
-        lines.append(f'      subgraph {overlay_id}["IAM / Security Overlay"]')
+        lines.append(f'      Container_Boundary({overlay_id}, "IAM / Security Overlay") {{')
         for concept in overlay_items[:ARCH_LANE_TOP_N]:
             node_id = make_id(f"overlay:{concept.concept_id}")
             label = _arch_mermaid_label(concept.label)
-            lines.append(f'        {node_id}["{label}"]')
-        lines.append("      end")
-    lines.append("    end")
-    _render_arch_mermaid_flowchart_lanes(
-        lines,
-        make_id=make_id,
-        concepts=concepts,
-        placement="out_of_vcn",
-        compartment_id=comp_id,
-        indent="    ",
-    )
-    _render_arch_mermaid_flowchart_lanes(
-        lines,
-        make_id=make_id,
-        concepts=concepts,
-        placement="unknown",
-        compartment_id=comp_id,
-        indent="    ",
-    )
-    lines.append("  end")
-    lines.append("end")
+            lines.append(
+                f'        Container({node_id}, "{label}", "Security", "Security Overlay")'
+            )
+        lines.append("      }")
+    if not vcn_has_lanes and not overlay_items:
+        _append_c4_placeholder(
+            lines,
+            make_id=make_id,
+            key=f"vcn:{comp_id}:{vcn_label}",
+            indent="      ",
+        )
+    lines.append("    }")
+    comp_has_content = True
+    if _arch_c4_has_lanes(concepts=concepts, placement="out_of_vcn", compartment_id=comp_id):
+        _render_arch_mermaid_c4_lanes(
+            lines,
+            make_id=make_id,
+            concepts=concepts,
+            placement="out_of_vcn",
+            compartment_id=comp_id,
+            indent="    ",
+        )
+        comp_has_content = True
+    if _arch_c4_has_lanes(concepts=concepts, placement="unknown", compartment_id=comp_id):
+        _render_arch_mermaid_c4_lanes(
+            lines,
+            make_id=make_id,
+            concepts=concepts,
+            placement="unknown",
+            compartment_id=comp_id,
+            indent="    ",
+        )
+        comp_has_content = True
+    overlay_items = _arch_overlay_concepts(concepts, scope="compartment", compartment_id=comp_id)
+    if overlay_items:
+        overlay_id = make_id(f"overlay:compartment:{comp_id}")
+        lines.append(f'    Container_Boundary({overlay_id}, "IAM / Security Overlay") {{')
+        for concept in overlay_items[:ARCH_LANE_TOP_N]:
+            node_id = make_id(f"overlay:{concept.concept_id}")
+            label = _arch_mermaid_label(concept.label)
+            lines.append(
+                f'      Container({node_id}, "{label}", "Security", "Security Overlay")'
+            )
+        lines.append("    }")
+        comp_has_content = True
+    if not comp_has_content:
+        _append_c4_placeholder(
+            lines,
+            make_id=make_id,
+            key=f"compartment:{comp_id}",
+            indent="    ",
+        )
+    lines.append("  }")
+    lines.append("}")
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return path
 
@@ -3865,7 +3925,11 @@ def _write_architecture_mermaid_workload(
     slug = _slugify(workload)
     suffix_label = f".{suffix}" if suffix else ""
     path = arch_dir / f"diagram.arch.workload.{slug}{suffix_label}.mmd"
-    lines: List[str] = ["C4Container", f"title Workload Architecture: {workload} (Mermaid)"]
+    lines: List[str] = [
+        "C4Container",
+        "LAYOUT_LEFT_RIGHT()",
+        f"title Workload Architecture: {workload} (Mermaid)",
+    ]
     _insert_scope_view_comments(lines, scope=f"architecture:workload:{workload}", view="c4-container")
     make_id = _unique_mermaid_id_factory()
 
@@ -4008,18 +4072,23 @@ def _write_architecture_mermaid_compartment(
     arch_dir.mkdir(parents=True, exist_ok=True)
     slug = _slugify(compartment_label)
     path = arch_dir / f"diagram.arch.compartment.{slug}.mmd"
-    lines: List[str] = ["flowchart LR"]
-    _insert_scope_view_comments(lines, scope=f"architecture:compartment:{compartment_label}", view="flowchart")
+    lines: List[str] = [
+        "C4Container",
+        "LAYOUT_LEFT_RIGHT()",
+        f"title Compartment Architecture: {compartment_label} (Mermaid)",
+    ]
+    _insert_scope_view_comments(lines, scope=f"architecture:compartment:{compartment_label}", view="c4-container")
     make_id = _unique_mermaid_id_factory()
 
     tenancy_label = _arch_mermaid_label(_tenancy_label(comp_nodes))
-    tenancy_id = make_id("tenancy")
-    comp_id = make_id(f"compartment:{compartment_label}")
     comp_label = _arch_mermaid_label(_tenancy_safe_label("", compartment_label))
-    lines.append(f'subgraph {tenancy_id}["{tenancy_label}"]')
-    lines.append(f'  subgraph {comp_id}["{comp_label}"]')
-
     concepts = build_scope_concepts(nodes=comp_nodes, edges=comp_edges, scope_nodes=comp_nodes)
+    comp_ids = [str(n.get("compartmentId") or "") for n in comp_nodes if n.get("compartmentId")]
+    comp_id = sorted({cid for cid in comp_ids if cid})[0] if comp_ids else ""
+    lines.append(f'System_Boundary({make_id("tenancy")}, "{tenancy_label}") {{')
+    comp_boundary = make_id(f"compartment:{comp_id or compartment_label}")
+    lines.append(f'  System_Boundary({comp_boundary}, "{comp_label}") {{')
+    comp_has_content = False
     vcn_groups = _group_nodes_by_vcn(comp_nodes, comp_edges)
     top_vcns, _other_vcns = _arch_select_top_groups(vcn_groups, limit=ARCH_MAX_VCNS_PER_COMPARTMENT)
     for vcn_id, vcn_nodes in top_vcns:
@@ -4029,73 +4098,108 @@ def _write_architecture_mermaid_compartment(
                 vcn_label = str(n.get("name") or "")
                 break
         vcn_label = _arch_mermaid_label(_normalize_concept_label(_compact_label(vcn_label, max_len=64)))
-        vcn_id_node = make_id(f"vcn:{vcn_id}")
-        lines.append(f'    subgraph {vcn_id_node}["VCN: {vcn_label}"]')
-        lines.append("      direction TB")
-        _render_arch_mermaid_flowchart_lanes(
-            lines,
-            make_id=make_id,
+        vcn_boundary = make_id(f"vcn:{vcn_id}")
+        vcn_has_lanes = _arch_c4_has_lanes(
             concepts=concepts,
             placement="in_vcn",
-            compartment_id=str(vcn_nodes[0].get("compartmentId") or ""),
+            compartment_id=comp_id,
             vcn_name=vcn_label,
-            indent="      ",
-        )
-        _render_arch_mermaid_flowchart_lanes(
-            lines,
-            make_id=make_id,
+        ) or _arch_c4_has_lanes(
             concepts=concepts,
             placement="edge",
-            compartment_id=str(vcn_nodes[0].get("compartmentId") or ""),
+            compartment_id=comp_id,
             vcn_name=vcn_label,
-            indent="      ",
         )
         overlay_items = _arch_overlay_concepts(
             concepts,
             scope="vcn",
-            compartment_id=str(vcn_nodes[0].get("compartmentId") or ""),
+            compartment_id=comp_id,
             vcn_name=vcn_label,
         )
+        lines.append(f'    Container_Boundary({vcn_boundary}, "VCN: {vcn_label}") {{')
+        if vcn_has_lanes:
+            _render_arch_mermaid_c4_lanes(
+                lines,
+                make_id=make_id,
+                concepts=concepts,
+                placement="in_vcn",
+                compartment_id=comp_id,
+                vcn_name=vcn_label,
+                indent="      ",
+            )
+            _render_arch_mermaid_c4_lanes(
+                lines,
+                make_id=make_id,
+                concepts=concepts,
+                placement="edge",
+                compartment_id=comp_id,
+                vcn_name=vcn_label,
+                indent="      ",
+            )
         if overlay_items:
             overlay_id = make_id(f"overlay:vcn:{vcn_id}")
-            lines.append(f'      subgraph {overlay_id}["IAM / Security Overlay"]')
+            lines.append(f'      Container_Boundary({overlay_id}, "IAM / Security Overlay") {{')
             for concept in overlay_items[:ARCH_LANE_TOP_N]:
                 node_id = make_id(f"overlay:{concept.concept_id}")
                 label = _arch_mermaid_label(concept.label)
-                lines.append(f'        {node_id}["{label}"]')
-            lines.append("      end")
-        lines.append("    end")
-    _render_arch_mermaid_flowchart_lanes(
-        lines,
-        make_id=make_id,
-        concepts=concepts,
-        placement="out_of_vcn",
-        compartment_id=str(comp_nodes[0].get("compartmentId") or ""),
-        indent="    ",
-    )
-    _render_arch_mermaid_flowchart_lanes(
-        lines,
-        make_id=make_id,
-        concepts=concepts,
-        placement="unknown",
-        compartment_id=str(comp_nodes[0].get("compartmentId") or ""),
-        indent="    ",
-    )
+                lines.append(
+                    f'        Container({node_id}, "{label}", "Security", "Security Overlay")'
+                )
+            lines.append("      }")
+        if not vcn_has_lanes and not overlay_items:
+            _append_c4_placeholder(
+                lines,
+                make_id=make_id,
+                key=f"vcn:{vcn_id}",
+                indent="      ",
+            )
+        lines.append("    }")
+        comp_has_content = True
+    if _arch_c4_has_lanes(concepts=concepts, placement="out_of_vcn", compartment_id=comp_id):
+        _render_arch_mermaid_c4_lanes(
+            lines,
+            make_id=make_id,
+            concepts=concepts,
+            placement="out_of_vcn",
+            compartment_id=comp_id,
+            indent="    ",
+        )
+        comp_has_content = True
+    if _arch_c4_has_lanes(concepts=concepts, placement="unknown", compartment_id=comp_id):
+        _render_arch_mermaid_c4_lanes(
+            lines,
+            make_id=make_id,
+            concepts=concepts,
+            placement="unknown",
+            compartment_id=comp_id,
+            indent="    ",
+        )
+        comp_has_content = True
     overlay_items = _arch_overlay_concepts(
         concepts,
         scope="compartment",
-        compartment_id=str(comp_nodes[0].get("compartmentId") or ""),
+        compartment_id=comp_id,
     )
     if overlay_items:
-        overlay_id = make_id(f"overlay:compartment:{compartment_label}")
-        lines.append(f'    subgraph {overlay_id}["IAM / Security Overlay"]')
+        overlay_id = make_id(f"overlay:compartment:{comp_id or compartment_label}")
+        lines.append(f'    Container_Boundary({overlay_id}, "IAM / Security Overlay") {{')
         for concept in overlay_items[:ARCH_LANE_TOP_N]:
             node_id = make_id(f"overlay:{concept.concept_id}")
             label = _arch_mermaid_label(concept.label)
-            lines.append(f'      {node_id}["{label}"]')
-        lines.append("    end")
-    lines.append("  end")
-    lines.append("end")
+            lines.append(
+                f'      Container({node_id}, "{label}", "Security", "Security Overlay")'
+            )
+        lines.append("    }")
+        comp_has_content = True
+    if not comp_has_content:
+        _append_c4_placeholder(
+            lines,
+            make_id=make_id,
+            key=f"compartment:{comp_id or compartment_label}",
+            indent="    ",
+        )
+    lines.append("  }")
+    lines.append("}")
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return path
 
