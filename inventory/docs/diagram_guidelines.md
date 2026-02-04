@@ -118,7 +118,7 @@ Mandatory aggregation (per Subnet or Out-of-VCN container):
 
 Noise reduction:
 - No functional overlays or management flows.
-- Labels must exclude OCIDs, versions, and timestamps.
+- Labels must exclude versions and timestamps. Architecture diagrams use display names per `docs/architecture_visual_style.md`.
 - No edges from individual resources to OCI Services. Use a single edge from the VCN boundary to OCI Services when a Service Gateway exists.
 
 When split outputs are emitted, the stub diagram links to an index file:
@@ -133,8 +133,7 @@ Visual requirements:
 ### 1c) Architecture Mermaid Diagrams (Curated Overview)
 
 Applies to `diagrams/architecture/diagram.arch.*.mmd`. These are optional, overview-oriented Mermaid diagrams rendered as:
-- `C4Container` for tenancy and workload scopes
-- `flowchart LR` for VCN and compartment scopes
+- `C4Container` for tenancy, compartment, VCN, and workload scopes
 
 - Architecture diagrams are additive and do not replace Mermaid flowchart outputs in other views.
 - Scope is expressed in the filename:

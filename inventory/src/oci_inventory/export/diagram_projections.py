@@ -201,13 +201,6 @@ def _insert_scope_view_comments(
     part: Optional[str] = None,
 ) -> None:
     insert_at = 2 if len(lines) >= 2 else len(lines)
-    if (
-        len(lines) >= 3
-        and lines[0].strip() == "C4Container"
-        and lines[1].strip() == "LAYOUT_LEFT_RIGHT()"
-        and lines[2].lstrip().startswith("title ")
-    ):
-        insert_at = 3
     safe_scope = _redact_ocids_for_label(scope)
     comments = [f"%% Scope: {safe_scope}", f"%% View: {view}"]
     if part:
@@ -3638,7 +3631,7 @@ def _write_architecture_mermaid_tenancy(
     arch_dir = outdir / "architecture"
     arch_dir.mkdir(parents=True, exist_ok=True)
     path = arch_dir / "diagram.arch.tenancy.mmd"
-    lines: List[str] = ["C4Container", "LAYOUT_LEFT_RIGHT()", "title Tenancy Architecture (Mermaid)"]
+    lines: List[str] = ["C4Container", "title Tenancy Architecture (Mermaid)"]
     _insert_scope_view_comments(lines, scope="architecture:tenancy", view="c4-container")
 
     make_id = _unique_mermaid_id_factory()
@@ -3799,7 +3792,6 @@ def _write_architecture_mermaid_vcn(
     path = arch_dir / f"diagram.arch.vcn.{slug}{suffix_label}.mmd"
     lines: List[str] = [
         "C4Container",
-        "LAYOUT_LEFT_RIGHT()",
         f"title VCN Architecture: {vcn_label} (Mermaid)",
     ]
     _insert_scope_view_comments(lines, scope=f"architecture:vcn:{vcn_label}", view="c4-container")
@@ -3934,7 +3926,6 @@ def _write_architecture_mermaid_workload(
     path = arch_dir / f"diagram.arch.workload.{slug}{suffix_label}.mmd"
     lines: List[str] = [
         "C4Container",
-        "LAYOUT_LEFT_RIGHT()",
         f"title Workload Architecture: {workload} (Mermaid)",
     ]
     _insert_scope_view_comments(lines, scope=f"architecture:workload:{workload}", view="c4-container")
@@ -4081,7 +4072,6 @@ def _write_architecture_mermaid_compartment(
     path = arch_dir / f"diagram.arch.compartment.{slug}.mmd"
     lines: List[str] = [
         "C4Container",
-        "LAYOUT_LEFT_RIGHT()",
         f"title Compartment Architecture: {compartment_label} (Mermaid)",
     ]
     _insert_scope_view_comments(lines, scope=f"architecture:compartment:{compartment_label}", view="c4-container")
