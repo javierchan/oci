@@ -10,6 +10,7 @@ from .plan import (
     WizardPlan,
     build_diff_plan,
     build_coverage_plan,
+    build_rebuild_plan,
     build_run_plan,
     build_simple_plan,
 )
@@ -510,6 +511,7 @@ def main() -> None:
                 "What do you want to do?",
                 [
                     ("Run inventory", "Discover resources and write a new inventory run."),
+                    ("Rebuild outputs", "Rebuild reports/diagrams from an existing outdir."),
                     ("Diff inventories", "Compare two inventory/inventory.jsonl files and write a diff."),
                     ("Troubleshooting", "Diagnostics and helper utilities."),
                     ("Exit", "Quit the wizard."),
@@ -721,6 +723,98 @@ def main() -> None:
             }
             raise SystemExit(_confirm_and_run(plan, plan_data=plan_data))
 
+        if mode == "Rebuild outputs":
+            _section("Rebuild Outputs")
+            outdir = _ask_outdir_base("Existing output directory", default="out")
+            config_path = _ask_optional_existing_file(
+                "Config file path (blank = use repo default config/workers.yaml)",
+                default="config/workers.yaml",
+            )
+            genai_summary = _ask_bool(
+                "Generate GenAI Executive Summary in report/report.md?",
+                default=False,
+            )
+            validate_diagrams = _ask_bool("Validate Mermaid diagrams with mmdc?", default=False)
+            diagrams = _ask_bool("Regenerate Mermaid diagrams?", default=True)
+            architecture_diagrams = _ask_bool("Regenerate architecture diagrams?", default=True)
+            diagram_depth = _ask_optional_int_with_min(
+                "Consolidated diagram depth (blank = default)",
+                min_value=1,
+            )
+            cost_report = _ask_bool("Regenerate cost report?", default=False)
+            cost_compartment_group_by = None
+            cost_group_by = None
+            cost_currency = None
+            if cost_report:
+                cost_compartment_group_by = _ask_choice(
+                    "Cost compartment grouping",
+                    [
+                        ("Default", "Use compartmentId (default)."),
+                        ("compartmentName", "Group by compartment display name."),
+                        ("compartmentPath", "Group by compartment path."),
+                    ],
+                    default="Default",
+                )
+                if cost_compartment_group_by == "Default":
+                    cost_compartment_group_by = None
+                cost_group_by = _ask_multi_select(
+                    "Cost group_by fields (optional)",
+                    [
+                        ("service", "Service name"),
+                        ("region", "Region name"),
+                        ("compartmentId", "Compartment OCID"),
+                        ("compartmentName", "Compartment display name"),
+                        ("compartmentPath", "Compartment path"),
+                        ("sku", "SKU"),
+                    ],
+                )
+                if not cost_group_by:
+                    cost_group_by = None
+                cost_currency = _ask_str(
+                    "Cost currency (ISO 4217, optional)",
+                    default="",
+                    allow_blank=True,
+                ).strip() or None
+
+            plan = build_rebuild_plan(
+                auth=auth,
+                profile=profile,
+                tenancy_ocid=tenancy_ocid,
+                outdir=outdir,
+                config_path=config_path,
+                genai_summary=genai_summary,
+                validate_diagrams=validate_diagrams,
+                diagrams=diagrams,
+                architecture_diagrams=architecture_diagrams,
+                diagram_depth=diagram_depth,
+                cost_report=cost_report,
+                cost_compartment_group_by=cost_compartment_group_by,
+                cost_group_by=cost_group_by,
+                cost_currency=cost_currency,
+                json_logs=json_logs,
+                log_level=log_level,
+            )
+            plan_data = {
+                "mode": "rebuild",
+                "auth": auth,
+                "profile": profile,
+                "tenancy_ocid": tenancy_ocid,
+                "json_logs": json_logs,
+                "log_level": log_level,
+                "config": str(config_path) if config_path else None,
+                "outdir": str(outdir),
+                "genai_summary": genai_summary,
+                "validate_diagrams": validate_diagrams,
+                "diagrams": diagrams,
+                "architecture_diagrams": architecture_diagrams,
+                "diagram_depth": diagram_depth,
+                "cost_report": cost_report,
+                "cost_compartment_group_by": cost_compartment_group_by,
+                "cost_group_by": cost_group_by,
+                "cost_currency": cost_currency,
+            }
+            raise SystemExit(_confirm_and_run(plan, plan_data=plan_data))
+
         # Run inventory
         _section("Run Inventory")
         if _ask_bool("List subscribed regions now?", default=False):
@@ -805,6 +899,10 @@ def main() -> None:
 
         validate_diagrams: Optional[bool] = None
         diagrams: Optional[bool] = None
+        tenancy_diagrams: Optional[bool] = None
+        network_diagrams: Optional[bool] = None
+        workload_diagrams: Optional[bool] = None
+        consolidated_diagrams: Optional[bool] = None
         architecture_diagrams: Optional[bool] = None
         schema_validation: Optional[str] = None
         schema_sample_records: Optional[int] = None
@@ -842,6 +940,58 @@ def main() -> None:
                 diagrams = True
             elif diagrams_choice == "Disable":
                 diagrams = False
+            tenancy_choice = _ask_choice(
+                "Generate tenancy diagrams?",
+                [
+                    ("Default", "Use CLI/config defaults."),
+                    ("Enable", "Always generate tenancy diagrams."),
+                    ("Disable", "Disable tenancy diagrams for this run."),
+                ],
+                default="Default",
+            )
+            if tenancy_choice == "Enable":
+                tenancy_diagrams = True
+            elif tenancy_choice == "Disable":
+                tenancy_diagrams = False
+            network_choice = _ask_choice(
+                "Generate network diagrams?",
+                [
+                    ("Default", "Use CLI/config defaults."),
+                    ("Enable", "Always generate network diagrams."),
+                    ("Disable", "Disable network diagrams for this run."),
+                ],
+                default="Default",
+            )
+            if network_choice == "Enable":
+                network_diagrams = True
+            elif network_choice == "Disable":
+                network_diagrams = False
+            workload_choice = _ask_choice(
+                "Generate workload diagrams?",
+                [
+                    ("Default", "Use CLI/config defaults."),
+                    ("Enable", "Always generate workload diagrams."),
+                    ("Disable", "Disable workload diagrams for this run."),
+                ],
+                default="Default",
+            )
+            if workload_choice == "Enable":
+                workload_diagrams = True
+            elif workload_choice == "Disable":
+                workload_diagrams = False
+            consolidated_choice = _ask_choice(
+                "Generate consolidated diagrams?",
+                [
+                    ("Default", "Use CLI/config defaults."),
+                    ("Enable", "Always generate consolidated diagrams."),
+                    ("Disable", "Disable consolidated diagrams for this run."),
+                ],
+                default="Default",
+            )
+            if consolidated_choice == "Enable":
+                consolidated_diagrams = True
+            elif consolidated_choice == "Disable":
+                consolidated_diagrams = False
             architecture_choice = _ask_choice(
                 "Generate architecture diagrams (Mermaid C4 + flowchart)?",
                 [
@@ -989,6 +1139,10 @@ def main() -> None:
             include_terminated=include_terminated,
             validate_diagrams=validate_diagrams,
             diagrams=diagrams,
+            tenancy_diagrams=tenancy_diagrams,
+            network_diagrams=network_diagrams,
+            workload_diagrams=workload_diagrams,
+            consolidated_diagrams=consolidated_diagrams,
             architecture_diagrams=architecture_diagrams,
             schema_validation=schema_validation,
             schema_sample_records=schema_sample_records,
@@ -1028,6 +1182,10 @@ def main() -> None:
             "include_terminated": include_terminated,
             "validate_diagrams": validate_diagrams,
             "diagrams": diagrams,
+            "tenancy_diagrams": tenancy_diagrams,
+            "network_diagrams": network_diagrams,
+            "workload_diagrams": workload_diagrams,
+            "consolidated_diagrams": consolidated_diagrams,
             "architecture_diagrams": architecture_diagrams,
             "schema_validation": schema_validation,
             "schema_sample_records": schema_sample_records,

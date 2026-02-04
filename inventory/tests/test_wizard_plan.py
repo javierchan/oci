@@ -29,6 +29,10 @@ def test_build_run_plan_contains_expected_flags() -> None:
         include_terminated=True,
         validate_diagrams=True,
         diagrams=False,
+        tenancy_diagrams=True,
+        network_diagrams=False,
+        workload_diagrams=True,
+        consolidated_diagrams=False,
         schema_validation="sampled",
         schema_sample_records=2500,
         diagram_depth=2,
@@ -75,6 +79,10 @@ def test_build_run_plan_contains_expected_flags() -> None:
     assert "--no-json-logs" in plan.argv
     assert "--validate-diagrams" in plan.argv
     assert "--no-diagrams" in plan.argv
+    assert "--tenancy-diagrams" in plan.argv
+    assert "--no-network-diagrams" in plan.argv
+    assert "--workload-diagrams" in plan.argv
+    assert "--no-consolidated-diagrams" in plan.argv
     assert "--validate-schema" in plan.argv
     assert "sampled" in plan.argv
     assert "--validate-schema-sample" in plan.argv

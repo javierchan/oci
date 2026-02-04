@@ -20,6 +20,10 @@ query: "query all resources"
 genai_summary: true
 validate_diagrams: true
 diagrams: false
+tenancy_diagrams: true
+network_diagrams: false
+workload_diagrams: true
+consolidated_diagrams: false
 schema_validation: sampled
 schema_sample_records: 2000
 diagram_depth: 2
@@ -55,6 +59,10 @@ client_connection_pool_size: 12
     assert "--genai-summary" in plan.argv
     assert "--validate-diagrams" in plan.argv
     assert "--no-diagrams" in plan.argv
+    assert "--tenancy-diagrams" in plan.argv
+    assert "--no-network-diagrams" in plan.argv
+    assert "--workload-diagrams" in plan.argv
+    assert "--no-consolidated-diagrams" in plan.argv
     assert "--validate-schema" in plan.argv
     assert "sampled" in plan.argv
     assert "--validate-schema-sample" in plan.argv

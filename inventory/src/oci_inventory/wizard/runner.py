@@ -12,6 +12,7 @@ from ..cli import (
     cmd_list_compartments,
     cmd_list_genai_models,
     cmd_list_regions,
+    cmd_rebuild,
     cmd_run,
     cmd_validate_auth,
 )
@@ -82,6 +83,9 @@ def execute_plan(plan: WizardPlan) -> Tuple[int, Optional[Path], str, str]:
         with redirect_stdout(stdout_buf):
             if command == "run":
                 code = cmd_run(cfg)
+                return code, cfg.outdir, stdout_buf.getvalue(), log_buf.getvalue()
+            if command == "rebuild":
+                code = cmd_rebuild(cfg)
                 return code, cfg.outdir, stdout_buf.getvalue(), log_buf.getvalue()
             if command == "diff":
                 code = cmd_diff(cfg)
