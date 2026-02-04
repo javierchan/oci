@@ -81,6 +81,10 @@ def build_run_plan(
     include_terminated: Optional[bool] = None,
     validate_diagrams: Optional[bool] = None,
     diagrams: Optional[bool] = None,
+    tenancy_diagrams: Optional[bool] = None,
+    network_diagrams: Optional[bool] = None,
+    workload_diagrams: Optional[bool] = None,
+    consolidated_diagrams: Optional[bool] = None,
     architecture_diagrams: Optional[bool] = None,
     schema_validation: Optional[str] = None,
     schema_sample_records: Optional[int] = None,
@@ -152,6 +156,22 @@ def build_run_plan(
         argv.append("--diagrams")
     elif diagrams is False:
         argv.append("--no-diagrams")
+    if tenancy_diagrams is True:
+        argv.append("--tenancy-diagrams")
+    elif tenancy_diagrams is False:
+        argv.append("--no-tenancy-diagrams")
+    if network_diagrams is True:
+        argv.append("--network-diagrams")
+    elif network_diagrams is False:
+        argv.append("--no-network-diagrams")
+    if workload_diagrams is True:
+        argv.append("--workload-diagrams")
+    elif workload_diagrams is False:
+        argv.append("--no-workload-diagrams")
+    if consolidated_diagrams is True:
+        argv.append("--consolidated-diagrams")
+    elif consolidated_diagrams is False:
+        argv.append("--no-consolidated-diagrams")
     if architecture_diagrams is True:
         argv.append("--architecture-diagrams")
     elif architecture_diagrams is False:
@@ -218,6 +238,75 @@ def build_diff_plan(
     argv.extend(["--prev", str(prev)])
     argv.extend(["--curr", str(curr)])
     argv.extend(["--outdir", str(outdir)])
+    return WizardPlan(argv=argv)
+
+
+def build_rebuild_plan(
+    *,
+    auth: str,
+    profile: Optional[str],
+    tenancy_ocid: Optional[str],
+    outdir: Path,
+    config_path: Optional[Path] = None,
+    genai_summary: Optional[bool] = None,
+    validate_diagrams: Optional[bool] = None,
+    diagrams: Optional[bool] = None,
+    architecture_diagrams: Optional[bool] = None,
+    diagram_depth: Optional[int] = None,
+    cost_report: Optional[bool] = None,
+    cost_compartment_group_by: Optional[str] = None,
+    cost_group_by: Optional[List[str]] = None,
+    cost_currency: Optional[str] = None,
+    json_logs: Optional[bool] = None,
+    log_level: Optional[str] = None,
+) -> WizardPlan:
+    argv: List[str] = ["rebuild"]
+    argv.extend(
+        build_common_argv(
+            auth=auth,
+            profile=profile,
+            tenancy_ocid=tenancy_ocid,
+            log_level=log_level,
+            json_logs=json_logs,
+            config_path=config_path,
+        )
+    )
+    argv.extend(["--outdir", str(outdir)])
+
+    if genai_summary is True:
+        argv.append("--genai-summary")
+    elif genai_summary is False:
+        argv.append("--no-genai-summary")
+
+    if validate_diagrams is True:
+        argv.append("--validate-diagrams")
+    elif validate_diagrams is False:
+        argv.append("--no-validate-diagrams")
+
+    if diagrams is True:
+        argv.append("--diagrams")
+    elif diagrams is False:
+        argv.append("--no-diagrams")
+
+    if architecture_diagrams is True:
+        argv.append("--architecture-diagrams")
+    elif architecture_diagrams is False:
+        argv.append("--no-architecture-diagrams")
+
+    if diagram_depth is not None:
+        _maybe_add(argv, "--diagram-depth", str(int(diagram_depth)))
+
+    if cost_report is True:
+        argv.append("--cost-report")
+    elif cost_report is False:
+        argv.append("--no-cost-report")
+
+    if cost_report is not False:
+        _maybe_add(argv, "--cost-compartment-group-by", cost_compartment_group_by)
+        if cost_group_by:
+            _maybe_add(argv, "--cost-group-by", ",".join(cost_group_by))
+        _maybe_add(argv, "--cost-currency", cost_currency)
+
     return WizardPlan(argv=argv)
 
 

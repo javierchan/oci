@@ -10,6 +10,7 @@ from .plan import (
     WizardPlan,
     build_diff_plan,
     build_coverage_plan,
+    build_rebuild_plan,
     build_run_plan,
     build_simple_plan,
 )
@@ -89,7 +90,7 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
     """Load a non-interactive wizard plan from a YAML/JSON file.
 
         Schema (minimal):
-            mode: run|diff|validate-auth|list-regions|list-compartments|list-genai-models|enrich-coverage
+            mode: run|diff|rebuild|validate-auth|list-regions|list-compartments|list-genai-models|enrich-coverage
       auth: auto|config|instance|resource|security_token
       profile: optional
       tenancy_ocid: optional
@@ -110,6 +111,10 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       client_connection_pool_size: optional int
       validate_diagrams: optional bool
       diagrams: optional bool
+      tenancy_diagrams: optional bool
+      network_diagrams: optional bool
+      workload_diagrams: optional bool
+      consolidated_diagrams: optional bool
       architecture_diagrams: optional bool
       schema_validation: optional (auto|full|sampled|off)
       schema_sample_records: optional int
@@ -130,6 +135,19 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
       prev: required path
       curr: required path
       outdir: required path
+    
+    For mode=rebuild:
+      outdir: required path
+      config: optional path to a CLI config file
+      genai_summary: optional bool
+      validate_diagrams: optional bool
+      diagrams: optional bool
+      architecture_diagrams: optional bool
+      diagram_depth: optional int (1-3)
+      cost_report: optional bool
+      cost_compartment_group_by: optional (compartmentId|compartmentName|compartmentPath)
+      cost_group_by: optional list or comma-separated string
+      cost_currency: optional (ISO 4217)
 
     """
 
@@ -179,6 +197,39 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             log_level=log_level,
         )
 
+    if mode == "rebuild":
+        config_path = _as_str(cfg.get("config"))
+        outdir = _as_str(cfg.get("outdir"))
+        if not outdir:
+            raise ValueError("Wizard rebuild config requires: outdir")
+        genai_summary = _as_bool(cfg.get("genai_summary"))
+        validate_diagrams = _as_bool(cfg.get("validate_diagrams"))
+        diagrams = _as_bool(cfg.get("diagrams"))
+        architecture_diagrams = _as_bool(cfg.get("architecture_diagrams"))
+        diagram_depth = _as_int(cfg.get("diagram_depth"))
+        cost_report = _as_bool(cfg.get("cost_report"))
+        cost_compartment_group_by = _as_str(cfg.get("cost_compartment_group_by"))
+        cost_group_by = _as_list(cfg.get("cost_group_by"))
+        cost_currency = _as_str(cfg.get("cost_currency"))
+        return build_rebuild_plan(
+            auth=auth,
+            profile=profile,
+            tenancy_ocid=tenancy_ocid,
+            outdir=Path(outdir),
+            config_path=Path(config_path) if config_path else None,
+            genai_summary=genai_summary,
+            validate_diagrams=validate_diagrams,
+            diagrams=diagrams,
+            architecture_diagrams=architecture_diagrams,
+            diagram_depth=diagram_depth,
+            cost_report=cost_report,
+            cost_compartment_group_by=cost_compartment_group_by,
+            cost_group_by=cost_group_by,
+            cost_currency=cost_currency,
+            json_logs=json_logs,
+            log_level=log_level,
+        )
+
     if mode == "enrich-coverage":
         inventory = _as_str(cfg.get("inventory"))
         top = _as_int(cfg.get("top"))
@@ -207,6 +258,10 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
         include_terminated = _as_bool(cfg.get("include_terminated"))
         validate_diagrams = _as_bool(cfg.get("validate_diagrams"))
         diagrams = _as_bool(cfg.get("diagrams"))
+        tenancy_diagrams = _as_bool(cfg.get("tenancy_diagrams"))
+        network_diagrams = _as_bool(cfg.get("network_diagrams"))
+        workload_diagrams = _as_bool(cfg.get("workload_diagrams"))
+        consolidated_diagrams = _as_bool(cfg.get("consolidated_diagrams"))
         architecture_diagrams = _as_bool(cfg.get("architecture_diagrams"))
         schema_validation = _as_str(cfg.get("schema_validation"))
         schema_sample_records = _as_int(cfg.get("schema_sample_records"))
@@ -241,6 +296,10 @@ def load_wizard_plan_from_file(path: Path) -> WizardPlan:
             include_terminated=include_terminated,
             validate_diagrams=validate_diagrams,
             diagrams=diagrams,
+            tenancy_diagrams=tenancy_diagrams,
+            network_diagrams=network_diagrams,
+            workload_diagrams=workload_diagrams,
+            consolidated_diagrams=consolidated_diagrams,
             architecture_diagrams=architecture_diagrams,
             schema_validation=schema_validation,
             schema_sample_records=schema_sample_records,
