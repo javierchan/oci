@@ -77,7 +77,7 @@ A concept node is a logical building block (for example, "OKE Cluster",
 Visual requirements:
 - Use Mermaid `Container` or boxed flowchart nodes for concepts.
 - Keep labels concise and human-readable.
-- Labels MUST NOT include counts, OCIDs, timestamps, or resource IDs.
+- Use the resource display name for labels; do not add counts, timestamps, or resource IDs.
 
 Acceptable labels:
 - `OKE Cluster`
@@ -87,7 +87,6 @@ Acceptable labels:
 - `Observability Suite`
 
 Forbidden labels:
-- `ocid1.instance.oc1...`
 - `nodepool-202401231230111`
 - `boot-volume-20240201-1200`
 - `OKE Nodes (n=3)`
@@ -232,7 +231,7 @@ Do:
 - Show gateways for edge connectivity when present.
 
 Do not:
-- Show raw inventory IDs or OCIDs.
+- Show raw inventory IDs (internal IDs, synthetic keys).
 - Show job history (runs, executions, tasks).
 - Show boot volumes as components.
 - Use `(n=X)` in labels.
