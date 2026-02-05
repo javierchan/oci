@@ -678,6 +678,21 @@ def render_run_report_md(
         )
     )
     lines.append("")
+    if discovered_records:
+        type_counts: Dict[str, int] = {}
+        for r in discovered_records:
+            rt = _record_type(r)
+            if rt:
+                type_counts[rt] = type_counts.get(rt, 0) + 1
+        top_types = _top_n(type_counts, 3)
+        top_types_txt = ", ".join([f"{k}={v}" for k, v in top_types]) if top_types else "(none)"
+        loga_pct = _pct(len(loga_entity_recs), len(discovered_records))
+        lines.append(
+            "Resource mix is concentrated in "
+            f"{top_types_txt}. Observability footprint is material: "
+            f"Log Analytics Entities represent {loga_pct} of observed records."
+        )
+        lines.append("")
 
     # Graph artifacts (nodes/edges) summary, if present.
     outdir = Path(str(cfg_dict.get("outdir") or "")).expanduser() if cfg_dict.get("outdir") else None
@@ -690,29 +705,29 @@ def render_run_report_md(
         )
         lines.append("")
 
-        node_rows: List[List[str]] = []
-        for k, v in _top_n(graph_summary.get("node_category_counts", {}), 10):
-            node_rows.append([k or "(unknown)", str(v)])
-        if node_rows:
-            lines.append("Node categories:")
-            lines.append("")
-            lines.extend(_md_table(["Category", "Count"], node_rows))
-            lines.append("")
-
+        node_count = int(graph_summary.get("node_count") or 0)
+        edge_count = int(graph_summary.get("edge_count") or 0)
+        cat_rows = _top_n(graph_summary.get("node_category_counts", {}), 3)
+        cat_txt = ", ".join([f"{k}={v}" for k, v in cat_rows]) if cat_rows else "(none)"
         type_rows: List[List[str]] = []
         for k, v in _top_n(graph_summary.get("node_type_counts", {}), 10):
             type_rows.append([k or "(unknown)", str(v)])
+        rel_rows: List[List[str]] = []
+        for k, v in _top_n(graph_summary.get("relation_type_counts", {}), 5):
+            rel_rows.append([k or "(unknown)", str(v)])
+
+        lines.append(
+            f"Graph contains {node_count} nodes and {edge_count} edges. "
+            f"Top node categories: {cat_txt}."
+        )
+        lines.append("")
         if type_rows:
             lines.append("Top node types:")
             lines.append("")
             lines.extend(_md_table(["Node type", "Count"], type_rows))
             lines.append("")
-
-        rel_rows: List[List[str]] = []
-        for k, v in _top_n(graph_summary.get("relation_type_counts", {}), 20):
-            rel_rows.append([k or "(unknown)", str(v)])
         if rel_rows:
-            lines.append("Edge relation types:")
+            lines.append("Top relation types:")
             lines.append("")
             lines.extend(_md_table(["Relation", "Count"], rel_rows))
             lines.append("")
@@ -794,7 +809,10 @@ def render_run_report_md(
             bucket[rt] = bucket.get(rt, 0) + 1
 
         rows: List[List[str]] = []
-        for cid, count in _top_n(comp_counts, 20):
+        top_comp = _top_n(comp_counts, 10)
+        top_total = sum([count for _cid, count in top_comp])
+        total_comp = sum([count for _cid, count in comp_counts.items()])
+        for cid, count in top_comp:
             name = name_by_comp.get(cid, "")
             role = _infer_compartment_role_hint(name)
             label = _compartment_label(cid, alias_by_id=alias_by_comp, name_by_id=name_by_comp)
@@ -802,6 +820,14 @@ def render_run_report_md(
             rows.append([label, role or "(not inferred)", str(count), top_types or "(none)"])
 
         lines.extend(_md_table(["Compartment", "Role hint", "Resources", "Top resource types"], rows))
+        if total_comp:
+            remaining_compartments = max(len(comp_counts) - len(top_comp), 0)
+            top_pct = _pct(top_total, total_comp)
+            lines.append("")
+            lines.append(
+                f"Top {len(top_comp)} compartments account for {top_pct} of observed resources; "
+                f"the remaining {remaining_compartments} compartments form the long tail."
+            )
     else:
         lines.append("- No compartment IDs were present in the discovered records.")
     lines.append("")
@@ -838,34 +864,49 @@ def render_run_report_md(
 
         lines.append("Diagram generation notes (best-effort):")
         lines.append("")
+        lines.append(f"Violations: {len(violations)}. Split outputs: {len(split)}. Skipped: {len(skipped)}.")
+        lines.append("")
+
         if violations:
             violation_rows: List[List[str]] = []
-            for item in sorted(violations, key=lambda x: str(x.get("diagram") or "")):
+            for item in sorted(violations, key=lambda x: str(x.get("diagram") or ""))[:5]:
                 diagram = str(item.get("diagram") or "")
                 rule = str(item.get("rule") or "")
                 detail = str(item.get("detail") or "")
                 violation_rows.append([diagram, rule or "(unknown)", detail or "(none)"])
+            lines.append("Violations (sample):")
+            lines.append("")
             lines.extend(_md_table(["Diagram", "Rule", "Detail"], violation_rows))
+            if len(violations) > 5:
+                lines.append(f"(Truncated: {len(violations) - 5} more violations not shown.)")
             lines.append("")
         if split:
             split_rows: List[List[str]] = []
-            for item in sorted(split, key=lambda x: str(x.get("diagram") or "")):
+            for item in sorted(split, key=lambda x: str(x.get("diagram") or ""))[:5]:
                 diagram = str(item.get("diagram") or "")
                 parts = [str(p) for p in (item.get("parts") or [])]
                 reason = _reason_label(str(item.get("reason") or ""))
                 split_rows.append([diagram, _parts_label(parts), reason])
+            lines.append("Split outputs (sample):")
+            lines.append("")
             lines.extend(_md_table(["Diagram", "Split outputs", "Reason"], split_rows))
+            if len(split) > 5:
+                lines.append(f"(Truncated: {len(split) - 5} more split entries not shown.)")
             lines.append("")
         if skipped:
             skip_rows: List[List[str]] = []
-            for item in sorted(skipped, key=lambda x: str(x.get("diagram") or "")):
+            for item in sorted(skipped, key=lambda x: str(x.get("diagram") or ""))[:5]:
                 diagram = str(item.get("diagram") or "")
                 reason = _reason_label(str(item.get("reason") or ""))
                 size = str(item.get("size") or "")
                 limit = str(item.get("limit") or "")
                 size_label = f"{size}/{limit}" if size and limit else "(unknown)"
                 skip_rows.append([diagram, reason, size_label])
+            lines.append("Skipped diagrams (sample):")
+            lines.append("")
             lines.extend(_md_table(["Diagram", "Reason", "Size/Limit"], skip_rows))
+            if len(skipped) > 5:
+                lines.append(f"(Truncated: {len(skipped) - 5} more skipped entries not shown.)")
             lines.append("")
 
     # Graph-derived connectivity (only if edges include relationships beyond IN_COMPARTMENT)
@@ -1457,6 +1498,10 @@ def render_run_report_md(
         lines.append(f"- Diff warning: {_truncate(diff_warning, 300)}")
     if fatal_error:
         lines.append(f"- Fatal error: {_truncate(fatal_error, 500)}")
+    if skipped or split or violations:
+        lines.append(
+            f"- Diagram generation summary: violations={len(violations)}, split={len(split)}, skipped={len(skipped)}."
+        )
 
     # If we had to alias compartments, provide the mapping here (metadata/appendix only).
     if alias_by_comp:
