@@ -1063,7 +1063,12 @@ def render_run_report_md(
         lines.append("- No workload clusters could be confidently inferred from names/tags in this scope.")
         lines.append("")
     else:
-        lines.append("Workload candidates (grouped by naming and/or tags; only groups with ≥3 resources are shown).")
+        total_workload_resources = sum(len(recs) for recs in workloads.values())
+        coverage_pct = _pct(total_workload_resources, len(discovered_records))
+        lines.append(
+            f"Workload inference grouped **{total_workload_resources}** resources across **{len(workloads)}** "
+            f"workload candidates (coverage: {coverage_pct})."
+        )
         lines.append("")
 
         rows: List[List[str]] = []
@@ -1071,7 +1076,7 @@ def render_run_report_md(
         shown = 0
         for wname, recs in workloads.items():
             shown += 1
-            if shown > 10:
+            if shown > 3:
                 break
 
             type_counts: Dict[str, int] = {}
@@ -1088,26 +1093,33 @@ def render_run_report_md(
                 if reg:
                     region_set.add(reg)
 
-            top_types = ", ".join([f"{k}={v}" for k, v in _top_n(type_counts, 6)])
+            top_types = ", ".join([f"{k}={v}" for k, v in _top_n(type_counts, 4)])
             desc = _describe_workload(wname, recs)
+            comp_list = sorted(comp_set)
+            comp_label = ", ".join(comp_list[:5]) if comp_list else "(unknown)"
+            if len(comp_list) > 5:
+                comp_label = f"{comp_label}, (+{len(comp_list) - 5} more)"
             rows.append([
                 wname,
                 desc,
                 str(len(recs)),
                 ", ".join(sorted(region_set)) or "(unknown)",
-                ", ".join(sorted(comp_set)) or "(unknown)",
+                comp_label,
                 top_types or "(none)",
             ])
 
             rt_set = set(type_counts.keys())
             if "Bucket" in rt_set and rt_set.intersection(media_types):
-                flows.append(f"- {wname}: Object Storage (buckets) → Media Services (workflow/packaging) → Streaming distribution/CDN")
+                flows.append(f"{wname}: Object Storage → Media Services → Streaming/CDN")
 
+        lines.append("Top workload candidates (sample):")
+        lines.append("")
         lines.extend(_md_table(["Workload", "Description", "Resources", "Regions", "Compartments", "Top resource types"], rows))
         if flows:
             lines.append("")
-            lines.append("Observed data flow patterns (type-based; best-effort):")
-            lines.extend(flows[:6])
+            lines.append("Observed data flow patterns (sample):")
+            for item in flows[:3]:
+                lines.append(f"- {item}")
         lines.append("")
 
     # Data & Storage
@@ -1152,39 +1164,90 @@ def render_run_report_md(
     # IAM / Policies
     lines.append("## IAM / Policies (Visible)")
     if policy_recs:
-        rows: List[List[str]] = []
+        comp_counts_policy: Dict[str, int] = {}
+        stmt_counts: List[int] = []
+        prefix_counts: Dict[str, int] = {}
         for r in sorted(policy_recs, key=lambda x: (_record_compartment_id(x), _record_name(x))):
             md = _record_metadata(r)
             stmts = md.get("statements")
-            stmt_count = str(len(stmts)) if isinstance(stmts, list) else "(unknown)"
+            stmt_count = len(stmts) if isinstance(stmts, list) else None
             comp_label = _compartment_label(_record_compartment_id(r), alias_by_id=alias_by_comp, name_by_id=name_by_comp)
             pname = _record_name(r) or "(unnamed)"
-            hint = _summarize_policy_name(pname) or "(not inferred)"
-            rows.append([pname, comp_label, stmt_count, hint])
+            if stmt_count is not None:
+                stmt_counts.append(stmt_count)
+            comp_counts_policy[comp_label] = comp_counts_policy.get(comp_label, 0) + 1
+            first_token = pname.split()[0] if pname else ""
+            prefix = first_token.split("-")[0] if first_token else ""
+            if prefix:
+                prefix_counts[prefix] = prefix_counts.get(prefix, 0) + 1
+
+        avg_stmt = sum(stmt_counts) / len(stmt_counts) if stmt_counts else 0.0
+        max_stmt = max(stmt_counts) if stmt_counts else 0
+        lines.append(f"Policies observed: **{len(policy_recs)}**. Average statements per policy: **{avg_stmt:.1f}** (max: **{max_stmt}**).")
         lines.append("")
-        lines.extend(_md_table(["Policy", "Compartment", "Statements", "Summary (name-derived)"], rows))
+
+        comp_rows: List[List[str]] = []
+        for comp, count in _top_n(comp_counts_policy, 5):
+            comp_rows.append([comp, str(count)])
+        if comp_rows:
+            lines.append("Top compartments by policy count:")
+            lines.append("")
+            lines.extend(_md_table(["Compartment", "Policies"], comp_rows))
+            lines.append("")
+
+        prefix_rows: List[List[str]] = []
+        for pref, count in _top_n(prefix_counts, 3):
+            prefix_rows.append([pref, str(count)])
+        if prefix_rows:
+            lines.append("Top policy name prefixes (signal only):")
+            lines.append("")
+            lines.extend(_md_table(["Prefix", "Count"], prefix_rows))
+            lines.append("")
     else:
         lines.append("- No IAM Policy resources were observed in this scope.")
     lines.append("")
 
     # Observability / Logging
     lines.append("## Observability / Logging")
-    obs_rows: List[List[str]] = []
-    for r in sorted(log_group_recs, key=lambda x: (_record_region(x), _record_name(x))):
+    obs_by_comp: Dict[str, Dict[str, int]] = {}
+    for r in log_group_recs:
         comp = _compartment_label(_record_compartment_id(r), alias_by_id=alias_by_comp, name_by_id=name_by_comp)
-        obs_rows.append(["LogGroup", _record_name(r) or "(unnamed)", _record_region(r) or "(unknown)", comp])
-    for r in sorted(loga_entity_recs, key=lambda x: (_record_region(x), _record_name(x))):
+        obs_by_comp.setdefault(comp, {})
+        obs_by_comp[comp]["LogGroup"] = obs_by_comp[comp].get("LogGroup", 0) + 1
+    for r in loga_entity_recs:
         comp = _compartment_label(_record_compartment_id(r), alias_by_id=alias_by_comp, name_by_id=name_by_comp)
-        obs_rows.append(["LogAnalyticsEntity", _record_name(r) or "(unnamed)", _record_region(r) or "(unknown)", comp])
+        obs_by_comp.setdefault(comp, {})
+        obs_by_comp[comp]["LogAnalyticsEntity"] = obs_by_comp[comp].get("LogAnalyticsEntity", 0) + 1
 
-    if obs_rows:
+    if obs_by_comp:
+        total_obs = len(loga_entity_recs) + len(log_group_recs)
+        loga_pct = _pct(len(loga_entity_recs), max(total_obs, 1))
+        lines.append(
+            f"Observability resources: Log Groups={len(log_group_recs)}, Log Analytics Entities={len(loga_entity_recs)} "
+            f"(Log Analytics share: {loga_pct})."
+        )
         lines.append("")
-        lines.extend(_md_table(["Type", "Name", "Region", "Compartment"], obs_rows[:40]))
-        if len(obs_rows) > 40:
-            lines.append(f"(Truncated: {len(obs_rows) - 40} more items not shown.)")
+
+        comp_rows: List[List[str]] = []
+        for comp, count in _top_n({k: sum(v.values()) for k, v in obs_by_comp.items()}, 5):
+            type_counts = obs_by_comp.get(comp, {})
+            top_types = ", ".join([f"{k}={v}" for k, v in _top_n(type_counts, 2)])
+            comp_rows.append([comp, str(count), top_types or "(none)"])
+        lines.append("Top compartments by observability footprint:")
+        lines.append("")
+        lines.extend(_md_table(["Compartment", "Observability resources", "Top types"], comp_rows))
+        lines.append("")
+
+        if comp_counts:
+            no_obs = max(len(comp_counts) - len(obs_by_comp), 0)
+            lines.append(
+                f"{no_obs} compartments have no observability resources in scope "
+                "(best-effort; based on observed log groups and log analytics entities)."
+            )
+            lines.append("")
     else:
         lines.append("No observability/logging resources were observed in this inventory scope.")
-    lines.append("")
+        lines.append("")
 
     # Risks & Gaps
     lines.append("## Risks & Gaps (Non-blocking)")
