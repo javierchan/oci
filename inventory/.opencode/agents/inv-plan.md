@@ -1,7 +1,7 @@
 ---
 description: Performs analysis and planning for OCI Inventory without modifying code.
 mode: subagent
-model: oca/oca/gpt5
+model: oca/oca/gpt-5.2
 temperature: 0.1
 maxSteps: 30
 

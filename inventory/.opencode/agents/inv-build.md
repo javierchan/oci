@@ -1,7 +1,7 @@
 ---
 description: Builds features, fixes, and improvements for OCI Inventory; executes linting, tests, and CLI checks.
 mode: primary
-model: oca/oca/gpt5
+model: oca/oca/gpt-5.2
 temperature: 0.25
 maxSteps: 30
 

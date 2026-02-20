@@ -1,7 +1,7 @@
 ---
 description: Performs cost modeling, CSV parsing, and cost-related reporting for OCI Inventory outputs.
 mode: subagent
-model: oca/oca/gpt5
+model: oca/oca/gpt-5.2
 temperature: 0.15
 
 tools:
