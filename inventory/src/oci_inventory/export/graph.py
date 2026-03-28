@@ -123,7 +123,13 @@ def _node_label(record: Dict[str, Any]) -> str:
     name = record.get("displayName") or record.get("name")
     if not name:
         name = record.get("resourceType") or record.get("nodeType") or record.get("ocid")
-    return str(name)
+    name = str(name)
+    # If the name itself is an OCID (resource has no displayName), substitute a
+    # readable fallback using the resource type + last 8 chars of the OCID.
+    if name.startswith("ocid1."):
+        rtype = record.get("resourceType") or record.get("nodeType") or "Resource"
+        name = f"{rtype} ({name[-8:]})"
+    return name
 
 
 def _record_metadata(record: Mapping[str, Any]) -> Mapping[str, Any]:

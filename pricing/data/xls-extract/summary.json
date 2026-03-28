@@ -1,0 +1,17 @@
+{
+  "workbook": "ORACLE+PAAS+AND+IAAS+PUBLIC+CLOUD+LOCALIZABLE+PRICE+LIST.xls",
+  "sheets": {
+    "Oracle PaaS and IaaS Price List": {
+      "rows": 6460,
+      "cols": 55,
+      "header_row": 358,
+      "extracted_records": 1134
+    },
+    "Oracle PaaS and IaaS Supplement": {
+      "rows": 4681,
+      "cols": 17,
+      "header_row": 61,
+      "extracted_records": 1093
+    }
+  }
+}

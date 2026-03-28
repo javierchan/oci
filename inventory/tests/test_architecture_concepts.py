@@ -88,10 +88,10 @@ def test_build_workload_concepts_filters_noise_and_sanitizes_labels() -> None:
     concepts = build_workload_concepts(nodes=nodes, edges=[], workload_nodes=workload_nodes)
 
     labels = {c.label for c in concepts}
-    assert "ODI Compute Nodes" in labels
+    assert "ODI Instance" in labels
     assert "OKE Cluster" in labels
-    assert "Worker Nodes" in labels
-    assert "Observability Suite" in labels
+    assert "OKE Node Pool" in labels
+    assert "Monitoring" in labels
     assert "Object Storage" in labels
     assert "Internet Gateway" in labels
 

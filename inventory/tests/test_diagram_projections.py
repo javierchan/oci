@@ -178,6 +178,9 @@ def test_consolidated_flowchart_splits_by_vcn_when_too_large(tmp_path, monkeypat
 
 
 def test_diagram_guideline_checks_flag_ocid_labels(tmp_path) -> None:
+    # A node whose displayName contains "ocid1" as a substring (not a real OCID) should
+    # have its label redacted in generated diagrams so that no "ocid1." appears in the
+    # diagram text. The validator only fires when the diagram TEXT contains "ocid1.".
     records = [
         {
             "ocid": "ocid1.vcn.oc1..vcn",
@@ -195,8 +198,13 @@ def test_diagram_guideline_checks_flag_ocid_labels(tmp_path) -> None:
     summary: dict = {}
     write_diagram_projections(tmp_path, nodes, edges, summary=summary)
 
+    # Labels are redacted via _redact_ocids_for_label so "ocid1." should not appear in
+    # any generated diagram text. Therefore no no_ocids_in_labels violation should fire.
     violations = summary.get("violations") or []
-    assert any(v.get("rule") == "no_ocids_in_labels" for v in violations)
+    assert not any(v.get("rule") == "no_ocids_in_labels" for v in violations)
+    # Verify the diagram text itself is clean.
+    for mmd in tmp_path.rglob("*.mmd"):
+        assert "ocid1." not in mmd.read_text(encoding="utf-8"), f"OCID leaked into {mmd.name}"
 
 
 def test_workload_diagram_includes_scope_view_comments(tmp_path) -> None:
@@ -332,7 +340,9 @@ def test_network_view_uses_relationship_edges_for_attachments(tmp_path) -> None:
 
     diagram = (tmp_path / "diagram.network.edge_vcn.mmd").read_text(encoding="utf-8")
     assert "Subnet: Public-Subnet-1" in diagram
-    assert "USES_ROUTE_TABLE" in diagram
+    # USES_ROUTE_TABLE is now intentionally suppressed (administrative noise):
+    # it appears on every subnet→default route table and adds no architectural value.
+    assert "USES_ROUTE_TABLE" not in diagram
     assert "Customer Network" in diagram
 
 

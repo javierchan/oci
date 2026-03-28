@@ -8,7 +8,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Iterator, Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .normalize.schema import resolve_output_paths
 from .normalize.transform import group_workload_candidates
@@ -306,6 +306,135 @@ def _infer_bucket_purpose(name: str) -> Optional[str]:
     return None
 
 
+def _cis_security_gaps(records: Sequence[Dict[str, Any]], gaps: List[str]) -> None:
+    """
+    Append CIS OCI Foundations Benchmark-aligned security observations to the gaps list.
+    All checks are best-effort; missing enrichment may limit detection.
+    """
+    # Index subnets for cross-resource checks.
+    public_subnet_ocids: set[str] = set()
+    subnets_with_nsg: set[str] = set()
+
+    for r in records:
+        if _record_type(r) != "Subnet":
+            continue
+        ocid = str(r.get("ocid") or "")
+        md = _record_metadata(r)
+        # CIS 3.x: public subnet detection (prohibit_public_ip_on_vnic = False → public).
+        prohibit = md.get("prohibit_public_ip_on_vnic")
+        if not isinstance(prohibit, bool):
+            prohibit = md.get("prohibitPublicIpOnVnic")
+        if isinstance(prohibit, bool) and not prohibit:
+            public_subnet_ocids.add(ocid)
+        # NSG check: subnet has associated NSGs.
+        nsg_ids = md.get("nsg_ids") or md.get("networkSecurityGroupIds") or md.get("nsgIds")
+        if nsg_ids and isinstance(nsg_ids, list) and len(nsg_ids) > 0:
+            subnets_with_nsg.add(ocid)
+
+    # CIS 2.3 — Subnets without Network Security Groups.
+    all_subnet_ocids = {
+        str(r.get("ocid") or "")
+        for r in records
+        if _record_type(r) == "Subnet" and r.get("ocid")
+    }
+    subnets_without_nsg = all_subnet_ocids - subnets_with_nsg
+    if subnets_without_nsg:
+        gaps.append(
+            f"{len(subnets_without_nsg)} subnet(s) have no associated Network Security Group (NSG); "
+            "all subnets should have at least one NSG for granular traffic control. "
+            "(CIS 2.3 — Evidence: Subnet records with empty nsg_ids)"
+        )
+
+    # CIS 2.6 — Databases in public subnets.
+    _DB_TYPES = {
+        "AutonomousDatabase", "AutonomousDb", "DbSystem", "DbNode",
+        "MysqlDbSystem", "PostgresqlDbSystem", "NoSqlTable",
+    }
+    dbs_in_public: List[str] = []
+    for r in records:
+        if _record_type(r) not in _DB_TYPES:
+            continue
+        md = _record_metadata(r)
+        subnet_id = str(md.get("subnet_id") or md.get("subnetId") or "")
+        if subnet_id and subnet_id in public_subnet_ocids:
+            dbs_in_public.append(_record_type(r))
+    if dbs_in_public:
+        type_summary = ", ".join(sorted(set(dbs_in_public)))
+        gaps.append(
+            f"{len(dbs_in_public)} database resource(s) ({type_summary}) appear to be in public subnet(s); "
+            "databases should not be directly reachable from the internet. "
+            "(CIS 2.6 — Evidence: DB record subnet_id in public subnet set)"
+        )
+
+    # CIS 2.5 — Object Storage buckets with public access.
+    public_buckets = 0
+    for r in records:
+        if _record_type(r) != "Bucket":
+            continue
+        md = _record_metadata(r)
+        pub_access = str(md.get("public_access_type") or md.get("publicAccessType") or "")
+        is_public = md.get("is_public") or md.get("isPublic")
+        if (pub_access and pub_access not in {"NoPublicAccess", ""}) or is_public is True:
+            public_buckets += 1
+    if public_buckets:
+        gaps.append(
+            f"{public_buckets} Object Storage bucket(s) have public access enabled; "
+            "restrict bucket access unless explicitly required by the workload. "
+            "(CIS 2.5 — Evidence: Bucket records with publicAccessType != NoPublicAccess)"
+        )
+
+    # CIS 1.3 — Instances with public IPs and no load balancer in scope.
+    lb_count = sum(1 for r in records if _record_type(r) in {"LoadBalancer", "NetworkLoadBalancer"})
+    instances_with_public_ip = 0
+    for r in records:
+        if _record_type(r) != "Instance":
+            continue
+        md = _record_metadata(r)
+        public_ip = str(md.get("public_ip") or md.get("publicIp") or "")
+        if public_ip and public_ip not in {"", "null", "None"}:
+            instances_with_public_ip += 1
+    if instances_with_public_ip and lb_count == 0:
+        gaps.append(
+            f"{instances_with_public_ip} compute instance(s) have public IP addresses and no load balancer was observed; "
+            "consider fronting public workloads with a load balancer instead of direct instance exposure. "
+            "(CIS 1.3 — Evidence: Instance publicIp set; LoadBalancer absent)"
+        )
+
+    # CIS 2.2 — Security Lists with unrestricted SSH/RDP ingress (0.0.0.0/0 on TCP 22 or 3389).
+    overly_permissive_sls = 0
+    for r in records:
+        if _record_type(r) != "SecurityList":
+            continue
+        md = _record_metadata(r)
+        ingress_rules = md.get("ingress_security_rules") or md.get("ingressSecurityRules") or []
+        if not isinstance(ingress_rules, list):
+            continue
+        for rule in ingress_rules:
+            if not isinstance(rule, dict):
+                continue
+            source = str(rule.get("source") or "").strip()
+            protocol = str(rule.get("protocol") or "").strip()
+            if source not in {"0.0.0.0/0", "::/0"}:
+                continue
+            if protocol not in {"6", "all", "TCP"}:
+                continue
+            tcp_opts = rule.get("tcp_options") or rule.get("tcpOptions") or {}
+            if isinstance(tcp_opts, dict):
+                dst_range = tcp_opts.get("destination_port_range") or tcp_opts.get("destinationPortRange") or {}
+                if isinstance(dst_range, dict):
+                    port_min = int(dst_range.get("min") or dst_range.get("min") or 0)
+                    port_max = int(dst_range.get("max") or dst_range.get("max") or 65535)
+                    if port_min <= 22 <= port_max or port_min <= 3389 <= port_max:
+                        overly_permissive_sls += 1
+                        break
+    if overly_permissive_sls:
+        gaps.append(
+            f"{overly_permissive_sls} Security List(s) permit unrestricted ingress (0.0.0.0/0) on SSH (22) or RDP (3389); "
+            "administrative access should be restricted to known source CIDRs or use Bastion. "
+            "(CIS 2.2 — Evidence: SecurityList ingressSecurityRules with protocol=6, source=0.0.0.0/0)"
+        )
+
+
 def _top_n(d: Dict[str, int], n: int) -> List[Tuple[str, int]]:
     return sorted(((k, int(v)) for k, v in d.items()), key=lambda kv: (-kv[1], kv[0]))[:n]
 
@@ -551,7 +680,7 @@ def build_architecture_facts(
     return facts
 
 
-def render_run_report_md(
+def _iter_report_lines(
     *,
     status: str,
     cfg_dict: Dict[str, Any],
@@ -567,7 +696,7 @@ def render_run_report_md(
     diff_warning: Optional[str] = None,
     fatal_error: Optional[str] = None,
     diagram_summary: Optional[Dict[str, Any]] = None,
-) -> str:
+) -> Iterator[str]:
     duration_note = ""
     try:
         start_dt = datetime.fromisoformat(started_at)
@@ -578,17 +707,16 @@ def render_run_report_md(
         pass
 
     # ---------- Architecture assessment (primary report) ----------
-    lines: List[str] = []
-    lines.append("# OCI Inventory Architectural Assessment")
-    lines.append("")
+    yield ("# OCI Inventory Architectural Assessment")
+    yield ("")
 
     # Audience note: keep it short, formal, and factual.
-    lines.append(
+    yield (
         "This report summarizes the OCI resources **observed in scope** by a read-only inventory run and presents a lightweight architectural view "
         "(tenancy partitioning, network layout, workload/service groupings, data stores, and governance signals). "
         "It concludes with an **Execution Metadata** appendix containing the original run details."
     )
-    lines.append("")
+    yield ("")
 
     types_in_scope = {_record_type(r) for r in discovered_records if _record_type(r)}
     counts_by_region = _counts_by_key(discovered_records, "region")
@@ -658,9 +786,9 @@ def render_run_report_md(
         else:
             unknown_subnets += 1
 
-    lines.append("## At a Glance")
-    lines.append("")
-    lines.extend(
+    yield ("## At a Glance")
+    yield ("")
+    yield from (
         _md_table(
             ["Metric", "Value"],
             [
@@ -677,7 +805,7 @@ def render_run_report_md(
             ],
         )
     )
-    lines.append("")
+    yield ("")
     if discovered_records:
         type_counts: Dict[str, int] = {}
         for r in discovered_records:
@@ -687,23 +815,23 @@ def render_run_report_md(
         top_types = _top_n(type_counts, 3)
         top_types_txt = ", ".join([f"{k}={v}" for k, v in top_types]) if top_types else "(none)"
         loga_pct = _pct(len(loga_entity_recs), len(discovered_records))
-        lines.append(
+        yield (
             "Resource mix is concentrated in "
             f"{top_types_txt}. Observability footprint is material: "
             f"Log Analytics Entities represent {loga_pct} of observed records."
         )
-        lines.append("")
+        yield ("")
 
     # Graph artifacts (nodes/edges) summary, if present.
     outdir = Path(str(cfg_dict.get("outdir") or "")).expanduser() if cfg_dict.get("outdir") else None
     paths = resolve_output_paths(outdir) if outdir else None
     graph_summary = _graph_artifact_summary(outdir)
     if graph_summary:
-        lines.append("## Graph Artifacts (Summary)")
-        lines.append(
+        yield ("## Graph Artifacts (Summary)")
+        yield (
             "This section summarizes `graph/graph_nodes.jsonl` and `graph/graph_edges.jsonl` generated for this run."
         )
-        lines.append("")
+        yield ("")
 
         node_count = int(graph_summary.get("node_count") or 0)
         edge_count = int(graph_summary.get("edge_count") or 0)
@@ -716,47 +844,47 @@ def render_run_report_md(
         for k, v in _top_n(graph_summary.get("relation_type_counts", {}), 5):
             rel_rows.append([k or "(unknown)", str(v)])
 
-        lines.append(
+        yield (
             f"Graph contains {node_count} nodes and {edge_count} edges. "
             f"Top node categories: {cat_txt}."
         )
-        lines.append("")
+        yield ("")
         if type_rows:
-            lines.append("Top node types:")
-            lines.append("")
-            lines.extend(_md_table(["Node type", "Count"], type_rows))
-            lines.append("")
+            yield ("Top node types:")
+            yield ("")
+            yield from (_md_table(["Node type", "Count"], type_rows))
+            yield ("")
         if rel_rows:
-            lines.append("Top relation types:")
-            lines.append("")
-            lines.extend(_md_table(["Relation", "Count"], rel_rows))
-            lines.append("")
+            yield ("Top relation types:")
+            yield ("")
+            yield from (_md_table(["Relation", "Count"], rel_rows))
+            yield ("")
 
         endpoints_ok = int(graph_summary.get("endpoints_ok") or 0)
         total_edges = int(graph_summary.get("total_edges") or 0)
-        lines.append(f"Graph integrity: {endpoints_ok}/{total_edges} edges reference known node IDs.")
-        lines.append("")
+        yield (f"Graph integrity: {endpoints_ok}/{total_edges} edges reference known node IDs.")
+        yield ("")
 
     # Graph Health
-    lines.append("## Graph Health")
+    yield ("## Graph Health")
     if graph_summary:
         endpoints_ok = int(graph_summary.get("endpoints_ok") or 0)
         total_edges = int(graph_summary.get("total_edges") or 0)
-        lines.append(f"Edge endpoints valid: {endpoints_ok}/{total_edges}.")
+        yield (f"Edge endpoints valid: {endpoints_ok}/{total_edges}.")
         health = _graph_health_summary(graph_summary)
         anomalies = health.get("anomalies") or []
         if anomalies:
-            lines.append("Detected anomalies:")
+            yield ("Detected anomalies:")
             for item in anomalies:
-                lines.append(f"- {item}")
+                yield (f"- {item}")
         else:
-            lines.append("No anomalies detected.")
+            yield ("No anomalies detected.")
     else:
-        lines.append("Graph artifacts not available for this run.")
-    lines.append("")
+        yield ("Graph artifacts not available for this run.")
+    yield ("")
 
     # Executive Summary (architecture)
-    lines.append("## Executive Summary")
+    yield ("## Executive Summary")
     if executive_summary:
         # When enabled, GenAI summary is expected to be architecture-focused and redacted.
         summary = executive_summary.strip()
@@ -765,7 +893,7 @@ def render_run_report_md(
             if summary.startswith(prefix):
                 summary = summary[len(prefix) :].lstrip("\n ")
                 break
-        lines.append(summary)
+        yield (summary)
     else:
         region_phrase = (
             ", ".join(regions_observed)
@@ -776,25 +904,25 @@ def render_run_report_md(
                 else ", ".join(list(subscribed_regions))
             )
         )
-        lines.append(
+        yield (
             f"This inventory scope contains **{len(discovered_records)}** resources across **{len(regions_observed) or len(requested_regions or []) or len(subscribed_regions)}** region(s) ({region_phrase}). "
             f"The environment includes **{len(vcn_recs)}** VCN(s), **{len(inst_recs)}** compute instance(s), and **{len(bucket_recs)}** Object Storage bucket(s)."
         )
         if media_recs:
-            lines.append(
+            yield (
                 f"Media Services resources are present (**{len(media_recs)}** total), suggesting a streaming/media workflow component within this scope."
             )
     if executive_summary_error and not executive_summary:
         # Keep the primary report clean; stash the error detail in Execution Metadata below.
-        lines.append("")
-        lines.append("(GenAI executive summary was not available for this run.)")
-    lines.append("")
+        yield ("")
+        yield ("(GenAI executive summary was not available for this run.)")
+    yield ("")
 
     # Tenancy & Compartment Overview
-    lines.append("## Tenancy & Compartment Overview")
+    yield ("## Tenancy & Compartment Overview")
     if comp_counts:
-        lines.append("Observed resource distribution by compartment (best-effort; based on `compartmentId` in results).")
-        lines.append("")
+        yield ("Observed resource distribution by compartment (best-effort; based on `compartmentId` in results).")
+        yield ("")
 
         # Build per-compartment top types
         types_by_comp: Dict[str, Dict[str, int]] = {}
@@ -819,26 +947,26 @@ def render_run_report_md(
             top_types = ", ".join([f"{k}={v}" for k, v in _top_n(types_by_comp.get(cid, {}), 5)])
             rows.append([label, role or "(not inferred)", str(count), top_types or "(none)"])
 
-        lines.extend(_md_table(["Compartment", "Role hint", "Resources", "Top resource types"], rows))
+        yield from (_md_table(["Compartment", "Role hint", "Resources", "Top resource types"], rows))
         if total_comp:
             remaining_compartments = max(len(comp_counts) - len(top_comp), 0)
             top_pct = _pct(top_total, total_comp)
-            lines.append("")
-            lines.append(
+            yield ("")
+            yield (
                 f"Top {len(top_comp)} compartments account for {top_pct} of observed resources; "
                 f"the remaining {remaining_compartments} compartments form the long tail."
             )
     else:
-        lines.append("- No compartment IDs were present in the discovered records.")
-    lines.append("")
+        yield ("- No compartment IDs were present in the discovered records.")
+    yield ("")
 
     # Network Architecture
-    lines.append("## Network Architecture")
-    lines.append("Diagram artifacts (generated in the output directory):")
-    lines.append("- `graph/graph_nodes.jsonl` / `graph/graph_edges.jsonl` (graph data)")
-    lines.append("- `diagrams/**/diagram*.mmd` (architectural projections, if enabled)")
-    lines.append("- `diagrams/architecture/diagram.arch.*.mmd` (architecture Mermaid diagrams, if enabled)")
-    lines.append("")
+    yield ("## Network Architecture")
+    yield ("Diagram artifacts (generated in the output directory):")
+    yield ("- `graph/graph_nodes.jsonl` / `graph/graph_edges.jsonl` (graph data)")
+    yield ("- `diagrams/**/diagram*.mmd` (architectural projections, if enabled)")
+    yield ("- `diagrams/architecture/diagram.arch.*.mmd` (architecture Mermaid diagrams, if enabled)")
+    yield ("")
 
     diagram_summary = diagram_summary or {}
     skipped = diagram_summary.get("skipped") or []
@@ -862,10 +990,10 @@ def render_run_report_md(
                 return ", ".join(parts)
             return ", ".join(parts[:max_items]) + f", (+{len(parts) - max_items} more)"
 
-        lines.append("Diagram generation notes (best-effort):")
-        lines.append("")
-        lines.append(f"Violations: {len(violations)}. Split outputs: {len(split)}. Skipped: {len(skipped)}.")
-        lines.append("")
+        yield ("Diagram generation notes (best-effort):")
+        yield ("")
+        yield (f"Violations: {len(violations)}. Split outputs: {len(split)}. Skipped: {len(skipped)}.")
+        yield ("")
 
         if violations:
             violation_rows: List[List[str]] = []
@@ -874,12 +1002,12 @@ def render_run_report_md(
                 rule = str(item.get("rule") or "")
                 detail = str(item.get("detail") or "")
                 violation_rows.append([diagram, rule or "(unknown)", detail or "(none)"])
-            lines.append("Violations (sample):")
-            lines.append("")
-            lines.extend(_md_table(["Diagram", "Rule", "Detail"], violation_rows))
+            yield ("Violations (sample):")
+            yield ("")
+            yield from (_md_table(["Diagram", "Rule", "Detail"], violation_rows))
             if len(violations) > 5:
-                lines.append(f"(Truncated: {len(violations) - 5} more violations not shown.)")
-            lines.append("")
+                yield (f"(Truncated: {len(violations) - 5} more violations not shown.)")
+            yield ("")
         if split:
             split_rows: List[List[str]] = []
             for item in sorted(split, key=lambda x: str(x.get("diagram") or ""))[:5]:
@@ -887,12 +1015,12 @@ def render_run_report_md(
                 parts = [str(p) for p in (item.get("parts") or [])]
                 reason = _reason_label(str(item.get("reason") or ""))
                 split_rows.append([diagram, _parts_label(parts), reason])
-            lines.append("Split outputs (sample):")
-            lines.append("")
-            lines.extend(_md_table(["Diagram", "Split outputs", "Reason"], split_rows))
+            yield ("Split outputs (sample):")
+            yield ("")
+            yield from (_md_table(["Diagram", "Split outputs", "Reason"], split_rows))
             if len(split) > 5:
-                lines.append(f"(Truncated: {len(split) - 5} more split entries not shown.)")
-            lines.append("")
+                yield (f"(Truncated: {len(split) - 5} more split entries not shown.)")
+            yield ("")
         if skipped:
             skip_rows: List[List[str]] = []
             for item in sorted(skipped, key=lambda x: str(x.get("diagram") or ""))[:5]:
@@ -902,12 +1030,12 @@ def render_run_report_md(
                 limit = str(item.get("limit") or "")
                 size_label = f"{size}/{limit}" if size and limit else "(unknown)"
                 skip_rows.append([diagram, reason, size_label])
-            lines.append("Skipped diagrams (sample):")
-            lines.append("")
-            lines.extend(_md_table(["Diagram", "Reason", "Size/Limit"], skip_rows))
+            yield ("Skipped diagrams (sample):")
+            yield ("")
+            yield from (_md_table(["Diagram", "Reason", "Size/Limit"], skip_rows))
             if len(skipped) > 5:
-                lines.append(f"(Truncated: {len(skipped) - 5} more skipped entries not shown.)")
-            lines.append("")
+                yield (f"(Truncated: {len(skipped) - 5} more skipped entries not shown.)")
+            yield ("")
 
     # Graph-derived connectivity (only if edges include relationships beyond IN_COMPARTMENT)
     if graph_summary:
@@ -952,20 +1080,20 @@ def render_run_report_md(
                     break
 
             if conn_rows:
-                lines.append("Graph-derived connectivity (sample; OCIDs omitted):")
-                lines.append("")
-                lines.extend(_md_table(["Relation", "Source", "Target"], conn_rows))
+                yield ("Graph-derived connectivity (sample; OCIDs omitted):")
+                yield ("")
+                yield from (_md_table(["Relation", "Source", "Target"], conn_rows))
                 if len(edges) > shown:
-                    lines.append("(Truncated.)")
-                lines.append("")
+                    yield ("(Truncated.)")
+                yield ("")
         else:
             # Keep it as a single, clear statement to avoid noise.
-            lines.append("Graph-derived connectivity: not available (only IN_COMPARTMENT edges were generated for this run).")
-            lines.append("")
+            yield ("Graph-derived connectivity: not available (only IN_COMPARTMENT edges were generated for this run).")
+            yield ("")
 
     if not vcn_recs and not subnet_recs and not (igw_recs or nat_recs or sgw_recs):
-        lines.append("No core networking resources were observed in this inventory scope.")
-        lines.append("")
+        yield ("No core networking resources were observed in this inventory scope.")
+        yield ("")
     else:
         # Build per-VCN summary
         vcn_by_id: Dict[str, Dict[str, Any]] = {str(r.get("ocid") or ""): r for r in vcn_recs if str(r.get("ocid") or "")}
@@ -1022,10 +1150,10 @@ def render_run_report_md(
             ])
 
         if rows:
-            lines.append("VCN summary (best-effort; subnet-to-VCN mapping requires subnet metadata):")
-            lines.append("")
-            lines.extend(_md_table(["VCN", "Region", "CIDR(s)", "Subnets", "Gateways"], rows))
-            lines.append("")
+            yield ("VCN summary (best-effort; subnet-to-VCN mapping requires subnet metadata):")
+            yield ("")
+            yield from (_md_table(["VCN", "Region", "CIDR(s)", "Subnets", "Gateways"], rows))
+            yield ("")
 
         if subnet_recs:
             # Provide a short subnet list for quick validation.
@@ -1046,30 +1174,30 @@ def render_run_report_md(
                     exposure,
                     vcn_name or "(unknown)",
                 ])
-            lines.append("Subnet summary:")
-            lines.append("")
-            lines.extend(_md_table(["Subnet", "Region", "Exposure", "VCN"], sub_rows[:20]))
+            yield ("Subnet summary:")
+            yield ("")
+            yield from (_md_table(["Subnet", "Region", "Exposure", "VCN"], sub_rows[:20]))
             if len(sub_rows) > 20:
-                lines.append(f"(Truncated: {len(sub_rows) - 20} more subnets not shown.)")
-            lines.append("")
+                yield (f"(Truncated: {len(sub_rows) - 20} more subnets not shown.)")
+            yield ("")
 
         if nsg_recs:
-            lines.append(f"Network Security Groups observed: **{len(nsg_recs)}**")
-    lines.append("")
+            yield (f"Network Security Groups observed: **{len(nsg_recs)}**")
+    yield ("")
 
     # Workloads & Services
-    lines.append("## Workloads & Services")
+    yield ("## Workloads & Services")
     if not workloads:
-        lines.append("- No workload clusters could be confidently inferred from names/tags in this scope.")
-        lines.append("")
+        yield ("- No workload clusters could be confidently inferred from names/tags in this scope.")
+        yield ("")
     else:
         total_workload_resources = sum(len(recs) for recs in workloads.values())
         coverage_pct = _pct(total_workload_resources, len(discovered_records))
-        lines.append(
+        yield (
             f"Workload inference grouped **{total_workload_resources}** resources across **{len(workloads)}** "
             f"workload candidates (coverage: {coverage_pct})."
         )
-        lines.append("")
+        yield ("")
 
         rows: List[List[str]] = []
         flows: List[str] = []
@@ -1112,18 +1240,18 @@ def render_run_report_md(
             if "Bucket" in rt_set and rt_set.intersection(media_types):
                 flows.append(f"{wname}: Object Storage → Media Services → Streaming/CDN")
 
-        lines.append("Top workload candidates (sample):")
-        lines.append("")
-        lines.extend(_md_table(["Workload", "Description", "Resources", "Regions", "Compartments", "Top resource types"], rows))
+        yield ("Top workload candidates (sample):")
+        yield ("")
+        yield from (_md_table(["Workload", "Description", "Resources", "Regions", "Compartments", "Top resource types"], rows))
         if flows:
-            lines.append("")
-            lines.append("Observed data flow patterns (sample):")
+            yield ("")
+            yield ("Observed data flow patterns (sample):")
             for item in flows[:3]:
-                lines.append(f"- {item}")
-        lines.append("")
+                yield (f"- {item}")
+        yield ("")
 
     # Data & Storage
-    lines.append("## Data & Storage")
+    yield ("## Data & Storage")
     ds_rows: List[List[str]] = []
     if bucket_recs:
         for r in sorted(bucket_recs, key=lambda x: (_record_region(x), _record_name(x))):
@@ -1153,16 +1281,16 @@ def render_run_report_md(
             ds_rows.append([_record_type(r) or "Datastore", name, _record_region(r) or "(unknown)", comp, "(n/a)"])
 
     if ds_rows:
-        lines.append("")
-        lines.extend(_md_table(["Type", "Name", "Region", "Compartment", "Purpose hint"], ds_rows[:40]))
+        yield ("")
+        yield from (_md_table(["Type", "Name", "Region", "Compartment", "Purpose hint"], ds_rows[:40]))
         if len(ds_rows) > 40:
-            lines.append(f"(Truncated: {len(ds_rows) - 40} more items not shown.)")
+            yield (f"(Truncated: {len(ds_rows) - 40} more items not shown.)")
     else:
-        lines.append("No data/storage resources were observed in this inventory scope.")
-    lines.append("")
+        yield ("No data/storage resources were observed in this inventory scope.")
+    yield ("")
 
     # IAM / Policies
-    lines.append("## IAM / Policies (Visible)")
+    yield ("## IAM / Policies (Visible)")
     if policy_recs:
         comp_counts_policy: Dict[str, int] = {}
         stmt_counts: List[int] = []
@@ -1183,32 +1311,32 @@ def render_run_report_md(
 
         avg_stmt = sum(stmt_counts) / len(stmt_counts) if stmt_counts else 0.0
         max_stmt = max(stmt_counts) if stmt_counts else 0
-        lines.append(f"Policies observed: **{len(policy_recs)}**. Average statements per policy: **{avg_stmt:.1f}** (max: **{max_stmt}**).")
-        lines.append("")
+        yield (f"Policies observed: **{len(policy_recs)}**. Average statements per policy: **{avg_stmt:.1f}** (max: **{max_stmt}**).")
+        yield ("")
 
         comp_rows: List[List[str]] = []
         for comp, count in _top_n(comp_counts_policy, 5):
             comp_rows.append([comp, str(count)])
         if comp_rows:
-            lines.append("Top compartments by policy count:")
-            lines.append("")
-            lines.extend(_md_table(["Compartment", "Policies"], comp_rows))
-            lines.append("")
+            yield ("Top compartments by policy count:")
+            yield ("")
+            yield from (_md_table(["Compartment", "Policies"], comp_rows))
+            yield ("")
 
         prefix_rows: List[List[str]] = []
         for pref, count in _top_n(prefix_counts, 3):
             prefix_rows.append([pref, str(count)])
         if prefix_rows:
-            lines.append("Top policy name prefixes (signal only):")
-            lines.append("")
-            lines.extend(_md_table(["Prefix", "Count"], prefix_rows))
-            lines.append("")
+            yield ("Top policy name prefixes (signal only):")
+            yield ("")
+            yield from (_md_table(["Prefix", "Count"], prefix_rows))
+            yield ("")
     else:
-        lines.append("- No IAM Policy resources were observed in this scope.")
-    lines.append("")
+        yield ("- No IAM Policy resources were observed in this scope.")
+    yield ("")
 
     # Observability / Logging
-    lines.append("## Observability / Logging")
+    yield ("## Observability / Logging")
     obs_by_comp: Dict[str, Dict[str, int]] = {}
     for r in log_group_recs:
         comp = _compartment_label(_record_compartment_id(r), alias_by_id=alias_by_comp, name_by_id=name_by_comp)
@@ -1222,35 +1350,35 @@ def render_run_report_md(
     if obs_by_comp:
         total_obs = len(loga_entity_recs) + len(log_group_recs)
         loga_pct = _pct(len(loga_entity_recs), max(total_obs, 1))
-        lines.append(
+        yield (
             f"Observability resources: Log Groups={len(log_group_recs)}, Log Analytics Entities={len(loga_entity_recs)} "
             f"(Log Analytics share: {loga_pct})."
         )
-        lines.append("")
+        yield ("")
 
         comp_rows: List[List[str]] = []
         for comp, count in _top_n({k: sum(v.values()) for k, v in obs_by_comp.items()}, 5):
             type_counts = obs_by_comp.get(comp, {})
             top_types = ", ".join([f"{k}={v}" for k, v in _top_n(type_counts, 2)])
             comp_rows.append([comp, str(count), top_types or "(none)"])
-        lines.append("Top compartments by observability footprint:")
-        lines.append("")
-        lines.extend(_md_table(["Compartment", "Observability resources", "Top types"], comp_rows))
-        lines.append("")
+        yield ("Top compartments by observability footprint:")
+        yield ("")
+        yield from (_md_table(["Compartment", "Observability resources", "Top types"], comp_rows))
+        yield ("")
 
         if comp_counts:
             no_obs = max(len(comp_counts) - len(obs_by_comp), 0)
-            lines.append(
+            yield (
                 f"{no_obs} compartments have no observability resources in scope "
                 "(best-effort; based on observed log groups and log analytics entities)."
             )
-            lines.append("")
+            yield ("")
     else:
-        lines.append("No observability/logging resources were observed in this inventory scope.")
-        lines.append("")
+        yield ("No observability/logging resources were observed in this inventory scope.")
+        yield ("")
 
     # Risks & Gaps
-    lines.append("## Risks & Gaps (Non-blocking)")
+    yield ("## Risks & Gaps (Non-blocking)")
     gaps: List[str] = []
     error_summary = _summarize_enrich_errors(discovered_records)
     if excluded_regions:
@@ -1321,6 +1449,10 @@ def render_run_report_md(
     if inst_recs and "Bastion" not in types_in_scope:
         gaps.append("Compute instances are present but no Bastion resources were observed in this inventory scope. (Evidence: Instance present; Bastion absent)")
 
+    # CIS OCI Foundations Benchmark — aligned security checks.
+    # These are best-effort checks based on enriched metadata availability.
+    _cis_security_gaps(discovered_records, gaps)
+
     # De-dup and render
     seen_gap: set[str] = set()
     rendered = 0
@@ -1329,21 +1461,21 @@ def render_run_report_md(
         if not gg or gg in seen_gap:
             continue
         seen_gap.add(gg)
-        lines.append(f"- {gg}")
+        yield (f"- {gg}")
         rendered += 1
-        if rendered >= 10:
+        if rendered >= 15:
             break
     if rendered == 0:
-        lines.append("- No non-blocking gaps were detected from the available inventory signals.")
-    lines.append("")
+        yield ("- No non-blocking gaps were detected from the available inventory signals.")
+    yield ("")
 
-    lines.append("### Coverage Notes")
-    lines.append("- This assessment is limited to the query scope and the discovered resource types; missing types may be out of scope or not returned by the search query.")
+    yield ("### Coverage Notes")
+    yield ("- This assessment is limited to the query scope and the discovered resource types; missing types may be out of scope or not returned by the search query.")
     if metrics and total_cov:
-        lines.append(f"- Enrichment coverage (OK%): {_pct(ok, total_cov)}. Records with NOT_IMPLEMENTED or ERROR may lack architectural metadata details.")
-    lines.append("")
+        yield (f"- Enrichment coverage (OK%): {_pct(ok, total_cov)}. Records with NOT_IMPLEMENTED or ERROR may lack architectural metadata details.")
+    yield ("")
 
-    lines.append("### Recommendations (Non-binding)")
+    yield ("### Recommendations (Non-binding)")
     recs: List[str] = []
     if public_subnets > 0 and ("Waf" not in types_in_scope and "WebAppFirewall" not in types_in_scope):
         recs.append("If this VCN hosts internet-facing services, consider adding WAF controls appropriate to the exposure model.")
@@ -1370,12 +1502,12 @@ def render_run_report_md(
     if not recs:
         recs.append("No non-binding recommendations were derived from the current inventory signals.")
     for r in recs[:6]:
-        lines.append(f"- {r}")
-    lines.append("")
+        yield (f"- {r}")
+    yield ("")
 
     # Complete inventory listing (for parity with inventory/inventory.csv)
-    lines.append("## Inventory Listing (Complete)")
-    lines.append(
+    yield ("## Inventory Listing (Complete)")
+    yield (
         "Complete list of resources discovered in scope (matches the exported `inventory/inventory.csv`; OCIDs omitted)."
     )
 
@@ -1384,13 +1516,13 @@ def render_run_report_md(
         csv_rows = _count_csv_rows(paths.inventory_csv)
     if csv_rows is not None:
         if csv_rows == len(discovered_records):
-            lines.append(f"Rows: {len(discovered_records)} (matches inventory/inventory.csv)")
+            yield (f"Rows: {len(discovered_records)} (matches inventory/inventory.csv)")
         else:
-            lines.append(
+            yield (
                 f"Rows: {len(discovered_records)} (inventory/inventory.csv has {csv_rows}; investigate export/inputs mismatch)"
             )
     else:
-        lines.append(f"Rows: {len(discovered_records)}")
+        yield (f"Rows: {len(discovered_records)}")
 
     if discovered_records:
         inv_rows: List[List[str]] = []
@@ -1415,112 +1547,112 @@ def render_run_report_md(
                     str(r.get("enrichStatus") or "(unknown)"),
                 ]
             )
-        lines.append("")
-        lines.extend(
+        yield ("")
+        yield from (
             _md_table(
                 ["ID", "Type", "Name", "Region", "Compartment", "Lifecycle", "Enrichment"],
                 inv_rows,
             )
         )
     else:
-        lines.append("No resources were discovered in this inventory scope.")
-    lines.append("")
+        yield ("No resources were discovered in this inventory scope.")
+    yield ("")
 
     # ---------- Execution metadata (preserved run-log details) ----------
-    lines.append("## Execution Metadata")
-    lines.append(f"- Status: **{status}**")
-    lines.append(f"- Started (UTC): {started_at}")
-    lines.append(f"- Finished (UTC): {finished_at}")
+    yield ("## Execution Metadata")
+    yield (f"- Status: **{status}**")
+    yield (f"- Started (UTC): {started_at}")
+    yield (f"- Finished (UTC): {finished_at}")
     if duration_note:
-        lines.append(f"- {duration_note.strip()}")
-    lines.append("")
+        yield (f"- {duration_note.strip()}")
+    yield ("")
 
     if executive_summary is None and executive_summary_error:
-        lines.append("### GenAI Summary")
-        lines.append(f"(GenAI summary generation failed: {_truncate(str(executive_summary_error or ''), 300)})")
-        lines.append("")
+        yield ("### GenAI Summary")
+        yield (f"(GenAI summary generation failed: {_truncate(str(executive_summary_error or ''), 300)})")
+        yield ("")
     elif executive_summary:
         # Summary is already embedded above; still acknowledge it was generated.
-        lines.append("### GenAI Summary")
-        lines.append("(Embedded in Executive Summary.)")
-        lines.append("")
+        yield ("### GenAI Summary")
+        yield ("(Embedded in Executive Summary.)")
+        yield ("")
 
-    lines.append("### Steps Executed")
-    lines.append("- Resolved authentication context")
-    lines.append("- Discovered subscribed regions")
-    lines.append("- Executed OCI Resource Search per region (Structured Search)")
-    lines.append("- Normalized records and attached region metadata")
-    lines.append("- Enriched records using read-only OCI SDK calls")
-    lines.append("- Exported artifacts (JSONL + CSV)")
-    lines.append("")
+    yield ("### Steps Executed")
+    yield ("- Resolved authentication context")
+    yield ("- Discovered subscribed regions")
+    yield ("- Executed OCI Resource Search per region (Structured Search)")
+    yield ("- Normalized records and attached region metadata")
+    yield ("- Enriched records using read-only OCI SDK calls")
+    yield ("- Exported artifacts (JSONL + CSV)")
+    yield ("")
 
-    lines.append("### Run Configuration")
+    yield ("### Run Configuration")
     # Keep this human-readable; do not dump every internal field.
-    lines.append(f"- Auth: `{cfg_dict.get('auth')}`")
+    yield (f"- Auth: `{cfg_dict.get('auth')}`")
     if cfg_dict.get("profile"):
-        lines.append(f"- Profile: `{cfg_dict.get('profile')}`")
+        yield (f"- Profile: `{cfg_dict.get('profile')}`")
     if cfg_dict.get("tenancy_ocid"):
-        lines.append(f"- Tenancy OCID: `{cfg_dict.get('tenancy_ocid')}`")
-    lines.append(f"- Output dir: `{cfg_dict.get('outdir')}`")
+        yield (f"- Tenancy OCID: `{cfg_dict.get('tenancy_ocid')}`")
+    yield (f"- Output dir: `{cfg_dict.get('outdir')}`")
     if cfg_dict.get("prev"):
-        lines.append(f"- Prev inventory: `{cfg_dict.get('prev')}`")
-    lines.append(f"- Workers (regions): `{cfg_dict.get('workers_region')}`")
-    lines.append(f"- Workers (enrich): `{cfg_dict.get('workers_enrich')}`")
-    lines.append("- Query:")
-    lines.append("```")
-    lines.append(str(cfg_dict.get("query") or ""))
-    lines.append("```")
-    lines.append("")
+        yield (f"- Prev inventory: `{cfg_dict.get('prev')}`")
+    yield (f"- Workers (regions): `{cfg_dict.get('workers_region')}`")
+    yield (f"- Workers (enrich): `{cfg_dict.get('workers_enrich')}`")
+    yield ("- Query:")
+    yield ("```")
+    yield (str(cfg_dict.get("query") or ""))
+    yield ("```")
+    yield ("")
 
-    lines.append("### Regions")
-    lines.append(f"- Subscribed regions ({len(subscribed_regions)}):")
-    lines.append("```")
-    lines.append(", ".join(subscribed_regions))
-    lines.append("```")
+    yield ("### Regions")
+    yield (f"- Subscribed regions ({len(subscribed_regions)}):")
+    yield ("```")
+    yield (", ".join(subscribed_regions))
+    yield ("```")
 
     if requested_regions:
-        lines.append(f"- Requested regions ({len(requested_regions)}):")
-        lines.append("```")
-        lines.append(", ".join(requested_regions))
-        lines.append("```")
+        yield (f"- Requested regions ({len(requested_regions)}):")
+        yield ("```")
+        yield (", ".join(requested_regions))
+        yield ("```")
     else:
-        lines.append("- Requested regions: (all subscribed)")
+        yield ("- Requested regions: (all subscribed)")
 
     if excluded_regions:
-        lines.append(f"- Excluded regions ({len(excluded_regions)}):")
+        yield (f"- Excluded regions ({len(excluded_regions)}):")
         for item in sorted(excluded_regions, key=lambda d: d.get("region", "")):
             region = item.get("region", "")
             reason = item.get("reason", "")
             short = _truncate(reason, 140)
-            lines.append(f"  - `{region}` — {short}")
-        lines.append("")
-        lines.append("#### Exclusion Details")
+            yield (f"  - `{region}` — {short}")
+        yield ("")
+        yield ("#### Exclusion Details")
         for item in sorted(excluded_regions, key=lambda d: d.get("region", "")):
             region = item.get("region", "")
             reason = item.get("reason", "")
-            lines.append(f"**{region}**")
-            lines.append("```")
-            lines.append(reason)
-            lines.append("```")
+            yield (f"**{region}**")
+            yield ("```")
+            yield (reason)
+            yield ("```")
     else:
-        lines.append("- Excluded regions: none")
-    lines.append("")
+        yield ("- Excluded regions: none")
+    yield ("")
 
-    lines.append("### Results")
-    lines.append(f"- Discovered records: `{len(discovered_records)}`")
+    yield ("### Results")
+    yield (f"- Discovered records: `{len(discovered_records)}`")
 
     if counts_by_region:
-        lines.append("- Records by region:")
+        yield ("- Records by region:")
         for region, count in counts_by_region.items():
             if not region:
                 continue
-            lines.append(f"  - `{region}`: `{count}`")
+            yield (f"  - `{region}`: `{count}`")
 
     if metrics:
-        lines.append(f"- Enrichment status:")
+        yield (f"- Enrichment status:")
         cbes = metrics.get("counts_by_enrich_status") or {}
         for k in sorted(cbes.keys()):
-            lines.append(f"  - `{k}`: `{cbes[k]}`")
+            yield (f"  - `{k}`: `{cbes[k]}`")
 
         # Highlight enrichment failures (these records are kept in output with enrichStatus=ERROR).
         error_types: Dict[str, int] = {}
@@ -1532,59 +1664,95 @@ def render_run_report_md(
                 msg = "(unknown error)"
             error_types[msg] = error_types.get(msg, 0) + 1
         if error_types:
-            lines.append("- Enrichment failures (records kept in output):")
+            yield ("- Enrichment failures (records kept in output):")
             for msg, count in sorted(error_types.items(), key=lambda kv: (-kv[1], kv[0]))[:10]:
-                lines.append(f"  - `{count}`: {msg}")
+                yield (f"  - `{count}`: {msg}")
         if error_summary.get("total"):
-            lines.append("- Enrichment error categories (count):")
+            yield ("- Enrichment error categories (count):")
             by_category = error_summary.get("by_category") or {}
             for key in _ENRICH_ERROR_CATEGORY_ORDER:
                 count = int(by_category.get(key, 0) or 0)
                 if count:
                     label = _ENRICH_ERROR_CATEGORY_LABELS.get(key, key)
-                    lines.append(f"  - `{label}`: `{count}`")
-    lines.append("")
+                    yield (f"  - `{label}`: `{count}`")
+    yield ("")
 
-    lines.append("### Findings")
+    yield ("### Findings")
     if excluded_regions:
-        lines.append(
+        yield (
             "- One or more regions were excluded due to errors during Resource Search. "
             "The run continued and produced partial results."
         )
-        lines.append(
+        yield (
             "- Recommended follow-up: validate credentials for the excluded regions, or restrict the run via `--regions` if those regions are intentionally out of scope."
         )
     else:
-        lines.append("- No regions were excluded during discovery.")
+        yield ("- No regions were excluded during discovery.")
 
     if diff_warning:
-        lines.append(f"- Diff warning: {_truncate(diff_warning, 300)}")
+        yield (f"- Diff warning: {_truncate(diff_warning, 300)}")
     if fatal_error:
-        lines.append(f"- Fatal error: {_truncate(fatal_error, 500)}")
+        yield (f"- Fatal error: {_truncate(fatal_error, 500)}")
     if skipped or split or violations:
-        lines.append(
+        yield (
             f"- Diagram generation summary: violations={len(violations)}, split={len(split)}, skipped={len(skipped)}."
         )
 
     # If we had to alias compartments, provide the mapping here (metadata/appendix only).
     if alias_by_comp:
-        lines.append("")
-        lines.append("### Compartment Aliases")
-        lines.append("(Aliases are used in the main report to avoid printing raw OCIDs.)")
+        yield ("")
+        yield ("### Compartment Aliases")
+        yield ("(Aliases are used in the main report to avoid printing raw OCIDs.)")
         for cid in sorted(alias_by_comp.keys()):
             alias = alias_by_comp[cid]
             name = name_by_comp.get(cid, "")
             if name:
-                lines.append(f"- {alias}: {name} — `{cid}`")
+                yield (f"- {alias}: {name} — `{cid}`")
             else:
-                lines.append(f"- {alias}: `{cid}`")
+                yield (f"- {alias}: `{cid}`")
 
-    lines.append("")
-    lines.append("### Notes")
-    lines.append("- This tool is read-only by design; it does not mutate OCI resources.")
-    lines.append("- For troubleshooting OCI API failures, use `oci-inv validate-auth` and consider re-running with `--json-logs`. ")
+    yield ("")
+    yield ("### Notes")
+    yield ("- This tool is read-only by design; it does not mutate OCI resources.")
+    yield ("- For troubleshooting OCI API failures, use `oci-inv validate-auth` and consider re-running with `--json-logs`. ")
 
-    return "\n".join(lines).rstrip() + "\n"
+
+def render_run_report_md(
+    *,
+    status: str,
+    cfg_dict: Dict[str, Any],
+    started_at: str,
+    finished_at: str,
+    executive_summary: Optional[str] = None,
+    executive_summary_error: Optional[str] = None,
+    subscribed_regions: List[str],
+    requested_regions: Optional[List[str]],
+    excluded_regions: List[Dict[str, str]],
+    discovered_records: List[Dict[str, Any]],
+    metrics: Optional[Dict[str, Any]],
+    diff_warning: Optional[str] = None,
+    fatal_error: Optional[str] = None,
+    diagram_summary: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Render the full run report as a Markdown string (backward-compatible wrapper)."""
+    return "\n".join(
+        _iter_report_lines(
+            status=status,
+            cfg_dict=cfg_dict,
+            started_at=started_at,
+            finished_at=finished_at,
+            executive_summary=executive_summary,
+            executive_summary_error=executive_summary_error,
+            subscribed_regions=subscribed_regions,
+            requested_regions=requested_regions,
+            excluded_regions=excluded_regions,
+            discovered_records=discovered_records,
+            metrics=metrics,
+            diff_warning=diff_warning,
+            fatal_error=fatal_error,
+            diagram_summary=diagram_summary,
+        )
+    ).rstrip() + "\n"
 
 
 def write_run_report_md(
@@ -1625,7 +1793,11 @@ def write_run_report_md(
             "workers_enrich": getattr(cfg, "workers_enrich", None),
         }
 
-    text = render_run_report_md(
+    p = paths.report_md
+    p.parent.mkdir(parents=True, exist_ok=True)
+
+    # Stream report lines directly to disk — avoids materializing the full joined string.
+    report_lines_iter = _iter_report_lines(
         status=status,
         cfg_dict={**cfg_dict, "outdir": str(cfg_dict.get("outdir") or outdir)},
         started_at=started,
@@ -1641,10 +1813,17 @@ def write_run_report_md(
         fatal_error=fatal_error,
         diagram_summary=dict(diagram_summary) if diagram_summary else None,
     )
-
-    p = paths.report_md
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(text, encoding="utf-8")
+    with p.open("w", encoding="utf-8") as _f:
+        _prev: Optional[str] = None
+        for _line in report_lines_iter:
+            if _prev is not None:
+                _f.write(_prev)
+                _f.write("\n")
+            _prev = _line
+        # Last line: strip trailing blank lines, then write final newline
+        if _prev is not None:
+            _f.write(_prev.rstrip())
+        _f.write("\n")
     return p
 
 

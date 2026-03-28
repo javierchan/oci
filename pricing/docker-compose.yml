@@ -1,0 +1,27 @@
+services:
+  oci-agent:
+    build: .
+    container_name: oci-pricing-agent
+    ports:
+      - "8742:8742"
+    environment:
+      - PORT=8742
+      - OCI_USER=${OCI_USER}
+      - OCI_TENANCY=${OCI_TENANCY}
+      - OCI_FINGERPRINT=${OCI_FINGERPRINT}
+      - OCI_HOME_REGION=${OCI_HOME_REGION}
+      - OCI_REGION=${OCI_REGION}
+      - OCI_COMPARTMENT=${OCI_COMPARTMENT}
+      - OCI_GENAI_COMPARTMENT=${OCI_GENAI_COMPARTMENT}
+      - OCI_GENAI_ENDPOINT=${OCI_GENAI_ENDPOINT}
+      - OCI_GENAI_PROFILE=${OCI_GENAI_PROFILE}
+      - OCI_PRIVATE_KEY=${OCI_PRIVATE_KEY}
+      - OCI_PRIVATE_KEY_B64=${OCI_PRIVATE_KEY_B64}
+      - OCI_KEY_FILE=${OCI_KEY_FILE}
+      - OCI_GENAI_MODEL=${OCI_GENAI_MODEL}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'

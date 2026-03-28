@@ -48,6 +48,12 @@ ALLOWED_CONFIG_KEYS = {
     "schema_validation",
     "schema_sample_records",
     "diagram_depth",
+    "diagram_depth_tenancy",
+    "diagram_depth_network",
+    "diagram_depth_workload",
+    "diagram_depth_consolidated",
+    "diagram_theme",
+    "diagram_node_label_tags",
     "regions",
     "auth",
     "profile",
@@ -85,6 +91,10 @@ INT_CONFIG_KEYS = {
     "client_connection_pool_size",
     "schema_sample_records",
     "diagram_depth",
+    "diagram_depth_tenancy",
+    "diagram_depth_network",
+    "diagram_depth_workload",
+    "diagram_depth_consolidated",
     "top",
 }
 PATH_CONFIG_KEYS = {"outdir", "prev", "curr", "inventory"}
@@ -101,12 +111,14 @@ STR_CONFIG_KEYS = {
     "cost_compartment_group_by",
     "osub_subscription_id",
     "assessment_target_group",
+    "diagram_theme",
 }
 LIST_CONFIG_KEYS = {
     "assessment_target_scope",
     "assessment_lens_weights",
     "assessment_capabilities",
     "cost_group_by",
+    "diagram_node_label_tags",
 }
 
 
@@ -141,6 +153,15 @@ class RunConfig:
     schema_validation: str = DEFAULT_SCHEMA_VALIDATION
     schema_sample_records: int = DEFAULT_SCHEMA_SAMPLE_RECORDS
     diagram_depth: int = DEFAULT_DIAGRAM_DEPTH
+    # Per-diagram-type depth overrides (None = fall back to diagram_depth)
+    diagram_depth_tenancy: Optional[int] = None
+    diagram_depth_network: Optional[int] = None
+    diagram_depth_workload: Optional[int] = None
+    diagram_depth_consolidated: Optional[int] = None
+    # Visual theme for Mermaid diagrams: default | dark | forest | neutral | base
+    diagram_theme: str = "default"
+    # OCI tag keys whose values are shown on each node label (e.g., ["env", "team"])
+    diagram_node_label_tags: Optional[List[str]] = None
 
     # Cost reporting (optional)
     cost_report: bool = False
@@ -503,9 +524,52 @@ def load_run_config(
         type=int,
         default=None,
         help=(
-            "Depth for consolidated diagrams (1=global regions only, "
-            "2=regional abstraction with aggregated network-attached workloads, "
-            "3=full workloads + edges)."
+            "Global depth for all diagrams (1=overview only, 2=standard, 3=full detail). "
+            "Per-type overrides (--diagram-depth-tenancy etc.) take precedence."
+        ),
+    )
+    p_run.add_argument(
+        "--diagram-depth-tenancy",
+        type=int,
+        default=None,
+        dest="diagram_depth_tenancy",
+        help="Depth override for tenancy diagram only (1-3). Overrides --diagram-depth.",
+    )
+    p_run.add_argument(
+        "--diagram-depth-network",
+        type=int,
+        default=None,
+        dest="diagram_depth_network",
+        help="Depth override for per-VCN network diagrams only (1-3). Overrides --diagram-depth.",
+    )
+    p_run.add_argument(
+        "--diagram-depth-workload",
+        type=int,
+        default=None,
+        dest="diagram_depth_workload",
+        help="Depth override for workload diagrams only (1-3). Overrides --diagram-depth.",
+    )
+    p_run.add_argument(
+        "--diagram-depth-consolidated",
+        type=int,
+        default=None,
+        dest="diagram_depth_consolidated",
+        help="Depth override for consolidated flowchart only (1-3). Overrides --diagram-depth.",
+    )
+    p_run.add_argument(
+        "--diagram-theme",
+        default=None,
+        dest="diagram_theme",
+        choices=["default", "dark", "forest", "neutral", "base"],
+        help="Visual theme for Mermaid diagrams (default: default).",
+    )
+    p_run.add_argument(
+        "--diagram-node-label-tags",
+        default=None,
+        dest="diagram_node_label_tags",
+        help=(
+            "Comma-separated OCI tag keys whose values are shown on each node label "
+            "(e.g., 'env,team,workload'). Reads both freeform and defined tags."
         ),
     )
 
@@ -725,6 +789,12 @@ def load_run_config(
         "schema_validation": DEFAULT_SCHEMA_VALIDATION,
         "schema_sample_records": DEFAULT_SCHEMA_SAMPLE_RECORDS,
         "diagram_depth": DEFAULT_DIAGRAM_DEPTH,
+        "diagram_depth_tenancy": None,
+        "diagram_depth_network": None,
+        "diagram_depth_workload": None,
+        "diagram_depth_consolidated": None,
+        "diagram_theme": "default",
+        "diagram_node_label_tags": None,
         "inventory": None,
         "top": None,
         "auth": "auto",
@@ -778,6 +848,12 @@ def load_run_config(
             "schema_validation": _env_str("OCI_INV_SCHEMA_VALIDATION"),
             "schema_sample_records": _env_int("OCI_INV_SCHEMA_SAMPLE_RECORDS"),
             "diagram_depth": _env_int("OCI_INV_DIAGRAM_DEPTH"),
+            "diagram_depth_tenancy": _env_int("OCI_INV_DIAGRAM_DEPTH_TENANCY"),
+            "diagram_depth_network": _env_int("OCI_INV_DIAGRAM_DEPTH_NETWORK"),
+            "diagram_depth_workload": _env_int("OCI_INV_DIAGRAM_DEPTH_WORKLOAD"),
+            "diagram_depth_consolidated": _env_int("OCI_INV_DIAGRAM_DEPTH_CONSOLIDATED"),
+            "diagram_theme": _env_str("OCI_INV_DIAGRAM_THEME"),
+            "diagram_node_label_tags": _env_str("OCI_INV_DIAGRAM_NODE_LABEL_TAGS"),
             "cost_report": _env_bool("OCI_INV_COST_REPORT"),
             "cost_start": _env_str("OCI_INV_COST_START"),
             "cost_end": _env_str("OCI_INV_COST_END"),
@@ -822,6 +898,12 @@ def load_run_config(
             "schema_validation": getattr(ns, "validate_schema", None),
             "schema_sample_records": getattr(ns, "validate_schema_sample", None),
             "diagram_depth": getattr(ns, "diagram_depth", None),
+            "diagram_depth_tenancy": getattr(ns, "diagram_depth_tenancy", None),
+            "diagram_depth_network": getattr(ns, "diagram_depth_network", None),
+            "diagram_depth_workload": getattr(ns, "diagram_depth_workload", None),
+            "diagram_depth_consolidated": getattr(ns, "diagram_depth_consolidated", None),
+            "diagram_theme": getattr(ns, "diagram_theme", None),
+            "diagram_node_label_tags": getattr(ns, "diagram_node_label_tags", None),
             "cost_report": getattr(ns, "cost_report", None),
             "cost_start": getattr(ns, "cost_start", None),
             "cost_end": getattr(ns, "cost_end", None),
@@ -920,6 +1002,27 @@ def load_run_config(
     if diagram_depth not in {1, 2, 3}:
         raise ValueError("diagram_depth must be 1, 2, or 3")
 
+    def _parse_per_type_depth(key: str) -> Optional[int]:
+        raw = merged.get(key)
+        if raw is None:
+            return None
+        v = int(raw)
+        if v not in {1, 2, 3}:
+            raise ValueError(f"{key} must be 1, 2, or 3")
+        return v
+
+    diagram_depth_tenancy = _parse_per_type_depth("diagram_depth_tenancy")
+    diagram_depth_network = _parse_per_type_depth("diagram_depth_network")
+    diagram_depth_workload = _parse_per_type_depth("diagram_depth_workload")
+    diagram_depth_consolidated = _parse_per_type_depth("diagram_depth_consolidated")
+
+    diagram_theme = str(merged.get("diagram_theme") or "default").strip().lower()
+    _valid_themes = {"default", "dark", "forest", "neutral", "base"}
+    if diagram_theme not in _valid_themes:
+        raise ValueError(f"diagram_theme must be one of: {', '.join(sorted(_valid_themes))}")
+
+    diagram_node_label_tags = _parse_list_field(merged.get("diagram_node_label_tags"))
+
     cfg = RunConfig(
         outdir=outdir,
         prev=prev,
@@ -944,6 +1047,12 @@ def load_run_config(
         schema_validation=schema_validation,
         schema_sample_records=schema_sample_records,
         diagram_depth=diagram_depth,
+        diagram_depth_tenancy=diagram_depth_tenancy,
+        diagram_depth_network=diagram_depth_network,
+        diagram_depth_workload=diagram_depth_workload,
+        diagram_depth_consolidated=diagram_depth_consolidated,
+        diagram_theme=diagram_theme,
+        diagram_node_label_tags=diagram_node_label_tags,
         cost_report=bool(merged.get("cost_report")),
         cost_start=str(merged.get("cost_start")) if merged.get("cost_start") else None,
         cost_end=str(merged.get("cost_end")) if merged.get("cost_end") else None,
@@ -994,6 +1103,12 @@ def dump_config(cfg: RunConfig) -> Dict[str, Any]:
         "schema_validation": cfg.schema_validation,
         "schema_sample_records": cfg.schema_sample_records,
         "diagram_depth": cfg.diagram_depth,
+        "diagram_depth_tenancy": cfg.diagram_depth_tenancy,
+        "diagram_depth_network": cfg.diagram_depth_network,
+        "diagram_depth_workload": cfg.diagram_depth_workload,
+        "diagram_depth_consolidated": cfg.diagram_depth_consolidated,
+        "diagram_theme": cfg.diagram_theme,
+        "diagram_node_label_tags": cfg.diagram_node_label_tags,
         "cost_report": cfg.cost_report,
         "cost_start": cfg.cost_start,
         "cost_end": cfg.cost_end,

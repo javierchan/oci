@@ -26,19 +26,50 @@ class WorkloadContext:
     vcn_names_by_compartment: Mapping[str, Tuple[str, ...]]
 
 
+# Gateway types: shown with specific labels, placed at VCN "edge"
 _GATEWAY_TYPES: Mapping[str, str] = {
     "InternetGateway": "Internet Gateway",
     "NatGateway": "NAT Gateway",
     "ServiceGateway": "Service Gateway",
     "Drg": "DRG",
-    "DrgAttachment": "DRG Attachment",
     "VirtualCircuit": "FastConnect",
     "IPSecConnection": "VPN Connection",
     "Cpe": "Customer Premises Equipment",
     "LocalPeeringGateway": "Local Peering Gateway",
     "RemotePeeringConnection": "Remote Peering Connection",
-    "CrossConnect": "Cross Connect",
-    "CrossConnectGroup": "Cross Connect Group",
+}
+
+# Low-level objects that add noise without architectural value.
+# Uses BARE type names (without category prefix). Match the exact OCI resource type
+# as returned by the API (e.g. "DHCPOptions" not "DhcpOptions").
+_ARCH_NOISE_NODETYPES: Set[str] = {
+    # Networking internals
+    "PrivateIp", "Vnic", "VnicAttachment", "Ipv6",
+    "DrgRouteTable", "DrgRouteDistribution", "DrgRouteDistributionStatement",
+    "DrgAttachment",  # attachment plumbing — DRG is the meaningful component
+    "DHCPOptions", "DhcpOptions",  # both casing variants seen in the wild
+    "RouteTable",
+    "PublicIp", "PublicIpPool", "Byoiprange", "ByoipRange",
+    "CrossConnect", "CrossConnectGroup",  # physical layer — FastConnect/VirtualCircuit is the concept
+    # Internal DNS objects (DnsZone is kept — it's architectural; resolver/view are not)
+    "DnsResolver", "DnsView", "DnsRrset",
+    # Notification subscriptions (the Topic is the architectural concept, not the subscription)
+    "OnsSubscription", "Subscription",
+    # Storage implementation details
+    "BootVolume", "BootVolumeBackup", "VolumeBackup", "VolumeGroupBackup",
+    "ExportSet",
+    # IAM credentials (not structural)
+    "AuthToken", "ApiKey", "SwiftPassword", "CustomerSecretKey", "SmtpCredential",
+    # DB implementation internals (part of DbSystem/ADB, not standalone concepts)
+    "DbNode", "DbHome",
+    # Compute implementation details
+    "ConsoleHistory", "InstanceConsoleConnection",
+    # Marketplace / subscription metadata
+    "AppCatalogSubscription",
+    # OCI internal / management
+    "OsmhProfile", "OsmhSoftwareSource",
+    # Tagging internals (TagNamespace is kept as IAM; defaults/keys are not)
+    "TagDefault", "TagKey",
 }
 
 _NON_ARCH_TYPE_KEYWORDS = (
@@ -104,7 +135,7 @@ def build_workload_concepts(
     for n in nodes:
         if not n.get("nodeId"):
             continue
-        if str(n.get("nodeType") or "") not in _GATEWAY_TYPES:
+        if _bare_type(n) not in _GATEWAY_TYPES:
             continue
         vcn_id = _node_vcn_id(n, nodes=nodes, edges=edges, node_by_id=node_by_id)
         if vcn_id and vcn_id in scope_vcns:
@@ -269,118 +300,193 @@ def _scope_vcn_ids(
     return vcn_ids
 
 
+def _bare_type(node: Node) -> str:
+    """Return nodeType with category prefix stripped (e.g. 'network.NatGateway' → 'NatGateway')."""
+    nt = str(node.get("nodeType") or "")
+    return nt.split(".")[-1] if "." in nt else nt
+
+
 def _is_non_arch_resource(node: Node) -> bool:
-    node_type = str(node.get("nodeType") or "").lower()
-    name = str(node.get("name") or "").lower()
+    bare = _bare_type(node)
+    if bare in _ARCH_NOISE_NODETYPES:
+        return True
+    bare_lower = bare.lower()
+    name_lower = str(node.get("name") or "").lower()
     for token in _NON_ARCH_TYPE_KEYWORDS:
-        if token in node_type or token in name:
+        if token in bare_lower or token in name_lower:
             return True
     return False
 
 
 def _concept_for_node(node: Node) -> Tuple[Optional[str], Optional[str]]:
-    node_type = str(node.get("nodeType") or "")
-    node_type_lower = node_type.lower()
-    name = str(node.get("name") or "")
-    name_lower = name.lower()
+    bare = _bare_type(node)
+    bare_lower = bare.lower()
+    name_lower = str(node.get("name") or "").lower()
     category = str(node.get("nodeCategory") or "").lower()
 
-    if node_type in {"Compartment", "Vcn", "Subnet"} or node_type.endswith(".Compartment"):
+    # Structural containers: never shown
+    if bare in {"Compartment", "Vcn", "Subnet"}:
         return None, None
 
-    if node_type in _GATEWAY_TYPES:
-        return "network", _GATEWAY_TYPES[node_type]
+    # --- NETWORK GATEWAYS (edge placement) ---
+    if bare in _GATEWAY_TYPES:
+        return "network", _GATEWAY_TYPES[bare]
 
-    if "loadbalancer" in node_type_lower or node_type in {"Nlb", "NetworkLoadBalancer"}:
+    # --- LOAD BALANCERS ---
+    if "loadbalancer" in bare_lower:
+        if bare_lower.startswith("network"):
+            return "network", "Network Load Balancer"
         return "network", "Load Balancer"
 
-    if "apigateway" in node_type_lower or node_type == "ApiGateway":
+    # --- API GATEWAY ---
+    if "apigateway" in bare_lower:
         return "network", "API Gateway"
 
-    if "containerengine" in node_type_lower and "cluster" in node_type_lower:
+    # --- NETWORK SECURITY (in-VCN, security lane) ---
+    if "networksecuritygroup" in bare_lower:
+        return "security", "NSG"
+    if "securitylist" in bare_lower:
+        return "security", "Security List"
+
+    # --- VLAN ---
+    if bare == "Vlan":
+        return "network", "VLAN"
+
+    # --- DNS ---
+    if "dnszone" in bare_lower or "customerdnszone" in bare_lower:
+        return "network", "DNS Zone"
+
+    # --- FUNCTIONS APPLICATION ---
+    if bare in {"Application", "FnApplication", "FunctionsApplication"}:
+        return "app", "Functions"
+
+    # --- OKE ---
+    if "containerengine" in bare_lower and "cluster" in bare_lower:
         return "app", "OKE Cluster"
+    if "containerengine" in bare_lower or "nodepool" in bare_lower:
+        return "app", "OKE Node Pool"
 
-    if "nodepool" in node_type_lower or "node pool" in name_lower:
-        return "app", "Worker Nodes"
-
+    # --- WORKER NODES (name-based) ---
     if "worker" in name_lower and "node" in name_lower:
         return "app", "Worker Nodes"
 
-    if "odi" in name_lower and ("stack" in node_type_lower or "marketplace" in node_type_lower):
+    # --- ODI (name-based) ---
+    if "odi" in name_lower and ("stack" in bare_lower or "marketplace" in bare_lower):
         return "app", "ODI Stack"
+    if "odi" in name_lower and "instance" in bare_lower:
+        return "app", "ODI Instance"
 
-    if "odi" in name_lower and "instance" in node_type_lower:
-        return "app", "ODI Compute Nodes"
+    # --- COMPUTE ---
+    if bare in {"InstancePool", "InstanceConfiguration"}:
+        return "app", "Instance Pool"
+    if "baremetal" in bare_lower:
+        return "app", "Bare Metal"
+    if "function" in bare_lower:
+        return "app", "Functions"
+    if "instance" in bare_lower:
+        return "app", "Compute Instance"
 
-    if category == "observability" or any(token in node_type_lower for token in ("log", "metric", "alarm", "monitor")):
-        return "observability", "Observability Suite"
+    # --- VMWARE OCVS ---
+    if "vmware" in bare_lower or "esxi" in bare_lower or "sddc" in bare_lower:
+        return "app", "VMware OCVS"
 
-    if any(token in node_type_lower for token in ("autonomous", "database", "dbsystem", "mysql", "postgres", "nosql")):
+    # --- DATABASES ---
+    if "autonomous" in bare_lower:
+        return "data", "Autonomous Database"
+    if "dbsystem" in bare_lower:
+        return "data", "DB System"
+    if "mysql" in bare_lower:
+        return "data", "MySQL DB"
+    if "postgres" in bare_lower:
+        return "data", "PostgreSQL DB"
+    if "nosql" in bare_lower:
+        return "data", "NoSQL Table"
+    if "database" in bare_lower:
         return "data", "Database"
 
-    if "bucket" in node_type_lower or "objectstorage" in node_type_lower:
+    # --- STORAGE ---
+    if "bucket" in bare_lower or "objectstorage" in bare_lower:
         return "data", "Object Storage"
+    if "blockvolume" in bare_lower or bare_lower == "volume":
+        return "data", "Block Volume"
+    if "filesystem" in bare_lower or "mounttarget" in bare_lower:
+        return "data", "File Storage"
 
-    if "blockvolume" in node_type_lower or node_type_lower == "volume":
-        return "data", "Block Storage"
+    # --- SECURITY ---
+    if "cloudguard" in bare_lower:
+        return "security", "Cloud Guard"
+    if "securityzone" in bare_lower:
+        return "security", "Security Zone"
+    if "vault" in bare_lower or "keymanagement" in bare_lower:
+        return "security", "Vault / KMS"
+    if "waas" in bare_lower or "waf" in bare_lower or "webapplicationfirewall" in bare_lower:
+        return "security", "WAF"
+    if "bastion" in bare_lower:
+        return "security", "Bastion"
+    if "certificate" in bare_lower:
+        return "security", "Certificates"
 
-    if "function" in node_type_lower:
-        return "app", "Functions"
+    # --- OBSERVABILITY ---
+    if "loganalytics" in bare_lower:
+        return "observability", "Log Analytics"
+    if "notification" in bare_lower or "onstopic" in bare_lower:
+        return "observability", "Notifications"
+    if "alarm" in bare_lower:
+        return "observability", "Alarms"
+    if "eventrule" in bare_lower or "eventcondition" in bare_lower:
+        return "observability", "Events"
+    if category == "observability" or any(t in bare_lower for t in ("log", "metric", "monitor")):
+        return "observability", "Monitoring"
 
-    if "instance" in node_type_lower or "baremetal" in node_type_lower:
-        return "app", "Compute Instances"
+    # --- IAM ---
+    if bare in {"User", "Group", "DynamicResourceGroup"}:
+        return "iam", "IAM Principals"
+    if bare == "Policy":
+        return "iam", "IAM Policies"
+    if "identitydomain" in bare_lower:
+        return "iam", "Identity Domain"
+    if "tagnamespace" in bare_lower:
+        return "iam", "Tag Namespace"
+    if category == "iam":
+        return "iam", "IAM"
 
+    # --- CATEGORY FALLBACKS with friendly type name ---
+    friendly = _sanitize_label(_friendly_type(bare))
     if category in {"compute", "app"}:
-        return "app", "App Services"
+        return "app", friendly or "App Service"
     if category in {"data", "storage"}:
-        return "data", "Data Services"
-    if category in {"security", "governance", "iam"}:
-        return "security", "Security Controls"
+        return "data", friendly or "Data Service"
+    if category in {"security", "governance"}:
+        return "security", friendly or "Security Control"
     if category == "network":
-        return "network", "Network Services"
+        return "network", friendly or "Network Service"
 
-    return "other", _sanitize_label(_friendly_type(node_type) or "Other Services")
+    # Catch-all: use friendly type name or drop
+    return ("other", friendly) if friendly else (None, None)
 
 
 def _placement_for_node(node: Node, *, vcn_id: Optional[str]) -> str:
-    node_type = str(node.get("nodeType") or "")
-    if node_type in _GATEWAY_TYPES:
+    bare = _bare_type(node)
+    bare_lower = bare.lower()
+    if bare in _GATEWAY_TYPES:
         return "edge"
     if vcn_id:
         return "in_vcn"
     category = str(node.get("nodeCategory") or "").lower()
-    node_type_lower = node_type.lower()
     if category in {"observability", "iam", "security", "governance"}:
         return "out_of_vcn"
-    if any(token in node_type_lower for token in ("bucket", "objectstorage", "logging", "metrics", "vault", "events")):
+    if any(t in bare_lower for t in (
+        "bucket", "objectstorage", "filesystem", "mounttarget",
+        "vault", "keymanagement", "cloudguard", "securityzone",
+        "loganalytics", "notification", "alarm", "eventrule",
+        "dnszone", "customerdnszone", "tagnamespace",
+    )):
         return "out_of_vcn"
     return "unknown"
 
 
 def _security_scope_for_node(node: Node, *, vcn_id: Optional[str]) -> Optional[str]:
-    category = str(node.get("nodeCategory") or "").lower()
-    node_type_lower = str(node.get("nodeType") or "").lower()
-    name_lower = str(node.get("name") or "").lower()
-
-    if category not in {"security", "iam", "governance"} and not any(
-        token in node_type_lower for token in ("policy", "identity", "security", "iam")
-    ):
-        return None
-
-    if any(token in node_type_lower for token in ("networksecuritygroup", "securitylist")):
-        return "vcn"
-    if "nsg" in node_type_lower or "security list" in name_lower:
-        return "vcn"
-    if "securityzone" in node_type_lower or "security zone" in name_lower:
-        return "compartment"
-    if category in {"iam", "governance"} or any(
-        token in node_type_lower for token in ("policy", "identity", "domain", "group", "user", "dynamicgroup")
-    ):
-        return "tenancy"
-    if vcn_id:
-        return "vcn"
-    if category == "security":
-        return "compartment"
+    # Overlay pattern removed — security/IAM items render in their own lanes
     return None
 
 

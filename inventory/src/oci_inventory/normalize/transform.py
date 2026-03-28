@@ -33,6 +33,36 @@ WORKLOAD_PREFIX_EXCLUDE: Tuple[str, ...] = (
     "staging",
 )
 WORKLOAD_MIN_SIZE: int = 3
+# Resources grouped exclusively by explicit OCI tags require fewer siblings to form a workload.
+WORKLOAD_TAG_MIN_SIZE: int = 1
+
+# Resource types that are pure infrastructure artifacts and should never form workload clusters.
+# These types don't represent application workloads — they're OCI plumbing.
+WORKLOAD_EXCLUDE_RESOURCE_TYPES: frozenset = frozenset({
+    "VolumeBackup",
+    "BootVolumeBackup",
+    "VolumeGroupBackup",
+    "OsmhSoftwareSource",
+    "OsmhProfile",
+    "network.Subnet",
+    "Subnet",
+    "network.RouteTable",
+    "RouteTable",
+    "network.SecurityList",
+    "SecurityList",
+    "network.DHCPOptions",
+    "DHCPOptions",
+    "network.NetworkSecurityGroup",
+    "NetworkSecurityGroup",
+    "network.Vnic",
+    "Vnic",
+    "PrivateIp",
+    "CustomerDnsZone",
+    "DnsResolver",
+    "DnsView",
+    "TagDefault",
+    "TagNamespace",
+})
 
 
 def _get(d: Dict[str, Any], *keys: str) -> Any:
@@ -139,10 +169,21 @@ def _workload_key_candidates(record: Mapping[str, Any]) -> List[str]:
     return out
 
 
+def _is_tag_sourced_group(key: str, members: List[Mapping[str, Any]]) -> bool:
+    """Return True if the group key matches an explicit OCI tag value on at least one member."""
+    key_lower = key.lower()
+    for r in members:
+        tag_vals = _workload_tag_values(r)
+        if any(v.lower() == key_lower for v in tag_vals.values()):
+            return True
+    return False
+
+
 def group_workloads(
     records: Sequence[Mapping[str, Any]],
     *,
     min_size: int = WORKLOAD_MIN_SIZE,
+    tag_min_size: int = WORKLOAD_TAG_MIN_SIZE,
 ) -> Dict[str, List[Mapping[str, Any]]]:
     prefix_counts: Dict[str, int] = {}
     for r in records:
@@ -173,15 +214,31 @@ def group_workloads(
             continue
         groups.setdefault(chosen, []).append(r)
 
-    out = {k: v for k, v in groups.items() if len(v) >= min_size}
+    out = {
+        k: v
+        for k, v in groups.items()
+        if len(v) >= (tag_min_size if _is_tag_sourced_group(k, v) else min_size)
+    }
     return dict(sorted(out.items(), key=lambda kv: (-len(kv[1]), kv[0].lower())))
 
 
 def group_workload_candidates(records: Sequence[Mapping[str, Any]]) -> Dict[str, List[Mapping[str, Any]]]:
     """
     Standard workload grouping used by reports and diagram projections.
+    Resources with explicit OCI tags (freeform or defined) matching a workload key are included
+    even when below the general min_size threshold.
+    Pure infrastructure resource types (VolumeBackup, Subnet, RouteTable, etc.) are excluded
+    unless they carry an explicit workload tag.
     """
-    return group_workloads(records, min_size=WORKLOAD_MIN_SIZE)
+    filtered = []
+    for r in records:
+        rtype = str(r.get("nodeType") or r.get("resourceType") or "")
+        # Keep infrastructure types only if they have an explicit workload tag
+        if rtype in WORKLOAD_EXCLUDE_RESOURCE_TYPES:
+            if not _workload_tag_values(r):
+                continue
+        filtered.append(r)
+    return group_workloads(filtered, min_size=WORKLOAD_MIN_SIZE, tag_min_size=WORKLOAD_TAG_MIN_SIZE)
 
 
 def normalize_from_search_summary(

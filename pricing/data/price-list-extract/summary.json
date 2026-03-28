@@ -1,0 +1,23 @@
+{
+  "documents": {
+    "price_list": {
+      "file_name": "ORACLE+PAAS+AND+IAAS+PUBLIC+CLOUD+GLOBAL+PRICE+LIST.pdf",
+      "pages": 138,
+      "prerequisite_records": 0,
+      "note_records": 251,
+      "part_mentions": 1088
+    },
+    "supplement": {
+      "file_name": "ORACLE+PAAS+AND+IAAS+PUBLIC+CLOUD+GLOBAL+PRICE+LIST+SUPPLEMENT.pdf",
+      "pages": 125,
+      "prerequisite_records": 60,
+      "note_records": 113,
+      "part_mentions": 1120
+    }
+  },
+  "artifacts": {
+    "combined_prerequisites": 60,
+    "combined_notes": 364,
+    "combined_part_mentions": 2208
+  }
+}

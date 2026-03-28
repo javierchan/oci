@@ -76,3 +76,8 @@ disallow_untyped_defs = true
 ignore_missing_imports = true
 check_untyped_defs = true
 no_implicit_optional = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
