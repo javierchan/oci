@@ -121,12 +121,37 @@ Files:
 - `server/service-registry.js`
 - `server/workbook-rules.js`
 - `server/catalog.js`
+- `data/rule-registry/service_family_rules.json`
+- `data/rule-registry/coverage_matrix.json`
+- `data/rule-registry/vm_shape_rules.json`
 
 Responsibilities:
 
 - unify catalog and workbook service metadata
 - track patterns, required inputs, and coverage level
 - act as the main registry for broad OCI service coverage
+- persist extracted rule artifacts so gaps can be measured outside the runtime
+
+### 3a. Extracted Rule Artifacts
+
+Files:
+
+- `tools/build_rule_registry.py`
+- `tools/build_vm_shape_rules.py`
+- `tools/build_coverage_artifacts.js`
+
+Responsibilities:
+
+- turn `XLS + PDF` extracts into reusable JSON artifacts
+- persist calculator-style VM shape mappings in `vm_shape_rules.json`
+- group workbook services into family-level artifacts in `service_family_rules.json`
+- publish a machine-readable `coverage_matrix.json` with:
+  - source counts
+  - runtime coverage levels
+  - vm-shape coverage
+  - lowest-coverage services
+
+This is the path to broad SKU coverage. It converts local source material into auditable data instead of repeating one-off fixes in prompt logic.
 
 ### 4. Dependency Resolution
 
@@ -185,6 +210,7 @@ Coverage should be improved by:
 2. improving consumption-pattern inference
 3. improving prerequisite modeling
 4. improving ambiguity handling for licensing and variants
+5. regenerating extracted artifacts from source documents and checking the coverage matrix
 
 Not by adding one-off prompt hacks.
 

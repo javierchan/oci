@@ -83,12 +83,39 @@ This section is the working summary of progress.
     - `Exadata Exascale` prompts that must preserve `compute + filesystem storage`
     - `Exadata Dedicated` prompts that must preserve `database compute + base-system infrastructure`
 - `Compute Flex` now has:
-  - deterministic quoting for `E4`, `E5`, and `A1` flex shapes
+  - deterministic quoting for calculator-aligned VM shapes across `Intel`, `AMD`, and `Ampere`
+  - explicit support for:
+    - `VM.Standard3.Flex`
+    - `VM.Optimized3.Flex`
+    - fixed Intel shapes `VM.Standard2.1/2/4/8/16/24`
+    - `VM.Standard.E3/E4/E5/E6.Flex`
+    - `VM.DenseIO.E4/E5.Flex`
+    - `VM.Standard.A1/A2/A4.Flex`
+  - deterministic mapping from OCI Calculator shape names into the underlying billable compute lines from the local price sources:
+    - `VM.Standard3.Flex -> Compute - Standard - X9`
+    - `VM.Optimized3.Flex -> Compute - Optimized - X9`
+    - `VM.Standard2.x -> Compute - Virtual Machine Standard - X7`
   - correct `HOUR_UTILIZED` tier handling for free-tier and overage-based SKUs such as `A1`
   - deterministic `compute + attached block volume` quoting when the prompt already includes an explicit `Flex` shape plus storage sizing
   - deterministic composite workload quoting when compute is combined with attached `Block Storage`, `Object Storage`, and `Flexible Load Balancer` in the same request
   - deterministic generic VM clarification before quoting when the user provides sizing but not the shape
-  - vendor-aware generic VM clarification that suggests `E4/E5` for AMD-class x86 prompts and `A1.Flex` for Arm prompts
+  - vendor-aware generic VM clarification that now aligns to OCI Calculator options:
+    - Intel: `VM.Standard3.Flex`, `VM.Optimized3.Flex`, `VM.Standard2.x`
+    - AMD: `VM.Standard.E4/E5/E6.Flex`, `VM.DenseIO.E4/E5.Flex`
+    - Ampere: `VM.Standard.A1/A2/A4.Flex`
+- extracted rule artifacts now exist to reduce future one-off SKU fixes:
+  - `data/rule-registry/vm_shape_rules.json`
+  - `data/rule-registry/service_family_rules.json`
+  - `data/rule-registry/coverage_matrix.json`
+  - generation commands:
+    - `python3 tools/build_vm_shape_rules.py`
+    - `node tools/build_coverage_artifacts.js`
+  - current matrix output exposes:
+    - `1004` workbook services
+    - `542` services at `L4`
+    - `422` services still at `L1`
+    - `17` calculator-aligned VM shapes in the explicit VM shape registry
+    - `computeVariantAudit`, which now surfaces compute-family services from the workbook/PDF extracts that still remain outside the explicit VM shape registry
   - dedicated conversational comparison flow for prompts such as `Compare E4.Flex vs E5.Flex vs A1.Flex ... with and without Capacity Reservation`
   - deterministic comparison output for `On-demand` vs `Capacity Reservation` with user-provided utilization
   - deterministic comparison output for `On-demand` vs `Preemptible` on supported shapes such as `E4` and `A1`
@@ -186,6 +213,13 @@ This section is the working summary of progress.
 - mixed operational-service bundles with `Fleet Application Management + OCI Batch + Notifications Email Delivery` now preserve all three services instead of collapsing to `OCI Batch`
 - `Exadata Exascale` direct and bundled quotes now preserve filesystem-storage and smart-storage capacity lines when the prompt specifies the storage model explicitly
 - expert-summary profiles now distinguish `operations/platform services` bundles from `observability`, so mixed `Fleet + Batch + Email Delivery` responses no longer present the wrong OCI specialist perspective
+- mixed notifications bundles now preserve `IAM SMS` alongside `HTTPS Delivery` and `Email Delivery`
+- mixed `Generative AI + Threat Intelligence + DNS` bundles now preserve the `Threat Intelligence` line instead of dropping that segment
+- mixed `OCI Functions + API Gateway + DNS` bundles now preserve the `API Gateway` billable line instead of misrouting that segment to another request-based service
+- storage-heavy bundles that also include `DNS` and `Load Balancer` now keep the `compute/storage` expert perspective when storage is the dominant cost and architecture signal
+- expert-summary profiles now also weigh dominant billed lines, so `analytics/integration` and `database` bundles are not misframed as `serverless/AI` or `network/security` merely because they include secondary edge or AI request services
+- expert-summary profiles now escalate truly multi-domain bundles to an `OCI solutions architect` perspective instead of forcing a misleading single-domain specialist label
+- observability-heavy mixed bundles now prefer `observability` over `database` when `Data Safe` is present only as a secondary line item
 - coverage improved materially after this block:
   - `L4`: `797 -> 982`
   - `L1`: `547 -> 362`

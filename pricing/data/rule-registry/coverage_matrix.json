@@ -1,0 +1,2340 @@
+{
+  "metadata": {
+    "generatedAt": "2026-03-31T06:23:15.616Z",
+    "generatedBy": "pricing/tools/build_coverage_artifacts.js"
+  },
+  "sourceStats": {
+    "workbookServices": 1004,
+    "pdfBillingRules": 364,
+    "pdfPrerequisiteRules": 60,
+    "vmShapes": 17,
+    "serviceFamilies": 9
+  },
+  "runtimeCoverage": {
+    "serviceRegistrySummary": {
+      "serviceCount": 1004,
+      "byCoverageLevel": {
+        "L3": 31,
+        "L4": 542,
+        "L1": 422,
+        "L2": 9
+      },
+      "byDomain": {
+        "other": 272,
+        "database": 260,
+        "storage": 113,
+        "compute": 209,
+        "network": 22,
+        "analytics": 57,
+        "devops": 5,
+        "security": 32,
+        "observability": 16,
+        "integration": 14,
+        "serverless": 4
+      },
+      "explainableCount": 719,
+      "deterministicCount": 582
+    },
+    "byCoverageLevel": {
+      "L3": 31,
+      "L4": 542,
+      "L1": 422,
+      "L2": 9
+    },
+    "byDomain": {
+      "other": 272,
+      "database": 260,
+      "storage": 113,
+      "compute": 209,
+      "network": 22,
+      "analytics": 57,
+      "devops": 5,
+      "security": 32,
+      "observability": 16,
+      "integration": 14,
+      "serverless": 4
+    }
+  },
+  "vmShapeCoverage": {
+    "totalShapes": 17,
+    "byKind": {
+      "flex": 11,
+      "fixed": 6
+    },
+    "byVendor": {
+      "intel": 8,
+      "amd": 6,
+      "ampere": 3
+    },
+    "shapes": [
+      {
+        "shapeName": "VM.Standard3.Flex",
+        "aliases": [
+          "Standard3.Flex",
+          "VM.Standard3.Flex"
+        ],
+        "kind": "flex",
+        "vendor": "intel",
+        "family": "standard",
+        "series": "X9",
+        "productLabel": null,
+        "fixedOcpus": null,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B94176",
+          "B94177"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "VM.Optimized3.Flex",
+        "aliases": [
+          "Optimized3.Flex",
+          "VM.Optimized3.Flex"
+        ],
+        "kind": "flex",
+        "vendor": "intel",
+        "family": "optimized",
+        "series": "X9",
+        "productLabel": null,
+        "fixedOcpus": null,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B93311",
+          "B93312"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard2.1",
+        "aliases": [
+          "Standard2.1",
+          "VM.Standard2.1"
+        ],
+        "kind": "fixed",
+        "vendor": "intel",
+        "family": "standard",
+        "series": "X7",
+        "productLabel": "Compute - Virtual Machine Standard - X7",
+        "fixedOcpus": 1,
+        "fixedMemoryGb": 15,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B88514"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard2.2",
+        "aliases": [
+          "Standard2.2",
+          "VM.Standard2.2"
+        ],
+        "kind": "fixed",
+        "vendor": "intel",
+        "family": "standard",
+        "series": "X7",
+        "productLabel": "Compute - Virtual Machine Standard - X7",
+        "fixedOcpus": 2,
+        "fixedMemoryGb": 30,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B88514"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard2.4",
+        "aliases": [
+          "Standard2.4",
+          "VM.Standard2.4"
+        ],
+        "kind": "fixed",
+        "vendor": "intel",
+        "family": "standard",
+        "series": "X7",
+        "productLabel": "Compute - Virtual Machine Standard - X7",
+        "fixedOcpus": 4,
+        "fixedMemoryGb": 60,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B88514"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard2.8",
+        "aliases": [
+          "Standard2.8",
+          "VM.Standard2.8"
+        ],
+        "kind": "fixed",
+        "vendor": "intel",
+        "family": "standard",
+        "series": "X7",
+        "productLabel": "Compute - Virtual Machine Standard - X7",
+        "fixedOcpus": 8,
+        "fixedMemoryGb": 120,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B88514"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard2.16",
+        "aliases": [
+          "Standard2.16",
+          "VM.Standard2.16"
+        ],
+        "kind": "fixed",
+        "vendor": "intel",
+        "family": "standard",
+        "series": "X7",
+        "productLabel": "Compute - Virtual Machine Standard - X7",
+        "fixedOcpus": 16,
+        "fixedMemoryGb": 240,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B88514"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard2.24",
+        "aliases": [
+          "Standard2.24",
+          "VM.Standard2.24"
+        ],
+        "kind": "fixed",
+        "vendor": "intel",
+        "family": "standard",
+        "series": "X7",
+        "productLabel": "Compute - Virtual Machine Standard - X7",
+        "fixedOcpus": 24,
+        "fixedMemoryGb": 320,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B88514"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard.E3.Flex",
+        "aliases": [
+          "Standard.E3.Flex",
+          "VM.Standard.E3.Flex"
+        ],
+        "kind": "flex",
+        "vendor": "amd",
+        "family": "standard",
+        "series": "E3",
+        "productLabel": null,
+        "fixedOcpus": null,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B92306",
+          "B92307"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard.E4.Flex",
+        "aliases": [
+          "Standard.E4.Flex",
+          "VM.Standard.E4.Flex"
+        ],
+        "kind": "flex",
+        "vendor": "amd",
+        "family": "standard",
+        "series": "E4",
+        "productLabel": null,
+        "fixedOcpus": null,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B93113",
+          "B93114"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard.E5.Flex",
+        "aliases": [
+          "Standard.E5.Flex",
+          "VM.Standard.E5.Flex"
+        ],
+        "kind": "flex",
+        "vendor": "amd",
+        "family": "standard",
+        "series": "E5",
+        "productLabel": null,
+        "fixedOcpus": null,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B97384",
+          "B97385"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard.E6.Flex",
+        "aliases": [
+          "Standard.E6.Flex",
+          "VM.Standard.E6.Flex"
+        ],
+        "kind": "flex",
+        "vendor": "amd",
+        "family": "standard",
+        "series": "E6",
+        "productLabel": null,
+        "fixedOcpus": null,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B111129",
+          "B111130"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract."
+        ]
+      },
+      {
+        "shapeName": "VM.DenseIO.E4.Flex",
+        "aliases": [
+          "DenseIO.E4.Flex",
+          "VM.DenseIO.E4.Flex"
+        ],
+        "kind": "flex",
+        "vendor": "amd",
+        "family": "denseio",
+        "series": "E4",
+        "productLabel": null,
+        "fixedOcpus": null,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B93121",
+          "B93122",
+          "B93123"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract."
+        ]
+      },
+      {
+        "shapeName": "VM.DenseIO.E5.Flex",
+        "aliases": [
+          "DenseIO.E5.Flex",
+          "VM.DenseIO.E5.Flex"
+        ],
+        "kind": "flex",
+        "vendor": "amd",
+        "family": "denseio",
+        "series": "E5",
+        "productLabel": null,
+        "fixedOcpus": null,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B98202",
+          "B98203",
+          "B98204"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard.A1.Flex",
+        "aliases": [
+          "Standard.A1.Flex",
+          "VM.Standard.A1.Flex"
+        ],
+        "kind": "flex",
+        "vendor": "ampere",
+        "family": "standard",
+        "series": "A1",
+        "productLabel": null,
+        "fixedOcpus": null,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 1,
+        "partNumbers": [
+          "B93297",
+          "B93298"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard.A2.Flex",
+        "aliases": [
+          "Standard.A2.Flex",
+          "VM.Standard.A2.Flex"
+        ],
+        "kind": "flex",
+        "vendor": "ampere",
+        "family": "standard",
+        "series": "A2",
+        "productLabel": null,
+        "fixedOcpus": null,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 1,
+        "partNumbers": [
+          "B109529",
+          "B109530"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "VM.Standard.A4.Flex",
+        "aliases": [
+          "Standard.A4.Flex",
+          "VM.Standard.A4.Flex"
+        ],
+        "kind": "flex",
+        "vendor": "ampere",
+        "family": "standard",
+        "series": "A4",
+        "productLabel": null,
+        "fixedOcpus": null,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 1,
+        "partNumbers": [
+          "B112145",
+          "B112146"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      }
+    ]
+  },
+  "computeVariantAudit": {
+    "candidateServiceCount": 63,
+    "coveredServiceCount": 23,
+    "uncoveredServiceCount": 40,
+    "coveredServices": [
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Dense I/O - E4",
+        "partNumbers": [
+          "B93121"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Dense I/O - E4 - Memory",
+        "partNumbers": [
+          "B93122"
+        ],
+        "metrics": [
+          "Gigabyte Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Dense I/O - E4 - NVMe",
+        "partNumbers": [
+          "B93123"
+        ],
+        "metrics": [
+          "NVMe Terabyte Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Dense I/O - E5 - Memory",
+        "partNumbers": [
+          "B98203"
+        ],
+        "metrics": [
+          "Gigabyte Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Dense I/O - E5 - NVMe",
+        "partNumbers": [
+          "B98204"
+        ],
+        "metrics": [
+          "NVMe Terabyte Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Dense I/O - E5 - OCPU",
+        "partNumbers": [
+          "B98202"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Optimized - X9",
+        "partNumbers": [
+          "B93311"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Optimized - X9 - Memory",
+        "partNumbers": [
+          "B93312"
+        ],
+        "metrics": [
+          "Gigabyte Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - A1",
+        "partNumbers": [
+          "B93297"
+        ],
+        "metrics": [],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - A1 - Memory",
+        "partNumbers": [
+          "B93298"
+        ],
+        "metrics": [],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - A2 - Memory",
+        "partNumbers": [
+          "B109530"
+        ],
+        "metrics": [
+          "Gigabyte Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - A2 - OCPU",
+        "partNumbers": [
+          "B109529"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - E3",
+        "partNumbers": [
+          "B92306"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - E3 - Memory",
+        "partNumbers": [
+          "B92307"
+        ],
+        "metrics": [
+          "Gigabyte Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - E4",
+        "partNumbers": [
+          "B93113"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - E4 - Memory",
+        "partNumbers": [
+          "B93114"
+        ],
+        "metrics": [
+          "Gigabyte Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - E5 - Memory",
+        "partNumbers": [
+          "B97385"
+        ],
+        "metrics": [
+          "Gigabyte Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - E5 - OCPU",
+        "partNumbers": [
+          "B97384"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - E6 - Memory",
+        "partNumbers": [
+          "B111130"
+        ],
+        "metrics": [
+          "Gigabyte Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - E6 - OCPU",
+        "partNumbers": [
+          "B111129"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - X9",
+        "partNumbers": [
+          "B94176"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - X9 - Memory",
+        "partNumbers": [
+          "B94177"
+        ],
+        "metrics": [
+          "Gigabyte Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Virtual Machine Standard - X7",
+        "partNumbers": [
+          "B88514"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      }
+    ],
+    "uncoveredServices": [
+      {
+        "name": "Oracle Big Data Service - Compute - HPC",
+        "partNumbers": [
+          "B91130"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Dense I/O - X5 - Metered",
+        "partNumbers": [
+          "B86078"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Dense I/O - X7",
+        "partNumbers": [
+          "B88515"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Dense I/O - X7 - Metered",
+        "partNumbers": [
+          "B89139"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal GPU Standard - X7",
+        "partNumbers": [
+          "B88517"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal GPU Standard - X7 - Metered",
+        "partNumbers": [
+          "B89141"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - B1",
+        "partNumbers": [
+          "B91119"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - X5",
+        "partNumbers": [
+          "B88315"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - X5 - Metered",
+        "partNumbers": [
+          "B86076"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - X7",
+        "partNumbers": [
+          "B88513"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - X7 - Metered",
+        "partNumbers": [
+          "B89137"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - GPU - A10",
+        "partNumbers": [
+          "B95909"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - GPU - A100 - v2",
+        "partNumbers": [
+          "B95907"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - GPU - B200",
+        "partNumbers": [
+          "B110978"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - GPU - E3",
+        "partNumbers": [
+          "B92740"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - GPU - GB200",
+        "partNumbers": [
+          "B110979"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - GPU - H100",
+        "partNumbers": [
+          "B98415"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - GPU - H200",
+        "partNumbers": [
+          "B110519"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - GPU - L40S",
+        "partNumbers": [
+          "B109479"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - GPU - MI300X",
+        "partNumbers": [
+          "B109485"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - GPU Standard - V2",
+        "partNumbers": [
+          "B89734"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - GPU Standard - V2 - Metered",
+        "partNumbers": [
+          "B89735"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - HPC - E5",
+        "partNumbers": [
+          "B96531"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - HPC - X7",
+        "partNumbers": [
+          "B90398"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Microsoft SQL Enterprise* (*Available on the Oracle Cloud Marketplace: See Note 15)",
+        "partNumbers": [
+          "B91372"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Microsoft SQL Standard* (*Available on the Oracle Cloud Marketplace: See Note 15)",
+        "partNumbers": [
+          "B91373"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Standard - E2",
+        "partNumbers": [
+          "B90425"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Virtual Machine Dense I/O - X5 - Metered",
+        "partNumbers": [
+          "B87786"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Virtual Machine Dense I/O - X7",
+        "partNumbers": [
+          "B88516"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Virtual Machine Dense I/O - X7 - Metered",
+        "partNumbers": [
+          "B89140"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Virtual Machine GPU Standard - X7",
+        "partNumbers": [
+          "B88518"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Virtual Machine Standard - B1",
+        "partNumbers": [
+          "B91120"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Virtual Machine Standard - E2 Micro - Free",
+        "partNumbers": [
+          "B91444"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Virtual Machine Standard - X5",
+        "partNumbers": [
+          "B88317"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Virtual Machine Standard - X5 - Metered",
+        "partNumbers": [
+          "B86079"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Virtual Machine Standard - X7 - Metered",
+        "partNumbers": [
+          "B89138"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Windows OS",
+        "partNumbers": [
+          "B88318"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Windows OS - Metered",
+        "partNumbers": [
+          "B87674"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Compute Cloud@Customer - Compute - GPU.L40S",
+        "partNumbers": [
+          "B110965",
+          "B111455"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      },
+      {
+        "name": "Oracle Compute Cloud@Customer - Compute - GPU.L40S - Resource Commit",
+        "partNumbers": [
+          "B111454"
+        ],
+        "metrics": [
+          "GPU Per Hour"
+        ],
+        "matchedVmRegistry": false
+      }
+    ]
+  },
+  "resolverCoverage": [
+    {
+      "id": "compute_vm_generic",
+      "canonical": "OCI Compute Virtual Machine",
+      "domain": "compute",
+      "resolver": "compute_vm_generic"
+    },
+    {
+      "id": "storage_block",
+      "canonical": "OCI Block Volume",
+      "domain": "storage",
+      "resolver": "block_volume"
+    },
+    {
+      "id": "storage_file",
+      "canonical": "OCI File Storage",
+      "domain": "storage",
+      "resolver": "file_storage"
+    },
+    {
+      "id": "network_fastconnect",
+      "canonical": "OCI FastConnect",
+      "domain": "network",
+      "resolver": "fastconnect"
+    },
+    {
+      "id": "network_firewall",
+      "canonical": "OCI Network Firewall",
+      "domain": "network",
+      "resolver": "network_firewall"
+    },
+    {
+      "id": "observability_log_analytics",
+      "canonical": "OCI Log Analytics",
+      "domain": "observability",
+      "resolver": "log_analytics"
+    },
+    {
+      "id": "security_data_safe",
+      "canonical": "OCI Data Safe",
+      "domain": "security",
+      "resolver": "data_safe"
+    },
+    {
+      "id": "devops_batch",
+      "canonical": "OCI Batch",
+      "domain": "devops",
+      "resolver": "batch"
+    },
+    {
+      "id": "ai_agents_data_ingestion",
+      "canonical": "OCI Generative AI Agents - Data Ingestion",
+      "domain": "analytics",
+      "resolver": "ai_agents_data_ingestion"
+    },
+    {
+      "id": "ai_memory_ingestion",
+      "canonical": "OCI Generative AI - Memory Ingestion",
+      "domain": "analytics",
+      "resolver": "ai_memory_ingestion"
+    },
+    {
+      "id": "ai_rerank_dedicated",
+      "canonical": "OCI Generative AI - Cohere Rerank - Dedicated",
+      "domain": "analytics"
+    },
+    {
+      "id": "database_autonomous_tp",
+      "canonical": "OCI Autonomous AI Transaction Processing",
+      "domain": "database",
+      "resolver": "autonomous_tp"
+    },
+    {
+      "id": "database_autonomous_dw",
+      "canonical": "OCI Autonomous AI Lakehouse",
+      "domain": "database",
+      "resolver": "autonomous_dw"
+    },
+    {
+      "id": "database_base_db",
+      "canonical": "OCI Base Database Service",
+      "domain": "database",
+      "resolver": "base_database"
+    },
+    {
+      "id": "database_cloud_service",
+      "canonical": "OCI Database Cloud Service",
+      "domain": "database",
+      "resolver": "database_cloud_service"
+    },
+    {
+      "id": "database_exadata_exascale",
+      "canonical": "OCI Exadata Exascale Database",
+      "domain": "database",
+      "resolver": "exadata_exascale"
+    },
+    {
+      "id": "database_exadata_dedicated",
+      "canonical": "OCI Exadata Dedicated Infrastructure Database",
+      "domain": "database",
+      "resolver": "exadata_dedicated"
+    },
+    {
+      "id": "database_exadata_cloud_customer",
+      "canonical": "OCI Exadata Cloud@Customer Database",
+      "domain": "database",
+      "resolver": "exadata_cloud_customer"
+    },
+    {
+      "id": "analytics_oac_professional",
+      "canonical": "Oracle Analytics Cloud Professional",
+      "domain": "analytics",
+      "resolver": "oac_professional"
+    },
+    {
+      "id": "analytics_oac_enterprise",
+      "canonical": "Oracle Analytics Cloud Enterprise",
+      "domain": "analytics",
+      "resolver": "oac_enterprise"
+    },
+    {
+      "id": "integration_oic_standard",
+      "canonical": "Oracle Integration Cloud Standard",
+      "domain": "integration",
+      "resolver": "oic_standard"
+    },
+    {
+      "id": "integration_oic_enterprise",
+      "canonical": "Oracle Integration Cloud Enterprise",
+      "domain": "integration",
+      "resolver": "oic_enterprise"
+    },
+    {
+      "id": "integration_data",
+      "canonical": "OCI Data Integration",
+      "domain": "integration",
+      "resolver": "data_integration"
+    },
+    {
+      "id": "security_waf",
+      "canonical": "OCI Web Application Firewall",
+      "domain": "security",
+      "resolver": "waf"
+    },
+    {
+      "id": "serverless_functions",
+      "canonical": "OCI Functions",
+      "domain": "serverless",
+      "resolver": "functions"
+    },
+    {
+      "id": "network_load_balancer",
+      "canonical": "OCI Load Balancer",
+      "domain": "network",
+      "resolver": "load_balancer"
+    },
+    {
+      "id": "storage_object",
+      "canonical": "OCI Object Storage",
+      "domain": "storage",
+      "resolver": "object_storage"
+    },
+    {
+      "id": "compute_flex",
+      "canonical": "OCI Compute Flex",
+      "domain": "compute",
+      "resolver": "compute_flex"
+    }
+  ],
+  "lowestCoverageServices": [
+    {
+      "name": "Data Center Tour",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B93703"
+      ]
+    },
+    {
+      "name": "Enhanced Customer Audit",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B94172"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Base System Database Server - X11M",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110641"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Base System Database Server - X11M - Partner Hardware",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110655"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Base System Rack - X11M",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110634"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Base System Rack - X11M - Partner Hardware",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110648"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Base System Storage Server - X10M",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B96613"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Base System Storage Server - X10M - Partner Hardware",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B96622"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Base System Storage Server - X11M",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110645"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Base System Storage Server - X11M - Partner Hardware",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110659"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Database ECPU - Developer",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B111355"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Database Server - X11M",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110642"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Database Server - X11M - L",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110643"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Database Server - X11M - L - Partner Hardware",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110657"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Database Server - X11M - Partner Hardware",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110656"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Database Server - X11M - XL",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110644"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Database Server - X11M - XL - Partner Hardware",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110658"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Expansion Rack - X11M",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110640"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Expansion Rack - X11M - Partner Hardware",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110654"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Rack - X11M",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110635"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Rack - X11M - L",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110636"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Rack - X11M - L - Partner Hardware",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110650"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Rack - X11M - Partner Hardware",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110649"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Rack - X11M - XL",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110637"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Rack - X11M - XL - Partner Hardware",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110651"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Storage Server - X11M",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110647"
+      ]
+    },
+    {
+      "name": "Exadata Cloud@Customer - Storage Server - X11M - Partner Hardware",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B110661"
+      ]
+    },
+    {
+      "name": "Gen 2 Exadata Cloud at Customer Installation and Activation Service",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B91390"
+      ]
+    },
+    {
+      "name": "Gen 2 Exadata Cloud@Customer Re-Installation Service - One Time Charge",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95224"
+      ]
+    },
+    {
+      "name": "MCS - Oracle Cloud Infrastructure Accelerator Service - Enterprise",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B108108"
+      ]
+    },
+    {
+      "name": "MCS - Oracle Cloud Infrastructure Accelerator Service - Foundation",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B108106"
+      ]
+    },
+    {
+      "name": "MCS - Oracle Cloud Infrastructure Accelerator Service - Standard",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B108107"
+      ]
+    },
+    {
+      "name": "MCS - Oracle Cloud Infrastructure Accelerator Service Expansion Pack",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B108109"
+      ]
+    },
+    {
+      "name": "MCS - Oracle Supplemental Resource for OCI Accelerator - Advanced Support Engineer",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B108802"
+      ]
+    },
+    {
+      "name": "MCS - Oracle Supplemental Resource for OCI Accelerator - Senior Advanced Support Engineer",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B108803"
+      ]
+    },
+    {
+      "name": "MCS - Oracle Supplemental Resource for OCI Accelerator - Technical Account Manager I",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B108804"
+      ]
+    },
+    {
+      "name": "MCS - Oracle Supplemental Resource for OCI Accelerator - Technical Account Manager II",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B108805"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H264 - 4k - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95340"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H264 - 4k - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95341"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H264 - 4k - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95339"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H264 - HD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95337"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H264 - HD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95338"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H264 - HD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95336"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H264 - SD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95334"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H264 - SD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95335"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H264 - SD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95333"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H265VP9 - 4k - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95358"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H265VP9 - 4k - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95359"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H265VP9 - 4k - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95357"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H265VP9 - HD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95355"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H265VP9 - HD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95356"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H265VP9 - HD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95354"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H265VP9 - SD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95352"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - H265VP9 - SD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95353"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - VP8 - 4k - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95349"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - VP8 - 4k - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95350"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - VP8 - 4k - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95348"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - VP8 - HD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95346"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - VP8 - HD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95347"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - VP8 - HD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95345"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - VP8 - SD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95343"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - VP8 - SD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95344"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality - VP8 - SD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95342"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Quality – H265VP9 - SD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95351"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H264 - 4k - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95313"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H264 - 4k - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95314"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H264 - 4k - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95312"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H264 - HD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95310"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H264 - HD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95311"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H264 - HD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95309"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H264 - SD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95307"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H264 - SD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95308"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H264 - SD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95306"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H265VP9 - 4k - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95331"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H265VP9 - 4k - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95332"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H265VP9 - 4k - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95330"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H265VP9 - HD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95328"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H265VP9 - HD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95329"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H265VP9 - HD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95327"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H265VP9 - SD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95325"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - H265VP9 - SD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95326"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - VP8 - 4k - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95322"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - VP8 - 4k - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95323"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - VP8 - 4k - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95321"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - VP8 - HD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95319"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - VP8 - HD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95320"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - VP8 - HD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95318"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - VP8 - SD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95316"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - VP8 - SD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95317"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed - VP8 - SD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95315"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Speed – H265VP9 - SD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95324"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H264 - 4k - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95286"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H264 - 4k - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95287"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H264 - 4k - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95285"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H264 - HD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95283"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H264 - HD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95284"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H264 - HD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95282"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H264 - SD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95280"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H264 - SD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95281"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H264 - SD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95279"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H265VP9 - 4k - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95304"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H265VP9 - 4k - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95305"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H265VP9 - 4k - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95303"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H265VP9 - HD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95301"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H265VP9 - HD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95302"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H265VP9 - HD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95300"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H265VP9 - SD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95298"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - H265VP9 - SD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95299"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - VP8 - 4k - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95295"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - VP8 - 4k - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95296"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - VP8 - 4k - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95294"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - VP8 - HD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95292"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - VP8 - HD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95293"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - VP8 - HD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95291"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - VP8 - SD - Above 30fps and Below 60fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95289"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - VP8 - SD - Above 60fps and Below 120fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95290"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard - VP8 - SD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95288"
+      ]
+    },
+    {
+      "name": "Media Services - Media Flow - Standard – H265VP9 - SD - Below 30fps",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95297"
+      ]
+    },
+    {
+      "name": "Media Services - Media Streams",
+      "domain": "other",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B95375"
+      ]
+    },
+    {
+      "name": "MySQL Database - AWS - Outbound Data Transfer - Inter AWS Region",
+      "domain": "database",
+      "coverageLevel": "L1",
+      "requiredInputs": [],
+      "partNumbers": [
+        "B96159"
+      ]
+    }
+  ]
+}

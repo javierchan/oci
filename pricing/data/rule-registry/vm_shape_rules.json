@@ -1,0 +1,389 @@
+{
+  "metadata": {
+    "generatedBy": "pricing/tools/build_vm_shape_rules.py",
+    "description": "Declarative OCI VM shape registry for calculator-style VM quoting."
+  },
+  "shapes": [
+    {
+      "shapeName": "VM.Standard3.Flex",
+      "aliases": [
+        "Standard3.Flex",
+        "VM.Standard3.Flex"
+      ],
+      "kind": "flex",
+      "vendor": "intel",
+      "family": "standard",
+      "series": "X9",
+      "productLabel": null,
+      "fixedOcpus": null,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B94176",
+        "B94177"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "VM.Optimized3.Flex",
+      "aliases": [
+        "Optimized3.Flex",
+        "VM.Optimized3.Flex"
+      ],
+      "kind": "flex",
+      "vendor": "intel",
+      "family": "optimized",
+      "series": "X9",
+      "productLabel": null,
+      "fixedOcpus": null,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B93311",
+        "B93312"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard2.1",
+      "aliases": [
+        "Standard2.1",
+        "VM.Standard2.1"
+      ],
+      "kind": "fixed",
+      "vendor": "intel",
+      "family": "standard",
+      "series": "X7",
+      "productLabel": "Compute - Virtual Machine Standard - X7",
+      "fixedOcpus": 1,
+      "fixedMemoryGb": 15,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B88514"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard2.2",
+      "aliases": [
+        "Standard2.2",
+        "VM.Standard2.2"
+      ],
+      "kind": "fixed",
+      "vendor": "intel",
+      "family": "standard",
+      "series": "X7",
+      "productLabel": "Compute - Virtual Machine Standard - X7",
+      "fixedOcpus": 2,
+      "fixedMemoryGb": 30,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B88514"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard2.4",
+      "aliases": [
+        "Standard2.4",
+        "VM.Standard2.4"
+      ],
+      "kind": "fixed",
+      "vendor": "intel",
+      "family": "standard",
+      "series": "X7",
+      "productLabel": "Compute - Virtual Machine Standard - X7",
+      "fixedOcpus": 4,
+      "fixedMemoryGb": 60,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B88514"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard2.8",
+      "aliases": [
+        "Standard2.8",
+        "VM.Standard2.8"
+      ],
+      "kind": "fixed",
+      "vendor": "intel",
+      "family": "standard",
+      "series": "X7",
+      "productLabel": "Compute - Virtual Machine Standard - X7",
+      "fixedOcpus": 8,
+      "fixedMemoryGb": 120,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B88514"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard2.16",
+      "aliases": [
+        "Standard2.16",
+        "VM.Standard2.16"
+      ],
+      "kind": "fixed",
+      "vendor": "intel",
+      "family": "standard",
+      "series": "X7",
+      "productLabel": "Compute - Virtual Machine Standard - X7",
+      "fixedOcpus": 16,
+      "fixedMemoryGb": 240,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B88514"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard2.24",
+      "aliases": [
+        "Standard2.24",
+        "VM.Standard2.24"
+      ],
+      "kind": "fixed",
+      "vendor": "intel",
+      "family": "standard",
+      "series": "X7",
+      "productLabel": "Compute - Virtual Machine Standard - X7",
+      "fixedOcpus": 24,
+      "fixedMemoryGb": 320,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B88514"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard.E3.Flex",
+      "aliases": [
+        "Standard.E3.Flex",
+        "VM.Standard.E3.Flex"
+      ],
+      "kind": "flex",
+      "vendor": "amd",
+      "family": "standard",
+      "series": "E3",
+      "productLabel": null,
+      "fixedOcpus": null,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B92306",
+        "B92307"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard.E4.Flex",
+      "aliases": [
+        "Standard.E4.Flex",
+        "VM.Standard.E4.Flex"
+      ],
+      "kind": "flex",
+      "vendor": "amd",
+      "family": "standard",
+      "series": "E4",
+      "productLabel": null,
+      "fixedOcpus": null,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B93113",
+        "B93114"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard.E5.Flex",
+      "aliases": [
+        "Standard.E5.Flex",
+        "VM.Standard.E5.Flex"
+      ],
+      "kind": "flex",
+      "vendor": "amd",
+      "family": "standard",
+      "series": "E5",
+      "productLabel": null,
+      "fixedOcpus": null,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B97384",
+        "B97385"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard.E6.Flex",
+      "aliases": [
+        "Standard.E6.Flex",
+        "VM.Standard.E6.Flex"
+      ],
+      "kind": "flex",
+      "vendor": "amd",
+      "family": "standard",
+      "series": "E6",
+      "productLabel": null,
+      "fixedOcpus": null,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B111129",
+        "B111130"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract."
+      ]
+    },
+    {
+      "shapeName": "VM.DenseIO.E4.Flex",
+      "aliases": [
+        "DenseIO.E4.Flex",
+        "VM.DenseIO.E4.Flex"
+      ],
+      "kind": "flex",
+      "vendor": "amd",
+      "family": "denseio",
+      "series": "E4",
+      "productLabel": null,
+      "fixedOcpus": null,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B93121",
+        "B93122",
+        "B93123"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract."
+      ]
+    },
+    {
+      "shapeName": "VM.DenseIO.E5.Flex",
+      "aliases": [
+        "DenseIO.E5.Flex",
+        "VM.DenseIO.E5.Flex"
+      ],
+      "kind": "flex",
+      "vendor": "amd",
+      "family": "denseio",
+      "series": "E5",
+      "productLabel": null,
+      "fixedOcpus": null,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B98202",
+        "B98203",
+        "B98204"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard.A1.Flex",
+      "aliases": [
+        "Standard.A1.Flex",
+        "VM.Standard.A1.Flex"
+      ],
+      "kind": "flex",
+      "vendor": "ampere",
+      "family": "standard",
+      "series": "A1",
+      "productLabel": null,
+      "fixedOcpus": null,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 1,
+      "partNumbers": [
+        "B93297",
+        "B93298"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard.A2.Flex",
+      "aliases": [
+        "Standard.A2.Flex",
+        "VM.Standard.A2.Flex"
+      ],
+      "kind": "flex",
+      "vendor": "ampere",
+      "family": "standard",
+      "series": "A2",
+      "productLabel": null,
+      "fixedOcpus": null,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 1,
+      "partNumbers": [
+        "B109529",
+        "B109530"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "VM.Standard.A4.Flex",
+      "aliases": [
+        "Standard.A4.Flex",
+        "VM.Standard.A4.Flex"
+      ],
+      "kind": "flex",
+      "vendor": "ampere",
+      "family": "standard",
+      "series": "A4",
+      "productLabel": null,
+      "fixedOcpus": null,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 1,
+      "partNumbers": [
+        "B112145",
+        "B112146"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    }
+  ]
+}

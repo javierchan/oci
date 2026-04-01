@@ -47,13 +47,39 @@ function extractJson(text) {
   }
 }
 
-async function analyzeIntent(cfg, conversation, userText) {
+function buildSessionContextBlock(sessionContext) {
+  if (!sessionContext || typeof sessionContext !== 'object') return '';
+  const lines = [];
+  if (sessionContext.currentIntent) lines.push(`Current intent: ${sessionContext.currentIntent}`);
+  if (sessionContext.sessionSummary) lines.push(`Session summary: ${String(sessionContext.sessionSummary).trim()}`);
+  const workbook = sessionContext.workbookContext;
+  if (workbook && typeof workbook === 'object') {
+    lines.push(`Active workbook: ${workbook.fileName || 'workbook'}`);
+    if (workbook.sourcePlatform) lines.push(`Workbook source platform: ${workbook.sourcePlatform}`);
+    if (workbook.processorVendor) lines.push(`Workbook processor vendor: ${workbook.processorVendor}`);
+    if (workbook.shapeName) lines.push(`Workbook target shape: ${workbook.shapeName}`);
+    if (Number.isFinite(Number(workbook.vpuPerGb))) lines.push(`Workbook VPU override: ${Number(workbook.vpuPerGb)}`);
+  }
+  const quote = sessionContext.lastQuote;
+  if (quote && typeof quote === 'object') {
+    if (quote.label) lines.push(`Last quote label: ${quote.label}`);
+    if (Number.isFinite(Number(quote.monthly))) lines.push(`Last quote monthly total: ${Number(quote.monthly)}`);
+    if (Number.isFinite(Number(quote.lineItemCount))) lines.push(`Last quote line count: ${Number(quote.lineItemCount)}`);
+    if (quote.shapeName) lines.push(`Last quote shape: ${quote.shapeName}`);
+  }
+  if (!lines.length) return '';
+  return `Session context:\n- ${lines.join('\n- ')}`;
+}
+
+async function analyzeIntent(cfg, conversation, userText, sessionContext) {
   const history = Array.isArray(conversation) ? conversation.slice(-6) : [];
+  const contextBlock = buildSessionContextBlock(sessionContext);
   const messages = [
     ...history.map((item) => ({
       role: item.role === 'assistant' ? 'assistant' : 'user',
       content: String(item.content || ''),
     })),
+    ...(contextBlock ? [{ role: 'user', content: contextBlock }] : []),
     { role: 'user', content: userText },
   ];
   const response = await runChat({
@@ -90,4 +116,5 @@ async function analyzeImageIntent(cfg, userText, imageDataUrl) {
 module.exports = {
   analyzeIntent,
   analyzeImageIntent,
+  buildSessionContextBlock,
 };

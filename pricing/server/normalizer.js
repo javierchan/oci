@@ -6,6 +6,7 @@ const {
   buildCanonicalRequest,
   shouldForceQuote,
 } = require('./service-families');
+const { findVmShapeByText } = require('./vm-shapes');
 
 function normalizeUnits(text) {
   return String(text || '')
@@ -60,6 +61,7 @@ function numberLike(value) {
 
 function extractStructuredInputs(text) {
   const source = String(text || '');
+  const shape = findVmShapeByText(source);
   const capacityGb = extractStorageCapacityGb(source);
   const vpuPerGb = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*vpu'?s?\b/i,
@@ -70,16 +72,18 @@ function extractStructuredInputs(text) {
   const bandwidthMbps = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*mbps?\b/i,
   ]);
-  const ocpus = matchNumber(source, [
+  const parsedOcpus = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*ocpus?\b/i,
   ]);
+  const ocpus = shape?.kind === 'fixed' ? Number(shape.fixedOcpus) : parsedOcpus;
   const ecpus = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*ecpus?\b/i,
   ]);
-  const memoryGb = matchNumber(source, [
+  const parsedMemoryGb = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*gb\s*(?:ram|memory)\b/i,
     /(?:ram|memory)[^\d]{0,20}(\d[\d,]*(?:\.\d+)?)\s*gb\b/i,
   ]);
+  const memoryGb = shape?.kind === 'fixed' ? Number(shape.fixedMemoryGb) : parsedMemoryGb;
   const invocationsPerDay = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*invocations?\s*(?:per|\/)\s*day/i,
   ]);
@@ -167,8 +171,8 @@ function extractStructuredInputs(text) {
     /\b(x8)\b/i,
     /\b(x7)\b/i,
   ]);
-  const shapeSeries = matchText(source, [
-    /\b((?:vm|bm)\.[a-z0-9.]+\.flex)\b/i,
+  const shapeSeries = shape?.shapeName || matchText(source, [
+    /\b((?:vm|bm)\.[a-z0-9.]+(?:\.flex|\.\d+))\b/i,
     /\b([ea]\d+\.flex)\b/i,
   ], (value) => String(value).toUpperCase());
   const processorVendor = matchText(source, [
@@ -176,7 +180,7 @@ function extractStructuredInputs(text) {
     /\b(amd)\b/i,
     /\b(arm)\b/i,
     /\b(ampere)\b/i,
-  ], (value) => String(value).toLowerCase());
+  ], (value) => String(value).toLowerCase()) || shape?.vendor || null;
   return compactObject({
     capacityGb,
     vpuPerGb,

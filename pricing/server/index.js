@@ -6,14 +6,29 @@ const https   = require('https');
 const fs      = require('fs');
 const { normalizeCatalog, searchProducts, searchPresets, searchServiceRegistry } = require('./catalog');
 const { quoteFromPrompt, buildQuote } = require('./quotation-engine');
-const { parseWorkbookBase64, workbookToRequests } = require('./excel');
+const { parseWorkbookBase64, workbookToRequests, analyzeWorkbookForGuidedQuote, buildShapeOptionsForProcessor, parseWorkbookPromptSelections, hasWorkbookSelection } = require('./excel');
+const { normalizeProcessorVendor, findVmShapeByText } = require('./vm-shapes');
 const { loadGenAISettings, runChat, extractChatText } = require('./genai');
 const { respondToAssistant } = require('./assistant');
+const sessionStore = require('./session-store');
 
 const app  = express();
 const PORT = process.env.PORT || 8742;
 
 app.use(express.json({ limit: '25mb' }));
+
+function resolveClientId(req) {
+  return String(req.get('x-client-id') || req.body?.clientId || 'anonymous').trim() || 'anonymous';
+}
+
+function mapStoredConversation(messages) {
+  return Array.isArray(messages)
+    ? messages.map((item) => ({
+        role: item.role === 'agent' ? 'assistant' : item.role,
+        content: item.content,
+      }))
+    : [];
+}
 
 // ════════════════════════════════════════════════════════════
 //  OCI GenAI — Config from environment
@@ -77,17 +92,15 @@ function sanitizeWorkbookEnrichment(text) {
     if (/^#{1,6}\s+/i.test(trimmed)) {
       if (/migration notes/i.test(trimmed)) {
         activeSection = 'migration';
-        kept.push('## OCI Migration Notes');
       } else if (/next checks/i.test(trimmed)) {
         activeSection = 'next-checks';
-        kept.push('## OCI Next Checks');
       } else {
         activeSection = '';
       }
       continue;
     }
     if (!activeSection) continue;
-    if (/\$|estimated monthly|estimated annual|processed .* into|count|total|vms?\b/i.test(trimmed)) continue;
+    if (/\$|estimated monthly|estimated annual|processed .* into|count|total|the provided rvtools export was successfully processed|the estimation detected the following warnings/i.test(trimmed)) continue;
     kept.push(line);
   }
   return kept.join('\n').trim();
@@ -106,13 +119,14 @@ function buildWorkbookFallbackSummary({ fileName, requests, warnings, totals }) 
   const dominantShapes = Array.isArray(requests)
     ? Array.from(new Set(requests.map((item) => item?.shapeSeries).filter(Boolean))).slice(0, 3)
     : [];
+  const hasExplicitSelectedShape = Array.isArray(warnings) && warnings.some((item) => /selected oci target shape/i.test(String(item)));
   const lines = [
     `## OCI Expert Summary`,
     `- Processed \`${fileName}\` into ${requestCount} OCI-native sizing request${requestCount === 1 ? '' : 's'}.`,
     `- Estimated monthly total: ${formatMoney(totals?.monthly || 0, currencyCode)}.`,
     `- Estimated annual total: ${formatMoney(totals?.annual || 0, currencyCode)}.`,
   ];
-  if (dominantShapes.length) {
+  if (dominantShapes.length && !hasExplicitSelectedShape) {
     lines.push(`- Dominant OCI compute profiles inferred: ${dominantShapes.map((item) => `\`${item}\``).join(', ')}.`);
   }
   if (isRvTools) {
@@ -168,7 +182,7 @@ async function buildWorkbookEnrichment(cfg, { fileName, requests, warnings, tota
       topK: -1,
     });
     const enrichment = sanitizeWorkbookEnrichment(extractChatText(response?.data || response).trim());
-    return enrichment ? `${fallback}\n\n${enrichment}` : fallback;
+    return enrichment ? `${fallback}\n\n## OCI Expert Notes\n${enrichment}` : fallback;
   } catch (_error) {
     return fallback;
   }
@@ -183,6 +197,232 @@ function formatMoney(value, currencyCode = 'USD') {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
   }).format(num);
+}
+
+function buildMarkdownFromLinesForAssistant(lines, totals) {
+  if (!Array.isArray(lines) || !lines.length) return '';
+  const header = '| # | Environment | Service | Part# | Product | Metric | Qty | Inst | Hours | Rate | Unit | $/Mo | Annual |\n|---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|';
+  const body = lines.map((line, i) => `| ${i + 1} | ${line.environment || '-'} | ${line.service || '-'} | ${line.partNumber || '-'} | ${line.product || '-'} | ${line.metric || '-'} | ${Number.isFinite(Number(line.quantity)) ? Number(line.quantity) : '-'} | ${Number.isFinite(Number(line.instances)) ? Number(line.instances) : '-'} | ${Number.isFinite(Number(line.hours)) ? Number(line.hours) : '-'} | ${Number.isFinite(Number(line.rate)) ? Number(line.rate) : '-'} | ${formatMoney(line.unitPrice, line.currencyCode || 'USD')} | ${formatMoney(line.monthly, line.currencyCode || 'USD')} | ${formatMoney(line.annual, line.currencyCode || 'USD')} |`).join('\n');
+  const total = `| Total | - | - | - | - | - | - | - | - | - | - | ${formatMoney(totals?.monthly, totals?.currencyCode || 'USD')} | ${formatMoney(totals?.annual, totals?.currencyCode || 'USD')} |`;
+  return `${header}\n${body}\n${total}`;
+}
+
+async function estimateWorkbookRequest({ cfg, clientId, sessionId, body }) {
+  const storedSession = sessionId ? sessionStore.getSession(clientId, sessionId) : null;
+  const persistedWorkbook = storedSession?.workbookContext || {};
+  const fileName = String(body.fileName || persistedWorkbook.fileName || 'workbook.xlsx');
+  const contentBase64 = String(body.contentBase64 || persistedWorkbook.contentBase64 || '');
+  const requestedShape = findVmShapeByText(body.shapeName || persistedWorkbook.shapeName || '');
+  const sourcePlatform = String(body.sourcePlatform || persistedWorkbook.sourcePlatform || '').trim().toLowerCase();
+  const processorVendor = normalizeProcessorVendor(body.processorVendor)
+    || normalizeProcessorVendor(requestedShape?.vendor)
+    || normalizeProcessorVendor(persistedWorkbook.processorVendor);
+  const shapeName = requestedShape?.shapeName || String(body.shapeName || persistedWorkbook.shapeName || '').trim().toUpperCase();
+  const vpuValue = body.vpuPerGb;
+  const vpuPerGb = Number(vpuValue);
+  const workbookContextPatch = {
+    fileName,
+    contentBase64,
+    sourcePlatform: sourcePlatform || storedSession?.workbookContext?.sourcePlatform || null,
+    processorVendor: processorVendor || storedSession?.workbookContext?.processorVendor || null,
+    shapeName: shapeName || storedSession?.workbookContext?.shapeName || null,
+    vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0
+      ? vpuPerGb
+      : (Number.isFinite(Number(storedSession?.workbookContext?.vpuPerGb)) ? Number(storedSession.workbookContext.vpuPerGb) : null),
+  };
+  if (!contentBase64) {
+    return { status: 400, body: { ok: false, error: 'Workbook contentBase64 is required.' } };
+  }
+
+  try {
+    const workbook = parseWorkbookBase64(contentBase64);
+    const analysis = analyzeWorkbookForGuidedQuote(workbook);
+    if (!analysis.quotableRows) {
+      return { status: 400, body: { ok: false, error: 'No quotable rows were detected in the workbook.' } };
+    }
+    if (!sourcePlatform && analysis.sourceType !== 'rvtools') {
+      if (storedSession) {
+        sessionStore.updateSessionState(clientId, sessionId, {
+          workbookContext: workbookContextPatch,
+          sessionContext: {
+            ...(storedSession.sessionContext || {}),
+            currentIntent: 'workbook_quote',
+            pendingClarification: {
+              stage: 'sourcePlatform',
+              question: `I analyzed \`${fileName}\` and found ${analysis.quotableRows} quotable workload${analysis.quotableRows === 1 ? '' : 's'}. Do these workbook rows come from VMware, another hypervisor, or bare metal inventory?`,
+            },
+            workbookContext: workbookContextPatch,
+          },
+        });
+      }
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          mode: 'excel_clarification',
+          stage: 'sourcePlatform',
+          fileName,
+          sourceType: analysis.sourceType,
+          quotableRows: analysis.quotableRows,
+          shapeName: shapeName || null,
+          processorVendor: processorVendor || null,
+          vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : null,
+          question: `I analyzed \`${fileName}\` and found ${analysis.quotableRows} quotable workload${analysis.quotableRows === 1 ? '' : 's'}. Do these workbook rows come from VMware, another hypervisor, or bare metal inventory?`,
+          options: analysis.sourcePlatformOptions || [],
+          warnings: analysis.warnings || [],
+        },
+      };
+    }
+    const effectiveSourcePlatform = sourcePlatform || (analysis.sourceType === 'rvtools' ? 'vmware' : 'bare_metal');
+    if (!processorVendor) {
+      if (storedSession) {
+        sessionStore.updateSessionState(clientId, sessionId, {
+          workbookContext: { ...workbookContextPatch, sourcePlatform: effectiveSourcePlatform },
+          sessionContext: {
+            ...(storedSession.sessionContext || {}),
+            currentIntent: 'workbook_quote',
+            pendingClarification: {
+              stage: 'processor',
+              question: `I analyzed \`${fileName}\` and found ${analysis.quotableRows} quotable workload${analysis.quotableRows === 1 ? '' : 's'}. Which OCI processor family should I use for the target compute shapes?`,
+            },
+            workbookContext: { ...workbookContextPatch, sourcePlatform: effectiveSourcePlatform },
+          },
+        });
+      }
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          mode: 'excel_clarification',
+          stage: 'processor',
+          fileName,
+          sourceType: analysis.sourceType,
+          quotableRows: analysis.quotableRows,
+          sourcePlatform: effectiveSourcePlatform,
+          shapeName: shapeName || null,
+          vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : null,
+          question: `I analyzed \`${fileName}\` and found ${analysis.quotableRows} quotable workload${analysis.quotableRows === 1 ? '' : 's'}. Which OCI processor family should I use for the target compute shapes?`,
+          options: analysis.processorOptions,
+          warnings: analysis.warnings || [],
+        },
+      };
+    }
+    const shapeOptions = buildShapeOptionsForProcessor(processorVendor);
+    if (!shapeName) {
+      if (storedSession) {
+        sessionStore.updateSessionState(clientId, sessionId, {
+          workbookContext: { ...workbookContextPatch, sourcePlatform: effectiveSourcePlatform, processorVendor },
+          sessionContext: {
+            ...(storedSession.sessionContext || {}),
+            currentIntent: 'workbook_quote',
+            pendingClarification: {
+              stage: 'shape',
+              question: `Use ${processorVendor.toUpperCase()} as the target processor. Which flex shape should I apply to the workbook sizing?`,
+            },
+            workbookContext: { ...workbookContextPatch, sourcePlatform: effectiveSourcePlatform, processorVendor },
+          },
+        });
+      }
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          mode: 'excel_clarification',
+          stage: 'shape',
+          fileName,
+          sourceType: analysis.sourceType,
+          quotableRows: analysis.quotableRows,
+          sourcePlatform: effectiveSourcePlatform,
+          processorVendor,
+          vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : null,
+          question: `Use ${processorVendor.toUpperCase()} as the target processor. Which flex shape should I apply to the workbook sizing?`,
+          options: shapeOptions,
+          warnings: analysis.warnings || [],
+        },
+      };
+    }
+    const selectedShape = shapeOptions.find((option) => option.value === shapeName);
+    if (!selectedShape) {
+      return { status: 400, body: { ok: false, error: `Shape ${shapeName} is not a valid flex shape for ${processorVendor}.` } };
+    }
+    const { requests, warnings: workbookWarnings } = workbookToRequests(workbook, {
+      sourcePlatform: effectiveSourcePlatform,
+      processorVendor,
+      shapeName,
+      vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : null,
+    });
+    const results = requests.map((request) => buildQuote(store.normalized, request));
+    const lineItems = results.flatMap((result) => result.lineItems || []);
+    const warnings = [...(workbookWarnings || []), ...results.flatMap((result) => result.warnings || [])];
+    const errors = results.filter((result) => !result.ok).map((result) => result.error);
+    const totals = lineItems.reduce((acc, line) => {
+      acc.monthly += line.monthly;
+      acc.annual += line.annual;
+      acc.currencyCode = line.currencyCode;
+      return acc;
+    }, { monthly: 0, annual: 0, currencyCode: 'USD' });
+    const summary = await buildWorkbookEnrichment(cfg, {
+      fileName,
+      requests,
+      warnings,
+      totals,
+      lineItems,
+    });
+    if (storedSession) {
+      sessionStore.updateSessionState(clientId, sessionId, {
+        workbookContext: {
+          ...workbookContextPatch,
+          sourcePlatform: effectiveSourcePlatform,
+          processorVendor,
+          shapeName,
+          vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : workbookContextPatch.vpuPerGb,
+        },
+        sessionContext: {
+          ...(storedSession.sessionContext || {}),
+          currentIntent: 'workbook_quote',
+          pendingClarification: null,
+          workbookContext: {
+            ...workbookContextPatch,
+            sourcePlatform: effectiveSourcePlatform,
+            processorVendor,
+            shapeName,
+            vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : workbookContextPatch.vpuPerGb,
+          },
+          lastQuote: {
+            type: 'workbook_quote',
+            label: shapeName || fileName || 'Workbook quote',
+            monthly: Number(totals?.monthly || 0),
+            annual: Number(totals?.annual || 0),
+            currencyCode: totals?.currencyCode || 'USD',
+            lineItemCount: Array.isArray(lineItems) ? lineItems.length : 0,
+            shapeName: shapeName || '',
+            processorVendor: processorVendor || '',
+            sourcePlatform: effectiveSourcePlatform || '',
+            vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : workbookContextPatch.vpuPerGb,
+          },
+          sessionSummary: `Active workbook ${fileName} using ${shapeName || 'workbook sizing'} with ${Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : workbookContextPatch.vpuPerGb || 10} VPU. Last workbook quote monthly ${formatMoney(totals?.monthly || 0, totals?.currencyCode || 'USD')}.`,
+        },
+      });
+    }
+
+    return {
+      status: 200,
+      body: {
+        ok: !!lineItems.length,
+        source: 'excel',
+        fileName,
+        summary,
+        requests,
+        results,
+        lineItems,
+        warnings,
+        errors,
+        totals,
+      },
+    };
+  } catch (error) {
+    return { status: 400, body: { ok: false, error: `Could not parse workbook: ${error.message}` } };
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -241,18 +481,71 @@ app.post('/api/assistant', async (req, res) => {
     });
   }
   const text = String(req.body.text || '').trim();
-  const conversation = Array.isArray(req.body.conversation) ? req.body.conversation : [];
+  const sessionId = String(req.body.sessionId || '').trim();
+  const clientId = resolveClientId(req);
+  const storedSession = sessionId ? sessionStore.getSession(clientId, sessionId) : null;
+  const conversation = storedSession
+    ? mapStoredConversation(storedSession.messages)
+    : Array.isArray(req.body.conversation) ? req.body.conversation : [];
   const imageDataUrl = String(req.body.imageDataUrl || '').trim();
+  const sessionContext = storedSession?.sessionContext || (req.body.sessionContext && typeof req.body.sessionContext === 'object'
+    ? req.body.sessionContext
+    : null);
   if (!text && !imageDataUrl) return res.status(400).json({ ok: false, error: 'Provide text or imageDataUrl.' });
 
   try {
+    const workbookFollowup = parseWorkbookPromptSelections(text);
+    if (storedSession?.workbookContext && hasWorkbookSelection(workbookFollowup) && !imageDataUrl) {
+      if (text) {
+        sessionStore.appendMessage(clientId, sessionId, {
+          role: 'user',
+          content: text,
+        });
+      }
+      const workbookReply = await estimateWorkbookRequest({
+        cfg,
+        clientId,
+        sessionId,
+        body: workbookFollowup,
+      });
+      const message = workbookReply.body?.ok && Array.isArray(workbookReply.body?.lineItems)
+        ? `### Excel quotation\n\n${workbookReply.body.summary || ''}\n\n${buildMarkdownFromLinesForAssistant(workbookReply.body.lineItems, workbookReply.body.totals)}${Array.isArray(workbookReply.body.warnings) && workbookReply.body.warnings.length ? `\n\nWarnings:\n- ${workbookReply.body.warnings.join('\n- ')}` : ''}`
+        : String(workbookReply.body?.question || workbookReply.body?.error || '');
+      if (storedSession) {
+        sessionStore.appendMessage(clientId, sessionId, {
+          role: 'assistant',
+          content: message,
+        });
+      }
+      return res.status(workbookReply.status).json({
+        ...workbookReply.body,
+        message,
+      });
+    }
+    if (storedSession && text) {
+      sessionStore.appendMessage(clientId, sessionId, {
+        role: 'user',
+        content: text,
+      });
+    }
     const reply = await respondToAssistant({
       cfg,
       index: store.normalized,
       conversation,
       userText: text,
       imageDataUrl,
+      sessionContext,
     });
+    if (storedSession) {
+      sessionStore.appendMessage(clientId, sessionId, {
+        role: 'assistant',
+        content: String(reply?.message || ''),
+      });
+      sessionStore.updateSessionState(clientId, sessionId, {
+        sessionContext: reply?.sessionContext || null,
+        workbookContext: reply?.sessionContext?.workbookContext || storedSession.workbookContext || null,
+      });
+    }
     return res.json(reply);
   } catch (error) {
     return res.status(502).json({
@@ -417,49 +710,62 @@ app.post('/api/quote', (req, res) => {
 app.post('/api/excel/estimate', async (req, res) => {
   if (!ensureCatalogReady(res)) return;
   const cfg = loadOciConfig();
-  const fileName = String(req.body.fileName || 'workbook.xlsx');
-  const contentBase64 = String(req.body.contentBase64 || '');
-  if (!contentBase64) return res.status(400).json({ ok: false, error: 'Workbook contentBase64 is required.' });
+  const clientId = resolveClientId(req);
+  const sessionId = String(req.body.sessionId || '').trim();
+  const result = await estimateWorkbookRequest({ cfg, clientId, sessionId, body: req.body });
+  return res.status(result.status).json(result.body);
+});
 
-  try {
-    const workbook = parseWorkbookBase64(contentBase64);
-    const { requests, warnings: workbookWarnings } = workbookToRequests(workbook);
-    if (!requests.length) {
-      return res.status(400).json({ ok: false, error: 'No quotable rows were detected in the workbook.' });
-    }
-    const results = requests.map((request) => buildQuote(store.normalized, request));
-    const lineItems = results.flatMap((result) => result.lineItems || []);
-    const warnings = [...(workbookWarnings || []), ...results.flatMap((result) => result.warnings || [])];
-    const errors = results.filter((result) => !result.ok).map((result) => result.error);
-    const totals = lineItems.reduce((acc, line) => {
-      acc.monthly += line.monthly;
-      acc.annual += line.annual;
-      acc.currencyCode = line.currencyCode;
-      return acc;
-    }, { monthly: 0, annual: 0, currencyCode: 'USD' });
-    const summary = await buildWorkbookEnrichment(cfg, {
-      fileName,
-      requests,
-      warnings,
-      totals,
-      lineItems,
-    });
+app.get('/api/sessions', (req, res) => {
+  const clientId = resolveClientId(req);
+  return res.json({ ok: true, sessions: sessionStore.listSessions(clientId) });
+});
 
-    return res.json({
-      ok: !!lineItems.length,
-      source: 'excel',
-      fileName,
-      summary,
-      requests,
-      results,
-      lineItems,
-      warnings,
-      errors,
-      totals,
-    });
-  } catch (error) {
-    return res.status(400).json({ ok: false, error: `Could not parse workbook: ${error.message}` });
-  }
+app.post('/api/sessions', (req, res) => {
+  const clientId = resolveClientId(req);
+  const session = sessionStore.createSession(clientId, req.body?.title || 'New session');
+  return res.json({ ok: true, session });
+});
+
+app.get('/api/sessions/:id', (req, res) => {
+  const clientId = resolveClientId(req);
+  const session = sessionStore.getSession(clientId, req.params.id);
+  if (!session) return res.status(404).json({ ok: false, error: 'Session not found.' });
+  return res.json({ ok: true, session });
+});
+
+app.post('/api/sessions/:id/messages', (req, res) => {
+  const clientId = resolveClientId(req);
+  const session = sessionStore.appendMessage(clientId, req.params.id, {
+    role: req.body?.role,
+    content: req.body?.content,
+  });
+  if (!session) return res.status(404).json({ ok: false, error: 'Session not found.' });
+  return res.json({ ok: true, session });
+});
+
+app.post('/api/sessions/:id/state', (req, res) => {
+  const clientId = resolveClientId(req);
+  const session = sessionStore.updateSessionState(clientId, req.params.id, {
+    sessionContext: req.body?.sessionContext,
+    workbookContext: req.body?.workbookContext,
+    title: req.body?.title,
+  });
+  if (!session) return res.status(404).json({ ok: false, error: 'Session not found.' });
+  return res.json({ ok: true, session });
+});
+
+app.delete('/api/sessions/:id', (req, res) => {
+  const clientId = resolveClientId(req);
+  const ok = sessionStore.deleteSession(clientId, req.params.id);
+  if (!ok) return res.status(404).json({ ok: false, error: 'Session not found.' });
+  return res.json({ ok: true });
+});
+
+app.delete('/api/sessions', (req, res) => {
+  const clientId = resolveClientId(req);
+  sessionStore.clearSessions(clientId);
+  return res.json({ ok: true });
 });
 
 app.use(express.static(FRONTEND_DIR));

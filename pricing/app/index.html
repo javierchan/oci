@@ -54,11 +54,6 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:0
 .newbtn{background:var(--accent);border:none;border-radius:6px;padding:6px 12px;color:#fff;font-size:12px;font-weight:500;cursor:pointer;transition:background .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
 .newbtn:hover{background:var(--accent2)}
 .newbtn svg{width:13px;height:13px}
-.filebtn{background:none;border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text-dim);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
-.filebtn:hover{border-color:var(--accent2);color:var(--text-bright)}
-
-
-
 /* LAYOUT */
 .main{display:flex;flex:1;overflow:hidden}
 
@@ -127,10 +122,17 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:0
 .avatar.user{background:var(--surface2);border:1px solid var(--border);color:var(--text-dim)}
 .msgstack{display:flex;flex-direction:column;gap:6px;max-width:760px}
 .msgtools{display:flex;justify-content:flex-end;align-items:center;gap:6px;min-height:22px;padding-right:2px}
+.choicebar{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
+.choicebtn{background:var(--surface2);border:1px solid var(--border);border-radius:18px;padding:7px 12px;color:var(--text);font-size:12px;cursor:pointer;transition:all .15s;text-align:left}
+.choicebtn:hover{border-color:var(--accent2);color:var(--text-bright);background:var(--surface3)}
+.choicebtn small{display:block;color:var(--text-dim);font-size:10px;line-height:1.5;margin-top:2px}
+.choicebtn:disabled{opacity:.45;cursor:not-allowed}
 .toolbtn{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-dim);font-size:10.5px;font-family:'IBM Plex Mono',monospace;cursor:pointer;transition:all .15s;line-height:1}
 .toolbtn:hover{border-color:var(--border2);color:var(--text-bright)}
 .toolbtn.done{border-color:rgba(46,204,138,.35);color:var(--green)}
-.bubble{padding:11px 15px;border-radius:10px;font-size:13.5px;line-height:1.75;max-width:760px;overflow:hidden}
+.bubble{padding:11px 15px;border-radius:10px;font-size:13.5px;line-height:1.75;max-width:760px;overflow:hidden;position:relative}
+.bubble.has-quote-copy{padding-top:42px}
+.bubblecopy{position:absolute;top:10px;right:10px;z-index:2}
 .msg.user .bubble{background:var(--user-bubble);border:1px solid var(--border);color:var(--text-bright);border-top-right-radius:3px}
 .msg.agent .bubble{background:var(--agent-bubble);border:1px solid var(--border);color:var(--text);border-top-left-radius:3px}
 .bubble strong{color:var(--text-bright);font-weight:600}
@@ -163,6 +165,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:0
 .attachbar{display:none;align-items:center;gap:10px;margin-bottom:10px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:10px}
 .attachbar.open{display:flex}
 .attachthumb{width:52px;height:52px;border-radius:8px;object-fit:cover;border:1px solid var(--border);background:#060c17;flex-shrink:0}
+.attachicon{display:none;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-bright);background:var(--surface3)}
+.attachicon.open{display:flex}
+.attachthumb.hidden{display:none}
 .attachmeta{flex:1;min-width:0}
 .attachtitle{font-size:12px;color:var(--text-bright);font-weight:500}
 .attachsub{font-size:10px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;margin-top:2px}
@@ -170,6 +175,8 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:0
 .attachremove:hover{border-color:var(--accent);color:var(--accent2)}
 .inputbox{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;gap:10px;align-items:flex-end;transition:border-color .2s}
 .inputbox:focus-within{border-color:var(--border2)}
+.attachbtn{background:none;border:1px solid var(--border);border-radius:7px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s;color:var(--text-dim)}
+.attachbtn:hover{border-color:var(--accent2);color:var(--text-bright);background:var(--surface3)}
 textarea{flex:1;background:transparent;border:none;outline:none;color:var(--text-bright);font-family:'IBM Plex Sans',sans-serif;font-size:13.5px;line-height:1.6;resize:none;max-height:140px;min-height:24px}
 textarea::placeholder{color:var(--text-dim)}
 .sendbtn{background:var(--accent);border:none;border-radius:7px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:background .15s,transform .1s;color:#fff}
@@ -193,10 +200,6 @@ textarea::placeholder{color:var(--text-dim)}
       <div class="cdot loading" id="cdot"></div>
       <span class="clabel" id="clabel">Loading…</span>
     </div>
-    <button class="filebtn" onclick="triggerUpload()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Upload Excel
-    </button>
     <button class="newbtn" onclick="newSession()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       New session
@@ -241,14 +244,18 @@ textarea::placeholder{color:var(--text-dim)}
     </div>
     <div class="inputarea">
       <div class="attachbar" id="attachbar">
+        <div class="attachthumb attachicon" id="attachicon">XLS</div>
         <img class="attachthumb" id="attachthumb" alt="Pasted preview">
         <div class="attachmeta">
-          <div class="attachtitle">Image ready</div>
-          <div class="attachsub">Pasted from clipboard. Send with your pricing request.</div>
+          <div class="attachtitle" id="attachtitle">Attachment ready</div>
+          <div class="attachsub" id="attachsub">Send with your pricing request.</div>
         </div>
-        <button class="attachremove" onclick="clearPendingImage()">Remove</button>
+        <button class="attachremove" onclick="clearPendingAttachment()">Remove</button>
       </div>
       <div class="inputbox">
+        <button class="attachbtn" type="button" onclick="triggerUpload()" title="Attach Excel workbook">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
         <textarea id="inp" placeholder="Ask about OCI pricing, SKUs, architectures…" rows="1"
           onkeydown="handleKey(event)" oninput="autoResize(this)" disabled></textarea>
         <button class="sendbtn" id="sendbtn" onclick="sendMessage()" disabled>
@@ -366,6 +373,7 @@ function setCatalogPill(state, text) {
 }
 
 let tipOpen=false;
+let pendingWorkbookFlow=null;
 function toggleTip(force) {
   tipOpen = force!==undefined ? force : !tipOpen;
   document.getElementById('ctip').classList.toggle('open', tipOpen);
@@ -398,24 +406,143 @@ function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 // ══════════════════════════════════════════════════════════
 //  SESSION MANAGEMENT
 // ══════════════════════════════════════════════════════════
-let sessions    = JSON.parse(localStorage.getItem('oci_sessions')||'[]');
-let currentId   = null;
+let sessions    = [];
+let currentId   = localStorage.getItem('oci_current_session') || null;
 let conversation= [];
 let isLoading   = false;
 let pendingImage = null;
+let pendingWorkbook = null;
+const workbookContextBySession = {};
+const sessionContextBySession = {};
+const clientId = (() => {
+  let id = localStorage.getItem('oci_client_id');
+  if (!id) {
+    id = `client_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem('oci_client_id', id);
+  }
+  return id;
+})();
 
-const persist = () => localStorage.setItem('oci_sessions', JSON.stringify(sessions));
+const persist = () => {
+  if (currentId) localStorage.setItem('oci_current_session', currentId);
+  else localStorage.removeItem('oci_current_session');
+};
 
-function newSession() {
-  const id='ses_'+Date.now();
-  sessions.unshift({id,title:'New session',ts:Date.now(),messages:[]});
-  persist(); currentId=id; conversation=[];
+async function apiFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  headers.set('x-client-id', clientId);
+  return fetch(url, { ...options, headers });
+}
+
+async function refreshSessions() {
+  const res = await apiFetch('/api/sessions');
+  const data = await res.json();
+  sessions = Array.isArray(data?.sessions) ? data.sessions : [];
+  renderSessions();
+  if (currentId && sessions.some((item) => item.id === currentId)) {
+    await loadSession(currentId);
+  } else if (currentId) {
+    currentId = null;
+    persist();
+  }
+}
+
+async function persistSessionMessage(sessionId, role, content) {
+  if (!sessionId) return;
+  try {
+    await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role, content }),
+    });
+    const item = sessions.find((session) => session.id === sessionId);
+    if (item) item.messageCount = Number(item.messageCount || 0) + 1;
+  } catch (error) {
+    console.warn('Failed to persist session message', error);
+  }
+}
+
+async function persistSessionState(sessionId) {
+  if (!sessionId) return;
+  try {
+    await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionContext: sessionContextBySession[sessionId] || null,
+        workbookContext: workbookContextBySession[sessionId] || null,
+      }),
+    });
+  } catch (error) {
+    console.warn('Failed to persist session state', error);
+  }
+}
+
+function setSessionContext(sessionId, context, merge = false) {
+  if (!sessionId) return;
+  let next = null;
+  if (context) {
+    next = merge
+      ? { ...(sessionContextBySession[sessionId] || {}), ...context }
+      : { ...context };
+    if (workbookContextBySession[sessionId] && !next.workbookContext) {
+      next.workbookContext = { ...workbookContextBySession[sessionId] };
+    }
+  }
+  if (next) sessionContextBySession[sessionId] = next;
+  else delete sessionContextBySession[sessionId];
+  const session = sessions.find((item) => item.id === sessionId);
+  if (!session) return;
+  if (next) session.sessionContext = { ...next };
+  else delete session.sessionContext;
+  persistSessionState(sessionId);
+}
+
+function setWorkbookSessionContext(sessionId, context) {
+  if (!sessionId) return;
+  if (context) workbookContextBySession[sessionId] = { ...context };
+  else delete workbookContextBySession[sessionId];
+  const session = sessions.find((item) => item.id === sessionId);
+  if (!session) return;
+  if (context) session.workbookContext = { ...context };
+  else delete session.workbookContext;
+  setSessionContext(sessionId, {
+    ...(sessionContextBySession[sessionId] || {}),
+    workbookContext: context ? { ...context } : null,
+  });
+  persistSessionState(sessionId);
+}
+
+async function newSession() {
+  const res = await apiFetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'New session' }) });
+  const data = await res.json();
+  const session = data?.session;
+  if (!session?.id) return;
+  const id = session.id;
+  sessions.unshift({ ...session, messageCount: 0 });
+  delete workbookContextBySession[id];
+  delete sessionContextBySession[id];
+  currentId=id; conversation=[]; persist();
   renderSessions(); clearChat(); renderWelcome();
 }
 
-function loadSession(id) {
-  const s=sessions.find(x=>x.id===id); if(!s) return;
+async function loadSession(id) {
+  const res = await apiFetch(`/api/sessions/${encodeURIComponent(id)}`);
+  const data = await res.json();
+  const s = data?.session;
+  if(!s) return;
+  const idx = sessions.findIndex((item) => item.id === id);
+  if (idx >= 0) {
+    sessions[idx] = { ...sessions[idx], ...s, messageCount: Array.isArray(s.messages) ? s.messages.length : Number(sessions[idx].messageCount || 0) };
+  } else {
+    sessions.unshift({ ...s, messageCount: Array.isArray(s.messages) ? s.messages.length : 0 });
+  }
   currentId=id;
+  if (s.workbookContext) workbookContextBySession[id] = { ...s.workbookContext };
+  else if (s.sessionContext?.workbookContext) workbookContextBySession[id] = { ...s.sessionContext.workbookContext };
+  else delete workbookContextBySession[id];
+  if (s.sessionContext) sessionContextBySession[id] = { ...s.sessionContext };
+  else delete sessionContextBySession[id];
   conversation=s.messages.map(m=>({
     role: m.role === 'agent' ? 'assistant' : m.role,
     content:m.content
@@ -423,18 +550,25 @@ function loadSession(id) {
   renderSessions(); clearChat();
   if(!s.messages.length){ renderWelcome(); return; }
   s.messages.forEach(m=>addMsg(m.role,m.content,false));
+  persist();
 }
 
-function deleteSession(id,e) {
+async function deleteSession(id,e) {
   e.stopPropagation();
   if(!confirm('Delete this session?')) return;
+  await apiFetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  delete workbookContextBySession[id];
+  delete sessionContextBySession[id];
   sessions=sessions.filter(s=>s.id!==id); persist();
   if(currentId===id){ currentId=null; conversation=[]; clearChat(); renderWelcome(); }
   renderSessions();
 }
 
-function clearAll() {
+async function clearAll() {
   if(!confirm('¿Clear all history?')) return;
+  await apiFetch('/api/sessions', { method: 'DELETE' });
+  Object.keys(workbookContextBySession).forEach((key) => delete workbookContextBySession[key]);
+  Object.keys(sessionContextBySession).forEach((key) => delete sessionContextBySession[key]);
   sessions=[]; persist(); currentId=null; conversation=[];
   renderSessions(); clearChat(); renderWelcome();
 }
@@ -483,17 +617,58 @@ function renderWelcome() {
 function clearChat(){ document.getElementById('messages').innerHTML=''; }
 const esc = s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-function setPendingImage(dataUrl) {
-  pendingImage = dataUrl || null;
+function renderPendingAttachment() {
   const bar = document.getElementById('attachbar');
   const thumb = document.getElementById('attachthumb');
-  if (!pendingImage) {
+  const icon = document.getElementById('attachicon');
+  const title = document.getElementById('attachtitle');
+  const sub = document.getElementById('attachsub');
+  if (!pendingImage && !pendingWorkbook) {
     bar.classList.remove('open');
     thumb.removeAttribute('src');
+    thumb.classList.remove('hidden');
+    icon.classList.remove('open');
     return;
   }
-  thumb.src = pendingImage;
   bar.classList.add('open');
+  if (pendingImage) {
+    thumb.src = pendingImage;
+    thumb.classList.remove('hidden');
+    icon.classList.remove('open');
+    title.textContent = 'Image ready';
+    sub.textContent = 'Pasted from clipboard. Send with your pricing request.';
+    return;
+  }
+  thumb.removeAttribute('src');
+  thumb.classList.add('hidden');
+  icon.classList.add('open');
+  icon.textContent = 'XLS';
+  title.textContent = pendingWorkbook.name;
+  sub.textContent = 'Workbook attached. Send to start the guided OCI sizing flow.';
+}
+
+function setPendingImage(dataUrl) {
+  pendingImage = dataUrl || null;
+  if (pendingImage) pendingWorkbook = null;
+  renderPendingAttachment();
+}
+
+function setPendingWorkbook(file, contentBase64) {
+  if (!file || !contentBase64) {
+    pendingWorkbook = null;
+  } else {
+    pendingImage = null;
+    pendingWorkbook = {
+      name: file.name,
+      contentBase64,
+    };
+  }
+  renderPendingAttachment();
+}
+
+function clearPendingAttachment() {
+  setPendingImage(null);
+  setPendingWorkbook(null);
 }
 
 function clearPendingImage() {
@@ -570,6 +745,117 @@ async function copyMessageContent(button, content) {
   }
 }
 
+function getQuoteTables(container) {
+  return Array.from(container?.querySelectorAll('.table-wrap table, table') || []);
+}
+
+function extractTableTextForExcel(container) {
+  const tables = getQuoteTables(container);
+  if (!tables.length) return '';
+  const blocks = tables.map((table) => {
+    const rows = Array.from(table.querySelectorAll('tr'));
+    return rows.map((row) => {
+      const cells = Array.from(row.querySelectorAll('th,td')).map((cell) =>
+        String(cell.textContent || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+      );
+      return cells.join('\t');
+    }).join('\n');
+  }).filter(Boolean);
+  return blocks.join('\n\n');
+}
+
+function extractLastTableTextForExcel(container) {
+  const tables = getQuoteTables(container);
+  if (!tables.length) return '';
+  return extractTableTextForExcel({ querySelectorAll: () => [tables[tables.length - 1]] });
+}
+
+function extractLastTableHtml(container) {
+  const tables = getQuoteTables(container);
+  if (!tables.length) return '';
+  const table = tables[tables.length - 1];
+  const clone = table.cloneNode(true);
+  clone.querySelectorAll('code').forEach((node) => {
+    node.replaceWith(document.createTextNode(node.textContent || ''));
+  });
+  return `<table>${clone.innerHTML}</table>`;
+}
+
+function extractMarkdownTableTextForExcel(content) {
+  const source = String(content || '');
+  const lines = source.split('\n');
+  const tables = [];
+
+  for (let i = 0; i < lines.length - 1; i += 1) {
+    const header = lines[i];
+    const divider = lines[i + 1];
+    if (!/^\|.+\|\s*$/.test(header) || !/^\|[-| :]+\|\s*$/.test(divider)) continue;
+    const rows = [header];
+    let cursor = i + 2;
+    while (cursor < lines.length && /^\|.+\|\s*$/.test(lines[cursor])) {
+      rows.push(lines[cursor]);
+      cursor += 1;
+    }
+    tables.push(rows);
+    i = cursor - 1;
+  }
+
+  if (!tables.length) return '';
+  const selected = tables[tables.length - 1];
+  return selected
+    .map((row) => row.split('|').map((cell) => cell.trim()).filter(Boolean).join('\t'))
+    .join('\n');
+}
+
+function buildQuoteCopyPayload(content, bubble) {
+  return extractLastTableTextForExcel(bubble) || extractMarkdownTableTextForExcel(content);
+}
+
+async function copyQuoteTable(button, bubble, fallbackContent) {
+  const tableText = buildQuoteCopyPayload(fallbackContent, bubble);
+  const tableHtml = extractLastTableHtml(bubble);
+  if (!tableText) {
+    const original = button.textContent;
+    button.textContent = 'No table';
+    clearTimeout(button._copyTimer);
+    button._copyTimer = setTimeout(() => {
+      button.textContent = original;
+    }, 1400);
+    return;
+  }
+  try {
+    if (navigator.clipboard?.write && window.ClipboardItem && tableHtml) {
+      const item = new ClipboardItem({
+        'text/plain': new Blob([tableText], { type: 'text/plain' }),
+        'text/html': new Blob([tableHtml], { type: 'text/html' }),
+      });
+      await navigator.clipboard.write([item]);
+      const original = button.textContent;
+      button.textContent = 'Copied';
+      button.classList.add('done');
+      clearTimeout(button._copyTimer);
+      button._copyTimer = setTimeout(() => {
+        button.textContent = original;
+        button.classList.remove('done');
+      }, 1400);
+      return;
+    }
+  } catch (error) {
+    console.warn('Rich clipboard write failed, falling back to text', error);
+  }
+  await copyMessageContent(button, tableText);
+}
+
+function isQuoteLikeContent(content) {
+  const source = String(content || '');
+  return /(?:^|\n)###\s+(?:deterministic|excel)\s+quotation\b/i.test(source)
+    || /\|\s*#\s*\|\s*Environment\s*\|/i.test(source)
+    || /##\s+OCI Expert Summary/i.test(source)
+    || /estimated monthly total/i.test(source);
+}
+
 function addMsg(role,content,save=true) {
   document.querySelector('.welcome')?.remove();
   const c=document.getElementById('messages');
@@ -588,17 +874,36 @@ function addMsg(role,content,save=true) {
   const bubble=document.createElement('div');
   bubble.className='bubble';
   bubble.innerHTML=body;
+  const quoteLike = renderRole==='agent' && isQuoteLikeContent(content);
+  if (renderRole==='agent') {
+    bubble.classList.add('has-quote-copy');
+    const inlineCopyBtn=document.createElement('button');
+    inlineCopyBtn.className='toolbtn bubblecopy';
+    inlineCopyBtn.type='button';
+    inlineCopyBtn.textContent=quoteLike ? 'Copy Reply' : 'Copy';
+    inlineCopyBtn.addEventListener('click',()=>copyMessageContent(inlineCopyBtn, content));
+    bubble.appendChild(inlineCopyBtn);
+  }
   stack.appendChild(bubble);
 
   if(renderRole==='agent'){
     const tools=document.createElement('div');
     tools.className='msgtools';
-    const copyBtn=document.createElement('button');
-    copyBtn.className='toolbtn';
-    copyBtn.type='button';
-    copyBtn.textContent='Copy';
-    copyBtn.addEventListener('click',()=>copyMessageContent(copyBtn, content));
-    tools.appendChild(copyBtn);
+    if (quoteLike) {
+      const copyQuoteBtn=document.createElement('button');
+      copyQuoteBtn.className='toolbtn';
+      copyQuoteBtn.type='button';
+      copyQuoteBtn.textContent='Copy Quote';
+      copyQuoteBtn.addEventListener('click',()=>copyQuoteTable(copyQuoteBtn, bubble, content));
+      tools.appendChild(copyQuoteBtn);
+    } else {
+      const copyBtn=document.createElement('button');
+      copyBtn.className='toolbtn';
+      copyBtn.type='button';
+      copyBtn.textContent='Copy';
+      copyBtn.addEventListener('click',()=>copyMessageContent(copyBtn, content));
+      tools.appendChild(copyBtn);
+    }
     stack.appendChild(tools);
   }
 
@@ -609,9 +914,59 @@ function addMsg(role,content,save=true) {
   if(save&&currentId){
     const s=sessions.find(x=>x.id===currentId);
     if(s){
+      if (!Array.isArray(s.messages)) s.messages = [];
       s.messages.push({role:storedRole,content});
       if(s.messages.length===1&&storedRole==='user') s.title=content.replace(/\n/g,' ').trim().slice(0,52)+(content.length>52?'…':'');
       persist(); renderSessions();
+      persistSessionMessage(currentId, storedRole, content);
+    }
+  }
+}
+
+function addChoiceMsg(content, options, onSelect, save=true) {
+  document.querySelector('.welcome')?.remove();
+  const c=document.getElementById('messages');
+  const d=document.createElement('div');
+  d.className='msg agent';
+
+  const avatar=document.createElement('div');
+  avatar.className='avatar agent';
+  avatar.textContent='OCI';
+
+  const stack=document.createElement('div');
+  stack.className='msgstack';
+
+  const bubble=document.createElement('div');
+  bubble.className='bubble';
+  bubble.innerHTML=fmt(content);
+  stack.appendChild(bubble);
+
+  const choicebar=document.createElement('div');
+  choicebar.className='choicebar';
+  (options || []).forEach((option) => {
+    const btn=document.createElement('button');
+    btn.className='choicebtn';
+    btn.type='button';
+    btn.innerHTML=`${esc(option.label || option.value || '')}${option.description ? `<small>${esc(option.description)}</small>` : ''}`;
+    btn.addEventListener('click', async () => {
+      Array.from(choicebar.querySelectorAll('button')).forEach((node) => { node.disabled = true; });
+      await onSelect(option);
+    });
+    choicebar.appendChild(btn);
+  });
+  stack.appendChild(choicebar);
+
+  d.appendChild(avatar);
+  d.appendChild(stack);
+  c.appendChild(d); c.scrollTop=c.scrollHeight;
+
+  if(save&&currentId){
+    const s=sessions.find(x=>x.id===currentId);
+    if(s){
+      if (!Array.isArray(s.messages)) s.messages = [];
+      s.messages.push({role:'assistant',content});
+      persist(); renderSessions();
+      persistSessionMessage(currentId, 'assistant', content);
     }
   }
 }
@@ -629,37 +984,82 @@ function removeTyping(){ document.getElementById('typing')?.remove(); }
 async function sendMessage() {
   if(isLoading) return;
   const inp=document.getElementById('inp');
-  const text=inp.value.trim(); if(!text && !pendingImage) return;
-  if(!currentId) newSession();
+  const text=inp.value.trim(); if(!text && !pendingImage && !pendingWorkbook) return;
+  if(!currentId) await newSession();
 
   inp.value=''; inp.style.height='auto';
   isLoading=true; document.getElementById('sendbtn').disabled=true;
 
-  const userLabel = text || '[Pasted image]';
   const historyForApi = conversation.slice();
-  addMsg('user', pendingImage ? `${userLabel}\n[Image attached]` : userLabel);
+  const userParts = [];
+  if (text) userParts.push(text);
+  if (pendingImage) userParts.push('[Image attached]');
+  if (pendingWorkbook) userParts.push(`[Workbook attached: ${pendingWorkbook.name}]`);
+  const userLabel = userParts.join('\n') || '[Attachment]';
+  addMsg('user', userLabel);
   conversation.push({role:'user',content:userLabel});
   addTyping();
 
   try {
-    const res=await fetch('/api/assistant',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ text, conversation: historyForApi, imageDataUrl: pendingImage })
-    });
-    const data=await res.json();
-    removeTyping();
-    let reply=renderAssistantResponse(data);
-    conversation.push({role:'assistant',content:reply});
-    addMsg('assistant',reply);
-    clearPendingImage();
+    if (pendingWorkbook) {
+      const selection = parseWorkbookPromptSelections(text);
+      pendingWorkbookFlow = {
+        fileName: pendingWorkbook.name,
+        contentBase64: pendingWorkbook.contentBase64,
+      };
+      if (currentId) {
+        setWorkbookSessionContext(currentId, { ...pendingWorkbookFlow, ...selection });
+        persist();
+      }
+      await continueWorkbookFlow(selection);
+      clearPendingAttachment();
+    } else {
+      const res=await apiFetch('/api/assistant',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          sessionId: currentId,
+          text,
+          conversation: historyForApi,
+          imageDataUrl: pendingImage,
+          sessionContext: currentId ? (sessionContextBySession[currentId] || null) : null,
+        })
+      });
+      const data=await res.json();
+      removeTyping();
+      if (data?.mode === 'excel_clarification' && Array.isArray(data.options) && data.options.length) {
+        const reply = [data.question, data.warnings?.length ? `\n\nNotes:\n- ${data.warnings.slice(0, 3).join('\n- ')}` : ''].join('');
+        conversation.push({role:'assistant', content: reply});
+        addChoiceMsg(reply, data.options, async (option) => {
+          addMsg('user', option.label || option.value || '');
+          addTyping();
+          if (data.stage === 'sourcePlatform') {
+            await continueWorkbookFlow({ sourcePlatform: option.value });
+          } else if (data.stage === 'processor') {
+            await continueWorkbookFlow({ processorVendor: option.value });
+          } else if (data.stage === 'shape') {
+            await continueWorkbookFlow({ shapeName: option.value });
+          }
+        });
+      } else {
+        let reply=renderAssistantResponse(data);
+        conversation.push({role:'assistant',content:reply});
+        addMsg('assistant',reply);
+      }
+      if (currentId && data?.sessionContext && typeof data.sessionContext === 'object') {
+        setSessionContext(currentId, data.sessionContext);
+        persist();
+      }
+      await syncActiveSession();
+      clearPendingImage();
+    }
   } catch(err) {
     removeTyping();
     const reply='⚠️ Connection error with OCI GenAI. Check your network and OCI configuration.';
     conversation.push({role:'assistant',content:reply});
     addMsg('assistant',reply);
   } finally {
-    clearPendingImage();
+    clearPendingAttachment();
   }
 
   isLoading=false;
@@ -719,10 +1119,6 @@ function triggerUpload() {
 async function handleWorkbookUpload(event) {
   const file = event.target.files?.[0];
   if(!file) return;
-  if(!currentId) newSession();
-
-  addMsg('user', `Uploaded workbook: ${file.name}`);
-  addTyping();
   try {
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
@@ -732,23 +1128,170 @@ async function handleWorkbookUpload(event) {
       binary += String.fromCharCode(...bytes.subarray(i, i+chunk));
     }
     const contentBase64 = btoa(binary);
-    const res = await fetch('/api/excel/estimate', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ fileName:file.name, contentBase64 })
-    });
-    const data = await res.json();
-    removeTyping();
-    const reply = renderQuoteResponse(data);
-    conversation.push({role:'assistant', content: reply});
-    addMsg('assistant', reply);
+    setPendingWorkbook(file, contentBase64);
+    document.getElementById('inp').focus();
   } catch (err) {
-    removeTyping();
-    const reply='⚠️ Could not parse the uploaded workbook.';
-    conversation.push({role:'assistant', content: reply});
+    const reply='⚠️ Could not read the selected workbook.';
     addMsg('assistant',reply);
   } finally {
     event.target.value = '';
+  }
+}
+
+function parseWorkbookPromptSelections(text) {
+  const source = String(text || '');
+  const normalized = source.toUpperCase();
+  let processorVendor = null;
+  let sourcePlatform = null;
+
+  const knownShapes = [
+    'VM.STANDARD3.FLEX',
+    'VM.OPTIMIZED3.FLEX',
+    'VM.STANDARD.E3.FLEX',
+    'VM.STANDARD.E4.FLEX',
+    'VM.STANDARD.E5.FLEX',
+    'VM.STANDARD.E6.FLEX',
+    'VM.DENSEIO.E4.FLEX',
+    'VM.DENSEIO.E5.FLEX',
+    'VM.STANDARD.A1.FLEX',
+    'VM.STANDARD.A2.FLEX',
+    'VM.STANDARD.A4.FLEX',
+  ];
+  const shapeName = knownShapes.find((shape) => normalized.includes(shape)) || '';
+  if (shapeName.startsWith('VM.STANDARD.A')) processorVendor = 'ampere';
+  else if (shapeName.startsWith('VM.STANDARD.E') || shapeName.startsWith('VM.DENSEIO.E')) processorVendor = 'amd';
+  else if (shapeName.startsWith('VM.STANDARD3') || shapeName.startsWith('VM.OPTIMIZED3')) processorVendor = 'intel';
+
+  if (!processorVendor) {
+    if (/\bINTEL\b/i.test(source)) processorVendor = 'intel';
+    else if (/\bAMD\b/i.test(source)) processorVendor = 'amd';
+    else if (/\bAMPERE\b|\bARM\b/i.test(source)) processorVendor = 'ampere';
+  }
+  if (/\bVMWARE\b|\bRVTOOLS\b/i.test(source)) sourcePlatform = 'vmware';
+  else if (/\bBARE[\s-]?METAL\b|\bPHYSICAL\b|\bF[IÍ]SIC(?:O|OS|A|AS)\b|\bSERVIDORES?\s+F[IÍ]SIC/i.test(source)) sourcePlatform = 'bare_metal';
+  else if (/\bHYPERVISOR\b|\bHYPER-V\b|\bKVM\b|\bXEN\b|\bNUTANIX\b|\bPROXMOX\b/i.test(source)) sourcePlatform = 'other_hypervisor';
+  const vpuMatch = source.match(/(\d+(?:\.\d+)?)\s*vpu'?s?\b/i);
+  const vpuPerGb = vpuMatch ? Number(vpuMatch[1]) : null;
+  return {
+    sourcePlatform,
+    processorVendor,
+    shapeName,
+    vpuPerGb,
+  };
+}
+
+function hasWorkbookSelection(selection) {
+  return !!(selection && (selection.sourcePlatform || selection.processorVendor || selection.shapeName || Number.isFinite(selection.vpuPerGb)));
+}
+
+function buildWorkbookSessionSummary(context, data) {
+  const lines = [];
+  if (context?.fileName) {
+    let line = `Active workbook ${context.fileName}`;
+    if (context.shapeName) line += ` using ${context.shapeName}`;
+    if (Number.isFinite(Number(context.vpuPerGb))) line += ` with ${Number(context.vpuPerGb)} VPU`;
+    lines.push(line);
+  }
+  if (data?.totals && Number.isFinite(Number(data.totals.monthly))) {
+    lines.push(`Last workbook quote monthly ${fmtMoney(data.totals.monthly)}`);
+  }
+  if (Array.isArray(data?.lineItems)) {
+    lines.push(`Last workbook quote line count ${data.lineItems.length}`);
+  }
+  if (data?.stage) {
+    lines.push(`Pending workbook clarification stage ${data.stage}`);
+  }
+  return lines.join('. ');
+}
+
+async function syncActiveSession() {
+  if (!currentId) return;
+  try {
+    await loadSession(currentId);
+  } catch (error) {
+    console.warn('Failed to sync active session from server', error);
+  }
+}
+
+async function continueWorkbookFlow(extra = {}) {
+  if (!pendingWorkbookFlow) return;
+  try {
+    pendingWorkbookFlow = { ...pendingWorkbookFlow, ...extra };
+    if (currentId) {
+      setWorkbookSessionContext(currentId, pendingWorkbookFlow);
+      persist();
+    }
+    const payload = { ...pendingWorkbookFlow };
+    const res = await apiFetch('/api/excel/estimate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ...payload, sessionId: currentId })
+    });
+    const data = await res.json();
+    removeTyping();
+    if (data.mode === 'excel_clarification' && Array.isArray(data.options) && data.options.length) {
+      if (currentId) {
+        setSessionContext(currentId, {
+          ...(sessionContextBySession[currentId] || {}),
+          currentIntent: 'workbook_quote',
+          pendingClarification: {
+            stage: data.stage || '',
+            question: data.question || '',
+          },
+          workbookContext: { ...pendingWorkbookFlow },
+          sessionSummary: buildWorkbookSessionSummary(pendingWorkbookFlow, data),
+        });
+        persist();
+      }
+      const reply = [data.question, data.warnings?.length ? `\n\nNotes:\n- ${data.warnings.slice(0, 3).join('\n- ')}` : ''].join('');
+      conversation.push({role:'assistant', content: reply});
+      addChoiceMsg(reply, data.options, async (option) => {
+        addMsg('user', option.label || option.value || '');
+        addTyping();
+        if (data.stage === 'sourcePlatform') {
+          await continueWorkbookFlow({ sourcePlatform: option.value });
+        } else if (data.stage === 'processor') {
+          await continueWorkbookFlow({ processorVendor: option.value });
+        } else if (data.stage === 'shape') {
+          await continueWorkbookFlow({ shapeName: option.value });
+        }
+      });
+      return;
+    }
+    const reply = renderQuoteResponse(data);
+    conversation.push({role:'assistant', content: reply});
+    addMsg('assistant', reply);
+    if (currentId) {
+      setWorkbookSessionContext(currentId, pendingWorkbookFlow);
+      setSessionContext(currentId, {
+        ...(sessionContextBySession[currentId] || {}),
+        currentIntent: 'workbook_quote',
+        pendingClarification: null,
+        workbookContext: { ...pendingWorkbookFlow },
+        lastQuote: {
+          type: 'workbook_quote',
+          label: pendingWorkbookFlow.shapeName || pendingWorkbookFlow.fileName || 'Workbook quote',
+          monthly: Number(data?.totals?.monthly || 0),
+          annual: Number(data?.totals?.annual || 0),
+          currencyCode: data?.totals?.currencyCode || 'USD',
+          lineItemCount: Array.isArray(data?.lineItems) ? data.lineItems.length : 0,
+          shapeName: pendingWorkbookFlow.shapeName || '',
+          processorVendor: pendingWorkbookFlow.processorVendor || '',
+          sourcePlatform: pendingWorkbookFlow.sourcePlatform || '',
+          vpuPerGb: Number.isFinite(Number(pendingWorkbookFlow.vpuPerGb)) ? Number(pendingWorkbookFlow.vpuPerGb) : null,
+        },
+        sessionSummary: buildWorkbookSessionSummary(pendingWorkbookFlow, data),
+      });
+      persist();
+    }
+    pendingWorkbookFlow = null;
+    await syncActiveSession();
+  } catch (_err) {
+    removeTyping();
+    const reply='⚠️ Could not process the uploaded workbook.';
+    conversation.push({role:'assistant', content: reply});
+    addMsg('assistant',reply);
+    pendingWorkbookFlow = null;
   }
 }
 
@@ -765,7 +1308,11 @@ document.addEventListener('paste', async (event) => {
 });
 
 // ══ INIT ══
-window.addEventListener('DOMContentLoaded',()=>{ renderSessions(); initCatalogs(); });
+window.addEventListener('DOMContentLoaded', async ()=>{
+  renderSessions();
+  await refreshSessions();
+  initCatalogs();
+});
 </script>
 </body>
 </html>

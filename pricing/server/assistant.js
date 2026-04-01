@@ -5,7 +5,7 @@ const { searchProducts, searchPresets, searchServiceRegistry, serviceHasRequired
 const { getServiceFamily, getMissingRequiredInputs, buildCanonicalRequest } = require('./service-families');
 const { inferConsumptionPattern, explainConsumptionPattern } = require('./consumption-model');
 const { runChat, extractChatText } = require('./genai');
-const { analyzeIntent, analyzeImageIntent } = require('./intent-extractor');
+const { analyzeIntent, analyzeImageIntent, buildSessionContextBlock } = require('./intent-extractor');
 
 const RESPONSE_PROMPT = [
   'You are an OCI pricing specialist speaking to a customer.',
@@ -236,6 +236,55 @@ function mergeClarificationAnswer(conversation, userText) {
   return userText;
 }
 
+function isSessionQuoteFollowUp(text) {
+  const source = String(text || '').trim();
+  if (!source || source.length > 220) return false;
+  if (/^(y|and|ahora|now)\b/i.test(source)) return true;
+  if (/\b(?:with|without|con|sin)\b/i.test(source)) return true;
+  if (/\b(?:instances?|instancias?|vpus?|ocpus?|ecpus?|gb|tb|mbps|gbps|users?)\b/i.test(source)) return true;
+  if (/\b(?:byol|license included|licencia incluida|on[- ]?demand|reserved|amd|intel|ampere|arm)\b/i.test(source)) return true;
+  if (isShapeSelectionFollowUp(source)) return true;
+  return false;
+}
+
+function removeCompositeServiceSegment(basePrompt, pattern) {
+  const source = String(basePrompt || '').trim();
+  if (!source) return source;
+  const prefixMatch = source.match(/^\s*quote\s+/i);
+  const prefix = prefixMatch ? prefixMatch[0] : '';
+  const body = prefix ? source.slice(prefix.length).trim() : source;
+  const separators = /\s+\+\s+|\s+plus\s+/i;
+  if (!separators.test(body)) return source;
+  const kept = body
+    .split(separators)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .filter((segment) => !(new RegExp(pattern, 'i')).test(segment));
+  if (!kept.length) return source;
+  return `${prefix}${kept.join(' plus ')}`.trim();
+}
+
+function applySessionFollowUpDirective(basePrompt, followUp) {
+  const source = String(followUp || '').trim();
+  if (!source) return String(basePrompt || '').trim();
+  if (/\b(?:sin|without)\s+(?:waf|web application firewall)\b/i.test(source)) {
+    return removeCompositeServiceSegment(basePrompt, String.raw`(?:waf|web application firewall)`);
+  }
+  return `${String(basePrompt || '').trim()} ${source}`.trim();
+}
+
+function mergeSessionQuoteFollowUp(sessionContext, userText) {
+  const source = String(userText || '').trim();
+  if (!isSessionQuoteFollowUp(source)) return source;
+  const lastQuoteSource = String(sessionContext?.lastQuote?.source || '').trim();
+  if (!lastQuoteSource) return source;
+  const normalized = source
+    .replace(/^(?:y|and|ahora|now)\s+/i, '')
+    .trim();
+  if (!normalized) return lastQuoteSource;
+  return applySessionFollowUpDirective(lastQuoteSource, normalized);
+}
+
 function isFlexComparisonRequest(text) {
   const source = String(text || '');
   const matches = source.match(/\b[a-z]\d+\.flex\b/ig) || [];
@@ -255,6 +304,7 @@ function isCompositeOrComparisonRequest(text) {
     /\bweb application firewall\b|\bwaf\b/.test(source),
     /\bnetwork firewall\b/.test(source),
     /\bdns\b/.test(source),
+    /\bapi gateway\b/.test(source),
     /\bintegration cloud\b/.test(source),
     /\banalytics cloud\b/.test(source),
     /\bdata integration\b/.test(source),
@@ -263,6 +313,7 @@ function isCompositeOrComparisonRequest(text) {
     /\bhttps delivery\b|\bemail delivery\b/.test(source),
     /\biam sms\b|\bsms messages?\b/.test(source),
     /\bthreat intelligence\b/.test(source),
+    /\bhealth checks?\b/.test(source),
     /\bfleet application management\b/.test(source),
     /\boci batch\b|\bbatch\b/.test(source),
     /\bdata safe\b/.test(source),
@@ -486,7 +537,7 @@ function buildFlexComparisonNarrative(context, comparison) {
 
 function hasCompositeServiceSignal(text) {
   const source = String(text || '');
-  return /\b(?:vm|bm)\.[a-z0-9.]+\.flex\b|\b[a-z]\d+\.flex\b|\bload balancer\b|\bblock storage\b|\bblock volumes?\b|\bobject storage\b|\bfile storage\b|\bfastconnect\b|\bfast connect\b|\bdns\b|\bweb application firewall\b|\bwaf\b|\bnetwork firewall\b|\bautonomous(?: ai)? lakehouse\b|\bautonomous data warehouse\b|\bbase database service\b|\bdata integration\b|\bintegration cloud\b|\banalytics cloud\b|\bdata safe\b|\blog analytics\b|\bfunctions\b|\bgenerative ai\b|\bexadata\b|\bdatabase cloud service\b|\bmonitoring\b|\bnotifications\b|\bhttps delivery\b|\bemail delivery\b|\biam sms\b|\bsms messages?\b|\bthreat intelligence\b|\bfleet application management\b|\boci batch\b|\bvision\b|\bspeech\b|\bmedia flow\b/i.test(source);
+  return /\b(?:vm|bm)\.[a-z0-9.]+(?:\.flex|\.\d+)\b|\b(?:standard|optimized)\d+(?:\.\d+|\.flex)\b|\bdenseio\.[ea]\d+\.flex\b|\b[a-z]\d+\.flex\b|\bload balancer\b|\blb\b|\bblock storage\b|\bblock volumes?\b|\bobject storage\b|\bfile storage\b|\bfastconnect\b|\bfast connect\b|\bdns\b|\bapi gateway\b|\bweb application firewall\b|\bwaf\b|\bnetwork firewall\b|\bautonomous(?: ai)? lakehouse\b|\bautonomous data warehouse\b|\bbase database service\b|\bdata integration\b|\bintegration cloud\b|\boic\b|\banalytics cloud\b|\boac\b|\bdata safe\b|\blog analytics\b|\bfunctions\b|\bgenerative ai\b|\bvector store\b|\bweb search\b|\bagents data ingestion\b|\bmemory ingestion\b|\bexadata\b|\bdatabase cloud service\b|\bmonitoring\b|\bnotifications\b|\bhttps delivery\b|\bemail delivery\b|\biam sms\b|\bsms messages?\b|\bthreat intelligence\b|\bhealth checks?\b|\bfleet application management\b|\boci batch\b|\bvision\b|\bspeech\b|\bmedia flow\b/i.test(source);
 }
 
 function splitCompositeQuoteSegments(text) {
@@ -501,6 +552,14 @@ function splitCompositeQuoteSegments(text) {
 
   const merged = [];
   for (const segment of rawSegments) {
+    if (
+      merged.length &&
+      /^\b(?:active|archiv(?:e|al))\b/i.test(segment) &&
+      /\blog analytics\b/i.test(merged[merged.length - 1])
+    ) {
+      merged.push(`Log Analytics ${segment}`.trim());
+      continue;
+    }
     if (!merged.length || hasCompositeServiceSignal(segment)) {
       merged.push(segment);
       continue;
@@ -517,10 +576,25 @@ function shouldAppendGlobalHours(segment) {
 
 function normalizeCompositeSegment(segment, fullText) {
   let out = String(segment || '').trim().replace(/^and\s+/i, '');
-  out = out.replace(/^(?:quote\s+)?(?:a|an)\s+.+?\b(?:stack|platform|workload|architecture|bundle)\s+with\s+/i, '');
+  out = out.replace(/^(?:quote\s+)?(?:a|an)\s+.+?\b(?:stack|platform|workload|architecture|bundle|fabric)\s+with\s+/i, '');
   const multipliedInstances = out.match(/^(\d+)\s*x\s+(.*)$/i);
   if (multipliedInstances) {
     out = `${multipliedInstances[2]} ${multipliedInstances[1]} instances`;
+  }
+  out = out.replace(/\bLB\b/i, 'Flexible Load Balancer');
+  out = out.replace(/\bOIC\b\s+enterprise\b/i, 'Oracle Integration Cloud Enterprise');
+  out = out.replace(/\bOIC\b\s+standard\b/i, 'Oracle Integration Cloud Standard');
+  out = out.replace(/\bOAC\b\s+enterprise\b/i, 'Oracle Analytics Cloud Enterprise');
+  out = out.replace(/\bOAC\b\s+professional\b/i, 'Oracle Analytics Cloud Professional');
+  out = out.replace(/\bLI\b/i, 'License Included');
+  if (/\bvector store retrieval\b/i.test(out) && !/\bgenerative ai\b/i.test(out)) {
+    out = `OCI Generative AI ${out}`;
+  } else if (/\bweb search\b/i.test(out) && !/\bgenerative ai\b/i.test(out)) {
+    out = `OCI Generative AI ${out}`;
+  } else if (/\bagents data ingestion\b/i.test(out) && !/\bgenerative ai\b/i.test(out)) {
+    out = `OCI Generative AI ${out}`;
+  } else if (/\bmemory ingestion\b/i.test(out) && !/\bgenerative ai\b/i.test(out)) {
+    out = `OCI Generative AI ${out}`;
   }
   const globalHours = String(fullText || '').match(/(\d+(?:\.\d+)?)\s*h(?:ours?)?(?:\/month)?/i) ||
     String(fullText || '').match(/(\d+(?:\.\d+)?)\s*hours?\s*\/\s*month/i);
@@ -634,9 +708,11 @@ function shouldKeepSourceAssumption(lower, parsedRequest) {
   return false;
 }
 
-async function writeNaturalReply(cfg, conversation, userText, context) {
+async function writeNaturalReply(cfg, conversation, userText, context, sessionContext) {
   const history = Array.isArray(conversation) ? conversation.slice(-6) : [];
+  const sessionBlock = buildSessionContextBlock(sessionContext);
   const contextBlock = [
+    sessionBlock,
     `User request: ${userText}`,
     `Intent: ${context.intent || 'quote'}`,
     context.summary ? `Summary: ${context.summary}` : '',
@@ -664,6 +740,78 @@ async function writeNaturalReply(cfg, conversation, userText, context) {
     topK: -1,
   });
   return extractChatText(response?.data || response).trim();
+}
+
+function summarizeQuoteForSession(quote) {
+  if (!quote?.ok) return null;
+  if (quote.comparison) {
+    return {
+      type: 'comparison',
+      label: 'Flex comparison',
+      monthly: Number(quote.comparison.monthlyTotal || 0),
+      annual: Number(quote.comparison.annualTotal || 0),
+      currencyCode: quote.comparison.currencyCode || 'USD',
+      lineItemCount: Array.isArray(quote.comparison.items) ? quote.comparison.items.length : 0,
+    };
+  }
+  const lineItems = Array.isArray(quote.lineItems) ? quote.lineItems : [];
+  const request = quote.request || {};
+  return {
+    type: 'quote',
+    label: quote.resolution?.label || request.shape || request.serviceName || request.source || '',
+    source: request.source || '',
+    monthly: Number(quote.totals?.monthly || 0),
+    annual: Number(quote.totals?.annual || 0),
+    currencyCode: quote.totals?.currencyCode || 'USD',
+    lineItemCount: lineItems.length,
+    shapeName: request.shape || request.shapeSeries || '',
+    serviceFamily: request.serviceFamily || '',
+    processorVendor: request.processorVendor || '',
+    vpuPerGb: Number.isFinite(Number(request.vpuPerGb)) ? Number(request.vpuPerGb) : null,
+    partNumbers: Array.from(new Set(lineItems.map((line) => line.partNumber).filter(Boolean))).slice(0, 12),
+  };
+}
+
+function buildAssistantSessionSummary(nextContext) {
+  if (!nextContext || typeof nextContext !== 'object') return '';
+  const lines = [];
+  if (nextContext.workbookContext?.fileName) {
+    const workbook = nextContext.workbookContext;
+    let line = `Active workbook ${workbook.fileName}`;
+    if (workbook.shapeName) line += ` using ${workbook.shapeName}`;
+    if (Number.isFinite(Number(workbook.vpuPerGb))) line += ` with ${Number(workbook.vpuPerGb)} VPU`;
+    lines.push(line);
+  }
+  if (nextContext.lastQuote?.label) {
+    const quote = nextContext.lastQuote;
+    let line = `Last quote ${quote.label}`;
+    if (Number.isFinite(Number(quote.monthly))) line += ` monthly ${formatMoney(Number(quote.monthly), quote.currencyCode || 'USD')}`;
+    if (Number.isFinite(Number(quote.lineItemCount))) line += ` across ${Number(quote.lineItemCount)} lines`;
+    lines.push(line);
+  }
+  if (nextContext.pendingClarification?.question) {
+    lines.push(`Pending clarification: ${nextContext.pendingClarification.question}`);
+  }
+  return lines.join('. ');
+}
+
+function buildAssistantSessionContext(previous, effectiveUserText, payload) {
+  const next = previous && typeof previous === 'object' ? JSON.parse(JSON.stringify(previous)) : {};
+  next.lastUserText = String(effectiveUserText || '').trim();
+  if (payload?.intent?.intent) next.currentIntent = payload.intent.intent;
+  if (payload?.mode === 'clarification' && payload?.message) {
+    next.pendingClarification = {
+      question: String(payload.message).trim(),
+      serviceFamily: payload.intent?.serviceFamily || '',
+    };
+  } else {
+    delete next.pendingClarification;
+  }
+  if (payload?.quote?.ok) {
+    next.lastQuote = summarizeQuoteForSession(payload.quote);
+  }
+  next.sessionSummary = buildAssistantSessionSummary(next);
+  return next;
 }
 
 async function buildGenAIQuoteEnrichment(cfg, userText, quote, assumptions) {
@@ -772,6 +920,103 @@ function inferQuoteTechnologyProfile(quote) {
     /\bnetwork firewall\b/.test(blob),
     /\bwaf\b|\bweb application firewall\b/.test(blob),
   ].filter(Boolean).length;
+
+  const scoreMonthly = (patterns) => lineItems.reduce((sum, line) => {
+    const lineBlob = `${line.service || ''} ${line.product || ''} ${line.metric || ''}`.toLowerCase();
+    if (patterns.some((pattern) => pattern.test(lineBlob))) return sum + Number(line.monthly || 0);
+    return sum;
+  }, 0);
+
+  const networkPatterns = [/\bfastconnect\b/, /\bload balancer\b/, /\bdns\b/, /\bnetwork firewall\b/, /\bwaf\b|\bweb application firewall\b/];
+  const databasePatterns = [/\bautonomous\b/, /\bdatabase\b/, /\bexadata\b/, /\bdata safe\b/];
+  const serverlessAiPatterns = [/\bfunctions\b/, /\bgenerative ai\b/, /\bvector store\b/, /\bweb search\b/, /\bagents\b/, /\bapi gateway\b/];
+  const analyticsPatterns = [/\bintegration cloud\b/, /\banalytics cloud\b/, /\bdata integration\b/];
+  const observabilityPatterns = [/\bmonitoring\b/, /\blog analytics\b/, /\bnotifications\b/, /\bhealth checks\b/];
+  const operationsPatterns = [/\bfleet application management\b/, /\boci batch\b/, /\bbatch\b/, /\bemail delivery\b/, /\biam sms\b/];
+  const computeStoragePatterns = [/\bcompute\b/, /\bflex\b/, /\bocpu\b/, /\bram\b/, /\bblock volume\b/, /\bobject storage\b/, /\bfile storage\b/];
+
+  const databaseMonthly = scoreMonthly(databasePatterns);
+  const networkMonthly = scoreMonthly(networkPatterns);
+  const serverlessAiMonthly = scoreMonthly(serverlessAiPatterns);
+  const analyticsMonthly = scoreMonthly(analyticsPatterns);
+  const observabilityMonthly = scoreMonthly(observabilityPatterns);
+  const operationsMonthly = scoreMonthly(operationsPatterns);
+  const computeStorageMonthly = scoreMonthly(computeStoragePatterns);
+  const totalMonthly = lineItems.reduce((sum, line) => sum + Number(line.monthly || 0), 0) || 0;
+  const maxDomainShare = totalMonthly > 0
+    ? Math.max(
+      networkMonthly,
+      databaseMonthly,
+      serverlessAiMonthly,
+      analyticsMonthly,
+      observabilityMonthly + operationsMonthly,
+      computeStorageMonthly,
+    ) / totalMonthly
+    : 0;
+  const domainScores = [
+    networkMonthly,
+    databaseMonthly,
+    serverlessAiMonthly,
+    analyticsMonthly,
+    observabilityMonthly + operationsMonthly,
+    computeStorageMonthly,
+  ];
+  const signalDomainCount = [
+    networkPatterns.some((pattern) => pattern.test(blob)),
+    databasePatterns.some((pattern) => pattern.test(blob)),
+    serverlessAiPatterns.some((pattern) => pattern.test(blob)),
+    analyticsPatterns.some((pattern) => pattern.test(blob)),
+    observabilityPatterns.some((pattern) => pattern.test(blob)),
+    operationsPatterns.some((pattern) => pattern.test(blob)),
+    computeStoragePatterns.some((pattern) => pattern.test(blob)),
+  ].filter(Boolean).length;
+
+  const hasAnalyticsSignals = analyticsPatterns.filter((pattern) => pattern.test(blob)).length >= 2;
+  const hasDatabaseSignals = databasePatterns.some((pattern) => pattern.test(blob));
+  const hasObservabilitySignals = observabilityPatterns.filter((pattern) => pattern.test(blob)).length >= 2;
+  const hasOperationsSignals = operationsPatterns.filter((pattern) => pattern.test(blob)).length >= 2;
+
+  if (signalDomainCount >= 5 && maxDomainShare <= 0.75) {
+    return {
+      key: 'solutions-architecture',
+      role: 'OCI solutions architect',
+      name: 'OCI multi-service architecture',
+      focus: 'cross-domain cost drivers across compute, storage, networking, database, observability, and platform services, plus which components are foundational versus workload-specific',
+    };
+  }
+
+  if (hasDatabaseSignals && totalMonthly > 0 && databaseMonthly / totalMonthly >= 0.35) {
+    return {
+      key: 'database',
+      role: 'OCI database architect',
+      name: 'OCI database platform',
+      focus: 'license model, compute plus storage composition, and prerequisites or infrastructure components that may sit outside the direct metered lines',
+    };
+  }
+  if (hasObservabilitySignals && totalMonthly > 0 && observabilityMonthly / totalMonthly >= 0.2 && operationsMonthly / totalMonthly < 0.15) {
+    return {
+      key: 'observability',
+      role: 'OCI observability architect',
+      name: 'OCI observability and notifications',
+      focus: 'ingestion, retrieval, storage-unit, and delivery-operation metrics across monitoring, log analytics, and notifications',
+    };
+  }
+  if (hasOperationsSignals && totalMonthly > 0 && (operationsMonthly / totalMonthly >= 0.15 || (observabilityMonthly + operationsMonthly) / totalMonthly >= 0.3)) {
+    return {
+      key: 'operations-platform',
+      role: 'OCI operations and platform services architect',
+      name: 'OCI operations and platform services',
+      focus: 'counted operational units, observability storage and retrieval metrics, and which lines are free-tier versus usage-bearing',
+    };
+  }
+  if (hasAnalyticsSignals && totalMonthly > 0 && analyticsMonthly / totalMonthly >= 0.25) {
+    return {
+      key: 'analytics-integration',
+      role: 'OCI analytics and integration architect',
+      name: 'OCI analytics and integration services',
+      focus: 'user, OCPU/ECPU, data processed, and storage-unit metrics, plus BYOL versus License Included where applicable',
+    };
+  }
   if (storageSignalCount >= 2 && edgeSignalCount <= 2) {
     return {
       key: 'compute-storage',
@@ -899,6 +1144,10 @@ function buildDeterministicConsiderationsFallback(quote, assumptions) {
   } else if (profile.key === 'operations-platform') {
     sections.push('- As an OCI operations/platform services review, validate which lines are truly paid units versus free-tier operational counts.');
     sections.push('- Review whether the quoted counts match the intended managed-resource, job, or notification-delivery volumes for the target operating model.');
+  } else if (profile.key === 'solutions-architecture') {
+    sections.push('- As an OCI solutions-architecture review, validate the service boundaries first: this quote spans multiple OCI domains and should be checked as an integrated platform, not as a single-service estimate.');
+    sections.push('- Review which lines are foundational platform components versus workload-specific consumption, because those categories usually drive optimization decisions differently.');
+    sections.push('- Confirm the intended commercial model for each major domain, especially where user-based, request-based, and infrastructure-based pricing are mixed together.');
   } else if (profile.key === 'analytics-integration') {
     sections.push('- As an OCI analytics/integration review, verify which commercial unit actually applies: users, OCPUs/ECPUs, processed data, or storage units.');
     sections.push('- Confirm whether the service is billed by users, OCPUs/ECPUs, storage units, or data processed, because different variants in the same family bill differently.');
@@ -957,31 +1206,104 @@ async function buildQuoteNarrative(cfg, userText, quote, assumptions) {
 
 function buildConsumptionExplanation(quote) {
   const items = Array.isArray(quote?.lineItems) ? quote.lineItems : [];
-  const explanations = [];
-  const seen = new Set();
+  const patternEntries = [];
+  const seenPatterns = new Set();
   for (const line of items) {
     const pattern = inferConsumptionPattern(line.metric, `${line.service} ${line.product}`);
-    if (!pattern || pattern === 'unknown' || seen.has(pattern)) continue;
-    seen.add(pattern);
-    const text = explainConsumptionPattern(pattern, {
-      displayName: line.product,
-      fullDisplayName: line.product,
-    });
-    if (text) explanations.push(`- ${text}`);
-    if (explanations.length >= 3) break;
+    if (!pattern || pattern === 'unknown' || seenPatterns.has(pattern)) continue;
+    seenPatterns.add(pattern);
+    patternEntries.push({ pattern, line });
   }
-  return explanations;
+
+  if (patternEntries.length <= 3 && items.length <= 6) {
+    return patternEntries.map(({ pattern, line }) => {
+      const text = explainConsumptionPattern(pattern, {
+        displayName: line.product,
+        fullDisplayName: line.product,
+      });
+      return text ? `- ${text}` : null;
+    }).filter(Boolean);
+  }
+
+  const grouped = new Map();
+  for (const line of items) {
+    const pattern = inferConsumptionPattern(line.metric, `${line.service} ${line.product}`);
+    const group = classifyConsumptionGroup(pattern, line);
+    if (!grouped.has(group.key)) grouped.set(group.key, { ...group, examples: [], patterns: new Set() });
+    const bucket = grouped.get(group.key);
+    bucket.patterns.add(pattern);
+    if (bucket.examples.length < 3) bucket.examples.push(line.product);
+  }
+
+  const priority = ['compute', 'storage', 'requests', 'users', 'platform', 'media', 'network', 'other'];
+  return Array.from(grouped.values())
+    .sort((a, b) => priority.indexOf(a.key) - priority.indexOf(b.key))
+    .slice(0, 5)
+    .map((group) => {
+      const examples = Array.from(new Set(group.examples)).slice(0, 2).map((item) => `\`${item}\``).join(', ');
+      return `- ${group.description}${examples ? ` Example lines: ${examples}.` : ''}`;
+    });
+}
+
+function classifyConsumptionGroup(pattern, line) {
+  const serviceBlob = `${line?.service || ''} ${line?.product || ''}`.toLowerCase();
+  if (['ocpu-hour', 'ecpu-hour', 'memory-gb-hour', 'functions-gb-memory-seconds', 'functions-invocations-million'].includes(pattern)) {
+    return {
+      key: 'compute',
+      description: 'Compute-style charges are driven by provisioned CPU, memory, or execution usage over time. For hourly SKUs the requested size is multiplied by monthly hours; for serverless functions OCI separately charges execution memory-seconds and invocation volume.',
+    };
+  }
+  if (['capacity-gb-month', 'performance-units-per-gb-month', 'log-analytics-storage-unit-month'].includes(pattern)) {
+    return {
+      key: 'storage',
+      description: 'Storage-style charges are driven by provisioned or retained capacity. OCI bills GB-month, performance density, or storage-unit constructs depending on the storage service.',
+    };
+  }
+  if (['requests', 'count-each', 'data-processed-gb-month', 'data-processed-gb-hour'].includes(pattern)) {
+    return {
+      key: 'requests',
+      description: 'Transaction and request charges are volume-based. The agent converts API calls, requests, processed traffic, deliveries, or counted items into the billing unit defined by each SKU.',
+    };
+  }
+  if (pattern === 'users-per-month') {
+    return {
+      key: 'users',
+      description: 'User-based charges are billed directly from the active user count per month rather than from hourly uptime.',
+    };
+  }
+  if (['workspace-hour', 'execution-hour-utilized', 'generic-hourly', 'generic-monthly', 'utilized-hour'].includes(pattern)) {
+    return {
+      key: 'platform',
+      description: 'Platform-service charges use service-specific hourly or monthly units such as workspaces, execution hours, or dedicated service hours, depending on the SKU metric.',
+    };
+  }
+  if (pattern === 'media-output-minute') {
+    return {
+      key: 'media',
+      description: 'Media and AI pipeline charges are billed from directly consumed training hours, transcription hours, or processed/output media minutes.',
+    };
+  }
+  if (['port-hour', 'load-balancer-hour', 'bandwidth-mbps-hour'].includes(pattern) || /\bfastconnect\b|\bload balancer\b|\bdns\b|\bhealth checks?\b/.test(serviceBlob)) {
+    return {
+      key: 'network',
+      description: 'Network charges are driven by provisioned connectivity, bandwidth configuration, or request/query volume depending on the service.',
+    };
+  }
+  return {
+    key: 'other',
+    description: 'Some lines use OCI service-specific billing units that are quoted directly from the catalog metric attached to the SKU.',
+  };
 }
 
 function buildComputeVmClarificationQuestion(intent = {}) {
   const vendor = String(intent?.extractedInputs?.processorVendor || '').toLowerCase();
   if (vendor === 'amd') {
-    return 'Which OCI AMD VM shape should I use for that machine? Common AMD flex options are `E4.Flex` or `E5.Flex`. Once you pick the shape, I can combine it with the attached Block Volume sizing.';
+    return 'Which OCI AMD VM shape should I use for that machine? Common options are `VM.Standard.E4.Flex`, `VM.Standard.E5.Flex`, or `VM.Standard.E6.Flex`. If the workload needs local NVMe, `VM.DenseIO.E4.Flex` or `VM.DenseIO.E5.Flex` may fit better. Once you pick the shape, I can combine it with the attached Block Volume sizing.';
   }
   if (vendor === 'arm' || vendor === 'ampere') {
-    return 'Which OCI Arm VM shape should I use for that machine? A common Arm flex option is `A1.Flex`. Once you pick the shape, I can combine it with the attached Block Volume sizing.';
+    return 'Which OCI Arm VM shape should I use for that machine? Common options are `VM.Standard.A1.Flex`, `VM.Standard.A2.Flex`, or `VM.Standard.A4.Flex`. Once you pick the shape, I can combine it with the attached Block Volume sizing.';
   }
-  return 'Which OCI VM shape should I use for that machine? For Intel, common options are `E4.Flex` or `E5.Flex`. Once you pick the shape, I can combine it with the attached Block Volume sizing.';
+  return 'Which OCI VM shape should I use for that machine? For Intel, common options are `VM.Standard3.Flex`, `VM.Optimized3.Flex`, or the fixed-shape family `VM.Standard2.x`. Once you pick the shape, I can combine it with the attached Block Volume sizing.';
 }
 
 function detectGenericComputeShapeClarification(text) {
@@ -1141,42 +1463,49 @@ function quoteSegmentWithCanonicalFallback(index, prompt) {
   return choosePreferredQuote(direct, canonicalQuote);
 }
 
-async function respondToAssistant({ cfg, index, conversation, userText, imageDataUrl }) {
-  const effectiveUserText = mergeClarificationAnswer(conversation, userText);
+async function respondToAssistant({ cfg, index, conversation, userText, imageDataUrl, sessionContext }) {
+  const effectiveUserText = mergeSessionQuoteFollowUp(
+    sessionContext,
+    mergeClarificationAnswer(conversation, userText),
+  );
+  const respond = (payload) => ({
+    ...payload,
+    sessionContext: buildAssistantSessionContext(sessionContext, effectiveUserText, payload),
+  });
   const contextualFollowUp = isShortContextualAnswer(userText);
   const compositeLike = isCompositeOrComparisonRequest(effectiveUserText);
   const flexComparison = extractFlexComparisonContext(conversation, userText);
   const computeShapeClarification = detectGenericComputeShapeClarification(effectiveUserText);
   if (isGreeting(userText)) {
-    return {
+    return respond({
       ok: true,
       mode: 'answer',
       message: 'Hola. Puedo ayudarte a cotizar servicios de OCI, comparar SKUs, explicar pricing o estimar un Excel. Si quieres una cotización directa, dime el producto y las variables clave como cantidad, horas, OCPU/ECPU, storage o bandwidth.',
       intent: { intent: 'answer', shouldQuote: false, needsClarification: false },
-    };
+    });
   }
 
   if (conversationMentionsFastConnect(conversation) && isConfidenceQuestion(userText)) {
-    return {
+    return respond({
       ok: true,
       mode: 'answer',
       message: 'Sí para el cargo base del puerto. En OCI, el precio de FastConnect para el puerto es uniforme entre regiones, así que la región no cambia esa cotización base. Si quieres, puedo ayudarte a revisar además otros cargos relacionados, como conectividad adicional o tráfico de salida, pero el puerto de 1 Gbps sigue siendo el mismo.',
       intent: { intent: 'answer', shouldQuote: false, needsClarification: false },
-    };
+    });
   }
 
   const explicitRegion = parseRegionAnswer(userText);
   if (conversationMentionsFastConnect(conversation) && explicitRegion) {
-    return {
+    return respond({
       ok: true,
       mode: 'answer',
       message: `${explicitRegion.label} es una región válida de OCI (${explicitRegion.code}). Para FastConnect, el precio base del puerto no cambia por región, así que la cotización del puerto se mantiene. Si quieres, el siguiente paso es revisar si en tu caso hay cargos adicionales asociados al diseño de conectividad.`,
       intent: { intent: 'answer', shouldQuote: false, needsClarification: false },
-    };
+    });
   }
 
   if (computeShapeClarification) {
-    return {
+    return respond({
       ok: true,
       mode: 'clarification',
       message: computeShapeClarification.question,
@@ -1188,65 +1517,65 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
         serviceFamily: computeShapeClarification.serviceFamily,
         extractedInputs: computeShapeClarification.extractedInputs,
       },
-    };
+    });
   }
 
   if (isFlexComparisonRequest(effectiveUserText)) {
     const modifierKind = detectFlexComparisonModifier(effectiveUserText);
     if (modifierKind === 'capacity-reservation' && parseCapacityReservationUtilization(effectiveUserText) === null) {
-      return {
+      return respond({
         ok: true,
         mode: 'clarification',
         message: 'For the Flex shape comparison, what capacity reservation utilization should I use: for example `1.0`, `0.7`, or `0.5`?',
         intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'What capacity reservation utilization should I use for the comparison?' },
-      };
+      });
     }
     if (modifierKind === 'burstable' && parseBurstableBaseline(effectiveUserText) === null) {
-      return {
+      return respond({
         ok: true,
         mode: 'clarification',
         message: 'For the Flex shape comparison, what burstable baseline should I use: for example `0.5`, `0.25`, or `0.125`?',
         intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'What burstable baseline should I use for the comparison?' },
-      };
+      });
     }
   }
 
   if (flexComparison) {
     if (flexComparison.modifierKind === 'capacity-reservation' && flexComparison.utilization === null) {
-      return {
+      return respond({
         ok: true,
         mode: 'clarification',
         message: 'For the Flex shape comparison, what capacity reservation utilization should I use: for example `1.0`, `0.7`, or `0.5`?',
         intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'What capacity reservation utilization should I use for the comparison?' },
-      };
+      });
     }
     if (flexComparison.modifierKind === 'burstable' && flexComparison.burstableBaseline === null) {
-      return {
+      return respond({
         ok: true,
         mode: 'clarification',
         message: 'For the Flex shape comparison, what burstable baseline should I use: for example `0.5`, `0.25`, or `0.125`?',
         intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'What burstable baseline should I use for the comparison?' },
-      };
+      });
     }
     if (flexComparison.modifierKind === 'capacity-reservation' && !flexComparison.withoutCrMode) {
-      return {
+      return respond({
         ok: true,
         mode: 'clarification',
         message: 'For the non-capacity-reservation side of the comparison, should I use `On demand` pricing?',
         intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'Should I use On demand pricing for the non-capacity-reservation side?' },
-      };
+      });
     }
     if (flexComparison.modifierKind === 'capacity-reservation' && flexComparison.withoutCrMode !== 'on-demand') {
-      return {
+      return respond({
         ok: true,
         mode: 'clarification',
         message: 'Reserved pricing for the non-capacity-reservation side is not modeled yet in this comparison flow. If you want, reply with `On demand` and I will generate the deterministic comparison.',
         intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'Reply with On demand to continue the Flex comparison.' },
-      };
+      });
     }
     const comparison = buildFlexComparisonQuote(index, flexComparison);
     if (comparison.ok) {
-      return {
+      return respond({
         ok: true,
         mode: 'quote',
         message: buildFlexComparisonNarrative(flexComparison, comparison),
@@ -1264,14 +1593,14 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
           needsClarification: false,
           clarificationQuestion: '',
         },
-      };
+      });
     }
   }
 
   if (compositeLike) {
     const compositeQuote = buildCompositeQuoteFromSegments(index, effectiveUserText);
     if (compositeQuote?.ok) {
-      return {
+      return respond({
         ok: true,
         mode: 'quote',
         message: await buildQuoteNarrative(cfg, effectiveUserText, compositeQuote, formatAssumptions([], parsePromptRequest(effectiveUserText))),
@@ -1282,7 +1611,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
           needsClarification: false,
           clarificationQuestion: '',
         },
-      };
+      });
     }
   }
 
@@ -1298,7 +1627,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
   if (isSimpleTransactionalQuote) {
     const rawQuote = quoteFromPrompt(index, effectiveUserText);
     if (rawQuote.ok && rawQuote.resolution?.type === 'service') {
-      return {
+      return respond({
         ok: true,
         mode: 'quote',
         message: await buildQuoteNarrative(cfg, effectiveUserText, rawQuote, formatAssumptions([], rawParsedRequest)),
@@ -1309,13 +1638,13 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
           needsClarification: false,
           clarificationQuestion: '',
         },
-      };
+      });
     }
   }
 
   const intent = imageDataUrl
     ? await analyzeImageIntent(cfg, effectiveUserText, imageDataUrl)
-    : await analyzeIntent(cfg, conversation, effectiveUserText);
+    : await analyzeIntent(cfg, conversation, effectiveUserText, sessionContext);
   const enrichedIntent = enrichExtractedInputsForFamily(intent);
   const mergedContextualFollowUp = contextualFollowUp && effectiveUserText !== userText;
   if (mergedContextualFollowUp) {
@@ -1332,40 +1661,40 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
   );
   if (postIntentFlexComparison) {
     if (postIntentFlexComparison.modifierKind === 'capacity-reservation' && postIntentFlexComparison.utilization === null) {
-      return {
+      return respond({
         ok: true,
         mode: 'clarification',
         message: 'For the Flex shape comparison, what capacity reservation utilization should I use: for example `1.0`, `0.7`, or `0.5`?',
         intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'What capacity reservation utilization should I use for the comparison?' },
-      };
+      });
     }
     if (postIntentFlexComparison.modifierKind === 'burstable' && postIntentFlexComparison.burstableBaseline === null) {
-      return {
+      return respond({
         ok: true,
         mode: 'clarification',
         message: 'For the Flex shape comparison, what burstable baseline should I use: for example `0.5`, `0.25`, or `0.125`?',
         intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'What burstable baseline should I use for the comparison?' },
-      };
+      });
     }
     if (postIntentFlexComparison.modifierKind === 'capacity-reservation' && !postIntentFlexComparison.withoutCrMode) {
-      return {
+      return respond({
         ok: true,
         mode: 'clarification',
         message: 'For the non-capacity-reservation side of the comparison, should I use `On demand` pricing?',
         intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'Should I use On demand pricing for the non-capacity-reservation side?' },
-      };
+      });
     }
     if (postIntentFlexComparison.modifierKind === 'capacity-reservation' && postIntentFlexComparison.withoutCrMode !== 'on-demand') {
-      return {
+      return respond({
         ok: true,
         mode: 'clarification',
         message: 'Reserved pricing for the non-capacity-reservation side is not modeled yet in this comparison flow. If you want, reply with `On demand` and I will generate the deterministic comparison.',
         intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'Reply with On demand to continue the Flex comparison.' },
-      };
+      });
     }
     const comparison = buildFlexComparisonQuote(index, postIntentFlexComparison);
     if (comparison.ok) {
-      return {
+      return respond({
         ok: true,
         mode: 'quote',
         message: buildFlexComparisonNarrative(postIntentFlexComparison, comparison),
@@ -1383,7 +1712,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
           needsClarification: false,
           clarificationQuestion: '',
         },
-      };
+      });
     }
   }
   const registryQuery = buildRegistryQuery(
@@ -1395,7 +1724,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
   if (isCatalogListingRequest(userText) || (enrichedIntent.intent === 'discover' && !enrichedIntent.shouldQuote)) {
     const catalogReply = buildCatalogListingReply(index, registryQuery || userText, enrichedIntent);
     if (catalogReply) {
-      return {
+      return respond({
         ok: true,
         mode: 'answer',
         message: catalogReply,
@@ -1406,7 +1735,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
           needsClarification: false,
           clarificationQuestion: '',
         },
-      };
+      });
     }
   }
   const interpretedFamilyMeta = getServiceFamily(enrichedIntent.serviceFamily);
@@ -1464,7 +1793,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
   }
   const byolChoice = hasExplicitByolChoice(`${userText}\n${reformulatedRequest}`);
   if (shouldAskLicenseChoice(familyMeta, enrichedIntent, byolChoice)) {
-    return {
+    return respond({
       ok: true,
       mode: 'clarification',
       message: familyMeta.licenseClarificationQuestion || `Before I quote ${familyMeta.canonical}, do you want BYOL or License Included?`,
@@ -1473,13 +1802,13 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
         needsClarification: true,
         clarificationQuestion: familyMeta.licenseClarificationQuestion || 'Do you want BYOL or License Included?',
       },
-    };
+    });
   }
   if (familyMeta && missingInputs.length && familyMeta.clarificationQuestion && !canQuoteDespiteMissingInputs) {
     const clarificationMessage = familyMeta.id === 'compute_vm_generic'
       ? buildComputeVmClarificationQuestion(intent)
       : familyMeta.clarificationQuestion;
-    return {
+    return respond({
       ok: true,
       mode: 'clarification',
       message: clarificationMessage,
@@ -1488,16 +1817,16 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
         needsClarification: true,
         clarificationQuestion: clarificationMessage,
       },
-    };
+    });
   }
 
   if (enrichedIntent.needsClarification && enrichedIntent.clarificationQuestion) {
-    return {
+    return respond({
       ok: true,
       mode: 'clarification',
       message: String(enrichedIntent.clarificationQuestion).trim(),
       intent: enrichedIntent,
-    };
+    });
   }
 
   if (enrichedIntent.shouldQuote) {
@@ -1507,7 +1836,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
 
     const byolAmbiguousProduct = quote.ok && !byolChoice ? detectByolAmbiguity(quote) : '';
     if (byolAmbiguousProduct) {
-      return {
+      return respond({
         ok: true,
         mode: 'clarification',
         message: `Antes de cotizar ${byolAmbiguousProduct}, necesito confirmar la modalidad de licencia: ¿quieres **BYOL** o **License Included**?`,
@@ -1516,24 +1845,24 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
           needsClarification: true,
           clarificationQuestion: 'Do you want BYOL or License Included?',
         },
-      };
+      });
     }
     if (quote.ok && byolChoice) {
       quote = filterQuoteByByolChoice(quote, byolChoice);
     }
 
     if (quote.ok) {
-      return {
+      return respond({
         ok: true,
         mode: 'quote',
       message: await buildQuoteNarrative(cfg, effectiveUserText, quote, assumptions),
       quote,
       intent: enrichedIntent,
-    };
+    });
     }
 
     if (familyMeta?.id === 'ai_memory_ingestion') {
-      return {
+      return respond({
         ok: true,
         mode: 'quote_unresolved',
         message: [
@@ -1543,7 +1872,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
         ].join('\n\n'),
         quote,
         intent: enrichedIntent,
-      };
+      });
     }
 
     const matches = summarizeMatches(index, reformulatedRequest);
@@ -1556,14 +1885,14 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
         ...matches.presets.map((item) => `- Preset: ${item}`),
       ],
       assumptionLines: assumptions,
-    });
-    return {
+    }, sessionContext);
+    return respond({
       ok: true,
       mode: 'quote_unresolved',
       message: natural || quote.error || 'No quotation could be generated.',
       quote,
       intent: enrichedIntent,
-    };
+    });
   }
 
   const matches = summarizeMatches(index, userText);
@@ -1575,14 +1904,14 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
       ...matches.presets.map((item) => `- Preset: ${item}`),
     ],
     assumptionLines: Array.isArray(enrichedIntent.assumptions) ? enrichedIntent.assumptions.map((item) => `- ${item}`) : [],
-  });
+  }, sessionContext);
 
-  return {
+  return respond({
     ok: true,
     mode: 'answer',
     message: natural || 'I can help with OCI pricing guidance or prepare a deterministic quotation if you share the sizing details.',
     intent: enrichedIntent,
-  };
+  });
 }
 
 module.exports = {

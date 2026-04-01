@@ -55,11 +55,11 @@ function resolveRequestDependencies(index, request) {
     }
   }
 
-  if (request.shape?.kind === 'flex') {
+  if (request.shape?.kind === 'flex' || request.shape?.kind === 'fixed') {
     const components = resolveFlexComponents(index, request);
     return finalizeResolution(index, components, {
       type: 'product',
-      label: `${request.shape.family}.${request.shape.series}.flex`,
+      label: request.shape.shapeName || `${request.shape.family}.${request.shape.series}.shape`,
       candidates: components.map((item) => item.product.fullDisplayName),
     });
   }
@@ -370,7 +370,10 @@ function isCompositeWorkloadRequest(text) {
     /\bblock storage\b|\bblock volumes?\b/.test(source),
     /\bobject storage\b/.test(source),
     /\bfastconnect\b|\bfast connect\b/.test(source),
-    /\b(?:vm|bm)\.[a-z0-9.]+\.flex\b/.test(source) || /\be\d+\.flex\b/.test(source),
+    /\b(?:vm|bm)\.[a-z0-9.]+(?:\.flex|\.\d+)\b/.test(source) ||
+      /\b(?:standard|optimized)\d+(?:\.\d+|\.flex)\b/.test(source) ||
+      /\bdenseio\.[ea]\d+\.flex\b/.test(source) ||
+      /\b[ea]\d+\.flex\b/.test(source),
   ].filter(Boolean).length;
   return hits >= 2 || /\b3-tier\b|\bthree-tier\b|\barchitecture\b/.test(source);
 }
@@ -387,10 +390,10 @@ function resolveCompositeWorkload(index, request) {
 function resolveCompositeCompute(index, request) {
   const source = String(request.source || '');
   const match = source.match(/(\d+)\s*x\s*(?:vm\.)?(?:standard\.)?(e\d+)\.flex[^\d]*(\d+(?:\.\d+)?)\s*ocpu[^\d]*(\d+(?:\.\d+)?)\s*gb/i);
-  if (!match && request.shape?.kind === 'flex' && Number(request.ocpus || request.quantity || 0) > 0 && Number(request.memoryQuantity || 0) > 0) {
+  if (!match && (request.shape?.kind === 'flex' || request.shape?.kind === 'fixed')) {
     return resolveFlexComponents(index, {
       ...request,
-      quantity: Number(request.ocpus || request.quantity || 1),
+      quantity: Number(request.ocpus || request.quantity || request.shape?.fixedOcpus || 1),
     }).map((item) => ({
       ...item,
       instances: Number(request.instances || 1),
@@ -532,15 +535,29 @@ function resolveFlexComponents(index, request) {
     standard: 'Standard',
     denseio: 'Dense I/O',
     gpu: 'GPU',
+    optimized: 'Optimized',
   };
+  if (request.shape.kind === 'fixed' && request.shape.productLabel) {
+    const fixedProduct = index.products.find((product) =>
+      product.serviceCategoryDisplayName === 'Compute - Virtual Machine' &&
+      String(product.displayName || '').trim() === request.shape.productLabel
+    );
+    return fixedProduct ? [{
+      product: fixedProduct,
+      quantity: Number(request.shape.fixedOcpus || request.ocpus || request.quantity || 1),
+      dependencyKind: 'compute',
+    }] : [];
+  }
+
   const familyLabel = familyMap[request.shape.family];
   if (!familyLabel) return [];
+  const desiredLabel = `Compute - ${familyLabel} - ${request.shape.series}`.toLowerCase();
 
   return index.products
     .filter((product) => {
-      const name = String(product.displayName || '');
-      return name.includes(`Compute - ${familyLabel} - ${request.shape.series}`) &&
-        product.serviceCategoryDisplayName === 'Compute - Virtual Machine';
+      const name = String(product.displayName || '').toLowerCase();
+      return product.serviceCategoryDisplayName === 'Compute - Virtual Machine' &&
+        name.includes(desiredLabel);
     })
     .map((product) => ({
       product,
@@ -681,6 +698,7 @@ function resolveLogAnalyticsComponents(index, request) {
   const capacityGb = Number(request.capacityGb || 0);
   const source = String(request.source || '');
   const archivalRequested = /\barchiv(?:e|al)\b/i.test(source);
+  const activeRequested = /\bactive\b/i.test(source) || !archivalRequested;
   const active = (index.productsByPartNumber.get('B95634') || [])[0];
   const archival = (index.productsByPartNumber.get('B92809') || [])[0];
   const components = [];
@@ -693,9 +711,8 @@ function resolveLogAnalyticsComponents(index, request) {
       dependencyKind: 'log-analytics-archival-storage',
       warning: 'Log Analytics Archival Storage is priced per Logging Analytics Storage Unit Per Hour. This quote infers 1 storage unit = 300 GB, aligned with the Log Analytics Storage Unit definition in the current Oracle price-list references.',
     });
-    return components;
   }
-  if (active && capacityGb > 0) {
+  if (activeRequested && active && capacityGb > 0) {
     const billableGb = Math.max(0, capacityGb - 10);
     const storageUnits = billableGb <= 0 ? 0 : Math.max(1, billableGb / 300);
     const warning = billableGb <= 0

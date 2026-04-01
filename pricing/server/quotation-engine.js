@@ -4,6 +4,7 @@ const { getPaygTier, calculatePaygCharge } = require('./catalog');
 const { resolveRequestDependencies } = require('./dependency-resolver');
 const { inferServiceFamily } = require('./service-families');
 const { inferConsumptionPattern } = require('./consumption-model');
+const { findVmShapeByText } = require('./vm-shapes');
 
 const DEFAULT_HOURS = 744;
 
@@ -53,6 +54,7 @@ function validateModifiers(index, partNumber, modifiers) {
 
 function parsePromptRequest(text) {
   const source = sanitizeQuotePromptText(text);
+  const shape = parseShape(source);
   const annualRequested = /\b(1[\s-]*year|one year|yearly|annual|annually|per year|por un a[nñ]o|anual)\b/i.test(source);
   const hours = matchNumber(source, [
     /(\d+(?:\.\d+)?)\s*h(?:ours?)?(?:\s*\/?\s*month)?/i,
@@ -64,7 +66,7 @@ function parsePromptRequest(text) {
     /(\d+(?:\.\d+)?)\s*(?:(?:managed|target)\s+)(?:resources?|databases?)\b/i,
     /\bqty(?:uantity)?\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
   ]) ?? 1;
-  const ocpus = matchNumber(source, [/(\d+(?:\.\d+)?)\s*ocpus?\b/i]);
+  const parsedOcpus = matchNumber(source, [/(\d+(?:\.\d+)?)\s*ocpus?\b/i]);
   const ecpus = matchNumber(source, [/(\d+(?:\.\d+)?)\s*ecpus?\b/i]);
   const capacityReservationUtilization = matchNumber(source, [
     /capacity reservation(?: utilization)?\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
@@ -74,16 +76,17 @@ function parsePromptRequest(text) {
     /burstable(?: baseline)?\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
     /baseline\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
   ]);
-  const memoryQuantity = matchNumber(source, [
+  const parsedMemoryQuantity = matchNumber(source, [
     /(\d+(?:\.\d+)?)\s*gb\s*(?:ram|memory)\b/i,
     /memory\s*[:=]?\s*(\d+(?:\.\d+)?)\s*gb\b/i,
     /ram\s*[:=]?\s*(\d+(?:\.\d+)?)\s*gb\b/i,
   ]);
+  const ocpus = shape?.kind === 'fixed' ? Number(shape.fixedOcpus) : parsedOcpus;
+  const memoryQuantity = shape?.kind === 'fixed' ? Number(shape.fixedMemoryGb) : parsedMemoryQuantity;
   const preemptible = /\bpreemptible\b/i.test(source);
   const environment = matchText(source, [/\b(prod|production|qa|uat|dev|test|dr)\b/i]) || 'default';
   const currencyCode = matchText(source, [/\b(usd|mxn|eur|brl|gbp|cad|jpy)\b/i], (value) => value.toUpperCase()) || 'USD';
   const partNumber = matchText(source, [/\b(B\d{5,})\b/i], (value) => value.toUpperCase()) || null;
-  const shape = parseShape(source);
   const firewallInstances = matchNumber(source, [/(?:^|\s)(\d+(?:\.\d+)?)\s*firewalls?\b/i, /(\d+(?:\.\d+)?)\s*network firewalls?\b/i]);
   const wafInstances = matchNumber(source, [/(?:^|\s)(\d+(?:\.\d+)?)\s*(?:waf|web application firewall)\s*(?:instances?)?\b/i, /(\d+(?:\.\d+)?)\s*polic(?:y|ies)\b/i]);
   const dataProcessedGb = matchNumber(source, [
@@ -101,8 +104,11 @@ function parsePromptRequest(text) {
   const normalizedQuantity = minuteQuantity ?? serviceHours ?? quantity;
   const workspaceCount = matchNumber(source, [/(\d+(?:\.\d+)?)\s*workspaces?\b/i]);
   const users = matchNumber(source, [/(\d+(?:\.\d+)?)\s*(?:users?|named users?)\b/i]);
-  const shapeSeries = matchText(source, [/\b((?:vm|bm)\.[a-z0-9.]+\.flex)\b/i, /\b([ea]\d+\.flex)\b/i], (value) => String(value).toUpperCase());
-  const processorVendor = matchText(source, [/\b(intel)\b/i, /\b(amd)\b/i, /\b(arm)\b/i, /\b(ampere)\b/i], (value) => String(value).toLowerCase());
+  const shapeSeries = shape?.shapeName || matchText(source, [
+    /\b((?:vm|bm)\.[a-z0-9.]+(?:\.flex|\.\d+))\b/i,
+    /\b([ea]\d+\.flex)\b/i,
+  ], (value) => String(value).toUpperCase());
+  const processorVendor = matchText(source, [/\b(intel)\b/i, /\b(amd)\b/i, /\b(arm)\b/i, /\b(ampere)\b/i], (value) => String(value).toLowerCase()) || shape?.vendor || null;
   const databaseEdition = matchText(source, [/\b(extreme performance)\b/i, /\b(high performance)\b/i, /\b(enterprise)\b(?: edition)?/i, /\b(standard)\b(?: edition)?/i, /\b(developer)\b/i]);
   const databaseStorageModel = matchText(source, [/\b(smart database storage)\b/i, /\b(filesystem storage)\b/i, /\b(vm filesystem storage)\b/i]);
   const exadataInfraShape = matchText(source, [/\b(base system)\b/i, /\b(quarter rack)\b/i, /\b(half rack)\b/i, /\b(full rack)\b/i, /\b(database server)\b/i, /\b(storage server)\b/i, /\b(expansion rack)\b/i]);
@@ -185,14 +191,7 @@ function matchText(source, patterns, transform = (value) => value) {
 }
 
 function parseShape(source) {
-  const match = String(source || '').match(/\b(?:(vm|bm)\.)?(?:(standard|denseio|dense\.?io|gpu)\.)?([a-z]\d+)\.flex\b/i);
-  if (!match) return null;
-  const familyRaw = String(match[2] || 'standard').replace('.', '').toLowerCase();
-  return {
-    kind: 'flex',
-    family: familyRaw === 'denseio' ? 'denseio' : familyRaw,
-    series: match[3].toUpperCase(),
-  };
+  return findVmShapeByText(source);
 }
 
 function quoteFromPrompt(index, text) {

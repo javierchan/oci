@@ -516,7 +516,11 @@ const SERVICE_FAMILIES = [
     canonical: 'OCI Compute Flex',
     domain: 'compute',
     resolver: 'compute_flex',
-    aliases: [/\b(?:vm|bm)\.[a-z0-9.]+\.flex\b/i, /\be\d+\.flex\b/i],
+    aliases: [
+      /\b(?:vm|bm)\.[a-z0-9.]+(?:\.flex|\.\d+)\b/i,
+      /\b[ea]\d+\.flex\b/i,
+      /\bvm\.standard2\.(?:1|2|4|8|16|24)\b/i,
+    ],
     rescueInputs: [],
   },
 ];

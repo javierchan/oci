@@ -77,6 +77,15 @@ This repo is being evolved toward a professional OCI estimation architecture:
 
 The goal is broad OCI service coverage with auditable pricing, not prompt-only quoting.
 
+Rule artifacts now live under `pricing/data/rule-registry/`:
+
+- `rules.json`
+- `vm_shape_rules.json`
+- `service_family_rules.json`
+- `coverage_matrix.json`
+
+These artifacts are generated from the workbook/PDF extracts plus explicit shape metadata for OCI Calculator-style VM coverage. `coverage_matrix.json` now also includes `computeVariantAudit`, which highlights compute-family services present in the price extracts but not yet represented in the explicit VM shape registry.
+
 ---
 
 ## Commands
@@ -89,6 +98,8 @@ docker compose down                      # stop
 docker compose logs -f                   # live logs
 curl http://localhost:8742/api/health    # catalog + OCI status
 curl -X POST localhost:8742/api/catalog/reload  # force catalog refresh
+python3 tools/build_vm_shape_rules.py    # regenerate calculator-style VM shape rules
+node tools/build_coverage_artifacts.js   # regenerate service family rules + coverage matrix
 ```
 
 ---

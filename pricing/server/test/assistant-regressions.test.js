@@ -22,6 +22,7 @@ function loadAssistantWithStubs(intentResolver) {
     exports: {
       analyzeIntent: async (_cfg, _conversation, text) => intentResolver(String(text || '')),
       analyzeImageIntent: async (_cfg, text) => intentResolver(String(text || '')),
+      buildSessionContextBlock: () => '',
     },
   };
 
@@ -87,6 +88,7 @@ function buildIndex() {
         metric('m-capacity-month', 'Gigabyte Storage Capacity Per Month'),
         metric('m-performance-month', 'Performance Units Per Gigabyte Per Month'),
         metric('m-queries-million', '1,000,000 Queries'),
+        metric('m-api-calls-million', '1,000,000 API Calls'),
         metric('m-emails-thousand', '1,000 Emails Sent'),
         metric('m-sms-each', '1 SMS Message Sent'),
         metric('m-transactions-thousand', '1,000 Transactions'),
@@ -137,6 +139,14 @@ function buildIndex() {
           serviceCategoryDisplayName: 'Networking - FastConnect',
           metricId: 'm-port-hour',
           usdPrices: [payg(20)],
+        }),
+        product({
+          partNumber: 'B92072',
+          displayName: 'API Gateway - 1,000,000 API Calls',
+          serviceCategoryDisplayName: 'Application Development - API Management',
+          metricId: 'm-api-calls-million',
+          pricetype: 'PER-ITEM',
+          usdPrices: [payg(3)],
         }),
         product({
           partNumber: 'B90617',
@@ -533,6 +543,14 @@ function buildIndex() {
           usdPrices: [payg(10)],
         }),
         product({
+          partNumber: 'B94173',
+          displayName: 'Oracle Threat Intelligence Service',
+          serviceCategoryDisplayName: 'Security - Threat Intelligence',
+          metricId: 'm-each',
+          pricetype: 'PER-ITEM',
+          usdPrices: [payg(0)],
+        }),
+        product({
           partNumber: 'B89630',
           displayName: 'Oracle Analytics Cloud - Professional - OCPU',
           serviceCategoryDisplayName: 'Analytics - Analytics Cloud',
@@ -579,6 +597,41 @@ function buildIndex() {
           usdPrices: [payg(0.1)],
         }),
         product({
+          partNumber: 'B94176',
+          displayName: 'Compute - Standard - X9 - OCPU',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.04)],
+        }),
+        product({
+          partNumber: 'B94177',
+          displayName: 'Compute - Standard - X9 - Memory',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-gb-hour',
+          usdPrices: [payg(0.0015)],
+        }),
+        product({
+          partNumber: 'B93311',
+          displayName: 'Compute - Optimized - X9 - OCPU',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.054)],
+        }),
+        product({
+          partNumber: 'B93312',
+          displayName: 'Compute - Optimized - X9 - Memory',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-gb-hour',
+          usdPrices: [payg(0.0015)],
+        }),
+        product({
+          partNumber: 'B88514',
+          displayName: 'Compute - Virtual Machine Standard - X7',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.0638)],
+        }),
+        product({
           partNumber: 'B93113',
           displayName: 'Compute - Standard - E4 - OCPU',
           serviceCategoryDisplayName: 'Compute - Virtual Machine',
@@ -607,6 +660,28 @@ function buildIndex() {
           usdPrices: [payg(0.006)],
         }),
         product({
+          partNumber: 'B93121',
+          displayName: 'Compute - Dense I/O - E4 - OCPU',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.025)],
+        }),
+        product({
+          partNumber: 'B93122',
+          displayName: 'Compute - Dense I/O - E4 - Memory',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-gb-hour',
+          usdPrices: [payg(0.005)],
+        }),
+        product({
+          partNumber: 'B93123',
+          displayName: 'Compute - Dense I/O - E4 - NVMe',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-capacity-month',
+          pricetype: 'HOUR',
+          usdPrices: [payg(0.0612)],
+        }),
+        product({
           partNumber: 'B93297',
           displayName: 'Compute - Standard - A1 - OCPU',
           serviceCategoryDisplayName: 'Compute - Virtual Machine',
@@ -621,6 +696,34 @@ function buildIndex() {
           metricId: 'm-gb-hour',
           pricetype: 'HOUR_UTILIZED',
           usdPrices: [payg(0, 0, 18000), payg(0.0015, 18000, null)],
+        }),
+        product({
+          partNumber: 'B109529',
+          displayName: 'Compute - Standard - A2 OCPU',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.014)],
+        }),
+        product({
+          partNumber: 'B109530',
+          displayName: 'Compute - Standard - A2 Memory',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-gb-hour',
+          usdPrices: [payg(0.002)],
+        }),
+        product({
+          partNumber: 'B112145',
+          displayName: 'OCI - Compute - Standard - A4 - OCPU',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.02)],
+        }),
+        product({
+          partNumber: 'B112146',
+          displayName: 'OCI - Compute - Standard - A4 - Memory',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-gb-hour',
+          usdPrices: [payg(0.002)],
         }),
       ],
     },
@@ -1379,6 +1482,79 @@ test('oracle analytics cloud professional ocpu quote still asks for license mode
   assert.doesNotMatch(quote.message, /B89630/);
 });
 
+test('session follow-up reuses the active quote source for short instance overrides', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'security_waf',
+    serviceName: 'Web Application Firewall',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'y con 2 instancias?',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Web Application Firewall with 1 instance and 25000000 requests per month',
+        label: 'Web Application Firewall',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B94579/);
+  assert.match(reply.sessionContext.lastQuote.source, /2 instancias|2 instances/i);
+});
+
+test('session follow-up can remove WAF from the active composite quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'sin WAF',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Web Application Firewall with 2 instances and 50000000 requests per month plus DNS 5000000 queries per month',
+        label: 'Composite OCI workload',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B88525/);
+  assert.doesNotMatch(reply.message, /B94579/);
+  assert.doesNotMatch(reply.message, /B94277/);
+});
+
 test('autonomous ai lakehouse asks for license choice and quotes compute plus storage', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -1716,7 +1892,7 @@ test('generic AMD VM request asks for AMD flex shape clarification instead of fa
   assert.equal(reply.ok, true);
   assert.equal(reply.mode, 'clarification');
   assert.match(reply.message, /amd vm shape/i);
-  assert.match(reply.message, /E4\.Flex/);
+  assert.match(reply.message, /VM\.Standard\.E4\.Flex/);
 });
 
 test('generic Arm VM request asks for A1 flex clarification instead of Intel options', async () => {
@@ -1746,7 +1922,7 @@ test('generic Arm VM request asks for A1 flex clarification instead of Intel opt
   assert.equal(reply.ok, true);
   assert.equal(reply.mode, 'clarification');
   assert.match(reply.message, /arm vm shape/i);
-  assert.match(reply.message, /A1\.Flex/);
+  assert.match(reply.message, /VM\.Standard\.A1\.Flex/);
   assert.doesNotMatch(reply.message, /For Intel/i);
 });
 
@@ -1778,7 +1954,7 @@ test('generic intel VM shape follow-up keeps prior sizing and attached block sto
     index,
     conversation: [
       { role: 'user', content: 'Dame el quote para una virtual machine con procesador intel, 4 OCPUs, 16 GB RAM, 200 GB Block Storage' },
-      { role: 'assistant', content: 'Which OCI VM shape should I use for that machine? For Intel, common options are `E4.Flex` or `E5.Flex`. Once you pick the shape, I can combine it with the attached Block Volume sizing.' },
+      { role: 'assistant', content: 'Which OCI VM shape should I use for that machine? For Intel, common options are `VM.Standard3.Flex`, `VM.Optimized3.Flex`, or the fixed-shape family `VM.Standard2.x`. Once you pick the shape, I can combine it with the attached Block Volume sizing.' },
     ],
     userText: 'E4.Flex',
   });
@@ -1789,6 +1965,104 @@ test('generic intel VM shape follow-up keeps prior sizing and attached block sto
   assert.match(reply.message, /B93114/);
   assert.match(reply.message, /B91961/);
   assert.match(reply.message, /B91962/);
+});
+
+test('VM.Standard3.Flex quote resolves to X9 compute plus block volume', async () => {
+  const { quoteFromPrompt } = require(path.join(ROOT, 'quotation-engine.js'));
+  const index = buildIndex();
+  const quote = quoteFromPrompt(index, 'Quote VM.Standard3.Flex 1 OCPU 8 GB RAM with 200 GB Block Storage 744h/month');
+
+  assert.equal(quote.ok, true);
+  assert.match(quote.markdown, /B94176/);
+  assert.match(quote.markdown, /B94177/);
+  assert.match(quote.markdown, /B91961/);
+  assert.match(quote.markdown, /B91962/);
+});
+
+test('Standard3.Flex alias quote resolves to X9 compute plus block volume', async () => {
+  const { quoteFromPrompt } = require(path.join(ROOT, 'quotation-engine.js'));
+  const index = buildIndex();
+  const quote = quoteFromPrompt(index, 'Quote Standard3.Flex 1 OCPU 8 GB RAM with 200 GB Block Storage 744h/month');
+
+  assert.equal(quote.ok, true);
+  assert.match(quote.markdown, /B94176/);
+  assert.match(quote.markdown, /B94177/);
+  assert.match(quote.markdown, /B91961/);
+  assert.match(quote.markdown, /B91962/);
+});
+
+test('VM.Optimized3.Flex quote resolves to optimized X9 compute', async () => {
+  const { quoteFromPrompt } = require(path.join(ROOT, 'quotation-engine.js'));
+  const index = buildIndex();
+  const quote = quoteFromPrompt(index, 'Quote VM.Optimized3.Flex 2 OCPUs 16 GB RAM 744h/month');
+
+  assert.equal(quote.ok, true);
+  assert.match(quote.markdown, /B93311/);
+  assert.match(quote.markdown, /B93312/);
+});
+
+test('Optimized3.Flex alias quote resolves to optimized X9 compute', async () => {
+  const { quoteFromPrompt } = require(path.join(ROOT, 'quotation-engine.js'));
+  const index = buildIndex();
+  const quote = quoteFromPrompt(index, 'Quote Optimized3.Flex 2 OCPUs 16 GB RAM 744h/month');
+
+  assert.equal(quote.ok, true);
+  assert.match(quote.markdown, /B93311/);
+  assert.match(quote.markdown, /B93312/);
+});
+
+test('VM.Standard2 fixed shape quote uses fixed X7 sizing even without explicit memory', async () => {
+  const { quoteFromPrompt } = require(path.join(ROOT, 'quotation-engine.js'));
+  const index = buildIndex();
+  const quote = quoteFromPrompt(index, 'Quote VM.Standard2.4 with 200 GB Block Storage');
+
+  assert.equal(quote.ok, true);
+  assert.match(quote.markdown, /B88514/);
+  assert.match(quote.markdown, /\|\s*4\s*\|/);
+  assert.match(quote.markdown, /B91961/);
+  assert.match(quote.markdown, /B91962/);
+});
+
+test('Standard2.4 alias quote uses fixed X7 sizing even without explicit memory', async () => {
+  const { quoteFromPrompt } = require(path.join(ROOT, 'quotation-engine.js'));
+  const index = buildIndex();
+  const quote = quoteFromPrompt(index, 'Quote Standard2.4 with 200 GB Block Storage');
+
+  assert.equal(quote.ok, true);
+  assert.match(quote.markdown, /B88514/);
+  assert.match(quote.markdown, /\|\s*4\s*\|/);
+  assert.match(quote.markdown, /B91961/);
+  assert.match(quote.markdown, /B91962/);
+});
+
+test('DenseIO.E4.Flex alias quote resolves to dense I/O compute lines', async () => {
+  const { quoteFromPrompt } = require(path.join(ROOT, 'quotation-engine.js'));
+  const index = buildIndex();
+  const quote = quoteFromPrompt(index, 'Quote DenseIO.E4.Flex 2 OCPUs 16 GB RAM 744h/month');
+
+  assert.equal(quote.ok, true);
+  assert.match(quote.markdown, /B93121/);
+  assert.match(quote.markdown, /B93122/);
+});
+
+test('VM.Standard.A2.Flex quote resolves to A2 compute lines', async () => {
+  const { quoteFromPrompt } = require(path.join(ROOT, 'quotation-engine.js'));
+  const index = buildIndex();
+  const quote = quoteFromPrompt(index, 'Quote VM.Standard.A2.Flex 1 OCPU 6 GB RAM 744h/month');
+
+  assert.equal(quote.ok, true);
+  assert.match(quote.markdown, /B109529/);
+  assert.match(quote.markdown, /B109530/);
+});
+
+test('VM.Standard.A4.Flex quote resolves to A4 compute lines', async () => {
+  const { quoteFromPrompt } = require(path.join(ROOT, 'quotation-engine.js'));
+  const index = buildIndex();
+  const quote = quoteFromPrompt(index, 'Quote VM.Standard.A4.Flex 2 OCPUs 12 GB RAM 744h/month');
+
+  assert.equal(quote.ok, true);
+  assert.match(quote.markdown, /B112145/);
+  assert.match(quote.markdown, /B112146/);
 });
 
 test('assistant keeps monitoring retrieval in observability bundles with https delivery', async () => {
@@ -1882,6 +2156,69 @@ test('assistant keeps IAM SMS in mixed notifications delivery bundles', async ()
   assert.match(reply.message, /B90940/);
   assert.match(reply.message, /B90941/);
   assert.match(reply.message, /B93496/);
+});
+
+test('assistant keeps DNS in mixed email delivery and health checks bundles', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote Notifications Email Delivery 100000 emails per month plus DNS 2000000 queries per month plus Health Checks 5 endpoints. Explain how OCI measures the main billing dimensions.',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B90941/);
+  assert.match(reply.message, /B88525/);
+  assert.match(reply.message, /B90325/);
+});
+
+test('assistant keeps API Gateway in functions and dns bundles', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote OCI Functions 2000000 invocations per month 2000 ms per invocation 256 MB memory plus API Gateway 5000000 API calls per month plus DNS 5000000 queries per month. Explain how OCI measures the main billing dimensions.',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B90617/);
+  assert.match(reply.message, /B90618/);
+  assert.match(reply.message, /B92072/);
+  assert.match(reply.message, /B88525/);
 });
 
 test('assistant keeps threat intelligence in mixed ai and dns bundles', async () => {
@@ -1993,6 +2330,38 @@ test('quote narrative drops non-verifiable model assumptions for plain text requ
   assert.doesNotMatch(reply.message, /US region/);
   assert.doesNotMatch(reply.message, /1 year commitment/);
   assert.doesNotMatch(reply.message, /no additional storage performance/);
+});
+
+test('large composite bundles explain OCI measurement by billing dimension instead of only by SKU', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote a global customer platform with 4x E4.Flex 4 OCPUs 32 GB RAM, 2x E5.Flex 8 OCPUs 64 GB RAM, Flexible Load Balancer 500 Mbps, Block Volume 3000 GB with 20 VPUs, File Storage 10 TB and 10 performance units per GB per month, Object Storage 30 TB per month, Web Application Firewall 3 instances and 100000000 requests per month, Network Firewall 2 firewalls and 20000 GB data processed per month, FastConnect 10 Gbps, DNS 10000000 queries per month, Health Checks 10 endpoints, Oracle Integration Cloud Enterprise License Included 3 instances 744h/month, Oracle Analytics Cloud Enterprise 75 users, Base Database Service Enterprise License Included 8 OCPUs and 2000 GB storage, Data Safe for Database Cloud Service 6 databases, Log Analytics active storage 1000 GB per month, and Log Analytics archival storage 4000 GB per month. Explain how OCI measures the main billing dimensions.',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /How OCI measures this:/);
+  assert.match(reply.message, /Compute-style charges are driven by provisioned CPU, memory, or execution usage over time/i);
+  assert.match(reply.message, /Storage-style charges are driven by provisioned or retained capacity/i);
+  assert.match(reply.message, /Transaction and request charges are volume-based/i);
+  assert.match(reply.message, /Network charges are driven by provisioned connectivity, bandwidth configuration, or request\/query volume depending on the service/i);
+  assert.doesNotMatch(reply.message, /B93113 - Compute - Standard - E4 - OCPU is billed by OCPU-hour/i);
 });
 
 test('explicit flex VM with block storage keeps both compute and block volume lines', () => {
@@ -2444,6 +2813,32 @@ test('assistant composes generative ai bundles even when all segments are in the
   assert.match(reply.message, /B110463/);
 });
 
+test('assistant normalizes abbreviated generative ai segments inside hybrid bundles', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    normalizedRequest: text,
+    assumptions: [],
+    confidence: 0.9,
+  }));
+  const reply = await respondToAssistant({
+    cfg: { ok: true },
+    index,
+    conversation: [],
+    userText: 'Quote Data Integration workspace usage 2 workspaces 744h/month plus Data Integration 150 GB processed per hour for 744h/month plus Oracle Integration Cloud Standard License Included 2 instances plus Generative AI Agents Data Ingestion 250000 transactions plus Vector Store Retrieval 80000 requests plus Web Search 30000 requests plus API Gateway 12000000 API calls/month plus Object Storage 12 TB/month plus Notifications Email Delivery 250000 emails/month. Also explain how OCI measures it.',
+    imageDataUrl: '',
+  });
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /Composite OCI workload/);
+  assert.match(reply.message, /B110463/);
+  assert.match(reply.message, /B112416/);
+  assert.match(reply.message, /B111973/);
+});
+
 test('assistant keeps monitoring separate from log analytics archival in observability bundles', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -2468,6 +2863,61 @@ test('assistant keeps monitoring separate from log analytics archival in observa
   assert.match(reply.message, /B95634/);
   assert.match(reply.message, /B92809/);
   assert.match(reply.message, /B90925/);
+});
+
+test('assistant keeps active and archival log analytics lines when both are present in one mixed segment', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    normalizedRequest: text,
+    assumptions: [],
+    confidence: 0.9,
+  }));
+  const reply = await respondToAssistant({
+    cfg: { ok: true },
+    index,
+    conversation: [],
+    userText: 'Quote an enterprise stack with Log Analytics active 800 GB monthly, archival 2500 GB monthly, and Monitoring Ingestion 6000000 datapoints. Explain how OCI measures the main billing dimensions.',
+    imageDataUrl: '',
+  });
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /Composite OCI workload/);
+  assert.match(reply.message, /B95634/);
+  assert.match(reply.message, /B92809/);
+  assert.match(reply.message, /B90925/);
+});
+
+test('assistant recognizes LB and OIC abbreviations in large architecture bundles without merging away load balancer or health checks', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    normalizedRequest: text,
+    assumptions: [],
+    confidence: 0.9,
+  }));
+  const reply = await respondToAssistant({
+    cfg: { ok: false },
+    index,
+    conversation: [],
+    userText: 'Need a consolidated OCI estimate for an enterprise stack: 3 E4.Flex VMs 4 OCPU 32GB RAM, 2 E5.Flex VMs 8 OCPU 64GB, LB 300 Mbps, block volume 4 TB 20 VPU, object storage 15 TB, WAF 2 instances 75000000 requests monthly, network firewall 2 firewalls 12000 GB processed monthly, dns 7000000 queries, health checks 8 endpoints, OIC enterprise license included 2 instances 744h, analytics cloud enterprise 60 users, base database service enterprise LI 6 OCPU and 1500 GB storage, log analytics active 800 GB monthly, archival 2500 GB monthly. Explain how OCI measures the main billing dimensions.',
+    imageDataUrl: '',
+  });
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /Composite OCI workload/);
+  assert.match(reply.message, /B93030/);
+  assert.match(reply.message, /B93031/);
+  assert.match(reply.message, /B90323|B90325/);
+  assert.match(reply.message, /B89640/);
+  assert.match(reply.message, /B95634/);
+  assert.match(reply.message, /B92809/);
 });
 
 test('assistant composes observability bundles with monitoring retrieval and notifications instead of drifting to unrelated services', async () => {
@@ -2497,6 +2947,36 @@ test('assistant composes observability bundles with monitoring retrieval and not
   assert.match(reply.message, /B92809/);
   assert.doesNotMatch(reply.message, /Full Stack Disaster Recovery/i);
   assert.match(reply.message, /OCI observability architect/);
+});
+
+test('assistant strips fabric-style narrative prefixes before quoting observability and operations bundles', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    normalizedRequest: text,
+    assumptions: [],
+    confidence: 0.9,
+  }));
+  const reply = await respondToAssistant({
+    cfg: { ok: true },
+    index,
+    conversation: [],
+    userText: 'Quote an enterprise operations and security fabric with Monitoring Ingestion 12000000 datapoints, Monitoring Retrieval 20000000 datapoints, Log Analytics active storage 2000 GB per month, Log Analytics archival storage 7000 GB per month, Notifications HTTPS Delivery 8000000 delivery operations, Notifications Email Delivery 1000000 emails per month, IAM SMS 5000 messages, Fleet Application Management 80 managed resources, OCI Batch 200 jobs, Oracle Threat Intelligence Service 2000 API calls, DNS 10000000 queries per month, Health Checks 25 endpoints, and Network Firewall 1 firewall with 2000 GB data processed per month. Explain how OCI measures the main billing dimensions.',
+    imageDataUrl: '',
+  });
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /Composite OCI workload/);
+  assert.match(reply.message, /B90925/);
+  assert.match(reply.message, /B90926/);
+  assert.match(reply.message, /B95634/);
+  assert.match(reply.message, /B92809/);
+  assert.match(reply.message, /B95403/);
+  assert.match(reply.message, /B95404/);
+  assert.doesNotMatch(reply.message, /B110662/);
 });
 
 test('assistant composes vision speech and media flow bundles instead of collapsing to media flow only', async () => {
@@ -2625,6 +3105,127 @@ test('deterministic expert summary prefers compute and storage perspective for s
 
   assert.match(summary, /OCI compute and storage architect/);
   assert.doesNotMatch(summary, /OCI networking and security architect/);
+});
+
+test('deterministic expert summary prefers analytics and integration perspective when those lines dominate an AI search bundle', () => {
+  const { buildDeterministicExpertSummary } = loadAssistantWithStubs(() => ({
+    intent: 'quote',
+    reformulatedRequest: 'Quote Oracle Integration Cloud Standard License Included 3 instances plus Oracle Analytics Cloud Professional 40 users plus OCI Generative AI Agents Data Ingestion 500000 transactions plus OCI Generative AI Vector Store Retrieval 120000 requests plus OCI Generative AI Web Search 25000 requests plus API Gateway 9000000 API calls plus Object Storage 15 TB per month',
+    assumptions: [],
+    extractedInputs: {},
+  }));
+
+  const summary = buildDeterministicExpertSummary({
+    ok: true,
+    request: { source: 'Quote Oracle Integration Cloud Standard License Included 3 instances plus Oracle Analytics Cloud Professional 40 users plus OCI Generative AI Agents Data Ingestion 500000 transactions plus OCI Generative AI Vector Store Retrieval 120000 requests plus OCI Generative AI Web Search 25000 requests plus API Gateway 9000000 API calls plus Object Storage 15 TB per month' },
+    resolution: { label: 'Composite OCI workload' },
+    totals: { monthly: 2808.5264, annual: 33702.3168, currencyCode: 'USD' },
+    lineItems: [
+      { partNumber: 'B89639', product: 'Oracle Integration Cloud Standard - License Included', monthly: 1440.0864 },
+      { partNumber: 'B92682', product: 'Oracle Analytics Cloud Professional - Users', monthly: 640 },
+      { partNumber: 'B110463', product: 'OCI Generative AI Agents - Data Ingestion', monthly: 250 },
+      { partNumber: 'B112416', product: 'OCI Generative AI - Vector Store Retrieval', monthly: 60 },
+      { partNumber: 'B111973', product: 'OCI Generative AI - Web Search', monthly: 250 },
+      { partNumber: 'B92072', product: 'API Gateway - 1,000,000 API Calls', monthly: 27 },
+      { partNumber: 'B91628', product: 'Object Storage - Storage', monthly: 141.44 },
+    ],
+  });
+
+  assert.match(summary, /OCI analytics and integration architect/);
+  assert.doesNotMatch(summary, /OCI serverless and AI architect/);
+});
+
+test('deterministic expert summary prefers database perspective when database lines dominate an edge bundle', () => {
+  const { buildDeterministicExpertSummary } = loadAssistantWithStubs(() => ({
+    intent: 'quote',
+    reformulatedRequest: 'Quote Exadata Dedicated Infrastructure License Included 8 OCPUs on base system plus Network Firewall 2 firewalls and 5000 GB data processed per month plus Flexible Load Balancer 300 Mbps plus FastConnect 10 Gbps plus DNS 4000000 queries per month plus Data Safe for Database Cloud Service 3 databases',
+    assumptions: [],
+    extractedInputs: {},
+  }));
+
+  const summary = buildDeterministicExpertSummary({
+    ok: true,
+    request: { source: 'Quote Exadata Dedicated Infrastructure License Included 8 OCPUs on base system plus Network Firewall 2 firewalls and 5000 GB data processed per month plus Flexible Load Balancer 300 Mbps plus FastConnect 10 Gbps plus DNS 4000000 queries per month plus Data Safe for Database Cloud Service 3 databases' },
+    resolution: { label: 'Composite OCI workload' },
+    totals: { monthly: 21065.668, annual: 252788.016, currencyCode: 'USD' },
+    lineItems: [
+      { partNumber: 'B88592', product: 'Exadata Dedicated Infrastructure Database - OCPU - License Included', monthly: 8000.0832 },
+      { partNumber: 'B90777', product: 'Exadata Dedicated Infrastructure - Base System', monthly: 12000.0096 },
+      { partNumber: 'B95403', product: 'Network Firewall Instance', monthly: 160 },
+      { partNumber: 'B95404', product: 'Network Firewall Data Processing', monthly: 840 },
+      { partNumber: 'B93030', product: 'Load Balancer Base', monthly: 0 },
+      { partNumber: 'B93031', product: 'Load Balancer Bandwidth', monthly: 19.278 },
+      { partNumber: 'B88326', product: 'OCI - FastConnect 10 Gbps', monthly: 948.6 },
+      { partNumber: 'B88525', product: 'Networking - DNS', monthly: 3.4 },
+      { partNumber: 'B91632', product: 'Data Safe for Database Cloud Service', monthly: 94.2972 },
+    ],
+  });
+
+  assert.match(summary, /OCI database architect/);
+  assert.doesNotMatch(summary, /OCI networking and security architect/);
+});
+
+test('deterministic expert summary prefers solutions architect perspective for heavily mixed bundles', () => {
+  const { buildDeterministicExpertSummary } = loadAssistantWithStubs(() => ({
+    intent: 'quote',
+    reformulatedRequest: 'Quote a global customer platform with compute, storage, edge, analytics, integration, database, and observability services',
+    assumptions: [],
+    extractedInputs: {},
+  }));
+
+  const summary = buildDeterministicExpertSummary({
+    ok: true,
+    request: { source: 'Quote a global customer platform with compute, storage, edge, analytics, integration, database, and observability services' },
+    resolution: { label: 'Composite OCI workload' },
+    totals: { monthly: 53976.6978, annual: 647720.3736, currencyCode: 'USD' },
+    lineItems: [
+      { partNumber: 'B93113', product: 'Compute OCPU', monthly: 1200 },
+      { partNumber: 'B89057', product: 'File Storage - Storage', monthly: 3072 },
+      { partNumber: 'B94579', product: 'OCI Web Application Firewall - Instance', monthly: 10 },
+      { partNumber: 'B89640', product: 'Oracle Integration Cloud Enterprise', monthly: 2880 },
+      { partNumber: 'B92683', product: 'Oracle Analytics Cloud Enterprise - Users', monthly: 6000 },
+      { partNumber: 'B90570', product: 'Base Database Service Enterprise - License Included', monthly: 2678.4 },
+      { partNumber: 'B95634', product: 'OCI Log Analytics - Active Storage', monthly: 1475.6 },
+      { partNumber: 'B109546', product: 'File Storage Service - High Performance Mount Target', monthly: 30720 },
+      { partNumber: 'B95404', product: 'Network Firewall Data Processing', monthly: 3360 },
+    ],
+  });
+
+  assert.match(summary, /OCI solutions architect/);
+  assert.doesNotMatch(summary, /OCI analytics and integration architect/);
+});
+
+test('deterministic expert summary prefers observability perspective over database when observability services dominate a mixed operations bundle', () => {
+  const { buildDeterministicExpertSummary } = loadAssistantWithStubs(() => ({
+    intent: 'quote',
+    reformulatedRequest: 'Quote an enterprise operations and observability fabric with monitoring, log analytics, notifications, fleet, batch, data safe, and threat intelligence',
+    assumptions: [],
+    extractedInputs: {},
+  }));
+
+  const summary = buildDeterministicExpertSummary({
+    ok: true,
+    request: { source: 'Quote an enterprise operations and observability fabric with monitoring, log analytics, notifications, fleet, batch, data safe, and threat intelligence' },
+    resolution: { label: 'Composite OCI workload' },
+    totals: { monthly: 3836.78, annual: 46041.36, currencyCode: 'USD' },
+    lineItems: [
+      { partNumber: 'B90925', product: 'Monitoring Ingestion', monthly: 300 },
+      { partNumber: 'B90926', product: 'Monitoring Retrieval', monthly: 720 },
+      { partNumber: 'B90940', product: 'Notifications HTTPS Delivery', monthly: 6 },
+      { partNumber: 'B90941', product: 'Notifications Email Delivery', monthly: 9.84 },
+      { partNumber: 'B93496', product: 'IAM SMS', monthly: 20 },
+      { partNumber: 'B110475', product: 'Fleet Application Management', monthly: 0 },
+      { partNumber: 'B112107', product: 'OCI Batch', monthly: 0 },
+      { partNumber: 'B95634', product: 'OCI Log Analytics - Active Storage', monthly: 1847.2 },
+      { partNumber: 'B92809', product: 'OCI Log Analytics - Archival Storage', monthly: 248 },
+      { partNumber: 'B92733', product: 'Data Safe for On-Premises Databases', monthly: 660 },
+      { partNumber: 'B94173', product: 'Oracle Threat Intelligence Service', monthly: 0 },
+      { partNumber: 'B88525', product: 'Networking - DNS', monthly: 5.1 },
+    ],
+  });
+
+  assert.match(summary, /OCI observability architect/);
+  assert.doesNotMatch(summary, /OCI database architect/);
 });
 
 test('quote enrichment sanitizer drops numeric breakdowns and keeps technical considerations', () => {
