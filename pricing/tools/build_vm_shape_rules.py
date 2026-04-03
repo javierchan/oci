@@ -76,6 +76,11 @@ def build_payload() -> dict:
             shape("VM.Standard.A1.Flex", "flex", "ampere", "standard", "A1", ocpu_to_vcpu_ratio=1, part_numbers=["B93297", "B93298"], source_notes=[xls_note, shape_doc_note]),
             shape("VM.Standard.A2.Flex", "flex", "ampere", "standard", "A2", ocpu_to_vcpu_ratio=1, part_numbers=["B109529", "B109530"], source_notes=[xls_note, shape_doc_note]),
             shape("VM.Standard.A4.Flex", "flex", "ampere", "standard", "A4", ocpu_to_vcpu_ratio=1, part_numbers=["B112145", "B112146"], source_notes=[xls_note, shape_doc_note]),
+            shape("BM.Standard.B1.44", "fixed", "intel", "standard", "B1", product_label="Compute - Bare Metal Standard - B1", fixed_ocpus=44, ocpu_to_vcpu_ratio=2, part_numbers=["B91119"], source_notes=[xls_note, shape_doc_note]),
+            shape("BM.Standard2.52", "fixed", "intel", "standard", "X7", product_label="Compute - Bare Metal Standard - X7", fixed_ocpus=52, ocpu_to_vcpu_ratio=2, part_numbers=["B88513", "B89137"], source_notes=[xls_note, shape_doc_note]),
+            shape("BM.DenseIO2.52", "fixed", "intel", "denseio", "X7", product_label="Compute - Bare Metal Dense I/O - X7", fixed_ocpus=52, ocpu_to_vcpu_ratio=2, part_numbers=["B88515", "B89139"], source_notes=[xls_note, shape_doc_note]),
+            shape("BM.Standard1.36", "fixed", "intel", "standard", "X5", product_label="Compute - Bare Metal Standard - X5", fixed_ocpus=36, fixed_memory_gb=256, ocpu_to_vcpu_ratio=2, part_numbers=["B88315", "B86076"], source_notes=[xls_note, shape_doc_note]),
+            shape("BM.DenseIO1.36", "fixed", "intel", "denseio", "X5", product_label="Compute - Bare Metal Dense I/O - X5", fixed_ocpus=36, fixed_memory_gb=512, ocpu_to_vcpu_ratio=2, part_numbers=["B86078"], source_notes=[xls_note, shape_doc_note]),
         ],
     }
 

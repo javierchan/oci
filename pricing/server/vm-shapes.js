@@ -41,6 +41,7 @@ function findVmShapeByText(text) {
         fixedOcpus: shape.fixedOcpus ?? null,
         fixedMemoryGb: shape.fixedMemoryGb ?? null,
         productLabel: shape.productLabel || null,
+        partNumbers: Array.isArray(shape.partNumbers) ? shape.partNumbers.slice() : [],
         ocpuToVcpuRatio: shape.ocpuToVcpuRatio ?? null,
       };
     }
@@ -87,6 +88,7 @@ function findVmShapeByText(text) {
         fixedOcpus: found.fixedOcpus ?? null,
         fixedMemoryGb: found.fixedMemoryGb ?? null,
         productLabel: found.productLabel || null,
+        partNumbers: Array.isArray(found.partNumbers) ? found.partNumbers.slice() : [],
         ocpuToVcpuRatio: found.ocpuToVcpuRatio ?? null,
       };
     }
@@ -120,6 +122,7 @@ function listFlexShapesByVendor(vendor) {
       vendor: normalizeProcessorVendor(shape.vendor),
       family: shape.family,
       series: shape.series,
+      partNumbers: Array.isArray(shape.partNumbers) ? shape.partNumbers.slice() : [],
       ocpuToVcpuRatio: shape.ocpuToVcpuRatio ?? null,
     }));
 }

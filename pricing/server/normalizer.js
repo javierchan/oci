@@ -5,6 +5,8 @@ const {
   normalizeServiceAliases,
   buildCanonicalRequest,
   shouldForceQuote,
+  getMissingRequiredInputs,
+  getServiceFamily,
 } = require('./service-families');
 const { findVmShapeByText } = require('./vm-shapes');
 
@@ -23,6 +25,7 @@ function normalizeIntentResult(intent, originalText) {
   const detectedFamily = compositeLike ? '' : inferServiceFamily(originalText);
   const normalized = {
     intent: String(intent?.intent || 'quote'),
+    route: String(intent?.route || '').trim(),
     shouldQuote: !!intent?.shouldQuote,
     needsClarification: !!intent?.needsClarification,
     clarificationQuestion: String(intent?.clarificationQuestion || '').trim(),
@@ -36,6 +39,7 @@ function normalizeIntentResult(intent, originalText) {
     },
     confidence: Number.isFinite(Number(intent?.confidence)) ? Number(intent.confidence) : null,
     annualRequested: !!intent?.annualRequested,
+    quotePlan: intent?.quotePlan && typeof intent.quotePlan === 'object' ? { ...intent.quotePlan } : {},
   };
   if (normalized.serviceFamily === 'security_waf') {
     const genericInstances = numberLike(normalized.extractedInputs.instanceCount);
@@ -51,7 +55,67 @@ function normalizeIntentResult(intent, originalText) {
   }
   normalized.normalizedRequest = normalizeUnits(buildCanonicalRequest(normalized, originalText) || normalizeServiceAliases(normalized.reformulatedRequest || originalText));
   applyDeterministicRescue(normalized, originalText);
+  normalized.route = normalizeRoute(normalized, originalText);
+  normalized.quotePlan = normalizeQuotePlan(normalized, originalText);
   return normalized;
+}
+
+function normalizeRoute(normalized, originalText) {
+  const explicit = String(normalized.route || '').trim().toLowerCase();
+  if ([
+    'general_answer',
+    'product_discovery',
+    'quote_request',
+    'quote_followup',
+    'workbook_followup',
+    'clarify',
+  ].includes(explicit)) return explicit;
+  if (normalized.needsClarification) return 'clarify';
+  if (normalized.shouldQuote) return 'quote_request';
+  if (String(normalized.intent || '').toLowerCase() === 'discover') return 'product_discovery';
+  if (isShapeDiscoveryQuestion(originalText)) {
+    return 'product_discovery';
+  }
+  return 'general_answer';
+}
+
+function normalizeQuotePlan(normalized, originalText) {
+  const source = String(originalText || '');
+  const family = getServiceFamily(normalized.serviceFamily);
+  const raw = normalized.quotePlan && typeof normalized.quotePlan === 'object' ? normalized.quotePlan : {};
+  const route = normalizeRoute(normalized, originalText);
+  const candidateFamilies = Array.from(new Set([
+    ...((Array.isArray(raw.candidateFamilies) ? raw.candidateFamilies : []).map((value) => String(value || '').trim()).filter(Boolean)),
+    normalized.serviceFamily || '',
+  ].filter(Boolean)));
+  const missingInputs = Array.from(new Set([
+    ...((Array.isArray(raw.missingInputs) ? raw.missingInputs : []).map((value) => String(value || '').trim()).filter(Boolean)),
+    ...getMissingRequiredInputs(normalized),
+  ]));
+  return compactObject({
+    action: String(raw.action || inferPlanAction(route)),
+    targetType: String(raw.targetType || inferTargetType(source, normalized)),
+    domain: String(raw.domain || family?.domain || ''),
+    candidateFamilies,
+    missingInputs,
+    useDeterministicEngine: raw.useDeterministicEngine !== undefined ? !!raw.useDeterministicEngine : route.startsWith('quote'),
+  });
+}
+
+function inferPlanAction(route) {
+  if (route === 'product_discovery') return 'discover';
+  if (route === 'clarify') return 'clarify';
+  if (route.startsWith('quote')) return 'quote';
+  return 'answer';
+}
+
+function inferTargetType(source, normalized) {
+  if (/\bworkbook\b|\brvtools\b|\bexcel\b/i.test(source)) return 'workbook';
+  if (isCompositeOrComparisonRequest(source)) return 'bundle';
+  if (isShapeDiscoveryQuestion(source)) return 'shape';
+  if (/\bshape?s?\b|\bvirtual machines?\b|\bvm instances?\b/i.test(source)) return 'shape';
+  if (normalized.serviceFamily) return 'service';
+  return 'general';
 }
 
 function numberLike(value) {
@@ -83,7 +147,9 @@ function extractStructuredInputs(text) {
     /(\d[\d,]*(?:\.\d+)?)\s*gb\s*(?:ram|memory)\b/i,
     /(?:ram|memory)[^\d]{0,20}(\d[\d,]*(?:\.\d+)?)\s*gb\b/i,
   ]);
-  const memoryGb = shape?.kind === 'fixed' ? Number(shape.fixedMemoryGb) : parsedMemoryGb;
+  const memoryGb = shape?.kind === 'fixed'
+    ? (Number.isFinite(Number(shape.fixedMemoryGb)) ? Number(shape.fixedMemoryGb) : parsedMemoryGb)
+    : parsedMemoryGb;
   const invocationsPerDay = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*invocations?\s*(?:per|\/)\s*day/i,
   ]);
@@ -228,12 +294,21 @@ function extractStorageCapacityGb(source) {
 
 function applyDeterministicRescue(normalized, originalText) {
   if (isCompositeOrComparisonRequest(originalText)) return;
+  if (isShapeDiscoveryQuestion(originalText)) return;
   if (!shouldForceQuote(normalized)) return;
   normalized.intent = 'quote';
   normalized.shouldQuote = true;
   normalized.needsClarification = false;
   normalized.clarificationQuestion = '';
   normalized.normalizedRequest = normalizeUnits(buildCanonicalRequest(normalized, originalText) || normalized.normalizedRequest);
+}
+
+function isShapeDiscoveryQuestion(text) {
+  const source = String(text || '');
+  if (!source) return false;
+  if (/\bwhat\b.*\bshape|\bque\b.*\bshape|\bqué\b.*\bshape|\bopciones?\b.*\bshape/i.test(source)) return true;
+  return /\b(?:compare|comparison|difference|different|diferencia|diferencias|comparar)\b/i.test(source) &&
+    /\bshape?s?\b|\bvirtual machines?\b|\bvm instances?\b|\b[a-z]\d+\.flex\b/i.test(source);
 }
 
 function isCompositeOrComparisonRequest(text) {

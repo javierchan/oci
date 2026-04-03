@@ -408,7 +408,6 @@ function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 // ══════════════════════════════════════════════════════════
 let sessions    = [];
 let currentId   = localStorage.getItem('oci_current_session') || null;
-let conversation= [];
 let isLoading   = false;
 let pendingImage = null;
 let pendingWorkbook = null;
@@ -447,16 +446,41 @@ async function refreshSessions() {
   }
 }
 
+function applySessionSnapshot(session) {
+  if (!session?.id) return;
+  const idx = sessions.findIndex((item) => item.id === session.id);
+  const next = {
+    ...(idx >= 0 ? sessions[idx] : {}),
+    ...session,
+    messageCount: Array.isArray(session.messages) ? session.messages.length : Number(session.messageCount || 0),
+  };
+  if (idx >= 0) sessions[idx] = next;
+  else sessions.unshift(next);
+  if (session.workbookContext) workbookContextBySession[session.id] = { ...session.workbookContext };
+  else if (session.sessionContext?.workbookContext) workbookContextBySession[session.id] = { ...session.sessionContext.workbookContext };
+  else delete workbookContextBySession[session.id];
+  if (session.sessionContext) sessionContextBySession[session.id] = { ...session.sessionContext };
+  else delete sessionContextBySession[session.id];
+}
+
 async function persistSessionMessage(sessionId, role, content) {
   if (!sessionId) return;
   try {
-    await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, {
+    const session = sessions.find((item) => item.id === sessionId);
+    const res = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role, content }),
+      body: JSON.stringify({ role, content, expectedVersion: session?.version || null }),
     });
-    const item = sessions.find((session) => session.id === sessionId);
-    if (item) item.messageCount = Number(item.messageCount || 0) + 1;
+    if (res.status === 409) {
+      await loadSession(sessionId);
+      return;
+    }
+    const data = await res.json();
+    if (data?.session) {
+      applySessionSnapshot(data.session);
+      renderSessions();
+    }
   } catch (error) {
     console.warn('Failed to persist session message', error);
   }
@@ -465,52 +489,28 @@ async function persistSessionMessage(sessionId, role, content) {
 async function persistSessionState(sessionId) {
   if (!sessionId) return;
   try {
-    await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
+    const session = sessions.find((item) => item.id === sessionId);
+    const res = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sessionContext: sessionContextBySession[sessionId] || null,
         workbookContext: workbookContextBySession[sessionId] || null,
+        expectedVersion: session?.version || null,
       }),
     });
+    if (res.status === 409) {
+      await loadSession(sessionId);
+      return;
+    }
+    const data = await res.json();
+    if (data?.session) {
+      applySessionSnapshot(data.session);
+      renderSessions();
+    }
   } catch (error) {
     console.warn('Failed to persist session state', error);
   }
-}
-
-function setSessionContext(sessionId, context, merge = false) {
-  if (!sessionId) return;
-  let next = null;
-  if (context) {
-    next = merge
-      ? { ...(sessionContextBySession[sessionId] || {}), ...context }
-      : { ...context };
-    if (workbookContextBySession[sessionId] && !next.workbookContext) {
-      next.workbookContext = { ...workbookContextBySession[sessionId] };
-    }
-  }
-  if (next) sessionContextBySession[sessionId] = next;
-  else delete sessionContextBySession[sessionId];
-  const session = sessions.find((item) => item.id === sessionId);
-  if (!session) return;
-  if (next) session.sessionContext = { ...next };
-  else delete session.sessionContext;
-  persistSessionState(sessionId);
-}
-
-function setWorkbookSessionContext(sessionId, context) {
-  if (!sessionId) return;
-  if (context) workbookContextBySession[sessionId] = { ...context };
-  else delete workbookContextBySession[sessionId];
-  const session = sessions.find((item) => item.id === sessionId);
-  if (!session) return;
-  if (context) session.workbookContext = { ...context };
-  else delete session.workbookContext;
-  setSessionContext(sessionId, {
-    ...(sessionContextBySession[sessionId] || {}),
-    workbookContext: context ? { ...context } : null,
-  });
-  persistSessionState(sessionId);
 }
 
 async function newSession() {
@@ -522,7 +522,7 @@ async function newSession() {
   sessions.unshift({ ...session, messageCount: 0 });
   delete workbookContextBySession[id];
   delete sessionContextBySession[id];
-  currentId=id; conversation=[]; persist();
+  currentId=id; persist();
   renderSessions(); clearChat(); renderWelcome();
 }
 
@@ -531,6 +531,12 @@ async function loadSession(id) {
   const data = await res.json();
   const s = data?.session;
   if(!s) return;
+  renderSessionSnapshot(s);
+}
+
+function renderSessionSnapshot(s) {
+  if (!s?.id) return;
+  const id = s.id;
   const idx = sessions.findIndex((item) => item.id === id);
   if (idx >= 0) {
     sessions[idx] = { ...sessions[idx], ...s, messageCount: Array.isArray(s.messages) ? s.messages.length : Number(sessions[idx].messageCount || 0) };
@@ -543,13 +549,10 @@ async function loadSession(id) {
   else delete workbookContextBySession[id];
   if (s.sessionContext) sessionContextBySession[id] = { ...s.sessionContext };
   else delete sessionContextBySession[id];
-  conversation=s.messages.map(m=>({
-    role: m.role === 'agent' ? 'assistant' : m.role,
-    content:m.content
-  }));
   renderSessions(); clearChat();
   if(!s.messages.length){ renderWelcome(); return; }
   s.messages.forEach(m=>addMsg(m.role,m.content,false));
+  hydratePendingClarification(s);
   persist();
 }
 
@@ -560,7 +563,7 @@ async function deleteSession(id,e) {
   delete workbookContextBySession[id];
   delete sessionContextBySession[id];
   sessions=sessions.filter(s=>s.id!==id); persist();
-  if(currentId===id){ currentId=null; conversation=[]; clearChat(); renderWelcome(); }
+  if(currentId===id){ currentId=null; clearChat(); renderWelcome(); }
   renderSessions();
 }
 
@@ -569,7 +572,7 @@ async function clearAll() {
   await apiFetch('/api/sessions', { method: 'DELETE' });
   Object.keys(workbookContextBySession).forEach((key) => delete workbookContextBySession[key]);
   Object.keys(sessionContextBySession).forEach((key) => delete sessionContextBySession[key]);
-  sessions=[]; persist(); currentId=null; conversation=[];
+  sessions=[]; persist(); currentId=null;
   renderSessions(); clearChat(); renderWelcome();
 }
 
@@ -813,9 +816,64 @@ function buildQuoteCopyPayload(content, bubble) {
   return extractLastTableTextForExcel(bubble) || extractMarkdownTableTextForExcel(content);
 }
 
+function buildQuoteExportTablePayload(quoteExport) {
+  const lineItems = Array.isArray(quoteExport?.lineItems) ? quoteExport.lineItems : [];
+  if (!lineItems.length) return { text: '', html: '' };
+  const headers = ['#', 'Environment', 'Service', 'Part#', 'Product', 'Metric', 'Qty', 'Inst', 'Hours', 'Rate', 'Unit', '$/Mo', 'Annual', 'Currency'];
+  const rows = lineItems.map((line, index) => ([
+    index + 1,
+    line.environment || '-',
+    line.service || '-',
+    line.partNumber || '-',
+    line.product || '-',
+    line.metric || '-',
+    fmtNum(line.quantity),
+    fmtNum(line.instances),
+    fmtNum(line.hours),
+    fmtNum(line.rate),
+    fmtMoney(line.unitPrice),
+    fmtMoney(line.monthly),
+    fmtMoney(line.annual),
+    line.currencyCode || quoteExport?.totals?.currencyCode || 'USD',
+  ]));
+  if (quoteExport?.totals) {
+    rows.push([
+      'Total', '', '', '', '', '', '', '', '', '',
+      '',
+      fmtMoney(quoteExport.totals.monthly),
+      fmtMoney(quoteExport.totals.annual),
+      quoteExport.totals.currencyCode || 'USD',
+    ]);
+  }
+  const text = [headers.join('\t'), ...rows.map((row) => row.join('\t'))].join('\n');
+  const htmlRows = rows.map((row, index) => {
+    const tag = index === rows.length - 1 && row[0] === 'Total' ? 'th' : 'td';
+    return `<tr>${row.map((cell) => `<${tag}>${esc(cell)}</${tag}>`).join('')}</tr>`;
+  }).join('');
+  const html = `<table><thead><tr>${headers.map((cell) => `<th>${esc(cell)}</th>`).join('')}</tr></thead><tbody>${htmlRows}</tbody></table>`;
+  return { text, html };
+}
+
 async function copyQuoteTable(button, bubble, fallbackContent) {
-  const tableText = buildQuoteCopyPayload(fallbackContent, bubble);
-  const tableHtml = extractLastTableHtml(bubble);
+  let tableText = '';
+  let tableHtml = '';
+  if (currentId) {
+    try {
+      const response = await apiFetch(`/api/sessions/${encodeURIComponent(currentId)}/quote-export?format=json`);
+      if (response.ok) {
+        const data = await response.json();
+        const payload = buildQuoteExportTablePayload(data?.quoteExport);
+        tableText = payload.text;
+        tableHtml = payload.html;
+      }
+    } catch (error) {
+      console.warn('Backend quote export lookup failed, falling back to DOM table copy', error);
+    }
+  }
+  if (!tableText) {
+    tableText = buildQuoteCopyPayload(fallbackContent, bubble);
+    tableHtml = extractLastTableHtml(bubble);
+  }
   if (!tableText) {
     const original = button.textContent;
     button.textContent = 'No table';
@@ -846,6 +904,56 @@ async function copyQuoteTable(button, bubble, fallbackContent) {
     console.warn('Rich clipboard write failed, falling back to text', error);
   }
   await copyMessageContent(button, tableText);
+}
+
+async function downloadQuoteExport(button, format) {
+  if (!currentId) {
+    const original = button.textContent;
+    button.textContent = 'No session';
+    clearTimeout(button._copyTimer);
+    button._copyTimer = setTimeout(() => {
+      button.textContent = original;
+    }, 1400);
+    return;
+  }
+  const normalizedFormat = String(format || 'csv').trim().toLowerCase() === 'xlsx' ? 'xlsx' : 'csv';
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = normalizedFormat === 'xlsx' ? 'Exporting XLSX…' : 'Exporting CSV…';
+  try {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(currentId)}/quote-export?format=${encodeURIComponent(normalizedFormat)}`, {
+      headers: {
+        'x-client-id': clientId,
+      },
+    });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const fallbackName = normalizedFormat === 'xlsx' ? `${currentId}-quote.xlsx` : `${currentId}-quote.csv`;
+    const contentDisposition = response.headers.get('Content-Disposition') || '';
+    const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/i);
+    link.href = url;
+    link.download = fileNameMatch?.[1] || fallbackName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    button.textContent = normalizedFormat === 'xlsx' ? 'XLSX ready' : 'CSV ready';
+    button.classList.add('done');
+  } catch (error) {
+    console.error('Quote export failed', error);
+    button.textContent = 'Export failed';
+  } finally {
+    clearTimeout(button._copyTimer);
+    button._copyTimer = setTimeout(() => {
+      button.disabled = false;
+      button.textContent = original;
+      button.classList.remove('done');
+    }, 1600);
+  }
 }
 
 function isQuoteLikeContent(content) {
@@ -896,6 +1004,20 @@ function addMsg(role,content,save=true) {
       copyQuoteBtn.textContent='Copy Quote';
       copyQuoteBtn.addEventListener('click',()=>copyQuoteTable(copyQuoteBtn, bubble, content));
       tools.appendChild(copyQuoteBtn);
+
+      const exportCsvBtn=document.createElement('button');
+      exportCsvBtn.className='toolbtn';
+      exportCsvBtn.type='button';
+      exportCsvBtn.textContent='Export CSV';
+      exportCsvBtn.addEventListener('click',()=>downloadQuoteExport(exportCsvBtn, 'csv'));
+      tools.appendChild(exportCsvBtn);
+
+      const exportXlsxBtn=document.createElement('button');
+      exportXlsxBtn.className='toolbtn';
+      exportXlsxBtn.type='button';
+      exportXlsxBtn.textContent='Export XLSX';
+      exportXlsxBtn.addEventListener('click',()=>downloadQuoteExport(exportXlsxBtn, 'xlsx'));
+      tools.appendChild(exportXlsxBtn);
     } else {
       const copyBtn=document.createElement('button');
       copyBtn.className='toolbtn';
@@ -912,14 +1034,7 @@ function addMsg(role,content,save=true) {
   c.appendChild(d); c.scrollTop=c.scrollHeight;
 
   if(save&&currentId){
-    const s=sessions.find(x=>x.id===currentId);
-    if(s){
-      if (!Array.isArray(s.messages)) s.messages = [];
-      s.messages.push({role:storedRole,content});
-      if(s.messages.length===1&&storedRole==='user') s.title=content.replace(/\n/g,' ').trim().slice(0,52)+(content.length>52?'…':'');
-      persist(); renderSessions();
-      persistSessionMessage(currentId, storedRole, content);
-    }
+    persistSessionMessage(currentId, storedRole, content);
   }
 }
 
@@ -961,14 +1076,53 @@ function addChoiceMsg(content, options, onSelect, save=true) {
   c.appendChild(d); c.scrollTop=c.scrollHeight;
 
   if(save&&currentId){
-    const s=sessions.find(x=>x.id===currentId);
-    if(s){
-      if (!Array.isArray(s.messages)) s.messages = [];
-      s.messages.push({role:'assistant',content});
-      persist(); renderSessions();
-      persistSessionMessage(currentId, 'assistant', content);
-    }
+    persistSessionMessage(currentId, 'assistant', content);
   }
+}
+
+function attachChoiceBarToLastAgentMessage(options, onSelect) {
+  const messages = document.getElementById('messages');
+  const agents = Array.from(messages.querySelectorAll('.msg.agent'));
+  const lastAgent = agents[agents.length - 1];
+  const stack = lastAgent?.querySelector('.msgstack');
+  if (!stack || !Array.isArray(options) || !options.length) return;
+  stack.querySelector('.choicebar')?.remove();
+  const choicebar=document.createElement('div');
+  choicebar.className='choicebar';
+  (options || []).forEach((option) => {
+    const btn=document.createElement('button');
+    btn.className='choicebtn';
+    btn.type='button';
+    btn.innerHTML=`${esc(option.label || option.value || '')}${option.description ? `<small>${esc(option.description)}</small>` : ''}`;
+    btn.addEventListener('click', async () => {
+      Array.from(choicebar.querySelectorAll('button')).forEach((node) => { node.disabled = true; });
+      await onSelect(option);
+    });
+    choicebar.appendChild(btn);
+  });
+  stack.appendChild(choicebar);
+}
+
+async function handlePendingClarificationSelection(pending, option) {
+  const optionLabel = option.label || option.value || '';
+  addMsg('user', optionLabel, false);
+  addTyping();
+  if (pending.stage === 'sourcePlatform') {
+    await continueWorkbookFlow({ sourcePlatform: option.value }, optionLabel);
+  } else if (pending.stage === 'processor') {
+    await continueWorkbookFlow({ processorVendor: option.value }, optionLabel);
+  } else if (pending.stage === 'shape') {
+    await continueWorkbookFlow({ shapeName: option.value }, optionLabel);
+  }
+}
+
+function hydratePendingClarification(session) {
+  const pending = session?.sessionContext?.pendingClarification;
+  const options = Array.isArray(pending?.options) ? pending.options : [];
+  if (!pending?.stage || !options.length) return;
+  attachChoiceBarToLastAgentMessage(options, async (option) => {
+    await handlePendingClarificationSelection(pending, option);
+  });
 }
 
 function addTyping() {
@@ -990,14 +1144,12 @@ async function sendMessage() {
   inp.value=''; inp.style.height='auto';
   isLoading=true; document.getElementById('sendbtn').disabled=true;
 
-  const historyForApi = conversation.slice();
   const userParts = [];
   if (text) userParts.push(text);
   if (pendingImage) userParts.push('[Image attached]');
   if (pendingWorkbook) userParts.push(`[Workbook attached: ${pendingWorkbook.name}]`);
   const userLabel = userParts.join('\n') || '[Attachment]';
-  addMsg('user', userLabel);
-  conversation.push({role:'user',content:userLabel});
+  addMsg('user', userLabel, false);
   addTyping();
 
   try {
@@ -1007,11 +1159,7 @@ async function sendMessage() {
         fileName: pendingWorkbook.name,
         contentBase64: pendingWorkbook.contentBase64,
       };
-      if (currentId) {
-        setWorkbookSessionContext(currentId, { ...pendingWorkbookFlow, ...selection });
-        persist();
-      }
-      await continueWorkbookFlow(selection);
+      await continueWorkbookFlow(selection, userLabel);
       clearPendingAttachment();
     } else {
       const res=await apiFetch('/api/assistant',{
@@ -1020,44 +1168,44 @@ async function sendMessage() {
         body:JSON.stringify({
           sessionId: currentId,
           text,
-          conversation: historyForApi,
+          userLabel,
           imageDataUrl: pendingImage,
           sessionContext: currentId ? (sessionContextBySession[currentId] || null) : null,
         })
       });
       const data=await res.json();
       removeTyping();
-      if (data?.mode === 'excel_clarification' && Array.isArray(data.options) && data.options.length) {
-        const reply = [data.question, data.warnings?.length ? `\n\nNotes:\n- ${data.warnings.slice(0, 3).join('\n- ')}` : ''].join('');
-        conversation.push({role:'assistant', content: reply});
-        addChoiceMsg(reply, data.options, async (option) => {
-          addMsg('user', option.label || option.value || '');
-          addTyping();
-          if (data.stage === 'sourcePlatform') {
-            await continueWorkbookFlow({ sourcePlatform: option.value });
-          } else if (data.stage === 'processor') {
-            await continueWorkbookFlow({ processorVendor: option.value });
-          } else if (data.stage === 'shape') {
-            await continueWorkbookFlow({ shapeName: option.value });
-          }
-        });
+      if (data?.session?.id) {
+        renderSessionSnapshot(data.session);
       } else {
-        let reply=renderAssistantResponse(data);
-        conversation.push({role:'assistant',content:reply});
-        addMsg('assistant',reply);
+        const synced = await syncActiveSession();
+        if (!synced) {
+          if (data?.mode === 'excel_clarification' && Array.isArray(data.options) && data.options.length) {
+            const reply = [data.question, data.warnings?.length ? `\n\nNotes:\n- ${data.warnings.slice(0, 3).join('\n- ')}` : ''].join('');
+            addChoiceMsg(reply, data.options, async (option) => {
+              const optionLabel = option.label || option.value || '';
+              addMsg('user', optionLabel, false);
+              addTyping();
+              if (data.stage === 'sourcePlatform') {
+                await continueWorkbookFlow({ sourcePlatform: option.value }, optionLabel);
+              } else if (data.stage === 'processor') {
+                await continueWorkbookFlow({ processorVendor: option.value }, optionLabel);
+              } else if (data.stage === 'shape') {
+                await continueWorkbookFlow({ shapeName: option.value }, optionLabel);
+              }
+            }, false);
+          } else {
+            const reply=renderAssistantResponse(data);
+            addMsg('assistant',reply,false);
+          }
+        }
       }
-      if (currentId && data?.sessionContext && typeof data.sessionContext === 'object') {
-        setSessionContext(currentId, data.sessionContext);
-        persist();
-      }
-      await syncActiveSession();
       clearPendingImage();
     }
   } catch(err) {
     removeTyping();
     const reply='⚠️ Connection error with OCI GenAI. Check your network and OCI configuration.';
-    conversation.push({role:'assistant',content:reply});
-    addMsg('assistant',reply);
+    addMsg('assistant',reply,false);
   } finally {
     clearPendingAttachment();
   }
@@ -1184,113 +1332,61 @@ function hasWorkbookSelection(selection) {
   return !!(selection && (selection.sourcePlatform || selection.processorVendor || selection.shapeName || Number.isFinite(selection.vpuPerGb)));
 }
 
-function buildWorkbookSessionSummary(context, data) {
-  const lines = [];
-  if (context?.fileName) {
-    let line = `Active workbook ${context.fileName}`;
-    if (context.shapeName) line += ` using ${context.shapeName}`;
-    if (Number.isFinite(Number(context.vpuPerGb))) line += ` with ${Number(context.vpuPerGb)} VPU`;
-    lines.push(line);
-  }
-  if (data?.totals && Number.isFinite(Number(data.totals.monthly))) {
-    lines.push(`Last workbook quote monthly ${fmtMoney(data.totals.monthly)}`);
-  }
-  if (Array.isArray(data?.lineItems)) {
-    lines.push(`Last workbook quote line count ${data.lineItems.length}`);
-  }
-  if (data?.stage) {
-    lines.push(`Pending workbook clarification stage ${data.stage}`);
-  }
-  return lines.join('. ');
-}
-
 async function syncActiveSession() {
   if (!currentId) return;
   try {
     await loadSession(currentId);
+    return true;
   } catch (error) {
     console.warn('Failed to sync active session from server', error);
+    return false;
   }
 }
 
-async function continueWorkbookFlow(extra = {}) {
+async function continueWorkbookFlow(extra = {}, userLabel = '') {
   if (!pendingWorkbookFlow) return;
   try {
     pendingWorkbookFlow = { ...pendingWorkbookFlow, ...extra };
-    if (currentId) {
-      setWorkbookSessionContext(currentId, pendingWorkbookFlow);
-      persist();
-    }
     const payload = { ...pendingWorkbookFlow };
     const res = await apiFetch('/api/excel/estimate', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ ...payload, sessionId: currentId })
+      body: JSON.stringify({ ...payload, sessionId: currentId, userLabel })
     });
     const data = await res.json();
     removeTyping();
-    if (data.mode === 'excel_clarification' && Array.isArray(data.options) && data.options.length) {
-      if (currentId) {
-        setSessionContext(currentId, {
-          ...(sessionContextBySession[currentId] || {}),
-          currentIntent: 'workbook_quote',
-          pendingClarification: {
-            stage: data.stage || '',
-            question: data.question || '',
-          },
-          workbookContext: { ...pendingWorkbookFlow },
-          sessionSummary: buildWorkbookSessionSummary(pendingWorkbookFlow, data),
-        });
-        persist();
-      }
-      const reply = [data.question, data.warnings?.length ? `\n\nNotes:\n- ${data.warnings.slice(0, 3).join('\n- ')}` : ''].join('');
-      conversation.push({role:'assistant', content: reply});
-      addChoiceMsg(reply, data.options, async (option) => {
-        addMsg('user', option.label || option.value || '');
-        addTyping();
-        if (data.stage === 'sourcePlatform') {
-          await continueWorkbookFlow({ sourcePlatform: option.value });
-        } else if (data.stage === 'processor') {
-          await continueWorkbookFlow({ processorVendor: option.value });
-        } else if (data.stage === 'shape') {
-          await continueWorkbookFlow({ shapeName: option.value });
+    if (data?.session?.id) {
+      renderSessionSnapshot(data.session);
+    } else {
+      const synced = await syncActiveSession();
+      if (!synced) {
+        if (data.mode === 'excel_clarification' && Array.isArray(data.options) && data.options.length) {
+          const reply = [data.question, data.warnings?.length ? `\n\nNotes:\n- ${data.warnings.slice(0, 3).join('\n- ')}` : ''].join('');
+          addChoiceMsg(reply, data.options, async (option) => {
+            const optionLabel = option.label || option.value || '';
+            addMsg('user', optionLabel, false);
+            addTyping();
+            if (data.stage === 'sourcePlatform') {
+              await continueWorkbookFlow({ sourcePlatform: option.value }, optionLabel);
+            } else if (data.stage === 'processor') {
+              await continueWorkbookFlow({ processorVendor: option.value }, optionLabel);
+            } else if (data.stage === 'shape') {
+              await continueWorkbookFlow({ shapeName: option.value }, optionLabel);
+            }
+          }, false);
+          return;
         }
-      });
-      return;
+        const reply = renderQuoteResponse(data);
+        addMsg('assistant', reply, false);
+      }
     }
-    const reply = renderQuoteResponse(data);
-    conversation.push({role:'assistant', content: reply});
-    addMsg('assistant', reply);
-    if (currentId) {
-      setWorkbookSessionContext(currentId, pendingWorkbookFlow);
-      setSessionContext(currentId, {
-        ...(sessionContextBySession[currentId] || {}),
-        currentIntent: 'workbook_quote',
-        pendingClarification: null,
-        workbookContext: { ...pendingWorkbookFlow },
-        lastQuote: {
-          type: 'workbook_quote',
-          label: pendingWorkbookFlow.shapeName || pendingWorkbookFlow.fileName || 'Workbook quote',
-          monthly: Number(data?.totals?.monthly || 0),
-          annual: Number(data?.totals?.annual || 0),
-          currencyCode: data?.totals?.currencyCode || 'USD',
-          lineItemCount: Array.isArray(data?.lineItems) ? data.lineItems.length : 0,
-          shapeName: pendingWorkbookFlow.shapeName || '',
-          processorVendor: pendingWorkbookFlow.processorVendor || '',
-          sourcePlatform: pendingWorkbookFlow.sourcePlatform || '',
-          vpuPerGb: Number.isFinite(Number(pendingWorkbookFlow.vpuPerGb)) ? Number(pendingWorkbookFlow.vpuPerGb) : null,
-        },
-        sessionSummary: buildWorkbookSessionSummary(pendingWorkbookFlow, data),
-      });
-      persist();
+    if (data.mode !== 'excel_clarification') {
+      pendingWorkbookFlow = null;
     }
-    pendingWorkbookFlow = null;
-    await syncActiveSession();
   } catch (_err) {
     removeTyping();
     const reply='⚠️ Could not process the uploaded workbook.';
-    conversation.push({role:'assistant', content: reply});
-    addMsg('assistant',reply);
+    addMsg('assistant',reply,false);
     pendingWorkbookFlow = null;
   }
 }

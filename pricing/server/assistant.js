@@ -6,6 +6,7 @@ const { getServiceFamily, getMissingRequiredInputs, buildCanonicalRequest } = re
 const { inferConsumptionPattern, explainConsumptionPattern } = require('./consumption-model');
 const { runChat, extractChatText } = require('./genai');
 const { analyzeIntent, analyzeImageIntent, buildSessionContextBlock } = require('./intent-extractor');
+const { buildAssistantContextPack, stringifyContextPack, summarizeContextPack } = require('./context-packs');
 
 const RESPONSE_PROMPT = [
   'You are an OCI pricing specialist speaking to a customer.',
@@ -15,6 +16,15 @@ const RESPONSE_PROMPT = [
   'If no quotation is available, explain the situation clearly and ask at most one next question when needed.',
   'Do not render tables.',
   'Use plain markdown.',
+].join('\n');
+
+const STRUCTURED_DISCOVERY_PROMPT = [
+  'You are an OCI pricing discovery specialist.',
+  'Answer only using the structured product context provided by the system.',
+  'Do not invent OCI services, shapes, pricing rules, modifiers, or availability.',
+  'If the context does not contain enough information to answer safely, say the service is not available in the current pricing knowledge base.',
+  'Do not generate a quote unless the system explicitly says this is a deterministic quote path.',
+  'Use concise natural markdown and prefer short lists when enumerating options.',
 ].join('\n');
 
 const QUOTE_ENRICHMENT_PROMPT = [
@@ -43,6 +53,15 @@ function isCatalogListingRequest(text) {
     /\bavailable\b.*\bcatalog\b/.test(source) ||
     /\bshow\b.*\bskus?\b/.test(source) ||
     /\blist\b.*\b(hourly prices?|prices?)\b/.test(source);
+}
+
+function buildServiceUnavailableMessage(userText) {
+  const source = String(userText || '').trim();
+  return [
+    'This OCI pricing guidance service is not available for that request right now.',
+    source ? `I could not interpret \`${source}\` safely with the current GenAI controller and structured pricing context.` : 'I could not interpret the request safely with the current GenAI controller and structured pricing context.',
+    'I prefer to stop here rather than return an unreliable answer or quote.',
+  ].join('\n\n');
 }
 
 function buildRegistryQuery(text, intent = {}) {
@@ -264,13 +283,98 @@ function removeCompositeServiceSegment(basePrompt, pattern) {
   return `${prefix}${kept.join(' plus ')}`.trim();
 }
 
+function replaceOrAppendPattern(basePrompt, regex, replacement) {
+  const source = String(basePrompt || '').trim();
+  if (!source) return String(replacement || '').trim();
+  if (regex.test(source)) return source.replace(regex, replacement);
+  return `${source} ${replacement}`.trim();
+}
+
+function replaceCurrencyInPrompt(basePrompt, currencyCode) {
+  const source = String(basePrompt || '').trim();
+  const nextCode = String(currencyCode || '').trim().toUpperCase();
+  if (!source || !nextCode) return source;
+  if (/\b(?:USD|MXN|EUR|BRL|GBP|CAD|JPY)\b/i.test(source)) {
+    return source.replace(/\b(?:USD|MXN|EUR|BRL|GBP|CAD|JPY)\b/i, nextCode);
+  }
+  return `${source} ${nextCode}`.trim();
+}
+
+function replaceCardinalityInPrompt(basePrompt, followUp, nounPatterns = []) {
+  const source = String(basePrompt || '').trim();
+  const next = String(followUp || '').trim();
+  if (!source || !next) return source;
+  const numberMatch = next.match(/(\d+(?:\.\d+)?)/);
+  if (!numberMatch) return source;
+  const amount = numberMatch[1];
+  for (const nounPattern of nounPatterns) {
+    const regex = new RegExp(`\\b\\d+(?:\\.\\d+)?\\s*${nounPattern}\\b`, 'i');
+    if (regex.test(source)) return source.replace(regex, `${amount} ${nounPattern.replace(/\\\b|\\s\*/g, ' ').replace(/[()?:\\]/g, '').trim()}`.replace(/\s+/g, ' '));
+  }
+  return source;
+}
+
 function applySessionFollowUpDirective(basePrompt, followUp) {
   const source = String(followUp || '').trim();
-  if (!source) return String(basePrompt || '').trim();
+  let nextPrompt = String(basePrompt || '').trim();
+  if (!source) return nextPrompt;
   if (/\b(?:sin|without)\s+(?:waf|web application firewall)\b/i.test(source)) {
-    return removeCompositeServiceSegment(basePrompt, String.raw`(?:waf|web application firewall)`);
+    nextPrompt = removeCompositeServiceSegment(nextPrompt, String.raw`(?:waf|web application firewall)`);
   }
+  if (/\b(?:sin|without)\s+dns\b/i.test(source)) {
+    nextPrompt = removeCompositeServiceSegment(nextPrompt, String.raw`dns`);
+  }
+  if (/\b(?:sin|without)\s+(?:load balancer|lb)\b/i.test(source)) {
+    nextPrompt = removeCompositeServiceSegment(nextPrompt, String.raw`(?:flexible\s+)?load balancer|\blb\b`);
+  }
+  if (/\b(?:sin|without)\s+health checks?\b/i.test(source)) {
+    nextPrompt = removeCompositeServiceSegment(nextPrompt, String.raw`health checks?`);
+  }
+  if (/\b(?:sin|without)\s+api gateway\b/i.test(source)) {
+    nextPrompt = removeCompositeServiceSegment(nextPrompt, String.raw`api gateway`);
+  }
+
+  if (/\b(?:mxn|usd|eur|brl|gbp|cad|jpy)\b/i.test(source)) {
+    const code = source.match(/\b(mxn|usd|eur|brl|gbp|cad|jpy)\b/i)?.[1]?.toUpperCase();
+    if (code) nextPrompt = replaceCurrencyInPrompt(nextPrompt, code);
+  }
+
+  if (/\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i, source.match(/\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i)?.[0] || source);
+  }
+  if (/\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i, source.match(/\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i)?.[0] || source);
+  }
+  if (/\b\d+(?:\.\d+)?\s*vpu'?s?\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*vpu'?s?\b/i, source.match(/\b\d+(?:\.\d+)?\s*vpu'?s?\b/i)?.[0] || source);
+  }
+  if (/\b\d+(?:\.\d+)?\s*(?:gbps|mbps)\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*(?:gbps|mbps)\b/i, source.match(/\b\d+(?:\.\d+)?\s*(?:gbps|mbps)\b/i)?.[0] || source);
+  }
+  if (/\b(?:preemptible|capacity reservation|burstable)\b/i.test(source)) {
+    nextPrompt = replaceOrAppendPattern(nextPrompt, /\b(?:preemptible|capacity reservation(?: utilization)?\s*[:=]?\s*\d+(?:\.\d+)?|burstable(?: baseline)?\s*[:=]?\s*\d+(?:\.\d+)?)\b/i, source);
+  }
+
+  if (nextPrompt !== String(basePrompt || '').trim()) return nextPrompt.trim();
   return `${String(basePrompt || '').trim()} ${source}`.trim();
+}
+
+function mergeSessionQuoteFollowUpByRoute(sessionContext, intent, userText) {
+  const route = String(intent?.route || '').trim().toLowerCase();
+  const lastQuoteSource = String(sessionContext?.lastQuote?.source || '').trim();
+  const source = String(userText || '').trim();
+  if (route !== 'quote_followup' || !lastQuoteSource || !source) return '';
+  return applySessionFollowUpDirective(lastQuoteSource, source);
+}
+
+function preserveCriticalPromptModifiers(basePrompt, referencePrompt) {
+  let nextPrompt = String(basePrompt || '').trim();
+  const reference = String(referencePrompt || '').trim();
+  if (!nextPrompt || !reference) return nextPrompt;
+  if (/\bmetered\b/i.test(reference) && !/\bmetered\b/i.test(nextPrompt)) {
+    nextPrompt = `${nextPrompt} metered`.trim();
+  }
+  return nextPrompt;
 }
 
 function mergeSessionQuoteFollowUp(sessionContext, userText) {
@@ -742,6 +846,40 @@ async function writeNaturalReply(cfg, conversation, userText, context, sessionCo
   return extractChatText(response?.data || response).trim();
 }
 
+async function writeStructuredContextReply(cfg, conversation, userText, sessionContext, contextPack) {
+  if (!cfg?.modelId || !cfg?.compartment) return '';
+  const history = Array.isArray(conversation) ? conversation.slice(-6) : [];
+  const sessionBlock = buildSessionContextBlock(sessionContext);
+  const contextBlock = [
+    sessionBlock,
+    `User request: ${String(userText || '').trim()}`,
+    `Structured product context:\n${stringifyContextPack(contextPack)}`,
+  ].filter(Boolean).join('\n\n');
+
+  const messages = [
+    ...history.map((item) => ({
+      role: item.role === 'assistant' ? 'assistant' : 'user',
+      content: String(item.content || ''),
+    })),
+    { role: 'user', content: contextBlock },
+  ];
+
+  try {
+    const response = await runChat({
+      cfg,
+      systemPrompt: STRUCTURED_DISCOVERY_PROMPT,
+      messages,
+      maxTokens: 700,
+      temperature: 0.2,
+      topP: 0.5,
+      topK: -1,
+    });
+    return extractChatText(response?.data || response).trim();
+  } catch {
+    return '';
+  }
+}
+
 function summarizeQuoteForSession(quote) {
   if (!quote?.ok) return null;
   if (quote.comparison) {
@@ -772,6 +910,31 @@ function summarizeQuoteForSession(quote) {
   };
 }
 
+function buildQuoteExportPayload(quote) {
+  if (!quote?.ok || !Array.isArray(quote.lineItems) || !quote.lineItems.length) return null;
+  return {
+    formatVersion: 1,
+    generatedAt: new Date().toISOString(),
+    totals: quote.totals || null,
+    lineItems: quote.lineItems.map((line, index) => ({
+      rowNumber: index + 1,
+      environment: line.environment || '-',
+      service: line.service || '-',
+      partNumber: line.partNumber || '-',
+      product: line.product || '-',
+      metric: line.metric || '-',
+      quantity: Number.isFinite(Number(line.quantity)) ? Number(line.quantity) : '',
+      instances: Number.isFinite(Number(line.instances)) ? Number(line.instances) : '',
+      hours: Number.isFinite(Number(line.hours)) ? Number(line.hours) : '',
+      rate: Number.isFinite(Number(line.rate)) ? Number(line.rate) : '',
+      unitPrice: Number.isFinite(Number(line.unitPrice)) ? Number(line.unitPrice) : '',
+      monthly: Number.isFinite(Number(line.monthly)) ? Number(line.monthly) : '',
+      annual: Number.isFinite(Number(line.annual)) ? Number(line.annual) : '',
+      currencyCode: line.currencyCode || quote.totals?.currencyCode || 'USD',
+    })),
+  };
+}
+
 function buildAssistantSessionSummary(nextContext) {
   if (!nextContext || typeof nextContext !== 'object') return '';
   const lines = [];
@@ -792,6 +955,9 @@ function buildAssistantSessionSummary(nextContext) {
   if (nextContext.pendingClarification?.question) {
     lines.push(`Pending clarification: ${nextContext.pendingClarification.question}`);
   }
+  if (nextContext.lastIntent?.route) {
+    lines.push(`Last route ${nextContext.lastIntent.route}`);
+  }
   return lines.join('. ');
 }
 
@@ -799,6 +965,21 @@ function buildAssistantSessionContext(previous, effectiveUserText, payload) {
   const next = previous && typeof previous === 'object' ? JSON.parse(JSON.stringify(previous)) : {};
   next.lastUserText = String(effectiveUserText || '').trim();
   if (payload?.intent?.intent) next.currentIntent = payload.intent.intent;
+  if (payload?.intent && typeof payload.intent === 'object') {
+    next.lastIntent = {
+      intent: payload.intent.intent || '',
+      route: payload.intent.route || '',
+      serviceFamily: payload.intent.serviceFamily || '',
+      serviceName: payload.intent.serviceName || '',
+      confidence: Number.isFinite(Number(payload.intent.confidence)) ? Number(payload.intent.confidence) : null,
+      quotePlan: payload.intent.quotePlan && typeof payload.intent.quotePlan === 'object'
+        ? JSON.parse(JSON.stringify(payload.intent.quotePlan))
+        : null,
+    };
+  }
+  if (payload?.contextPackSummary) {
+    next.lastContextPack = JSON.parse(JSON.stringify(payload.contextPackSummary));
+  }
   if (payload?.mode === 'clarification' && payload?.message) {
     next.pendingClarification = {
       question: String(payload.message).trim(),
@@ -809,6 +990,7 @@ function buildAssistantSessionContext(previous, effectiveUserText, payload) {
   }
   if (payload?.quote?.ok) {
     next.lastQuote = summarizeQuoteForSession(payload.quote);
+    next.quoteExport = buildQuoteExportPayload(payload.quote);
   }
   next.sessionSummary = buildAssistantSessionSummary(next);
   return next;
@@ -1642,9 +1824,24 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     }
   }
 
-  const intent = imageDataUrl
-    ? await analyzeImageIntent(cfg, effectiveUserText, imageDataUrl)
-    : await analyzeIntent(cfg, conversation, effectiveUserText, sessionContext);
+  let intent;
+  try {
+    intent = imageDataUrl
+      ? await analyzeImageIntent(cfg, effectiveUserText, imageDataUrl)
+      : await analyzeIntent(cfg, conversation, effectiveUserText, sessionContext);
+  } catch (_error) {
+    return respond({
+      ok: true,
+      mode: 'answer',
+      message: buildServiceUnavailableMessage(userText),
+      intent: {
+        intent: 'answer',
+        route: 'general_answer',
+        shouldQuote: false,
+        needsClarification: false,
+      },
+    });
+  }
   const enrichedIntent = enrichExtractedInputsForFamily(intent);
   const mergedContextualFollowUp = contextualFollowUp && effectiveUserText !== userText;
   if (mergedContextualFollowUp) {
@@ -1721,7 +1918,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
   );
   const registryMatches = searchServiceRegistry(index.serviceRegistry, registryQuery, 5);
   const topService = registryMatches.find((item) => item.deterministic && serviceHasRequiredInputs(item, enrichedIntent.extractedInputs)) || registryMatches[0];
-  if (isCatalogListingRequest(userText) || (enrichedIntent.intent === 'discover' && !enrichedIntent.shouldQuote)) {
+  if (isCatalogListingRequest(userText)) {
     const catalogReply = buildCatalogListingReply(index, registryQuery || userText, enrichedIntent);
     if (catalogReply) {
       return respond({
@@ -1738,10 +1935,27 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
       });
     }
   }
+  if ((enrichedIntent.route === 'product_discovery' || enrichedIntent.route === 'general_answer') && !enrichedIntent.shouldQuote) {
+    const contextPack = buildAssistantContextPack(index, {
+      userText: effectiveUserText,
+      intent: enrichedIntent,
+      sessionContext,
+    });
+    const structuredReply = await writeStructuredContextReply(cfg, conversation, userText, sessionContext, contextPack);
+    return respond({
+      ok: true,
+      mode: 'answer',
+      message: structuredReply || buildServiceUnavailableMessage(userText),
+      contextPackSummary: summarizeContextPack(contextPack),
+      intent: enrichedIntent,
+    });
+  }
   const interpretedFamilyMeta = getServiceFamily(enrichedIntent.serviceFamily);
+  const routeMergedFollowUp = mergeSessionQuoteFollowUpByRoute(sessionContext, enrichedIntent, userText);
+  const effectiveQuoteText = String(routeMergedFollowUp || effectiveUserText || userText || '').trim() || effectiveUserText;
   if (!compositeLike && topService && topService.deterministic && serviceHasRequiredInputs(topService, enrichedIntent.extractedInputs) && (!enrichedIntent.serviceFamily || !interpretedFamilyMeta)) {
     enrichedIntent.serviceName = topService.name;
-    enrichedIntent.normalizedRequest = String(effectiveUserText || userText || enrichedIntent.normalizedRequest || '').trim();
+    enrichedIntent.normalizedRequest = String(effectiveQuoteText || enrichedIntent.normalizedRequest || '').trim();
     if (!enrichedIntent.shouldQuote || enrichedIntent.needsClarification) {
       enrichedIntent.intent = 'quote';
       enrichedIntent.shouldQuote = true;
@@ -1751,21 +1965,21 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
   }
   const familyMeta = interpretedFamilyMeta;
   const canonicalFamilyRequest = !compositeLike && familyMeta
-    ? String(buildCanonicalRequest(enrichedIntent, effectiveUserText) || '').trim()
+    ? String(buildCanonicalRequest(enrichedIntent, effectiveQuoteText) || '').trim()
     : '';
-  const reformulatedRequest = compositeLike
-    ? effectiveUserText
+  const reformulatedRequest = preserveCriticalPromptModifiers(compositeLike
+    ? effectiveQuoteText
     : familyMeta
       ? (canonicalFamilyRequest || String(
         (contextualFollowUp
           ? (enrichedIntent.reformulatedRequest || enrichedIntent.normalizedRequest)
           : (enrichedIntent.normalizedRequest || enrichedIntent.reformulatedRequest))
-        || effectiveUserText,
-      ).trim() || effectiveUserText)
-      : effectiveUserText;
+        || effectiveQuoteText,
+      ).trim() || effectiveQuoteText)
+      : effectiveQuoteText, effectiveQuoteText);
   const preflightQuote = !compositeLike && familyMeta
     ? choosePreferredQuote(
-      quoteFromPrompt(index, effectiveUserText),
+      quoteFromPrompt(index, effectiveQuoteText),
       quoteFromPrompt(index, reformulatedRequest),
     )
     : null;

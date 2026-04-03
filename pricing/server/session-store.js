@@ -8,6 +8,19 @@ const STORE_PATH = path.join(STORE_DIR, 'session-store.json');
 
 let state = { clients: {} };
 
+function compactMessages(messages) {
+  if (!Array.isArray(messages) || !messages.length) return [];
+  const compacted = [];
+  for (const item of messages) {
+    const role = String(item?.role || 'assistant');
+    const content = String(item?.content || '');
+    const last = compacted[compacted.length - 1];
+    if (last && last.role === role && last.content === content) continue;
+    compacted.push({ role, content });
+  }
+  return compacted;
+}
+
 function ensureLoaded() {
   if (!fs.existsSync(STORE_PATH)) return;
   try {
@@ -15,6 +28,18 @@ function ensureLoaded() {
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object' && parsed.clients && typeof parsed.clients === 'object') {
       state = parsed;
+      let changed = false;
+      for (const client of Object.values(state.clients)) {
+        if (!Array.isArray(client?.sessions)) continue;
+        for (const session of client.sessions) {
+          const nextMessages = compactMessages(session.messages);
+          if (Array.isArray(session.messages) && nextMessages.length !== session.messages.length) {
+            session.messages = nextMessages;
+            changed = true;
+          }
+        }
+      }
+      if (changed) save();
     }
   } catch (_error) {
     state = { clients: {} };
@@ -46,6 +71,7 @@ function listSessions(clientId) {
       title: session.title,
       ts: session.ts,
       updatedAt: session.updatedAt || session.ts,
+      version: Number(session.version || 1),
       messageCount: Array.isArray(session.messages) ? session.messages.length : 0,
     }));
 }
@@ -64,7 +90,9 @@ function createSession(clientId, title = 'New session') {
     title: String(title || 'New session'),
     ts: now,
     updatedAt: now,
+    version: 1,
     messages: [],
+    events: [],
     sessionContext: null,
     workbookContext: null,
   };
@@ -75,17 +103,22 @@ function createSession(clientId, title = 'New session') {
 
 function touch(session) {
   session.updatedAt = Date.now();
+  session.version = Number(session.version || 1) + 1;
 }
 
-function appendMessage(clientId, sessionId, message) {
+function appendMessage(clientId, sessionId, message, options = {}) {
   const client = ensureClient(clientId);
   const session = client.sessions.find((item) => item.id === sessionId);
   if (!session) return null;
+  if (Number.isFinite(Number(options.expectedVersion)) && Number(options.expectedVersion) !== Number(session.version || 1)) {
+    return { conflict: true, session: clone(session) };
+  }
   if (!Array.isArray(session.messages)) session.messages = [];
   session.messages.push({
     role: String(message?.role || 'assistant'),
     content: String(message?.content || ''),
   });
+  session.messages = compactMessages(session.messages);
   if (
     session.messages.length === 1 &&
     message?.role === 'user' &&
@@ -99,10 +132,13 @@ function appendMessage(clientId, sessionId, message) {
   return clone(session);
 }
 
-function updateSessionState(clientId, sessionId, patch) {
+function updateSessionState(clientId, sessionId, patch, options = {}) {
   const client = ensureClient(clientId);
   const session = client.sessions.find((item) => item.id === sessionId);
   if (!session) return null;
+  if (Number.isFinite(Number(options.expectedVersion)) && Number(options.expectedVersion) !== Number(session.version || 1)) {
+    return { conflict: true, session: clone(session) };
+  }
   if (Object.prototype.hasOwnProperty.call(patch || {}, 'sessionContext')) {
     session.sessionContext = patch.sessionContext ? clone(patch.sessionContext) : null;
   }
@@ -111,6 +147,24 @@ function updateSessionState(clientId, sessionId, patch) {
   }
   if (typeof patch?.title === 'string' && patch.title.trim()) {
     session.title = patch.title.trim();
+  }
+  touch(session);
+  save();
+  return clone(session);
+}
+
+function appendEvent(clientId, sessionId, event) {
+  const client = ensureClient(clientId);
+  const session = client.sessions.find((item) => item.id === sessionId);
+  if (!session) return null;
+  if (!Array.isArray(session.events)) session.events = [];
+  session.events.push({
+    ts: Date.now(),
+    type: String(event?.type || 'event'),
+    data: clone(event?.data || {}),
+  });
+  if (session.events.length > 200) {
+    session.events = session.events.slice(-200);
   }
   touch(session);
   save();
@@ -138,6 +192,7 @@ module.exports = {
   getSession,
   createSession,
   appendMessage,
+  appendEvent,
   updateSessionState,
   deleteSession,
   clearSessions,

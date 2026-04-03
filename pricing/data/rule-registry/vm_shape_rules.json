@@ -384,6 +384,119 @@
         "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
         "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
       ]
+    },
+    {
+      "shapeName": "BM.Standard.B1.44",
+      "aliases": [
+        "BM.Standard.B1.44",
+        "Standard.B1.44"
+      ],
+      "kind": "fixed",
+      "vendor": "intel",
+      "family": "standard",
+      "series": "B1",
+      "productLabel": "Compute - Bare Metal Standard - B1",
+      "fixedOcpus": 44,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B91119"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "BM.Standard2.52",
+      "aliases": [
+        "BM.Standard2.52",
+        "Standard2.52"
+      ],
+      "kind": "fixed",
+      "vendor": "intel",
+      "family": "standard",
+      "series": "X7",
+      "productLabel": "Compute - Bare Metal Standard - X7",
+      "fixedOcpus": 52,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B88513",
+        "B89137"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "BM.DenseIO2.52",
+      "aliases": [
+        "BM.DenseIO2.52",
+        "DenseIO2.52"
+      ],
+      "kind": "fixed",
+      "vendor": "intel",
+      "family": "denseio",
+      "series": "X7",
+      "productLabel": "Compute - Bare Metal Dense I/O - X7",
+      "fixedOcpus": 52,
+      "fixedMemoryGb": null,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B88515",
+        "B89139"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "BM.Standard1.36",
+      "aliases": [
+        "BM.Standard1.36",
+        "Standard1.36"
+      ],
+      "kind": "fixed",
+      "vendor": "intel",
+      "family": "standard",
+      "series": "X5",
+      "productLabel": "Compute - Bare Metal Standard - X5",
+      "fixedOcpus": 36,
+      "fixedMemoryGb": 256,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B88315",
+        "B86076"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
+      "shapeName": "BM.DenseIO1.36",
+      "aliases": [
+        "BM.DenseIO1.36",
+        "DenseIO1.36"
+      ],
+      "kind": "fixed",
+      "vendor": "intel",
+      "family": "denseio",
+      "series": "X5",
+      "productLabel": "Compute - Bare Metal Dense I/O - X5",
+      "fixedOcpus": 36,
+      "fixedMemoryGb": 512,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B86078"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
     }
   ]
 }

@@ -1,13 +1,13 @@
 {
   "metadata": {
-    "generatedAt": "2026-03-31T06:23:15.616Z",
+    "generatedAt": "2026-04-01T22:19:09.479Z",
     "generatedBy": "pricing/tools/build_coverage_artifacts.js"
   },
   "sourceStats": {
     "workbookServices": 1004,
     "pdfBillingRules": 364,
     "pdfPrerequisiteRules": 60,
-    "vmShapes": 17,
+    "vmShapes": 22,
     "serviceFamilies": 9
   },
   "runtimeCoverage": {
@@ -56,13 +56,13 @@
     }
   },
   "vmShapeCoverage": {
-    "totalShapes": 17,
+    "totalShapes": 22,
     "byKind": {
       "flex": 11,
-      "fixed": 6
+      "fixed": 11
     },
     "byVendor": {
-      "intel": 8,
+      "intel": 13,
       "amd": 6,
       "ampere": 3
     },
@@ -447,14 +447,207 @@
           "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
           "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
         ]
+      },
+      {
+        "shapeName": "BM.Standard.B1.44",
+        "aliases": [
+          "BM.Standard.B1.44",
+          "Standard.B1.44"
+        ],
+        "kind": "fixed",
+        "vendor": "intel",
+        "family": "standard",
+        "series": "B1",
+        "productLabel": "Compute - Bare Metal Standard - B1",
+        "fixedOcpus": 44,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B91119"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "BM.Standard2.52",
+        "aliases": [
+          "BM.Standard2.52",
+          "Standard2.52"
+        ],
+        "kind": "fixed",
+        "vendor": "intel",
+        "family": "standard",
+        "series": "X7",
+        "productLabel": "Compute - Bare Metal Standard - X7",
+        "fixedOcpus": 52,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B88513",
+          "B89137"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "BM.DenseIO2.52",
+        "aliases": [
+          "BM.DenseIO2.52",
+          "DenseIO2.52"
+        ],
+        "kind": "fixed",
+        "vendor": "intel",
+        "family": "denseio",
+        "series": "X7",
+        "productLabel": "Compute - Bare Metal Dense I/O - X7",
+        "fixedOcpus": 52,
+        "fixedMemoryGb": null,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B88515",
+          "B89139"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "BM.Standard1.36",
+        "aliases": [
+          "BM.Standard1.36",
+          "Standard1.36"
+        ],
+        "kind": "fixed",
+        "vendor": "intel",
+        "family": "standard",
+        "series": "X5",
+        "productLabel": "Compute - Bare Metal Standard - X5",
+        "fixedOcpus": 36,
+        "fixedMemoryGb": 256,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B88315",
+          "B86076"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
+      },
+      {
+        "shapeName": "BM.DenseIO1.36",
+        "aliases": [
+          "BM.DenseIO1.36",
+          "DenseIO1.36"
+        ],
+        "kind": "fixed",
+        "vendor": "intel",
+        "family": "denseio",
+        "series": "X5",
+        "productLabel": "Compute - Bare Metal Dense I/O - X5",
+        "fixedOcpus": 36,
+        "fixedMemoryGb": 512,
+        "ocpuToVcpuRatio": 2,
+        "partNumbers": [
+          "B86078"
+        ],
+        "sourceNotes": [
+          "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+          "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+        ]
       }
     ]
   },
   "computeVariantAudit": {
     "candidateServiceCount": 63,
-    "coveredServiceCount": 23,
-    "uncoveredServiceCount": 40,
+    "coveredServiceCount": 31,
+    "uncoveredServiceCount": 32,
     "coveredServices": [
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Dense I/O - X5 - Metered",
+        "partNumbers": [
+          "B86078"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Dense I/O - X7",
+        "partNumbers": [
+          "B88515"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Dense I/O - X7 - Metered",
+        "partNumbers": [
+          "B89139"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - B1",
+        "partNumbers": [
+          "B91119"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - X5",
+        "partNumbers": [
+          "B88315"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - X5 - Metered",
+        "partNumbers": [
+          "B86076"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - X7",
+        "partNumbers": [
+          "B88513"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
+      {
+        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - X7 - Metered",
+        "partNumbers": [
+          "B89137"
+        ],
+        "metrics": [
+          "OCPU Per Hour"
+        ],
+        "matchedVmRegistry": true
+      },
       {
         "name": "Oracle Cloud Infrastructure - Compute - Dense I/O - E4",
         "partNumbers": [
@@ -694,36 +887,6 @@
         "matchedVmRegistry": false
       },
       {
-        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Dense I/O - X5 - Metered",
-        "partNumbers": [
-          "B86078"
-        ],
-        "metrics": [
-          "OCPU Per Hour"
-        ],
-        "matchedVmRegistry": false
-      },
-      {
-        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Dense I/O - X7",
-        "partNumbers": [
-          "B88515"
-        ],
-        "metrics": [
-          "OCPU Per Hour"
-        ],
-        "matchedVmRegistry": false
-      },
-      {
-        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Dense I/O - X7 - Metered",
-        "partNumbers": [
-          "B89139"
-        ],
-        "metrics": [
-          "OCPU Per Hour"
-        ],
-        "matchedVmRegistry": false
-      },
-      {
         "name": "Oracle Cloud Infrastructure - Compute - Bare Metal GPU Standard - X7",
         "partNumbers": [
           "B88517"
@@ -740,56 +903,6 @@
         ],
         "metrics": [
           "GPU Per Hour"
-        ],
-        "matchedVmRegistry": false
-      },
-      {
-        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - B1",
-        "partNumbers": [
-          "B91119"
-        ],
-        "metrics": [
-          "OCPU Per Hour"
-        ],
-        "matchedVmRegistry": false
-      },
-      {
-        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - X5",
-        "partNumbers": [
-          "B88315"
-        ],
-        "metrics": [
-          "OCPU Per Hour"
-        ],
-        "matchedVmRegistry": false
-      },
-      {
-        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - X5 - Metered",
-        "partNumbers": [
-          "B86076"
-        ],
-        "metrics": [
-          "OCPU Per Hour"
-        ],
-        "matchedVmRegistry": false
-      },
-      {
-        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - X7",
-        "partNumbers": [
-          "B88513"
-        ],
-        "metrics": [
-          "OCPU Per Hour"
-        ],
-        "matchedVmRegistry": false
-      },
-      {
-        "name": "Oracle Cloud Infrastructure - Compute - Bare Metal Standard - X7 - Metered",
-        "partNumbers": [
-          "B89137"
-        ],
-        "metrics": [
-          "OCPU Per Hour"
         ],
         "matchedVmRegistry": false
       },

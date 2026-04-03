@@ -40,6 +40,9 @@ coverage.xml
 # Project outputs
 # (Project-specific outputs and local config are ignored in per-project .gitignore)
 
+# Internal/confidential Oracle source documents
+pricing/data/source-docs/current/
+
 # Logs
 *.log
 logs/

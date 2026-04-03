@@ -16,13 +16,16 @@ test('vm shape registry exposes aliases for calculator and shorthand prompts', (
   const standard3 = registry.shapes.find((shape) => shape.shapeName === 'VM.Standard3.Flex');
   const optimized3 = registry.shapes.find((shape) => shape.shapeName === 'VM.Optimized3.Flex');
   const standard24 = registry.shapes.find((shape) => shape.shapeName === 'VM.Standard2.4');
+  const bareMetalX7 = registry.shapes.find((shape) => shape.shapeName === 'BM.Standard2.52');
 
   assert.ok(standard3);
   assert.ok(optimized3);
   assert.ok(standard24);
+  assert.ok(bareMetalX7);
   assert.ok(standard3.aliases.includes('Standard3.Flex'));
   assert.ok(optimized3.aliases.includes('Optimized3.Flex'));
   assert.ok(standard24.aliases.includes('Standard2.4'));
+  assert.ok(bareMetalX7.aliases.includes('Standard2.52'));
 });
 
 test('coverage matrix exposes residual compute variants not yet mapped in the VM shape registry', () => {

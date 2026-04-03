@@ -10,7 +10,7 @@ const intentPath = path.join(ROOT, 'intent-extractor.js');
 const genaiPath = path.join(ROOT, 'genai.js');
 const { normalizeCatalog } = require(path.join(ROOT, 'catalog.js'));
 
-function loadAssistantWithStubs(intentResolver) {
+function loadAssistantWithStubs(intentResolver, options = {}) {
   delete require.cache[assistantPath];
   delete require.cache[intentPath];
   delete require.cache[genaiPath];
@@ -31,8 +31,11 @@ function loadAssistantWithStubs(intentResolver) {
     filename: genaiPath,
     loaded: true,
     exports: {
-      runChat: async () => ({ data: {} }),
-      extractChatText: () => '',
+      runChat: async () => {
+        if (options.throwGenAI) throw new Error('genai unavailable');
+        return { data: { ...(options.genaiData || {}), text: options.genaiText || '' } };
+      },
+      extractChatText: (payload) => String(payload?.text || ''),
       loadGenAISettings: () => ({}),
     },
   };
@@ -852,6 +855,122 @@ test('email delivery quote resolves through generic request-volume pattern', asy
   assert.match(reply.message, /B90941/);
 });
 
+test('general VM shape options question returns discovery guidance instead of a quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'Sí. En `OCI VM Instances` las familias principales disponibles son:',
+      '- `Intel x86`: `VM.Standard3.Flex`, `VM.Optimized3.Flex`, y la línea fija `VM.Standard2.x`.',
+      '- `AMD x86`: `VM.Standard.E3.Flex`, `VM.Standard.E4.Flex`, `VM.Standard.E5.Flex`, `VM.Standard.E6.Flex`, y `VM.DenseIO.E4/E5.Flex`.',
+      '- `Ampere Arm`: `VM.Standard.A1.Flex`, `VM.Standard.A2.Flex` y `VM.Standard.A4.Flex`.',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Que opciones de Shape tenemos en Virtual Machines?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.match(reply.message, /VM\.Standard3\.Flex/i);
+  assert.match(reply.message, /VM\.Standard\.E4\.Flex/i);
+  assert.match(reply.message, /VM\.Standard\.A1\.Flex/i);
+  assert.doesNotMatch(reply.message, /I prepared a deterministic OCI quotation/i);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.topic, 'vm_shapes');
+});
+
+test('vm shape comparison question uses product discovery with structured shape comparison context', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.92,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'Para un contexto general:',
+      '- `VM.Standard3.Flex` es `Intel x86` general purpose.',
+      '- `VM.Standard.E4.Flex` es `AMD x86` general purpose.',
+      '- Ambas son `Flex`, así que aceptan `OCPU` y `memoria` definidos por el usuario.',
+      '- En ambas familias `x86`, `1 OCPU = 2 vCPUs`.',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Que diferencia hay entre VM.Standard3.Flex y VM.Standard.E4.Flex?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.topic, 'vm_shapes');
+  assert.ok(Array.isArray(reply.sessionContext.lastContextPack.shapeComparison));
+});
+
+test('general discovery request returns service unavailable instead of inventing a quote when genai fails', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.6,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), { throwGenAI: true });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Que opciones de Shape tenemos en Virtual Machines?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.match(reply.message, /not available/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
 test('iam sms quote resolves direct per-message pricing', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -1518,6 +1637,44 @@ test('session follow-up reuses the active quote source for short instance overri
   assert.match(reply.sessionContext.lastQuote.source, /2 instancias|2 instances/i);
 });
 
+test('route-driven quote follow-up reuses the active quote source for longer workbook-style VPU changes', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs(() => ({
+    route: 'quote_followup',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'SI cambiamos el block storage a 20VPU\'s como se veria este quote?',
+    assumptions: [],
+    serviceFamily: 'block_volume',
+    serviceName: 'Block Volume',
+    extractedInputs: { storageGb: 340, vpuPerGb: 20 },
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: 'SI cambiamos el block storage a 20VPU\'s como se veria este quote?',
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'SI cambiamos el block storage a 20VPU\'s como se veria este quote?',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM with 340 GB Block Storage and 30 VPUs',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.sessionContext.lastQuote.source, /20\s*VPU/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /30\s*VPU/i);
+});
+
 test('session follow-up can remove WAF from the active composite quote source', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -1553,6 +1710,126 @@ test('session follow-up can remove WAF from the active composite quote source', 
   assert.match(reply.message, /B88525/);
   assert.doesNotMatch(reply.message, /B94579/);
   assert.doesNotMatch(reply.message, /B94277/);
+});
+
+test('session follow-up can remove DNS from the active composite quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'sin DNS',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Web Application Firewall with 2 instances and 50000000 requests per month plus DNS 5000000 queries per month plus Flexible Load Balancer 100 Mbps',
+        label: 'Composite OCI workload',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B94579/);
+  assert.match(reply.message, /B93030/);
+  assert.match(reply.message, /B93031/);
+  assert.doesNotMatch(reply.message, /B88525/);
+});
+
+test('session follow-up can remove load balancer from the active composite quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'sin Load Balancer',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Flexible Load Balancer 100 Mbps plus DNS 5000000 queries per month plus Web Application Firewall with 2 instances and 50000000 requests per month',
+        label: 'Composite OCI workload',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B88525/);
+  assert.match(reply.message, /B94579/);
+  assert.doesNotMatch(reply.message, /B93030/);
+  assert.doesNotMatch(reply.message, /B93031/);
+});
+
+test('assistant preserves the metered modifier when the intent model drops it from a bare metal prompt', async () => {
+  const index = buildIndex();
+  index.products.push({
+    partNumber: 'B89137',
+    displayName: 'Compute - Bare Metal Standard - X7 - Metered',
+    fullDisplayName: 'B89137 - Compute - Bare Metal Standard - X7 - Metered',
+    priceType: 'HOUR',
+    serviceCategoryDisplayName: 'Compute - Bare Metal',
+    metricId: 'm-ocpu-hour',
+    metricDisplayName: 'OCPU Per Hour',
+    metricUnitDisplayName: '',
+    pricingByCurrency: { USD: [{ model: 'PAY_AS_YOU_GO', value: 0.075 }] },
+    tiersByCurrency: { USD: [{ model: 'PAY_AS_YOU_GO', value: 0.075, rangeMin: null, rangeMax: null, rangeUnit: null }] },
+  });
+  index.productsByPartNumber.set('B89137', [index.products[index.products.length - 1]]);
+
+  const { respondToAssistant } = loadAssistantWithStubs((_text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote BM.Standard2.52 744h/month',
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: 'Quote BM.Standard2.52 744h/month',
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote BM.Standard2.52 metered 744h/month',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B89137/);
+  assert.doesNotMatch(reply.message, /B88513/);
 });
 
 test('autonomous ai lakehouse asks for license choice and quotes compute plus storage', async () => {

@@ -4,6 +4,7 @@ const express = require('express');
 const path    = require('path');
 const https   = require('https');
 const fs      = require('fs');
+const XLSX    = require('xlsx');
 const { normalizeCatalog, searchProducts, searchPresets, searchServiceRegistry } = require('./catalog');
 const { quoteFromPrompt, buildQuote } = require('./quotation-engine');
 const { parseWorkbookBase64, workbookToRequests, analyzeWorkbookForGuidedQuote, buildShapeOptionsForProcessor, parseWorkbookPromptSelections, hasWorkbookSelection } = require('./excel');
@@ -207,9 +208,99 @@ function buildMarkdownFromLinesForAssistant(lines, totals) {
   return `${header}\n${body}\n${total}`;
 }
 
-async function estimateWorkbookRequest({ cfg, clientId, sessionId, body }) {
+function buildQuoteExportRows(lineItems = [], totals = null) {
+  const rows = (Array.isArray(lineItems) ? lineItems : []).map((line, index) => ({
+    '#': index + 1,
+    Environment: line.environment || '-',
+    Service: line.service || '-',
+    'Part#': line.partNumber || '-',
+    Product: line.product || '-',
+    Metric: line.metric || '-',
+    Qty: Number.isFinite(Number(line.quantity)) ? Number(line.quantity) : '',
+    Inst: Number.isFinite(Number(line.instances)) ? Number(line.instances) : '',
+    Hours: Number.isFinite(Number(line.hours)) ? Number(line.hours) : '',
+    Rate: Number.isFinite(Number(line.rate)) ? Number(line.rate) : '',
+    Unit: Number.isFinite(Number(line.unitPrice)) ? Number(line.unitPrice) : '',
+    '$/Mo': Number.isFinite(Number(line.monthly)) ? Number(line.monthly) : '',
+    Annual: Number.isFinite(Number(line.annual)) ? Number(line.annual) : '',
+    Currency: line.currencyCode || totals?.currencyCode || 'USD',
+  }));
+  if (totals) {
+    rows.push({
+      '#': 'Total',
+      Environment: '',
+      Service: '',
+      'Part#': '',
+      Product: '',
+      Metric: '',
+      Qty: '',
+      Inst: '',
+      Hours: '',
+      Rate: '',
+      Unit: '',
+      '$/Mo': Number.isFinite(Number(totals.monthly)) ? Number(totals.monthly) : '',
+      Annual: Number.isFinite(Number(totals.annual)) ? Number(totals.annual) : '',
+      Currency: totals.currencyCode || 'USD',
+    });
+  }
+  return rows;
+}
+
+function buildQuoteExportCsv(lineItems = [], totals = null) {
+  const rows = buildQuoteExportRows(lineItems, totals);
+  if (!rows.length) return '';
+  const headers = Object.keys(rows[0]);
+  const escapeCell = (value) => {
+    const text = String(value ?? '');
+    if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+    return text;
+  };
+  return [
+    headers.map(escapeCell).join(','),
+    ...rows.map((row) => headers.map((key) => escapeCell(row[key])).join(',')),
+  ].join('\n');
+}
+
+function buildQuoteExportWorkbook(lineItems = [], totals = null) {
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.json_to_sheet(buildQuoteExportRows(lineItems, totals));
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Quote');
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+}
+
+function getEffectiveWorkbookContext(storedSession) {
+  const session = storedSession && typeof storedSession === 'object' ? storedSession : null;
+  const workbookContext = session?.workbookContext && typeof session.workbookContext === 'object'
+    ? session.workbookContext
+    : null;
+  const sessionWorkbookContext = session?.sessionContext?.workbookContext && typeof session.sessionContext.workbookContext === 'object'
+    ? session.sessionContext.workbookContext
+    : null;
+  const lastQuote = session?.sessionContext?.lastQuote && typeof session.sessionContext.lastQuote === 'object'
+    ? session.sessionContext.lastQuote
+    : null;
+  return {
+    ...(sessionWorkbookContext || {}),
+    ...(workbookContext || {}),
+    sourcePlatform: workbookContext?.sourcePlatform || sessionWorkbookContext?.sourcePlatform || lastQuote?.sourcePlatform || null,
+    processorVendor: workbookContext?.processorVendor || sessionWorkbookContext?.processorVendor || lastQuote?.processorVendor || null,
+    shapeName: workbookContext?.shapeName || sessionWorkbookContext?.shapeName || lastQuote?.shapeName || null,
+    vpuPerGb: Number.isFinite(Number(workbookContext?.vpuPerGb))
+      ? Number(workbookContext.vpuPerGb)
+      : Number.isFinite(Number(sessionWorkbookContext?.vpuPerGb))
+        ? Number(sessionWorkbookContext.vpuPerGb)
+        : Number.isFinite(Number(lastQuote?.vpuPerGb))
+          ? Number(lastQuote.vpuPerGb)
+          : null,
+    fileName: workbookContext?.fileName || sessionWorkbookContext?.fileName || null,
+    contentBase64: workbookContext?.contentBase64 || sessionWorkbookContext?.contentBase64 || null,
+  };
+}
+
+async function estimateWorkbookRequest({ cfg, clientId, sessionId, body, persistMessages = false }) {
   const storedSession = sessionId ? sessionStore.getSession(clientId, sessionId) : null;
-  const persistedWorkbook = storedSession?.workbookContext || {};
+  const persistedWorkbook = getEffectiveWorkbookContext(storedSession);
+  const userLabel = String(body.userLabel || '').trim();
   const fileName = String(body.fileName || persistedWorkbook.fileName || 'workbook.xlsx');
   const contentBase64 = String(body.contentBase64 || persistedWorkbook.contentBase64 || '');
   const requestedShape = findVmShapeByText(body.shapeName || persistedWorkbook.shapeName || '');
@@ -235,12 +326,19 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body }) {
   }
 
   try {
+    if (persistMessages && storedSession && userLabel) {
+      sessionStore.appendMessage(clientId, sessionId, {
+        role: 'user',
+        content: userLabel,
+      });
+    }
     const workbook = parseWorkbookBase64(contentBase64);
     const analysis = analyzeWorkbookForGuidedQuote(workbook);
     if (!analysis.quotableRows) {
       return { status: 400, body: { ok: false, error: 'No quotable rows were detected in the workbook.' } };
     }
     if (!sourcePlatform && analysis.sourceType !== 'rvtools') {
+      const question = `I analyzed \`${fileName}\` and found ${analysis.quotableRows} quotable workload${analysis.quotableRows === 1 ? '' : 's'}. Do these workbook rows come from VMware, another hypervisor, or bare metal inventory?`;
       if (storedSession) {
         sessionStore.updateSessionState(clientId, sessionId, {
           workbookContext: workbookContextPatch,
@@ -249,11 +347,16 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body }) {
             currentIntent: 'workbook_quote',
             pendingClarification: {
               stage: 'sourcePlatform',
-              question: `I analyzed \`${fileName}\` and found ${analysis.quotableRows} quotable workload${analysis.quotableRows === 1 ? '' : 's'}. Do these workbook rows come from VMware, another hypervisor, or bare metal inventory?`,
+              question,
+              options: analysis.sourcePlatformOptions || [],
             },
             workbookContext: workbookContextPatch,
           },
         });
+        if (persistMessages) {
+          const reply = [question, analysis.warnings?.length ? `\n\nNotes:\n- ${analysis.warnings.slice(0, 3).join('\n- ')}` : ''].join('');
+          sessionStore.appendMessage(clientId, sessionId, { role: 'assistant', content: reply });
+        }
       }
       return {
         status: 200,
@@ -267,7 +370,7 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body }) {
           shapeName: shapeName || null,
           processorVendor: processorVendor || null,
           vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : null,
-          question: `I analyzed \`${fileName}\` and found ${analysis.quotableRows} quotable workload${analysis.quotableRows === 1 ? '' : 's'}. Do these workbook rows come from VMware, another hypervisor, or bare metal inventory?`,
+          question,
           options: analysis.sourcePlatformOptions || [],
           warnings: analysis.warnings || [],
         },
@@ -275,6 +378,7 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body }) {
     }
     const effectiveSourcePlatform = sourcePlatform || (analysis.sourceType === 'rvtools' ? 'vmware' : 'bare_metal');
     if (!processorVendor) {
+      const question = `I analyzed \`${fileName}\` and found ${analysis.quotableRows} quotable workload${analysis.quotableRows === 1 ? '' : 's'}. Which OCI processor family should I use for the target compute shapes?`;
       if (storedSession) {
         sessionStore.updateSessionState(clientId, sessionId, {
           workbookContext: { ...workbookContextPatch, sourcePlatform: effectiveSourcePlatform },
@@ -283,11 +387,16 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body }) {
             currentIntent: 'workbook_quote',
             pendingClarification: {
               stage: 'processor',
-              question: `I analyzed \`${fileName}\` and found ${analysis.quotableRows} quotable workload${analysis.quotableRows === 1 ? '' : 's'}. Which OCI processor family should I use for the target compute shapes?`,
+              question,
+              options: analysis.processorOptions || [],
             },
             workbookContext: { ...workbookContextPatch, sourcePlatform: effectiveSourcePlatform },
           },
         });
+        if (persistMessages) {
+          const reply = [question, analysis.warnings?.length ? `\n\nNotes:\n- ${analysis.warnings.slice(0, 3).join('\n- ')}` : ''].join('');
+          sessionStore.appendMessage(clientId, sessionId, { role: 'assistant', content: reply });
+        }
       }
       return {
         status: 200,
@@ -301,7 +410,7 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body }) {
           sourcePlatform: effectiveSourcePlatform,
           shapeName: shapeName || null,
           vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : null,
-          question: `I analyzed \`${fileName}\` and found ${analysis.quotableRows} quotable workload${analysis.quotableRows === 1 ? '' : 's'}. Which OCI processor family should I use for the target compute shapes?`,
+          question,
           options: analysis.processorOptions,
           warnings: analysis.warnings || [],
         },
@@ -309,6 +418,7 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body }) {
     }
     const shapeOptions = buildShapeOptionsForProcessor(processorVendor);
     if (!shapeName) {
+      const question = `Use ${processorVendor.toUpperCase()} as the target processor. Which flex shape should I apply to the workbook sizing?`;
       if (storedSession) {
         sessionStore.updateSessionState(clientId, sessionId, {
           workbookContext: { ...workbookContextPatch, sourcePlatform: effectiveSourcePlatform, processorVendor },
@@ -317,11 +427,16 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body }) {
             currentIntent: 'workbook_quote',
             pendingClarification: {
               stage: 'shape',
-              question: `Use ${processorVendor.toUpperCase()} as the target processor. Which flex shape should I apply to the workbook sizing?`,
+              question,
+              options: shapeOptions,
             },
             workbookContext: { ...workbookContextPatch, sourcePlatform: effectiveSourcePlatform, processorVendor },
           },
         });
+        if (persistMessages) {
+          const reply = [question, analysis.warnings?.length ? `\n\nNotes:\n- ${analysis.warnings.slice(0, 3).join('\n- ')}` : ''].join('');
+          sessionStore.appendMessage(clientId, sessionId, { role: 'assistant', content: reply });
+        }
       }
       return {
         status: 200,
@@ -335,7 +450,7 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body }) {
           sourcePlatform: effectiveSourcePlatform,
           processorVendor,
           vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : null,
-          question: `Use ${processorVendor.toUpperCase()} as the target processor. Which flex shape should I apply to the workbook sizing?`,
+          question,
           options: shapeOptions,
           warnings: analysis.warnings || [],
         },
@@ -400,9 +515,31 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body }) {
             sourcePlatform: effectiveSourcePlatform || '',
             vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : workbookContextPatch.vpuPerGb,
           },
+          quoteExport: {
+            formatVersion: 1,
+            generatedAt: new Date().toISOString(),
+            totals,
+            lineItems,
+          },
           sessionSummary: `Active workbook ${fileName} using ${shapeName || 'workbook sizing'} with ${Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : workbookContextPatch.vpuPerGb || 10} VPU. Last workbook quote monthly ${formatMoney(totals?.monthly || 0, totals?.currencyCode || 'USD')}.`,
         },
       });
+      if (persistMessages) {
+        const message = `### Excel quotation\n\n${summary || ''}\n\n${buildMarkdownFromLinesForAssistant(lineItems, totals)}${warnings.length ? `\n\nWarnings:\n- ${warnings.join('\n- ')}` : ''}${errors.length ? `\n\nUnresolved rows:\n- ${errors.join('\n- ')}` : ''}`;
+        sessionStore.appendMessage(clientId, sessionId, { role: 'assistant', content: message });
+        sessionStore.appendEvent(clientId, sessionId, {
+          type: 'workbook_reply',
+          data: {
+            mode: 'excel',
+            stage: null,
+            shapeName,
+            processorVendor,
+            sourcePlatform: effectiveSourcePlatform,
+            vpuPerGb: Number.isFinite(vpuPerGb) && vpuPerGb > 0 ? vpuPerGb : workbookContextPatch.vpuPerGb,
+            lineItemCount: Array.isArray(lineItems) ? lineItems.length : 0,
+          },
+        });
+      }
     }
 
     return {
@@ -484,10 +621,13 @@ app.post('/api/assistant', async (req, res) => {
   const sessionId = String(req.body.sessionId || '').trim();
   const clientId = resolveClientId(req);
   const storedSession = sessionId ? sessionStore.getSession(clientId, sessionId) : null;
+  const effectiveWorkbookContext = getEffectiveWorkbookContext(storedSession);
   const conversation = storedSession
     ? mapStoredConversation(storedSession.messages)
     : Array.isArray(req.body.conversation) ? req.body.conversation : [];
   const imageDataUrl = String(req.body.imageDataUrl || '').trim();
+  const userLabel = String(req.body.userLabel || '').trim();
+  const persistedUserContent = userLabel || text || (imageDataUrl ? '[Image attached]' : '');
   const sessionContext = storedSession?.sessionContext || (req.body.sessionContext && typeof req.body.sessionContext === 'object'
     ? req.body.sessionContext
     : null);
@@ -495,37 +635,37 @@ app.post('/api/assistant', async (req, res) => {
 
   try {
     const workbookFollowup = parseWorkbookPromptSelections(text);
-    if (storedSession?.workbookContext && hasWorkbookSelection(workbookFollowup) && !imageDataUrl) {
-      if (text) {
+    const hasActiveWorkbook = !!effectiveWorkbookContext?.contentBase64;
+    const hasWorkbookQuote = storedSession?.sessionContext?.lastQuote?.type === 'workbook_quote';
+    if ((hasActiveWorkbook || hasWorkbookQuote) && hasWorkbookSelection(workbookFollowup) && !imageDataUrl) {
+      if (persistedUserContent) {
         sessionStore.appendMessage(clientId, sessionId, {
           role: 'user',
-          content: text,
+          content: persistedUserContent,
         });
       }
       const workbookReply = await estimateWorkbookRequest({
         cfg,
         clientId,
         sessionId,
-        body: workbookFollowup,
+        body: {
+          ...workbookFollowup,
+          userLabel: persistedUserContent,
+        },
+        persistMessages: true,
       });
-      const message = workbookReply.body?.ok && Array.isArray(workbookReply.body?.lineItems)
-        ? `### Excel quotation\n\n${workbookReply.body.summary || ''}\n\n${buildMarkdownFromLinesForAssistant(workbookReply.body.lineItems, workbookReply.body.totals)}${Array.isArray(workbookReply.body.warnings) && workbookReply.body.warnings.length ? `\n\nWarnings:\n- ${workbookReply.body.warnings.join('\n- ')}` : ''}`
-        : String(workbookReply.body?.question || workbookReply.body?.error || '');
-      if (storedSession) {
-        sessionStore.appendMessage(clientId, sessionId, {
-          role: 'assistant',
-          content: message,
-        });
-      }
       return res.status(workbookReply.status).json({
         ...workbookReply.body,
-        message,
+        session: sessionId ? sessionStore.getSession(clientId, sessionId) : null,
+        message: workbookReply.body?.ok && Array.isArray(workbookReply.body?.lineItems)
+          ? `### Excel quotation\n\n${workbookReply.body.summary || ''}\n\n${buildMarkdownFromLinesForAssistant(workbookReply.body.lineItems, workbookReply.body.totals)}${Array.isArray(workbookReply.body.warnings) && workbookReply.body.warnings.length ? `\n\nWarnings:\n- ${workbookReply.body.warnings.join('\n- ')}` : ''}`
+          : String(workbookReply.body?.question || workbookReply.body?.error || ''),
       });
     }
-    if (storedSession && text) {
+    if (storedSession && persistedUserContent) {
       sessionStore.appendMessage(clientId, sessionId, {
         role: 'user',
-        content: text,
+        content: persistedUserContent,
       });
     }
     const reply = await respondToAssistant({
@@ -541,12 +681,26 @@ app.post('/api/assistant', async (req, res) => {
         role: 'assistant',
         content: String(reply?.message || ''),
       });
+      sessionStore.appendEvent(clientId, sessionId, {
+        type: 'assistant_reply',
+        data: {
+          mode: reply?.mode || '',
+          route: reply?.intent?.route || '',
+          intent: reply?.intent?.intent || '',
+          serviceFamily: reply?.intent?.serviceFamily || '',
+          quotePlan: reply?.intent?.quotePlan || null,
+          contextPack: reply?.contextPackSummary || null,
+        },
+      });
       sessionStore.updateSessionState(clientId, sessionId, {
         sessionContext: reply?.sessionContext || null,
         workbookContext: reply?.sessionContext?.workbookContext || storedSession.workbookContext || null,
       });
     }
-    return res.json(reply);
+    return res.json({
+      ...reply,
+      session: sessionId ? sessionStore.getSession(clientId, sessionId) : null,
+    });
   } catch (error) {
     return res.status(502).json({
       ok: false,
@@ -712,8 +866,11 @@ app.post('/api/excel/estimate', async (req, res) => {
   const cfg = loadOciConfig();
   const clientId = resolveClientId(req);
   const sessionId = String(req.body.sessionId || '').trim();
-  const result = await estimateWorkbookRequest({ cfg, clientId, sessionId, body: req.body });
-  return res.status(result.status).json(result.body);
+  const result = await estimateWorkbookRequest({ cfg, clientId, sessionId, body: req.body, persistMessages: true });
+  return res.status(result.status).json({
+    ...result.body,
+    session: sessionId ? sessionStore.getSession(clientId, sessionId) : null,
+  });
 });
 
 app.get('/api/sessions', (req, res) => {
@@ -734,13 +891,43 @@ app.get('/api/sessions/:id', (req, res) => {
   return res.json({ ok: true, session });
 });
 
+app.get('/api/sessions/:id/quote-export', (req, res) => {
+  const clientId = resolveClientId(req);
+  const session = sessionStore.getSession(clientId, req.params.id);
+  if (!session) return res.status(404).json({ ok: false, error: 'Session not found.' });
+  const quoteExport = session.sessionContext?.quoteExport;
+  if (!quoteExport?.lineItems?.length) {
+    return res.status(404).json({ ok: false, error: 'No exportable quote found in this session.' });
+  }
+  const format = String(req.query.format || 'csv').trim().toLowerCase();
+  if (format === 'json') {
+    return res.json({
+      ok: true,
+      quoteExport,
+    });
+  }
+  if (format === 'xlsx') {
+    const workbook = buildQuoteExportWorkbook(quoteExport.lineItems, quoteExport.totals);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${req.params.id}-quote.xlsx"`);
+    return res.send(workbook);
+  }
+  const csv = buildQuoteExportCsv(quoteExport.lineItems, quoteExport.totals);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${req.params.id}-quote.csv"`);
+  return res.send(csv);
+});
+
 app.post('/api/sessions/:id/messages', (req, res) => {
   const clientId = resolveClientId(req);
   const session = sessionStore.appendMessage(clientId, req.params.id, {
     role: req.body?.role,
     content: req.body?.content,
+  }, {
+    expectedVersion: req.body?.expectedVersion,
   });
   if (!session) return res.status(404).json({ ok: false, error: 'Session not found.' });
+  if (session.conflict) return res.status(409).json({ ok: false, error: 'Session version conflict.', session: session.session });
   return res.json({ ok: true, session });
 });
 
@@ -750,8 +937,11 @@ app.post('/api/sessions/:id/state', (req, res) => {
     sessionContext: req.body?.sessionContext,
     workbookContext: req.body?.workbookContext,
     title: req.body?.title,
+  }, {
+    expectedVersion: req.body?.expectedVersion,
   });
   if (!session) return res.status(404).json({ ok: false, error: 'Session not found.' });
+  if (session.conflict) return res.status(409).json({ ok: false, error: 'Session version conflict.', session: session.session });
   return res.json({ ok: true, session });
 });
 

@@ -82,7 +82,9 @@ function parsePromptRequest(text) {
     /ram\s*[:=]?\s*(\d+(?:\.\d+)?)\s*gb\b/i,
   ]);
   const ocpus = shape?.kind === 'fixed' ? Number(shape.fixedOcpus) : parsedOcpus;
-  const memoryQuantity = shape?.kind === 'fixed' ? Number(shape.fixedMemoryGb) : parsedMemoryQuantity;
+  const memoryQuantity = shape?.kind === 'fixed'
+    ? (Number.isFinite(Number(shape.fixedMemoryGb)) ? Number(shape.fixedMemoryGb) : parsedMemoryQuantity)
+    : parsedMemoryQuantity;
   const preemptible = /\bpreemptible\b/i.test(source);
   const environment = matchText(source, [/\b(prod|production|qa|uat|dev|test|dr)\b/i]) || 'default';
   const currencyCode = matchText(source, [/\b(usd|mxn|eur|brl|gbp|cad|jpy)\b/i], (value) => value.toUpperCase()) || 'USD';

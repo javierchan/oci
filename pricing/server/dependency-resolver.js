@@ -529,6 +529,56 @@ function extractBandwidthFromSegment(text, labelPattern) {
   return Number.isFinite(value) ? value : null;
 }
 
+function inferWorkbookPriceType(metricName) {
+  const metric = String(metricName || '').toLowerCase();
+  if (metric.includes('per hour')) return 'HOUR';
+  if (metric.includes('per month')) return 'MONTH';
+  return '';
+}
+
+function deriveWorkbookCategory(subscriptionService) {
+  const displayName = String(subscriptionService || '')
+    .replace(/^Oracle Cloud Infrastructure\s*-\s*/i, '')
+    .replace(/^Oracle IaaS Public Cloud Services\s*-\s*/i, '')
+    .trim();
+  const lower = displayName.toLowerCase();
+  if (lower.startsWith('compute - bare metal')) return 'Compute - Bare Metal';
+  if (lower.startsWith('compute - virtual machine')) return 'Compute - Virtual Machine';
+  if (lower.startsWith('storage - block volume')) return 'Storage - Block Volumes';
+  return displayName;
+}
+
+function buildSyntheticWorkbookProduct(index, partNumber) {
+  const workbookPart = getWorkbookPart(index.workbookRules, partNumber);
+  if (!workbookPart) return null;
+  const paygoPrice = Number(workbookPart.prices?.localizedPaygoPrice ?? workbookPart.prices?.universalCreditsPaygo);
+  if (!Number.isFinite(paygoPrice)) return null;
+  const metricDisplayName = String(workbookPart.metric || '').trim();
+  const category = deriveWorkbookCategory(workbookPart.subscriptionService);
+  const displayName = String(workbookPart.description || workbookPart.subscriptionService || '').trim()
+    .replace(/^Oracle Cloud Infrastructure\s*-\s*/i, '')
+    .replace(/^Oracle IaaS Public Cloud Services\s*-\s*/i, '')
+    .trim();
+  const metricId = `workbook:${partNumber}:${metricDisplayName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  const normalized = {
+    partNumber,
+    displayName,
+    fullDisplayName: `${partNumber} - ${displayName}`,
+    priceType: inferWorkbookPriceType(metricDisplayName),
+    serviceCategoryDisplayName: category,
+    metricId,
+    metricDisplayName,
+    metricUnitDisplayName: '',
+    pricingByCurrency: {
+      USD: [{ model: 'PAY_AS_YOU_GO', value: paygoPrice }],
+    },
+    tiersByCurrency: {
+      USD: [{ model: 'PAY_AS_YOU_GO', value: paygoPrice, rangeMin: null, rangeMax: null, rangeUnit: null }],
+    },
+  };
+  return normalized;
+}
+
 function resolveFlexComponents(index, request) {
   if (!request?.shape?.family || !request?.shape?.series) return [];
   const familyMap = {
@@ -538,10 +588,55 @@ function resolveFlexComponents(index, request) {
     optimized: 'Optimized',
   };
   if (request.shape.kind === 'fixed' && request.shape.productLabel) {
-    const fixedProduct = index.products.find((product) =>
-      product.serviceCategoryDisplayName === 'Compute - Virtual Machine' &&
-      String(product.displayName || '').trim() === request.shape.productLabel
-    );
+    const wantsMetered = /\bmetered\b/i.test(String(request.source || ''));
+    const registryProducts = Array.isArray(request.shape.partNumbers)
+      ? request.shape.partNumbers.flatMap((partNumber) => index.productsByPartNumber.get(partNumber) || [])
+      : [];
+    const registryProduct = registryProducts.find((product) => {
+      const displayName = String(product.displayName || '').trim();
+      return wantsMetered ? /metered/i.test(displayName) : !/metered/i.test(displayName);
+    }) || registryProducts[0];
+    if (registryProduct) {
+      return [{
+        product: registryProduct,
+        quantity: Number(request.shape.fixedOcpus || request.ocpus || request.quantity || 1),
+        dependencyKind: 'compute',
+      }];
+    }
+    const syntheticRegistryProduct = Array.isArray(request.shape.partNumbers)
+      ? request.shape.partNumbers
+        .map((partNumber) => buildSyntheticWorkbookProduct(index, partNumber))
+        .find((product) => {
+          if (!product) return false;
+          const displayName = String(product.displayName || '').trim();
+          return wantsMetered ? /metered/i.test(displayName) : !/metered/i.test(displayName);
+        }) || request.shape.partNumbers
+        .map((partNumber) => buildSyntheticWorkbookProduct(index, partNumber))
+        .find(Boolean)
+      : null;
+    if (syntheticRegistryProduct) {
+      return [{
+        product: syntheticRegistryProduct,
+        quantity: Number(request.shape.fixedOcpus || request.ocpus || request.quantity || 1),
+        dependencyKind: 'compute',
+      }];
+    }
+    const expectedLabels = [
+      request.shape.productLabel,
+      `${request.shape.productLabel} - Metered`,
+    ].map((item) => String(item || '').trim()).filter(Boolean);
+    const categoryPattern = /^Compute - (?:Virtual Machine|Bare Metal)$/i;
+    const fixedProduct = index.products.find((product) => {
+      const category = String(product.serviceCategoryDisplayName || '').trim();
+      const displayName = String(product.displayName || '').trim();
+      if (!categoryPattern.test(category)) return false;
+      if (!expectedLabels.includes(displayName)) return false;
+      return wantsMetered ? /metered/i.test(displayName) : !/metered/i.test(displayName);
+    }) || index.products.find((product) => {
+      const category = String(product.serviceCategoryDisplayName || '').trim();
+      const displayName = String(product.displayName || '').trim();
+      return categoryPattern.test(category) && expectedLabels.includes(displayName);
+    });
     return fixedProduct ? [{
       product: fixedProduct,
       quantity: Number(request.shape.fixedOcpus || request.ocpus || request.quantity || 1),
