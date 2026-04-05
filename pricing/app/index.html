@@ -211,6 +211,7 @@ textarea::placeholder{color:var(--text-dim)}
 <!-- Catalog detail tooltip -->
 <div class="ctip" id="ctip">
   <div class="ctrow"><div class="ctdot" id="td-p"></div><span class="ctname">products.json</span><span class="ctval" id="tv-p">—</span></div>
+  <div class="ctrow"><div class="ctdot" id="td-pa"></div><span class="ctname">products API v1</span><span class="ctval" id="tv-pa">—</span></div>
   <div class="ctrow"><div class="ctdot" id="td-pr"></div><span class="ctname">productpresets.json</span><span class="ctval" id="tv-pr">—</span></div>
   <div class="ctrow"><div class="ctdot" id="td-m"></div><span class="ctname">metrics.json</span><span class="ctval" id="tv-m">—</span></div>
   <button class="ctreload" id="ctreload" onclick="manualReload()">↺ Re-download from oracle.com</button>
@@ -237,6 +238,7 @@ textarea::placeholder{color:var(--text-dim)}
         <div class="boot-sub">Connecting to oracle.com…</div>
         <div class="boot-progress">
           <div class="boot-row"><div class="boot-dot active" id="bd-p"></div><span class="boot-name">products.json</span><span class="boot-status" id="bs-p">waiting…</span></div>
+          <div class="boot-row"><div class="boot-dot" id="bd-pa"></div><span class="boot-name">products API v1</span><span class="boot-status" id="bs-pa">waiting…</span></div>
           <div class="boot-row"><div class="boot-dot" id="bd-pr"></div><span class="boot-name">productpresets.json</span><span class="boot-status" id="bs-pr">waiting…</span></div>
           <div class="boot-row"><div class="boot-dot" id="bd-m"></div><span class="boot-name">metrics.json</span><span class="boot-status" id="bs-m">waiting…</span></div>
         </div>
@@ -275,7 +277,7 @@ textarea::placeholder{color:var(--text-dim)}
 // ══════════════════════════════════════════════════════════
 //  CATALOG STATE
 // ══════════════════════════════════════════════════════════
-const CAT = { products:null, presets:null, metrics:null, loaded:false };
+const CAT = { products:null, apexProducts:null, presets:null, metrics:null, loaded:false };
 
 const MODIFIERS = {
   capacityReservation: new Set('B88513,B88515,B90398,B88517,B89734,B88518,B92740,B88514,B88516,B92306,B92307,B93113,B93114,B97384,B97385,B93297,B93298,B93311,B93312,B94176,B94177'.split(',')),
@@ -283,7 +285,7 @@ const MODIFIERS = {
   burstable:           new Set('B94176,B92306,B93113,B97384,B88318'.split(','))
 };
 
-// Poll /api/health until all 3 catalogs are ready, then fetch them
+// Poll /api/health until all required catalogs are ready, then fetch them
 async function initCatalogs() {
   // Wait for server to be reachable
   for (let i = 0; i < 15; i++) {
@@ -298,7 +300,8 @@ async function initCatalogs() {
       const r = await fetch('/api/health');
       const h = await r.json();
       updateBootUI(h);
-      if (h.catalogsLoaded >= 1 && !h.loading) ready = true;
+      const expectedCatalogs = Object.keys(h.catalogs || {}).length || 4;
+      if (h.catalogsLoaded >= expectedCatalogs && !h.loading) ready = true;
       else await sleep(1500);
     } catch { await sleep(1500); }
   }
@@ -306,6 +309,7 @@ async function initCatalogs() {
   // Fetch the actual catalog data into memory
   const files = [
     ['products',  'products.json'],
+    ['apexProducts', 'products-apex.json'],
     ['presets',   'productpresets.json'],
     ['metrics',   'metrics.json'],
   ];
@@ -315,6 +319,7 @@ async function initCatalogs() {
       if (!r.ok) continue;
       const d = await r.json();
       if (key === 'products') CAT.products = d.items || d;
+      else if (key === 'apexProducts') CAT.apexProducts = d.items || d;
       else if (key === 'presets') CAT.presets = Array.isArray(d) ? d : (d.items || Object.values(d));
       else CAT.metrics = Array.isArray(d) ? d : (d.items || Object.values(d));
       CAT.loaded = true;
@@ -327,6 +332,7 @@ async function initCatalogs() {
 function updateBootUI(health) {
   const map = {
     'products.json':       ['bd-p','bs-p','td-p','tv-p'],
+    'products-apex.json':  ['bd-pa','bs-pa','td-pa','tv-pa'],
     'productpresets.json': ['bd-pr','bs-pr','td-pr','tv-pr'],
     'metrics.json':        ['bd-m','bs-m','td-m','tv-m'],
   };
@@ -355,12 +361,13 @@ function finishBoot() {
   document.getElementById('bootscreen')?.remove();
   if (CAT.loaded) {
     const n = CAT.products?.length ?? 0;
-    setCatalogPill('ready', `${n} SKUs`);
+    const na = CAT.apexProducts?.length ?? 0;
+    setCatalogPill('ready', `${n}/${na} products`);
     enableInput();
     renderWelcome();
   } else {
     setCatalogPill('error', 'Sin catálogo');
-    addMsg('agent', '⚠️ **Could not download OCI catalogs from oracle.com.**\n\nMake sure the container has internet access.\n\nYou can retry by clicking the catalog indicator → **↺ Re-download**.');
+    addMsg('agent', '⚠️ **Could not download OCI catalogs from the configured Oracle sources.**\n\nMake sure the container has internet access.\n\nYou can retry by clicking the catalog indicator → **↺ Re-download**.');
     enableInput();
   }
 }
@@ -388,7 +395,7 @@ async function manualReload() {
   setCatalogPill('loading','Loading…');
   try {
     await fetch('/api/catalog/reload', {method:'POST'});
-    CAT.products=null; CAT.presets=null; CAT.metrics=null; CAT.loaded=false;
+    CAT.products=null; CAT.apexProducts=null; CAT.presets=null; CAT.metrics=null; CAT.loaded=false;
     toggleTip(false);
     await initCatalogs();
   } catch(e) { console.error(e); }

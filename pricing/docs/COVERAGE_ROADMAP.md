@@ -8,6 +8,7 @@ This section is the working summary of progress.
 
 - OCI catalog ingestion is working from:
   - `products.json`
+  - `products API v1`
   - `metrics.json`
   - `productpresets.json`
 - workbook and PDF extraction pipelines exist and are stored in:

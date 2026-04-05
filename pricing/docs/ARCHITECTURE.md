@@ -66,6 +66,7 @@ The repo uses a layered source strategy:
 
 1. OCI live catalog JSON
    - `products.json`
+   - `https://apexapps.oracle.com/pls/apex/cetools/api/v1/products/`
    - `metrics.json`
    - `productpresets.json`
    - Purpose: active SKU pricing and machine-readable metrics

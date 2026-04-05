@@ -722,6 +722,7 @@ const OCI_URLS = {
   'products.json':       'https://www.oracle.com/a/ocom/docs/cloudestimator2/data/products.json',
   'productpresets.json': 'https://www.oracle.com/a/ocom/docs/cloudestimator2/data/productpresets.json',
   'metrics.json':        'https://www.oracle.com/a/ocom/docs/cloudestimator2/data/metrics.json',
+  'products-apex.json':  'https://apexapps.oracle.com/pls/apex/cetools/api/v1/products/',
 };
 
 const FRONTEND_DIR = path.join(__dirname, '..', 'app');
@@ -763,7 +764,7 @@ async function fetchOne(name) {
 async function fetchAll() {
   if (store.busy) return;
   store.busy = true;
-  console.log('\n━━ Downloading OCI catalogs from oracle.com ━━');
+  console.log('\n━━ Downloading OCI catalogs from Oracle sources ━━');
   await Promise.all(Object.keys(OCI_URLS).map(fetchOne));
   store.busy = false;
   console.log(`\n${Object.keys(store.data).length}/${Object.keys(OCI_URLS).length} catalogs ready.\n`);
