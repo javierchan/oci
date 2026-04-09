@@ -1,203 +1,326 @@
 # Architecture
 
-## Execution Status
+## Purpose
 
-This architecture is partially implemented.
+`pricing` is a deterministic OCI pricing engine with a natural-language assistant on top.
 
-### Implemented
+The design target is:
 
-- OCI live catalog ingestion
-- workbook and PDF extraction tooling
-- service registry and coverage endpoint
-- intent extraction through OCI GenAI
-- normalization layer
-- deterministic quotation engine
-- dependency resolver for selected domains
-- pasted image support
-- Excel input support
-- VMware RVTools input support with migration-aware VM filtering and VMware-to-OCI CPU normalization
-- `BYOL` clarification handling
+1. Understand human input with `GenAI + structured product context`
+2. Normalize it into a `quotePlan`
+3. Resolve the relevant OCI services and billable SKUs
+4. Calculate pricing deterministically from Oracle reference data
+5. Return an auditable quote or a safe clarification
 
-### Being Expanded
+The system is intentionally **not** a pure chatbot that invents prices.
 
-- registry-driven service matching
-- registry-driven required-input detection
-- broader dependency modeling
-- broader licensing and ambiguity handling
-- parity validation against OCI Calculator
+## Current Status
 
-### Not Yet Complete
+This architecture is **implemented and in active hardening**, not a prototype.
 
-- full service-family coverage across all OCI services
-- complete prerequisite modeling across all workbook services
-- full explanation layer for all `L3/L4` services
-- full regression suite for representative OCI Calculator exports
+### Implemented In Codebase
 
-## Goal
+- OCI live catalog ingestion at startup from four endpoints:
+  - `products.json`
+  - `metrics.json`
+  - `productpresets.json`
+  - `products API v1` (`products-apex.json`)
+- local filesystem catalog snapshots in `pricing/data/catalog-cache/current/`
+- server-authoritative session persistence in `pricing/server/session-store.js`
+- backend-owned workbook and RVTools follow-up handling
+- `intent -> route -> quotePlan` extraction in `pricing/server/intent-extractor.js` and `pricing/server/normalizer.js`
+- `structured product context` generation in `pricing/server/context-packs.js`
+- deterministic SKU resolution and pricing in:
+  - `pricing/server/dependency-resolver.js`
+  - `pricing/server/quotation-engine.js`
+  - `pricing/server/consumption-model.js`
+- export paths from persisted quotes:
+  - `Copy Quote`
+  - `Export CSV`
+  - `Export XLSX`
+- parity and regression coverage across major OCI families
 
-`pricing` is intended to become a deterministic OCI estimation engine with a natural-language assistant on top, not a pure chatbot that invents prices.
+### Implemented But Still Being Expanded
 
-The target behavior is:
+- family metadata in `pricing/server/service-families.js`
+- registry-driven discovery and explanation
+- quote follow-ups on active session quotes
+- workbook and RVTools migration sizing
+- OCI Calculator parity suite
 
-1. Understand user intent from text, images, spreadsheets, and calculator exports.
-2. Normalize that input into a structured internal request.
-3. Resolve OCI services, SKUs, prerequisites, and licensing variants.
-4. Calculate pricing deterministically from Oracle reference data.
-5. Explain the result in natural language without changing the numbers.
+### Still Pending
 
-## Core Principle
+- broader parity coverage for more OCI Calculator scenarios
+- more declarative family metadata to replace remaining manual branches
+- deeper quote-followup coverage across all complex families
+- more observability and concurrency hardening for production operation
 
-Use:
+## Design Principles
 
-- `GenAI` for interpretation
-- `registry + rules` for decisioning
-- `deterministic pricing engine` for calculation
+### Use GenAI For
 
-Do not use GenAI for:
+- intent routing
+- understanding vague human questions
+- discovery answers
+- explanation and summaries
+- clarification generation
+
+### Do Not Use GenAI For
 
 - final price calculation
 - SKU invention
-- tier selection without validation
-- free-form licensing assumptions
+- tier math
+- quantity math
+- licensing assumptions that are not backed by metadata or explicit user input
 
-## Source Of Truth
+### Core Runtime Contract
 
-The repo uses a layered source strategy:
+- `GenAI` interprets
+- `structured product context` constrains the interpretation
+- `quotePlan` formalizes the next action
+- deterministic engine calculates
+- assistant explains without altering totals
 
-1. OCI live catalog JSON
-   - `products.json`
-   - `https://apexapps.oracle.com/pls/apex/cetools/api/v1/products/`
-   - `metrics.json`
-   - `productpresets.json`
-   - Purpose: active SKU pricing and machine-readable metrics
+## Sources Of Truth
 
-2. Oracle localizable price list workbook
-   - `pricing/data/source-docs/current/ORACLE+PAAS+AND+IAAS+PUBLIC+CLOUD+LOCALIZABLE+PRICE+LIST.xls`
-   - Purpose: service names, metrics, prerequisites, structured reference pricing context
+The repo uses a layered source strategy.
 
-3. Oracle global price list PDFs
-   - `pricing/data/source-docs/current/ORACLE+PAAS+AND+IAAS+PUBLIC+CLOUD+GLOBAL+PRICE+LIST.pdf`
-   - `pricing/data/source-docs/current/ORACLE+PAAS+AND+IAAS+PUBLIC+CLOUD+GLOBAL+PRICE+LIST+SUPPLEMENT.pdf`
-   - Purpose: contractual notes, minimums, restrictions, prerequisite semantics
+### 1. OCI Live Catalog JSON
 
-4. OCI Calculator artifacts
-   - screenshots and exported JSON
-   - Purpose: validation and parity checks, not primary pricing logic
+Fetched at startup and cached to filesystem:
 
-## Runtime Layers
+- `https://www.oracle.com/a/ocom/docs/cloudestimator2/data/products.json`
+- `https://www.oracle.com/a/ocom/docs/cloudestimator2/data/metrics.json`
+- `https://www.oracle.com/a/ocom/docs/cloudestimator2/data/productpresets.json`
+- `https://apexapps.oracle.com/pls/apex/cetools/api/v1/products/`
 
-### 1. Intent Extraction
+Purpose:
+
+- active machine-readable pricing
+- metrics and units
+- additional product metadata
+
+Notes:
+
+- startup uses retries
+- catalog snapshots are persisted in `pricing/data/catalog-cache/current/`
+- health reporting surfaces catalog load state and retry attempts
+
+### 2. Extracted Price-List Artifacts
+
+These are the durable internal reference artifacts used by the runtime and coverage tooling:
+
+- `pricing/data/xls-extract/`
+- `pricing/data/price-list-extract/`
+- `pricing/data/rule-registry/`
+
+Purpose:
+
+- workbook service names
+- billing notes
+- prerequisite rules
+- family metadata
+- coverage measurement
+
+Important:
+
+- `pricing/data/source-docs/current/` is **not** the normal repo source of truth anymore
+- confidential source documents were removed from version control and history
+- the repo now depends on extracted artifacts and generated registries instead
+
+### 3. OCI Calculator Artifacts
+
+Used for validation, not as the primary calculator:
+
+- screenshots
+- manual golden cases
+- parity tests
+
+Purpose:
+
+- validate runtime behavior
+- compare line items, quantities, and totals
+
+## Runtime Architecture
+
+### 1. Catalog Bootstrap
 
 Files:
 
-- `server/intent-extractor.js`
-- `server/genai.js`
+- [index.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/index.js)
+- [catalog.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/catalog.js)
 
 Responsibilities:
 
-- classify the request
-- extract candidate service family
-- extract numeric sizing inputs
-- ask for clarification when needed
+- retrieve all four remote catalog feeds
+- retry failed retrieves up to the configured max attempts
+- cache snapshots locally
+- merge `products.json` and `products-apex.json` without duplicating equivalent SKUs
 
-### 2. Normalization
+### 2. Session Store
 
 Files:
 
-- `server/normalizer.js`
-- `server/service-families.js`
+- [session-store.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/session-store.js)
 
 Responsibilities:
 
-- normalize aliases and wording
-- convert loose prompts into canonical internal requests
-- infer service family
-- rescue deterministic quotes when inputs are already sufficient
-- apply source-aware normalization for imported assets such as RVTools workbooks, including VMware service-VM exclusion and `vCPU -> OCPU` conversion
+- persist sessions server-side
+- isolate sessions by `x-client-id`
+- persist:
+  - messages
+  - `sessionContext`
+  - `workbookContext`
+  - `events`
+- support versioned updates for safer concurrent session mutation
 
-### 3. Service Registry
+This is the current source of truth for chat state. The frontend is no longer intended to be the primary owner of context.
+
+### 3. Intent Extraction
 
 Files:
 
-- `server/service-registry.js`
-- `server/workbook-rules.js`
-- `server/catalog.js`
-- `data/rule-registry/service_family_rules.json`
-- `data/rule-registry/coverage_matrix.json`
-- `data/rule-registry/vm_shape_rules.json`
+- [intent-extractor.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/intent-extractor.js)
+- `genai` integration module
 
 Responsibilities:
 
-- unify catalog and workbook service metadata
-- track patterns, required inputs, and coverage level
-- act as the main registry for broad OCI service coverage
-- persist extracted rule artifacts so gaps can be measured outside the runtime
+- detect route:
+  - `general_answer`
+  - `product_discovery`
+  - `quote_request`
+  - `quote_followup`
+  - `workbook_followup`
+  - `clarify`
+- extract candidate family and inputs
+- emit a structured `quotePlan`
 
-### 3a. Extracted Rule Artifacts
+### 4. Normalization
 
 Files:
 
-- `tools/build_rule_registry.py`
-- `tools/build_vm_shape_rules.py`
-- `tools/build_coverage_artifacts.js`
+- [normalizer.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/normalizer.js)
+- [service-families.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/service-families.js)
 
 Responsibilities:
 
-- turn `XLS + PDF` extracts into reusable JSON artifacts
-- persist calculator-style VM shape mappings in `vm_shape_rules.json`
-- group workbook services into family-level artifacts in `service_family_rules.json`
-- publish a machine-readable `coverage_matrix.json` with:
-  - source counts
-  - runtime coverage levels
-  - vm-shape coverage
-  - lowest-coverage services
+- normalize aliases and user wording
+- infer domain and candidate families
+- refine the `quotePlan`
+- route discovery questions away from the pricing engine
+- rescue deterministic quotes only when inputs are explicit and safe
 
-This is the path to broad SKU coverage. It converts local source material into auditable data instead of repeating one-off fixes in prompt logic.
-
-### 4. Dependency Resolution
+### 5. Structured Product Context
 
 Files:
 
-- `server/dependency-resolver.js`
+- [context-packs.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/context-packs.js)
+- [vm-shapes.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/vm-shapes.js)
 
 Responsibilities:
 
-- resolve services into billable SKUs
-- handle prerequisites
-- distinguish product-level vs service-level quotes
-- enforce special rules like `BYOL` ambiguity handling
+- build constrained context for GenAI
+- expose:
+  - family metadata
+  - pricing dimensions
+  - required inputs
+  - licensing modes
+  - options and variants
+  - unsupported-compute guidance
+  - active session quote/workbook context summaries
 
-### 5. Deterministic Pricing
+This layer is the main mechanism for reducing manual `if/else` behavior in the assistant.
+
+### 6. Registry Layer
 
 Files:
 
-- `server/quotation-engine.js`
-- `server/catalog.js`
-- `server/consumption-model.js`
+- [service-registry.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/service-registry.js)
+- [service-families.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/service-families.js)
+- [vm_shape_rules.json](/Users/javierchan/Documents/GitHub/oci/pricing/data/rule-registry/vm_shape_rules.json)
+- [service_family_rules.json](/Users/javierchan/Documents/GitHub/oci/pricing/data/rule-registry/service_family_rules.json)
+- [coverage_matrix.json](/Users/javierchan/Documents/GitHub/oci/pricing/data/rule-registry/coverage_matrix.json)
+
+Responsibilities:
+
+- unify service metadata
+- expose coverage status
+- drive family-level discovery
+- drive VM shape coverage
+- support auditability outside the live runtime
+
+### 7. Dependency Resolution
+
+Files:
+
+- [dependency-resolver.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/dependency-resolver.js)
+
+Responsibilities:
+
+- resolve billable parts from normalized requests
+- rank candidate SKUs
+- enforce prerequisites
+- handle licensing-sensitive paths
+- keep metric compatibility strict
+
+### 8. Deterministic Pricing
+
+Files:
+
+- [quotation-engine.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/quotation-engine.js)
+- [consumption-model.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/consumption-model.js)
 
 Responsibilities:
 
 - compute quantities
-- apply pricing tiers
-- calculate monthly and annual totals
-- keep results auditable
+- interpret units such as:
+  - `OCPU Per Hour`
+  - `GPU Per Hour`
+  - requests
+  - storage capacity
+  - performance units
+- apply catalog rates and tiers
+- generate auditable monthly and annual totals
 
-### 6. Presentation
+### 9. Assistant Orchestration
 
 Files:
 
-- `server/assistant.js`
-- `app/index.html`
+- [assistant.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/assistant.js)
 
 Responsibilities:
 
-- produce human-readable responses
-- preserve deterministic totals
-- show clarifications before unsafe quotes
+- orchestrate routing
+- call GenAI for explanation/discovery
+- invoke deterministic engine only when safe
+- return clarification or safe unavailability when coverage is incomplete
+
+Important:
+
+- fallback behavior is intentionally conservative
+- if the service is not safely quotable, the assistant should say so rather than invent pricing
+
+### 10. Frontend
+
+Files:
+
+- [index.html](/Users/javierchan/Documents/GitHub/oci/pricing/app/index.html)
+
+Responsibilities:
+
+- render server-authoritative sessions
+- upload workbooks and images
+- render guided clarification flows
+- export/copy persisted quotes
+
+Important:
+
+- the frontend should only be a client of persisted backend state
+- it should not be treated as the source of truth for conversation context
 
 ## Coverage Model
 
-Coverage is tracked in `server/service-registry.js` with levels:
+Coverage levels:
 
 - `L0`: not usable
 - `L1`: searchable only
@@ -205,38 +328,49 @@ Coverage is tracked in `server/service-registry.js` with levels:
 - `L3`: quotable + explainable
 - `L4`: quotable + explainable + prerequisites/licensing modeled
 
-Coverage should be improved by:
+Current machine-readable source:
 
-1. adding service metadata to the registry
-2. improving consumption-pattern inference
-3. improving prerequisite modeling
-4. improving ambiguity handling for licensing and variants
-5. regenerating extracted artifacts from source documents and checking the coverage matrix
+- [coverage_matrix.json](/Users/javierchan/Documents/GitHub/oci/pricing/data/rule-registry/coverage_matrix.json)
 
-Not by adding one-off prompt hacks.
+Current snapshot at time of this doc update:
 
-## Professional Development Rule
+- workbook services: `1004`
+- VM shapes in registry: `23`
+- compute residual uncovered count: `0`
+- runtime coverage:
+  - `L4`: `525`
+  - `L3`: `31`
+  - `L2`: `9`
+  - `L1`: `439`
 
-When adding support for a new OCI service, prefer this order:
+These values should be refreshed from the generated artifact, not edited manually when coverage changes.
 
-1. add or improve registry metadata
-2. add or improve consumption pattern handling
-3. add or improve prerequisite and licensing logic
-4. add test cases
-5. only then add narrow domain-specific fallback logic if still necessary
+## Current Strengths
 
-If a fix only works for one prompt and does not improve the registry or model, it is usually the wrong abstraction.
+- server-authoritative chat/session model
+- deterministic pricing on major OCI families
+- workbook and RVTools sizing with persisted artifact context
+- explicit VM shape coverage with calculator-aligned registries
+- growing OCI Calculator parity suite
+- safer handling of unsupported residual compute
 
-## Practical Milestone Definition
+## Current Pending Work
 
-Use these milestone definitions when planning work:
+- widen parity coverage across more OCI Calculator scenarios
+- keep moving manual logic out of `assistant.js` and into registries/context packs
+- continue formalizing `quotePlan` as the contract between interpretation and pricing
+- broaden quote-followup coverage for more families and modifiers
+- improve observability and production telemetry
 
-- `Done`
-  - implemented in runtime
-  - validated with at least one real end-to-end test
-- `In Progress`
-  - code structure exists, but domain coverage is still partial
-- `Next`
-  - prioritized but not yet implemented
+## Development Rule
 
-This keeps the repo aligned around reachable, reviewable increments instead of vague “future support”.
+When adding support for a new OCI family, prefer this order:
+
+1. update family metadata or registries
+2. update context packs
+3. update normalization and `quotePlan` shaping
+4. update deterministic resolver/pricing only if required
+5. add parity/regression tests
+6. only then add narrow assistant-specific logic if there is still a real gap
+
+If a fix only helps one prompt and does not improve metadata, routing, or deterministic behavior, it is probably the wrong abstraction.
