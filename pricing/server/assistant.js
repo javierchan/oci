@@ -2,11 +2,11 @@
 
 const { quoteFromPrompt, parsePromptRequest } = require('./quotation-engine');
 const { searchProducts, searchPresets, searchServiceRegistry, serviceHasRequiredInputs } = require('./catalog');
-const { getServiceFamily, getMissingRequiredInputs, buildCanonicalRequest } = require('./service-families');
+const { getServiceFamily, getMissingRequiredInputs, buildCanonicalRequest, getClarificationMessage, getPreQuoteClarification } = require('./service-families');
 const { inferConsumptionPattern, explainConsumptionPattern } = require('./consumption-model');
 const { runChat, extractChatText } = require('./genai');
 const { analyzeIntent, analyzeImageIntent, buildSessionContextBlock } = require('./intent-extractor');
-const { buildAssistantContextPack, stringifyContextPack, summarizeContextPack } = require('./context-packs');
+const { buildAssistantContextPack, buildCatalogListingReply, buildUncoveredComputeReply, canSafelyQuoteUncoveredComputeVariant, findUncoveredComputeVariant, stringifyContextPack, summarizeContextPack } = require('./context-packs');
 
 const RESPONSE_PROMPT = [
   'You are an OCI pricing specialist speaking to a customer.',
@@ -45,16 +45,6 @@ function summarizeMatches(index, text) {
   return { products, presets };
 }
 
-function isCatalogListingRequest(text) {
-  const source = String(text || '').trim().toLowerCase();
-  if (!source) return false;
-  return /\blist all skus?\b/.test(source) ||
-    /\bwhat\b.*\boptions\b.*\bcatalog\b/.test(source) ||
-    /\bavailable\b.*\bcatalog\b/.test(source) ||
-    /\bshow\b.*\bskus?\b/.test(source) ||
-    /\blist\b.*\b(hourly prices?|prices?)\b/.test(source);
-}
-
 function buildServiceUnavailableMessage(userText) {
   const source = String(userText || '').trim();
   return [
@@ -74,74 +64,12 @@ function buildRegistryQuery(text, intent = {}) {
     .trim();
 }
 
-function firstUsdTier(product) {
-  const tiers = product?.tiersByCurrency?.USD || [];
-  if (!tiers.length) return null;
-  return tiers.find((tier) => Number.isFinite(Number(tier.value))) || null;
-}
-
-function formatProductCatalogLine(product) {
-  const tier = firstUsdTier(product);
-  const metric = product.metricDisplayName || product.metricUnitDisplayName || '-';
-  const unit = tier ? formatMoney(tier.value, 'USD') : 'USD -';
-  return `- \`${product.partNumber}\` | ${product.displayName} | ${metric} | ${unit}`;
-}
-
-function findCatalogProducts(index, text, intent) {
-  const source = String(text || '');
-  const family = String(intent?.serviceFamily || '');
-  if (isFastConnectText(source) || family === 'network_fastconnect') {
-    return index.products
-      .filter((product) => /fastconnect/i.test(`${product.displayName} ${product.serviceCategoryDisplayName}`))
-      .filter((product) => ['HOUR', 'HOUR_UTILIZED'].includes(product.priceType))
-      .sort((a, b) => a.displayName.localeCompare(b.displayName));
-  }
-
-  const registryMatches = searchServiceRegistry(index.serviceRegistry, source, 5);
-  const topService = registryMatches[0];
-  if (topService?.partNumbers?.length) {
-    const products = topService.partNumbers
-      .flatMap((partNumber) => index.productsByPartNumber.get(partNumber) || [])
-      .filter(Boolean);
-    if (products.length) return products;
-  }
-
-  return searchProducts(index, source, 20);
-}
-
-function buildCatalogListingReply(index, text, intent) {
-  const products = findCatalogProducts(index, text, intent);
-  const unique = [];
-  const seen = new Set();
-  for (const product of products) {
-    if (!product?.partNumber || seen.has(product.partNumber)) continue;
-    seen.add(product.partNumber);
-    unique.push(product);
-  }
-  if (!unique.length) return null;
-  const lines = unique.slice(0, 20).map(formatProductCatalogLine);
-  return [
-    'I checked the OCI pricing catalog already loaded by the agent.',
-    'This listing is based on the current global catalog data packaged in the app, so no region input is required for this catalog lookup.',
-    '### Catalog matches',
-    ...lines,
-  ].join('\n\n');
-}
-
 function isGreeting(text) {
   return /^(hola|hello|hi|hey|buenas|good morning|good afternoon|good evening)\b[!. ]*$/i.test(String(text || '').trim());
 }
 
 function isFastConnectText(text) {
   return /\bfast\s*connect\b|\bfastconnect\b/i.test(String(text || ''));
-}
-
-function isDedicatedRerankTransactionPrompt(text) {
-  const source = String(text || '');
-  if (!/\brerank\b/i.test(source)) return false;
-  if (!/\btransactions?\b/i.test(source)) return false;
-  if (/\bhours?\b|\bcluster-hours?\b/i.test(source)) return false;
-  return true;
 }
 
 function conversationMentionsFastConnect(conversation) {
@@ -260,8 +188,10 @@ function isSessionQuoteFollowUp(text) {
   if (!source || source.length > 220) return false;
   if (/^(y|and|ahora|now)\b/i.test(source)) return true;
   if (/\b(?:with|without|con|sin)\b/i.test(source)) return true;
-  if (/\b(?:instances?|instancias?|vpus?|ocpus?|ecpus?|gb|tb|mbps|gbps|users?)\b/i.test(source)) return true;
+  if (/\b(?:instances?|instancias?|vpus?|ocpus?|ecpus?|gb|tb|mbps|gbps|users?|firewalls?|endpoints?|databases?|workspaces?|managed resources?|jobs?|queries?|api calls?|emails?|messages?|delivery operations?|transactions?)\b/i.test(source)) return true;
   if (/\b(?:byol|license included|licencia incluida|on[- ]?demand|reserved|amd|intel|ampere|arm)\b/i.test(source)) return true;
+  if (/\b(?:usd|mxn|eur|brl|gbp|cad|jpy)\b/i.test(source)) return true;
+  if (/\b(?:capacity reservation|reservation utilization|preemptible|burstable|baseline)\b/i.test(source)) return true;
   if (isShapeSelectionFollowUp(source)) return true;
   return false;
 }
@@ -300,20 +230,6 @@ function replaceCurrencyInPrompt(basePrompt, currencyCode) {
   return `${source} ${nextCode}`.trim();
 }
 
-function replaceCardinalityInPrompt(basePrompt, followUp, nounPatterns = []) {
-  const source = String(basePrompt || '').trim();
-  const next = String(followUp || '').trim();
-  if (!source || !next) return source;
-  const numberMatch = next.match(/(\d+(?:\.\d+)?)/);
-  if (!numberMatch) return source;
-  const amount = numberMatch[1];
-  for (const nounPattern of nounPatterns) {
-    const regex = new RegExp(`\\b\\d+(?:\\.\\d+)?\\s*${nounPattern}\\b`, 'i');
-    if (regex.test(source)) return source.replace(regex, `${amount} ${nounPattern.replace(/\\\b|\\s\*/g, ' ').replace(/[()?:\\]/g, '').trim()}`.replace(/\s+/g, ' '));
-  }
-  return source;
-}
-
 function applySessionFollowUpDirective(basePrompt, followUp) {
   const source = String(followUp || '').trim();
   let nextPrompt = String(basePrompt || '').trim();
@@ -344,6 +260,51 @@ function applySessionFollowUpDirective(basePrompt, followUp) {
   }
   if (/\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i.test(source)) {
     nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i, source.match(/\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i)?.[0] || source);
+  }
+  if (/\b\d+(?:\.\d+)?\s*firewalls?\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*firewalls?\b/i, source.match(/\b\d+(?:\.\d+)?\s*firewalls?\b/i)?.[0] || source);
+  }
+  if (/\b\d+(?:\.\d+)?\s*endpoints?\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*endpoints?\b/i, source.match(/\b\d+(?:\.\d+)?\s*endpoints?\b/i)?.[0] || source);
+  }
+  if (/\b\d+(?:\.\d+)?\s*target\s+databases?\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*target\s+databases?\b/i, source.match(/\b\d+(?:\.\d+)?\s*target\s+databases?\b/i)?.[0] || source);
+  } else if (/\b\d+(?:\.\d+)?\s*databases?\b/i.test(source)) {
+    if (/\b\d+(?:\.\d+)?\s*target\s+databases?\b/i.test(nextPrompt)) {
+      const amount = source.match(/\b\d+(?:\.\d+)?\b/i)?.[0];
+      if (amount) nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*target\s+databases?\b/i, `${amount} target databases`);
+    } else {
+      nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*databases?\b/i, source.match(/\b\d+(?:\.\d+)?\s*databases?\b/i)?.[0] || source);
+    }
+  }
+  if (/\b\d+(?:\.\d+)?\s*workspaces?\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*workspaces?\b/i, source.match(/\b\d+(?:\.\d+)?\s*workspaces?\b/i)?.[0] || source);
+  }
+  if (/\b\d+(?:\.\d+)?\s*managed resources?\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*managed resources?\b/i, source.match(/\b\d+(?:\.\d+)?\s*managed resources?\b/i)?.[0] || source);
+  }
+  if (/\b\d+(?:\.\d+)?\s*jobs?\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*jobs?\b/i, source.match(/\b\d+(?:\.\d+)?\s*jobs?\b/i)?.[0] || source);
+  }
+  if (/\b\d[\d,]*(?:\.\d+)?\s*queries?\b(?:\s+per\s+month)?/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d[\d,]*(?:\.\d+)?\s*queries?\b(?:\s+per\s+month)?/i, source.match(/\b\d[\d,]*(?:\.\d+)?\s*queries?\b(?:\s+per\s+month)?/i)?.[0] || source);
+  }
+  if (/\b\d[\d,]*(?:\.\d+)?\s*api calls?\b(?:\s+per\s+month)?/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d[\d,]*(?:\.\d+)?\s*api calls?\b(?:\s+per\s+month)?/i, source.match(/\b\d[\d,]*(?:\.\d+)?\s*api calls?\b(?:\s+per\s+month)?/i)?.[0] || source);
+  }
+  if (/\b\d[\d,]*(?:\.\d+)?\s*emails?\b(?:\s+per\s+month)?/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d[\d,]*(?:\.\d+)?\s*emails?\b(?:\s+per\s+month)?/i, source.match(/\b\d[\d,]*(?:\.\d+)?\s*emails?\b(?:\s+per\s+month)?/i)?.[0] || source);
+  }
+  if (/\b\d[\d,]*(?:\.\d+)?\s*sms messages?\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d[\d,]*(?:\.\d+)?\s*sms messages?\b/i, source.match(/\b\d[\d,]*(?:\.\d+)?\s*sms messages?\b/i)?.[0] || source);
+  } else if (/\b\d[\d,]*(?:\.\d+)?\s*messages?\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d[\d,]*(?:\.\d+)?\s*messages?\b/i, source.match(/\b\d[\d,]*(?:\.\d+)?\s*messages?\b/i)?.[0] || source);
+  }
+  if (/\b\d[\d,]*(?:\.\d+)?\s*delivery operations?\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d[\d,]*(?:\.\d+)?\s*delivery operations?\b/i, source.match(/\b\d[\d,]*(?:\.\d+)?\s*delivery operations?\b/i)?.[0] || source);
+  }
+  if (/\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i.test(source)) {
+    nextPrompt = nextPrompt.replace(/\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i, source.match(/\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i)?.[0] || source);
   }
   if (/\b\d+(?:\.\d+)?\s*vpu'?s?\b/i.test(source)) {
     nextPrompt = nextPrompt.replace(/\b\d+(?:\.\d+)?\s*vpu'?s?\b/i, source.match(/\b\d+(?:\.\d+)?\s*vpu'?s?\b/i)?.[0] || source);
@@ -387,6 +348,16 @@ function mergeSessionQuoteFollowUp(sessionContext, userText) {
     .trim();
   if (!normalized) return lastQuoteSource;
   return applySessionFollowUpDirective(lastQuoteSource, normalized);
+}
+
+function shouldForceSessionQuoteFollowUp(sessionContext, userText) {
+  const source = String(userText || '').trim();
+  if (!String(sessionContext?.lastQuote?.source || '').trim()) return false;
+  if (!isSessionQuoteFollowUp(source)) return false;
+  if (/\b(?:how|what|why|which|que|qué|como|cómo|cual|cuál|opciones?|difference|diff|billing|priced|billed|cobra)\b/i.test(source)) {
+    return false;
+  }
+  return true;
 }
 
 function isFlexComparisonRequest(text) {
@@ -1477,17 +1448,6 @@ function classifyConsumptionGroup(pattern, line) {
   };
 }
 
-function buildComputeVmClarificationQuestion(intent = {}) {
-  const vendor = String(intent?.extractedInputs?.processorVendor || '').toLowerCase();
-  if (vendor === 'amd') {
-    return 'Which OCI AMD VM shape should I use for that machine? Common options are `VM.Standard.E4.Flex`, `VM.Standard.E5.Flex`, or `VM.Standard.E6.Flex`. If the workload needs local NVMe, `VM.DenseIO.E4.Flex` or `VM.DenseIO.E5.Flex` may fit better. Once you pick the shape, I can combine it with the attached Block Volume sizing.';
-  }
-  if (vendor === 'arm' || vendor === 'ampere') {
-    return 'Which OCI Arm VM shape should I use for that machine? Common options are `VM.Standard.A1.Flex`, `VM.Standard.A2.Flex`, or `VM.Standard.A4.Flex`. Once you pick the shape, I can combine it with the attached Block Volume sizing.';
-  }
-  return 'Which OCI VM shape should I use for that machine? For Intel, common options are `VM.Standard3.Flex`, `VM.Optimized3.Flex`, or the fixed-shape family `VM.Standard2.x`. Once you pick the shape, I can combine it with the attached Block Volume sizing.';
-}
-
 function detectGenericComputeShapeClarification(text) {
   const source = String(text || '');
   const parsed = parsePromptRequest(source);
@@ -1503,7 +1463,10 @@ function detectGenericComputeShapeClarification(text) {
       capacityGb: parsed.capacityGb,
       processorVendor: parsed.processorVendor,
     },
-    question: buildComputeVmClarificationQuestion({ extractedInputs: { processorVendor: parsed.processorVendor } }),
+    question: getClarificationMessage({
+      serviceFamily: 'compute_vm_generic',
+      extractedInputs: { processorVendor: parsed.processorVendor },
+    }),
   };
 }
 
@@ -1843,6 +1806,22 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     });
   }
   const enrichedIntent = enrichExtractedInputsForFamily(intent);
+  if (
+    shouldForceSessionQuoteFollowUp(sessionContext, userText) &&
+    enrichedIntent.route !== 'quote_followup'
+  ) {
+    enrichedIntent.route = 'quote_followup';
+    enrichedIntent.intent = 'quote';
+    enrichedIntent.shouldQuote = true;
+    enrichedIntent.needsClarification = false;
+    enrichedIntent.clarificationQuestion = '';
+    enrichedIntent.quotePlan = {
+      ...((enrichedIntent.quotePlan && typeof enrichedIntent.quotePlan === 'object' && enrichedIntent.quotePlan) || {}),
+      action: 'modify_quote',
+      targetType: 'quote',
+      useDeterministicEngine: true,
+    };
+  }
   const mergedContextualFollowUp = contextualFollowUp && effectiveUserText !== userText;
   if (mergedContextualFollowUp) {
     enrichedIntent.reformulatedRequest = effectiveUserText;
@@ -1918,8 +1897,18 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
   );
   const registryMatches = searchServiceRegistry(index.serviceRegistry, registryQuery, 5);
   const topService = registryMatches.find((item) => item.deterministic && serviceHasRequiredInputs(item, enrichedIntent.extractedInputs)) || registryMatches[0];
-  if (isCatalogListingRequest(userText)) {
-    const catalogReply = buildCatalogListingReply(index, registryQuery || userText, enrichedIntent);
+  const catalogReply = buildCatalogListingReply(index, registryQuery || userText, enrichedIntent);
+  const isDiscoveryIntent = (
+    enrichedIntent.route === 'product_discovery' ||
+    String(enrichedIntent.intent || '').toLowerCase() === 'discover'
+  );
+  if (
+    isDiscoveryIntent &&
+    (
+      enrichedIntent.quotePlan?.targetType === 'catalog' ||
+      catalogReply
+    )
+  ) {
     if (catalogReply) {
       return respond({
         ok: true,
@@ -1953,6 +1942,30 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
   const interpretedFamilyMeta = getServiceFamily(enrichedIntent.serviceFamily);
   const routeMergedFollowUp = mergeSessionQuoteFollowUpByRoute(sessionContext, enrichedIntent, userText);
   const effectiveQuoteText = String(routeMergedFollowUp || effectiveUserText || userText || '').trim() || effectiveUserText;
+  const unsupportedComputeVariant = findUncoveredComputeVariant(effectiveQuoteText || userText);
+  if (enrichedIntent.shouldQuote && unsupportedComputeVariant && !canSafelyQuoteUncoveredComputeVariant(unsupportedComputeVariant, effectiveQuoteText || userText)) {
+    return respond({
+      ok: true,
+      mode: 'answer',
+      message: buildUncoveredComputeReply(effectiveQuoteText || userText),
+      contextPackSummary: summarizeContextPack(buildAssistantContextPack(index, {
+        userText: effectiveQuoteText || userText,
+        intent: {
+          ...enrichedIntent,
+          route: 'product_discovery',
+          shouldQuote: false,
+        },
+        sessionContext,
+      })),
+      intent: {
+        ...enrichedIntent,
+        route: 'product_discovery',
+        shouldQuote: false,
+        needsClarification: false,
+        clarificationQuestion: '',
+      },
+    });
+  }
   if (!compositeLike && topService && topService.deterministic && serviceHasRequiredInputs(topService, enrichedIntent.extractedInputs) && (!enrichedIntent.serviceFamily || !interpretedFamilyMeta)) {
     enrichedIntent.serviceName = topService.name;
     enrichedIntent.normalizedRequest = String(effectiveQuoteText || enrichedIntent.normalizedRequest || '').trim();
@@ -1983,21 +1996,22 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
       quoteFromPrompt(index, reformulatedRequest),
     )
     : null;
-  if (isDedicatedRerankTransactionPrompt(reformulatedRequest || effectiveUserText || userText)) {
-    const rerankFamily = getServiceFamily('ai_rerank_dedicated');
-    if (rerankFamily?.clarificationQuestion) {
-      return {
-        ok: true,
-        mode: 'clarification',
-        message: rerankFamily.clarificationQuestion,
-        intent: {
-          ...enrichedIntent,
-          serviceFamily: 'ai_rerank_dedicated',
-          needsClarification: true,
-          clarificationQuestion: rerankFamily.clarificationQuestion,
-        },
-      };
-    }
+  const preQuoteClarification = getPreQuoteClarification({
+    ...enrichedIntent,
+    extractedInputs: enrichedIntent.extractedInputs || {},
+    reformulatedRequest,
+  }, effectiveUserText || userText);
+  if (preQuoteClarification) {
+    return {
+      ok: true,
+      mode: 'clarification',
+      message: preQuoteClarification,
+      intent: {
+        ...enrichedIntent,
+        needsClarification: true,
+        clarificationQuestion: preQuoteClarification,
+      },
+    };
   }
   const missingInputs = getMissingRequiredInputs(enrichedIntent);
   const canQuoteDespiteMissingInputs = !!(familyMeta && missingInputs.length && preflightQuote?.ok);
@@ -2019,9 +2033,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     });
   }
   if (familyMeta && missingInputs.length && familyMeta.clarificationQuestion && !canQuoteDespiteMissingInputs) {
-    const clarificationMessage = familyMeta.id === 'compute_vm_generic'
-      ? buildComputeVmClarificationQuestion(intent)
-      : familyMeta.clarificationQuestion;
+    const clarificationMessage = getClarificationMessage(enrichedIntent, effectiveUserText || userText) || familyMeta.clarificationQuestion;
     return respond({
       ok: true,
       mode: 'clarification',
@@ -2075,15 +2087,16 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     });
     }
 
-    if (familyMeta?.id === 'ai_memory_ingestion') {
+    if (typeof familyMeta?.quoteUnavailableMessage === 'function') {
       return respond({
         ok: true,
         mode: 'quote_unresolved',
-        message: [
-          'The current OCI catalog loaded by this agent does not expose a direct quotable SKU for `OCI Generative AI - Memory Ingestion`.',
-          'I can see related catalog entries such as `B110463` (`OCI Generative AI Agents - Data Ingestion`) and `B112384` (`OCI Generative AI - Memory Retention`), but I should not map your request to either one automatically.',
-          'If you want, I can quote one of those related services explicitly or continue once Oracle exposes a direct Memory Ingestion SKU in the live catalog.',
-        ].join('\n\n'),
+        message: familyMeta.quoteUnavailableMessage({
+          userText,
+          reformulatedRequest,
+          quote,
+          intent: enrichedIntent,
+        }),
         quote,
         intent: enrichedIntent,
       });

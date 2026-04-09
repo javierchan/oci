@@ -100,6 +100,40 @@ function buildComputeVariantAudit() {
   const covered = [];
   const uncovered = [];
 
+  function hasMetric(record, pattern) {
+    return (record.metrics || []).some((metric) => pattern.test(String(metric || '')));
+  }
+
+  function isExplicitDeterministicCoverage(record) {
+    const name = String(record.name || '');
+    if (hasMetric(record, /GPU Per Hour/i)) {
+      return (
+        /\bCompute - GPU - (A10|A100 - v2|B200|E3|GB200|H100|H200|L40S|MI300X)\b/i.test(name) ||
+        /\bCompute Cloud@Customer - Compute - GPU\.L40S(?: - Resource Commit)?\b/i.test(name) ||
+        /\bCompute - GPU Standard - V2(?: - Metered)?\b/i.test(name) ||
+        /\bCompute - Bare Metal GPU Standard - X7(?: - Metered)?\b/i.test(name) ||
+        /\bCompute - Virtual Machine GPU Standard - X7\b/i.test(name)
+      );
+    }
+    if (hasMetric(record, /OCPU Per Hour/i)) {
+      return (
+        /\bBig Data Service - Compute - HPC\b/i.test(name) ||
+        /\bCompute - HPC - (X7|E5)\b/i.test(name) ||
+        /\bCompute - Virtual Machine Standard - E2 Micro - Free\b/i.test(name) ||
+        /\bCompute - Windows OS(?: - Metered)?\b/i.test(name) ||
+        /\bCompute - Microsoft SQL (Enterprise|Standard)\b/i.test(name) ||
+        /\bCompute - Virtual Machine Standard - (X5|B1)\b/i.test(name) ||
+        /\bCompute - Virtual Machine Standard - (X5|X7) - Metered\b/i.test(name) ||
+        /\bCompute - Standard - E2\b/i.test(name) ||
+        /\bCompute - Virtual Machine Dense I\/O - X7\b/i.test(name) ||
+        /\bCompute - Virtual Machine Dense I\/O - (X5|X7) - Metered\b/i.test(name) ||
+        /\bCompute - Bare Metal Standard - X7 - Metered\b/i.test(name) ||
+        /\bCompute - Bare Metal Dense I\/O - X7 - Metered\b/i.test(name)
+      );
+    }
+    return false;
+  }
+
   for (const service of candidateServices) {
     const parts = Array.isArray(service.partNumbers) ? service.partNumbers : [];
     const metrics = Array.isArray(service.metrics) ? service.metrics : [];
@@ -108,17 +142,28 @@ function buildComputeVariantAudit() {
       partNumbers: parts,
       metrics,
       matchedVmRegistry: parts.some((partNumber) => coveredVmParts.has(partNumber)),
+      matchedDeterministicCoverage: false,
     };
-    if (record.matchedVmRegistry) covered.push(record);
+    record.matchedDeterministicCoverage = !record.matchedVmRegistry && isExplicitDeterministicCoverage(record);
+    if (record.matchedVmRegistry || record.matchedDeterministicCoverage) covered.push(record);
     else uncovered.push(record);
   }
+
+  const normalizeRecord = (record) => ({
+    name: record.name,
+    partNumbers: record.partNumbers,
+    metrics: record.metrics,
+    matchedVmRegistry: Boolean(record.matchedVmRegistry),
+    matchedDeterministicCoverage: Boolean(record.matchedDeterministicCoverage),
+    coverageMode: record.matchedVmRegistry ? 'vm_registry' : record.matchedDeterministicCoverage ? 'deterministic_metric' : 'uncovered',
+  });
 
   return {
     candidateServiceCount: candidateServices.length,
     coveredServiceCount: covered.length,
     uncoveredServiceCount: uncovered.length,
-    coveredServices: covered,
-    uncoveredServices: uncovered,
+    coveredServices: covered.map(normalizeRecord),
+    uncoveredServices: uncovered.map(normalizeRecord),
   };
 }
 

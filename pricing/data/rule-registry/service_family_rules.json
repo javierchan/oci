@@ -14,14 +14,15 @@
         "ecpu-hour",
         "generic-hourly",
         "generic-monthly",
+        "gpu-hour",
         "load-balancer-hour",
         "memory-gb-hour",
         "ocpu-hour",
         "unknown"
       ],
       "coverageLevels": {
-        "L4": 206,
-        "L1": 64,
+        "L4": 189,
+        "L1": 81,
         "L3": 2,
         "L2": 1
       },

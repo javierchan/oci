@@ -26,6 +26,7 @@ function inferConsumptionPattern(metricName, serviceName) {
   if (metric.includes('endpoints per month')) return 'count-each';
   if (metric.includes('ocpu per hour')) return 'ocpu-hour';
   if (metric.includes('ecpu per hour')) return 'ecpu-hour';
+  if (metric.includes('gpu per hour')) return 'gpu-hour';
   if (metric.includes('gb ram per hour') || (metric.includes('memory') && metric.includes('hour'))) return 'memory-gb-hour';
   if (metric.includes('user per month') || metric.includes('named user')) return 'users-per-month';
   if (
@@ -96,6 +97,8 @@ function explainConsumptionPattern(pattern, product) {
       return `${name} is billed by OCPU-hour. The requested OCPU count is multiplied by the hours in the month.`;
     case 'ecpu-hour':
       return `${name} is billed by ECPU-hour. The requested ECPU count is multiplied by the hours in the month.`;
+    case 'gpu-hour':
+      return `${name} is billed by GPU-hour. The requested GPU count is multiplied by the hours in the month.`;
     case 'memory-gb-hour':
       return `${name} is billed by memory GB-hour. The requested memory quantity is multiplied by the hours in the month.`;
     case 'users-per-month':
@@ -164,6 +167,8 @@ function inferQuantityForPattern(pattern, product, request) {
       return parseLabeledNumber(source, [/(\d[\d,]*(?:\.\d+)?)\s*ocpus?\b/i]);
     case 'ecpu-hour':
       return parseLabeledNumber(source, [/(\d[\d,]*(?:\.\d+)?)\s*ecpus?\b/i]);
+    case 'gpu-hour':
+      return parseLabeledNumber(source, [/(\d[\d,]*(?:\.\d+)?)\s*gpus?\b/i]);
     case 'memory-gb-hour':
       return parseMemoryGb(source);
     case 'users-per-month':

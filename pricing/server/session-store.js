@@ -158,8 +158,10 @@ function appendEvent(clientId, sessionId, event) {
   const session = client.sessions.find((item) => item.id === sessionId);
   if (!session) return null;
   if (!Array.isArray(session.events)) session.events = [];
+  const now = Date.now();
   session.events.push({
-    ts: Date.now(),
+    id: String(event?.id || `evt_${now}_${Math.random().toString(36).slice(2, 8)}`),
+    ts: now,
     type: String(event?.type || 'event'),
     data: clone(event?.data || {}),
   });

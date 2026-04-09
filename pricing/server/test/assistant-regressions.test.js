@@ -64,6 +64,7 @@ function product({
   metricId,
   pricetype = 'HOUR',
   usdPrices = [payg(1)],
+  currencyCodeLocalizations,
 }) {
   return {
     partNumber,
@@ -71,13 +72,19 @@ function product({
     serviceCategoryDisplayName,
     metricId,
     pricetype,
-    currencyCodeLocalizations: [
-      {
-        currencyCode: 'USD',
-        prices: usdPrices,
-      },
-    ],
+    currencyCodeLocalizations: Array.isArray(currencyCodeLocalizations) && currencyCodeLocalizations.length
+      ? currencyCodeLocalizations
+      : [
+        {
+          currencyCode: 'USD',
+          prices: usdPrices,
+        },
+      ],
   };
+}
+
+function assertWithin(actual, expected, tolerance = 0.05) {
+  assert.ok(Math.abs(Number(actual) - Number(expected)) <= tolerance, `${actual} was not within ${tolerance} of ${expected}`);
 }
 
 function buildIndex() {
@@ -87,6 +94,7 @@ function buildIndex() {
         metric('m-port-hour', 'Port Hour'),
         metric('m-msg-hour', '5K Messages Per Hour'),
         metric('m-ocpu-hour', 'OCPU Per Hour'),
+        metric('m-gpu-hour', 'GPU Per Hour'),
         metric('m-gb-hour', 'Gigabyte RAM Per Hour'),
         metric('m-capacity-month', 'Gigabyte Storage Capacity Per Month'),
         metric('m-performance-month', 'Performance Units Per Gigabyte Per Month'),
@@ -115,6 +123,244 @@ function buildIndex() {
     },
     'products.json': {
       items: [
+        product({
+          partNumber: 'B95909',
+          displayName: 'OCI - Compute - GPU - A10',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(1.8)],
+        }),
+        product({
+          partNumber: 'B95910',
+          displayName: 'OCI - Compute - GPU - A100 - v2',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(2.4)],
+        }),
+        product({
+          partNumber: 'B95911',
+          displayName: 'OCI - Compute - GPU - E3',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(1.2)],
+        }),
+        product({
+          partNumber: 'B95912',
+          displayName: 'OCI - Compute - GPU - B200',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(6.2)],
+        }),
+        product({
+          partNumber: 'B95913',
+          displayName: 'OCI - Compute - GPU - GB200',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(7.1)],
+        }),
+        product({
+          partNumber: 'B90398',
+          displayName: 'OCI - Compute - HPC - X7',
+          serviceCategoryDisplayName: 'Compute - HPC',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.3)],
+        }),
+        product({
+          partNumber: 'B91130',
+          displayName: 'Big Data Service - Compute - HPC',
+          serviceCategoryDisplayName: 'Compute - HPC',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.33)],
+        }),
+        product({
+          partNumber: 'B96531',
+          displayName: 'OCI - Compute - HPC - E5',
+          serviceCategoryDisplayName: 'Compute - HPC',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.27)],
+        }),
+        product({
+          partNumber: 'B91120',
+          displayName: 'Compute - Virtual Machine Standard - B1',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.02)],
+        }),
+        product({
+          partNumber: 'B90425',
+          displayName: 'Compute - Standard - E2',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.031)],
+        }),
+        product({
+          partNumber: 'B88318',
+          displayName: 'OCI Compute - Windows OS',
+          serviceCategoryDisplayName: 'Compute - Guest OS',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.046)],
+        }),
+        product({
+          partNumber: 'B87674',
+          displayName: 'OCI Compute - Windows OS - Metered',
+          serviceCategoryDisplayName: 'Compute - Guest OS',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.052)],
+        }),
+        product({
+          partNumber: 'B91372',
+          displayName: 'OCI Compute - Microsoft SQL Enterprise',
+          serviceCategoryDisplayName: 'Compute - Marketplace OS',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.31)],
+        }),
+        product({
+          partNumber: 'B91373',
+          displayName: 'OCI Compute - Microsoft SQL Standard',
+          serviceCategoryDisplayName: 'Compute - Marketplace OS',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.14)],
+        }),
+        product({
+          partNumber: 'B91444',
+          displayName: 'Compute - Virtual Machine Standard - E2 Micro - Free',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0)],
+        }),
+        product({
+          partNumber: 'B110965',
+          displayName: 'Oracle Compute Cloud@Customer - Compute - GPU.L40S',
+          serviceCategoryDisplayName: 'Compute Cloud@Customer',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(3.5)],
+        }),
+        product({
+          partNumber: 'B111454',
+          displayName: 'Oracle Compute Cloud@Customer - Compute - GPU.L40S - Resource Commit',
+          serviceCategoryDisplayName: 'Compute Cloud@Customer',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(0.6)],
+        }),
+        product({
+          partNumber: 'B88511',
+          displayName: 'Compute - Virtual Machine Standard - X5',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.045)],
+        }),
+        product({
+          partNumber: 'B89133',
+          displayName: 'Compute - Virtual Machine Standard - X5 - Metered',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.05)],
+        }),
+        product({
+          partNumber: 'B89135',
+          displayName: 'Compute - Virtual Machine Standard - X7 - Metered',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.055)],
+        }),
+        product({
+          partNumber: 'B88515',
+          displayName: 'Compute - Virtual Machine Dense I/O - X7',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.08)],
+        }),
+        product({
+          partNumber: 'B89134',
+          displayName: 'Compute - Virtual Machine Dense I/O - X5 - Metered',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.07)],
+        }),
+        product({
+          partNumber: 'B89136',
+          displayName: 'Compute - Virtual Machine Dense I/O - X7 - Metered',
+          serviceCategoryDisplayName: 'Compute - Virtual Machine',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.065)],
+        }),
+        product({
+          partNumber: 'B89141',
+          displayName: 'Compute - Bare Metal GPU Standard - X7 - Metered',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(3.2)],
+        }),
+        product({
+          partNumber: 'B89137',
+          displayName: 'Compute - Bare Metal Standard - X7 - Metered',
+          serviceCategoryDisplayName: 'Compute - Bare Metal',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.075)],
+        }),
+        product({
+          partNumber: 'B89139',
+          displayName: 'Compute - Bare Metal Dense I/O - X7 - Metered',
+          serviceCategoryDisplayName: 'Compute - Bare Metal',
+          metricId: 'm-ocpu-hour',
+          usdPrices: [payg(0.086)],
+        }),
+        product({
+          partNumber: 'B88517',
+          displayName: 'Compute - Bare Metal GPU Standard - X7',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(2.9)],
+        }),
+        product({
+          partNumber: 'B88518',
+          displayName: 'Compute - Virtual Machine GPU Standard - X7',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(2.7)],
+        }),
+        product({
+          partNumber: 'B89734',
+          displayName: 'Compute - GPU Standard - V2',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(2.2)],
+        }),
+        product({
+          partNumber: 'B89735',
+          displayName: 'Compute - GPU Standard - V2 - Metered',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(2.4)],
+        }),
+        product({
+          partNumber: 'B98415',
+          displayName: 'OCI - Compute - GPU - H100',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(4.8)],
+        }),
+        product({
+          partNumber: 'B98416',
+          displayName: 'OCI - Compute - GPU - L40S',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(3.6)],
+        }),
+        product({
+          partNumber: 'B98417',
+          displayName: 'OCI - Compute - GPU - H200',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(5.4)],
+        }),
+        product({
+          partNumber: 'B98418',
+          displayName: 'OCI - Compute - GPU - MI300X',
+          serviceCategoryDisplayName: 'Compute - GPU',
+          metricId: 'm-gpu-hour',
+          usdPrices: [payg(4.2)],
+        }),
         product({
           partNumber: 'B88325',
           displayName: 'OCI - FastConnect 1 Gbps',
@@ -190,6 +436,14 @@ function buildIndex() {
           metricId: 'm-capacity-month',
           pricetype: 'MONTH',
           usdPrices: [payg(0.0255)],
+        }),
+        product({
+          partNumber: 'B92598',
+          displayName: 'OCI Data Integration - Workspace Workspace',
+          serviceCategoryDisplayName: 'Data Integration',
+          metricId: 'm-port-hour',
+          pricetype: 'HOUR',
+          usdPrices: [payg(0.16)],
         }),
         product({
           partNumber: 'B92599',
@@ -359,6 +613,14 @@ function buildIndex() {
           usdPrices: [payg(2)],
         }),
         product({
+          partNumber: 'B93004',
+          displayName: 'OCI Notifications - SMS Outbound - Country Zone 1',
+          serviceCategoryDisplayName: 'Notifications - SMS Delivery',
+          metricId: 'm-sms-each',
+          pricetype: 'MONTH',
+          usdPrices: [payg(0), payg(0.015)],
+        }),
+        product({
           partNumber: 'B93496',
           displayName: 'OCI IAM - SMS',
           serviceCategoryDisplayName: 'Identity and Access Management - SMS',
@@ -383,6 +645,30 @@ function buildIndex() {
           usdPrices: [payg(1.5)],
         }),
         product({
+          partNumber: 'B108078',
+          displayName: 'OCI Generative AI - Small Cohere',
+          serviceCategoryDisplayName: 'OCI Generative AI - Small Cohere',
+          metricId: 'm-transactions-ten-thousand',
+          pricetype: 'MONTH',
+          usdPrices: [payg(0.0009)],
+        }),
+        product({
+          partNumber: 'B108079',
+          displayName: 'OCI Generative AI - Embed Cohere',
+          serviceCategoryDisplayName: 'OCI Generative AI - Embed Cohere',
+          metricId: 'm-transactions-ten-thousand',
+          pricetype: 'MONTH',
+          usdPrices: [payg(0.001)],
+        }),
+        product({
+          partNumber: 'B108080',
+          displayName: 'OCI Generative AI - Large Meta',
+          serviceCategoryDisplayName: 'OCI Generative AI - Large Meta',
+          metricId: 'm-transactions-ten-thousand',
+          pricetype: 'MONTH',
+          usdPrices: [payg(0.0018)],
+        }),
+        product({
           partNumber: 'B94977',
           displayName: 'Vision - Custom Training',
           serviceCategoryDisplayName: 'Oracle Cloud Infrastructure - Vision - Custom Training',
@@ -395,6 +681,22 @@ function buildIndex() {
           serviceCategoryDisplayName: 'Speech',
           metricId: 'm-transcription-hour',
           usdPrices: [payg(0.016)],
+        }),
+        product({
+          partNumber: 'B94973',
+          displayName: 'Vision - Image Analysis',
+          serviceCategoryDisplayName: 'Oracle Cloud Infrastructure - Vision',
+          metricId: 'm-transactions-thousand',
+          pricetype: 'MONTH',
+          usdPrices: [payg(0), payg(0.25)],
+        }),
+        product({
+          partNumber: 'B94974',
+          displayName: 'Vision - OCR',
+          serviceCategoryDisplayName: 'Oracle Cloud Infrastructure - Vision',
+          metricId: 'm-transactions-thousand',
+          pricetype: 'MONTH',
+          usdPrices: [payg(0), payg(1)],
         }),
         product({
           partNumber: 'B95337',
@@ -419,6 +721,14 @@ function buildIndex() {
           metricId: 'm-processed-video-minute',
           pricetype: 'MONTH',
           usdPrices: [payg(0.003)],
+        }),
+        product({
+          partNumber: 'B111539',
+          displayName: 'OCI - Vision - Stream Video Analysis',
+          serviceCategoryDisplayName: 'OCI - Vision - Stream Video Analysis',
+          metricId: 'm-processed-video-minute',
+          pricetype: 'MONTH',
+          usdPrices: [payg(0.15)],
         }),
         product({
           partNumber: 'B91632',
@@ -514,6 +824,14 @@ function buildIndex() {
           usdPrices: [payg(0.0003)],
         }),
         product({
+          partNumber: 'B110462',
+          displayName: 'OCI Generative AI Agents - Knowledge Base Storage',
+          serviceCategoryDisplayName: 'OCI Generative AI Agents',
+          metricId: 'm-storage-hour',
+          pricetype: 'HOUR',
+          usdPrices: [payg(0.0084)],
+        }),
+        product({
           partNumber: 'B112383',
           displayName: 'OCI Generative AI - Memory Ingestion',
           serviceCategoryDisplayName: 'OCI Generative AI - Search and Retrieval',
@@ -536,6 +854,38 @@ function buildIndex() {
           metricId: 'm-requests-thousand-plain',
           pricetype: 'PER-ITEM',
           usdPrices: [payg(0.5)],
+        }),
+        product({
+          partNumber: 'B91627',
+          displayName: 'Oracle Cloud Infrastructure - Object Storage Requests',
+          serviceCategoryDisplayName: 'Storage - Object Storage',
+          metricId: 'm-requests-thousand-plain',
+          pricetype: 'MONTH',
+          usdPrices: [payg(0), payg(0.0034)],
+        }),
+        product({
+          partNumber: 'B91633',
+          displayName: 'Archive Storage',
+          serviceCategoryDisplayName: 'Storage - Object Storage',
+          metricId: 'm-capacity-month',
+          pricetype: 'MONTH',
+          usdPrices: [payg(0), payg(0.0026)],
+        }),
+        product({
+          partNumber: 'B93000',
+          displayName: 'Infrequent Access Storage',
+          serviceCategoryDisplayName: 'Storage - Object Storage',
+          metricId: 'm-capacity-month',
+          pricetype: 'MONTH',
+          usdPrices: [payg(0), payg(0.01)],
+        }),
+        product({
+          partNumber: 'B93001',
+          displayName: 'Infrequent Access Retrieval',
+          serviceCategoryDisplayName: 'Storage - Object Storage',
+          metricId: 'm-capacity-month',
+          pricetype: 'MONTH',
+          usdPrices: [payg(0), payg(0.01)],
         }),
         product({
           partNumber: 'B111973',
@@ -604,14 +954,20 @@ function buildIndex() {
           displayName: 'Compute - Standard - X9 - OCPU',
           serviceCategoryDisplayName: 'Compute - Virtual Machine',
           metricId: 'm-ocpu-hour',
-          usdPrices: [payg(0.04)],
+          currencyCodeLocalizations: [
+            { currencyCode: 'USD', prices: [payg(0.04)] },
+            { currencyCode: 'MXN', prices: [payg(0.68)] },
+          ],
         }),
         product({
           partNumber: 'B94177',
           displayName: 'Compute - Standard - X9 - Memory',
           serviceCategoryDisplayName: 'Compute - Virtual Machine',
           metricId: 'm-gb-hour',
-          usdPrices: [payg(0.0015)],
+          currencyCodeLocalizations: [
+            { currencyCode: 'USD', prices: [payg(0.0015)] },
+            { currencyCode: 'MXN', prices: [payg(0.0255)] },
+          ],
         }),
         product({
           partNumber: 'B93311',
@@ -937,6 +1293,2738 @@ test('vm shape comparison question uses product discovery with structured shape 
   assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
   assert.equal(reply.sessionContext.lastContextPack.topic, 'vm_shapes');
   assert.ok(Array.isArray(reply.sessionContext.lastContextPack.shapeComparison));
+});
+
+test('pricing model question for WAF uses product discovery with structured pricing dimensions', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'security_waf',
+    serviceName: 'Web Application Firewall',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI Web Application Firewall` el cobro principal se divide en dos dimensiones:',
+      '- cargo fijo por instancia o policy',
+      '- cargo variable por volumen de requests',
+      'Para cotizar con precisión, normalmente necesitas cantidad de instancias y requests mensuales.',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Como se cobra Web Application Firewall en OCI?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'security_waf');
+  assert.ok(Array.isArray(reply.sessionContext.lastContextPack.registryMatchNames));
+  assert.match(reply.message, /instancia|policy|requests/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for DNS uses product discovery with structured pricing dimensions', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'network_dns',
+    serviceName: 'DNS',
+    extractedInputs: {},
+    confidence: 0.92,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI DNS` el cobro se basa principalmente en el volumen de queries procesadas.',
+      '- la dimension de cobro es queries por mes',
+      '- para cotizar con precision, normalmente necesitas queries mensuales esperadas',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Como se cobra DNS en OCI?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.ok(reply.sessionContext.lastContextPack.family);
+  assert.match(reply.sessionContext.lastContextPack.family.id, /dns/i);
+  assert.ok(Array.isArray(reply.sessionContext.lastContextPack.serviceContext?.pricingDimensions || []));
+  assert.match(reply.message, /dns|queries/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for API Gateway uses product discovery with structured pricing dimensions', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'apigw',
+    serviceName: 'API Gateway',
+    extractedInputs: {},
+    confidence: 0.92,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI API Gateway` el cobro principal se basa en volumen de API calls.',
+      '- la unidad de cobro es bloques de llamadas API',
+      '- para cotizar con precision, normalmente necesitas llamadas mensuales esperadas',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is API Gateway billed in OCI?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.ok(reply.sessionContext.lastContextPack.family);
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'apigw');
+  assert.ok(Array.isArray(reply.sessionContext.lastContextPack.serviceContext?.pricingDimensions || []));
+  assert.match(reply.message, /api gateway|api calls/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for Health Checks uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'edge_health_checks',
+    serviceName: 'Health Checks',
+    extractedInputs: {},
+    confidence: 0.92,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI Health Checks` el cobro se basa principalmente en la cantidad de endpoints monitoreados.',
+      '- la unidad de cobro es endpoints por mes',
+      '- para cotizar con precisión normalmente necesito el número de endpoints',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is Health Checks billed in OCI?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'edge_health_checks');
+  assert.match(reply.message, /endpoints?/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('options discovery for Network Firewall uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'network_firewall',
+    serviceName: 'Network Firewall',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI Network Firewall` normalmente evaluas dos dimensiones principales:',
+      '- instancias de firewall',
+      '- data processed mensual',
+      'Para cotizar, el sizing tipico pide cantidad de firewalls y GB procesados por mes.',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'What options do we have for Network Firewall in OCI?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'network_firewall');
+  assert.match(reply.message, /network firewall|instances|data processed|gb/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('licensing discovery question for Base Database uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'database_base_db',
+    serviceName: 'Base Database Service',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI Base Database Service`, la diferencia principal es el modelo de licenciamiento:',
+      '- `BYOL`: reutilizas licencias Oracle elegibles que ya posees.',
+      '- `License Included`: el precio del servicio incorpora la licencia correspondiente.',
+      'Para una cotización exacta, además necesitas edición, OCPUs o ECPUs, y storage.',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'What is the difference between BYOL and License Included for Base Database Service?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'database_base_db');
+  assert.match(reply.message, /BYOL/i);
+  assert.match(reply.message, /License Included/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for Object Storage uses product discovery with structured pricing dimensions', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'storage_object',
+    serviceName: 'OCI Object Storage',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI Object Storage` el cobro principal se basa en capacidad almacenada.',
+      '- la dimensión principal es `GB-month` de storage',
+      '- para una cotización básica normalmente basta con la capacidad mensual esperada',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Como se cobra Object Storage en OCI?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'storage_object');
+  assert.match(reply.message, /GB-month|capacidad/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for File Storage uses product discovery with structured pricing dimensions', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'storage_file',
+    serviceName: 'OCI File Storage',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI File Storage` normalmente verás dos dimensiones relevantes:',
+      '- capacidad provisionada en `GB-month`',
+      '- performance units por `GB-month` cuando eliges un nivel de desempeño que las usa',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is OCI File Storage billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'storage_file');
+  assert.match(reply.message, /GB-month|performance units/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for Load Balancer uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'network_load_balancer',
+    serviceName: 'OCI Load Balancer',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI Load Balancer` normalmente verás dos dimensiones de cobro:',
+      '- capacidad base por hora',
+      '- bandwidth en `Mbps-hour` para el throughput configurado',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is OCI Load Balancer billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'network_load_balancer');
+  assert.match(reply.message, /bandwidth|Mbps-hour|capacidad base/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('options question for FastConnect uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'network_fastconnect',
+    serviceName: 'OCI FastConnect',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI FastConnect` las opciones comunes se diferencian principalmente por ancho de banda.',
+      '- variantes comunes: `1 Gbps`, `10 Gbps` y `100 Gbps`',
+      '- la dimensión principal es el puerto por hora asociado al ancho de banda elegido',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'What FastConnect options do we have?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'network_fastconnect');
+  assert.match(reply.message, /1 Gbps|10 Gbps|100 Gbps/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for Block Volume uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'storage_block',
+    serviceName: 'OCI Block Volume',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI Block Volume` normalmente verás dos dimensiones de cobro:',
+      '- storage capacity en `GB-month`',
+      '- `VPU per GB` cuando eliges niveles de desempeño que usan performance units',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is OCI Block Volume billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'storage_block');
+  assert.match(reply.message, /GB-month|VPU per GB|performance units/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for OCI Functions uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'serverless_functions',
+    serviceName: 'OCI Functions',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI Functions` el cobro suele combinar varias dimensiones:',
+      '- invocations mensuales',
+      '- tiempo de ejecución por invocation',
+      '- memoria asignada por invocation',
+      '- y, si aplica, unidades de provisioned concurrency',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is OCI Functions billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'serverless_functions');
+  assert.match(reply.message, /invocations|execution|memoria|memory|concurrency/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('prerequisite discovery for OCI Data Integration uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'integration_data',
+    serviceName: 'OCI Data Integration',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'Para cotizar `OCI Data Integration` normalmente necesito saber:',
+      '- si quieres `workspace usage`',
+      '- si quieres `data processed`',
+      '- la cantidad de workspaces o los GB procesados por hora',
+      '- y las horas de ejecución mensuales si aplica',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'What information do I need to quote OCI Data Integration?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'integration_data');
+  assert.match(reply.message, /workspace|data processed|hours/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for Data Safe on-prem uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'security_data_safe',
+    serviceName: 'OCI Data Safe',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI Data Safe` el cobro depende del alcance del servicio:',
+      '- `Database Cloud Service` tiene su propia ruta',
+      '- `On-Premises Databases` se mide por cantidad de target databases',
+      'Para una cotización exacta necesito el tipo de despliegue y el número de databases objetivo.',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is Data Safe for On-Premises Databases billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'security_data_safe');
+  assert.match(reply.message, /target databases|database cloud service|on-premises/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for OCI Monitoring uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'observability_monitoring',
+    serviceName: 'OCI Monitoring',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI Monitoring` normalmente evalúas dos dimensiones:',
+      '- `ingestion` de datapoints',
+      '- `retrieval` de datapoints',
+      'Para una cotización exacta necesito el volumen esperado de datapoints en la variante que quieras usar.',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is OCI Monitoring billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'observability_monitoring');
+  assert.match(reply.message, /ingestion|retrieval|datapoints/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for Notifications HTTPS Delivery uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'observability_notifications_https',
+    serviceName: 'Notifications HTTPS Delivery',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `Notifications HTTPS Delivery` el cobro principal se basa en operaciones de entrega.',
+      '- la unidad operativa es delivery operations',
+      '- para una cotización exacta necesito el volumen mensual esperado',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is Notifications HTTPS Delivery billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'observability_notifications_https');
+  assert.match(reply.message, /delivery operations|https delivery/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for Email Delivery uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'operations_email_delivery',
+    serviceName: 'Email Delivery',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `Notifications Email Delivery` el cobro principal se basa en volumen de emails enviados.',
+      '- la métrica operativa es emails por mes',
+      '- para una cotización exacta necesito el volumen mensual esperado',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is Email Delivery billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'operations_email_delivery');
+  assert.match(reply.message, /emails per month|email delivery/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for IAM SMS uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'operations_iam_sms',
+    serviceName: 'IAM SMS',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI IAM SMS` el cobro se basa en mensajes enviados.',
+      '- la métrica operativa es messages',
+      '- para una cotización exacta necesito la cantidad de mensajes del periodo',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is IAM SMS billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'operations_iam_sms');
+  assert.match(reply.message, /messages|iam sms/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for Oracle Threat Intelligence Service uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'security_threat_intelligence',
+    serviceName: 'Oracle Threat Intelligence Service',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `Oracle Threat Intelligence Service` el cobro se basa en volumen de llamadas API.',
+      '- la métrica operativa es API calls',
+      '- para cotizar necesito el volumen esperado en el periodo',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is Oracle Threat Intelligence Service billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'security_threat_intelligence');
+  assert.match(reply.message, /api calls|threat intelligence/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for Vector Store Retrieval uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'ai_vector_store_retrieval',
+    serviceName: 'Vector Store Retrieval',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI Generative AI Vector Store Retrieval` el cobro se basa en requests.',
+      '- la métrica operativa es requests',
+      '- para cotizar necesito el volumen esperado en el periodo',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is OCI Generative AI Vector Store Retrieval billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'ai_vector_store_retrieval');
+  assert.match(reply.message, /requests|vector store/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model questions for archive, infrequent access, AI variants, vision, and notifications SMS use structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const cases = [
+    ['How is Archive Storage billed?', 'storage_archive', 'Archive Storage', /archive|storage capacity/i, 'En `Archive Storage` el cobro se basa en storage capacity (GB) por mes.'],
+    ['How is Infrequent Access Storage billed?', 'storage_infrequent_access', 'Infrequent Access Storage', /infrequent access|retrieval/i, 'En `Infrequent Access Storage` el cobro se basa en storage capacity (GB) y retrieval cuando aplica.'],
+    ['How is OCI Generative AI Small Cohere billed?', 'ai_small_cohere', 'OCI Generative AI Small Cohere', /small cohere|transactions/i, 'En `OCI Generative AI Small Cohere` el cobro se basa en transactions.'],
+    ['How is OCI Generative AI Embed Cohere billed?', 'ai_embed_cohere', 'OCI Generative AI Embed Cohere', /embed cohere|transactions/i, 'En `OCI Generative AI Embed Cohere` el cobro se basa en transactions.'],
+    ['How is OCI Generative AI Large Meta billed?', 'ai_large_meta', 'OCI Generative AI Large Meta', /large meta|transactions/i, 'En `OCI Generative AI Large Meta` el cobro se basa en transactions.'],
+    ['How is OCI Vision Image Analysis billed?', 'ai_vision_image_analysis', 'OCI Vision Image Analysis', /image analysis|transactions/i, 'En `OCI Vision Image Analysis` el cobro se basa en transactions.'],
+    ['How is OCI Vision OCR billed?', 'ai_vision_ocr', 'OCI Vision OCR', /vision ocr|transactions/i, 'En `OCI Vision OCR` el cobro se basa en transactions.'],
+    ['How is OCI Vision Stream Video Analysis billed?', 'ai_vision_stream_video_analysis', 'OCI Vision Stream Video Analysis', /stream video analysis|processed video/i, 'En `OCI Vision Stream Video Analysis` el cobro se basa en processed video minutes.'],
+    ['How is OCI Notifications SMS billed?', 'operations_notifications_sms', 'OCI Notifications SMS', /notifications sms|messages/i, 'En `OCI Notifications SMS` el cobro se basa en messages.'],
+  ];
+
+  for (const [userText, serviceFamily, serviceName, expected, genaiText] of cases) {
+    const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+      route: 'product_discovery',
+      intent: 'discover',
+      shouldQuote: false,
+      needsClarification: false,
+      clarificationQuestion: '',
+      reformulatedRequest: text,
+      assumptions: [],
+      serviceFamily,
+      serviceName,
+      extractedInputs: {},
+      confidence: 0.9,
+      annualRequested: false,
+      normalizedRequest: text,
+    }), { genaiText });
+
+    const reply = await respondToAssistant({
+      cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+      index,
+      conversation: [],
+      userText,
+    });
+
+    assert.equal(reply.ok, true);
+    assert.equal(reply.mode, 'answer');
+    assert.equal(reply.intent.shouldQuote, false);
+    assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+    assert.equal(reply.sessionContext.lastContextPack.family.id, serviceFamily);
+    assert.match(reply.message, expected);
+    assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+  }
+});
+
+test('pricing model question for Vision Custom Training uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'ai_vision_custom_training',
+    serviceName: 'Vision Custom Training',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `Vision Custom Training` el cobro se basa en training hours.',
+      '- la métrica operativa es training hours',
+      '- para cotizar necesito el número de horas de entrenamiento',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is Vision Custom Training billed in OCI?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'ai_vision_custom_training');
+  assert.match(reply.message, /training hours|vision/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for Fleet Application Management uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'ops_fleet_application_management',
+    serviceName: 'Fleet Application Management',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI Fleet Application Management` el cobro se basa en managed resources.',
+      '- la métrica operativa es managed resources por mes',
+      '- para cotizar necesito la cantidad de recursos administrados',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is OCI Fleet Application Management billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'ops_fleet_application_management');
+  assert.match(reply.message, /managed resources|fleet/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model questions for storage, AI variants, vision, and notifications use structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const cases = [
+    {
+      userText: 'How is Archive Storage billed?',
+      serviceFamily: 'storage_archive',
+      serviceName: 'Archive Storage',
+      expected: /archive|storage capacity/i,
+      genaiText: 'En `Archive Storage` el cobro se basa en storage capacity (GB) por mes.',
+    },
+    {
+      userText: 'How is Infrequent Access Storage billed?',
+      serviceFamily: 'storage_infrequent_access',
+      serviceName: 'Infrequent Access Storage',
+      expected: /infrequent access|storage capacity/i,
+      genaiText: 'En `Infrequent Access Storage` el cobro se basa en storage capacity (GB) y retrieval cuando aplica.',
+    },
+    {
+      userText: 'How is OCI Generative AI Small Cohere billed?',
+      serviceFamily: 'ai_small_cohere',
+      serviceName: 'OCI Generative AI Small Cohere',
+      expected: /small cohere|transactions/i,
+      genaiText: 'En `OCI Generative AI Small Cohere` el cobro se basa en transactions.',
+    },
+    {
+      userText: 'How is OCI Generative AI Embed Cohere billed?',
+      serviceFamily: 'ai_embed_cohere',
+      serviceName: 'OCI Generative AI Embed Cohere',
+      expected: /embed cohere|transactions/i,
+      genaiText: 'En `OCI Generative AI Embed Cohere` el cobro se basa en transactions.',
+    },
+    {
+      userText: 'How is OCI Generative AI Large Meta billed?',
+      serviceFamily: 'ai_large_meta',
+      serviceName: 'OCI Generative AI Large Meta',
+      expected: /large meta|transactions/i,
+      genaiText: 'En `OCI Generative AI Large Meta` el cobro se basa en transactions.',
+    },
+    {
+      userText: 'How is OCI Vision Image Analysis billed?',
+      serviceFamily: 'ai_vision_image_analysis',
+      serviceName: 'OCI Vision Image Analysis',
+      expected: /image analysis|transactions/i,
+      genaiText: 'En `OCI Vision Image Analysis` el cobro se basa en transactions.',
+    },
+    {
+      userText: 'How is OCI Vision OCR billed?',
+      serviceFamily: 'ai_vision_ocr',
+      serviceName: 'OCI Vision OCR',
+      expected: /vision ocr|transactions/i,
+      genaiText: 'En `OCI Vision OCR` el cobro se basa en transactions.',
+    },
+    {
+      userText: 'How is OCI Vision Stream Video Analysis billed?',
+      serviceFamily: 'ai_vision_stream_video_analysis',
+      serviceName: 'OCI Vision Stream Video Analysis',
+      expected: /stream video analysis|processed video/i,
+      genaiText: 'En `OCI Vision Stream Video Analysis` el cobro se basa en processed video minutes.',
+    },
+    {
+      userText: 'How is OCI Notifications SMS billed?',
+      serviceFamily: 'operations_notifications_sms',
+      serviceName: 'OCI Notifications SMS',
+      expected: /notifications sms|messages/i,
+      genaiText: 'En `OCI Notifications SMS` el cobro se basa en messages.',
+    },
+  ];
+
+  for (const item of cases) {
+    const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+      route: 'product_discovery',
+      intent: 'discover',
+      shouldQuote: false,
+      needsClarification: false,
+      clarificationQuestion: '',
+      reformulatedRequest: text,
+      assumptions: [],
+      serviceFamily: item.serviceFamily,
+      serviceName: item.serviceName,
+      extractedInputs: {},
+      confidence: 0.9,
+      annualRequested: false,
+      normalizedRequest: text,
+    }), {
+      genaiText: item.genaiText,
+    });
+
+    const reply = await respondToAssistant({
+      cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+      index,
+      conversation: [],
+      userText: item.userText,
+    });
+
+    assert.equal(reply.ok, true);
+    assert.equal(reply.mode, 'answer');
+    assert.equal(reply.intent.shouldQuote, false);
+    assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+    assert.equal(reply.sessionContext.lastContextPack.family.id, item.serviceFamily);
+    assert.match(reply.message, item.expected);
+    assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+  }
+});
+
+test('pricing model question for OCI AI Language uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'ai_language',
+    serviceName: 'OCI AI Language',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `OCI AI Language` el cobro se basa en transactions.',
+      '- la métrica operativa es transactions',
+      '- para una cotización exacta necesito el volumen transaccional esperado',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is OCI AI Language billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'ai_language');
+  assert.match(reply.message, /transactions|ai language/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('prerequisite discovery for Oracle Integration Cloud Standard uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'integration_oic_standard',
+    serviceName: 'Oracle Integration Cloud Standard',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'Para cotizar `Oracle Integration Cloud Standard` normalmente necesito:',
+      '- el modelo de licenciamiento: `BYOL` o `License Included`',
+      '- la cantidad de instancias',
+      '- y, si aplica en tu caso, cualquier aclaración de moneda o periodo',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'What information do I need to quote Oracle Integration Cloud Standard?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'integration_oic_standard');
+  assert.match(reply.message, /BYOL/i);
+  assert.match(reply.message, /License Included/i);
+  assert.match(reply.message, /instancias|instances/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for Oracle Analytics Cloud Professional uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'analytics_oac_professional',
+    serviceName: 'Oracle Analytics Cloud Professional',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `Oracle Analytics Cloud Professional` el modelo depende de cómo lo cotices:',
+      '- por `users` cuando eliges named users',
+      '- por `OCPU-hour` cuando lo cotizas por capacidad de cómputo',
+      'Si lo haces por OCPUs, también importa el modo de licenciamiento.',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is Oracle Analytics Cloud Professional billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'analytics_oac_professional');
+  assert.match(reply.message, /users/i);
+  assert.match(reply.message, /OCPU/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing model question for Oracle Analytics Cloud Enterprise uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'analytics_oac_enterprise',
+    serviceName: 'Oracle Analytics Cloud Enterprise',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'En `Oracle Analytics Cloud Enterprise` el modelo depende de cómo lo cotices:',
+      '- por `users` cuando eliges named users',
+      '- por `OCPU-hour` cuando lo cotizas por capacidad',
+      '- y para OCPUs sí importa el modo `BYOL` o `License Included`',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is Oracle Analytics Cloud Enterprise billed?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'analytics_oac_enterprise');
+  assert.match(reply.message, /users/i);
+  assert.match(reply.message, /OCPU/i);
+  assert.match(reply.message, /BYOL|License Included/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('prerequisite discovery for Base Database Service uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'database_base_db',
+    serviceName: 'Base Database Service',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'Para cotizar `Base Database Service` normalmente necesito:',
+      '- la edición, por ejemplo `Enterprise` o `Standard`',
+      '- si será `BYOL` o `License Included`',
+      '- la capacidad de cómputo, en `OCPU` o `ECPU` según el caso',
+      '- y el storage en GB',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'What information do I need to quote Base Database Service?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'database_base_db');
+  assert.match(reply.message, /Enterprise|Standard/i);
+  assert.match(reply.message, /BYOL|License Included/i);
+  assert.match(reply.message, /OCPU|ECPU/i);
+  assert.match(reply.message, /storage/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('options discovery for Exadata Dedicated Infrastructure uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'database_exadata_dedicated',
+    serviceName: 'Exadata Dedicated Infrastructure Database',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'Para `Exadata Dedicated Infrastructure Database`, las opciones principales incluyen:',
+      '- `BYOL` o `License Included`',
+      '- capacidad en `OCPU` o `ECPU`',
+      '- y formas de infraestructura como `Base System`',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Que opciones tenemos para Exadata Dedicated Infrastructure?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'database_exadata_dedicated');
+  assert.ok(reply.sessionContext.lastContextPack.family.options.infrastructureShapes.includes('Base System'));
+  assert.match(reply.message, /BYOL|License Included/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('explicit GPU compute quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute GPU - A10 with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B95909');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 2678.4, 0.001);
+});
+
+test('explicit GPU A100 v2 quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute GPU - A100 - v2 with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B95910');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 3571.2, 0.001);
+});
+
+test('explicit GPU E3 quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute GPU - E3 with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B95911');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 1785.6, 0.001);
+});
+
+test('explicit GPU B200 quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute GPU - B200 with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B95912');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 9225.6, 0.001);
+});
+
+test('explicit GPU GB200 quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute GPU - GB200 with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B95913');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 10564.8, 0.001);
+});
+
+test('explicit Big Data Service HPC quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 16 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Big Data Service - Compute - HPC with 16 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B91130');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 16);
+  assertWithin(reply.quote?.totals?.monthly, 3928.32, 0.001);
+});
+
+test('HPC compute quote with node wording still resolves deterministically through the matched OCPU SKU', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute HPC - X7 with 2 nodes for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.match(reply.message, /not available yet/i);
+  assert.match(reply.message, /OCI Compute HPC - X7/i);
+});
+
+test('explicit HPC compute quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 52 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute HPC - X7 with 52 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B90398');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 52);
+  assertWithin(reply.quote?.totals?.monthly, 11606.4, 0.001);
+});
+
+test('explicit HPC E5 compute quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 40 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute HPC - E5 with 40 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B96531');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 40);
+  assertWithin(reply.quote?.totals?.monthly, 8035.2, 0.001);
+});
+
+test('explicit bare metal GPU metered quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Bare Metal GPU Standard - X7 - Metered with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B89141');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 4761.6, 0.001);
+});
+
+test('explicit bare metal standard x7 metered quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 52 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Compute - Bare Metal Standard - X7 - Metered with 52 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B89137');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 52);
+  assertWithin(reply.quote?.totals?.monthly, 2901.6, 0.001);
+});
+
+test('explicit bare metal dense i/o x7 metered quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 52 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Compute - Bare Metal Dense I/O - X7 - Metered with 52 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B89139');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 52);
+  assertWithin(reply.quote?.totals?.monthly, 3327.168, 0.001);
+});
+
+test('explicit vm standard x7 metered quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 8 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Compute - Virtual Machine Standard - X7 - Metered with 8 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B89135');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 8);
+  assertWithin(reply.quote?.totals?.monthly, 327.36, 0.001);
+});
+
+test('explicit vm standard x5 quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 8 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Compute - Virtual Machine Standard - X5 with 8 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B88511');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 8);
+  assertWithin(reply.quote?.totals?.monthly, 267.84, 0.001);
+});
+
+test('explicit vm standard B1 quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 4 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Compute - Virtual Machine Standard - B1 with 4 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B91120');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 4);
+  assertWithin(reply.quote?.totals?.monthly, 59.52, 0.001);
+});
+
+test('explicit standard E2 quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 8 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Compute - Standard - E2 with 8 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B90425');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 8);
+  assertWithin(reply.quote?.totals?.monthly, 184.512, 0.001);
+});
+
+test('explicit vm standard x5 metered quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 8 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Compute - Virtual Machine Standard - X5 - Metered with 8 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B89133');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 8);
+  assertWithin(reply.quote?.totals?.monthly, 297.6, 0.001);
+});
+
+test('explicit vm dense i/o x7 metered quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 8 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Compute - Virtual Machine Dense I/O - X7 - Metered with 8 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B89136');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 8);
+  assertWithin(reply.quote?.totals?.monthly, 386.88, 0.001);
+});
+
+test('explicit vm dense i/o x7 quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 8 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Compute - Virtual Machine Dense I/O - X7 with 8 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B88515');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 8);
+  assertWithin(reply.quote?.totals?.monthly, 476.16, 0.001);
+});
+
+test('explicit vm dense i/o x5 metered quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { ocpus: 8 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Compute - Virtual Machine Dense I/O - X5 - Metered with 8 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B89134');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 8);
+  assertWithin(reply.quote?.totals?.monthly, 416.64, 0.001);
+});
+
+test('explicit bare metal GPU quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Bare Metal GPU Standard - X7 with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B88517');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 4315.2, 0.001);
+});
+
+test('explicit vm gpu standard x7 quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Compute - Virtual Machine GPU Standard - X7 with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B88518');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 4017.6, 0.001);
+});
+
+test('explicit GPU Standard V2 metered quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote GPU Standard - V2 - Metered with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B89735');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 3571.2, 0.001);
+});
+
+test('explicit GPU Standard V2 quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote GPU Standard - V2 with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B89734');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 3273.6, 0.001);
+});
+
+test('explicit GPU H100 quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 4 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute GPU - H100 with 4 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B98415');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 4);
+  assertWithin(reply.quote?.totals?.monthly, 14284.8, 0.001);
+});
+
+test('explicit GPU L40S quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute GPU - L40S with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B98416');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 5356.8, 0.001);
+});
+
+test('explicit GPU H200 quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute GPU - H200 with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B98417');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 8035.2, 0.001);
+});
+
+test('explicit GPU MI300X quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 2 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute GPU - MI300X with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B98418');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 2);
+  assertWithin(reply.quote?.totals?.monthly, 6249.6, 0.001);
+});
+
+test('legacy fixed VM alias quote resolves to the mapped fixed-shape SKU when deterministic coverage exists', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote VM.Standard1.4 for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.match(reply.message, /not available yet/i);
+  assert.match(reply.message, /Virtual Machine Standard - X5/i);
+});
+
+test('legacy DenseIO VM alias quote resolves to the mapped fixed-shape SKU when deterministic coverage exists', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote VM.DenseIO2.8 for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.match(reply.message, /not available yet/i);
+  assert.match(reply.message, /Virtual Machine Dense I\/O - X7/i);
+});
+
+test('metered legacy DenseIO VM alias quote resolves to the mapped metered SKU when deterministic coverage exists', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote VM.DenseIO2.8 metered for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.match(reply.message, /not available yet/i);
+  assert.match(reply.message, /Virtual Machine Dense I\/O - X7 \(Metered\)/i);
+  assert.match(reply.message, /VM\.DenseIO\.E4\.Flex/i);
+});
+
+test('explicit E2 micro quote with OCPU units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote VM.Standard.E2.1.Micro with 1 OCPU for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote?.ok, true);
+  assert.equal(reply.quote?.lineItems?.[0]?.partNumber, 'B91444');
+  assert.equal(reply.quote?.lineItems?.[0]?.quantity, 1);
+  assertWithin(reply.quote?.totals?.monthly, 0, 0.001);
+  assert.doesNotMatch(reply.message, /Full Stack Disaster Recovery/i);
+});
+
+test('unsupported Windows OS compute quote returns safe unavailability instead of an unreliable quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute - Windows OS for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.match(reply.message, /not available yet/i);
+  assert.match(reply.message, /Windows OS/i);
+  assert.match(reply.message, /Guest OS licensing lines/i);
+  assert.match(reply.message, /Quote the underlying OCI compute shape separately/i);
+});
+
+test('explicit Windows OS compute quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute - Windows OS with 8 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B88318/);
+  assert.match(reply.message, /\$273\.79/);
+});
+
+test('unsupported metered Windows OS compute quote keeps metered licensing guidance', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Windows OS - Metered for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.match(reply.message, /Windows OS - Metered/i);
+  assert.match(reply.message, /Metered guest OS licensing lines/i);
+});
+
+test('explicit metered Windows OS compute quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute - Windows OS - Metered with 8 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B87674/);
+  assert.match(reply.message, /\$309\.50/);
+});
+
+test('explicit Microsoft SQL Enterprise quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute - Microsoft SQL Enterprise with 8 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B91372/);
+  assert.match(reply.message, /\$1,845\.12/);
+});
+
+test('explicit Microsoft SQL Standard quote with OCPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote OCI Compute - Microsoft SQL Standard with 8 OCPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B91373/);
+  assert.match(reply.message, /\$833\.28/);
+});
+
+test('unsupported Cloud@Customer GPU quote returns safe unavailability with public-region alternatives', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote GPU.L40S on Compute Cloud@Customer for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.match(reply.message, /not available yet/i);
+  assert.match(reply.message, /Cloud@Customer/i);
+  assert.match(reply.message, /VM\.Standard\.E5\.Flex/i);
+});
+
+test('explicit Cloud@Customer GPU quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Oracle Compute Cloud@Customer - Compute - GPU.L40S with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B110965/);
+  assert.match(reply.message, /\$5,208\.00/);
+});
+
+test('explicit Cloud@Customer GPU resource commit quote with GPU-hour units resolves deterministically', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'compute', useDeterministicEngine: true },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Quote Oracle Compute Cloud@Customer - Compute - GPU.L40S - Resource Commit with 2 GPUs for 744 hours',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B111454/);
+  assert.match(reply.message, /\$892\.80/);
+});
+
+test('prerequisite discovery for Oracle Integration Cloud Enterprise uses structured family context instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'integration_oic_enterprise',
+    serviceName: 'Oracle Integration Cloud Enterprise',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'Para cotizar `Oracle Integration Cloud Enterprise` normalmente necesito:',
+      '- el modelo de licenciamiento: `BYOL` o `License Included`',
+      '- la cantidad de instancias',
+      '- y cualquier aclaración adicional de moneda o periodo si quieres una presentación distinta del quote estándar',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'What information do I need to quote Oracle Integration Cloud Enterprise?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'integration_oic_enterprise');
+  assert.match(reply.message, /BYOL/i);
+  assert.match(reply.message, /License Included/i);
+  assert.match(reply.message, /instances|instancias/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
 });
 
 test('general discovery request returns service unavailable instead of inventing a quote when genai fails', async () => {
@@ -1360,6 +4448,75 @@ test('registry-backed request-volume quote overrides weak clarification from the
   assert.doesNotMatch(reply.message, /average size of each event in MB/i);
 });
 
+test('memory ingestion unresolved quote uses family metadata instead of a hardcoded assistant branch', async () => {
+  const unresolvedIndex = normalizeCatalog({
+    'metrics.json': {
+      items: [
+        metric('m-transactions-ten-thousand', '10,000 Transactions'),
+        metric('m-storage-hour', 'Gigabyte Storage Per Hour'),
+      ],
+    },
+    'products.json': {
+      items: [
+        product({
+          partNumber: 'B110463',
+          displayName: 'OCI Generative AI Agents - Data Ingestion',
+          serviceCategoryDisplayName: 'OCI Generative AI Agents',
+          metricId: 'm-transactions-ten-thousand',
+          pricetype: 'PER-ITEM',
+          usdPrices: [payg(0.0003)],
+        }),
+        product({
+          partNumber: 'B112384',
+          displayName: 'OCI Generative AI - Memory Retention',
+          serviceCategoryDisplayName: 'OCI Generative AI - Search and Retrieval',
+          metricId: 'm-storage-hour',
+          pricetype: 'HOUR',
+          usdPrices: [payg(0.01)],
+        }),
+      ],
+    },
+    'productpresets.json': { items: [] },
+  });
+
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'ai_memory_ingestion',
+    serviceName: 'OCI Generative AI - Memory Ingestion',
+    extractedInputs: { requestCount: 2000 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: {
+      action: 'quote',
+      targetType: 'service',
+      domain: 'analytics',
+      candidateFamilies: ['ai_memory_ingestion'],
+      missingInputs: [],
+      useDeterministicEngine: true,
+    },
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index: unresolvedIndex,
+    conversation: [],
+    userText: 'Quote OCI Generative AI Memory Ingestion 2000 events',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote_unresolved');
+  assert.match(reply.message, /does not expose a direct quotable SKU/i);
+  assert.match(reply.message, /B110463/);
+  assert.match(reply.message, /B112384/);
+});
+
 test('vector store retrieval converts 1000-request metrics without requiring commas in the metric name', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -1675,6 +4832,173 @@ test('route-driven quote follow-up reuses the active quote source for longer wor
   assert.doesNotMatch(reply.sessionContext.lastQuote.source, /30\s*VPU/i);
 });
 
+test('session follow-up can switch the active quote currency with a minimal currency-only answer', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_vm',
+    serviceName: 'Virtual Machine',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'MXN',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM',
+        label: 'Virtual Machine',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.equal(reply.quote.totals.currencyCode, 'MXN');
+  assert.equal(reply.sessionContext.lastQuote.currencyCode, 'MXN');
+  assert.match(reply.sessionContext.lastQuote.source, /\bMXN\b/i);
+  assert.match(reply.message, /MX\$/);
+});
+
+test('session follow-up can apply preemptible to the active compute quote with a minimal answer', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_vm',
+    serviceName: 'Virtual Machine',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const baseline = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM',
+    sessionContext: {},
+  });
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'preemptible',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM',
+        label: 'Virtual Machine',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\bpreemptible\b/i);
+  assert.ok(Number(reply.quote.totals.monthly) < Number(baseline.quote.totals.monthly));
+});
+
+test('session follow-up can apply a burstable baseline to the active compute quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_vm',
+    serviceName: 'Virtual Machine',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const baseline = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM',
+    sessionContext: {},
+  });
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'burstable baseline 0.5',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM',
+        label: 'Virtual Machine',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\bburstable baseline 0\.5\b/i);
+  assert.ok(Number(reply.quote.totals.monthly) < Number(baseline.quote.totals.monthly));
+});
+
+test('session follow-up can apply capacity reservation utilization to the active compute quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_vm',
+    serviceName: 'Virtual Machine',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const baseline = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM',
+    sessionContext: {},
+  });
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'capacity reservation 0.7',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM',
+        label: 'Virtual Machine',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\bcapacity reservation 0\.7\b/i);
+  assert.ok(Number(reply.quote.totals.monthly) < Number(baseline.quote.totals.monthly));
+});
+
 test('session follow-up can remove WAF from the active composite quote source', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -1786,6 +5110,457 @@ test('session follow-up can remove load balancer from the active composite quote
   assert.match(reply.message, /B94579/);
   assert.doesNotMatch(reply.message, /B93030/);
   assert.doesNotMatch(reply.message, /B93031/);
+});
+
+test('session follow-up can remove health checks from the active composite quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'sin Health Checks',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Health Checks 5 endpoints plus DNS 5000000 queries per month plus Web Application Firewall with 2 instances and 50000000 requests per month',
+        label: 'Composite OCI workload',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B88525/);
+  assert.match(reply.message, /B94579/);
+  assert.match(reply.message, /B94277/);
+  assert.doesNotMatch(reply.message, /B90323|B90325/);
+});
+
+test('session follow-up can remove API Gateway from the active composite quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'sin API Gateway',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote API Gateway 5000000 API calls per month plus DNS 5000000 queries per month plus Flexible Load Balancer 100 Mbps',
+        label: 'Composite OCI workload',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B88525/);
+  assert.match(reply.message, /B93030/);
+  assert.match(reply.message, /B93031/);
+  assert.doesNotMatch(reply.message, /B92072/);
+});
+
+test('session follow-up can change firewall count in the active network firewall quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'security_network_firewall',
+    serviceName: 'Network Firewall',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '3 firewalls',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Network Firewall 2 firewalls and 20000 GB data processed per month',
+        label: 'Network Firewall',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b3 firewalls\b/i);
+  const instanceLine = reply.quote.lineItems.find((item) => item.partNumber === 'B95403');
+  assert.ok(instanceLine);
+  assert.equal(Number(instanceLine.quantity), 3);
+});
+
+test('session follow-up can change endpoint count in the active health checks quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'health_checks',
+    serviceName: 'Health Checks',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '10 endpoints',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Health Checks 5 endpoints',
+        label: 'Health Checks',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b10 endpoints\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B90325');
+  assert.ok(line);
+  assert.equal(Number(line.quantity), 10);
+});
+
+test('session follow-up can change database count in the active data safe quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'security_data_safe',
+    serviceName: 'Data Safe',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '5 databases',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Data Safe for On-Premises Databases 2 target databases',
+        label: 'Data Safe',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b5 (?:target )?databases\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B92733');
+  assert.ok(line);
+  assert.equal(Number(line.quantity), 5);
+});
+
+test('session follow-up can change workspace count in the active data integration quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'data_integration',
+    serviceName: 'Data Integration',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '3 workspaces',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote OCI Data Integration workspace usage 2 workspaces 744h/month',
+        label: 'Data Integration',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b3 workspaces\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B92598');
+  assert.ok(line);
+  assert.equal(Number(line.quantity), 3);
+});
+
+test('session follow-up can change managed resource count in the active fleet quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'operations_platform',
+    serviceName: 'Fleet Application Management',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '8 managed resources',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Fleet Application Management 5 managed resources per month',
+        label: 'Fleet Application Management',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b8 managed resources\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B110475');
+  assert.ok(line);
+  assert.equal(Number(line.quantity), 8);
+});
+
+test('session follow-up can change query volume in the active DNS quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'networking',
+    serviceName: 'OCI DNS',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '7000000 queries per month',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote OCI DNS 5000000 queries per month',
+        label: 'OCI DNS',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b7000000 queries per month\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B88525');
+  assert.ok(line);
+});
+
+test('session follow-up can change API call volume in the active API Gateway quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'networking',
+    serviceName: 'API Gateway',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '12000000 API calls per month',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote API Gateway 5000000 API calls per month',
+        label: 'API Gateway',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b12000000 API calls per month\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B92072');
+  assert.ok(line);
+});
+
+test('session follow-up can change email volume in the active Email Delivery quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'operations_email_delivery',
+    serviceName: 'Email Delivery',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '250000 emails per month',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Email Delivery 100000 emails per month',
+        label: 'Email Delivery',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b250000 emails per month\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B90941');
+  assert.ok(line);
+});
+
+test('session follow-up can change SMS volume in the active IAM SMS quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'operations_iam_sms',
+    serviceName: 'IAM SMS',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '50 SMS messages',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote IAM SMS 12 SMS messages',
+        label: 'IAM SMS',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b50 SMS messages\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B93496');
+  assert.ok(line);
+});
+
+test('session follow-up can change transaction volume in the active AI Language quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'ai_language',
+    serviceName: 'OCI AI Language',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '10000 transactions',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote OCI AI Language 2500 transactions',
+        label: 'OCI AI Language',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b10000 transactions\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B93423');
+  assert.ok(line);
 });
 
 test('assistant preserves the metered modifier when the intent model drops it from a bare metal prompt', async () => {
@@ -2854,6 +6629,7 @@ test('assistant composes integration analytics and object storage bundles instea
   assert.match(reply.message, /B89640/);
   assert.match(reply.message, /B92683/);
   assert.match(reply.message, /B91628/);
+  assertWithin(reply.quote.totals.monthly, 6050.5264, 0.05);
 });
 
 test('assistant composes secure edge bundles instead of keeping only load balancer lines', async () => {
@@ -2890,6 +6666,7 @@ test('assistant composes secure edge bundles instead of keeping only load balanc
   assert.match(reply.message, /B93030/);
   assert.match(reply.message, /B93031/);
   assert.match(reply.message, /B88326/);
+  assertWithin(reply.quote.totals.monthly, 3965.376, 0.05);
 });
 
 test('assistant keeps DNS as a separate line in mixed edge-security bundles', async () => {
@@ -2977,6 +6754,7 @@ test('assistant composes serverless retrieval bundles with OCI Functions and gen
   assert.match(reply.message, /B110463/);
   assert.match(reply.message, /B112416/);
   assert.match(reply.message, /B111973/);
+  assertWithin(reply.quote.totals.monthly, 304.28125, 0.05);
 });
 
 test('assistant composes plus-separated autonomous bundles instead of collapsing to one family', async () => {
@@ -3224,6 +7002,7 @@ test('assistant composes observability bundles with monitoring retrieval and not
   assert.match(reply.message, /B92809/);
   assert.doesNotMatch(reply.message, /Full Stack Disaster Recovery/i);
   assert.match(reply.message, /OCI observability architect/);
+  assertWithin(reply.quote.totals.monthly, 47.885, 0.05);
 });
 
 test('assistant strips fabric-style narrative prefixes before quoting observability and operations bundles', async () => {

@@ -386,6 +386,29 @@
       ]
     },
     {
+      "shapeName": "VM.Standard.E2.1.Micro",
+      "aliases": [
+        "VM.Standard.E2.1.Micro",
+        "Standard.E2.1.Micro",
+        "E2 Micro"
+      ],
+      "kind": "fixed",
+      "vendor": "amd",
+      "family": "standard",
+      "series": "E2",
+      "productLabel": "Compute - Virtual Machine Standard - E2 Micro - Free",
+      "fixedOcpus": 1,
+      "fixedMemoryGb": 1,
+      "ocpuToVcpuRatio": 2,
+      "partNumbers": [
+        "B91444"
+      ],
+      "sourceNotes": [
+        "Pricing part numbers and metering are anchored to the Oracle localizable/global price-list extracts in pricing/data/xls-extract and pricing/data/price-list-extract.",
+        "Shape names and fixed/flex sizing behavior follow OCI Compute shape semantics as exposed by OCI Calculator and Oracle Compute shape documentation."
+      ]
+    },
+    {
       "shapeName": "BM.Standard.B1.44",
       "aliases": [
         "BM.Standard.B1.44",

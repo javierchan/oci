@@ -73,6 +73,18 @@ function normalizeRoute(normalized, originalText) {
   if (normalized.needsClarification) return 'clarify';
   if (normalized.shouldQuote) return 'quote_request';
   if (String(normalized.intent || '').toLowerCase() === 'discover') return 'product_discovery';
+  if (isOptionsDiscoveryQuestion(originalText)) {
+    return 'product_discovery';
+  }
+  if (isLicensingDiscoveryQuestion(originalText)) {
+    return 'product_discovery';
+  }
+  if (isPricingDiscoveryQuestion(originalText)) {
+    return 'product_discovery';
+  }
+  if (isCatalogListingQuestion(originalText)) {
+    return 'product_discovery';
+  }
   if (isShapeDiscoveryQuestion(originalText)) {
     return 'product_discovery';
   }
@@ -112,7 +124,14 @@ function inferPlanAction(route) {
 function inferTargetType(source, normalized) {
   if (/\bworkbook\b|\brvtools\b|\bexcel\b/i.test(source)) return 'workbook';
   if (isCompositeOrComparisonRequest(source)) return 'bundle';
+  if (isCatalogListingQuestion(source)) return 'catalog';
   if (isShapeDiscoveryQuestion(source)) return 'shape';
+  if ((isOptionsDiscoveryQuestion(source) || isPricingDiscoveryQuestion(source) || isLicensingDiscoveryQuestion(source)) &&
+    /\bcompute\b|\bgpu\b|\bhpc\b|\bvirtual machines?\b|\bvm instances?\b/i.test(source)) {
+    return 'service';
+  }
+  if (isLicensingDiscoveryQuestion(source)) return normalized.serviceFamily ? 'service' : 'general';
+  if (isPricingDiscoveryQuestion(source)) return normalized.serviceFamily ? 'service' : 'general';
   if (/\bshape?s?\b|\bvirtual machines?\b|\bvm instances?\b/i.test(source)) return 'shape';
   if (normalized.serviceFamily) return 'service';
   return 'general';
@@ -187,15 +206,17 @@ function extractStructuredInputs(text) {
   const requestCount = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*(?:requests?|api calls?|transactions?|queries?|emails?|messages?|sms(?: messages?)?|tokens?|datapoints?|events?|delivery operations?)\b/i,
   ]);
+  const gpus = matchNumber(source, [
+    /(\d[\d,]*(?:\.\d+)?)\s*gpus?\b/i,
+  ]);
   const quantity = matchNumber(source, [
-    /(\d[\d,]*(?:\.\d+)?)\s*(?:(?:managed|target)\s+)?(?:databases?|devices?|stations?|jobs?|resources?|nodes?|clusters?|models?|endpoints?)\b/i,
+    /(\d[\d,]*(?:\.\d+)?)\s*(?:(?:managed|target)\s+)?(?:databases?|devices?|stations?|jobs?|resources?|nodes?|clusters?|models?|endpoints?|gpus?)\b/i,
   ]);
   const executionHours = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*execution hours?\b/i,
   ]);
   const serviceHours = matchNumber(source, [
-    /(\d[\d,]*(?:\.\d+)?)\s*(?:training|transcription)\s*hours?\b/i,
-    /(\d[\d,]*(?:\.\d+)?)\s*hours?\b/i,
+    /(\d[\d,]*(?:\.\d+)?)\s*(?:training|transcription|execution|cluster|utilized)\s*hours?\b/i,
   ]);
   const minuteQuantity = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*(?:processed video )?minutes?\b/i,
@@ -261,6 +282,7 @@ function extractStructuredInputs(text) {
     executionMs,
     memoryMb,
     users,
+    gpus,
     quantity,
     requestCount,
     firewallInstances,
@@ -295,6 +317,10 @@ function extractStorageCapacityGb(source) {
 function applyDeterministicRescue(normalized, originalText) {
   if (isCompositeOrComparisonRequest(originalText)) return;
   if (isShapeDiscoveryQuestion(originalText)) return;
+  if (isOptionsDiscoveryQuestion(originalText)) return;
+  if (isLicensingDiscoveryQuestion(originalText)) return;
+  if (isPricingDiscoveryQuestion(originalText)) return;
+  if (isCatalogListingQuestion(originalText)) return;
   if (!shouldForceQuote(normalized)) return;
   normalized.intent = 'quote';
   normalized.shouldQuote = true;
@@ -309,6 +335,49 @@ function isShapeDiscoveryQuestion(text) {
   if (/\bwhat\b.*\bshape|\bque\b.*\bshape|\bqué\b.*\bshape|\bopciones?\b.*\bshape/i.test(source)) return true;
   return /\b(?:compare|comparison|difference|different|diferencia|diferencias|comparar)\b/i.test(source) &&
     /\bshape?s?\b|\bvirtual machines?\b|\bvm instances?\b|\b[a-z]\d+\.flex\b/i.test(source);
+}
+
+function isCatalogListingQuestion(text) {
+  const source = String(text || '');
+  if (!source) return false;
+  if (/\blist all skus?\b/i.test(source)) return true;
+  if (/\bwhat\b.*\boptions?\b.*\bcatalog\b/i.test(source)) return true;
+  if (/\bavailable\b.*\bcatalog\b/i.test(source)) return true;
+  if (/\bshow\b.*\bskus?\b/i.test(source)) return true;
+  if (/\blist\b.*\b(hourly prices?|prices?)\b/i.test(source)) return true;
+  return false;
+}
+
+function isOptionsDiscoveryQuestion(text) {
+  const source = String(text || '');
+  if (!source) return false;
+  if (/\b(?:what|which|que|qué)\b.*\boptions?\b/i.test(source)) return true;
+  if (/\bopciones?\b.*\b(?:tenemos|hay|disponibles?)\b/i.test(source)) return true;
+  if (/\bavailable options?\b/i.test(source)) return true;
+  if (/\b(?:what|which|que|qué)\b.*\b(?:available|supported|disponibles?|soportadas?)\b/i.test(source)) return true;
+  return false;
+}
+
+function isPricingDiscoveryQuestion(text) {
+  const source = String(text || '');
+  if (!source) return false;
+  if (/\b(how|como|cómo)\b.*\b(?:billed|charged|priced|cobra|cobran|costea|pricing)\b/i.test(source)) return true;
+  if (/\b(?:pricing model|billing model|cost model|modelo de cobro|modelo de pricing)\b/i.test(source)) return true;
+  if (/\b(?:what|which|que|qué)\b.*\b(?:dimensions?|metrics?|units?|inputs?)\b.*\b(?:bill|charge|price|pricing|cobra)\b/i.test(source)) return true;
+  if (/\b(?:what|which|que|qué)\b.*\b(?:is|es)\b.*\b(?:charged|billed|priced)\b/i.test(source)) return true;
+  return false;
+}
+
+function isLicensingDiscoveryQuestion(text) {
+  const source = String(text || '');
+  if (!source) return false;
+  if (/\b(?:difference|diferencia|compare|comparar)\b.*\b(?:byol|license included|licencia incluida)\b/i.test(source)) return true;
+  if (/\b(?:when|cuando|cuándo|do i need|necesito)\b.*\b(?:byol|license included|licencia incluida)\b/i.test(source)) return true;
+  if (/\b(?:what|which|que|qué)\b.*\b(?:license|licensing|licencia)\b/i.test(source)) return true;
+  if (/\b(?:prerequisite|prerequisites|prerrequisito|prerrequisitos|required inputs?|required information)\b/i.test(source)) return true;
+  if (/\b(?:what|which|que|qué|how|como|cómo)\b.*\b(?:need|needed|required|require|information|inputs?|datos?)\b.*\b(?:quote|price|pricing|cotizar|cotización|costo)\b/i.test(source)) return true;
+  if (/\b(?:what|which|que|qué)\b.*\b(?:need|necesito|requiere|requiero)\b.*\b(?:for|para)\b.*\b(?:oracle integration cloud|base database service|autonomous|analytics cloud|database cloud service)\b/i.test(source)) return true;
+  return false;
 }
 
 function isCompositeOrComparisonRequest(text) {

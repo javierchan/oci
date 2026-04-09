@@ -43,6 +43,9 @@ coverage.xml
 # Internal/confidential Oracle source documents
 pricing/data/source-docs/current/
 
+# Runtime catalog snapshots
+pricing/data/catalog-cache/current/
+
 # Logs
 *.log
 logs/

@@ -10,6 +10,9 @@ const FAMILY_RESOLVERS = {
   network_load_balancer: resolveLoadBalancerComponents,
   storage_block: resolveBlockVolumeComponents,
   storage_file: resolveFileStorageComponents,
+  storage_object_requests: resolveObjectStorageRequestComponents,
+  storage_archive: resolveArchiveStorageComponents,
+  storage_infrequent_access: resolveInfrequentAccessStorageComponents,
   storage_object: resolveObjectStorageComponents,
   network_firewall: resolveNetworkFirewallComponents,
   security_waf: resolveWafComponents,
@@ -32,6 +35,7 @@ const FAMILY_RESOLVERS = {
   security_data_safe: resolveDataSafeComponents,
   ai_agents_data_ingestion: resolveAiAgentsDataIngestionComponents,
   ai_memory_ingestion: resolveAiMemoryIngestionComponents,
+  ai_agents_knowledge_base_storage: resolveAiAgentsKnowledgeBaseStorageComponents,
 };
 
 function resolveRequestDependencies(index, request) {
@@ -41,7 +45,7 @@ function resolveRequestDependencies(index, request) {
       type: 'product',
       label: request.explicitPartNumber,
       candidates: products.map((item) => item.fullDisplayName),
-    });
+    }, request);
   }
 
   if (isCompositeWorkloadRequest(request.source)) {
@@ -51,7 +55,7 @@ function resolveRequestDependencies(index, request) {
         type: 'workload',
         label: 'Composite OCI workload',
         candidates: components.map((item) => item.product.fullDisplayName),
-      });
+      }, request);
     }
   }
 
@@ -61,7 +65,7 @@ function resolveRequestDependencies(index, request) {
       type: 'product',
       label: request.shape.shapeName || `${request.shape.family}.${request.shape.series}.shape`,
       candidates: components.map((item) => item.product.fullDisplayName),
-    });
+    }, request);
   }
 
   if (request.serviceFamily && FAMILY_RESOLVERS[request.serviceFamily]) {
@@ -71,7 +75,7 @@ function resolveRequestDependencies(index, request) {
       type: 'product',
       label: family?.canonical || request.serviceFamily,
       candidates: components.map((item) => item.product.fullDisplayName),
-    });
+    }, request);
   }
 
   if (isFastConnectRequest(request.source)) {
@@ -80,7 +84,7 @@ function resolveRequestDependencies(index, request) {
       type: 'product',
       label: 'FastConnect',
       candidates: components.map((item) => item.product.fullDisplayName),
-    });
+    }, request);
   }
 
   if (isBlockVolumeRequest(request.source)) {
@@ -89,7 +93,7 @@ function resolveRequestDependencies(index, request) {
       type: 'product',
       label: 'Block Volume',
       candidates: components.map((item) => item.product.fullDisplayName),
-    });
+    }, request);
   }
 
   if (isFunctionsRequest(request.source)) {
@@ -98,7 +102,7 @@ function resolveRequestDependencies(index, request) {
       type: 'product',
       label: 'OCI Functions',
       candidates: components.map((item) => item.product.fullDisplayName),
-    });
+    }, request);
   }
 
   const registryQuery = buildRegistryQuery(request);
@@ -118,7 +122,7 @@ function resolveRequestDependencies(index, request) {
       type: 'preset',
       label: preset.displayName,
       candidates: presetMatches.map((item) => item.displayName),
-    });
+    }, request);
   }
 
   if (productMatches.length && isDetailedMediaFlowRequest(request.productQuery)) {
@@ -127,7 +131,7 @@ function resolveRequestDependencies(index, request) {
       type: 'product',
       label: best.fullDisplayName,
       candidates: productMatches.slice(0, 5).map((item) => item.fullDisplayName),
-    });
+    }, request);
   }
 
   if (genericComponents.length) {
@@ -135,7 +139,7 @@ function resolveRequestDependencies(index, request) {
       type: 'service',
       label: genericService.name,
       candidates: registryMatches.slice(0, 5).map((item) => item.name),
-    });
+    }, request);
   }
 
   if (productMatches.length) {
@@ -144,7 +148,7 @@ function resolveRequestDependencies(index, request) {
       type: 'product',
       label: best.fullDisplayName,
       candidates: productMatches.slice(0, 5).map((item) => item.fullDisplayName),
-    });
+    }, request);
   }
 
   if (workbookServiceMatches.length) {
@@ -154,7 +158,7 @@ function resolveRequestDependencies(index, request) {
       type: 'service',
       label: service.name,
       candidates: workbookServiceMatches.map((item) => item.name),
-    });
+    }, request);
   }
 
   if (presetMatches.length) {
@@ -164,7 +168,7 @@ function resolveRequestDependencies(index, request) {
       type: 'preset',
       label: preset.displayName,
       candidates: presetMatches.map((item) => item.displayName),
-    });
+    }, request);
   }
 
   return {
@@ -199,11 +203,45 @@ function searchRelevantProducts(index, request, limit = 12) {
       if (merged.length >= limit) return merged;
     }
   }
-  return merged;
+  return merged
+    .sort((a, b) => scoreProductCompatibility(b, request) - scoreProductCompatibility(a, request))
+    .slice(0, limit);
+}
+
+function scoreProductCompatibility(product, request) {
+  const text = `${product?.displayName || ''} ${product?.metricDisplayName || ''} ${product?.serviceCategoryDisplayName || ''}`.toLowerCase();
+  const source = String(request?.source || '').toLowerCase();
+  let score = 0;
+
+  const explicitGpus = /(\d[\d,]*(?:\.\d+)?)\s*gpus?\b/i.test(source);
+  const explicitOcpus = /(\d[\d,]*(?:\.\d+)?)\s*ocpus?\b/i.test(source);
+  const explicitEcpus = /(\d[\d,]*(?:\.\d+)?)\s*ecpus?\b/i.test(source);
+
+  if (explicitGpus) {
+    if (text.includes('gpu per hour')) score += 500;
+    if (text.includes('ocpu per hour') || text.includes('ecpu per hour')) score -= 200;
+  }
+  if (explicitOcpus) {
+    if (text.includes('ocpu per hour')) score += 500;
+    if (text.includes('gpu per hour')) score -= 200;
+  }
+  if (explicitEcpus) {
+    if (text.includes('ecpu per hour')) score += 500;
+    if (text.includes('gpu per hour')) score -= 200;
+  }
+  if (/\bdense i\/o\b/i.test(source) && /dense i\/o/i.test(text)) score += 200;
+  if (/\bstandard\b/i.test(source) && /\bstandard\b/i.test(text)) score += 100;
+  if (/\bbare metal\b/i.test(source) && /bare metal/i.test(text)) score += 100;
+  if (/\bmetered\b/i.test(source) && /\bmetered\b/i.test(text)) score += 100;
+
+  return score;
 }
 
 function findFirstResolvableRegistryMatch(index, request, registryMatches) {
-  for (const service of registryMatches || []) {
+  const rankedMatches = [...(registryMatches || [])].sort(
+    (a, b) => scoreRegistryMatchCompatibility(index, b, request) - scoreRegistryMatchCompatibility(index, a, request),
+  );
+  for (const service of rankedMatches) {
     const components = buildGenericServiceComponents(index, request, service);
     if (components.length) return { service, components };
   }
@@ -238,15 +276,24 @@ function selectDetailedMediaFlowProduct(matches, query) {
   return ranked[0]?.product || null;
 }
 
-function finalizeResolution(index, components, resolution) {
+function finalizeResolution(index, components, resolution, request = {}) {
   const filtered = (components || []).filter((item) => item && item.product);
-  const expanded = expandWorkbookPrerequisites(index, filtered);
+  const expanded = shouldExpandWorkbookPrerequisites(request)
+    ? expandWorkbookPrerequisites(index, filtered)
+    : { components: filtered, warnings: [] };
   return {
     ok: expanded.components.length > 0,
     components: expanded.components,
     warnings: expanded.warnings,
     resolution,
   };
+}
+
+function shouldExpandWorkbookPrerequisites(request = {}) {
+  if (request?.applyWorkbookPrerequisites === true) return true;
+  if (request?.metadata?.inventorySource) return true;
+  if (request?.metadata?.sourceType === 'rvtools' || request?.metadata?.sourceType === 'inventory_workbook') return true;
+  return false;
 }
 
 function expandPreset(index, preset) {
@@ -269,10 +316,17 @@ function expandWorkbookService(index, service) {
 
 function buildGenericServiceComponents(index, request, service) {
   const components = [];
+  const source = String(request?.source || '').toLowerCase();
+  const explicitGpus = /(\d[\d,]*(?:\.\d+)?)\s*gpus?\b/i.test(source);
+  const explicitOcpus = /(\d[\d,]*(?:\.\d+)?)\s*ocpus?\b/i.test(source);
+  const explicitEcpus = /(\d[\d,]*(?:\.\d+)?)\s*ecpus?\b/i.test(source);
   for (const partNumber of service.partNumbers || []) {
     const products = index.productsByPartNumber.get(partNumber) || [];
     for (const product of products) {
       const pattern = inferConsumptionPattern(product.metricDisplayName, service.name);
+      if (explicitGpus && (pattern === 'ocpu-hour' || pattern === 'ecpu-hour')) continue;
+      if (explicitOcpus && pattern === 'gpu-hour') continue;
+      if (explicitEcpus && pattern === 'gpu-hour') continue;
       const quantity = inferQuantityForPattern(pattern, product, request);
       if (Number.isFinite(Number(quantity)) && Number(quantity) > 0) {
         components.push({
@@ -294,6 +348,38 @@ function buildGenericServiceComponents(index, request, service) {
     }
   }
   return dedupeComponents(components);
+}
+
+function scoreRegistryMatchCompatibility(index, service, request) {
+  if (!service) return 0;
+  const serviceText = String(service?.name || '').toLowerCase();
+  const source = String(request?.source || '').toLowerCase();
+  let score = 0;
+
+  for (const partNumber of service.partNumbers || []) {
+    const products = index.productsByPartNumber.get(partNumber) || [];
+    for (const product of products) {
+      score = Math.max(score, scoreProductCompatibility(product, request));
+    }
+  }
+
+  const explicitGpus = /(\d[\d,]*(?:\.\d+)?)\s*gpus?\b/i.test(source);
+  const explicitOcpus = /(\d[\d,]*(?:\.\d+)?)\s*ocpus?\b/i.test(source);
+  const explicitEcpus = /(\d[\d,]*(?:\.\d+)?)\s*ecpus?\b/i.test(source);
+
+  if (explicitGpus && /\bgpu\b/.test(serviceText)) score += 200;
+  if (explicitGpus && /\bocpu\b|\becpu\b/.test(serviceText)) score -= 100;
+  if (explicitOcpus && /\bocpu\b/.test(serviceText)) score += 200;
+  if (explicitOcpus && /\bgpu\b/.test(serviceText)) score -= 200;
+  if (explicitEcpus && /\becpu\b/.test(serviceText)) score += 200;
+  if (explicitEcpus && /\bgpu\b/.test(serviceText)) score -= 200;
+
+  if (/\bdense i\/o\b/i.test(source) && /dense i\/o/i.test(serviceText)) score += 150;
+  if (/\bstandard\b/i.test(source) && /\bstandard\b/i.test(serviceText)) score += 100;
+  if (/\bbare metal\b/i.test(source) && /bare metal/i.test(serviceText)) score += 100;
+  if (/\bmetered\b/i.test(source) && /\bmetered\b/i.test(serviceText)) score += 100;
+
+  return score;
 }
 
 function expandWorkbookPrerequisites(index, baseComponents) {
@@ -762,6 +848,68 @@ function resolveObjectStorageComponents(index, request) {
     quantity: capacityGb,
     instances: 1,
     dependencyKind: 'object-storage',
+  }];
+}
+
+function resolveObjectStorageRequestComponents(index, request) {
+  const requestCount = Number(request.requestCount || request.quantity || 0);
+  const requests = (index.productsByPartNumber.get('B91627') || [])[0];
+  if (!requests || !(requestCount > 0)) return [];
+  return [{
+    product: requests,
+    quantity: requestCount / 10000,
+    instances: 1,
+    dependencyKind: 'object-storage-requests',
+  }];
+}
+
+function resolveArchiveStorageComponents(index, request) {
+  const capacityGb = Number(request.capacityGb || request.quantity || 0);
+  const storage = (index.productsByPartNumber.get('B91633') || [])[0];
+  if (!storage || !(capacityGb > 0)) return [];
+  return [{
+    product: storage,
+    quantity: capacityGb,
+    instances: 1,
+    dependencyKind: 'archive-storage',
+  }];
+}
+
+function resolveInfrequentAccessStorageComponents(index, request) {
+  const source = String(request.source || '');
+  const wantsRetrieval = /\bretriev(?:al|ed)?\b/i.test(source);
+  const retrievalGb = Number(request.dataProcessedGb || (wantsRetrieval ? request.capacityGb || request.quantity || 0 : 0));
+  const capacityGb = Number(request.capacityGb || request.quantity || 0);
+  const storage = (index.productsByPartNumber.get('B93000') || [])[0];
+  const retrieval = (index.productsByPartNumber.get('B93001') || [])[0];
+  if (wantsRetrieval && retrieval && retrievalGb > 0) {
+    return [{
+      product: retrieval,
+      quantity: retrievalGb,
+      instances: 1,
+      dependencyKind: 'infrequent-access-retrieval',
+    }];
+  }
+  if (storage && capacityGb > 0) {
+    return [{
+      product: storage,
+      quantity: capacityGb,
+      instances: 1,
+      dependencyKind: 'infrequent-access-storage',
+    }];
+  }
+  return [];
+}
+
+function resolveAiAgentsKnowledgeBaseStorageComponents(index, request) {
+  const storage = (index.productsByPartNumber.get('B110462') || [])[0];
+  const capacityGb = Number(request.capacityGb || request.quantity || 0);
+  if (!storage || !(capacityGb > 0)) return [];
+  return [{
+    product: storage,
+    quantity: capacityGb,
+    instances: 1,
+    dependencyKind: 'ai-agents-knowledge-base-storage',
   }];
 }
 

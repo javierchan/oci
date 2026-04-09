@@ -91,8 +91,8 @@ function normalizeCatalog(rawData) {
         .map((price) => ({
           model: price.model,
           value: Number(price.value),
-          rangeMin: Number.isFinite(Number(price.rangeMin)) ? Number(price.rangeMin) : null,
-          rangeMax: Number.isFinite(Number(price.rangeMax)) ? Number(price.rangeMax) : null,
+          rangeMin: price.rangeMin == null ? null : (Number.isFinite(Number(price.rangeMin)) ? Number(price.rangeMin) : null),
+          rangeMax: price.rangeMax == null ? null : (Number.isFinite(Number(price.rangeMax)) ? Number(price.rangeMax) : null),
           rangeUnit: price.rangeUnit || null,
         }))
         .sort((a, b) => (a.rangeMin ?? 0) - (b.rangeMin ?? 0));

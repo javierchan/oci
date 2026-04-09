@@ -62,7 +62,7 @@ function parsePromptRequest(text) {
   ]) ?? DEFAULT_HOURS;
   const instances = matchNumber(source, [/(?:^|\s)(\d+(?:\.\d+)?)\s*(?:instances?|nodes?|vms?)\b/i]) ?? 1;
   const quantity = matchNumber(source, [
-    /(\d+(?:\.\d+)?)\s*(?:ocpus?|ecpus?|gb|tb|mbps|gbps|users?|transactions?|requests?|queries?|emails?|messages?|sms(?: messages?)?|tokens?|minutes?|hours?|ports?|endpoints?|api calls?|databases?|devices?|stations?|jobs?|resources?|nodes?|clusters?|models?)\b/i,
+    /(\d+(?:\.\d+)?)\s*(?:ocpus?|ecpus?|gpus?|gb|tb|mbps|gbps|users?|transactions?|requests?|queries?|emails?|messages?|sms(?: messages?)?|tokens?|minutes?|ports?|endpoints?|api calls?|databases?|devices?|stations?|jobs?|resources?|nodes?|clusters?|models?)\b/i,
     /(\d+(?:\.\d+)?)\s*(?:(?:managed|target)\s+)(?:resources?|databases?)\b/i,
     /\bqty(?:uantity)?\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
   ]) ?? 1;
@@ -101,9 +101,12 @@ function parsePromptRequest(text) {
   const capacityGb = extractStorageCapacityGb(source);
   const vpuPerGb = matchNumber(source, [/(\d+(?:\.\d+)?)\s*vpu'?s?\b/i, /(\d+(?:\.\d+)?)\s*performance units per gb\b/i]);
   const executionHours = matchNumber(source, [/(\d+(?:\.\d+)?)\s*execution hours?\b/i]);
-  const serviceHours = matchNumber(source, [/(\d+(?:\.\d+)?)\s*(?:training|transcription)\s*hours?\b/i, /(\d+(?:\.\d+)?)\s*hours?\b/i]);
+  const serviceHours = matchNumber(source, [
+    /(\d+(?:\.\d+)?)\s*(?:training|transcription|execution|cluster|utilized)\s*hours?\b/i,
+  ]);
   const minuteQuantity = matchNumber(source, [/(\d+(?:\.\d+)?)\s*(?:processed video )?minutes?\b/i, /(\d+(?:\.\d+)?)\s*minutes?\s+of output media content\b/i]);
-  const normalizedQuantity = minuteQuantity ?? serviceHours ?? quantity;
+  const parsedGpus = matchNumber(source, [/(\d+(?:\.\d+)?)\s*gpus?\b/i]);
+  const normalizedQuantity = minuteQuantity ?? serviceHours ?? parsedGpus ?? quantity;
   const workspaceCount = matchNumber(source, [/(\d+(?:\.\d+)?)\s*workspaces?\b/i]);
   const users = matchNumber(source, [/(\d+(?:\.\d+)?)\s*(?:users?|named users?)\b/i]);
   const shapeSeries = shape?.shapeName || matchText(source, [

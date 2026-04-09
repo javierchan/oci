@@ -69,6 +69,7 @@ test('session store keeps an isolated bounded event log per session', () => {
   const loaded = sessionStore.getSession(clientId, session.id);
   assert.equal(Array.isArray(loaded.events), true);
   assert.equal(loaded.events.length, 1);
+  assert.match(loaded.events[0].id, /^evt_/);
   assert.equal(loaded.events[0].type, 'assistant_reply');
   assert.equal(loaded.events[0].data.route, 'product_discovery');
 });

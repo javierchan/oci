@@ -4,7 +4,6 @@ const express = require('express');
 const path    = require('path');
 const https   = require('https');
 const fs      = require('fs');
-const XLSX    = require('xlsx');
 const { normalizeCatalog, searchProducts, searchPresets, searchServiceRegistry } = require('./catalog');
 const { quoteFromPrompt, buildQuote } = require('./quotation-engine');
 const { parseWorkbookBase64, workbookToRequests, analyzeWorkbookForGuidedQuote, buildShapeOptionsForProcessor, parseWorkbookPromptSelections, hasWorkbookSelection } = require('./excel');
@@ -12,6 +11,7 @@ const { normalizeProcessorVendor, findVmShapeByText } = require('./vm-shapes');
 const { loadGenAISettings, runChat, extractChatText } = require('./genai');
 const { respondToAssistant } = require('./assistant');
 const sessionStore = require('./session-store');
+const { buildQuoteExportRows, buildQuoteExportCsv, buildQuoteExportWorkbook } = require('./quote-export');
 
 const app  = express();
 const PORT = process.env.PORT || 8742;
@@ -206,66 +206,6 @@ function buildMarkdownFromLinesForAssistant(lines, totals) {
   const body = lines.map((line, i) => `| ${i + 1} | ${line.environment || '-'} | ${line.service || '-'} | ${line.partNumber || '-'} | ${line.product || '-'} | ${line.metric || '-'} | ${Number.isFinite(Number(line.quantity)) ? Number(line.quantity) : '-'} | ${Number.isFinite(Number(line.instances)) ? Number(line.instances) : '-'} | ${Number.isFinite(Number(line.hours)) ? Number(line.hours) : '-'} | ${Number.isFinite(Number(line.rate)) ? Number(line.rate) : '-'} | ${formatMoney(line.unitPrice, line.currencyCode || 'USD')} | ${formatMoney(line.monthly, line.currencyCode || 'USD')} | ${formatMoney(line.annual, line.currencyCode || 'USD')} |`).join('\n');
   const total = `| Total | - | - | - | - | - | - | - | - | - | - | ${formatMoney(totals?.monthly, totals?.currencyCode || 'USD')} | ${formatMoney(totals?.annual, totals?.currencyCode || 'USD')} |`;
   return `${header}\n${body}\n${total}`;
-}
-
-function buildQuoteExportRows(lineItems = [], totals = null) {
-  const rows = (Array.isArray(lineItems) ? lineItems : []).map((line, index) => ({
-    '#': index + 1,
-    Environment: line.environment || '-',
-    Service: line.service || '-',
-    'Part#': line.partNumber || '-',
-    Product: line.product || '-',
-    Metric: line.metric || '-',
-    Qty: Number.isFinite(Number(line.quantity)) ? Number(line.quantity) : '',
-    Inst: Number.isFinite(Number(line.instances)) ? Number(line.instances) : '',
-    Hours: Number.isFinite(Number(line.hours)) ? Number(line.hours) : '',
-    Rate: Number.isFinite(Number(line.rate)) ? Number(line.rate) : '',
-    Unit: Number.isFinite(Number(line.unitPrice)) ? Number(line.unitPrice) : '',
-    '$/Mo': Number.isFinite(Number(line.monthly)) ? Number(line.monthly) : '',
-    Annual: Number.isFinite(Number(line.annual)) ? Number(line.annual) : '',
-    Currency: line.currencyCode || totals?.currencyCode || 'USD',
-  }));
-  if (totals) {
-    rows.push({
-      '#': 'Total',
-      Environment: '',
-      Service: '',
-      'Part#': '',
-      Product: '',
-      Metric: '',
-      Qty: '',
-      Inst: '',
-      Hours: '',
-      Rate: '',
-      Unit: '',
-      '$/Mo': Number.isFinite(Number(totals.monthly)) ? Number(totals.monthly) : '',
-      Annual: Number.isFinite(Number(totals.annual)) ? Number(totals.annual) : '',
-      Currency: totals.currencyCode || 'USD',
-    });
-  }
-  return rows;
-}
-
-function buildQuoteExportCsv(lineItems = [], totals = null) {
-  const rows = buildQuoteExportRows(lineItems, totals);
-  if (!rows.length) return '';
-  const headers = Object.keys(rows[0]);
-  const escapeCell = (value) => {
-    const text = String(value ?? '');
-    if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
-    return text;
-  };
-  return [
-    headers.map(escapeCell).join(','),
-    ...rows.map((row) => headers.map((key) => escapeCell(row[key])).join(',')),
-  ].join('\n');
-}
-
-function buildQuoteExportWorkbook(lineItems = [], totals = null) {
-  const workbook = XLSX.utils.book_new();
-  const sheet = XLSX.utils.json_to_sheet(buildQuoteExportRows(lineItems, totals));
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Quote');
-  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 }
 
 function getEffectiveWorkbookContext(storedSession) {
@@ -726,8 +666,10 @@ const OCI_URLS = {
 };
 
 const FRONTEND_DIR = path.join(__dirname, '..', 'app');
+const CATALOG_CACHE_DIR = path.join(__dirname, '..', 'data', 'catalog-cache', 'current');
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const store = { data: {}, loadedAt: {}, errors: {}, busy: false, normalized: null };
+const MAX_FETCH_ATTEMPTS = 4;
+const store = { data: {}, loadedAt: {}, errors: {}, busy: false, normalized: null, attempts: {} };
 
 function fetchJSON(url, hops = 5) {
   return new Promise((resolve, reject) => {
@@ -750,14 +692,90 @@ function fetchJSON(url, hops = 5) {
   });
 }
 
+function cloneJson(value) {
+  return value && typeof value === 'object' ? JSON.parse(JSON.stringify(value)) : value;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function mergePaginatedPayload(firstPage, pages) {
+  if (!firstPage || typeof firstPage !== 'object' || !Array.isArray(firstPage.items)) {
+    return cloneJson(firstPage);
+  }
+  const merged = cloneJson(firstPage);
+  merged.items = pages.flatMap((page) => Array.isArray(page?.items) ? page.items : []);
+  merged.hasMore = false;
+  merged.offset = 0;
+  merged.limit = merged.items.length;
+  return merged;
+}
+
+function buildNextPageUrl(baseUrl, page) {
+  if (!page || typeof page !== 'object') return null;
+  if (typeof page.next === 'string' && page.next.trim()) return page.next.trim();
+  if (!Array.isArray(page.items) || !page.items.length) return null;
+  if (page.hasMore !== true) return null;
+  const limit = Number(page.limit);
+  const offset = Number(page.offset);
+  if (!Number.isFinite(limit) || limit <= 0) return null;
+  const nextOffset = Number.isFinite(offset) ? offset + limit : limit;
+  const url = new URL(baseUrl);
+  url.searchParams.set('offset', String(nextOffset));
+  if (!url.searchParams.get('limit')) url.searchParams.set('limit', String(limit));
+  return url.toString();
+}
+
+async function fetchAllPages(name, baseUrl) {
+  const pages = [];
+  const seen = new Set();
+  let nextUrl = baseUrl;
+  while (nextUrl) {
+    if (seen.has(nextUrl)) throw new Error(`Pagination loop detected for ${name}`);
+    seen.add(nextUrl);
+    const page = await fetchJSON(nextUrl);
+    pages.push(page);
+    nextUrl = buildNextPageUrl(baseUrl, page);
+  }
+  return mergePaginatedPayload(pages[0], pages);
+}
+
+function writeCatalogSnapshot(name, data) {
+  fs.mkdirSync(CATALOG_CACHE_DIR, { recursive: true });
+  fs.writeFileSync(path.join(CATALOG_CACHE_DIR, name), JSON.stringify(data, null, 2));
+}
+
+async function fetchCatalogWithRetries(name, baseUrl, maxAttempts = MAX_FETCH_ATTEMPTS) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    store.attempts[name] = attempt;
+    try {
+      if (attempt > 1) {
+        console.log(`  ↺ ${name} retry ${attempt}/${maxAttempts}…`);
+      }
+      return await fetchAllPages(name, baseUrl);
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) {
+        const delayMs = Math.min(4000, 500 * (2 ** (attempt - 1)));
+        console.warn(`  ! ${name} attempt ${attempt}/${maxAttempts} failed — ${error.message}; retrying in ${delayMs}ms`);
+        await sleep(delayMs);
+      }
+    }
+  }
+  throw new Error(`${lastError?.message || 'Unknown error'} (after ${maxAttempts} attempts)`);
+}
+
 async function fetchOne(name) {
   console.log(`  ↓ ${name}…`);
   try {
-    const data = await fetchJSON(OCI_URLS[name]);
+    const data = await fetchCatalogWithRetries(name, OCI_URLS[name]);
     store.data[name] = data; store.loadedAt[name] = new Date(); delete store.errors[name];
     store.normalized = normalizeCatalog(store.data);
+    writeCatalogSnapshot(name, data);
     const n = data?.items?.length ?? (Array.isArray(data) ? data.length : '?');
-    console.log(`  ✓ ${name} (${n} entries)`);
+    console.log(`  ✓ ${name} (${n} entries, attempt ${store.attempts[name]}/${MAX_FETCH_ATTEMPTS})`);
   } catch(e) { store.errors[name] = e.message; console.warn(`  ✗ ${name} — ${e.message}`); }
 }
 
@@ -770,15 +788,36 @@ async function fetchAll() {
   console.log(`\n${Object.keys(store.data).length}/${Object.keys(OCI_URLS).length} catalogs ready.\n`);
 }
 
-setInterval(() => {
-  const now = Date.now();
-  const stale = Object.keys(OCI_URLS).filter(n => { const t = store.loadedAt[n]; return !t || now - t.getTime() > CACHE_TTL_MS; });
-  if (stale.length) { console.log(`↺ Auto-refresh: ${stale.join(', ')}`); Promise.all(stale.map(fetchOne)); }
-}, 60 * 60 * 1000);
+let refreshTimer = null;
+
+function startCatalogRefreshTimer() {
+  if (refreshTimer) return refreshTimer;
+  refreshTimer = setInterval(() => {
+    const now = Date.now();
+    const stale = Object.keys(OCI_URLS).filter((n) => {
+      const t = store.loadedAt[n];
+      return !t || now - t.getTime() > CACHE_TTL_MS;
+    });
+    if (stale.length) {
+      console.log(`↺ Auto-refresh: ${stale.join(', ')}`);
+      Promise.all(stale.map(fetchOne)).catch((error) => {
+        console.warn(`Auto-refresh failed: ${error.message}`);
+      });
+    }
+  }, 60 * 60 * 1000);
+  if (typeof refreshTimer.unref === 'function') refreshTimer.unref();
+  return refreshTimer;
+}
 
 app.get('/api/health', (_req, res) => {
   const catalogs = {};
-  for (const n of Object.keys(OCI_URLS)) catalogs[n] = { loaded: !!store.data[n], loadedAt: store.loadedAt[n] ?? null, error: store.errors[n] ?? null };
+  for (const n of Object.keys(OCI_URLS)) catalogs[n] = {
+    loaded: !!store.data[n],
+    loadedAt: store.loadedAt[n] ?? null,
+    error: store.errors[n] ?? null,
+    attempts: store.attempts[n] ?? 0,
+    maxAttempts: MAX_FETCH_ATTEMPTS,
+  };
   const cfg = loadOciConfig();
   res.json({ ok: Object.keys(store.data).length > 0, catalogsLoaded: Object.keys(store.data).length, loading: store.busy, catalogs, ociConfigured: cfg.ok });
 });
@@ -962,11 +1001,28 @@ app.delete('/api/sessions', (req, res) => {
 app.use(express.static(FRONTEND_DIR));
 app.get('*', (_req, res) => res.sendFile(path.join(FRONTEND_DIR, 'index.html')));
 
-// ── Boot ───────────────────────────────────────────────────
-console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('  OCI Pricing Agent v2.1 — OCI GenAI Edition');
-console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-const _cfg = loadOciConfig();
-console.log(`  OCI GenAI : ${_cfg.ok ? `✓ configured (${_cfg.region})` : '✗ not configured — set OCI_* vars in .env'}`);
-app.listen(PORT, '0.0.0.0', () => console.log(`\n🚀  http://localhost:${PORT}\n`));
-fetchAll();
+function boot() {
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('  OCI Pricing Agent v2.1 — OCI GenAI Edition');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  const _cfg = loadOciConfig();
+  console.log(`  OCI GenAI : ${_cfg.ok ? `✓ configured (${_cfg.region})` : '✗ not configured — set OCI_* vars in .env'}`);
+  const server = app.listen(PORT, '0.0.0.0', () => console.log(`\n🚀  http://localhost:${PORT}\n`));
+  startCatalogRefreshTimer();
+  fetchAll();
+  return server;
+}
+
+if (require.main === module) {
+  boot();
+}
+
+module.exports = {
+  app,
+  boot,
+  startCatalogRefreshTimer,
+  buildQuoteExportRows,
+  buildQuoteExportCsv,
+  buildQuoteExportWorkbook,
+  fetchAll,
+};

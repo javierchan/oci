@@ -295,6 +295,7 @@ async function initCatalogs() {
 
   // Poll until all catalogs are loaded (or error out)
   let ready = false;
+  let failed = false;
   for (let attempt = 0; attempt < 60 && !ready; attempt++) {
     try {
       const r = await fetch('/api/health');
@@ -302,6 +303,8 @@ async function initCatalogs() {
       updateBootUI(h);
       const expectedCatalogs = Object.keys(h.catalogs || {}).length || 4;
       if (h.catalogsLoaded >= expectedCatalogs && !h.loading) ready = true;
+      else if (Object.values(h.catalogs || {}).some(info => info?.error)) failed = true;
+      if (failed) break;
       else await sleep(1500);
     } catch { await sleep(1500); }
   }
@@ -322,9 +325,10 @@ async function initCatalogs() {
       else if (key === 'apexProducts') CAT.apexProducts = d.items || d;
       else if (key === 'presets') CAT.presets = Array.isArray(d) ? d : (d.items || Object.values(d));
       else CAT.metrics = Array.isArray(d) ? d : (d.items || Object.values(d));
-      CAT.loaded = true;
     } catch(e) { console.warn(key, e); }
   }
+
+  CAT.loaded = !!(CAT.products && CAT.apexProducts && CAT.presets && CAT.metrics);
 
   finishBoot();
 }
@@ -349,10 +353,14 @@ function updateBootUI(health) {
     } else if (info.error) {
       bd.className='boot-dot err'; bs.textContent='error'; bs.className='boot-status err';
       if(td) td.style.background='var(--accent)';
-      if(tv) { tv.textContent='error'; tv.className='ctval err'; }
+      if(tv) { tv.textContent=`failed (${info.attempts || 0}/${info.maxAttempts || 4})`; tv.className='ctval err'; }
     } else {
       bd.className='boot-dot active'; bs.textContent='downloading…'; bs.className='boot-status';
-      if(tv) { tv.textContent='downloading…'; tv.className='ctval spin'; }
+      if(tv) {
+        const suffix = info.attempts ? ` (${info.attempts}/${info.maxAttempts || 4})` : '';
+        tv.textContent=`downloading…${suffix}`;
+        tv.className='ctval spin';
+      }
     }
   }
 }
@@ -367,7 +375,7 @@ function finishBoot() {
     renderWelcome();
   } else {
     setCatalogPill('error', 'Sin catálogo');
-    addMsg('agent', '⚠️ **Could not download OCI catalogs from the configured Oracle sources.**\n\nMake sure the container has internet access.\n\nYou can retry by clicking the catalog indicator → **↺ Re-download**.');
+    addMsg('agent', '⚠️ **Catalog retrieve failed for one or more Oracle sources after 4 attempts.**\n\nThe pricing agent cannot start reliably without all required catalogs.\n\nCheck network access to the Oracle endpoints and retry from the catalog indicator → **↺ Re-download**.');
     enableInput();
   }
 }
@@ -399,7 +407,7 @@ async function manualReload() {
     toggleTip(false);
     await initCatalogs();
   } catch(e) { console.error(e); }
-  btn.disabled=false; btn.textContent='↺ Re-download from oracle.com';
+  btn.disabled=false; btn.textContent='↺ Re-download from Oracle sources';
 }
 
 function enableInput() {
