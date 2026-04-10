@@ -579,9 +579,9 @@ function parseWorkbookPromptSelections(text) {
     else if (/\bAMPERE\b|\bARM\b/i.test(source)) processorVendor = 'ampere';
   }
 
-  if (/\bVMWARE\b|\bRVTOOLS\b/i.test(source)) sourcePlatform = 'vmware';
+  if (/\bVMWARE\b|\bRVTOOLS\b|\bVSPHERE\b|\bESXI\b/i.test(source)) sourcePlatform = 'vmware';
   else if (/\bBARE[\s-]?METAL\b|\bPHYSICAL\b|\bF[IÍ]SIC(?:O|OS|A|AS)\b|\bSERVIDORES?\s+F[IÍ]SIC/i.test(source)) sourcePlatform = 'bare_metal';
-  else if (/\bHYPERVISOR\b|\bHYPER-V\b|\bKVM\b|\bXEN\b|\bNUTANIX\b|\bPROXMOX\b/i.test(source)) sourcePlatform = 'other_hypervisor';
+  else if (/\bHYPERVISOR\b|\bHYPER-V\b|\bKVM\b|\bXEN\b|\bNUTANIX\b|\bAHV\b|\bPROXMOX\b/i.test(source)) sourcePlatform = 'other_hypervisor';
 
   const vpuMatch = source.match(/(\d+(?:\.\d+)?)\s*vpu'?s?\b/i);
   const vpuPerGb = vpuMatch ? Number(vpuMatch[1]) : null;

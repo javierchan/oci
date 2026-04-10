@@ -30,6 +30,7 @@ const FAMILY_RESOLVERS = {
   integration_oic_enterprise: resolveOicEnterpriseComponents,
   integration_data: resolveDataIntegrationComponents,
   serverless_functions: resolveFunctionsComponents,
+  apigw: resolveApiGatewayComponents,
   compute_flex: resolveFlexComponents,
   devops_batch: resolveBatchComponents,
   security_data_safe: resolveDataSafeComponents,
@@ -454,8 +455,31 @@ function isCompositeWorkloadRequest(text) {
   const hits = [
     /\bload balancer\b/.test(source),
     /\bblock storage\b|\bblock volumes?\b/.test(source),
+    /\bfile storage\b/.test(source),
     /\bobject storage\b/.test(source),
+    /\bobject storage\b[^\n]*\brequests?\b/.test(source),
+    /\barchive storage\b/.test(source),
+    /\binfrequent access storage\b/.test(source),
     /\bfastconnect\b|\bfast connect\b/.test(source),
+    /\b(?:oci )?functions\b|\bserverless\b/.test(source),
+    /\bapi gateway\b/.test(source),
+    /\b(?:waf|web application firewall)\b/.test(source),
+    /\bdns\b/.test(source),
+    /\bhealth checks?\b/.test(source),
+    /\bnetwork firewall\b/.test(source),
+    /\bmonitoring (?:ingestion|retrieval)\b/.test(source),
+    /\bnotifications https delivery\b/.test(source),
+    /\blog analytics\b/.test(source),
+    /\bdata integration\b/.test(source),
+    /\bbase database service\b/.test(source),
+    /\bdatabase cloud service\b/.test(source),
+    /\boracle integration cloud\b|\boic\b/.test(source),
+    /\boracle analytics cloud\b|\boac\b/.test(source),
+    /\bdata safe\b/.test(source),
+    /\bautonomous ai (?:lakehouse|transaction processing)\b/.test(source),
+    /\bexadata exascale\b/.test(source),
+    /\bexadata dedicated infrastructure\b/.test(source),
+    /\bexadata cloud@customer\b|\bexadata cloud at customer\b/.test(source),
     /\b(?:vm|bm)\.[a-z0-9.]+(?:\.flex|\.\d+)\b/.test(source) ||
       /\b(?:standard|optimized)\d+(?:\.\d+|\.flex)\b/.test(source) ||
       /\bdenseio\.[ea]\d+\.flex\b/.test(source) ||
@@ -469,13 +493,40 @@ function resolveCompositeWorkload(index, request) {
   components.push(...resolveCompositeCompute(index, request));
   components.push(...resolveCompositeLoadBalancer(index, request));
   components.push(...resolveCompositeBlockStorage(index, request));
+  components.push(...resolveCompositeFileStorage(index, request));
   components.push(...resolveCompositeObjectStorage(index, request));
-  return components;
+  components.push(...resolveCompositeObjectStorageRequests(index, request));
+  components.push(...resolveCompositeArchiveStorage(index, request));
+  components.push(...resolveCompositeInfrequentAccessStorage(index, request));
+  components.push(...resolveCompositeFastConnect(index, request));
+  components.push(...resolveCompositeFunctions(index, request));
+  components.push(...resolveCompositeApiGateway(index, request));
+  components.push(...resolveCompositeAutonomousLakehouse(index, request));
+  components.push(...resolveCompositeAutonomousTp(index, request));
+  components.push(...resolveCompositeBaseDatabase(index, request));
+  components.push(...resolveCompositeDatabaseCloudService(index, request));
+  components.push(...resolveCompositeExadataExascale(index, request));
+  components.push(...resolveCompositeExadataCloudCustomer(index, request));
+  components.push(...resolveCompositeOicStandard(index, request));
+  components.push(...resolveCompositeOicEnterprise(index, request));
+  components.push(...resolveCompositeOacProfessional(index, request));
+  components.push(...resolveCompositeOacEnterprise(index, request));
+  components.push(...resolveCompositeDataIntegration(index, request));
+  components.push(...resolveCompositeWaf(index, request));
+  components.push(...resolveCompositeDns(index, request));
+  components.push(...resolveCompositeHealthChecks(index, request));
+  components.push(...resolveCompositeMonitoring(index, request));
+  components.push(...resolveCompositeNotificationsHttps(index, request));
+  components.push(...resolveCompositeNetworkFirewall(index, request));
+  components.push(...resolveCompositeLogAnalytics(index, request));
+  components.push(...resolveCompositeDataSafe(index, request));
+  components.push(...resolveCompositeExadataDedicated(index, request));
+  return dedupeComponents(components);
 }
 
 function resolveCompositeCompute(index, request) {
   const source = String(request.source || '');
-  const match = source.match(/(\d+)\s*x\s*(?:vm\.)?(?:standard\.)?(e\d+)\.flex[^\d]*(\d+(?:\.\d+)?)\s*ocpu[^\d]*(\d+(?:\.\d+)?)\s*gb/i);
+  const match = source.match(/(\d+)\s*x\s*(?:vm\.)?(?:standard\.)?(e\d+)\.flex[^\d]*(\d+(?:\.\d+)?)\s*ocpus?\b[^\d]*(\d+(?:\.\d+)?)\s*gb/i);
   if (!match && (request.shape?.kind === 'flex' || request.shape?.kind === 'fixed')) {
     return resolveFlexComponents(index, {
       ...request,
@@ -555,12 +606,245 @@ function resolveCompositeBlockStorage(index, request) {
   return components;
 }
 
+function resolveCompositeFileStorage(index, request) {
+  const segments = splitWorkloadSegments(request.source).filter((segment) => /\bfile storage\b/i.test(segment));
+  return dedupeComponents(
+    segments.flatMap((segment) =>
+      resolveFileStorageComponents(index, buildCompositeSegmentRequest(segment, request)),
+    ),
+  );
+}
+
 function resolveCompositeObjectStorage(index, request) {
   const quantityGb = parseLabeledCapacity(request.source, /(object storage)/i);
   if (!quantityGb) return [];
 
   const storage = index.products.find((product) => product.partNumber === 'B91628');
   return storage ? [{ product: storage, quantity: quantityGb, instances: 1, dependencyKind: 'object-storage' }] : [];
+}
+
+function resolveCompositeObjectStorageRequests(index, request) {
+  const segments = splitWorkloadSegments(request.source).filter((segment) => /\bobject storage\b[^\n]*\brequests?\b/i.test(segment));
+  return dedupeComponents(
+    segments.flatMap((segment) =>
+      resolveObjectStorageRequestComponents(index, buildCompositeSegmentRequest(segment, request)),
+    ),
+  );
+}
+
+function resolveCompositeArchiveStorage(index, request) {
+  const segment = findCompositeSegment(request.source, /\barchive storage\b/i);
+  if (!segment) return [];
+  return resolveArchiveStorageComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeInfrequentAccessStorage(index, request) {
+  const segments = splitWorkloadSegments(request.source).filter((segment) => /\binfrequent access storage\b/i.test(segment));
+  return dedupeComponents(
+    segments.flatMap((segment) =>
+      resolveInfrequentAccessStorageComponents(index, buildCompositeSegmentRequest(segment, request)),
+    ),
+  );
+}
+
+function resolveCompositeFastConnect(index, request) {
+  const segment = findCompositeSegment(request.source, /\bfastconnect\b|\bfast connect\b/i);
+  if (!segment) return [];
+  return resolveFastConnectComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeFunctions(index, request) {
+  const segment = findCompositeSegment(request.source, /\b(?:oci )?functions\b|\bserverless\b/i);
+  if (!segment) return [];
+  return resolveFunctionsComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeApiGateway(index, request) {
+  const segment = findCompositeSegment(request.source, /\bapi gateway\b/i);
+  if (!segment) return [];
+  return resolveApiGatewayComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeAutonomousLakehouse(index, request) {
+  const segment = findCompositeSegment(request.source, /\bautonomous ai lakehouse\b/i);
+  if (!segment) return [];
+  return resolveAutonomousDwComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeAutonomousTp(index, request) {
+  const segment = findCompositeSegment(request.source, /\bautonomous ai transaction processing\b/i);
+  if (!segment) return [];
+  return resolveAutonomousTpComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeBaseDatabase(index, request) {
+  const segment = findCompositeSegment(request.source, /\bbase database service\b/i);
+  if (!segment) return [];
+  return resolveBaseDatabaseComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeDatabaseCloudService(index, request) {
+  const segment = findCompositeSegment(request.source, /\bdatabase cloud service\b/i);
+  if (!segment) return [];
+  return resolveDatabaseCloudServiceComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeExadataExascale(index, request) {
+  const segment = findCompositeSegment(request.source, /\bexadata exascale\b/i);
+  if (!segment) return [];
+  return resolveExadataExascaleComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeExadataCloudCustomer(index, request) {
+  const segment = findCompositeSegment(request.source, /\bexadata cloud@customer\b|\bexadata cloud at customer\b/i);
+  if (!segment) return [];
+  return resolveExadataCloudCustomerComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeOicStandard(index, request) {
+  const segment = findCompositeSegment(request.source, /\boracle integration cloud\b[^\n,;+]*\bstandard\b|\boic\b[^\n,;+]*\bstandard\b/i);
+  if (!segment) return [];
+  return resolveOicStandardComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeOicEnterprise(index, request) {
+  const segment = findCompositeSegment(request.source, /\boracle integration cloud\b[^\n,;+]*\benterprise\b|\boic\b[^\n,;+]*\benterprise\b/i);
+  if (!segment) return [];
+  return resolveOicEnterpriseComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeOacProfessional(index, request) {
+  const segment = findCompositeSegment(request.source, /\boracle analytics cloud\b[^\n,;+]*\bprofessional\b|\boac\b[^\n,;+]*\bprofessional\b/i);
+  if (!segment) return [];
+  return resolveOacProfessionalComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeOacEnterprise(index, request) {
+  const segment = findCompositeSegment(request.source, /\boracle analytics cloud\b[^\n,;+]*\benterprise\b|\boac\b[^\n,;+]*\benterprise\b/i);
+  if (!segment) return [];
+  return resolveOacEnterpriseComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeDataIntegration(index, request) {
+  const segments = splitWorkloadSegments(request.source).filter((segment) => /\bdata integration\b/i.test(segment));
+  return dedupeComponents(
+    segments.flatMap((segment) =>
+      resolveDataIntegrationComponents(index, buildCompositeSegmentRequest(segment, request)),
+    ),
+  );
+}
+
+function resolveCompositeWaf(index, request) {
+  const source = String(request.source || '');
+  if (!/\b(?:waf|web application firewall)\b/i.test(source)) return [];
+
+  const instances = Number(parseLabeledNumericValue(source, /(waf|web application firewall)/i, [
+    /(\d+(?:\.\d+)?)\s*instances?\b/i,
+    /(\d+(?:\.\d+)?)\s*polic(?:y|ies)\b/i,
+    /(\d+(?:\.\d+)?)\s*(?:waf|web application firewall)\b/i,
+  ]) || 1);
+  const requests = Number(parseLabeledNumericValue(source, /(waf|web application firewall)/i, [
+    /(\d+(?:\.\d+)?)\s*requests?\b/i,
+  ]) || 0);
+
+  const instance = (index.productsByPartNumber.get('B94579') || [])[0];
+  const requestSku = (index.productsByPartNumber.get('B94277') || [])[0];
+  const components = [];
+  if (instance) components.push({ product: instance, quantity: instances, instances: 1, dependencyKind: 'waf-instance' });
+  if (requestSku && requests > 0) {
+    components.push({ product: requestSku, quantity: requests / 1000000, instances: 1, dependencyKind: 'waf-requests' });
+  }
+  return components;
+}
+
+function resolveCompositeDns(index, request) {
+  const queries = Number(parseLabeledNumericValue(request.source, /\bdns\b/i, [
+    /(\d+(?:\.\d+)?)\s*queries?\b/i,
+  ]) || 0);
+  const sku = (index.productsByPartNumber.get('B88525') || [])[0];
+  if (!sku || !(queries > 0)) return [];
+  return [{ product: sku, quantity: queries / 1000000, instances: 1, dependencyKind: 'dns-queries' }];
+}
+
+function resolveCompositeHealthChecks(index, request) {
+  const endpoints = Number(parseLabeledNumericValue(request.source, /\bhealth checks?\b/i, [
+    /(\d+(?:\.\d+)?)\s*endpoints?\b/i,
+  ]) || 0);
+  const sku = (index.productsByPartNumber.get('B90325') || [])[0];
+  if (!sku || !(endpoints > 0)) return [];
+  return [{ product: sku, quantity: endpoints, instances: 1, dependencyKind: 'health-checks-endpoints' }];
+}
+
+function resolveCompositeMonitoring(index, request) {
+  const components = [];
+  const ingestionDatapoints = Number(parseLabeledNumericValue(request.source, /\bmonitoring ingestion\b/i, [
+    /(\d+(?:\.\d+)?)\s*datapoints?\b/i,
+  ]) || 0);
+  const retrievalDatapoints = Number(parseLabeledNumericValue(request.source, /\bmonitoring retrieval\b/i, [
+    /(\d+(?:\.\d+)?)\s*datapoints?\b/i,
+  ]) || 0);
+  const ingestion = (index.productsByPartNumber.get('B90925') || [])[0];
+  const retrieval = (index.productsByPartNumber.get('B90926') || [])[0];
+  if (ingestion && ingestionDatapoints > 0) {
+    components.push({ product: ingestion, quantity: ingestionDatapoints / 1000000, instances: 1, dependencyKind: 'monitoring-ingestion' });
+  }
+  if (retrieval && retrievalDatapoints > 0) {
+    components.push({ product: retrieval, quantity: retrievalDatapoints / 1000000, instances: 1, dependencyKind: 'monitoring-retrieval' });
+  }
+  return components;
+}
+
+function resolveCompositeNotificationsHttps(index, request) {
+  const operations = Number(parseLabeledNumericValue(request.source, /\bnotifications https delivery\b/i, [
+    /(\d+(?:\.\d+)?)\s*delivery operations?\b/i,
+  ]) || 0);
+  const sku = (index.productsByPartNumber.get('B90940') || [])[0];
+  if (!sku || !(operations > 0)) return [];
+  return [{ product: sku, quantity: operations / 1000000, instances: 1, dependencyKind: 'notifications-https-delivery' }];
+}
+
+function resolveCompositeLogAnalytics(index, request) {
+  const segments = splitWorkloadSegments(request.source).filter((segment) => /\blog analytics\b/i.test(segment));
+  return dedupeComponents(
+    segments.flatMap((segment) =>
+      resolveLogAnalyticsComponents(index, buildCompositeSegmentRequest(segment, request)),
+    ),
+  );
+}
+
+function resolveCompositeNetworkFirewall(index, request) {
+  const source = String(request.source || '');
+  if (!/\bnetwork firewall\b/i.test(source)) return [];
+
+  const instances = Number(parseLabeledNumericValue(source, /\bnetwork firewall\b/i, [
+    /(\d+(?:\.\d+)?)\s*firewalls?\b/i,
+    /(\d+(?:\.\d+)?)\s*network firewalls?\b/i,
+  ]) || 1);
+  const dataGb = Number(parseLabeledNumericValue(source, /\bnetwork firewall\b/i, [
+    /(\d+(?:\.\d+)?)\s*gb\b[^\n,.;]*data processed/i,
+    /data processed[^\d]*(\d+(?:\.\d+)?)\s*gb\b/i,
+  ]) || 0);
+
+  const instance = (index.productsByPartNumber.get('B95403') || [])[0];
+  const processing = (index.productsByPartNumber.get('B95404') || [])[0];
+  const components = [];
+  if (instance) components.push({ product: instance, quantity: instances, instances: 1, dependencyKind: 'network-firewall-instance' });
+  if (processing && dataGb > 0) {
+    components.push({ product: processing, quantity: dataGb, instances: 1, dependencyKind: 'network-firewall-data' });
+  }
+  return components;
+}
+
+function resolveCompositeDataSafe(index, request) {
+  const segment = findCompositeSegment(request.source, /\bdata safe\b/i);
+  if (!segment) return [];
+  return resolveDataSafeComponents(index, buildCompositeSegmentRequest(segment, request));
+}
+
+function resolveCompositeExadataDedicated(index, request) {
+  const segment = findCompositeSegment(request.source, /\bexadata dedicated infrastructure\b/i);
+  if (!segment) return [];
+  return resolveExadataDedicatedComponents(index, buildCompositeSegmentRequest(segment, request));
 }
 
 function parseLabeledCapacity(source, labelPattern) {
@@ -592,14 +876,88 @@ function parseStandaloneBandwidthMbps(source) {
 
 function splitWorkloadSegments(text) {
   return String(text || '')
-    .split(/\s*(?:\+|,|\band\b)\s*/i)
-    .map((item) => item.trim())
+    .split(/\s*(?:\+|,|\bplus\b)\s*/i)
+    .map((item) => item.trim().replace(/^and\s+/i, ''))
     .filter(Boolean);
 }
 
+function parseLabeledNumericValue(source, labelPattern, valuePatterns) {
+  const text = String(source || '');
+  const segments = splitWorkloadSegments(text).filter((segment) => labelPattern.test(segment));
+  for (const segment of segments) {
+    const value = matchNumber(segment, valuePatterns);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function findCompositeSegment(source, labelPattern) {
+  return splitWorkloadSegments(source).find((segment) => labelPattern.test(segment)) || '';
+}
+
+function parseCompositeSegmentCapacityGb(source) {
+  return parseLabeledCapacity(source, /(storage|database storage|smart database storage|filesystem storage|vm filesystem storage|block storage|block volumes?|object storage|file storage|log analytics)/i);
+}
+
+function parseCompositeExadataInfraShape(source) {
+  const match = String(source || '').match(/\b(base system|quarter rack|half rack|full rack|database server|storage server|expansion rack)\b/i);
+  return match ? String(match[1] || '').toLowerCase() : '';
+}
+
+function parseCompositeExadataInfraGeneration(source) {
+  const match = String(source || '').match(/\b(x11m|x10m|x9m|x8m|x8|x7)\b/i);
+  return match ? String(match[1] || '').toLowerCase() : '';
+}
+
+function parseCompositeStoragePerformanceUnits(source) {
+  const match = String(source || '').match(/\b(\d+(?:\.\d+)?)\s*(?:vpu'?s?|performance units per gb)\b/i);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function parseCompositeDatabaseStorageModel(source) {
+  const match = String(source || '').match(/\b(smart database storage|filesystem storage|vm filesystem storage)\b/i);
+  return match ? String(match[1] || '').toLowerCase() : '';
+}
+
+function buildCompositeSegmentRequest(segment, baseRequest = {}) {
+  const source = String(segment || '').trim();
+  return {
+    ...baseRequest,
+    source: /^quote\b/i.test(source) ? source : `Quote ${source}`.trim(),
+    productQuery: /^quote\b/i.test(source) ? source : `Quote ${source}`.trim(),
+    quantity: matchNumber(source, [
+      /(\d+(?:\.\d+)?)\s*(?:users?|named users?|workspaces?|databases?|target databases?|requests?|queries?|emails?|messages?|delivery operations?|datapoints?|transactions?|endpoints?)\b/i,
+    ]) ?? baseRequest.quantity,
+    instances: matchNumber(source, [/(?:^|\s)(\d+(?:\.\d+)?)\s*instances?\b/i]) ?? baseRequest.instances,
+    ocpus: matchNumber(source, [/(\d+(?:\.\d+)?)\s*ocpus?\b/i]) ?? baseRequest.ocpus,
+    ecpus: matchNumber(source, [/(\d+(?:\.\d+)?)\s*ecpus?\b/i]) ?? baseRequest.ecpus,
+    requestCount: matchNumber(source, [/(\d+(?:\.\d+)?)\s*(?:requests?|api calls?|transactions?|queries?|emails?|messages?|delivery operations?|datapoints?)\b/i]) ?? baseRequest.requestCount,
+    firewallInstances: matchNumber(source, [/(?:^|\s)(\d+(?:\.\d+)?)\s*firewalls?\b/i, /(\d+(?:\.\d+)?)\s*network firewalls?\b/i]) ?? baseRequest.firewallInstances,
+    wafInstances: matchNumber(source, [/(?:^|\s)(\d+(?:\.\d+)?)\s*(?:waf|web application firewall)\s*(?:instances?)?\b/i, /(\d+(?:\.\d+)?)\s*polic(?:y|ies)\b/i]) ?? baseRequest.wafInstances,
+    dataProcessedGb: matchNumber(source, [
+      /(\d+(?:\.\d+)?)\s*gb\b[^\n,.;]*data processed/i,
+      /data processed[^\d]*(\d+(?:\.\d+)?)\s*gb\b/i,
+      /(\d+(?:\.\d+)?)\s*gb\b[^\n,.;]*processed per hour\b/i,
+      /processed per hour[^\d]*(\d+(?:\.\d+)?)\s*gb\b/i,
+    ]) ?? baseRequest.dataProcessedGb,
+    users: matchNumber(source, [/(\d+(?:\.\d+)?)\s*(?:users?|named users?)\b/i]) ?? baseRequest.users,
+    workspaceCount: matchNumber(source, [/(\d+(?:\.\d+)?)\s*workspaces?\b/i]) ?? baseRequest.workspaceCount,
+    executionHours: matchNumber(source, [/(\d+(?:\.\d+)?)\s*execution hours?\b/i, /(\d+(?:\.\d+)?)h\/month\b/i]) ?? baseRequest.executionHours,
+    capacityGb: parseCompositeSegmentCapacityGb(source) ?? baseRequest.capacityGb,
+    vpuPerGb: parseCompositeStoragePerformanceUnits(source) ?? baseRequest.vpuPerGb,
+    databaseEdition: parseDatabaseEdition(source) || baseRequest.databaseEdition,
+    databaseStorageModel: parseCompositeDatabaseStorageModel(source) || baseRequest.databaseStorageModel,
+    exadataInfraShape: parseCompositeExadataInfraShape(source) || baseRequest.exadataInfraShape,
+    exadataInfraGeneration: parseCompositeExadataInfraGeneration(source) || baseRequest.exadataInfraGeneration,
+  };
+}
+
 function extractCapacityFromSegment(text, labelPattern) {
-  const match = String(text || '').match(new RegExp(`(?:${labelPattern.source})[^\\d]{0,12}(\\d+(?:\\.\\d+)?)\\s*(tb|gb)\\b`, 'i')) ||
-    String(text || '').match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(tb|gb)\\b(?:\\s+(?:of\\s+)?)?(?:${labelPattern.source})`, 'i'));
+  const labelSource = toNonCapturingPatternSource(labelPattern);
+  const match = String(text || '').match(new RegExp(`(?:${labelSource})[^\\d]{0,12}(\\d+(?:\\.\\d+)?)\\s*(tb|gb)\\b`, 'i')) ||
+    String(text || '').match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(tb|gb)\\b(?:\\s+(?:of\\s+)?)?(?:${labelSource})`, 'i'));
   if (!match) return null;
   const value = Number(match[1]);
   const unit = String(match[2] || '').toLowerCase();
@@ -608,11 +966,16 @@ function extractCapacityFromSegment(text, labelPattern) {
 }
 
 function extractBandwidthFromSegment(text, labelPattern) {
-  const match = String(text || '').match(new RegExp(`(?:${labelPattern.source})[^\\d]{0,12}(\\d+(?:\\.\\d+)?)\\s*mbps\\b`, 'i')) ||
-    String(text || '').match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*mbps\\b(?:\\s+(?:of\\s+)?)?(?:${labelPattern.source})`, 'i'));
+  const labelSource = toNonCapturingPatternSource(labelPattern);
+  const match = String(text || '').match(new RegExp(`(?:${labelSource})[^\\d]{0,12}(\\d+(?:\\.\\d+)?)\\s*mbps\\b`, 'i')) ||
+    String(text || '').match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*mbps\\b(?:\\s+(?:of\\s+)?)?(?:${labelSource})`, 'i'));
   if (!match) return null;
   const value = Number(match[1]);
   return Number.isFinite(value) ? value : null;
+}
+
+function toNonCapturingPatternSource(pattern) {
+  return String(pattern?.source || '').replace(/\((?!\?)/g, '(?:');
 }
 
 function inferWorkbookPriceType(metricName) {
@@ -1223,7 +1586,7 @@ function resolveExadataCloudCustomerInfra(index, request) {
   const shape = String(request.exadataInfraShape || '').toLowerCase();
   const generation = String(request.exadataInfraGeneration || '').toLowerCase();
   if (shape === 'base system') {
-    if (generation === 'x10m') return createWorkbookRecurringProduct(index, 'B96610');
+    if (generation === 'x10m') return (index.productsByPartNumber.get('B96610') || [])[0] || createWorkbookRecurringProduct(index, 'B96610');
     return (index.productsByPartNumber.get('B90777') || [])[0] || null;
   }
   if (shape === 'quarter rack') {
@@ -1234,13 +1597,13 @@ function resolveExadataCloudCustomerInfra(index, request) {
   }
   if (shape === 'database server') {
     if (generation === 'x11m') return (index.productsByPartNumber.get('B110627') || [])[0] || null;
-    if (generation === 'x10m') return createWorkbookRecurringProduct(index, 'B96611');
+    if (generation === 'x10m') return (index.productsByPartNumber.get('B96611') || [])[0] || createWorkbookRecurringProduct(index, 'B96611');
   }
   if (shape === 'storage server') {
     if (generation === 'x11m') return (index.productsByPartNumber.get('B110629') || [])[0] || null;
-    if (generation === 'x10m') return createWorkbookRecurringProduct(index, 'B96614');
+    if (generation === 'x10m') return (index.productsByPartNumber.get('B96614') || [])[0] || createWorkbookRecurringProduct(index, 'B96614');
   }
-  if (shape === 'expansion rack' && generation === 'x10m') return createWorkbookRecurringProduct(index, 'B96615');
+  if (shape === 'expansion rack' && generation === 'x10m') return (index.productsByPartNumber.get('B96615') || [])[0] || createWorkbookRecurringProduct(index, 'B96615');
   return null;
 }
 
@@ -1496,6 +1859,18 @@ function resolveFunctionsComponents(index, request) {
     });
   }
   return components;
+}
+
+function resolveApiGatewayComponents(index, request) {
+  const requestCount = Number(request.requestCount || request.quantity || 0);
+  const gateway = (index.productsByPartNumber.get('B92072') || [])[0];
+  if (!gateway || !(requestCount > 0)) return [];
+  return [{
+    product: gateway,
+    quantity: requestCount / 1000000,
+    instances: 1,
+    dependencyKind: 'api-gateway-calls',
+  }];
 }
 
 function resolveBatchComponents(index, request) {

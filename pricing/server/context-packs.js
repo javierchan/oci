@@ -706,9 +706,20 @@ function extractVmShapeMentions(text) {
 }
 
 function pickRelevantServices(index, userText, intent) {
-  const registryMatches = searchServiceRegistry(index.serviceRegistry, userText, 5);
   const inferredFamilyId = intent?.serviceFamily || inferServiceFamily(userText || '', '');
   const family = getServiceFamily(inferredFamilyId || '');
+  const searchQueries = Array.from(new Set([
+    String(userText || '').trim(),
+    String(intent?.serviceName || '').trim(),
+    String(intent?.normalizedRequest || '').trim(),
+    String(family?.canonical || '').trim(),
+  ].filter(Boolean)));
+  const registryMatches = searchQueries
+    .flatMap((query) => searchServiceRegistry(index.serviceRegistry, query, 5))
+    .filter((service, index, items) =>
+      items.findIndex((candidate) => String(candidate.id || candidate.name || '').toLowerCase() === String(service.id || service.name || '').toLowerCase()) === index
+    )
+    .slice(0, 5);
   const topService = registryMatches[0];
   const derivedFamily = !family && topService ? {
     id: topService.id || '',
@@ -737,7 +748,12 @@ function pickRelevantServices(index, userText, intent) {
   const familyProducts = Array.isArray(family?.partNumbers)
     ? family.partNumbers.flatMap((partNumber) => index.productsByPartNumber.get(partNumber) || [])
     : [];
-  const discoveredProducts = searchProducts(index, userText, 8);
+  const discoveredProducts = searchQueries
+    .flatMap((query) => searchProducts(index, query, 8))
+    .filter((product, index, items) =>
+      items.findIndex((candidate) => String(candidate.partNumber || candidate.displayName || '').toLowerCase() === String(product.partNumber || product.displayName || '').toLowerCase()) === index
+    )
+    .slice(0, 8);
   const products = familyProducts.length
     ? Array.from(new Map([...familyProducts, ...discoveredProducts].map((product) => [String(product.partNumber || product.displayName || ''), product])).values())
     : discoveredProducts;

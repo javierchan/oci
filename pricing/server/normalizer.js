@@ -63,16 +63,11 @@ function normalizeIntentResult(intent, originalText) {
 function normalizeRoute(normalized, originalText) {
   const explicit = String(normalized.route || '').trim().toLowerCase();
   if ([
-    'general_answer',
-    'product_discovery',
-    'quote_request',
     'quote_followup',
     'workbook_followup',
     'clarify',
   ].includes(explicit)) return explicit;
   if (normalized.needsClarification) return 'clarify';
-  if (normalized.shouldQuote) return 'quote_request';
-  if (String(normalized.intent || '').toLowerCase() === 'discover') return 'product_discovery';
   if (isOptionsDiscoveryQuestion(originalText)) {
     return 'product_discovery';
   }
@@ -88,6 +83,13 @@ function normalizeRoute(normalized, originalText) {
   if (isShapeDiscoveryQuestion(originalText)) {
     return 'product_discovery';
   }
+  if ([
+    'general_answer',
+    'product_discovery',
+    'quote_request',
+  ].includes(explicit)) return explicit;
+  if (normalized.shouldQuote) return 'quote_request';
+  if (String(normalized.intent || '').toLowerCase() === 'discover') return 'product_discovery';
   return 'general_answer';
 }
 
@@ -105,12 +107,16 @@ function normalizeQuotePlan(normalized, originalText) {
     ...getMissingRequiredInputs(normalized),
   ]));
   return compactObject({
-    action: String(raw.action || inferPlanAction(route)),
+    action: String(route === 'product_discovery' || route === 'general_answer'
+      ? inferPlanAction(route)
+      : (raw.action || inferPlanAction(route))),
     targetType: String(raw.targetType || inferTargetType(source, normalized)),
     domain: String(raw.domain || family?.domain || ''),
     candidateFamilies,
     missingInputs,
-    useDeterministicEngine: raw.useDeterministicEngine !== undefined ? !!raw.useDeterministicEngine : route.startsWith('quote'),
+    useDeterministicEngine: route === 'product_discovery' || route === 'general_answer'
+      ? false
+      : (raw.useDeterministicEngine !== undefined ? !!raw.useDeterministicEngine : route.startsWith('quote')),
   });
 }
 
@@ -361,8 +367,12 @@ function isOptionsDiscoveryQuestion(text) {
 function isPricingDiscoveryQuestion(text) {
   const source = String(text || '');
   if (!source) return false;
+  if (isSkuCompositionDiscoveryQuestion(source)) return true;
+  if (/\b(?:how|como|cómo)\b.*\b(?:build|structure|compose|arma|armar|construye|construir|compone|componer)\b.*\b(?:quote|cotiz(?:ar|ación))\b/i.test(source)) return true;
   if (/\b(how|como|cómo)\b.*\b(?:billed|charged|priced|cobra|cobran|costea|pricing)\b/i.test(source)) return true;
   if (/\b(?:pricing model|billing model|cost model|modelo de cobro|modelo de pricing)\b/i.test(source)) return true;
+  if (/\b(?:pricing dimensions?|billing dimensions?)\b/i.test(source)) return true;
+  if (/\b(?:explain|explica)\b.*\b(?:pricing|billing|billed|charged|priced|dimensions?|metrics?|units?)\b/i.test(source)) return true;
   if (/\b(?:what|which|que|qué)\b.*\b(?:dimensions?|metrics?|units?|inputs?)\b.*\b(?:bill|charge|price|pricing|cobra)\b/i.test(source)) return true;
   if (/\b(?:what|which|que|qué)\b.*\b(?:is|es)\b.*\b(?:charged|billed|priced)\b/i.test(source)) return true;
   return false;
@@ -371,12 +381,21 @@ function isPricingDiscoveryQuestion(text) {
 function isLicensingDiscoveryQuestion(text) {
   const source = String(text || '');
   if (!source) return false;
+  if (isSkuCompositionDiscoveryQuestion(source)) return true;
   if (/\b(?:difference|diferencia|compare|comparar)\b.*\b(?:byol|license included|licencia incluida)\b/i.test(source)) return true;
   if (/\b(?:when|cuando|cuándo|do i need|necesito)\b.*\b(?:byol|license included|licencia incluida)\b/i.test(source)) return true;
   if (/\b(?:what|which|que|qué)\b.*\b(?:license|licensing|licencia)\b/i.test(source)) return true;
   if (/\b(?:prerequisite|prerequisites|prerrequisito|prerrequisitos|required inputs?|required information)\b/i.test(source)) return true;
   if (/\b(?:what|which|que|qué|how|como|cómo)\b.*\b(?:need|needed|required|require|information|inputs?|datos?)\b.*\b(?:quote|price|pricing|cotizar|cotización|costo)\b/i.test(source)) return true;
   if (/\b(?:what|which|que|qué)\b.*\b(?:need|necesito|requiere|requiero)\b.*\b(?:for|para)\b.*\b(?:oracle integration cloud|base database service|autonomous|analytics cloud|database cloud service)\b/i.test(source)) return true;
+  return false;
+}
+
+function isSkuCompositionDiscoveryQuestion(text) {
+  const source = String(text || '');
+  if (!source) return false;
+  if (/\b(?:what|which|que|qué|cuales?|cu[aá]les)\b[\s\S]*\b(?:skus?|sku'?s|componentes?|components?)\b[\s\S]*\b(?:need|needed|required|require|requier(?:e|o|en)?|requerid[oa]s?|necesari[oa]s?)\b[\s\S]*\b(?:quote|quoting|pricing|cotizar|cotización)\b/i.test(source)) return true;
+  if (/\b(?:skus?|sku'?s|componentes?|components?)\b[\s\S]*\b(?:required|requireds?|requerid[oa]s?|necesari[oa]s?)\b[\s\S]*\b(?:en|in|for|para|de)\b[\s\S]*\b(?:quote|cotiz(?:ar|ación))\b/i.test(source)) return true;
   return false;
 }
 

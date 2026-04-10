@@ -318,6 +318,209 @@ Important:
 - the frontend should only be a client of persisted backend state
 - it should not be treated as the source of truth for conversation context
 
+## API Capabilities
+
+Primary implementation:
+
+- [index.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/index.js)
+
+The backend already exposes a usable application API, not just an internal server for the UI.
+
+### 1. Assistant API
+
+Endpoint:
+
+- `POST /api/assistant`
+
+Capabilities:
+
+- accepts natural-language requests with `text`
+- supports multimodal assistant requests with `imageDataUrl`
+- consumes persisted session context when `sessionId` is provided
+- falls back to inline `conversation` and `sessionContext` when no persisted session is used
+- routes requests into:
+  - `answer`
+  - `quote`
+  - `clarification`
+- supports:
+  - product discovery
+  - pricing-dimension explanation
+  - deterministic quote generation
+  - quote follow-ups on active session quotes
+  - workbook follow-ups when a workbook-backed session is active
+- returns assistant metadata such as:
+  - `intent`
+  - `contextPackSummary`
+  - `sessionContext`
+  - persisted `session` snapshot when applicable
+
+Operational notes:
+
+- `OCI GenAI` must be configured or the endpoint returns a configuration error
+- the OCI catalog must be ready before assistant requests are accepted
+- session isolation is keyed by `x-client-id`
+
+### 2. Raw GenAI Chat API
+
+Endpoint:
+
+- `POST /api/chat`
+
+Capabilities:
+
+- exposes a lower-level `OCI GenAI` chat bridge
+- accepts custom `system` prompt and `messages`
+- returns assistant text in a simple chat payload
+- useful for prompt testing and controller-level debugging outside the full assistant orchestration
+
+Important:
+
+- this endpoint is not deterministic pricing
+- it should not be treated as the source of truth for final quote math
+
+### 3. Deterministic Quote API
+
+Endpoint:
+
+- `POST /api/quote`
+
+Capabilities:
+
+- deterministic quote generation from free text via `text`
+- deterministic quote generation from structured pricing lines via `lines`
+- returns:
+  - quote results
+  - line items
+  - warnings
+  - errors
+  - monthly and annual totals
+
+Supported usage patterns:
+
+- direct single-service quote prompts
+- structured programmatic quote calls
+- regression-safe price validation without involving GenAI explanation
+
+### 4. Workbook Estimation API
+
+Endpoint:
+
+- `POST /api/excel/estimate`
+
+Capabilities:
+
+- processes workbook-backed estimation requests
+- persists workbook-driven interaction when `sessionId` is supplied
+- supports backend-owned follow-up handling for workbook quote refinements
+- returns parsed quote output plus updated session state
+
+This is the API surface used for:
+
+- Excel upload estimation
+- workbook selection follow-ups
+- RVTools and migration-style sizing flows already persisted in session state
+
+### 5. Catalog And Registry APIs
+
+Endpoints:
+
+- `GET /api/catalog/search`
+- `GET /api/catalog/:file`
+- `POST /api/catalog/reload`
+- `GET /api/coverage`
+
+Capabilities:
+
+- full-text search across:
+  - normalized products
+  - presets
+  - service registry entries
+- direct inspection of loaded raw catalog files:
+  - `products.json`
+  - `metrics.json`
+  - `productpresets.json`
+  - `products-apex.json`
+- runtime catalog reload without restarting the application
+- registry and coverage inspection for auditable service support status
+
+This API group is useful for:
+
+- debugging SKU resolution
+- validating catalog ingestion
+- inspecting runtime coverage and registry quality
+- building internal tooling around supported OCI services
+
+### 6. Session APIs
+
+Endpoints:
+
+- `GET /api/sessions`
+- `POST /api/sessions`
+- `GET /api/sessions/:id`
+- `POST /api/sessions/:id/messages`
+- `POST /api/sessions/:id/state`
+- `GET /api/sessions/:id/quote-export`
+- `DELETE /api/sessions/:id`
+- `DELETE /api/sessions`
+
+Capabilities:
+
+- create and list persisted conversations
+- retrieve full server-authoritative session state
+- append messages server-side
+- update:
+  - `sessionContext`
+  - `workbookContext`
+  - `title`
+- export the last persisted quote in HTTP form
+- delete one session or clear all sessions for a client
+
+Concurrency notes:
+
+- session writes support `expectedVersion`
+- conflicting updates return `409`
+- the backend, not the browser, is the authority for session mutation
+
+### 7. Health And Configuration APIs
+
+Endpoints:
+
+- `GET /api/health`
+- `GET /api/providers`
+
+Capabilities:
+
+- report OCI catalog readiness and per-file load state
+- expose retry attempts and last catalog errors
+- report whether `OCI GenAI` is configured
+- surface active model/provider metadata such as:
+  - region
+  - endpoint
+  - compartment
+  - modelId
+  - profile
+
+These endpoints are the current operational entry point for:
+
+- smoke tests
+- local environment validation
+- readiness checks before assistant or quote traffic
+
+### API Design Characteristics
+
+The current API design already has several strong properties:
+
+- deterministic pricing is separated from LLM interpretation
+- assistant traffic is stateful when desired, but can still run statelessly
+- session state is backend-owned and exportable
+- catalog and coverage inspection are first-class runtime capabilities
+- workbook flows and chat flows converge in a single persisted session model
+- the same backend can serve:
+  - frontend UI
+  - manual API testing
+  - regression tooling
+  - future automation clients
+
 ## Coverage Model
 
 Coverage levels:

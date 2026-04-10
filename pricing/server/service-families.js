@@ -6,7 +6,7 @@ const SERVICE_FAMILIES = [
     canonical: 'OCI Compute Virtual Machine',
     domain: 'compute',
     resolver: 'compute_vm_generic',
-    aliases: [/\bvirtual machine\b/i, /\bcompute instance\b/i, /\bvm instance\b/i, /\bvm\b/i],
+    aliases: [/\bvirtual machines?(?:\s*\(instances\))?\b/i, /\bcompute instances?\b/i, /\bvm instances?\b/i, /\bvirtual machine\b/i, /\bcompute instance\b/i, /\bvm\b/i],
     clarifyRequired: ['ocpus', 'memoryGb', 'shapeSeries'],
     clarificationQuestion: 'Which OCI VM shape should I use for that machine? For Intel, common options are `E4.Flex` or `E5.Flex`. Once you pick the shape, I can combine it with the attached Block Volume sizing.',
     buildClarificationQuestion(inputs = {}) {
@@ -27,7 +27,16 @@ const SERVICE_FAMILIES = [
     domain: 'storage',
     resolver: 'block_volume',
     aliases: [/\bblock volumes?\b/i, /\bblock storage\b/i],
+    partNumbers: ['B91961', 'B91962'],
     rescueInputs: ['capacityGb', 'vpuPerGb'],
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*vpu'?s?\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*vpu'?s?\b/i,
+        },
+      ],
+    },
     options: {
       measurementModes: ['storage capacity (GB)', 'VPU per GB'],
       variants: ['balanced performance', 'higher performance', 'ultra high performance'],
@@ -47,6 +56,7 @@ const SERVICE_FAMILIES = [
     domain: 'storage',
     resolver: 'file_storage',
     aliases: [/\bfile storage\b/i, /\boci file storage\b/i],
+    partNumbers: ['B89057', 'B109546'],
     rescueInputs: ['capacityGb', 'vpuPerGb'],
     options: {
       measurementModes: ['storage capacity (GB)', 'performance units per GB'],
@@ -130,6 +140,22 @@ const SERVICE_FAMILIES = [
     resolver: 'fastconnect',
     aliases: [/\bfast\s*connect\b/i, /\bfastconnect\b/i],
     rescueInputs: ['bandwidthGbps'],
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
+    },
+    followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+(?:oci\s+)?fast\s*connect\b|\b(?:sin|without)\s+fastconnect\b/i,
+        segmentPattern: String.raw`(?:oci\s+)?fast\s*connect|fastconnect`,
+      },
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*gbps\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*gbps\b/i,
+        },
+      ],
+    },
     options: {
       measurementModes: ['bandwidth (Gbps)', 'port hours'],
       variants: ['1 Gbps', '10 Gbps', '100 Gbps'],
@@ -148,6 +174,22 @@ const SERVICE_FAMILIES = [
     domain: 'network',
     resolver: 'dns',
     aliases: [/\bdns\b/i, /\boracle cloud infrastructure dns\b/i],
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
+    },
+    followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+dns\b/i,
+        segmentPattern: String.raw`dns`,
+      },
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*queries?\b(?:\s+per\s+month)?/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*queries?\b(?:\s+per\s+month)?/i,
+        },
+      ],
+    },
     rescueAnyInputs: ['requestCount'],
     options: {
       measurementModes: ['queries per month'],
@@ -165,6 +207,7 @@ const SERVICE_FAMILIES = [
     domain: 'network',
     resolver: 'network_firewall',
     aliases: [/\bnetwork firewall\b/i, /\boci network firewall\b/i],
+    partNumbers: ['B95403', 'B95404'],
     rescueInputs: ['firewallInstances', 'dataProcessedGb'],
     clarifyRequired: ['firewallInstances', 'dataProcessedGb'],
     clarificationQuestion: 'How many Network Firewall instances do you need and how many GB of data will be processed per month?',
@@ -176,6 +219,14 @@ const SERVICE_FAMILIES = [
       if (dataGb) parts.push(`${dataGb} GB of data processed per month`);
       return parts.join(', ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*firewalls?\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*firewalls?\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'observability_monitoring',
@@ -184,6 +235,16 @@ const SERVICE_FAMILIES = [
     resolver: 'monitoring',
     aliases: [/\bmonitoring\b/i, /\boci monitoring\b/i],
     rescueAnyInputs: ['requestCount'],
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
+    },
+    followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+(?:oci\s+)?monitoring(?:\s+(?:retrieval|ingestion))?\b/i,
+        segmentPattern: String.raw`(?:oci\s+)?monitoring(?:\s+(?:retrieval|ingestion))?`,
+      },
+    },
     options: {
       measurementModes: ['datapoints', 'million datapoints'],
       variants: ['ingestion', 'retrieval'],
@@ -214,6 +275,14 @@ const SERVICE_FAMILIES = [
       if (count) parts.push(`${count} delivery operations`);
       return parts.join(' ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*delivery operations?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*delivery operations?\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'operations_email_delivery',
@@ -232,6 +301,14 @@ const SERVICE_FAMILIES = [
       if (count) parts.push(`${count} emails per month`);
       return parts.join(' ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*emails?\b(?:\s+per\s+month)?/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*emails?\b(?:\s+per\s+month)?/i,
+        },
+      ],
+    },
   },
   {
     id: 'operations_iam_sms',
@@ -249,6 +326,25 @@ const SERVICE_FAMILIES = [
       const parts = ['Quote IAM SMS'];
       if (count) parts.push(`${count} SMS messages`);
       return parts.join(' ');
+    },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*sms messages?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*sms messages?\b/i,
+        },
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*messages?\b/i,
+          apply(nextPrompt, sourceMatch) {
+            const amount = String(sourceMatch || '').match(/\b\d[\d,]*(?:\.\d+)?\b/i)?.[0];
+            if (!amount) return nextPrompt;
+            if (/\b\d[\d,]*(?:\.\d+)?\s*sms messages?\b/i.test(nextPrompt)) {
+              return nextPrompt.replace(/\b\d[\d,]*(?:\.\d+)?\s*sms messages?\b/i, `${amount} SMS messages`);
+            }
+            return nextPrompt.replace(/\b\d[\d,]*(?:\.\d+)?\s*messages?\b/i, `${amount} messages`);
+          },
+        },
+      ],
     },
   },
   {
@@ -271,6 +367,14 @@ const SERVICE_FAMILIES = [
       if (count) parts.push(`${count} messages`);
       return parts.join(' ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*messages?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*messages?\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'security_threat_intelligence',
@@ -287,6 +391,14 @@ const SERVICE_FAMILIES = [
       const parts = ['Quote Oracle Threat Intelligence Service'];
       if (count) parts.push(`${count} API calls`);
       return parts.join(' ');
+    },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*api calls?\b(?:\s+per\s+month)?/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*api calls?\b(?:\s+per\s+month)?/i,
+        },
+      ],
     },
   },
   {
@@ -333,6 +445,25 @@ const SERVICE_FAMILIES = [
       if (count) parts.push(onPremises ? `${count} target databases` : `${count} databases`);
       return parts.join(' ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*target\s+databases?\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*target\s+databases?\b/i,
+        },
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*databases?\b/i,
+          apply(nextPrompt, sourceMatch) {
+            if (/\b\d+(?:\.\d+)?\s*target\s+databases?\b/i.test(nextPrompt)) {
+              const amount = String(sourceMatch || '').match(/\b\d+(?:\.\d+)?\b/i)?.[0];
+              if (!amount) return nextPrompt;
+              return nextPrompt.replace(/\b\d+(?:\.\d+)?\s*target\s+databases?\b/i, `${amount} target databases`);
+            }
+            return nextPrompt.replace(/\b\d+(?:\.\d+)?\s*databases?\b/i, sourceMatch);
+          },
+        },
+      ],
+    },
   },
   {
     id: 'devops_batch',
@@ -346,6 +477,14 @@ const SERVICE_FAMILIES = [
       const parts = ['Quote OCI Batch'];
       if (count) parts.push(`${count} jobs`);
       return parts.join(' ');
+    },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*jobs?\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*jobs?\b/i,
+        },
+      ],
     },
   },
   {
@@ -365,6 +504,14 @@ const SERVICE_FAMILIES = [
       if (count) parts.push(`${count} managed resources`);
       return parts.join(' ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*managed resources?\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*managed resources?\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'ai_agents_data_ingestion',
@@ -382,6 +529,14 @@ const SERVICE_FAMILIES = [
       const parts = ['Quote OCI Generative AI Agents Data Ingestion'];
       if (count) parts.push(`${count} transactions`);
       return parts.join(' ');
+    },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+        },
+      ],
     },
   },
   {
@@ -401,6 +556,14 @@ const SERVICE_FAMILIES = [
       if (count) parts.push(`${count} transactions`);
       return parts.join(' ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'ai_vector_store_retrieval',
@@ -418,6 +581,14 @@ const SERVICE_FAMILIES = [
       const parts = ['Quote OCI Generative AI Vector Store Retrieval'];
       if (count) parts.push(`${count} requests`);
       return parts.join(' ');
+    },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*requests?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*requests?\b/i,
+        },
+      ],
     },
   },
   {
@@ -437,6 +608,14 @@ const SERVICE_FAMILIES = [
       if (count) parts.push(`${count} requests`);
       return parts.join(' ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*requests?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*requests?\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'ai_large_cohere',
@@ -454,6 +633,14 @@ const SERVICE_FAMILIES = [
       const parts = ['Quote OCI Generative AI Large Cohere'];
       if (count) parts.push(`${count} transactions`);
       return parts.join(' ');
+    },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+        },
+      ],
     },
   },
   {
@@ -473,6 +660,14 @@ const SERVICE_FAMILIES = [
       if (count) parts.push(`${count} transactions`);
       return parts.join(' ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'ai_embed_cohere',
@@ -491,6 +686,14 @@ const SERVICE_FAMILIES = [
       if (count) parts.push(`${count} transactions`);
       return parts.join(' ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'ai_large_meta',
@@ -508,6 +711,14 @@ const SERVICE_FAMILIES = [
       const parts = ['Quote OCI Generative AI Large Meta'];
       if (count) parts.push(`${count} transactions`);
       return parts.join(' ');
+    },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+        },
+      ],
     },
   },
   {
@@ -602,6 +813,7 @@ const SERVICE_FAMILIES = [
     domain: 'database',
     resolver: 'autonomous_dw',
     aliases: [/\bautonomous(?: ai)? lakehouse\b/i, /\bautonomous data warehouse\b/i, /\badw\b/i],
+    partNumbers: ['B95701', 'B95703', 'B95706'],
     rescueInputs: ['capacityGb', 'ecpus'],
     requireLicenseChoice: true,
     licenseClarificationQuestion: 'Do you want Autonomous AI Lakehouse as BYOL or License Included?',
@@ -625,9 +837,15 @@ const SERVICE_FAMILIES = [
     domain: 'database',
     resolver: 'base_database',
     aliases: [/\bbase database service\b/i, /\bbase db\b/i],
+    partNumbers: ['B90570', 'B90573', 'B111584'],
     rescueInputs: ['capacityGb', 'databaseEdition'],
     rescueAnyInputs: ['ocpus', 'ecpus'],
     requireLicenseChoice: true,
+    options: {
+      editions: ['Enterprise', 'Standard'],
+      measurementModes: ['OCPUs', 'ECPUs', 'storage capacity (GB)'],
+      variants: ['Enterprise edition', 'Standard edition'],
+    },
     licenseClarificationQuestion: 'Do you want Base Database Service as BYOL or License Included?',
     clarificationQuestion: 'Which Base Database Service edition do you need, how many OCPUs or ECPUs, and how many GB of storage?',
     buildRequest(inputs = {}, semantic = {}, fallbackText = '') {
@@ -677,6 +895,7 @@ const SERVICE_FAMILIES = [
     domain: 'database',
     resolver: 'exadata_exascale',
     aliases: [/\bexadata exascale\b/i],
+    partNumbers: ['B109356', 'B107951', 'B107952'],
     rescueInputs: ['ecpus', 'capacityGb', 'databaseStorageModel'],
     requireLicenseChoice: true,
     licenseClarificationQuestion: 'Do you want Exadata Exascale Database as BYOL or License Included?',
@@ -781,6 +1000,14 @@ const SERVICE_FAMILIES = [
       if (users) parts.push(`${users} users`);
       return parts.join(', ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'analytics_oac_enterprise',
@@ -807,6 +1034,14 @@ const SERVICE_FAMILIES = [
       if (users) parts.push(`${users} users`);
       return parts.join(', ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'integration_oic_standard',
@@ -814,6 +1049,7 @@ const SERVICE_FAMILIES = [
     domain: 'integration',
     resolver: 'oic_standard',
     aliases: [/\boracle integration cloud(?: service)? standard\b/i, /\boic standard\b/i],
+    partNumbers: ['B89639', 'B89643'],
     rescueInputs: [],
     requireLicenseChoice: true,
     licenseClarificationQuestion: 'Do you want Oracle Integration Cloud Standard as BYOL or License Included?',
@@ -828,6 +1064,14 @@ const SERVICE_FAMILIES = [
       if (instances) parts.push(`${instances} instances`);
       return parts.join(', ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'integration_oic_enterprise',
@@ -835,6 +1079,7 @@ const SERVICE_FAMILIES = [
     domain: 'integration',
     resolver: 'oic_enterprise',
     aliases: [/\boracle integration cloud(?: service)? enterprise\b/i, /\boic enterprise\b/i],
+    partNumbers: ['B89640', 'B89644'],
     rescueInputs: [],
     requireLicenseChoice: true,
     licenseClarificationQuestion: 'Do you want Oracle Integration Cloud Enterprise as BYOL or License Included?',
@@ -848,6 +1093,57 @@ const SERVICE_FAMILIES = [
       if (licenseMode === 'license-included') parts.push('License Included');
       if (instances) parts.push(`${instances} instances`);
       return parts.join(', ');
+    },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+        },
+      ],
+    },
+  },
+  {
+    id: 'integration_oic',
+    canonical: 'Oracle Integration Cloud',
+    domain: 'integration',
+    resolver: 'oic',
+    aliases: [/\boracle integration cloud(?: service)?\b/i, /\boic\b/i],
+    partNumbers: ['B89639', 'B89643', 'B89640', 'B89644'],
+    clarificationQuestion: 'Should I use Oracle Integration Cloud Standard or Oracle Integration Cloud Enterprise?',
+    requireLicenseChoice: true,
+    licenseClarificationQuestion: 'Once the edition is selected, should I use Oracle Integration Cloud as BYOL or License Included?',
+    options: {
+      variants: ['Standard', 'Enterprise'],
+      editions: ['Standard', 'Enterprise'],
+      measurementModes: ['instance count'],
+    },
+    preQuoteClarification(inputs = {}, semantic = {}, fallbackText = '') {
+      const source = `${semantic.reformulatedRequest || ''}\n${fallbackText || ''}`;
+      if (!/\b(?:standard|enterprise)\b/i.test(source)) {
+        return 'Should I use Oracle Integration Cloud Standard or Oracle Integration Cloud Enterprise? Once you pick the edition, I can also confirm BYOL or License Included and instance count if needed.';
+      }
+      return '';
+    },
+    buildRequest(inputs = {}, semantic = {}, fallbackText = '') {
+      const instances = numberLike(inputs.instances);
+      const source = `${semantic.reformulatedRequest || ''}\n${fallbackText || ''}`;
+      const licenseMode = detectLicenseMode(source);
+      const parts = ['Quote Oracle Integration Cloud'];
+      if (/\benterprise\b/i.test(source)) parts.push('Enterprise');
+      else if (/\bstandard\b/i.test(source)) parts.push('Standard');
+      if (licenseMode === 'byol') parts.push('BYOL');
+      if (licenseMode === 'license-included') parts.push('License Included');
+      if (instances) parts.push(`${instances} instances`);
+      return parts.join(', ');
+    },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+        },
+      ],
     },
   },
   {
@@ -869,6 +1165,14 @@ const SERVICE_FAMILIES = [
       if (numberLike(inputs.executionHours)) parts.push(`${numberLike(inputs.executionHours)} execution hours per month`);
       return parts.join(', ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*workspaces?\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*workspaces?\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'security_waf',
@@ -876,6 +1180,23 @@ const SERVICE_FAMILIES = [
     domain: 'security',
     resolver: 'waf',
     aliases: [/\bweb application firewall\b/i, /\bwaf\b/i],
+    partNumbers: ['B94579', 'B94277'],
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
+    },
+    followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+(?:waf|web application firewall)\b/i,
+        segmentPattern: String.raw`(?:waf|web application firewall)`,
+      },
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+        },
+      ],
+    },
     rescueInputs: ['wafInstances', 'requestCount'],
     clarifyRequired: ['wafInstances', 'requestCount'],
     options: {
@@ -898,6 +1219,7 @@ const SERVICE_FAMILIES = [
     domain: 'serverless',
     resolver: 'functions',
     aliases: [/\boracle functions\b/i, /\boci functions\b/i, /\bfunctions\b/i, /\bserverless\b/i],
+    partNumbers: ['B90617', 'B90618'],
     rescueInputs: ['executionMs', 'memoryMb'],
     rescueAnyInputs: ['invocationsPerMonth', 'invocationsPerDay'],
     options: {
@@ -920,6 +1242,22 @@ const SERVICE_FAMILIES = [
     domain: 'appdev',
     resolver: 'api_gateway',
     aliases: [/\bapi gateway\b/i, /\boci api gateway\b/i],
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
+    },
+    followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+api gateway\b/i,
+        segmentPattern: String.raw`api gateway`,
+      },
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*api calls?\b(?:\s+per\s+month)?/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*api calls?\b(?:\s+per\s+month)?/i,
+        },
+      ],
+    },
     rescueAnyInputs: ['requestCount'],
     options: {
       measurementModes: ['API calls per month'],
@@ -967,6 +1305,14 @@ const SERVICE_FAMILIES = [
       if (count) parts.push(`${count} transactions`);
       return parts.join(' ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'ai_vision_ocr',
@@ -984,6 +1330,14 @@ const SERVICE_FAMILIES = [
       const parts = ['Quote OCI Vision OCR'];
       if (count) parts.push(`${count} transactions`);
       return parts.join(' ');
+    },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*transactions?\b/i,
+        },
+      ],
     },
   },
   {
@@ -1067,6 +1421,22 @@ const SERVICE_FAMILIES = [
     domain: 'network',
     resolver: 'health_checks',
     aliases: [/\bhealth checks?\b/i, /\boci health checks?\b/i],
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
+    },
+    followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+health checks?\b/i,
+        segmentPattern: String.raw`health checks?`,
+      },
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*endpoints?\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*endpoints?\b/i,
+        },
+      ],
+    },
     rescueAnyInputs: ['quantity'],
     options: {
       measurementModes: ['endpoint count'],
@@ -1085,6 +1455,23 @@ const SERVICE_FAMILIES = [
     domain: 'network',
     resolver: 'load_balancer',
     aliases: [/\bload balancer\b/i],
+    partNumbers: ['B93030', 'B93031'],
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
+    },
+    followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+(?:load balancer|lb)\b/i,
+        segmentPattern: String.raw`(?:flexible\s+)?load balancer|\blb\b`,
+      },
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*mbps\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*mbps\b/i,
+        },
+      ],
+    },
     rescueInputs: ['bandwidthMbps'],
     options: {
       measurementModes: ['bandwidth (Mbps)', 'base capacity hours'],
@@ -1127,6 +1514,25 @@ const SERVICE_FAMILIES = [
       /\bvm\.standard2\.(?:1|2|4|8|16|24)\b/i,
     ],
     rescueInputs: [],
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+          apply(nextPrompt, sourceMatch) {
+            const current = String(nextPrompt || '').trim();
+            if (!current) return current;
+            if (/\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i.test(current)) {
+              return current.replace(/\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i, sourceMatch);
+            }
+            return `${current} ${String(sourceMatch || '').trim()}`.trim();
+          },
+        },
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*vpu'?s?\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*vpu'?s?\b/i,
+        },
+      ],
+    },
   },
 ];
 
@@ -1204,6 +1610,46 @@ function getMissingRequiredInputs(semantic = {}) {
   return [];
 }
 
+function supportsFollowUpCapability(familyId, capability, inputs = {}) {
+  const family = getServiceFamily(familyId);
+  if (!family) return false;
+  if (family.followUpCapabilities && Object.prototype.hasOwnProperty.call(family.followUpCapabilities, capability)) {
+    return family.followUpCapabilities[capability] === true;
+  }
+  if (capability === 'licenseMode') {
+    if (!family.requireLicenseChoice || !family.licenseClarificationQuestion) return false;
+    if (Array.isArray(family.licenseNotRequiredWhenAnyInputs) && family.licenseNotRequiredWhenAnyInputs.length) {
+      const licenseOptional = family.licenseNotRequiredWhenAnyInputs.some((key) => hasInputValue(inputs[key]));
+      if (licenseOptional) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+function getCompositeFollowUpRemovalRules() {
+  return SERVICE_FAMILIES
+    .filter((family) => family.followUpDirectives?.removeFromComposite)
+    .map((family) => ({
+      familyId: family.id,
+      detect: family.followUpDirectives.removeFromComposite.detect,
+      segmentPattern: family.followUpDirectives.removeFromComposite.segmentPattern,
+    }));
+}
+
+function getActiveQuoteFollowUpReplacementRules(familyId) {
+  const family = getServiceFamily(familyId);
+  return Array.isArray(family?.followUpDirectives?.replaceWithinActiveQuote)
+    ? family.followUpDirectives.replaceWithinActiveQuote.slice()
+    : [];
+}
+
+function getFamiliesWithActiveQuoteFollowUpRules() {
+  return SERVICE_FAMILIES
+    .filter((family) => Array.isArray(family?.followUpDirectives?.replaceWithinActiveQuote) && family.followUpDirectives.replaceWithinActiveQuote.length > 0)
+    .map((family) => family.id);
+}
+
 function classifyDomain(name) {
   const source = String(name || '');
   const matched = SERVICE_FAMILIES.find((item) => item.aliases.some((pattern) => pattern.test(source)));
@@ -1237,5 +1683,9 @@ module.exports = {
   getPreQuoteClarification,
   shouldForceQuote,
   getMissingRequiredInputs,
+  supportsFollowUpCapability,
+  getCompositeFollowUpRemovalRules,
+  getActiveQuoteFollowUpReplacementRules,
+  getFamiliesWithActiveQuoteFollowUpRules,
   classifyDomain,
 };

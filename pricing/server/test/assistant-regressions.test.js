@@ -1664,6 +1664,46 @@ test('pricing model question for Load Balancer uses structured family context in
   assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
 });
 
+test('sku composition question for Flexible Load Balancer stays in product discovery even if intent arrives as quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'network_load_balancer',
+    serviceName: 'OCI Load Balancer',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'Para una quote de `Flexible Load Balancer` normalmente debes validar dos SKU principales:',
+      '- capacidad base del load balancer',
+      '- bandwidth configurado en `Mbps-hour`',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: "Cuales son los SKU's requeridos en una quote de Flexible Load Balancer?",
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'network_load_balancer');
+  assert.match(reply.message, /bandwidth|capacidad base|SKU/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
 test('options question for FastConnect uses structured family context instead of quote', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -2594,6 +2634,286 @@ test('options discovery for Exadata Dedicated Infrastructure uses structured fam
   assert.equal(reply.sessionContext.lastContextPack.family.id, 'database_exadata_dedicated');
   assert.ok(reply.sessionContext.lastContextPack.family.options.infrastructureShapes.includes('Base System'));
   assert.match(reply.message, /BYOL|License Included/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('required-input question for Health Checks stays in product discovery even when intent arrives as quote_request', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'edge_health_checks',
+    serviceName: 'Health Checks',
+    extractedInputs: {},
+    confidence: 0.78,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'network', useDeterministicEngine: true },
+  }), {
+    genaiText: [
+      'Para cotizar `OCI Health Checks` normalmente necesito:',
+      '- cantidad de `endpoints`',
+      '- confirmar si buscas guidance o una cotización directa',
+      'El cobro principal se basa en endpoints monitoreados.',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'What inputs do I need before quoting Health Checks in OCI?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'edge_health_checks');
+  assert.match(reply.message, /Health Checks|endpoints/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('required-input question for Base Database stays in product discovery even when intent arrives as quote_request', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'database_base_db',
+    serviceName: 'Base Database Service',
+    extractedInputs: {},
+    confidence: 0.79,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'database', useDeterministicEngine: true },
+  }), {
+    genaiText: [
+      'Para cotizar `Base Database Service` normalmente necesito:',
+      '- edición, por ejemplo `Enterprise` o `Standard`',
+      '- `BYOL` o `License Included`',
+      '- capacidad en `OCPU` o `ECPU`',
+      '- `storage` en GB',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'What inputs do I need before quoting Base Database Service?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'database_base_db');
+  assert.match(reply.message, /Enterprise|Standard/i);
+  assert.match(reply.message, /BYOL|License Included/i);
+  assert.match(reply.message, /OCPU|ECPU/i);
+  assert.match(reply.message, /storage/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('active quote conceptual compute composition question answers instead of mutating the quote', async () => {
+  const index = buildIndex();
+  const activeQuoteSource = 'Quote VM.Standard.E4.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs';
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_followup',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_flex',
+    serviceName: 'Virtual Machine Flex',
+    extractedInputs: { ocpus: 4, memoryGb: 16, storageGb: 200, vpuPerGb: 20 },
+    confidence: 0.74,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'modify_quote', targetType: 'quote', domain: 'compute', useDeterministicEngine: true },
+  }), {
+    genaiText: [
+      'For a `Virtual Machine Flex` quote, the main components are usually:',
+      '- `OCPUs` for compute',
+      '- `memory` in GB when the shape is flexible',
+      '- optional `Block Storage` and its `VPU` performance level when attached',
+      'So no, it is not usually just OCPU unless you intentionally exclude storage and memory from the request.',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Only OCPU, no disk, no memory?',
+    sessionContext: {
+      lastQuote: {
+        source: activeQuoteSource,
+        label: 'Virtual Machine Flex',
+        serviceFamily: 'compute_flex',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'compute_flex');
+  assert.equal(reply.sessionContext.lastQuote.source, activeQuoteSource);
+  assert.match(reply.message, /OCPU|memory|Block Storage|VPU/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('active quote SKU requirement question answers instead of mutating the quote', async () => {
+  const index = buildIndex();
+  const activeQuoteSource = 'Quote VM.Standard.E4.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs';
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_followup',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_flex',
+    serviceName: 'Virtual Machine Flex',
+    extractedInputs: { ocpus: 4, memoryGb: 16, storageGb: 200, vpuPerGb: 20 },
+    confidence: 0.76,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'modify_quote', targetType: 'quote', domain: 'compute', useDeterministicEngine: true },
+  }), {
+    genaiText: [
+      'To quote a `Virtual Machine Flex` stack you normally need the compute and attached component SKUs separated by billing dimension:',
+      '- compute `OCPU` SKU',
+      '- memory `GB-hour` SKU for Flex memory',
+      '- optional `Block Storage` capacity SKU',
+      '- optional `VPU` performance SKU',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Which SKUs are required to quote a Virtual Machine instance and its components?',
+    sessionContext: {
+      lastQuote: {
+        source: activeQuoteSource,
+        label: 'Virtual Machine Flex',
+        serviceFamily: 'compute_flex',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'compute_flex');
+  assert.equal(reply.sessionContext.lastQuote.source, activeQuoteSource);
+  assert.match(reply.message, /SKU|OCPU|memory|Block Storage|VPU/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('billing question for Health Checks with explicit endpoint count stays in discovery instead of being top-service quoted', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 12 },
+    confidence: 0.77,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'network', useDeterministicEngine: true },
+  }), {
+    genaiText: [
+      'For `OCI Health Checks`, the main billing dimension is the number of monitored `endpoints` per month.',
+      '- with `12 endpoints`, the quantity informs the explanation',
+      '- but this is still a pricing-model answer, not a deterministic quote request by itself',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is OCI Health Checks billed for 12 endpoints?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'edge_health_checks');
+  assert.match(reply.message, /Health Checks|endpoints/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing-dimensions explanation for FastConnect with explicit bandwidth stays in discovery instead of being top-service quoted', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { bandwidthGbps: 10 },
+    confidence: 0.78,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'network', useDeterministicEngine: true },
+  }), {
+    genaiText: [
+      'For `OCI FastConnect`, the main billing unit is the selected port bandwidth per hour.',
+      '- `10 Gbps` is one of the standard bandwidth options',
+      '- this prompt is asking for pricing dimensions, not for a deterministic quote output',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Explain OCI FastConnect pricing dimensions for 10 Gbps.',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'network_fastconnect');
+  assert.match(reply.message, /FastConnect|10 Gbps|bandwidth/i);
   assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
 });
 
@@ -4027,6 +4347,49 @@ test('prerequisite discovery for Oracle Integration Cloud Enterprise uses struct
   assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
 });
 
+test('generic OIC SKU composition question uses structured discovery instead of a deterministic quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'product_discovery',
+    intent: 'discover',
+    shouldQuote: false,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'integration_oic',
+    serviceName: 'Oracle Integration Cloud',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }), {
+    genaiText: [
+      'Para una quote de `Oracle Integration Cloud` primero debes definir la edición:',
+      '- `Standard` o `Enterprise`',
+      '- luego el modelo `BYOL` o `License Included`',
+      '- y finalmente la cantidad de instancias',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: "Cuales son los SKU's requeridos en una quote de OIC?",
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'integration_oic');
+  assert.match(reply.message, /Standard/i);
+  assert.match(reply.message, /Enterprise/i);
+  assert.match(reply.message, /BYOL|License Included/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
 test('general discovery request returns service unavailable instead of inventing a quote when genai fails', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -4758,6 +5121,234 @@ test('oracle analytics cloud professional ocpu quote still asks for license mode
   assert.doesNotMatch(quote.message, /B89630/);
 });
 
+test('session follow-up can switch the active OIC Standard quote from license included to BYOL', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'integration_oic_standard',
+    serviceName: 'Oracle Integration Cloud Standard',
+    extractedInputs: { instances: 1 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'BYOL',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Oracle Integration Cloud Standard License Included 1 instance 744h/month',
+        label: 'Oracle Integration Cloud Standard',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\bBYOL\b/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\bLicense Included\b/i);
+  assert.match(reply.message, /B89643/);
+  assert.doesNotMatch(reply.message, /B89639/);
+});
+
+test('session follow-up can change instance count in the active OIC Standard quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'integration_oic_standard',
+    serviceName: 'Oracle Integration Cloud Standard',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '3 instances',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Oracle Integration Cloud Standard License Included 1 instance 744h/month',
+        label: 'Oracle Integration Cloud Standard',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b3 instances\b/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\b1 instance\b/i);
+  assert.match(reply.message, /B89639/);
+});
+
+test('session follow-up can change instance count in the active OIC Enterprise quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'integration_oic_enterprise',
+    serviceName: 'Oracle Integration Cloud Enterprise',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '4 instances',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Oracle Integration Cloud Enterprise License Included 2 instances 744h/month',
+        label: 'Oracle Integration Cloud Enterprise',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b4 instances\b/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\b2 instances\b/i);
+  assert.ok(Array.isArray(reply.quote.lineItems));
+  assert.ok(reply.quote.lineItems.length > 0);
+  assert.match(reply.message, /B89640/);
+});
+
+test('session follow-up can switch the active Autonomous AI Lakehouse quote from BYOL to license included', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'database_autonomous_lakehouse',
+    serviceName: 'Autonomous AI Lakehouse',
+    extractedInputs: { ecpus: 2, storageGb: 100 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'License Included',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Autonomous AI Lakehouse BYOL 2 ECPUs and 100 GB storage per month',
+        label: 'Autonomous AI Lakehouse',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\bLicense Included\b/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\bBYOL\b/i);
+  assert.match(reply.message, /B95701/);
+  assert.doesNotMatch(reply.message, /B95703/);
+});
+
+test('session follow-up ignores unsupported BYOL license flips for Block Volume quotes', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'storage_block',
+    serviceName: 'OCI Block Volume',
+    extractedInputs: { capacityGb: 400, vpuPerGb: 30 },
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'BYOL',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote OCI Block Volume with 400 GB and 30 VPUs',
+        label: 'OCI Block Volume',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\bBYOL\b/i);
+  assert.equal(reply.sessionContext.lastQuote.source, 'Quote OCI Block Volume with 400 GB and 30 VPUs');
+});
+
+test('session follow-up can change VPU count in the active Block Volume quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'storage_block',
+    serviceName: 'OCI Block Volume',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '20 VPUs',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote OCI Block Volume with 400 GB and 30 VPUs',
+        label: 'OCI Block Volume',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b20 VPUs\b/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\b30 VPUs\b/i);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+});
+
 test('session follow-up reuses the active quote source for short instance overrides', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -4830,6 +5421,315 @@ test('route-driven quote follow-up reuses the active quote source for longer wor
   assert.match(reply.message, /B91962/);
   assert.match(reply.sessionContext.lastQuote.source, /20\s*VPU/i);
   assert.doesNotMatch(reply.sessionContext.lastQuote.source, /30\s*VPU/i);
+});
+
+test('session follow-up can switch the active workbook-origin quote shape while keeping sizing and block storage', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_flex',
+    serviceName: 'Oracle Compute Cloud',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'VM.Standard.E4.Flex',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B93113/);
+  assert.match(reply.message, /B93114/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E4\.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex/i);
+});
+
+test('session follow-up can switch workbook-origin shape and VPU in one step while keeping sizing and block storage', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_flex',
+    serviceName: 'Oracle Compute Cloud',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'VM.Standard.E5.Flex with 30 VPUs',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B97384/);
+  assert.match(reply.message, /B97385/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E5\.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 30 VPUs/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /20\s*VPU/i);
+});
+
+test('session follow-up keeps shared fastconnect and monitoring services when workbook-origin shape and VPU change', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_flex',
+    serviceName: 'Oracle Compute Cloud',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'VM.Standard.E5.Flex with 30 VPUs',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus FastConnect 10 Gbps plus Monitoring Retrieval 4000000 datapoints',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E5\.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 30 VPUs plus FastConnect 10 Gbps plus Monitoring Retrieval 4000000 datapoints/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /20\s*VPU/i);
+  assert.match(reply.message, /B97384/);
+  assert.match(reply.message, /B97385/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.message, /B88326/);
+  assert.match(reply.message, /B90926/);
+});
+
+test('session follow-up can apply preemptible to an active workbook-origin compute quote while keeping block storage', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_vm',
+    serviceName: 'Virtual Machine',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const baseline = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM with 340 GB Block Storage and 20 VPUs',
+    sessionContext: {},
+  });
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'preemptible',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM with 340 GB Block Storage and 20 VPUs',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\bpreemptible\b/i);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.ok(Number(reply.quote.totals.monthly) < Number(baseline.quote.totals.monthly));
+});
+
+test('session follow-up can switch workbook-origin shape and apply preemptible in one step while keeping block storage', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_vm',
+    serviceName: 'Virtual Machine',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const baseline = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote VM.Standard.E4.Flex 2 OCPUs 8 GB RAM with 340 GB Block Storage and 20 VPUs',
+    sessionContext: {},
+  });
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'VM.Standard.E4.Flex preemptible',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM with 340 GB Block Storage and 20 VPUs',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E4\.Flex 2 OCPUs 8 GB RAM with 340 GB Block Storage and 20 VPUs preemptible/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex/i);
+  assert.match(reply.message, /B93113/);
+  assert.match(reply.message, /B93114/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.ok(Number(reply.quote.totals.monthly) < Number(baseline.quote.totals.monthly));
+});
+
+test('session follow-up can switch RVTools-origin shape and VPU in one step while keeping vmware sizing', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_flex',
+    serviceName: 'Oracle Compute Cloud',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Use VM.Standard.E5.Flex with 30 VPUs',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs',
+        label: 'RVTools quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B97384/);
+  assert.match(reply.message, /B97385/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E5\.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 30 VPUs/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /20\s*VPU/i);
+});
+
+test('session follow-up can switch RVTools-origin shape and apply preemptible in one step while keeping vmware sizing', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_flex',
+    serviceName: 'Oracle Compute Cloud',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const baseline = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote VM.Standard.E4.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs',
+    sessionContext: {},
+  });
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Use VM.Standard.E4.Flex preemptible',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs',
+        label: 'RVTools quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E4\.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs preemptible/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex/i);
+  assert.match(reply.message, /B93113/);
+  assert.match(reply.message, /B93114/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.ok(Number(reply.quote.totals.monthly) < Number(baseline.quote.totals.monthly));
 });
 
 test('session follow-up can switch the active quote currency with a minimal currency-only answer', async () => {
@@ -4911,6 +5811,43 @@ test('session follow-up can apply preemptible to the active compute quote with a
   assert.equal(reply.mode, 'quote');
   assert.match(reply.sessionContext.lastQuote.source, /\bpreemptible\b/i);
   assert.ok(Number(reply.quote.totals.monthly) < Number(baseline.quote.totals.monthly));
+});
+
+test('session follow-up can append instance count to the active compute quote when it was previously omitted', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_vm',
+    serviceName: 'Virtual Machine',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '3 instances',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM',
+        label: 'Virtual Machine',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b3 instances\b/i);
+  const line = reply.quote.lineItems.find((item) => Number(item.instances) === 3);
+  assert.ok(line);
 });
 
 test('session follow-up can apply a burstable baseline to the active compute quote', async () => {
@@ -4997,6 +5934,608 @@ test('session follow-up can apply capacity reservation utilization to the active
   assert.equal(reply.mode, 'quote');
   assert.match(reply.sessionContext.lastQuote.source, /\bcapacity reservation 0\.7\b/i);
   assert.ok(Number(reply.quote.totals.monthly) < Number(baseline.quote.totals.monthly));
+});
+
+test('session follow-up can apply capacity reservation utilization to an active workbook-origin compute quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_vm',
+    serviceName: 'Virtual Machine',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const baseline = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM with 340 GB Block Storage and 20 VPUs',
+    sessionContext: {},
+  });
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'capacity reservation 0.7',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM with 340 GB Block Storage and 20 VPUs',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\bcapacity reservation 0\.7\b/i);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.ok(Number(reply.quote.totals.monthly) < Number(baseline.quote.totals.monthly));
+});
+
+test('session follow-up can switch workbook-origin shape and apply capacity reservation in one step while keeping block storage', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_vm',
+    serviceName: 'Virtual Machine',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const baseline = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote VM.Standard.E5.Flex 2 OCPUs 8 GB RAM with 340 GB Block Storage and 20 VPUs',
+    sessionContext: {},
+  });
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'VM.Standard.E5.Flex capacity reservation 0.7',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM with 340 GB Block Storage and 20 VPUs',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E5\.Flex 2 OCPUs 8 GB RAM with 340 GB Block Storage and 20 VPUs capacity reservation 0\.7/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex/i);
+  assert.match(reply.message, /B97384/);
+  assert.match(reply.message, /B97385/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.ok(Number(reply.quote.totals.monthly) < Number(baseline.quote.totals.monthly));
+});
+
+test('session follow-up replaces an existing capacity reservation utilization instead of duplicating it', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_vm',
+    serviceName: 'Virtual Machine',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'capacity reservation 0.7',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 2 OCPUs 8 GB RAM capacity reservation 1.0',
+        label: 'Virtual Machine',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\bcapacity reservation 0\.7\b/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\bcapacity reservation 1\.0\b/i);
+});
+
+test('session follow-up can switch RVTools-origin shape and apply capacity reservation in one step while keeping vmware sizing', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_flex',
+    serviceName: 'Oracle Compute Cloud',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const baseline = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Quote VM.Standard.E5.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs',
+    sessionContext: {},
+  });
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Use VM.Standard.E5.Flex capacity reservation 0.7',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs',
+        label: 'RVTools quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E5\.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs capacity reservation 0\.7/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex/i);
+  assert.match(reply.message, /B97384/);
+  assert.match(reply.message, /B97385/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.ok(Number(reply.quote.totals.monthly) < Number(baseline.quote.totals.monthly));
+});
+
+test('session follow-up keeps shared fastconnect and monitoring services when RVTools-origin shape and capacity reservation change', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'compute_flex',
+    serviceName: 'Oracle Compute Cloud',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'Use VM.Standard.E5.Flex capacity reservation 0.7',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus FastConnect 10 Gbps plus Monitoring Retrieval 4000000 datapoints',
+        label: 'RVTools quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E5\.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus FastConnect 10 Gbps plus Monitoring Retrieval 4000000 datapoints capacity reservation 0\.7/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex/i);
+  assert.match(reply.message, /B97384/);
+  assert.match(reply.message, /B97385/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.message, /B88326/);
+  assert.match(reply.message, /B90926/);
+});
+
+test('session follow-up can remove fastconnect from an active workbook-origin mixed quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'sin FastConnect',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus FastConnect 10 Gbps plus Monitoring Retrieval 4000000 datapoints',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B94176/);
+  assert.match(reply.message, /B94177/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.message, /B90926/);
+  assert.doesNotMatch(reply.message, /B88326/);
+  assert.doesNotMatch(reply.message, /B88525/);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /FastConnect/i);
+});
+
+test('session follow-up can remove monitoring retrieval from an active RVTools-origin mixed quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'sin Monitoring Retrieval',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus FastConnect 10 Gbps plus Monitoring Retrieval 4000000 datapoints',
+        label: 'RVTools quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B94176/);
+  assert.match(reply.message, /B94177/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.message, /B88326/);
+  assert.doesNotMatch(reply.message, /B90926/);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /Monitoring Retrieval/i);
+});
+
+test('session follow-up can replace fastconnect with dns in an active workbook-origin mixed quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'cambia FastConnect por DNS 5000000 queries per month',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus FastConnect 10 Gbps plus Monitoring Retrieval 4000000 datapoints',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B94176/);
+  assert.match(reply.message, /B94177/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.message, /B88525/);
+  assert.match(reply.message, /B90926/);
+  assert.doesNotMatch(reply.message, /B88326/);
+  assert.match(reply.sessionContext.lastQuote.source, /DNS 5000000 queries per month/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /FastConnect/i);
+});
+
+test('session follow-up can replace monitoring retrieval with health checks in an active RVTools-origin mixed quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'cambia Monitoring Retrieval por Health Checks 10 endpoints',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus FastConnect 10 Gbps plus Monitoring Retrieval 4000000 datapoints',
+        label: 'RVTools quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B94176/);
+  assert.match(reply.message, /B94177/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.message, /B88326/);
+  assert.match(reply.message, /B90325/);
+  assert.doesNotMatch(reply.message, /B90926/);
+  assert.match(reply.sessionContext.lastQuote.source, /Health Checks 10 endpoints/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /Monitoring Retrieval/i);
+});
+
+test('session follow-up can replace DNS with health checks in an active RVTools-origin mixed edge quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'cambia DNS por Health Checks 10 endpoints',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus Flexible Load Balancer 100 Mbps plus DNS 5000000 queries per month',
+        label: 'RVTools quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B94176/);
+  assert.match(reply.message, /B94177/);
+  assert.match(reply.message, /B93030/);
+  assert.match(reply.message, /B93031/);
+  assert.match(reply.message, /B90325/);
+  assert.doesNotMatch(reply.message, /B88525/);
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus Flexible Load Balancer 100 Mbps plus (?:OCI )?Health Checks 10 endpoints/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /DNS 5000000 queries/i);
+});
+
+test('session follow-up can replace health checks with dns in an active workbook-origin mixed observability quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'cambia Health Checks por DNS 5000000 queries per month',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard.E5.Flex 8 OCPUs 64 GB RAM with 300 GB Block Storage and 20 VPUs plus Monitoring Retrieval 4000000 datapoints plus Health Checks 10 endpoints',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B97384/);
+  assert.match(reply.message, /B97385/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.message, /B90926/);
+  assert.match(reply.message, /B88525/);
+  assert.doesNotMatch(reply.message, /B90325/);
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E5\.Flex 8 OCPUs 64 GB RAM with 300 GB Block Storage and 20 VPUs plus Monitoring Retrieval 4000000 datapoints plus (?:OCI )?DNS 5000000 queries per month/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /Health Checks 10 endpoints/i);
+});
+
+test('session follow-up can change fastconnect bandwidth in an active workbook-origin mixed quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'network_fastconnect',
+    serviceName: 'OCI FastConnect',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '1 Gbps',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard.E5.Flex 8 OCPUs 64 GB RAM with 300 GB Block Storage and 20 VPUs plus FastConnect 10 Gbps plus Monitoring Retrieval 4000000 datapoints',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B97384/);
+  assert.match(reply.message, /B97385/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.message, /B88325/);
+  assert.match(reply.message, /B90926/);
+  assert.doesNotMatch(reply.message, /B88326/);
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E5\.Flex 8 OCPUs 64 GB RAM with 300 GB Block Storage and 20 VPUs plus FastConnect 1 Gbps plus Monitoring Retrieval 4000000 datapoints/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\b10 Gbps\b/i);
+});
+
+test('session follow-up can change dns query volume in an active RVTools-origin mixed edge quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'network_dns',
+    serviceName: 'OCI DNS',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '7000000 queries per month',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus Flexible Load Balancer 100 Mbps plus DNS 5000000 queries per month',
+        label: 'RVTools quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B94176/);
+  assert.match(reply.message, /B94177/);
+  assert.match(reply.message, /B93030/);
+  assert.match(reply.message, /B93031/);
+  assert.match(reply.message, /B88525/);
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus Flexible Load Balancer 100 Mbps plus (?:OCI )?DNS 7000000 queries per month/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /5000000 queries per month/i);
+});
+
+test('session follow-up can change health checks endpoint count in an active workbook-origin mixed observability quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'health_checks',
+    serviceName: 'Health Checks',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '12 endpoints',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard.E5.Flex 8 OCPUs 64 GB RAM with 300 GB Block Storage and 20 VPUs plus Monitoring Retrieval 4000000 datapoints plus Health Checks 10 endpoints',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B97384/);
+  assert.match(reply.message, /B97385/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.message, /B90926/);
+  assert.match(reply.message, /B90325/);
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E5\.Flex 8 OCPUs 64 GB RAM with 300 GB Block Storage and 20 VPUs plus Monitoring Retrieval 4000000 datapoints plus (?:OCI )?Health Checks 12 endpoints/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\b10 endpoints\b/i);
 });
 
 test('session follow-up can remove WAF from the active composite quote source', async () => {
@@ -5112,6 +6651,44 @@ test('session follow-up can remove load balancer from the active composite quote
   assert.doesNotMatch(reply.message, /B93031/);
 });
 
+test('session follow-up can remove load balancer from the active composite quote source with LB shorthand', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'sin LB',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Flexible Load Balancer 100 Mbps plus DNS 5000000 queries per month plus Web Application Firewall with 2 instances and 50000000 requests per month',
+        label: 'Composite OCI workload',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B88525/);
+  assert.match(reply.message, /B94579/);
+  assert.doesNotMatch(reply.message, /B93030/);
+  assert.doesNotMatch(reply.message, /B93031/);
+});
+
 test('session follow-up can remove health checks from the active composite quote source', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -5188,6 +6765,84 @@ test('session follow-up can remove API Gateway from the active composite quote s
   assert.doesNotMatch(reply.message, /B92072/);
 });
 
+test('session follow-up can replace DNS with Health Checks in the active composite quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'cambia DNS por Health Checks 10 endpoints',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Web Application Firewall with 2 instances and 50000000 requests per month plus DNS 5000000 queries per month',
+        label: 'Composite OCI workload',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B94579/);
+  assert.match(reply.message, /B90325/);
+  assert.doesNotMatch(reply.message, /B88525/);
+  assert.match(reply.sessionContext.lastQuote.source, /Health Checks 10 endpoints/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /DNS 5000000 queries/i);
+});
+
+test('session follow-up ignores unsupported composite replacements outside the declared family capability matrix', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'cambia DNS por Block Volume 400 GB with 20 VPUs',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Web Application Firewall with 2 instances and 50000000 requests per month plus DNS 5000000 queries per month',
+        label: 'Composite OCI workload',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B94579/);
+  assert.match(reply.message, /B88525/);
+  assert.doesNotMatch(reply.message, /B91961|B91962/);
+  assert.match(reply.sessionContext.lastQuote.source, /DNS 5000000 queries/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /Block Volume 400 GB/i);
+});
+
 test('session follow-up can change firewall count in the active network firewall quote', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -5262,6 +6917,82 @@ test('session follow-up can change endpoint count in the active health checks qu
   const line = reply.quote.lineItems.find((item) => item.partNumber === 'B90325');
   assert.ok(line);
   assert.equal(Number(line.quantity), 10);
+});
+
+test('session follow-up can change bandwidth in the active FastConnect quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'network_fastconnect',
+    serviceName: 'OCI FastConnect',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '1 Gbps',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote OCI FastConnect 10 Gbps',
+        label: 'OCI FastConnect',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b1 Gbps\b/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\b10 Gbps\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B88325');
+  assert.ok(line);
+});
+
+test('session follow-up can change bandwidth in the active load balancer quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'network_load_balancer',
+    serviceName: 'OCI Load Balancer',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '250 Mbps',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Flexible Load Balancer 100 Mbps',
+        label: 'Flexible Load Balancer',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b250 Mbps\b/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\b100 Mbps\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B93031');
+  assert.ok(line);
 });
 
 test('session follow-up can change database count in the active data safe quote', async () => {
@@ -5489,6 +7220,43 @@ test('session follow-up can change email volume in the active Email Delivery quo
   assert.ok(line);
 });
 
+test('session follow-up can change delivery operations in the active HTTPS Delivery quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'observability_notifications_https',
+    serviceName: 'Notifications HTTPS Delivery',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '8000000 delivery operations',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Notifications HTTPS Delivery 3000000 delivery operations',
+        label: 'Notifications HTTPS Delivery',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b8000000 delivery operations\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B90940');
+  assert.ok(line);
+});
+
 test('session follow-up can change SMS volume in the active IAM SMS quote', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -5526,6 +7294,80 @@ test('session follow-up can change SMS volume in the active IAM SMS quote', asyn
   assert.ok(line);
 });
 
+test('session follow-up can change generic message volume in the active IAM SMS quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'operations_iam_sms',
+    serviceName: 'IAM SMS',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '65 messages',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote IAM SMS 12 SMS messages',
+        label: 'IAM SMS',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b65 SMS messages\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B93496');
+  assert.ok(line);
+});
+
+test('session follow-up can change job count in the active OCI Batch quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'devops_batch',
+    serviceName: 'OCI Batch',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '12 jobs',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote OCI Batch 4 jobs',
+        label: 'OCI Batch',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b12 jobs\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B112107');
+  assert.ok(line);
+});
+
 test('session follow-up can change transaction volume in the active AI Language quote', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -5560,6 +7402,325 @@ test('session follow-up can change transaction volume in the active AI Language 
   assert.equal(reply.mode, 'quote');
   assert.match(reply.sessionContext.lastQuote.source, /\b10000 transactions\b/i);
   const line = reply.quote.lineItems.find((item) => item.partNumber === 'B93423');
+  assert.ok(line);
+});
+
+[
+  {
+    name: 'OCI Generative AI Agents Data Ingestion',
+    familyId: 'ai_agents_data_ingestion',
+    followUpText: '750000 transactions',
+    initialSource: 'Quote OCI Generative AI Agents Data Ingestion 250000 transactions',
+    expectedSource: /\b750000 transactions\b/i,
+    partNumber: 'B110463',
+  },
+  {
+    name: 'OCI Generative AI Large Cohere',
+    familyId: 'ai_large_cohere',
+    followUpText: '90000 transactions',
+    initialSource: 'Quote OCI Generative AI Large Cohere 50000 transactions',
+    expectedSource: /\b90000 transactions\b/i,
+    partNumber: 'B108077',
+  },
+  {
+    name: 'OCI Generative AI Small Cohere',
+    familyId: 'ai_small_cohere',
+    followUpText: '120000 transactions',
+    initialSource: 'Quote OCI Generative AI Small Cohere 50000 transactions',
+    expectedSource: /\b120000 transactions\b/i,
+    partNumber: 'B108078',
+  },
+  {
+    name: 'OCI Generative AI Embed Cohere',
+    familyId: 'ai_embed_cohere',
+    followUpText: '150000 transactions',
+    initialSource: 'Quote OCI Generative AI Embed Cohere 50000 transactions',
+    expectedSource: /\b150000 transactions\b/i,
+    partNumber: 'B108079',
+  },
+  {
+    name: 'OCI Generative AI Large Meta',
+    familyId: 'ai_large_meta',
+    followUpText: '110000 transactions',
+    initialSource: 'Quote OCI Generative AI Large Meta 50000 transactions',
+    expectedSource: /\b110000 transactions\b/i,
+    partNumber: 'B108080',
+  },
+  {
+    name: 'OCI Vision Image Analysis',
+    familyId: 'ai_vision_image_analysis',
+    followUpText: '12000 transactions',
+    initialSource: 'Quote OCI Vision Image Analysis 6000 transactions',
+    expectedSource: /\b12000 transactions\b/i,
+    partNumber: 'B94973',
+  },
+  {
+    name: 'OCI Vision OCR',
+    familyId: 'ai_vision_ocr',
+    followUpText: '14000 transactions',
+    initialSource: 'Quote OCI Vision OCR 6000 transactions',
+    expectedSource: /\b14000 transactions\b/i,
+    partNumber: 'B94974',
+  },
+].forEach(({ name, familyId, followUpText, initialSource, expectedSource, partNumber }) => {
+  test(`session follow-up can change transaction volume in the active ${name} quote`, async () => {
+    const index = buildIndex();
+    const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+      intent: 'quote',
+      shouldQuote: true,
+      needsClarification: false,
+      clarificationQuestion: '',
+      reformulatedRequest: text,
+      assumptions: [],
+      serviceFamily: familyId,
+      serviceName: name,
+      extractedInputs: {},
+      confidence: 0.95,
+      annualRequested: false,
+      normalizedRequest: text,
+    }));
+
+    const reply = await respondToAssistant({
+      cfg: {},
+      index,
+      conversation: [],
+      userText: followUpText,
+      sessionContext: {
+        lastQuote: {
+          source: initialSource,
+          label: name,
+        },
+      },
+    });
+
+    assert.equal(reply.ok, true);
+    assert.equal(reply.mode, 'quote');
+    assert.match(reply.sessionContext.lastQuote.source, expectedSource);
+    const line = reply.quote.lineItems.find((item) => item.partNumber === partNumber);
+    assert.ok(line);
+  });
+});
+
+test('session follow-up can change request volume in the active Vector Store Retrieval quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'ai_vector_store_retrieval',
+    serviceName: 'OCI Generative AI Vector Store Retrieval',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '18000 requests',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote OCI Generative AI Vector Store Retrieval 5000 requests',
+        label: 'OCI Generative AI Vector Store Retrieval',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b18000 requests\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B112416');
+  assert.ok(line);
+});
+
+test('session follow-up can change request volume in the active Web Search quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'ai_web_search',
+    serviceName: 'OCI Generative AI Web Search',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '25000 requests',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote OCI Generative AI Web Search 12000 requests',
+        label: 'OCI Generative AI Web Search',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b25000 requests\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B111973');
+  assert.ok(line);
+});
+
+test('session follow-up can change API call volume in the active Threat Intelligence quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'security_threat_intelligence',
+    serviceName: 'Oracle Threat Intelligence Service',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '2500 API calls',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Oracle Threat Intelligence Service 100 API calls',
+        label: 'Oracle Threat Intelligence Service',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b2500 API calls\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B94173');
+  assert.ok(line);
+});
+
+test('session follow-up can change message volume in the active Notifications SMS Outbound quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'operations_notifications_sms',
+    serviceName: 'OCI Notifications SMS Outbound',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '350 messages',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Notifications SMS Outbound to Country Zone 1 100 messages',
+        label: 'OCI Notifications SMS Outbound',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b350 messages\b/i);
+  assert.match(reply.sessionContext.lastQuote.source, /\bCountry Zone 1\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B93004');
+  assert.ok(line);
+});
+
+test('session follow-up can change named user count in the active OAC Enterprise quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'analytics_oac_enterprise',
+    serviceName: 'Oracle Analytics Cloud Enterprise',
+    extractedInputs: { users: 80 },
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '80 users',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Oracle Analytics Cloud Enterprise 50 users',
+        label: 'Oracle Analytics Cloud Enterprise',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b80 users\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B92683');
+  assert.ok(line);
+});
+
+test('session follow-up can change named user count in the active OAC Professional quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'analytics_oac_professional',
+    serviceName: 'Oracle Analytics Cloud Professional',
+    extractedInputs: { users: 40 },
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '40 users',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Oracle Analytics Cloud Professional 25 users',
+        label: 'Oracle Analytics Cloud Professional',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b40 users\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B92682');
   assert.ok(line);
 });
 

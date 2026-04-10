@@ -208,6 +208,51 @@ function buildMarkdownFromLinesForAssistant(lines, totals) {
   return `${header}\n${body}\n${total}`;
 }
 
+function buildQuoteExportHttpResponse(clientId, sessionId, format = 'csv') {
+  const session = sessionStore.getSession(clientId, sessionId);
+  if (!session) {
+    return {
+      status: 404,
+      json: { ok: false, error: 'Session not found.' },
+    };
+  }
+  const quoteExport = session.sessionContext?.quoteExport;
+  if (!quoteExport?.lineItems?.length) {
+    return {
+      status: 404,
+      json: { ok: false, error: 'No exportable quote found in this session.' },
+    };
+  }
+  const normalizedFormat = String(format || 'csv').trim().toLowerCase();
+  if (normalizedFormat === 'json') {
+    return {
+      status: 200,
+      json: {
+        ok: true,
+        quoteExport,
+      },
+    };
+  }
+  if (normalizedFormat === 'xlsx') {
+    return {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="${sessionId}-quote.xlsx"`,
+      },
+      body: buildQuoteExportWorkbook(quoteExport.lineItems, quoteExport.totals),
+    };
+  }
+  return {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${sessionId}-quote.csv"`,
+    },
+    body: buildQuoteExportCsv(quoteExport.lineItems, quoteExport.totals),
+  };
+}
+
 function getEffectiveWorkbookContext(storedSession) {
   const session = storedSession && typeof storedSession === 'object' ? storedSession : null;
   const workbookContext = session?.workbookContext && typeof session.workbookContext === 'object'
@@ -933,29 +978,14 @@ app.get('/api/sessions/:id', (req, res) => {
 
 app.get('/api/sessions/:id/quote-export', (req, res) => {
   const clientId = resolveClientId(req);
-  const session = sessionStore.getSession(clientId, req.params.id);
-  if (!session) return res.status(404).json({ ok: false, error: 'Session not found.' });
-  const quoteExport = session.sessionContext?.quoteExport;
-  if (!quoteExport?.lineItems?.length) {
-    return res.status(404).json({ ok: false, error: 'No exportable quote found in this session.' });
+  const result = buildQuoteExportHttpResponse(clientId, req.params.id, req.query.format);
+  if (result.headers) {
+    for (const [key, value] of Object.entries(result.headers)) {
+      res.setHeader(key, value);
+    }
   }
-  const format = String(req.query.format || 'csv').trim().toLowerCase();
-  if (format === 'json') {
-    return res.json({
-      ok: true,
-      quoteExport,
-    });
-  }
-  if (format === 'xlsx') {
-    const workbook = buildQuoteExportWorkbook(quoteExport.lineItems, quoteExport.totals);
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${req.params.id}-quote.xlsx"`);
-    return res.send(workbook);
-  }
-  const csv = buildQuoteExportCsv(quoteExport.lineItems, quoteExport.totals);
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${req.params.id}-quote.csv"`);
-  return res.send(csv);
+  if (result.json) return res.status(result.status).json(result.json);
+  return res.status(result.status).send(result.body);
 });
 
 app.post('/api/sessions/:id/messages', (req, res) => {
@@ -1024,5 +1054,6 @@ module.exports = {
   buildQuoteExportRows,
   buildQuoteExportCsv,
   buildQuoteExportWorkbook,
+  buildQuoteExportHttpResponse,
   fetchAll,
 };

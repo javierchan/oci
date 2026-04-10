@@ -90,6 +90,10 @@ Implemented:
 - `route + quotePlan` extraction
 - structured product context for discovery and explanation
 - discovery questions routed away from quote generation
+- conceptual prerequisite and quote-composition questions now stay in discovery or answer mode even when the controller over-predicts a quote path
+- active-quote conceptual follow-ups now answer without mutating the persisted quote source for covered SKU/component and compute-composition questions
+- discovery and explanation prompts with quotable numeric inputs now stay in answer/discovery mode instead of being auto-promoted into deterministic quotes by registry fallback matching
+- route normalization now also overrides explicit `quote_request` outputs for clearly explanatory pricing-dimension prompts with measurable inputs
 - safer unsupported-service replies when deterministic pricing should not run
 
 Reference:
@@ -146,6 +150,12 @@ Implemented:
 - `vCPU -> OCPU` conversion for VMware x86
 - block volume sizing and `VPU` overrides
 - persisted workbook follow-ups within a session
+- workbook-derived compute requests now also have regression coverage when composed with shared edge and observability services such as load balancer, DNS, FastConnect, monitoring retrieval, and health checks
+- workbook-derived requests now also have regression coverage for shared connectivity plus observability combinations, including `FastConnect + Monitoring Retrieval`, across both RVTools single-request paths and guided inventory aggregates
+- workbook-origin and RVTools-origin follow-ups now also have regression coverage when shape, VPU, or capacity-reservation changes must preserve shared `FastConnect + Monitoring Retrieval` services in the persisted quote source
+- workbook-origin and RVTools-origin mixed follow-ups now also have regression coverage when shared `FastConnect` or `Monitoring Retrieval` components are explicitly removed from the persisted quote source
+- workbook-origin and RVTools-origin mixed follow-ups now also have regression coverage for safe shared-service replacements such as `FastConnect -> DNS`, `Monitoring Retrieval -> Health Checks`, `DNS -> Health Checks`, and `Health Checks -> DNS`
+- workbook-origin and RVTools-origin mixed follow-ups now also have regression coverage for parameter-only mutations on persisted shared services, including `FastConnect bandwidth`, `DNS query volume`, and `Health Checks endpoint count`
 
 Reference:
 
@@ -170,9 +180,15 @@ Implemented:
   - OIC
   - OAC
   - Base Database Service
+  - Database Cloud Service
   - Data Safe
   - Network Firewall
-  - several observability/platform services
+- several observability/platform services
+- parity already includes mixed database, integration, storage, and edge bundles instead of only isolated family cases
+- parity now also exercises larger enterprise bundles that mix analytics/integration with file storage and Exadata platform lines
+- parity now also covers enterprise database and Exadata bundles that mix observability and security primitives such as monitoring, health checks, firewall, and log analytics
+- parity now also covers Base Database, Database Cloud Service, and Exadata Cloud@Customer combinations that mix Data Safe, monitoring, health checks, notifications, and log analytics in the same deterministic request
+- parity now also covers Autonomous AI Lakehouse and Autonomous AI Transaction Processing bundles that mix Data Integration, firewall, load balancer, DNS, monitoring, notifications, and health checks
 
 Reference:
 
@@ -180,9 +196,13 @@ Reference:
 
 ### Current Test Baseline
 
-Current passing suite:
+Current test baseline:
 
-- `378/378`
+- assistant follow-up regression suite: `242 pass / 0 fail`
+- workbook-focused suite: `27 pass / 0 fail`
+- parity suite: `136 pass / 0 fail`
+- quote export endpoint suite: `3 pass / 0 fail`
+- full server suite in sandbox: `483 pass / 0 fail`
 
 This is the operational baseline at the time of this documentation update.
 
@@ -246,6 +266,8 @@ Pending:
   - `service-families`
   - `context-packs`
   - generated registries
+- continue moving non-follow-up family policy out of `assistant.js`
+- extend the declarative capability matrix beyond the currently hardened active-quote replacement categories
 
 Why this matters:
 
@@ -260,6 +282,7 @@ Pending:
   - licensing changes
   - component add/remove
   - currency/modifier updates
+  - conceptual active-quote questions that should answer instead of mutate
   - family-specific modifications outside the currently hardened set
 
 ### 4. Observability And Production Telemetry

@@ -94,6 +94,48 @@ test('normalizer routes OIC prerequisite questions to product discovery instead 
   assert.equal(result.quotePlan.useDeterministicEngine, false);
 });
 
+test('normalizer routes generic OIC SKU composition questions to product discovery and infers the generic OIC family', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: "Cuales son los SKU's requeridos en una quote de OIC?",
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, "Cuales son los SKU's requeridos en una quote de OIC?");
+
+  assert.equal(result.route, 'product_discovery');
+  assert.equal(result.serviceFamily, 'integration_oic');
+  assert.equal(result.quotePlan.useDeterministicEngine, false);
+});
+
+test('normalizer routes generic VM SKU composition questions to product discovery and infers the generic VM family', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: "Cuales son los SKU's requeridos en una quote de Virtual Machines (Instances)?",
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, "Cuales son los SKU's requeridos en una quote de Virtual Machines (Instances)?");
+
+  assert.equal(result.route, 'product_discovery');
+  assert.equal(result.serviceFamily, 'compute_vm_generic');
+  assert.equal(result.quotePlan.useDeterministicEngine, false);
+});
+
 test('normalizer routes file storage billing questions to product discovery instead of quote', () => {
   const result = normalizeIntentResult({
     intent: 'answer',
@@ -307,6 +349,52 @@ test('normalizer routes service options questions to product discovery instead o
     annualRequested: false,
     quotePlan: {},
   }, 'Que opciones tenemos para Exadata Dedicated Infrastructure?');
+
+  assert.equal(result.route, 'product_discovery');
+  assert.equal(result.quotePlan.action, 'discover');
+  assert.equal(result.quotePlan.targetType, 'service');
+  assert.equal(result.quotePlan.useDeterministicEngine, false);
+});
+
+test('normalizer routes pricing-dimension questions with explicit measurable inputs to product discovery instead of quote', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    route: 'quote_request',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Explain OCI FastConnect pricing dimensions for 10 Gbps.',
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { bandwidthGbps: 10 },
+    confidence: 0.78,
+    annualRequested: false,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'network', useDeterministicEngine: true },
+  }, 'Explain OCI FastConnect pricing dimensions for 10 Gbps.');
+
+  assert.equal(result.route, 'product_discovery');
+  assert.equal(result.quotePlan.action, 'discover');
+  assert.equal(result.quotePlan.targetType, 'service');
+  assert.equal(result.quotePlan.useDeterministicEngine, false);
+});
+
+test('normalizer routes billing questions with explicit endpoint counts to product discovery instead of quote', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    route: 'quote_request',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'How is OCI Health Checks billed for 12 endpoints?',
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { quantity: 12 },
+    confidence: 0.77,
+    annualRequested: false,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'network', useDeterministicEngine: true },
+  }, 'How is OCI Health Checks billed for 12 endpoints?');
 
   assert.equal(result.route, 'product_discovery');
   assert.equal(result.quotePlan.action, 'discover');
