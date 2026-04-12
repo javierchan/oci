@@ -46,3 +46,47 @@ test('coverage matrix reflects deterministic coverage for formerly residual comp
   assert.ok(audit.coveredServices.some((item) => /Cloud@Customer/i.test(item.name) && item.coverageMode === 'deterministic_metric'));
   assert.equal(audit.uncoveredServiceCount, 0);
 });
+
+test('follow-up capability matrix artifact reflects hardened family metadata', () => {
+  const matrix = readJson('data/rule-registry/followup_capability_matrix.json');
+  const families = matrix.families || [];
+
+  const oicStandard = families.find((entry) => entry.familyId === 'integration_oic_standard');
+  const dataSafe = families.find((entry) => entry.familyId === 'security_data_safe');
+  const logAnalytics = families.find((entry) => entry.familyId === 'observability_log_analytics');
+  const monitoring = families.find((entry) => entry.familyId === 'observability_monitoring');
+  const waf = families.find((entry) => entry.familyId === 'security_waf');
+
+  assert.ok(Array.isArray(families) && families.length > 0);
+
+  assert.ok(oicStandard);
+  assert.equal(oicStandard.compositeReplaceSource, true);
+  assert.equal(oicStandard.compositeReplaceTarget, true);
+  assert.equal(oicStandard.compositeRemove, true);
+
+  assert.ok(dataSafe);
+  assert.equal(dataSafe.compositeRemove, true);
+  assert.equal(dataSafe.compositeReplaceSource, true);
+  assert.equal(dataSafe.compositeReplaceTarget, true);
+  assert.equal(dataSafe.activeQuoteRuleCount >= 3, true);
+
+  assert.ok(logAnalytics);
+  assert.equal(logAnalytics.compositeRemove, true);
+  assert.equal(logAnalytics.compositeReplaceSource, true);
+  assert.equal(logAnalytics.compositeReplaceTarget, true);
+  assert.equal(logAnalytics.activeQuoteRuleCount, 2);
+
+  assert.ok(monitoring);
+  assert.equal(monitoring.compositeRemove, true);
+  assert.equal(monitoring.compositeReplaceSource, true);
+  assert.equal(monitoring.compositeReplaceTarget, true);
+  assert.equal(monitoring.activeQuoteRuleCount, 2);
+
+  assert.ok(waf);
+  assert.equal(waf.canonical, 'OCI Web Application Firewall');
+  assert.equal(waf.compositeRemove, true);
+  assert.equal(waf.compositeReplaceSource, true);
+  assert.equal(waf.compositeReplaceTarget, true);
+  assert.equal(waf.hasActiveQuoteRules, true);
+  assert.equal(waf.activeQuoteRuleCount >= 1, true);
+});

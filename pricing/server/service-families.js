@@ -244,6 +244,28 @@ const SERVICE_FAMILIES = [
         detect: /\b(?:sin|without)\s+(?:oci\s+)?monitoring(?:\s+(?:retrieval|ingestion))?\b/i,
         segmentPattern: String.raw`(?:oci\s+)?monitoring(?:\s+(?:retrieval|ingestion))?`,
       },
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b(?:monitoring\s+)?(?:retrieval|ingestion)\b/i,
+          targetPattern: /\b(?:OCI\s+)?Monitoring\s+(?:Retrieval|Ingestion)\b/i,
+          apply(nextPrompt, _sourceMatch, fullSource) {
+            const variantMatches = Array.from(
+              String(fullSource || '').matchAll(/\b(?:monitoring\s+)?(retrieval|ingestion)\b/gi),
+            ).map((match) => String(match[1] || ''));
+            const desiredVariant = variantMatches.length ? variantMatches[variantMatches.length - 1] : '';
+            if (!desiredVariant) return nextPrompt;
+            const normalizedVariant = /^ingestion$/i.test(desiredVariant) ? 'Ingestion' : 'Retrieval';
+            return String(nextPrompt || '').replace(
+              /\b((?:OCI\s+)?)Monitoring\s+(?:Retrieval|Ingestion)\b/i,
+              (_, prefix = '') => `${prefix}Monitoring ${normalizedVariant}`,
+            );
+          },
+        },
+        {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*datapoints\b/i,
+          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*datapoints\b/i,
+        },
+      ],
     },
     options: {
       measurementModes: ['datapoints', 'million datapoints'],
@@ -408,6 +430,31 @@ const SERVICE_FAMILIES = [
     resolver: 'log_analytics',
     aliases: [/\blog(?:ging)? analytics\b/i, /\boci log analytics\b/i],
     rescueInputs: ['capacityGb'],
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
+    },
+    followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+(?:oci\s+)?log(?:ging)? analytics\b/i,
+        segmentPattern: String.raw`(?:oci\s+)?log(?:ging)? analytics`,
+      },
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b(?:active|archiv(?:e|al))\s+storage\b/i,
+          apply(nextPrompt, sourceMatch) {
+            const nextVariant = /\barchiv(?:e|al)\b/i.test(String(sourceMatch || ''))
+              ? 'Archival Storage'
+              : 'Active Storage';
+            return nextPrompt.replace(/\b(?:Active|Archival)\s+Storage\b/i, nextVariant);
+          },
+        },
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*gb\b(?:\s+per\s+month)?/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*gb\b(?:\s+per\s+month)?/i,
+        },
+      ],
+    },
     options: {
       measurementModes: ['active storage (GB)', 'archival storage (GB)'],
       storageModels: ['Active Storage', 'Archival Storage'],
@@ -427,26 +474,46 @@ const SERVICE_FAMILIES = [
     domain: 'security',
     resolver: 'data_safe',
     aliases: [/\bdata safe\b/i, /\boci data safe\b/i],
+    extractedInputAliases: [
+      {
+        from: 'numberOfDatabases',
+        to: 'quantity',
+        whenTargetMissing: true,
+        positiveOnly: true,
+      },
+    ],
     rescueAnyInputs: ['quantity'],
-    options: {
-      measurementModes: ['database count', 'target databases'],
-      variants: ['Database Cloud Service', 'On-Premises Databases'],
-    },
-    buildRequest(inputs = {}, semantic = {}, fallbackText = '') {
-      const count = numberLike(inputs.quantity);
-      const source = `${semantic.reformulatedRequest || ''}\n${fallbackText || ''}`;
-      const onPremises = /\bon-?prem(?:ises)?\b|\bdatabases? on compute\b|\btarget databases?\b/i.test(source);
-      const dbCloud = /\bdatabase cloud service\b/i.test(source);
-      const parts = [onPremises
-        ? 'Quote Data Safe for On-Premises Databases'
-        : dbCloud
-          ? 'Quote Data Safe for Database Cloud Service'
-          : 'Quote OCI Data Safe'];
-      if (count) parts.push(onPremises ? `${count} target databases` : `${count} databases`);
-      return parts.join(' ');
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
     },
     followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+(?:oci\s+)?data safe\b/i,
+        segmentPattern: String.raw`(?:oci\s+)?data safe`,
+      },
       replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b(?:database cloud service|on-?prem(?:ises)? databases?|databases? on compute|target databases?)\b/i,
+          apply(nextPrompt, sourceMatch) {
+            const source = String(sourceMatch || '');
+            const wantsOnPrem = /\bon-?prem(?:ises)?\b|\bdatabases? on compute\b|\btarget databases?\b/i.test(source);
+            let updated = nextPrompt.replace(
+              /\b(?:Database Cloud Service|On-Premises Databases)\b/i,
+              wantsOnPrem ? 'On-Premises Databases' : 'Database Cloud Service',
+            );
+            if (wantsOnPrem) {
+              if (/\b\d+(?:\.\d+)?\s*target\s+databases?\b/i.test(updated)) return updated;
+              const amount = updated.match(/\b\d+(?:\.\d+)?\b(?=\s*databases?\b)/i)?.[0];
+              if (!amount) return updated;
+              return updated.replace(/\b\d+(?:\.\d+)?\s*databases?\b/i, `${amount} target databases`);
+            }
+            return updated.replace(/\b\d+(?:\.\d+)?\s*target\s+databases?\b/i, (match) => {
+              const amount = String(match).match(/\b\d+(?:\.\d+)?\b/i)?.[0];
+              return amount ? `${amount} databases` : match;
+            });
+          },
+        },
         {
           sourcePattern: /\b\d+(?:\.\d+)?\s*target\s+databases?\b/i,
           targetPattern: /\b\d+(?:\.\d+)?\s*target\s+databases?\b/i,
@@ -463,6 +530,23 @@ const SERVICE_FAMILIES = [
           },
         },
       ],
+    },
+    options: {
+      measurementModes: ['database count', 'target databases'],
+      variants: ['Database Cloud Service', 'On-Premises Databases'],
+    },
+    buildRequest(inputs = {}, semantic = {}, fallbackText = '') {
+      const count = numberLike(inputs.quantity);
+      const source = `${semantic.reformulatedRequest || ''}\n${fallbackText || ''}`;
+      const onPremises = /\bon-?prem(?:ises)?\b|\bdatabases? on compute\b|\btarget databases?\b/i.test(source);
+      const dbCloud = /\bdatabase cloud service\b/i.test(source);
+      const parts = [onPremises
+        ? 'Quote Data Safe for On-Premises Databases'
+        : dbCloud
+          ? 'Quote Data Safe for Database Cloud Service'
+          : 'Quote OCI Data Safe'];
+      if (count) parts.push(onPremises ? `${count} target databases` : `${count} databases`);
+      return parts.join(' ');
     },
   },
   {
@@ -864,6 +948,22 @@ const SERVICE_FAMILIES = [
       if (gb) parts.push(`${gb} GB storage`);
       return parts.join(', ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b(?:standard|enterprise|high performance|extreme performance)\b/i,
+          targetPattern: /\b(?:standard|enterprise|high performance|extreme performance)\b/i,
+        },
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:ocpus?|ecpus?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:ocpus?|ecpus?)\b/i,
+        },
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*gb\s*storage\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*gb\s*storage\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'database_cloud_service',
@@ -887,6 +987,18 @@ const SERVICE_FAMILIES = [
       if (licenseMode === 'license-included') parts.push('License Included');
       if (ocpus) parts.push(`${ocpus} OCPUs`);
       return parts.join(', ');
+    },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b(?:standard|enterprise|high performance|extreme performance)\b/i,
+          targetPattern: /\b(?:standard|enterprise|high performance|extreme performance)\b/i,
+        },
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*ocpus?\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*ocpus?\b/i,
+        },
+      ],
     },
   },
   {
@@ -913,6 +1025,22 @@ const SERVICE_FAMILIES = [
       if (gb) parts.push(`${gb} GB storage`);
       if (storageModel) parts.push(storageModel);
       return parts.join(', ');
+    },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*ecpus?\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*ecpus?\b/i,
+        },
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*gb\s*storage\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*gb\s*storage\b/i,
+        },
+        {
+          sourcePattern: /\b(?:smart database storage|filesystem storage|vm filesystem storage)\b/i,
+          targetPattern: /\b(?:smart database storage|filesystem storage|vm filesystem storage)\b/i,
+        },
+      ],
     },
   },
   {
@@ -944,6 +1072,18 @@ const SERVICE_FAMILIES = [
       }
       return parts.join(', ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:ocpus?|ecpus?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:ocpus?|ecpus?)\b/i,
+        },
+        {
+          sourcePattern: /\bon\s+(?:base system|quarter rack|half rack|full rack|database server|storage server)(?:\s+x11m|\s+x10m|\s+x9m|\s+x8m|\s+x8|\s+x7)?\b/i,
+          targetPattern: /\bon\s+(?:base system|quarter rack|half rack|full rack|database server|storage server)(?:\s+x11m|\s+x10m|\s+x9m|\s+x8m|\s+x8|\s+x7)?\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'database_exadata_cloud_customer',
@@ -974,6 +1114,18 @@ const SERVICE_FAMILIES = [
       }
       return parts.join(', ');
     },
+    followUpDirectives: {
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:ocpus?|ecpus?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:ocpus?|ecpus?)\b/i,
+        },
+        {
+          sourcePattern: /\bon\s+(?:base system|quarter rack|half rack|full rack|database server|storage server|expansion rack)(?:\s+x11m|\s+x10m|\s+x9m|\s+x8m|\s+x8|\s+x7)?\b/i,
+          targetPattern: /\bon\s+(?:base system|quarter rack|half rack|full rack|database server|storage server|expansion rack)(?:\s+x11m|\s+x10m|\s+x9m|\s+x8m|\s+x8|\s+x7)?\b/i,
+        },
+      ],
+    },
   },
   {
     id: 'analytics_oac_professional',
@@ -981,6 +1133,10 @@ const SERVICE_FAMILIES = [
     domain: 'analytics',
     resolver: 'oac_professional',
     aliases: [/\boracle analytics cloud professional\b/i, /\boac professional\b/i],
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
+    },
     rescueInputs: [],
     rescueAnyInputs: ['ocpus', 'users'],
     clarifyAnyInputs: ['ocpus', 'users'],
@@ -988,6 +1144,22 @@ const SERVICE_FAMILIES = [
     licenseNotRequiredWhenAnyInputs: ['users'],
     licenseClarificationQuestion: 'Do you want Oracle Analytics Cloud Professional as BYOL or License Included?',
     clarificationQuestion: 'For Oracle Analytics Cloud Professional, should I quote named users or OCPUs, and what count should I use?',
+    followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+(?:oracle\s+analytics\s+cloud\s+professional|oac\s+professional)\b/i,
+        segmentPattern: String.raw`(?:oracle\s+analytics\s+cloud\s+professional|oac\s+professional)`,
+      },
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*ocpus?\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*ocpus?\b/i,
+        },
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i,
+        },
+      ],
+    },
     buildRequest(inputs = {}, semantic = {}, fallbackText = '') {
       const ocpus = numberLike(inputs.ocpus);
       const users = numberLike(inputs.users);
@@ -1000,14 +1172,6 @@ const SERVICE_FAMILIES = [
       if (users) parts.push(`${users} users`);
       return parts.join(', ');
     },
-    followUpDirectives: {
-      replaceWithinActiveQuote: [
-        {
-          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i,
-          targetPattern: /\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i,
-        },
-      ],
-    },
   },
   {
     id: 'analytics_oac_enterprise',
@@ -1015,6 +1179,10 @@ const SERVICE_FAMILIES = [
     domain: 'analytics',
     resolver: 'oac_enterprise',
     aliases: [/\boracle analytics cloud enterprise\b/i, /\boac enterprise\b/i],
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
+    },
     rescueInputs: [],
     rescueAnyInputs: ['ocpus', 'users'],
     clarifyAnyInputs: ['ocpus', 'users'],
@@ -1022,6 +1190,22 @@ const SERVICE_FAMILIES = [
     licenseNotRequiredWhenAnyInputs: ['users'],
     licenseClarificationQuestion: 'Do you want Oracle Analytics Cloud Enterprise as BYOL or License Included?',
     clarificationQuestion: 'For Oracle Analytics Cloud Enterprise, should I quote named users or OCPUs, and what count should I use?',
+    followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+(?:oracle\s+analytics\s+cloud\s+enterprise|oac\s+enterprise)\b/i,
+        segmentPattern: String.raw`(?:oracle\s+analytics\s+cloud\s+enterprise|oac\s+enterprise)`,
+      },
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*ocpus?\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*ocpus?\b/i,
+        },
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i,
+        },
+      ],
+    },
     buildRequest(inputs = {}, semantic = {}, fallbackText = '') {
       const ocpus = numberLike(inputs.ocpus);
       const users = numberLike(inputs.users);
@@ -1034,14 +1218,6 @@ const SERVICE_FAMILIES = [
       if (users) parts.push(`${users} users`);
       return parts.join(', ');
     },
-    followUpDirectives: {
-      replaceWithinActiveQuote: [
-        {
-          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i,
-          targetPattern: /\b\d+(?:\.\d+)?\s*(?:users?|usuarios?)\b/i,
-        },
-      ],
-    },
   },
   {
     id: 'integration_oic_standard',
@@ -1050,10 +1226,26 @@ const SERVICE_FAMILIES = [
     resolver: 'oic_standard',
     aliases: [/\boracle integration cloud(?: service)? standard\b/i, /\boic standard\b/i],
     partNumbers: ['B89639', 'B89643'],
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
+    },
     rescueInputs: [],
     requireLicenseChoice: true,
     licenseClarificationQuestion: 'Do you want Oracle Integration Cloud Standard as BYOL or License Included?',
     clarificationQuestion: 'How many Oracle Integration Cloud Standard instances do you need?',
+    followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+(?:oracle\s+integration\s+cloud(?:\s+service)?\s+standard|oic\s+standard)\b/i,
+        segmentPattern: String.raw`(?:oracle\s+integration\s+cloud(?:\s+service)?\s+standard|oic\s+standard)`,
+      },
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+        },
+      ],
+    },
     buildRequest(inputs = {}, semantic = {}, fallbackText = '') {
       const instances = numberLike(inputs.instances);
       const source = `${semantic.reformulatedRequest || ''}\n${fallbackText || ''}`;
@@ -1064,14 +1256,6 @@ const SERVICE_FAMILIES = [
       if (instances) parts.push(`${instances} instances`);
       return parts.join(', ');
     },
-    followUpDirectives: {
-      replaceWithinActiveQuote: [
-        {
-          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
-          targetPattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
-        },
-      ],
-    },
   },
   {
     id: 'integration_oic_enterprise',
@@ -1080,10 +1264,26 @@ const SERVICE_FAMILIES = [
     resolver: 'oic_enterprise',
     aliases: [/\boracle integration cloud(?: service)? enterprise\b/i, /\boic enterprise\b/i],
     partNumbers: ['B89640', 'B89644'],
+    followUpCapabilities: {
+      compositeReplaceSource: true,
+      compositeReplaceTarget: true,
+    },
     rescueInputs: [],
     requireLicenseChoice: true,
     licenseClarificationQuestion: 'Do you want Oracle Integration Cloud Enterprise as BYOL or License Included?',
     clarificationQuestion: 'How many Oracle Integration Cloud Enterprise instances do you need?',
+    followUpDirectives: {
+      removeFromComposite: {
+        detect: /\b(?:sin|without)\s+(?:oracle\s+integration\s+cloud(?:\s+service)?\s+enterprise|oic\s+enterprise)\b/i,
+        segmentPattern: String.raw`(?:oracle\s+integration\s+cloud(?:\s+service)?\s+enterprise|oic\s+enterprise)`,
+      },
+      replaceWithinActiveQuote: [
+        {
+          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+          targetPattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
+        },
+      ],
+    },
     buildRequest(inputs = {}, semantic = {}, fallbackText = '') {
       const instances = numberLike(inputs.instances);
       const source = `${semantic.reformulatedRequest || ''}\n${fallbackText || ''}`;
@@ -1093,14 +1293,6 @@ const SERVICE_FAMILIES = [
       if (licenseMode === 'license-included') parts.push('License Included');
       if (instances) parts.push(`${instances} instances`);
       return parts.join(', ');
-    },
-    followUpDirectives: {
-      replaceWithinActiveQuote: [
-        {
-          sourcePattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
-          targetPattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
-        },
-      ],
     },
   },
   {
@@ -1181,6 +1373,14 @@ const SERVICE_FAMILIES = [
     resolver: 'waf',
     aliases: [/\bweb application firewall\b/i, /\bwaf\b/i],
     partNumbers: ['B94579', 'B94277'],
+    extractedInputAliases: [
+      {
+        from: 'instanceCount',
+        to: 'wafInstances',
+        whenTargetMissing: true,
+        positiveOnly: true,
+      },
+    ],
     followUpCapabilities: {
       compositeReplaceSource: true,
       compositeReplaceTarget: true,
@@ -1540,6 +1740,31 @@ function getServiceFamily(id) {
   return SERVICE_FAMILIES.find((item) => item.id === id) || null;
 }
 
+function normalizeExtractedInputsForFamily(familyId, extractedInputs = {}) {
+  const family = getServiceFamily(familyId);
+  const normalized = {
+    ...((extractedInputs && typeof extractedInputs === 'object' && extractedInputs) || {}),
+  };
+  const aliasRules = Array.isArray(family?.extractedInputAliases) ? family.extractedInputAliases : [];
+
+  for (const rule of aliasRules) {
+    const sourceKey = String(rule?.from || '').trim();
+    const targetKey = String(rule?.to || '').trim();
+    if (!sourceKey || !targetKey) continue;
+    if (rule.whenTargetMissing && hasInputValue(normalized[targetKey])) continue;
+
+    const sourceValue = normalized[sourceKey];
+    if (!hasInputValue(sourceValue)) continue;
+
+    const numericValue = numberLike(sourceValue);
+    if (rule.positiveOnly && !(numericValue > 0)) continue;
+
+    normalized[targetKey] = numericValue !== null ? numericValue : sourceValue;
+  }
+
+  return normalized;
+}
+
 function inferServiceFamily(text, declaredFamily = '') {
   const family = String(declaredFamily || '').trim();
   if (family) return family;
@@ -1650,6 +1875,24 @@ function getFamiliesWithActiveQuoteFollowUpRules() {
     .map((family) => family.id);
 }
 
+function getFollowUpCapabilityMatrix() {
+  return SERVICE_FAMILIES.map((family) => {
+    const replacementRules = Array.isArray(family?.followUpDirectives?.replaceWithinActiveQuote)
+      ? family.followUpDirectives.replaceWithinActiveQuote
+      : [];
+    return {
+      familyId: family.id,
+      canonical: family.canonical,
+      compositeRemove: Boolean(family?.followUpDirectives?.removeFromComposite),
+      compositeReplaceSource: supportsFollowUpCapability(family.id, 'compositeReplaceSource'),
+      compositeReplaceTarget: supportsFollowUpCapability(family.id, 'compositeReplaceTarget'),
+      licenseMode: supportsFollowUpCapability(family.id, 'licenseMode'),
+      activeQuoteRuleCount: replacementRules.length,
+      hasActiveQuoteRules: replacementRules.length > 0,
+    };
+  });
+}
+
 function classifyDomain(name) {
   const source = String(name || '');
   const matched = SERVICE_FAMILIES.find((item) => item.aliases.some((pattern) => pattern.test(source)));
@@ -1669,6 +1912,7 @@ function detectLicenseMode(source) {
 }
 
 function hasInputValue(value) {
+  if (value === null || value === undefined) return false;
   if (typeof value === 'string') return value.trim().length > 0;
   return numberLike(value) !== null;
 }
@@ -1676,6 +1920,7 @@ function hasInputValue(value) {
 module.exports = {
   SERVICE_FAMILIES,
   getServiceFamily,
+  normalizeExtractedInputsForFamily,
   inferServiceFamily,
   normalizeServiceAliases,
   buildCanonicalRequest,
@@ -1687,5 +1932,6 @@ module.exports = {
   getCompositeFollowUpRemovalRules,
   getActiveQuoteFollowUpReplacementRules,
   getFamiliesWithActiveQuoteFollowUpRules,
+  getFollowUpCapabilityMatrix,
   classifyDomain,
 };

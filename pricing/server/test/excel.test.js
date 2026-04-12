@@ -193,6 +193,99 @@ function buildIndex() {
   });
 }
 
+function buildRvtoolsAggregateWorkbook({
+  linuxVm = 'rv-agg-01',
+  windowsVm = 'rv-agg-win-01',
+  serviceVm = 'vCLS-rv-agg',
+} = {}) {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
+    {
+      VM: linuxVm,
+      Powerstate: 'poweredOn',
+      Template: 'False',
+      'SRM Placeholder': 'False',
+      CPUs: '8',
+      Memory: '16,384',
+      'Total disk capacity MiB': '204,800',
+      'min Required EVC Mode Key': 'intel-cascadelake',
+      Cluster: 'cluster-a',
+      'OS according to the configuration file': 'Oracle Linux 8 (64-bit)',
+      'OS according to the VMware Tools': 'Oracle Linux 8 (64-bit)',
+    },
+    {
+      VM: windowsVm,
+      Powerstate: 'poweredOff',
+      Template: 'False',
+      'SRM Placeholder': 'False',
+      CPUs: '4',
+      Memory: '8,192',
+      'Total disk capacity MiB': '71,680',
+      'min Required EVC Mode Key': 'intel-broadwell',
+      Cluster: 'cluster-a',
+      'OS according to the configuration file': 'Microsoft Windows Server 2019 (64-bit)',
+      'OS according to the VMware Tools': 'Microsoft Windows Server 2019 (64-bit)',
+    },
+    {
+      VM: serviceVm,
+      Powerstate: 'poweredOn',
+      Template: 'False',
+      'SRM Placeholder': 'False',
+      CPUs: '2',
+      Memory: '2,048',
+      'Total disk capacity MiB': '10,240',
+      Cluster: 'cluster-a',
+      'OS according to the configuration file': 'Other Linux (64-bit)',
+    },
+  ]), 'vInfo');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
+    { VM: linuxVm, CPUs: '8', Sockets: '2', 'Cores p/s': '4' },
+    { VM: windowsVm, CPUs: '4', Sockets: '2', 'Cores p/s': '2' },
+    { VM: serviceVm, CPUs: '2', Sockets: '1', 'Cores p/s': '2' },
+  ]), 'vCPU');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
+    { VM: linuxVm, 'Size MiB': '16,384' },
+    { VM: windowsVm, 'Size MiB': '8,192' },
+    { VM: serviceVm, 'Size MiB': '2,048' },
+  ]), 'vMemory');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
+    { VM: linuxVm, 'Disk': 'Hard disk 1', 'Capacity MiB': '102,400' },
+    { VM: linuxVm, 'Disk': 'Hard disk 2', 'Capacity MiB': '102,400' },
+    { VM: windowsVm, 'Disk': 'Hard disk 1', 'Capacity MiB': '71,680' },
+    { VM: serviceVm, 'Disk': 'Hard disk 1', 'Capacity MiB': '10,240' },
+  ]), 'vDisk');
+  return workbook;
+}
+
+function buildInventoryAmdAggregateWorkbook({
+  firstHost = 'guided-amd-agg-01',
+  secondHost = 'guided-amd-agg-02',
+} = {}) {
+  const sheet = XLSX.utils.json_to_sheet([
+    {
+      HW: 'Servidor',
+      'Nombre Equipo': firstHost,
+      CPU: '2 x AMD EPYC 7V13',
+      Cores: '8',
+      'Memoria Gb': '64',
+      'Aprovisionado Gb': '300',
+      SO: 'Oracle Linux 8',
+    },
+    {
+      HW: 'Servidor',
+      'Nombre Equipo': secondHost,
+      CPU: '1 x AMD EPYC 7V13',
+      Cores: '12',
+      'Memoria Gb': '96',
+      'Aprovisionado Gb': '500',
+      SO: 'Oracle Linux 8',
+    },
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Inventory to OCI');
+  return workbook;
+}
+
 test('inventory workbook rows are converted into quotable compute plus block storage requests', () => {
   const sheet = XLSX.utils.json_to_sheet([
     {
@@ -777,6 +870,277 @@ test('rvtools guided flow keeps aggregate totals and operational warnings aligne
   assert.equal(totalMonthly, 216.81900000000002);
 });
 
+test('rvtools guided flow aggregate stays aligned when shared load balancer and dns are added', () => {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
+    {
+      VM: 'rv-agg-edge-01',
+      Powerstate: 'poweredOn',
+      Template: 'False',
+      'SRM Placeholder': 'False',
+      CPUs: '8',
+      Memory: '16,384',
+      'Total disk capacity MiB': '204,800',
+      'min Required EVC Mode Key': 'intel-cascadelake',
+      Cluster: 'cluster-a',
+      'OS according to the configuration file': 'Oracle Linux 8 (64-bit)',
+      'OS according to the VMware Tools': 'Oracle Linux 8 (64-bit)',
+    },
+    {
+      VM: 'rv-agg-edge-win-01',
+      Powerstate: 'poweredOff',
+      Template: 'False',
+      'SRM Placeholder': 'False',
+      CPUs: '4',
+      Memory: '8,192',
+      'Total disk capacity MiB': '71,680',
+      'min Required EVC Mode Key': 'intel-broadwell',
+      Cluster: 'cluster-a',
+      'OS according to the configuration file': 'Microsoft Windows Server 2019 (64-bit)',
+      'OS according to the VMware Tools': 'Microsoft Windows Server 2019 (64-bit)',
+    },
+    {
+      VM: 'vCLS-rv-agg-edge',
+      Powerstate: 'poweredOn',
+      Template: 'False',
+      'SRM Placeholder': 'False',
+      CPUs: '2',
+      Memory: '2,048',
+      'Total disk capacity MiB': '10,240',
+      Cluster: 'cluster-a',
+      'OS according to the configuration file': 'Other Linux (64-bit)',
+    },
+  ]), 'vInfo');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
+    { VM: 'rv-agg-edge-01', CPUs: '8', Sockets: '2', 'Cores p/s': '4' },
+    { VM: 'rv-agg-edge-win-01', CPUs: '4', Sockets: '2', 'Cores p/s': '2' },
+    { VM: 'vCLS-rv-agg-edge', CPUs: '2', Sockets: '1', 'Cores p/s': '2' },
+  ]), 'vCPU');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
+    { VM: 'rv-agg-edge-01', 'Size MiB': '16,384' },
+    { VM: 'rv-agg-edge-win-01', 'Size MiB': '8,192' },
+    { VM: 'vCLS-rv-agg-edge', 'Size MiB': '2,048' },
+  ]), 'vMemory');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([
+    { VM: 'rv-agg-edge-01', 'Disk': 'Hard disk 1', 'Capacity MiB': '102,400' },
+    { VM: 'rv-agg-edge-01', 'Disk': 'Hard disk 2', 'Capacity MiB': '102,400' },
+    { VM: 'rv-agg-edge-win-01', 'Disk': 'Hard disk 1', 'Capacity MiB': '71,680' },
+    { VM: 'vCLS-rv-agg-edge', 'Disk': 'Hard disk 1', 'Capacity MiB': '10,240' },
+  ]), 'vDisk');
+
+  const parsed = workbookToRequests(workbook, {
+    processorVendor: 'intel',
+    shapeName: 'VM.Standard3.Flex',
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedEdgeQuote = quoteFromPrompt(buildIndex(), 'Quote Flexible Load Balancer 100 Mbps plus DNS 5000000 queries per month');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedEdgeQuote?.totals?.monthly || 0);
+  const joinedWarnings = parsed.warnings.join('\n');
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedEdgeQuote.ok, true);
+  assert.match(joinedWarnings, /selected OCI target shape `VM\.Standard3\.Flex` on INTEL compute/i);
+  assert.match(joinedWarnings, /Skipped 1 VMware service\/system VMs/i);
+  assert.match(joinedWarnings, /Detected 1 Windows VMs/i);
+  assert.match(sharedEdgeQuote.markdown, /B93030/);
+  assert.match(sharedEdgeQuote.markdown, /B93031/);
+  assert.match(sharedEdgeQuote.markdown, /B88525/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 227.77);
+});
+
+test('rvtools guided flow aggregate stays aligned when shared fastconnect and health checks are added', () => {
+  const workbook = buildRvtoolsAggregateWorkbook({
+    linuxVm: 'rv-agg-connect-01',
+    windowsVm: 'rv-agg-connect-win-01',
+    serviceVm: 'vCLS-rv-agg-connect',
+  });
+
+  const parsed = workbookToRequests(workbook, {
+    processorVendor: 'intel',
+    shapeName: 'VM.Standard3.Flex',
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedServicesQuote = quoteFromPrompt(buildIndex(), 'Quote FastConnect 10 Gbps plus Health Checks 5 endpoints');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedServicesQuote?.totals?.monthly || 0);
+  const joinedWarnings = parsed.warnings.join('\n');
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedServicesQuote.ok, true);
+  assert.match(joinedWarnings, /selected OCI target shape `VM\.Standard3\.Flex` on INTEL compute/i);
+  assert.match(joinedWarnings, /Skipped 1 VMware service\/system VMs/i);
+  assert.match(joinedWarnings, /Included 1 powered-off VMs/i);
+  assert.match(sharedServicesQuote.markdown, /B88326/);
+  assert.match(sharedServicesQuote.markdown, /B90325/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 1171.92);
+});
+
+test('rvtools guided flow aggregate stays aligned when shared fastconnect and dns are added', () => {
+  const workbook = buildRvtoolsAggregateWorkbook({
+    linuxVm: 'rv-agg-connect-edge-01',
+    windowsVm: 'rv-agg-connect-edge-win-01',
+    serviceVm: 'vCLS-rv-agg-connect-edge',
+  });
+
+  const parsed = workbookToRequests(workbook, {
+    processorVendor: 'intel',
+    shapeName: 'VM.Standard3.Flex',
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedServicesQuote = quoteFromPrompt(buildIndex(), 'Quote FastConnect 10 Gbps plus DNS 5000000 queries per month');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedServicesQuote?.totals?.monthly || 0);
+  const joinedWarnings = parsed.warnings.join('\n');
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedServicesQuote.ok, true);
+  assert.match(joinedWarnings, /selected OCI target shape `VM\.Standard3\.Flex` on INTEL compute/i);
+  assert.match(joinedWarnings, /Skipped 1 VMware service\/system VMs/i);
+  assert.match(joinedWarnings, /Included 1 powered-off VMs/i);
+  assert.match(sharedServicesQuote.markdown, /B88326/);
+  assert.match(sharedServicesQuote.markdown, /B88525/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 1169.67);
+});
+
+test('rvtools guided flow aggregate stays aligned when shared load balancer and monitoring retrieval are added', () => {
+  const workbook = buildRvtoolsAggregateWorkbook({
+    linuxVm: 'rv-agg-lb-obs-01',
+    windowsVm: 'rv-agg-lb-obs-win-01',
+    serviceVm: 'vCLS-rv-agg-lb-obs',
+  });
+
+  const parsed = workbookToRequests(workbook, {
+    processorVendor: 'intel',
+    shapeName: 'VM.Standard3.Flex',
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedServicesQuote = quoteFromPrompt(buildIndex(), 'Quote Flexible Load Balancer 100 Mbps plus Monitoring Retrieval 4000000 datapoints');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedServicesQuote?.totals?.monthly || 0);
+  const joinedWarnings = parsed.warnings.join('\n');
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedServicesQuote.ok, true);
+  assert.match(joinedWarnings, /selected OCI target shape `VM\.Standard3\.Flex` on INTEL compute/i);
+  assert.match(joinedWarnings, /Skipped 1 VMware service\/system VMs/i);
+  assert.match(joinedWarnings, /Detected 1 Windows VMs/i);
+  assert.match(sharedServicesQuote.markdown, /B93030/);
+  assert.match(sharedServicesQuote.markdown, /B93031/);
+  assert.match(sharedServicesQuote.markdown, /B90926/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 226.52);
+});
+
+test('rvtools guided flow aggregate stays aligned when shared load balancer and health checks are added', () => {
+  const workbook = buildRvtoolsAggregateWorkbook({
+    linuxVm: 'rv-agg-lb-hc-01',
+    windowsVm: 'rv-agg-lb-hc-win-01',
+    serviceVm: 'vCLS-rv-agg-lb-hc',
+  });
+
+  const parsed = workbookToRequests(workbook, {
+    processorVendor: 'intel',
+    shapeName: 'VM.Standard3.Flex',
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedServicesQuote = quoteFromPrompt(buildIndex(), 'Quote Flexible Load Balancer 100 Mbps plus Health Checks 5 endpoints');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedServicesQuote?.totals?.monthly || 0);
+  const joinedWarnings = parsed.warnings.join('\n');
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedServicesQuote.ok, true);
+  assert.match(joinedWarnings, /selected OCI target shape `VM\.Standard3\.Flex` on INTEL compute/i);
+  assert.match(joinedWarnings, /Skipped 1 VMware service\/system VMs/i);
+  assert.match(joinedWarnings, /Detected 1 Windows VMs/i);
+  assert.match(sharedServicesQuote.markdown, /B93030/);
+  assert.match(sharedServicesQuote.markdown, /B93031/);
+  assert.match(sharedServicesQuote.markdown, /B90325/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 230.02);
+});
+
+test('rvtools guided flow aggregate stays aligned when shared fastconnect and monitoring retrieval are added', () => {
+  const workbook = buildRvtoolsAggregateWorkbook({
+    linuxVm: 'rv-agg-connect-obs-01',
+    windowsVm: 'rv-agg-connect-obs-win-01',
+    serviceVm: 'vCLS-rv-agg-connect-obs',
+  });
+
+  const parsed = workbookToRequests(workbook, {
+    processorVendor: 'intel',
+    shapeName: 'VM.Standard3.Flex',
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedServicesQuote = quoteFromPrompt(buildIndex(), 'Quote FastConnect 10 Gbps plus Monitoring Retrieval 4000000 datapoints');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedServicesQuote?.totals?.monthly || 0);
+  const joinedWarnings = parsed.warnings.join('\n');
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedServicesQuote.ok, true);
+  assert.match(joinedWarnings, /selected OCI target shape `VM\.Standard3\.Flex` on INTEL compute/i);
+  assert.match(joinedWarnings, /Skipped 1 VMware service\/system VMs/i);
+  assert.match(joinedWarnings, /Detected 1 Windows VMs/i);
+  assert.match(sharedServicesQuote.markdown, /B88326/);
+  assert.match(sharedServicesQuote.markdown, /B90926/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 1168.42);
+});
+
+test('rvtools guided flow aggregate stays aligned when shared fastconnect and load balancer are added', () => {
+  const workbook = buildRvtoolsAggregateWorkbook({
+    linuxVm: 'rv-agg-connect-lb-01',
+    windowsVm: 'rv-agg-connect-lb-win-01',
+    serviceVm: 'vCLS-rv-agg-connect-lb',
+  });
+
+  const parsed = workbookToRequests(workbook, {
+    processorVendor: 'intel',
+    shapeName: 'VM.Standard3.Flex',
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedServicesQuote = quoteFromPrompt(buildIndex(), 'Quote FastConnect 10 Gbps plus Flexible Load Balancer 100 Mbps');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedServicesQuote?.totals?.monthly || 0);
+  const joinedWarnings = parsed.warnings.join('\n');
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedServicesQuote.ok, true);
+  assert.match(joinedWarnings, /selected OCI target shape `VM\.Standard3\.Flex` on INTEL compute/i);
+  assert.match(joinedWarnings, /Skipped 1 VMware service\/system VMs/i);
+  assert.match(joinedWarnings, /Detected 1 Windows VMs/i);
+  assert.match(sharedServicesQuote.markdown, /B88326/);
+  assert.match(sharedServicesQuote.markdown, /B93030/);
+  assert.match(sharedServicesQuote.markdown, /B93031/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 1172.12);
+});
+
+test('rvtools guided flow aggregate stays aligned when shared observability edge services are added', () => {
+  const workbook = buildRvtoolsAggregateWorkbook({
+    linuxVm: 'rv-agg-obs-edge-01',
+    windowsVm: 'rv-agg-obs-edge-win-01',
+    serviceVm: 'vCLS-rv-agg-obs-edge',
+  });
+
+  const parsed = workbookToRequests(workbook, {
+    processorVendor: 'intel',
+    shapeName: 'VM.Standard3.Flex',
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedServicesQuote = quoteFromPrompt(buildIndex(), 'Quote Monitoring Retrieval 4000000 datapoints plus Health Checks 5 endpoints');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedServicesQuote?.totals?.monthly || 0);
+  const joinedWarnings = parsed.warnings.join('\n');
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedServicesQuote.ok, true);
+  assert.match(joinedWarnings, /selected OCI target shape `VM\.Standard3\.Flex` on INTEL compute/i);
+  assert.match(joinedWarnings, /Skipped 1 VMware service\/system VMs/i);
+  assert.match(joinedWarnings, /Included 1 powered-off VMs/i);
+  assert.match(sharedServicesQuote.markdown, /B90926/);
+  assert.match(sharedServicesQuote.markdown, /B90325/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 226.32);
+});
+
 test('guided workbook analysis returns processor choices and quotable row count', () => {
   const sheet = XLSX.utils.json_to_sheet([
     {
@@ -1000,6 +1364,51 @@ test('inventory workbook guided flow aggregate stays aligned when shared fastcon
   assert.equal(Number(totalMonthly.toFixed(2)), 2027.17);
 });
 
+test('inventory workbook guided flow aggregate stays aligned when shared load balancer and dns are added', () => {
+  const sheet = XLSX.utils.json_to_sheet([
+    {
+      HW: 'Servidor',
+      'Nombre Equipo': 'guided-amd-lb-edge-01',
+      CPU: '2 x AMD EPYC 7V13',
+      Cores: '8',
+      'Memoria Gb': '64',
+      'Aprovisionado Gb': '300',
+      SO: 'Oracle Linux 8',
+    },
+    {
+      HW: 'Servidor',
+      'Nombre Equipo': 'guided-amd-lb-edge-02',
+      CPU: '1 x AMD EPYC 7V13',
+      Cores: '12',
+      'Memoria Gb': '96',
+      'Aprovisionado Gb': '500',
+      SO: 'Oracle Linux 8',
+    },
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Inventory to OCI');
+
+  const parsed = workbookToRequests(workbook, {
+    sourcePlatform: 'other_hypervisor',
+    processorVendor: 'amd',
+    shapeName: 'VM.Standard.E5.Flex',
+    vpuPerGb: 20,
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedEdgeQuote = quoteFromPrompt(buildIndex(), 'Quote Flexible Load Balancer 100 Mbps plus DNS 5000000 queries per month');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedEdgeQuote?.totals?.monthly || 0);
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedEdgeQuote.ok, true);
+  assert.match(parsed.warnings.join('\n'), /selected OCI target shape `VM\.Standard\.E5\.Flex` on AMD compute/i);
+  assert.match(parsed.warnings.join('\n'), /block volume performance override of 20 VPU/i);
+  assert.match(sharedEdgeQuote.markdown, /B93030/);
+  assert.match(sharedEdgeQuote.markdown, /B93031/);
+  assert.match(sharedEdgeQuote.markdown, /B88525/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 1085.27);
+});
+
 test('inventory workbook guided flow aggregate stays aligned when shared observability edge services are added', () => {
   const sheet = XLSX.utils.json_to_sheet([
     {
@@ -1044,6 +1453,86 @@ test('inventory workbook guided flow aggregate stays aligned when shared observa
   assert.equal(Number(totalMonthly.toFixed(2)), 1083.82);
 });
 
+test('inventory workbook guided flow aggregate stays aligned when shared load balancer and monitoring retrieval are added', () => {
+  const workbook = buildInventoryAmdAggregateWorkbook({
+    firstHost: 'guided-amd-lb-obs-01',
+    secondHost: 'guided-amd-lb-obs-02',
+  });
+
+  const parsed = workbookToRequests(workbook, {
+    sourcePlatform: 'other_hypervisor',
+    processorVendor: 'amd',
+    shapeName: 'VM.Standard.E5.Flex',
+    vpuPerGb: 20,
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedServicesQuote = quoteFromPrompt(buildIndex(), 'Quote Flexible Load Balancer 100 Mbps plus Monitoring Retrieval 4000000 datapoints');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedServicesQuote?.totals?.monthly || 0);
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedServicesQuote.ok, true);
+  assert.match(parsed.warnings.join('\n'), /selected OCI target shape `VM\.Standard\.E5\.Flex` on AMD compute/i);
+  assert.match(parsed.warnings.join('\n'), /block volume performance override of 20 VPU/i);
+  assert.match(sharedServicesQuote.markdown, /B93030/);
+  assert.match(sharedServicesQuote.markdown, /B93031/);
+  assert.match(sharedServicesQuote.markdown, /B90926/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 1084.02);
+});
+
+test('inventory workbook guided flow aggregate stays aligned when shared load balancer and health checks are added', () => {
+  const workbook = buildInventoryAmdAggregateWorkbook({
+    firstHost: 'guided-amd-lb-hc-01',
+    secondHost: 'guided-amd-lb-hc-02',
+  });
+
+  const parsed = workbookToRequests(workbook, {
+    sourcePlatform: 'other_hypervisor',
+    processorVendor: 'amd',
+    shapeName: 'VM.Standard.E5.Flex',
+    vpuPerGb: 20,
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedServicesQuote = quoteFromPrompt(buildIndex(), 'Quote Flexible Load Balancer 100 Mbps plus Health Checks 5 endpoints');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedServicesQuote?.totals?.monthly || 0);
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedServicesQuote.ok, true);
+  assert.match(parsed.warnings.join('\n'), /selected OCI target shape `VM\.Standard\.E5\.Flex` on AMD compute/i);
+  assert.match(parsed.warnings.join('\n'), /block volume performance override of 20 VPU/i);
+  assert.match(sharedServicesQuote.markdown, /B93030/);
+  assert.match(sharedServicesQuote.markdown, /B93031/);
+  assert.match(sharedServicesQuote.markdown, /B90325/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 1087.52);
+});
+
+test('inventory workbook guided flow aggregate stays aligned when shared fastconnect and health checks are added', () => {
+  const workbook = buildInventoryAmdAggregateWorkbook({
+    firstHost: 'guided-amd-connect-hc-01',
+    secondHost: 'guided-amd-connect-hc-02',
+  });
+
+  const parsed = workbookToRequests(workbook, {
+    sourcePlatform: 'other_hypervisor',
+    processorVendor: 'amd',
+    shapeName: 'VM.Standard.E5.Flex',
+    vpuPerGb: 20,
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedServicesQuote = quoteFromPrompt(buildIndex(), 'Quote FastConnect 10 Gbps plus Health Checks 5 endpoints');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedServicesQuote?.totals?.monthly || 0);
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedServicesQuote.ok, true);
+  assert.match(parsed.warnings.join('\n'), /selected OCI target shape `VM\.Standard\.E5\.Flex` on AMD compute/i);
+  assert.match(parsed.warnings.join('\n'), /block volume performance override of 20 VPU/i);
+  assert.match(sharedServicesQuote.markdown, /B88326/);
+  assert.match(sharedServicesQuote.markdown, /B90325/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 2029.42);
+});
+
 test('inventory workbook guided flow aggregate stays aligned when shared fastconnect and monitoring retrieval are added', () => {
   const sheet = XLSX.utils.json_to_sheet([
     {
@@ -1086,6 +1575,51 @@ test('inventory workbook guided flow aggregate stays aligned when shared fastcon
   assert.match(sharedServicesQuote.markdown, /B88326/);
   assert.match(sharedServicesQuote.markdown, /B90926/);
   assert.equal(Number(totalMonthly.toFixed(2)), 2025.92);
+});
+
+test('inventory workbook guided flow aggregate stays aligned when shared fastconnect and load balancer are added', () => {
+  const sheet = XLSX.utils.json_to_sheet([
+    {
+      HW: 'Servidor',
+      'Nombre Equipo': 'guided-amd-connect-lb-01',
+      CPU: '2 x AMD EPYC 7V13',
+      Cores: '8',
+      'Memoria Gb': '64',
+      'Aprovisionado Gb': '300',
+      SO: 'Oracle Linux 8',
+    },
+    {
+      HW: 'Servidor',
+      'Nombre Equipo': 'guided-amd-connect-lb-02',
+      CPU: '1 x AMD EPYC 7V13',
+      Cores: '12',
+      'Memoria Gb': '96',
+      'Aprovisionado Gb': '500',
+      SO: 'Oracle Linux 8',
+    },
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Inventory to OCI');
+
+  const parsed = workbookToRequests(workbook, {
+    sourcePlatform: 'other_hypervisor',
+    processorVendor: 'amd',
+    shapeName: 'VM.Standard.E5.Flex',
+    vpuPerGb: 20,
+  });
+  const workloadQuotes = parsed.requests.map((request) => buildQuote(buildIndex(), request));
+  const sharedServicesQuote = quoteFromPrompt(buildIndex(), 'Quote FastConnect 10 Gbps plus Flexible Load Balancer 100 Mbps');
+  const totalMonthly = workloadQuotes.reduce((sum, quote) => sum + Number(quote?.totals?.monthly || 0), 0) + Number(sharedServicesQuote?.totals?.monthly || 0);
+
+  assert.equal(parsed.requests.length, 2);
+  assert.ok(workloadQuotes.every((quote) => quote.ok));
+  assert.equal(sharedServicesQuote.ok, true);
+  assert.match(parsed.warnings.join('\n'), /selected OCI target shape `VM\.Standard\.E5\.Flex` on AMD compute/i);
+  assert.match(parsed.warnings.join('\n'), /block volume performance override of 20 VPU/i);
+  assert.match(sharedServicesQuote.markdown, /B88326/);
+  assert.match(sharedServicesQuote.markdown, /B93030/);
+  assert.match(sharedServicesQuote.markdown, /B93031/);
+  assert.equal(Number(totalMonthly.toFixed(2)), 2029.62);
 });
 
 test('inventory workbook can target Ampere A2 flex shapes for VMware and keep 1:1 CPU sizing', () => {

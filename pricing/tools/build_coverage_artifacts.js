@@ -6,7 +6,10 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const { loadWorkbookRules } = require(path.join(root, 'server', 'workbook-rules.js'));
 const { buildServiceRegistry } = require(path.join(root, 'server', 'service-registry.js'));
-const { SERVICE_FAMILIES } = require(path.join(root, 'server', 'service-families.js'));
+const {
+  SERVICE_FAMILIES,
+  getFollowUpCapabilityMatrix,
+} = require(path.join(root, 'server', 'service-families.js'));
 
 const vmShapeRules = require(path.join(root, 'data', 'rule-registry', 'vm_shape_rules.json'));
 const ruleRegistry = require(path.join(root, 'data', 'rule-registry', 'rules.json'));
@@ -221,6 +224,7 @@ function buildCoverageMatrix(serviceFamilies) {
 function main() {
   const serviceFamilies = buildServiceFamilyRules();
   const coverageMatrix = buildCoverageMatrix(serviceFamilies);
+  const followUpCapabilityMatrix = getFollowUpCapabilityMatrix();
 
   writeJson(path.join(root, 'data', 'rule-registry', 'service_family_rules.json'), {
     metadata: {
@@ -228,6 +232,14 @@ function main() {
       description: 'Grouped service-family rules derived from workbook and PDF extracts.',
     },
     families: serviceFamilies,
+  });
+
+  writeJson(path.join(root, 'data', 'rule-registry', 'followup_capability_matrix.json'), {
+    metadata: {
+      generatedBy: 'pricing/tools/build_coverage_artifacts.js',
+      description: 'Declarative follow-up capability summary derived from pricing/server/service-families.js.',
+    },
+    families: followUpCapabilityMatrix,
   });
 
   writeJson(path.join(root, 'data', 'rule-registry', 'coverage_matrix.json'), coverageMatrix);

@@ -61,6 +61,58 @@ function createInferenceClient(cfg) {
   return client;
 }
 
+function buildChatDetails({ cfg, messages, maxTokens, temperature, topP, topK, maxTokenField = 'maxTokens' }) {
+  const chatRequest = {
+    apiFormat: genai.models.GenericChatRequest.apiFormat,
+    messages,
+    temperature: Number(temperature),
+    topP: Number(topP),
+    topK: Number(topK),
+    isStream: false,
+  };
+  chatRequest[maxTokenField] = Number(maxTokens);
+  return {
+    compartmentId: cfg.compartment,
+    servingMode: {
+      modelId: cfg.modelId,
+      servingType: genai.models.OnDemandServingMode.servingType,
+    },
+    chatRequest,
+  };
+}
+
+function shouldRetryWithMaxCompletionTokens(error) {
+  const message = String(error?.message || error || '');
+  return /max_tokens/i.test(message) && /max_completion_tokens/i.test(message);
+}
+
+async function executeChatWithFallback({ client, cfg, messages, maxTokens, temperature, topP, topK }) {
+  const primaryChatDetails = buildChatDetails({
+    cfg,
+    messages,
+    maxTokens,
+    temperature,
+    topP,
+    topK,
+    maxTokenField: 'maxTokens',
+  });
+  try {
+    return await client.chat({ chatDetails: primaryChatDetails });
+  } catch (error) {
+    if (!shouldRetryWithMaxCompletionTokens(error)) throw error;
+    const fallbackChatDetails = buildChatDetails({
+      cfg,
+      messages,
+      maxTokens,
+      temperature,
+      topP,
+      topK,
+      maxTokenField: 'maxCompletionTokens',
+    });
+    return client.chat({ chatDetails: fallbackChatDetails });
+  }
+}
+
 async function runChat({ cfg, systemPrompt, messages, maxTokens, temperature = 0.7, topP = 0.75, topK = -1 }) {
   const client = createInferenceClient(cfg);
   const models = genai.models;
@@ -79,24 +131,15 @@ async function runChat({ cfg, systemPrompt, messages, maxTokens, temperature = 0
     });
   }
 
-  const chatDetails = {
-    compartmentId: cfg.compartment,
-    servingMode: {
-      modelId: cfg.modelId,
-      servingType: genai.models.OnDemandServingMode.servingType,
-    },
-    chatRequest: {
-      apiFormat: genai.models.GenericChatRequest.apiFormat,
-      messages: chatMessages,
-      maxTokens: Number(maxTokens || 2000),
-      temperature: Number(temperature),
-      topP: Number(topP),
-      topK: Number(topK),
-      isStream: false,
-    },
-  };
-
-  return client.chat({ chatDetails });
+  return executeChatWithFallback({
+    client,
+    cfg,
+    messages: chatMessages,
+    maxTokens: Number(maxTokens || 2000),
+    temperature,
+    topP,
+    topK,
+  });
 }
 
 async function runMultimodalChat({ cfg, systemPrompt, userText, imageDataUrl, maxTokens, temperature = 0.2, topP = 0.5, topK = -1 }) {
@@ -132,30 +175,23 @@ async function runMultimodalChat({ cfg, systemPrompt, userText, imageDataUrl, ma
     content: userContent,
   });
 
-  const chatDetails = {
-    compartmentId: cfg.compartment,
-    servingMode: {
-      modelId: cfg.modelId,
-      servingType: genai.models.OnDemandServingMode.servingType,
-    },
-    chatRequest: {
-      apiFormat: genai.models.GenericChatRequest.apiFormat,
-      messages,
-      maxTokens: Number(maxTokens || 1200),
-      temperature: Number(temperature),
-      topP: Number(topP),
-      topK: Number(topK),
-      isStream: false,
-    },
-  };
-
-  return client.chat({ chatDetails });
+  return executeChatWithFallback({
+    client,
+    cfg,
+    messages,
+    maxTokens: Number(maxTokens || 1200),
+    temperature,
+    topP,
+    topK,
+  });
 }
 
 function extractChatText(data) {
   if (!data) return '';
   const sdkWrapped = data?.chatResult?.chatResponse?.choices?.[0]?.message?.content?.[0]?.text;
   if (typeof sdkWrapped === 'string' && sdkWrapped.trim()) return sdkWrapped;
+  const sdkWrappedString = data?.chatResult?.chatResponse?.choices?.[0]?.message?.content;
+  if (typeof sdkWrappedString === 'string' && sdkWrappedString.trim()) return sdkWrappedString;
   const sdkWrappedContent = data?.chatResult?.chatResponse?.choices?.[0]?.message?.content;
   if (Array.isArray(sdkWrappedContent)) {
     const text = sdkWrappedContent.map((item) => item?.text || '').filter(Boolean).join('\n');
@@ -163,8 +199,12 @@ function extractChatText(data) {
   }
   const direct = data?.chatResponse?.choices?.[0]?.message?.content?.[0]?.text;
   if (typeof direct === 'string' && direct.trim()) return direct;
+  const directString = data?.chatResponse?.choices?.[0]?.message?.content;
+  if (typeof directString === 'string' && directString.trim()) return directString;
   const alt = data?.choices?.[0]?.message?.content?.[0]?.text;
   if (typeof alt === 'string' && alt.trim()) return alt;
+  const altString = data?.choices?.[0]?.message?.content;
+  if (typeof altString === 'string' && altString.trim()) return altString;
   const content = data?.chatResponse?.choices?.[0]?.message?.content;
   if (Array.isArray(content)) {
     return content.map((item) => item?.text || '').filter(Boolean).join('\n');
@@ -176,6 +216,9 @@ function extractChatText(data) {
 
 module.exports = {
   loadGenAISettings,
+  buildChatDetails,
+  shouldRetryWithMaxCompletionTokens,
+  executeChatWithFallback,
   runChat,
   runMultimodalChat,
   extractChatText,

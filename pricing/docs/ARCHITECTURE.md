@@ -39,10 +39,18 @@ This architecture is **implemented and in active hardening**, not a prototype.
   - `Export CSV`
   - `Export XLSX`
 - parity and regression coverage across major OCI families
+- live assistant resilience and semantic-quality regression tooling in:
+  - `pricing/server/scripts/assistant-fuzz.js`
+  - `pricing/server/scripts/assistant-quality.js`
 
 ### Implemented But Still Being Expanded
 
 - family metadata in `pricing/server/service-families.js`
+  - now owns a growing follow-up capability matrix for:
+    - license-mode follow-ups
+    - composite add/remove/replace behavior for selected families
+    - family-owned variant swaps such as `OIC`/`OAC` sibling editions and `Data Safe` / `Log Analytics` variant transitions
+  - now also exposes a reusable capability-matrix view from code so tests and future tooling can inspect supported follow-up behavior without re-parsing raw metadata ad hoc
 - registry-driven discovery and explanation
 - quote follow-ups on active session quotes
 - workbook and RVTools migration sizing
@@ -140,6 +148,20 @@ Purpose:
 
 - validate runtime behavior
 - compare line items, quantities, and totals
+
+### 4. Live Assistant Regression Reports
+
+Used for validation of the API-backed assistant layer:
+
+- `pricing/server/scripts/assistant-fuzz.js`
+- `pricing/server/scripts/assistant-quality.js`
+- [QUALITY_REGRESSION.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/QUALITY_REGRESSION.md)
+
+Purpose:
+
+- verify live API consistency under controlled request pacing
+- verify semantic quality of discovery answers across covered OCI services
+- catch regressions where the assistant remains available but becomes less accurate or less useful
 
 ## Runtime Architecture
 
@@ -239,7 +261,14 @@ Files:
 - [service-families.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/service-families.js)
 - [vm_shape_rules.json](/Users/javierchan/Documents/GitHub/oci/pricing/data/rule-registry/vm_shape_rules.json)
 - [service_family_rules.json](/Users/javierchan/Documents/GitHub/oci/pricing/data/rule-registry/service_family_rules.json)
+- [followup_capability_matrix.json](/Users/javierchan/Documents/GitHub/oci/pricing/data/rule-registry/followup_capability_matrix.json)
 - [coverage_matrix.json](/Users/javierchan/Documents/GitHub/oci/pricing/data/rule-registry/coverage_matrix.json)
+
+The new follow-up artifact is the machine-readable summary of supported quote-mutation behavior by family. It is intended for:
+
+- direct inspection during development
+- lightweight registry tests
+- future tooling or UI surfaces that need to explain what follow-ups are safe for a given family
 
 Responsibilities:
 

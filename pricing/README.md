@@ -51,8 +51,6 @@ Browser → localhost:8742 (Docker)
               └──→ inference.generativeai.{region}.oci.oraclecloud.com
 ```
 
-No Anthropic dependency. Billed entirely on your OCI tenancy.
-
 Detailed technical docs:
 
 - [Architecture](./docs/ARCHITECTURE.md)
@@ -82,9 +80,10 @@ Rule artifacts now live under `pricing/data/rule-registry/`:
 - `rules.json`
 - `vm_shape_rules.json`
 - `service_family_rules.json`
+- `followup_capability_matrix.json`
 - `coverage_matrix.json`
 
-These artifacts are generated from the workbook/PDF extracts plus explicit shape metadata for OCI Calculator-style VM coverage. `coverage_matrix.json` now also includes `computeVariantAudit`, which highlights compute-family services present in the price extracts but not yet represented in the explicit VM shape registry.
+These artifacts are generated from the workbook/PDF extracts plus explicit shape metadata and declarative family metadata. `coverage_matrix.json` now also includes `computeVariantAudit`, which highlights compute-family services present in the price extracts but not yet represented in the explicit VM shape registry. `followup_capability_matrix.json` exposes the supported follow-up behavior per family so tests and future tooling can inspect it directly.
 
 ---
 

@@ -2,12 +2,51 @@
 
 const { quoteFromPrompt, parsePromptRequest } = require('./quotation-engine');
 const { searchProducts, searchPresets, searchServiceRegistry, serviceHasRequiredInputs } = require('./catalog');
-const { getServiceFamily, getMissingRequiredInputs, buildCanonicalRequest, getClarificationMessage, getPreQuoteClarification, inferServiceFamily, supportsFollowUpCapability, getCompositeFollowUpRemovalRules, getActiveQuoteFollowUpReplacementRules, getFamiliesWithActiveQuoteFollowUpRules } = require('./service-families');
+const { getServiceFamily, getMissingRequiredInputs, buildCanonicalRequest, getClarificationMessage, getPreQuoteClarification, inferServiceFamily, normalizeExtractedInputsForFamily } = require('./service-families');
 const { inferConsumptionPattern, explainConsumptionPattern } = require('./consumption-model');
 const { runChat, extractChatText } = require('./genai');
 const { analyzeIntent, analyzeImageIntent, buildSessionContextBlock } = require('./intent-extractor');
-const { normalizeIntentResult } = require('./normalizer');
-const { buildAssistantContextPack, buildCatalogListingReply, buildUncoveredComputeReply, canSafelyQuoteUncoveredComputeVariant, findUncoveredComputeVariant, stringifyContextPack, summarizeContextPack } = require('./context-packs');
+const { buildAssistantContextPack, buildCatalogListingReply, buildStructuredDiscoveryFallback, buildUncoveredComputeReply, canSafelyQuoteUncoveredComputeVariant, findUncoveredComputeVariant, stringifyContextPack, summarizeContextPack } = require('./context-packs');
+const { hasExplicitQuoteLead, isConceptualPricingQuestion, isDiscoveryOrExplanationQuestion } = require('./discovery-classifier');
+const { fallbackIntentOnAnalysisFailure, reconcileIntentWithHeuristics } = require('./intent-reconciliation');
+const { shouldForceQuoteFollowUpRoute, applyQuoteFollowUpIntentOverride } = require('./quote-followup-intent');
+const { reconcilePostIntentFollowUp } = require('./post-intent-followup');
+const { buildEarlyAssistantReply } = require('./early-assistant-replies');
+const { detectGenericComputeShapeClarification } = require('./compute-shape-clarification');
+const { buildQuoteUnresolvedPayload } = require('./quote-unresolved');
+const { buildAnswerFallbackPayload } = require('./answer-fallback');
+const { reconcileQuoteClarificationState } = require('./quote-clarification-state');
+const { buildQuoteRequestShape } = require('./quote-request-shaping');
+const { resolveDirectQuoteFastPath } = require('./direct-quote-fast-paths');
+const { resolveEarlyAssistantRouting } = require('./early-assistant-routing');
+const { buildDiscoveryRoutingState, resolveDiscoveryRoutePayload } = require('./discovery-routing');
+const { resolvePostClarificationRouting } = require('./post-clarification-routing');
+const { resolveIntentPipeline } = require('./intent-pipeline');
+const { prepareQuoteCandidateState } = require('./quote-entry-preparation');
+const {
+  mergeSessionQuoteFollowUp,
+  mergeSessionQuoteFollowUpByRoute,
+  preserveCriticalPromptModifiers,
+} = require('./session-quote-followup');
+const {
+  isSessionQuoteFollowUp,
+  isShortContextualAnswer,
+  mergeClarificationAnswer,
+} = require('./clarification-followup');
+const {
+  hasExplicitByolChoice,
+  detectByolAmbiguity,
+  filterQuoteByByolChoice,
+  shouldAskLicenseChoice,
+  buildLicenseChoiceClarificationPayload,
+  buildByolAmbiguityClarificationPayload,
+} = require('./license-choice');
+const {
+  resolveEarlyFlexComparisonClarification,
+  buildFlexComparisonQuote,
+  buildFlexComparisonNarrative,
+  buildFlexComparisonReplyPayload,
+} = require('./flex-comparison-flow');
 
 const RESPONSE_PROMPT = [
   'You are an OCI pricing specialist speaking to a customer.',
@@ -69,542 +108,6 @@ function buildRegistryQuery(text, intent = {}) {
     .replace(/\bper month\b|\bper hour\b|\bper day\b|\bmonthly\b|\bhourly\b/ig, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function isGreeting(text) {
-  return /^(hola|hello|hi|hey|buenas|good morning|good afternoon|good evening)\b[!. ]*$/i.test(String(text || '').trim());
-}
-
-function isFastConnectText(text) {
-  return /\bfast\s*connect\b|\bfastconnect\b/i.test(String(text || ''));
-}
-
-function conversationMentionsFastConnect(conversation) {
-  return (conversation || []).some((item) => isFastConnectText(item.content || ''));
-}
-
-function isConfidenceQuestion(text) {
-  return /\b(estas seguro|estás seguro|seguro de ese precio|are you sure|is that price correct|is that accurate)\b/i.test(String(text || ''));
-}
-
-function parseRegionAnswer(text) {
-  const source = String(text || '').trim().toLowerCase();
-  if (!source) return null;
-  if (/quer[eé]taro/.test(source)) return { code: 'mx-queretaro-1', label: 'Mexico Central (Queretaro)' };
-  if (/monterrey/.test(source)) return { code: 'mx-monterrey-1', label: 'Mexico Northeast (Monterrey)' };
-  return null;
-}
-
-function isShortClarificationAnswer(text) {
-  const source = String(text || '').trim();
-  if (!source) return false;
-  if (source.length > 80) return false;
-  return /^(byol|bring your own license|license included|included|con licencia incluida|licencia incluida)$/i.test(source);
-}
-
-function isLicenseModeFollowUp(text) {
-  const source = String(text || '').trim();
-  if (!source || source.length > 160) return false;
-  return /\b(byol|bring your own license|license included|included|con licencia incluida|licencia incluida)\b/i.test(source);
-}
-
-function isShortContextualAnswer(text) {
-  const source = String(text || '').trim();
-  if (!source || source.length > 80) return false;
-  if (isShortClarificationAnswer(source) || isLicenseModeFollowUp(source)) return true;
-  if (/^(on[- ]?demand|reserved|reserve[d]? pricing)$/i.test(source)) return true;
-  if (/^\d+(?:\.\d+)?$/.test(source)) return true;
-  if (FLEX_SHAPE_TOKEN_PATTERN.test(source)) return true;
-  return false;
-}
-
-function isShapeSelectionFollowUp(text) {
-  const source = String(text || '').trim();
-  return FLEX_SHAPE_TOKEN_PATTERN.test(source);
-}
-
-function lastConversationItems(conversation = []) {
-  const items = Array.isArray(conversation) ? conversation : [];
-  let lastAssistant = null;
-  let lastUser = null;
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    const item = items[i];
-    if (!lastAssistant && item.role === 'assistant') lastAssistant = item;
-    if (!lastUser && item.role === 'user') lastUser = item;
-    if (lastAssistant && lastUser) break;
-  }
-  return { lastAssistant, lastUser };
-}
-
-function extractProductContextFromAssistant(text) {
-  const source = String(text || '').trim();
-  if (!source) return '';
-  const clarificationMatch = source.match(/do you want\s+(.+?)\s+as byol or license included\??/i);
-  if (clarificationMatch) return String(clarificationMatch[1] || '').trim();
-  const quoteMatch = source.match(/quotation for\s+`([^`]+)`/i);
-  if (quoteMatch) return String(quoteMatch[1] || '').trim();
-  return '';
-}
-
-function findPriorProductPrompt(conversation = []) {
-  const items = Array.isArray(conversation) ? conversation : [];
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    const item = items[i];
-    if (item.role !== 'user') continue;
-    const content = String(item.content || '').trim();
-    if (!content) continue;
-    if (isLicenseModeFollowUp(content)) continue;
-    return content;
-  }
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    const item = items[i];
-    if (item.role !== 'assistant') continue;
-    const extracted = extractProductContextFromAssistant(item.content || '');
-    if (extracted) return `Quote ${extracted}`;
-  }
-  return '';
-}
-
-function normalizeLicenseModeText(text) {
-  const source = String(text || '').trim();
-  if (/\bbyol\b|\bbring your own license\b/i.test(source)) return 'BYOL';
-  if (/\blicense included\b|\binclude license\b|\bcon licencia incluida\b|\blicencia incluida\b|\bincluded\b/i.test(source)) return 'License Included';
-  return source;
-}
-
-function extractLicenseModeDirective(text) {
-  const normalized = normalizeLicenseModeText(text);
-  if (/^BYOL$/i.test(normalized)) return 'BYOL';
-  if (/^License Included$/i.test(normalized)) return 'License Included';
-  return '';
-}
-
-function mergeClarificationAnswer(conversation, userText) {
-  const isLicenseFollowUp = isLicenseModeFollowUp(userText);
-  const isShapeFollowUp = isShapeSelectionFollowUp(userText);
-  if (!isLicenseFollowUp && !isShapeFollowUp) return userText;
-  const { lastAssistant, lastUser } = lastConversationItems(conversation);
-  const assistantText = String(lastAssistant?.content || '');
-  const previousPrompt = findPriorProductPrompt(conversation) || String(lastUser?.content || '').trim();
-  if (!previousPrompt) return userText;
-  const assistantProductContext = extractProductContextFromAssistant(assistantText);
-  if (isShapeFollowUp && /which oci vm shape should i use|which .*shape should i use/i.test(assistantText)) {
-    return `${previousPrompt} ${String(userText || '').trim()}`.trim();
-  }
-  if (/\b(BYOL|License Included)\b/i.test(assistantText) || assistantProductContext) {
-    return `${previousPrompt} ${normalizeLicenseModeText(userText)}`.trim();
-  }
-  return userText;
-}
-
-function isSessionQuoteFollowUp(text) {
-  const source = String(text || '').trim();
-  if (!source || source.length > 220) return false;
-  if (/^(y|and|ahora|now)\b/i.test(source)) return true;
-  if (/\b(?:with|without|con|sin)\b/i.test(source)) return true;
-  if (/\b(?:instances?|instancias?|vpus?|ocpus?|ecpus?|gb|tb|mbps|gbps|users?|firewalls?|endpoints?|databases?|workspaces?|managed resources?|jobs?|queries?|api calls?|emails?|messages?|delivery operations?|transactions?)\b/i.test(source)) return true;
-  if (/\b(?:byol|license included|licencia incluida|on[- ]?demand|reserved|amd|intel|ampere|arm)\b/i.test(source)) return true;
-  if (/\b(?:usd|mxn|eur|brl|gbp|cad|jpy)\b/i.test(source)) return true;
-  if (/\b(?:capacity reservation|reservation utilization|preemptible|burstable|baseline)\b/i.test(source)) return true;
-  if (isShapeSelectionFollowUp(source)) return true;
-  return false;
-}
-
-function removeCompositeServiceSegment(basePrompt, pattern) {
-  const source = String(basePrompt || '').trim();
-  if (!source) return source;
-  const prefixMatch = source.match(/^\s*quote\s+/i);
-  const prefix = prefixMatch ? prefixMatch[0] : '';
-  const body = prefix ? source.slice(prefix.length).trim() : source;
-  const separators = /\s+\+\s+|\s+plus\s+/i;
-  if (!separators.test(body)) return source;
-  const kept = body
-    .split(separators)
-    .map((segment) => segment.trim())
-    .filter(Boolean)
-    .filter((segment) => !(new RegExp(pattern, 'i')).test(segment));
-  if (!kept.length) return source;
-  return `${prefix}${kept.join(' plus ')}`.trim();
-}
-
-function stripQuotePrefix(text) {
-  return String(text || '').trim().replace(/^\s*quote\s+/i, '').trim();
-}
-
-function appendCompositeServiceSegment(basePrompt, segment) {
-  const source = String(basePrompt || '').trim();
-  const nextSegment = stripQuotePrefix(segment);
-  if (!nextSegment) return source;
-  if (!source) return `Quote ${nextSegment}`.trim();
-  const prefixMatch = source.match(/^\s*quote\s+/i);
-  const prefix = prefixMatch ? prefixMatch[0] : 'Quote ';
-  const body = prefixMatch ? source.slice(prefix.length).trim() : source;
-  const existingSegments = body
-    .split(/\s+\+\s+|\s+plus\s+/i)
-    .map((item) => stripQuotePrefix(item).toLowerCase())
-    .filter(Boolean);
-  if (existingSegments.includes(nextSegment.toLowerCase())) return source;
-  return `${prefix}${body} plus ${nextSegment}`.trim();
-}
-
-function replaceShapeInPrompt(basePrompt, nextShape) {
-  const source = String(basePrompt || '').trim();
-  const shape = String(nextShape || '').trim();
-  if (!source || !shape) return source;
-  return source.replace(FLEX_SHAPE_TOKEN_INLINE_PATTERN, shape);
-}
-
-function extractInlineShapeSelection(text) {
-  const match = String(text || '').match(FLEX_SHAPE_TOKEN_GLOBAL_PATTERN);
-  return Array.isArray(match) && match.length ? String(match[0] || '').trim() : '';
-}
-
-function extractFollowUpModifierDirective(text) {
-  const source = String(text || '').trim();
-  if (!source) return '';
-  if (/\bpreemptible\b/i.test(source)) return 'preemptible';
-  const capacityReservationUtilization = parseCapacityReservationUtilization(source);
-  if (capacityReservationUtilization !== null) return `capacity reservation ${capacityReservationUtilization}`;
-  const burstableBaseline = parseBurstableBaseline(source);
-  if (burstableBaseline !== null) return `burstable baseline ${burstableBaseline}`;
-  return '';
-}
-
-function replaceOrAppendPattern(basePrompt, regex, replacement) {
-  const source = String(basePrompt || '').trim();
-  if (!source) return String(replacement || '').trim();
-  if (regex.test(source)) return source.replace(regex, replacement);
-  return `${source} ${replacement}`.trim();
-}
-
-function replaceCurrencyInPrompt(basePrompt, currencyCode) {
-  const source = String(basePrompt || '').trim();
-  const nextCode = String(currencyCode || '').trim().toUpperCase();
-  if (!source || !nextCode) return source;
-  if (/\b(?:USD|MXN|EUR|BRL|GBP|CAD|JPY)\b/i.test(source)) {
-    return source.replace(/\b(?:USD|MXN|EUR|BRL|GBP|CAD|JPY)\b/i, nextCode);
-  }
-  return `${source} ${nextCode}`.trim();
-}
-
-const SESSION_FOLLOW_UP_REMOVAL_RULES = getCompositeFollowUpRemovalRules();
-
-const SESSION_FOLLOW_UP_REPLACEMENT_RULES = [];
-
-function applyFollowUpReplacementRule(nextPrompt, source, rule) {
-  const sourceMatch = String(source || '').match(rule.sourcePattern)?.[0];
-  if (!sourceMatch) return nextPrompt;
-  if (typeof rule.apply === 'function') return rule.apply(nextPrompt, sourceMatch);
-  if (!rule.targetPattern) return nextPrompt;
-  return nextPrompt.replace(rule.targetPattern, sourceMatch);
-}
-
-function applyActiveQuoteFamilyFollowUpReplacements(nextPrompt, source, familyId) {
-  let updatedPrompt = String(nextPrompt || '').trim();
-  let matched = false;
-  for (const rule of getActiveQuoteFollowUpReplacementRules(familyId)) {
-    if (!rule.sourcePattern.test(source)) continue;
-    updatedPrompt = applyFollowUpReplacementRule(updatedPrompt, source, rule);
-    matched = true;
-  }
-  return { nextPrompt: updatedPrompt, matched };
-}
-
-function resolveCompositeFollowUpReplacementFamily(nextPrompt, source, preferredFamilyIds = []) {
-  const prompt = String(nextPrompt || '').trim();
-  const followUp = String(source || '').trim();
-  if (!prompt || !followUp) return '';
-  const seen = new Set();
-  const orderedFamilies = [
-    ...preferredFamilyIds.filter(Boolean),
-    ...getFamiliesWithActiveQuoteFollowUpRules(),
-  ].filter((familyId) => {
-    if (seen.has(familyId)) return false;
-    seen.add(familyId);
-    return true;
-  });
-  const matches = orderedFamilies.filter((familyId) => getActiveQuoteFollowUpReplacementRules(familyId).some((rule) => (
-    rule.sourcePattern.test(followUp) && (!rule.targetPattern || rule.targetPattern.test(prompt))
-  )));
-  return matches.length === 1 ? matches[0] : '';
-}
-
-function preservesFamilyReplacementSignals(source, candidate, familyId) {
-  const base = String(source || '').trim();
-  const next = String(candidate || '').trim();
-  if (!base || !next || !familyId) return true;
-  for (const rule of getActiveQuoteFollowUpReplacementRules(familyId)) {
-    if (!rule.sourcePattern.test(base)) continue;
-    if (rule.targetPattern && !rule.targetPattern.test(next)) return false;
-  }
-  return true;
-}
-
-function parseCompositeFollowUpReplacement(followUp) {
-  const source = String(followUp || '').trim();
-  const match = source.match(/\b(?:replace|swap|switch|cambia(?:r)?|reemplaza|sustituye)\s+(.+?)\s+(?:with|for|por)\s+(.+)/i);
-  if (!match) return null;
-  const sourceText = String(match[1] || '').trim();
-  const targetText = String(match[2] || '').trim();
-  const sourceFamilyId = inferServiceFamily(sourceText);
-  const targetFamilyId = inferServiceFamily(targetText);
-  if (!sourceFamilyId || !targetFamilyId || sourceFamilyId === targetFamilyId) return null;
-  return {
-    sourceText,
-    targetText,
-    sourceFamilyId,
-    targetFamilyId,
-  };
-}
-
-function buildCompositeReplacementSegment(targetText, targetFamilyId) {
-  const source = String(targetText || '').trim();
-  if (!source || !targetFamilyId) return '';
-  const parsed = parsePromptRequest(source) || {};
-  const canonical = String(buildCanonicalRequest({
-    serviceFamily: targetFamilyId,
-    extractedInputs: parsed,
-    reformulatedRequest: source,
-    normalizedRequest: source,
-  }, source) || '').trim();
-  if (canonical) return stripQuotePrefix(canonical);
-  return stripQuotePrefix(normalizeCompositeSegment(source, source));
-}
-
-function applySessionFollowUpDirective(basePrompt, followUp, options = {}) {
-  const source = String(followUp || '').trim();
-  let nextPrompt = String(basePrompt || '').trim();
-  let suppressFallbackAppend = false;
-  const activeFamilyId = String(options.activeFamily?.familyId || '').trim();
-  const activeFamilyInputs = (options.activeFamily && typeof options.activeFamily.parsed === 'object' && options.activeFamily.parsed) || {};
-  const followUpFamilyId = String(options.followUpFamilyId || '').trim();
-  if (!source) return nextPrompt;
-
-  if (isShapeSelectionFollowUp(source) && FLEX_SHAPE_TOKEN_INLINE_PATTERN.test(nextPrompt)) {
-    nextPrompt = replaceShapeInPrompt(nextPrompt, source);
-    suppressFallbackAppend = true;
-  }
-
-  const inlineShapeSelection = extractInlineShapeSelection(source);
-  if (!isShapeSelectionFollowUp(source) && inlineShapeSelection && FLEX_SHAPE_TOKEN_INLINE_PATTERN.test(nextPrompt)) {
-    nextPrompt = replaceShapeInPrompt(nextPrompt, inlineShapeSelection);
-    suppressFallbackAppend = true;
-  }
-
-  const compositeReplacement = parseCompositeFollowUpReplacement(source);
-  if (compositeReplacement) {
-    const sourceFamily = getServiceFamily(compositeReplacement.sourceFamilyId);
-    const removeDirective = sourceFamily?.followUpDirectives?.removeFromComposite;
-    const sourceAllowed = supportsFollowUpCapability(compositeReplacement.sourceFamilyId, 'compositeReplaceSource');
-    const targetAllowed = supportsFollowUpCapability(compositeReplacement.targetFamilyId, 'compositeReplaceTarget');
-    const targetSegment = sourceAllowed && targetAllowed
-      ? buildCompositeReplacementSegment(
-        compositeReplacement.targetText,
-        compositeReplacement.targetFamilyId,
-      )
-      : '';
-    suppressFallbackAppend = true;
-    if (removeDirective && targetSegment) {
-      nextPrompt = appendCompositeServiceSegment(
-        removeCompositeServiceSegment(nextPrompt, removeDirective.segmentPattern),
-        targetSegment,
-      );
-    }
-  }
-
-  for (const rule of SESSION_FOLLOW_UP_REMOVAL_RULES) {
-    if (rule.detect.test(source)) {
-      nextPrompt = removeCompositeServiceSegment(nextPrompt, rule.segmentPattern);
-    }
-  }
-
-  if (/\b(?:mxn|usd|eur|brl|gbp|cad|jpy)\b/i.test(source)) {
-    const code = source.match(/\b(mxn|usd|eur|brl|gbp|cad|jpy)\b/i)?.[1]?.toUpperCase();
-    if (code) nextPrompt = replaceCurrencyInPrompt(nextPrompt, code);
-  }
-
-  const licenseMode = extractLicenseModeDirective(source);
-  if (licenseMode) {
-    suppressFallbackAppend = true;
-    if (supportsFollowUpCapability(activeFamilyId, 'licenseMode', activeFamilyInputs)) {
-      nextPrompt = replaceOrAppendPattern(nextPrompt, /\b(?:BYOL|License Included)\b/i, licenseMode);
-    }
-  }
-
-  const familyReplacement = applyActiveQuoteFamilyFollowUpReplacements(nextPrompt, source, activeFamilyId);
-  nextPrompt = familyReplacement.nextPrompt;
-  let matchedFamilyReplacement = familyReplacement.matched;
-
-  if (!matchedFamilyReplacement && followUpFamilyId && followUpFamilyId !== activeFamilyId) {
-    const followUpFamilyReplacement = applyActiveQuoteFamilyFollowUpReplacements(nextPrompt, source, followUpFamilyId);
-    nextPrompt = followUpFamilyReplacement.nextPrompt;
-    matchedFamilyReplacement = followUpFamilyReplacement.matched;
-  }
-
-  if (!matchedFamilyReplacement) {
-    const compositeFamilyId = resolveCompositeFollowUpReplacementFamily(nextPrompt, source, [
-      followUpFamilyId,
-      activeFamilyId,
-    ]);
-    if (compositeFamilyId) {
-      const compositeFamilyReplacement = applyActiveQuoteFamilyFollowUpReplacements(nextPrompt, source, compositeFamilyId);
-      nextPrompt = compositeFamilyReplacement.nextPrompt;
-      matchedFamilyReplacement = compositeFamilyReplacement.matched;
-    }
-  }
-
-  if (matchedFamilyReplacement) suppressFallbackAppend = true;
-
-  if (!matchedFamilyReplacement) {
-    for (const rule of SESSION_FOLLOW_UP_REPLACEMENT_RULES) {
-      if (!rule.sourcePattern.test(source)) continue;
-      nextPrompt = applyFollowUpReplacementRule(nextPrompt, source, rule);
-      if (/\bsms messages?\b/i.test(String(source.match(rule.sourcePattern)?.[0] || ''))) break;
-    }
-  }
-
-  const modifierDirective = extractFollowUpModifierDirective(source);
-  if (modifierDirective) {
-    nextPrompt = replaceOrAppendPattern(
-      nextPrompt,
-      /\b(?:preemptible|capacity reservation(?: utilization)?\s*[:=]?\s*\d+(?:\.\d+)?|burstable(?: baseline)?\s*[:=]?\s*\d+(?:\.\d+)?)\b/i,
-      modifierDirective,
-    );
-    suppressFallbackAppend = true;
-  }
-
-  if (nextPrompt !== String(basePrompt || '').trim()) return nextPrompt.trim();
-  if (suppressFallbackAppend) return nextPrompt.trim();
-  return `${String(basePrompt || '').trim()} ${source}`.trim();
-}
-
-function getActiveQuoteFamilyContext(sessionContext = {}) {
-  const lastQuote = sessionContext?.lastQuote || {};
-  const source = String(lastQuote.source || '').trim();
-  const parsed = source ? (parsePromptRequest(source) || {}) : {};
-  const declaredFamilyId = String(lastQuote.serviceFamily || parsed.serviceFamily || '').trim();
-  const inferredFamilyId = String(
-    FLEX_SHAPE_TOKEN_INLINE_PATTERN.test(source)
-      ? 'compute_flex'
-      : (inferServiceFamily(source) || '')
-  ).trim();
-  const preferInferredFamily = declaredFamilyId === 'compute_vm_generic' && inferredFamilyId && inferredFamilyId !== declaredFamilyId;
-  const familyId = String(
-    preferInferredFamily
-      ? inferredFamilyId
-      : getServiceFamily(declaredFamilyId)
-      ? declaredFamilyId
-      : (inferredFamilyId || declaredFamilyId)
-  ).trim();
-  return {
-    familyId,
-    familyMeta: familyId ? getServiceFamily(familyId) : null,
-    parsed,
-  };
-}
-
-function mergeSessionQuoteFollowUpByRoute(sessionContext, intent, userText) {
-  const route = String(intent?.route || '').trim().toLowerCase();
-  const lastQuoteSource = String(sessionContext?.lastQuote?.source || '').trim();
-  const source = String(userText || '').trim();
-  if (route !== 'quote_followup' || !lastQuoteSource || !source) return '';
-  return applySessionFollowUpDirective(lastQuoteSource, source, {
-    activeFamily: getActiveQuoteFamilyContext(sessionContext),
-    followUpFamilyId: intent?.serviceFamily,
-  });
-}
-
-function preserveCriticalPromptModifiers(basePrompt, referencePrompt) {
-  let nextPrompt = String(basePrompt || '').trim();
-  const reference = String(referencePrompt || '').trim();
-  if (!nextPrompt || !reference) return nextPrompt;
-  if (/\bmetered\b/i.test(reference) && !/\bmetered\b/i.test(nextPrompt)) {
-    nextPrompt = `${nextPrompt} metered`.trim();
-  }
-  return nextPrompt;
-}
-
-function mergeSessionQuoteFollowUp(sessionContext, userText) {
-  const source = String(userText || '').trim();
-  if (isDiscoveryOrExplanationQuestion(source)) return source;
-  if (!isSessionQuoteFollowUp(source)) return source;
-  const lastQuoteSource = String(sessionContext?.lastQuote?.source || '').trim();
-  if (!lastQuoteSource) return source;
-  const normalized = source
-    .replace(/^(?:y|and|ahora|now)\s+/i, '')
-    .trim();
-  if (!normalized) return lastQuoteSource;
-  return applySessionFollowUpDirective(lastQuoteSource, normalized, {
-    activeFamily: getActiveQuoteFamilyContext(sessionContext),
-    followUpFamilyId: inferServiceFamily(normalized),
-  });
-}
-
-function shouldForceSessionQuoteFollowUp(sessionContext, userText) {
-  const source = String(userText || '').trim();
-  if (!String(sessionContext?.lastQuote?.source || '').trim()) return false;
-  if (isDiscoveryOrExplanationQuestion(source)) return false;
-  if (!isSessionQuoteFollowUp(source)) return false;
-  if (/\b(?:how|what|why|which|que|qué|como|cómo|cual|cuál|opciones?|difference|diff|billing|priced|billed|cobra)\b/i.test(source)) {
-    return false;
-  }
-  return true;
-}
-
-function isConceptualPricingQuestion(text = '') {
-  const source = String(text || '').trim();
-  if (!source) return false;
-  if (
-    /\b(?:what|which|que|qué|cuales?|cu[aá]les)\b[\s\S]*\b(?:skus?|sku'?s|componentes?|components?)\b[\s\S]*\b(?:need|needed|required|require|requier(?:e|o|en)?|requerid[oa]s?|necesari[oa]s?)\b[\s\S]*\b(?:quote|quoting|pricing|cotizar|cotización)\b/i.test(source)
-  ) {
-    return true;
-  }
-  if (
-    /\b(?:skus?|sku'?s|componentes?|components?)\b[\s\S]*\b(?:required|requireds?|requerid[oa]s?|necesari[oa]s?)\b[\s\S]*\b(?:en|in|for|para|de)\b[\s\S]*\b(?:quote|cotiz(?:ar|ación))\b/i.test(source)
-  ) {
-    return true;
-  }
-  if (
-    /\b(?:what|which|que|qué|cuales?|cu[aá]les)\b[\s\S]*\b(?:inputs?|information|datos|variables|componentes?|components?|skus?)\b[\s\S]*\b(?:need|needed|required|require|necesito|requiero|required)\b[\s\S]*\b(?:before|for|to|para)\b[\s\S]*\b(?:quote|quoting|pricing|price|cotizar|cotización)\b/i.test(source)
-  ) {
-    return true;
-  }
-  if (
-    /\b(?:what|which|que|qué)\b[\s\S]*\b(?:do i need|need before|is required|required before|necesito|se requiere|requiero)\b[\s\S]*\b(?:quote|pricing|cotizar|cotización)\b/i.test(source)
-  ) {
-    return true;
-  }
-  if (
-    /\b(?:how|como|cómo)\b[\s\S]*\b(?:build|structure|compose|arma|armar|construye|construir|compone|componer)\b[\s\S]*\b(?:quote|cotiz(?:ar|ación))\b/i.test(source)
-  ) {
-    return true;
-  }
-  if (
-    /\b(?:only|solo)\b[\s\S]*\bocpu\b[\s\S]*\b(?:no|without|sin)\b[\s\S]*\b(?:disk|storage|memory|disco|almacenamiento|memoria)\b/i.test(source)
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function hasExplicitQuoteLead(text = '') {
-  const source = String(text || '').trim();
-  if (!source) return false;
-  return /^(?:quote|cotiza(?:r)?|cotización|dame\s+(?:un\s+)?quote|estimate|estim(?:a|ar)|need\s+(?:an?|a consolidated)\s+oci\s+estimate)\b/i.test(source);
-}
-
-function isDiscoveryOrExplanationQuestion(text = '') {
-  const source = String(text || '').trim();
-  if (!source) return false;
-  if (hasExplicitQuoteLead(source)) return false;
-  if (isConceptualPricingQuestion(source)) return true;
-  if (/\b(?:how|what|which|why|que|qué|como|cómo|cual|cuál)\b.*\b(?:billed|charged|priced|price|pricing|billing|cobra|cobran|costea)\b/i.test(source)) return true;
-  if (/\b(?:pricing model|billing model|cost model|modelo de cobro|modelo de pricing|pricing dimensions?|billing dimensions?)\b/i.test(source)) return true;
-  if (/\b(?:explain|explica)\b.*\b(?:pricing|billing|billed|charged|priced|dimensions?|metrics?|units?|components?|skus?)\b/i.test(source)) return true;
-  if (/\b(?:what|which|que|qué)\b.*\b(?:dimensions?|metrics?|units?|components?|skus?|inputs?|information)\b.*\b(?:bill|charge|price|pricing|quote|cotizar|cotización|cobra)\b/i.test(source)) return true;
-  if (/\b(?:what|which|que|qué)\b.*\b(?:options?|available|supported|disponibles?|soportadas?)\b/i.test(source)) return true;
-  if (/\b(?:difference|diferencia|compare|comparar)\b.*\b(?:byol|license included|licencia incluida)\b/i.test(source)) return true;
-  return false;
 }
 
 function isFlexComparisonRequest(text) {
@@ -680,24 +183,9 @@ function parseOnDemandMode(text) {
 }
 
 function enrichExtractedInputsForFamily(intent = {}) {
-  const extractedInputs = {
-    ...((intent && typeof intent.extractedInputs === 'object' && intent.extractedInputs) || {}),
-  };
-  if (intent.serviceFamily === 'security_waf') {
-    const genericInstances = Number(extractedInputs.instanceCount);
-    if (Number.isFinite(genericInstances) && genericInstances > 0 && !Number.isFinite(Number(extractedInputs.wafInstances))) {
-      extractedInputs.wafInstances = genericInstances;
-    }
-  }
-  if (intent.serviceFamily === 'security_data_safe') {
-    const dbCount = Number(extractedInputs.numberOfDatabases);
-    if (Number.isFinite(dbCount) && dbCount > 0 && !Number.isFinite(Number(extractedInputs.quantity))) {
-      extractedInputs.quantity = dbCount;
-    }
-  }
   return {
     ...intent,
-    extractedInputs,
+    extractedInputs: normalizeExtractedInputsForFamily(intent.serviceFamily, intent.extractedInputs),
   };
 }
 
@@ -779,82 +267,6 @@ function extractFlexComparisonContext(conversation = [], userText = '', fallback
     burstableBaseline,
     withoutCrMode,
   };
-}
-
-function buildFlexComparisonQuote(index, context) {
-  const rows = [];
-  const warnings = [];
-  for (const shape of context.shapes) {
-    const basePrompt = `Quote ${shape} ${context.ocpus} OCPUs ${context.memoryGb} GB RAM ${context.hours}h`;
-    const onDemandQuote = quoteFromPrompt(index, basePrompt);
-    let variantPrompt = '';
-    if (context.modifierKind === 'capacity-reservation') variantPrompt = `${basePrompt} capacity reservation ${context.utilization}`;
-    if (context.modifierKind === 'preemptible') variantPrompt = `${basePrompt} preemptible`;
-    if (context.modifierKind === 'burstable') variantPrompt = `${basePrompt} burstable baseline ${context.burstableBaseline}`;
-    const modifierQuote = quoteFromPrompt(index, variantPrompt);
-    if (!onDemandQuote.ok || !modifierQuote.ok) {
-      warnings.push(`Could not build a complete comparison for ${shape}.`);
-      continue;
-    }
-    if (Array.isArray(onDemandQuote.warnings) && onDemandQuote.warnings.length) {
-      warnings.push(...onDemandQuote.warnings.map((item) => `${shape.toUpperCase()}: ${item}`));
-    }
-    if (Array.isArray(modifierQuote.warnings) && modifierQuote.warnings.length) {
-      warnings.push(...modifierQuote.warnings.map((item) => `${shape.toUpperCase()}: ${item}`));
-    }
-    rows.push({
-      shape: shape.toUpperCase(),
-      onDemandMonthly: Number(onDemandQuote.totals?.monthly || 0),
-      variantMonthly: Number(modifierQuote.totals?.monthly || 0),
-      deltaMonthly: Number(modifierQuote.totals?.monthly || 0) - Number(onDemandQuote.totals?.monthly || 0),
-      onDemandAnnual: Number(onDemandQuote.totals?.annual || 0),
-      variantAnnual: Number(modifierQuote.totals?.annual || 0),
-    });
-  }
-  if (!rows.length) {
-    return { ok: false, warnings: warnings.length ? warnings : ['No Flex shapes could be compared.'] };
-  }
-  rows.sort((a, b) => a.onDemandMonthly - b.onDemandMonthly);
-  const variantLabel = context.modifierKind === 'capacity-reservation'
-    ? 'Capacity Reservation'
-    : context.modifierKind === 'preemptible'
-      ? 'Preemptible'
-      : 'Burstable';
-  const markdown = [
-    `| Shape | On-demand $/Mo | ${variantLabel} $/Mo | Delta $/Mo | On-demand Annual | ${variantLabel} Annual |`,
-    '|---|---:|---:|---:|---:|---:|',
-    ...rows.map((row) => `| ${row.shape} | ${money(row.onDemandMonthly)} | ${money(row.variantMonthly)} | ${money(row.deltaMonthly)} | ${money(row.onDemandAnnual)} | ${money(row.variantAnnual)} |`),
-  ].join('\n');
-  return { ok: true, rows, markdown, warnings: Array.from(new Set(warnings)) };
-}
-
-function buildFlexComparisonNarrative(context, comparison) {
-  const modifierLabel = context.modifierKind === 'capacity-reservation'
-    ? 'Capacity Reservation'
-    : context.modifierKind === 'preemptible'
-      ? 'Preemptible'
-      : 'Burstable';
-  const assumptions = [
-    `- Compared shapes: ${context.shapes.map((shape) => shape.toUpperCase()).join(', ')}.`,
-    `- Size used for each shape: ${context.ocpus} OCPUs, ${context.memoryGb} GB RAM, ${context.hours} hours/month.`,
-    `- Base side uses on-demand pricing.`,
-  ];
-  if (context.modifierKind === 'capacity-reservation') {
-    assumptions.push(`- Non-capacity-reservation side uses ${context.withoutCrMode}.`);
-    assumptions.push(`- Capacity reservation utilization: ${context.utilization}.`);
-  }
-  if (context.modifierKind === 'burstable') {
-    assumptions.push(`- Burstable baseline: ${context.burstableBaseline}.`);
-  }
-  if (comparison.warnings?.length) {
-    assumptions.push(...comparison.warnings.map((item) => `- ${item}`));
-  }
-  return [
-    `I prepared a deterministic OCI Flex shape comparison for \`${context.shapes.map((shape) => shape.toUpperCase()).join(' vs ')}\`.`,
-    `The comparison shows the monthly and annual totals with and without ${modifierLabel} for the same sizing.`,
-    `Key assumptions:\n${assumptions.join('\n')}`,
-    `### OCI comparison\n\n${comparison.markdown}`,
-  ].join('\n\n');
 }
 
 function hasCompositeServiceSignal(text) {
@@ -1100,81 +512,6 @@ async function writeStructuredContextReply(cfg, conversation, userText, sessionC
 
 function extractInlinePartNumbers(text = '') {
   return Array.from(new Set((String(text || '').match(/\bB\d{5,6}\b/g) || []).filter(Boolean)));
-}
-
-function buildStructuredDiscoveryFallback(userText, contextPack) {
-  const family = contextPack?.serviceContext?.family;
-  if (!family) return '';
-  const familyMeta = getServiceFamily(family.id || '');
-  const familyPartNumbers = Array.isArray(familyMeta?.partNumbers) ? familyMeta.partNumbers : [];
-  const products = Array.isArray(contextPack?.serviceContext?.products)
-    ? contextPack.serviceContext.products.filter((product) => product?.partNumber && product?.displayName)
-    : [];
-  let uniqueProducts = products.filter((product, index, items) =>
-    items.findIndex((candidate) => String(candidate.partNumber || '') === String(product.partNumber || '')) === index
-  );
-  if (familyPartNumbers.length) {
-    uniqueProducts = uniqueProducts.filter((product) => familyPartNumbers.includes(String(product.partNumber || '')));
-  } else if (family.domain === 'compute') {
-    uniqueProducts = [];
-  }
-  const requiredGuidance = (Array.isArray(family.requiredInputGuidance) ? family.requiredInputGuidance : [])
-    .map((item) => (typeof item === 'string' ? item : (item?.label || item?.key || '')))
-    .map((label) => String(label).replace(/\binstance count\b/i, 'instances'))
-    .filter(Boolean);
-  const lines = [];
-  if (uniqueProducts.length) {
-    lines.push(`For \`${family.canonical}\`, the main quote SKUs are:`);
-    for (const product of uniqueProducts.slice(0, 6)) {
-      lines.push(`- \`${product.partNumber}\` - ${product.displayName}`);
-    }
-  } else if (family.domain === 'compute') {
-    lines.push(`For \`${family.canonical}\`, a consistent quote is usually built from OCPU, memory, and attached Block Storage assumptions, plus VPU when block performance matters, rather than from one universal SKU.`);
-  } else {
-    lines.push(`For \`${family.canonical}\`, the quote structure depends on the family configuration and required inputs.`);
-  }
-
-  if (requiredGuidance.length) {
-    lines.push('');
-    lines.push('To build a reliable quote, I still need:');
-    for (const label of requiredGuidance.slice(0, 6)) {
-      lines.push(`- ${label}`);
-    }
-  }
-  if (Array.isArray(family.licenseModes) && family.licenseModes.length) {
-    lines.push('');
-    lines.push(`License options: ${family.licenseModes.join(', ')}.`);
-  }
-  if (family.options?.variants?.length) {
-    lines.push('');
-    lines.push(`Relevant variants: ${family.options.variants.slice(0, 6).join(', ')}.`);
-  }
-  return lines.join('\n').trim();
-}
-
-function buildHeuristicIntentFromText(userText) {
-  const source = String(userText || '').trim();
-  if (!source) return null;
-  if (!hasExplicitQuoteLead(source) && !isConceptualPricingQuestion(source)) return null;
-  const inferredFamily = inferServiceFamily(source);
-  const family = getServiceFamily(inferredFamily);
-  if (!family && !hasExplicitQuoteLead(source)) return null;
-  const baseIntent = {
-    intent: hasExplicitQuoteLead(source) ? 'quote' : 'discover',
-    route: hasExplicitQuoteLead(source) ? 'quote_request' : 'product_discovery',
-    shouldQuote: hasExplicitQuoteLead(source),
-    needsClarification: false,
-    clarificationQuestion: '',
-    reformulatedRequest: source,
-    assumptions: [],
-    serviceFamily: inferredFamily || '',
-    serviceName: family?.canonical || '',
-    extractedInputs: {},
-    confidence: 0.35,
-    annualRequested: /\bannual(?:ly)?\b/i.test(source),
-    quotePlan: {},
-  };
-  return normalizeIntentResult(baseIntent, source);
 }
 
 function summarizeQuoteForSession(quote) {
@@ -1774,104 +1111,6 @@ function classifyConsumptionGroup(pattern, line) {
   };
 }
 
-function detectGenericComputeShapeClarification(text) {
-  const source = String(text || '');
-  const parsed = parsePromptRequest(source);
-  const hasVmSignal = /\bvirtual machine\b|\bcompute instance\b|\bvm\b/i.test(source) || !!parsed.processorVendor;
-  const hasSizing = Number(parsed.ocpus || 0) > 0 && Number(parsed.memoryQuantity || 0) > 0;
-  const missingShape = !parsed.shapeSeries && !parsed.shape;
-  if (!hasVmSignal || !hasSizing || !missingShape) return null;
-  return {
-    serviceFamily: 'compute_vm_generic',
-    extractedInputs: {
-      ocpus: parsed.ocpus,
-      memoryGb: parsed.memoryQuantity,
-      capacityGb: parsed.capacityGb,
-      processorVendor: parsed.processorVendor,
-    },
-    question: getClarificationMessage({
-      serviceFamily: 'compute_vm_generic',
-      extractedInputs: { processorVendor: parsed.processorVendor },
-    }),
-  };
-}
-
-function hasExplicitByolChoice(text) {
-  const source = String(text || '');
-  if (/\bbyol\b|\bbring your own license\b/i.test(source)) return 'byol';
-  if (/\blicense included\b|\binclude license\b|\bcon licencia incluida\b|\blicencia incluida\b/i.test(source)) return 'license-included';
-  return '';
-}
-
-function normalizeByolKey(text) {
-  return String(text || '')
-    .replace(/^B\d+\s*-\s*/i, '')
-    .replace(/\s*-\s*BYOL\b/ig, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
-
-function shouldAskLicenseChoice(familyMeta, intent, byolChoice) {
-  if (!familyMeta?.requireLicenseChoice || byolChoice) return false;
-  const inputs = intent?.extractedInputs || {};
-  const skipKeys = Array.isArray(familyMeta.licenseNotRequiredWhenAnyInputs)
-    ? familyMeta.licenseNotRequiredWhenAnyInputs
-    : [];
-  if (skipKeys.some((key) => {
-    const value = inputs[key];
-    if (typeof value === 'string') return value.trim().length > 0;
-    return Number.isFinite(Number(value)) && Number(value) > 0;
-  })) {
-    return false;
-  }
-  return true;
-}
-
-function detectByolAmbiguity(quote) {
-  const lineItems = Array.isArray(quote?.lineItems) ? quote.lineItems : [];
-  const groups = new Map();
-  for (const line of lineItems) {
-    const product = String(line.product || '');
-    const isByol = /\bBYOL\b/i.test(product);
-    const key = `${line.service || ''}|${line.metric || ''}|${normalizeByolKey(product)}`;
-    if (!groups.has(key)) groups.set(key, { byol: false, included: false, sample: product });
-    const entry = groups.get(key);
-    if (isByol) entry.byol = true;
-    else entry.included = true;
-  }
-  for (const entry of groups.values()) {
-    if (entry.byol && entry.included) return entry.sample;
-  }
-  return '';
-}
-
-function filterQuoteByByolChoice(quote, choice) {
-  if (!quote?.ok || !choice) return quote;
-  const selected = String(choice).toLowerCase();
-  const lineItems = Array.isArray(quote.lineItems) ? quote.lineItems : [];
-  const filtered = lineItems.filter((line) => {
-    const product = String(line.product || '');
-    const isByol = /\bBYOL\b/i.test(product);
-    if (!/\bBYOL\b/i.test(product) && !lineItems.some((other) => normalizeByolKey(other.product) === normalizeByolKey(product) && /\bBYOL\b/i.test(other.product))) {
-      return true;
-    }
-    return selected === 'byol' ? isByol : !isByol;
-  });
-  if (!filtered.length) return quote;
-  const totals = filtered.reduce((acc, line) => {
-    acc.monthly += Number(line.monthly || 0);
-    acc.annual += Number(line.annual || 0);
-    return acc;
-  }, { monthly: 0, annual: 0, currencyCode: quote.totals?.currencyCode || 'USD' });
-  return {
-    ...quote,
-    lineItems: filtered,
-    totals,
-    markdown: toMarkdownQuote(filtered, totals),
-  };
-}
-
 function toMarkdownQuote(lineItems, totals) {
   const header = '| # | Environment | Service | Part# | Product | Metric | Qty | Inst | Hours | Rate | Unit | $/Mo | Annual |\n|---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|';
   const body = (lineItems || []).map((line, index) => `| ${[
@@ -1945,586 +1184,177 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
   });
   const contextualFollowUp = isShortContextualAnswer(userText);
   const compositeLike = isCompositeOrComparisonRequest(effectiveUserText);
-  const flexComparison = extractFlexComparisonContext(conversation, userText);
-  const computeShapeClarification = detectGenericComputeShapeClarification(effectiveUserText);
-  if (isGreeting(userText)) {
-    return respond({
-      ok: true,
-      mode: 'answer',
-      message: 'Hola. Puedo ayudarte a cotizar servicios de OCI, comparar SKUs, explicar pricing o estimar un Excel. Si quieres una cotización directa, dime el producto y las variables clave como cantidad, horas, OCPU/ECPU, storage o bandwidth.',
-      intent: { intent: 'answer', shouldQuote: false, needsClarification: false },
-    });
-  }
-
-  if (conversationMentionsFastConnect(conversation) && isConfidenceQuestion(userText)) {
-    return respond({
-      ok: true,
-      mode: 'answer',
-      message: 'Sí para el cargo base del puerto. En OCI, el precio de FastConnect para el puerto es uniforme entre regiones, así que la región no cambia esa cotización base. Si quieres, puedo ayudarte a revisar además otros cargos relacionados, como conectividad adicional o tráfico de salida, pero el puerto de 1 Gbps sigue siendo el mismo.',
-      intent: { intent: 'answer', shouldQuote: false, needsClarification: false },
-    });
-  }
-
-  const explicitRegion = parseRegionAnswer(userText);
-  if (conversationMentionsFastConnect(conversation) && explicitRegion) {
-    return respond({
-      ok: true,
-      mode: 'answer',
-      message: `${explicitRegion.label} es una región válida de OCI (${explicitRegion.code}). Para FastConnect, el precio base del puerto no cambia por región, así que la cotización del puerto se mantiene. Si quieres, el siguiente paso es revisar si en tu caso hay cargos adicionales asociados al diseño de conectividad.`,
-      intent: { intent: 'answer', shouldQuote: false, needsClarification: false },
-    });
-  }
-
-  if (computeShapeClarification) {
-    return respond({
-      ok: true,
-      mode: 'clarification',
-      message: computeShapeClarification.question,
-      intent: {
-        intent: 'quote',
-        shouldQuote: true,
-        needsClarification: true,
-        clarificationQuestion: computeShapeClarification.question,
-        serviceFamily: computeShapeClarification.serviceFamily,
-        extractedInputs: computeShapeClarification.extractedInputs,
-      },
-    });
-  }
-
-  if (isFlexComparisonRequest(effectiveUserText)) {
-    const modifierKind = detectFlexComparisonModifier(effectiveUserText);
-    if (modifierKind === 'capacity-reservation' && parseCapacityReservationUtilization(effectiveUserText) === null) {
-      return respond({
-        ok: true,
-        mode: 'clarification',
-        message: 'For the Flex shape comparison, what capacity reservation utilization should I use: for example `1.0`, `0.7`, or `0.5`?',
-        intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'What capacity reservation utilization should I use for the comparison?' },
-      });
-    }
-    if (modifierKind === 'burstable' && parseBurstableBaseline(effectiveUserText) === null) {
-      return respond({
-        ok: true,
-        mode: 'clarification',
-        message: 'For the Flex shape comparison, what burstable baseline should I use: for example `0.5`, `0.25`, or `0.125`?',
-        intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'What burstable baseline should I use for the comparison?' },
-      });
-    }
-  }
-
-  if (flexComparison) {
-    if (flexComparison.modifierKind === 'capacity-reservation' && flexComparison.utilization === null) {
-      return respond({
-        ok: true,
-        mode: 'clarification',
-        message: 'For the Flex shape comparison, what capacity reservation utilization should I use: for example `1.0`, `0.7`, or `0.5`?',
-        intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'What capacity reservation utilization should I use for the comparison?' },
-      });
-    }
-    if (flexComparison.modifierKind === 'burstable' && flexComparison.burstableBaseline === null) {
-      return respond({
-        ok: true,
-        mode: 'clarification',
-        message: 'For the Flex shape comparison, what burstable baseline should I use: for example `0.5`, `0.25`, or `0.125`?',
-        intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'What burstable baseline should I use for the comparison?' },
-      });
-    }
-    if (flexComparison.modifierKind === 'capacity-reservation' && !flexComparison.withoutCrMode) {
-      return respond({
-        ok: true,
-        mode: 'clarification',
-        message: 'For the non-capacity-reservation side of the comparison, should I use `On demand` pricing?',
-        intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'Should I use On demand pricing for the non-capacity-reservation side?' },
-      });
-    }
-    if (flexComparison.modifierKind === 'capacity-reservation' && flexComparison.withoutCrMode !== 'on-demand') {
-      return respond({
-        ok: true,
-        mode: 'clarification',
-        message: 'Reserved pricing for the non-capacity-reservation side is not modeled yet in this comparison flow. If you want, reply with `On demand` and I will generate the deterministic comparison.',
-        intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'Reply with On demand to continue the Flex comparison.' },
-      });
-    }
-    const comparison = buildFlexComparisonQuote(index, flexComparison);
-    if (comparison.ok) {
-      return respond({
-        ok: true,
-        mode: 'quote',
-        message: buildFlexComparisonNarrative(flexComparison, comparison),
-        quote: {
-          ok: true,
-          request: {
-            source: flexComparison.basePrompt,
-            comparison: true,
-          },
-          comparison,
-        },
-        intent: {
-          intent: 'quote',
-          shouldQuote: true,
-          needsClarification: false,
-          clarificationQuestion: '',
-        },
-      });
-    }
-  }
-
-  if (compositeLike) {
-    const compositeQuote = buildCompositeQuoteFromSegments(index, effectiveUserText);
-    if (compositeQuote?.ok) {
-      return respond({
-        ok: true,
-        mode: 'quote',
-        message: await buildQuoteNarrative(cfg, effectiveUserText, compositeQuote, formatAssumptions([], parsePromptRequest(effectiveUserText))),
-        quote: compositeQuote,
-        intent: {
-          intent: 'quote',
-          shouldQuote: true,
-          needsClarification: false,
-          clarificationQuestion: '',
-        },
-      });
-    }
-  }
-
-  const rawParsedRequest = parsePromptRequest(effectiveUserText);
-  const isSimpleTransactionalQuote = !compositeLike &&
-    Number.isFinite(Number(rawParsedRequest.requestCount)) &&
-    !Number.isFinite(Number(rawParsedRequest.ocpus)) &&
-    !Number.isFinite(Number(rawParsedRequest.ecpus)) &&
-    !Number.isFinite(Number(rawParsedRequest.capacityGb)) &&
-    !Number.isFinite(Number(rawParsedRequest.users)) &&
-    !rawParsedRequest.shape &&
-    !rawParsedRequest.serviceFamily;
-  if (isSimpleTransactionalQuote) {
-    const rawQuote = quoteFromPrompt(index, effectiveUserText);
-    if (rawQuote.ok && rawQuote.resolution?.type === 'service') {
-      return respond({
-        ok: true,
-        mode: 'quote',
-        message: await buildQuoteNarrative(cfg, effectiveUserText, rawQuote, formatAssumptions([], rawParsedRequest)),
-        quote: rawQuote,
-        intent: {
-          intent: 'quote',
-          shouldQuote: true,
-          needsClarification: false,
-          clarificationQuestion: '',
-        },
-      });
-    }
-  }
-
-  let intent;
-  try {
-    intent = imageDataUrl
-      ? await analyzeImageIntent(cfg, effectiveUserText, imageDataUrl)
-      : await analyzeIntent(cfg, conversation, effectiveUserText, sessionContext);
-  } catch (_error) {
-    intent = buildHeuristicIntentFromText(effectiveUserText || userText);
-    if (!intent) {
-      return respond({
-        ok: true,
-        mode: 'answer',
-        message: buildServiceUnavailableMessage(userText),
-        intent: {
-          intent: 'answer',
-          route: 'general_answer',
-          shouldQuote: false,
-          needsClarification: false,
-        },
-      });
-    }
-  }
-  const enrichedIntent = enrichExtractedInputsForFamily(intent);
-  const heuristicIntent = buildHeuristicIntentFromText(effectiveUserText || userText);
-  if (
-    heuristicIntent &&
-    (
-      (hasExplicitQuoteLead(effectiveUserText) && (!enrichedIntent.shouldQuote || enrichedIntent.route === 'general_answer')) ||
-      (isDiscoveryOrExplanationQuestion(effectiveUserText) && enrichedIntent.route === 'general_answer')
-    )
-  ) {
-    Object.assign(enrichedIntent, heuristicIntent);
-  }
-  if (isDiscoveryOrExplanationQuestion(effectiveUserText)) {
-    enrichedIntent.route = 'product_discovery';
-    enrichedIntent.intent = 'discover';
-    enrichedIntent.shouldQuote = false;
-    enrichedIntent.needsClarification = false;
-    enrichedIntent.clarificationQuestion = '';
-    enrichedIntent.quotePlan = {
-      ...((enrichedIntent.quotePlan && typeof enrichedIntent.quotePlan === 'object' && enrichedIntent.quotePlan) || {}),
-      action: 'discover',
-      targetType: 'service',
-      useDeterministicEngine: false,
-    };
-  }
-  if (
-    shouldForceSessionQuoteFollowUp(sessionContext, userText) &&
-    enrichedIntent.route !== 'quote_followup'
-  ) {
-    enrichedIntent.route = 'quote_followup';
-    enrichedIntent.intent = 'quote';
-    enrichedIntent.shouldQuote = true;
-    enrichedIntent.needsClarification = false;
-    enrichedIntent.clarificationQuestion = '';
-    enrichedIntent.quotePlan = {
-      ...((enrichedIntent.quotePlan && typeof enrichedIntent.quotePlan === 'object' && enrichedIntent.quotePlan) || {}),
-      action: 'modify_quote',
-      targetType: 'quote',
-      useDeterministicEngine: true,
-    };
-  }
-  const mergedContextualFollowUp = contextualFollowUp && effectiveUserText !== userText;
-  if (mergedContextualFollowUp) {
-    enrichedIntent.reformulatedRequest = effectiveUserText;
-    enrichedIntent.normalizedRequest = effectiveUserText;
-  }
-  if (contextualFollowUp && enrichedIntent?.reformulatedRequest) {
-    enrichedIntent.normalizedRequest = String(enrichedIntent.reformulatedRequest).trim();
-  }
-  const postIntentFlexComparison = flexComparison || extractFlexComparisonContext(
+  const {
+    payload: earlyRoutingPayload,
+    flexComparison,
+  } = resolveEarlyAssistantRouting({
     conversation,
     userText,
-    enrichedIntent?.reformulatedRequest || enrichedIntent?.normalizedRequest || '',
-  );
-  if (postIntentFlexComparison) {
-    if (postIntentFlexComparison.modifierKind === 'capacity-reservation' && postIntentFlexComparison.utilization === null) {
-      return respond({
-        ok: true,
-        mode: 'clarification',
-        message: 'For the Flex shape comparison, what capacity reservation utilization should I use: for example `1.0`, `0.7`, or `0.5`?',
-        intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'What capacity reservation utilization should I use for the comparison?' },
-      });
-    }
-    if (postIntentFlexComparison.modifierKind === 'burstable' && postIntentFlexComparison.burstableBaseline === null) {
-      return respond({
-        ok: true,
-        mode: 'clarification',
-        message: 'For the Flex shape comparison, what burstable baseline should I use: for example `0.5`, `0.25`, or `0.125`?',
-        intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'What burstable baseline should I use for the comparison?' },
-      });
-    }
-    if (postIntentFlexComparison.modifierKind === 'capacity-reservation' && !postIntentFlexComparison.withoutCrMode) {
-      return respond({
-        ok: true,
-        mode: 'clarification',
-        message: 'For the non-capacity-reservation side of the comparison, should I use `On demand` pricing?',
-        intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'Should I use On demand pricing for the non-capacity-reservation side?' },
-      });
-    }
-    if (postIntentFlexComparison.modifierKind === 'capacity-reservation' && postIntentFlexComparison.withoutCrMode !== 'on-demand') {
-      return respond({
-        ok: true,
-        mode: 'clarification',
-        message: 'Reserved pricing for the non-capacity-reservation side is not modeled yet in this comparison flow. If you want, reply with `On demand` and I will generate the deterministic comparison.',
-        intent: { intent: 'quote', shouldQuote: true, needsClarification: true, clarificationQuestion: 'Reply with On demand to continue the Flex comparison.' },
-      });
-    }
-    const comparison = buildFlexComparisonQuote(index, postIntentFlexComparison);
-    if (comparison.ok) {
-      return respond({
-        ok: true,
-        mode: 'quote',
-        message: buildFlexComparisonNarrative(postIntentFlexComparison, comparison),
-        quote: {
-          ok: true,
-          request: {
-            source: postIntentFlexComparison.basePrompt,
-            comparison: true,
-          },
-          comparison,
-        },
-        intent: {
-          intent: 'quote',
-          shouldQuote: true,
-          needsClarification: false,
-          clarificationQuestion: '',
-        },
-      });
-    }
-  }
-  const registryQuery = buildRegistryQuery(
-    String(effectiveUserText || userText || enrichedIntent.normalizedRequest || enrichedIntent.reformulatedRequest || '').trim(),
-    enrichedIntent,
-  );
-  const registryMatches = searchServiceRegistry(index.serviceRegistry, registryQuery, 5);
-  const topService = registryMatches.find((item) => item.deterministic && serviceHasRequiredInputs(item, enrichedIntent.extractedInputs)) || registryMatches[0];
-  const catalogReply = buildCatalogListingReply(index, registryQuery || userText, enrichedIntent);
-  const isDiscoveryIntent = (
-    enrichedIntent.route === 'product_discovery' ||
-    String(enrichedIntent.intent || '').toLowerCase() === 'discover'
-  );
-  if (
-    isDiscoveryIntent &&
-    (
-      enrichedIntent.quotePlan?.targetType === 'catalog' ||
-      catalogReply
-    )
-  ) {
-    if (catalogReply) {
-      return respond({
-        ok: true,
-        mode: 'answer',
-        message: catalogReply,
-        intent: {
-          ...enrichedIntent,
-          intent: 'discover',
-          shouldQuote: false,
-          needsClarification: false,
-          clarificationQuestion: '',
-        },
-      });
-    }
-  }
-  if ((enrichedIntent.route === 'product_discovery' || enrichedIntent.route === 'general_answer') && !enrichedIntent.shouldQuote) {
-    const contextPack = buildAssistantContextPack(index, {
-      userText: effectiveUserText,
-      intent: enrichedIntent,
-      sessionContext,
-    });
-    const structuredReply = await writeStructuredContextReply(cfg, conversation, userText, sessionContext, contextPack);
-    const fallbackReply = buildStructuredDiscoveryFallback(userText, contextPack);
-    const allowLocalFallback = isConceptualPricingQuestion(userText) || hasExplicitQuoteLead(userText);
-    const message = allowLocalFallback
-      ? ((isConceptualPricingQuestion(userText) && fallbackReply) ? fallbackReply : (structuredReply || fallbackReply || buildServiceUnavailableMessage(userText)))
-      : (structuredReply || buildServiceUnavailableMessage(userText));
-    return respond({
-      ok: true,
-      mode: 'answer',
-      message,
-      contextPackSummary: summarizeContextPack(contextPack),
-      intent: enrichedIntent,
-    });
-  }
-  const interpretedFamilyMeta = getServiceFamily(enrichedIntent.serviceFamily);
-  const routeMergedFollowUp = mergeSessionQuoteFollowUpByRoute(sessionContext, enrichedIntent, userText);
-  const effectiveQuoteText = String(routeMergedFollowUp || effectiveUserText || userText || '').trim() || effectiveUserText;
-  const unsupportedComputeVariant = findUncoveredComputeVariant(effectiveQuoteText || userText);
-  if (enrichedIntent.shouldQuote && unsupportedComputeVariant && !canSafelyQuoteUncoveredComputeVariant(unsupportedComputeVariant, effectiveQuoteText || userText)) {
-    return respond({
-      ok: true,
-      mode: 'answer',
-      message: buildUncoveredComputeReply(effectiveQuoteText || userText),
-      contextPackSummary: summarizeContextPack(buildAssistantContextPack(index, {
-        userText: effectiveQuoteText || userText,
-        intent: {
-          ...enrichedIntent,
-          route: 'product_discovery',
-          shouldQuote: false,
-        },
-        sessionContext,
-      })),
-      intent: {
-        ...enrichedIntent,
-        route: 'product_discovery',
-        shouldQuote: false,
-        needsClarification: false,
-        clarificationQuestion: '',
-      },
-    });
-  }
-  if (
-    !isDiscoveryOrExplanationQuestion(effectiveUserText) &&
-    !compositeLike &&
-    topService &&
-    topService.deterministic &&
-    serviceHasRequiredInputs(topService, enrichedIntent.extractedInputs) &&
-    (!enrichedIntent.serviceFamily || !interpretedFamilyMeta)
-  ) {
-    enrichedIntent.serviceName = topService.name;
-    enrichedIntent.normalizedRequest = String(effectiveQuoteText || enrichedIntent.normalizedRequest || '').trim();
-    if (!enrichedIntent.shouldQuote || enrichedIntent.needsClarification) {
-      enrichedIntent.intent = 'quote';
-      enrichedIntent.shouldQuote = true;
-      enrichedIntent.needsClarification = false;
-      enrichedIntent.clarificationQuestion = '';
-    }
-  }
-  const familyMeta = interpretedFamilyMeta;
-  const parsedEffectiveQuoteRequest = familyMeta
-    ? (parsePromptRequest(effectiveQuoteText) || {})
-    : {};
-  const canonicalFamilyInputs = familyMeta
-    ? {
-      ...parsedEffectiveQuoteRequest,
-      ...((enrichedIntent && typeof enrichedIntent.extractedInputs === 'object' && enrichedIntent.extractedInputs) || {}),
-    }
-    : {};
-  const canonicalFamilyIntent = familyMeta
-    ? enrichExtractedInputsForFamily({
-      ...enrichedIntent,
-      extractedInputs: canonicalFamilyInputs,
-    })
-    : enrichedIntent;
-  const canonicalFamilyRequest = !compositeLike && familyMeta
-    ? String(buildCanonicalRequest(canonicalFamilyIntent, effectiveQuoteText) || '').trim()
-    : '';
-  const preferredCanonicalFamilyRequest = preservesFamilyReplacementSignals(
-    effectiveQuoteText,
-    canonicalFamilyRequest,
-    enrichedIntent.serviceFamily,
-  )
-    ? canonicalFamilyRequest
-    : '';
-  const reformulatedRequest = preserveCriticalPromptModifiers(compositeLike
-    ? effectiveQuoteText
-    : familyMeta
-      ? (preferredCanonicalFamilyRequest || String(
-        (contextualFollowUp
-          ? (enrichedIntent.reformulatedRequest || enrichedIntent.normalizedRequest)
-          : (enrichedIntent.normalizedRequest || enrichedIntent.reformulatedRequest))
-        || effectiveQuoteText,
-      ).trim() || effectiveQuoteText)
-      : effectiveQuoteText, effectiveQuoteText);
-  const preflightQuote = !compositeLike && familyMeta
-    ? choosePreferredQuote(
-      quoteFromPrompt(index, effectiveQuoteText),
-      quoteFromPrompt(index, reformulatedRequest),
-    )
-    : null;
-  const preQuoteClarification = getPreQuoteClarification({
-    ...enrichedIntent,
-    extractedInputs: enrichedIntent.extractedInputs || {},
-    reformulatedRequest,
-  }, effectiveUserText || userText);
-  if (enrichedIntent.shouldQuote && preQuoteClarification) {
-    return {
-      ok: true,
-      mode: 'clarification',
-      message: preQuoteClarification,
-      intent: {
-        ...enrichedIntent,
-        needsClarification: true,
-        clarificationQuestion: preQuoteClarification,
-      },
-    };
-  }
-  const missingInputs = getMissingRequiredInputs(enrichedIntent);
-  const canQuoteDespiteMissingInputs = !!(familyMeta && missingInputs.length && preflightQuote?.ok);
-  if (familyMeta && enrichedIntent.shouldQuote && (!missingInputs.length || canQuoteDespiteMissingInputs)) {
-    enrichedIntent.needsClarification = false;
-    enrichedIntent.clarificationQuestion = '';
-  }
-  const byolChoice = hasExplicitByolChoice(`${userText}\n${reformulatedRequest}`);
-  if (shouldAskLicenseChoice(familyMeta, enrichedIntent, byolChoice)) {
-    return respond({
-      ok: true,
-      mode: 'clarification',
-      message: familyMeta.licenseClarificationQuestion || `Before I quote ${familyMeta.canonical}, do you want BYOL or License Included?`,
-      intent: {
-        ...enrichedIntent,
-        needsClarification: true,
-        clarificationQuestion: familyMeta.licenseClarificationQuestion || 'Do you want BYOL or License Included?',
-      },
-    });
-  }
-  if (familyMeta && missingInputs.length && familyMeta.clarificationQuestion && !canQuoteDespiteMissingInputs) {
-    const clarificationMessage = getClarificationMessage(enrichedIntent, effectiveUserText || userText) || familyMeta.clarificationQuestion;
-    return respond({
-      ok: true,
-      mode: 'clarification',
-      message: clarificationMessage,
-      intent: {
-        ...enrichedIntent,
-        needsClarification: true,
-        clarificationQuestion: clarificationMessage,
-      },
-    });
-  }
-
-  if (enrichedIntent.needsClarification && enrichedIntent.clarificationQuestion) {
-    return respond({
-      ok: true,
-      mode: 'clarification',
-      message: String(enrichedIntent.clarificationQuestion).trim(),
-      intent: enrichedIntent,
-    });
-  }
-
-  if (enrichedIntent.shouldQuote) {
-    let quote = preflightQuote?.ok ? preflightQuote : quoteFromPrompt(index, reformulatedRequest);
-    const parsed = parsePromptRequest(reformulatedRequest);
-    const assumptions = formatAssumptions(enrichedIntent.assumptions, parsed);
-
-    const byolAmbiguousProduct = quote.ok && !byolChoice ? detectByolAmbiguity(quote) : '';
-    if (byolAmbiguousProduct) {
-      return respond({
-        ok: true,
-        mode: 'clarification',
-        message: `Antes de cotizar ${byolAmbiguousProduct}, necesito confirmar la modalidad de licencia: ¿quieres **BYOL** o **License Included**?`,
-        intent: {
-          ...enrichedIntent,
-          needsClarification: true,
-          clarificationQuestion: 'Do you want BYOL or License Included?',
-        },
-      });
-    }
-    if (quote.ok && byolChoice) {
-      quote = filterQuoteByByolChoice(quote, byolChoice);
-    }
-
-    if (quote.ok) {
-      return respond({
-        ok: true,
-        mode: 'quote',
-      message: await buildQuoteNarrative(cfg, effectiveUserText, quote, assumptions),
-      quote,
-      intent: enrichedIntent,
-    });
-    }
-
-    if (typeof familyMeta?.quoteUnavailableMessage === 'function') {
-      return respond({
-        ok: true,
-        mode: 'quote_unresolved',
-        message: familyMeta.quoteUnavailableMessage({
-          userText,
-          reformulatedRequest,
-          quote,
-          intent: enrichedIntent,
-        }),
-        quote,
-        intent: enrichedIntent,
-      });
-    }
-
-    const matches = summarizeMatches(index, reformulatedRequest);
-    const natural = await writeNaturalReply(cfg, conversation, userText, {
-      intent: enrichedIntent.intent || 'quote',
-      summary: quote.error || 'No deterministic quotation could be produced.',
-      warningLines: (quote.warnings || []).map((item) => `- ${item}`),
-      candidateLines: [
-        ...matches.products.map((item) => `- Product: ${item}`),
-        ...matches.presets.map((item) => `- Preset: ${item}`),
-      ],
-      assumptionLines: assumptions,
-    }, sessionContext);
-    return respond({
-      ok: true,
-      mode: 'quote_unresolved',
-      message: natural || quote.error || 'No quotation could be generated.',
-      quote,
-      intent: enrichedIntent,
-    });
-  }
-
-  const matches = summarizeMatches(index, userText);
-  const natural = await writeNaturalReply(cfg, conversation, userText, {
-    intent: enrichedIntent.intent || 'explain',
-    summary: 'The user is asking for OCI pricing guidance rather than a deterministic quote.',
-    candidateLines: [
-      ...matches.products.map((item) => `- Product: ${item}`),
-      ...matches.presets.map((item) => `- Preset: ${item}`),
-    ],
-    assumptionLines: Array.isArray(enrichedIntent.assumptions) ? enrichedIntent.assumptions.map((item) => `- ${item}`) : [],
-  }, sessionContext);
-
-  return respond({
-    ok: true,
-    mode: 'answer',
-    message: natural || 'I can help with OCI pricing guidance or prepare a deterministic quotation if you share the sizing details.',
-    intent: enrichedIntent,
+    effectiveUserText,
+    index,
+  }, {
+    buildEarlyAssistantReply,
+    detectGenericComputeShapeClarification,
+    extractFlexComparisonContext,
+    resolveEarlyFlexComparisonClarification,
+    isFlexComparisonRequest,
+    detectFlexComparisonModifier,
+    parseCapacityReservationUtilization,
+    parseBurstableBaseline,
+    buildFlexComparisonReplyPayload,
+    buildFlexComparisonQuote,
+    buildFlexComparisonNarrative,
   });
+  if (earlyRoutingPayload) return respond(earlyRoutingPayload);
+
+  const directQuoteFastPath = await resolveDirectQuoteFastPath({
+    cfg,
+    index,
+    effectiveUserText,
+    compositeLike,
+  }, {
+    buildCompositeQuoteFromSegments,
+    buildQuoteNarrative,
+    formatAssumptions,
+    parsePromptRequest,
+    quoteFromPrompt,
+  });
+  if (directQuoteFastPath) return respond(directQuoteFastPath);
+
+  const intentPipeline = await resolveIntentPipeline({
+    cfg,
+    conversation,
+    effectiveUserText,
+    userText,
+    imageDataUrl,
+    sessionContext,
+    contextualFollowUp,
+    flexComparison,
+    index,
+  }, {
+    analyzeIntent,
+    analyzeImageIntent,
+    fallbackIntentOnAnalysisFailure,
+    buildServiceUnavailableMessage,
+    enrichExtractedInputsForFamily,
+    reconcileIntentWithHeuristics,
+    shouldForceQuoteFollowUpRoute,
+    isSessionQuoteFollowUp,
+    applyQuoteFollowUpIntentOverride,
+    reconcilePostIntentFollowUp,
+    extractFlexComparisonContext,
+    buildFlexComparisonReplyPayload,
+    buildFlexComparisonQuote,
+    buildFlexComparisonNarrative,
+  });
+  if (intentPipeline.payload) return respond(intentPipeline.payload);
+  const enrichedIntent = intentPipeline.intent;
+  const {
+    topService,
+    catalogReply,
+    isDiscoveryIntent,
+  } = buildDiscoveryRoutingState({
+    index,
+    effectiveUserText,
+    userText,
+    intent: enrichedIntent,
+  }, {
+    buildRegistryQuery,
+    searchServiceRegistry,
+    serviceHasRequiredInputs,
+    buildCatalogListingReply,
+  });
+  const discoveryRoutePayload = await resolveDiscoveryRoutePayload({
+    cfg,
+    index,
+    conversation,
+    userText,
+    effectiveUserText,
+    sessionContext,
+    intent: enrichedIntent,
+    catalogReply,
+    isDiscoveryIntent,
+  }, {
+    buildAssistantContextPack,
+    writeStructuredContextReply,
+    buildStructuredDiscoveryFallback,
+    isConceptualPricingQuestion,
+    hasExplicitQuoteLead,
+    buildServiceUnavailableMessage,
+    summarizeContextPack,
+  });
+  if (discoveryRoutePayload) return respond(discoveryRoutePayload);
+  const quoteCandidateState = prepareQuoteCandidateState({
+    index,
+    sessionContext,
+    userText,
+    effectiveUserText,
+    intent: enrichedIntent,
+    topService,
+    contextualFollowUp,
+    compositeLike,
+  }, {
+    getServiceFamily,
+    mergeSessionQuoteFollowUpByRoute,
+    findUncoveredComputeVariant,
+    canSafelyQuoteUncoveredComputeVariant,
+    buildUncoveredComputeReply,
+    buildAssistantContextPack,
+    summarizeContextPack,
+    serviceHasRequiredInputs,
+    isDiscoveryOrExplanationQuestion,
+    buildQuoteRequestShape,
+    preserveCriticalPromptModifiers,
+    choosePreferredQuote,
+  });
+  if (quoteCandidateState.fallbackPayload) return respond(quoteCandidateState.fallbackPayload);
+  const effectiveQuoteText = quoteCandidateState.effectiveQuoteText;
+  Object.assign(enrichedIntent, quoteCandidateState.intent);
+  const familyMeta = quoteCandidateState.familyMeta;
+  const reformulatedRequest = quoteCandidateState.reformulatedRequest;
+  const preflightQuote = quoteCandidateState.preflightQuote;
+  const quoteClarificationState = reconcileQuoteClarificationState({
+    intent: enrichedIntent,
+    reformulatedRequest,
+    effectiveUserText,
+    userText,
+    familyMeta,
+    preflightQuote,
+    getPreQuoteClarification,
+    getMissingRequiredInputs,
+    getClarificationMessage,
+  });
+  const postClarification = await resolvePostClarificationRouting({
+    cfg,
+    index,
+    conversation,
+    userText,
+    effectiveUserText,
+    sessionContext,
+    intent: enrichedIntent,
+    familyMeta,
+    reformulatedRequest,
+    preflightQuote,
+    quoteClarificationState,
+  }, {
+    hasExplicitByolChoice,
+    shouldAskLicenseChoice,
+    buildLicenseChoiceClarificationPayload,
+    quoteFromPrompt,
+    parsePromptRequest,
+    formatAssumptions,
+    detectByolAmbiguity,
+    buildByolAmbiguityClarificationPayload,
+    filterQuoteByByolChoice,
+    toMarkdownQuote,
+    buildQuoteNarrative,
+    buildQuoteUnresolvedPayload,
+    buildAnswerFallbackPayload,
+    summarizeMatches,
+    writeNaturalReply,
+  });
+  Object.assign(enrichedIntent, postClarification.intent);
+  return respond(postClarification.payload);
 }
 
 module.exports = {

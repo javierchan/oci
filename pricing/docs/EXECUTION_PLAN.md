@@ -54,6 +54,34 @@ Completed in the current execution wave:
   - compute modifier updates
 - active quote follow-ups can now switch license mode cleanly for covered families instead of appending ambiguous `BYOL` / `License Included` tokens
 - license-mode follow-ups now consult family metadata before mutating the active quote source
+- active quote license-flip coverage now explicitly includes:
+  - `Base Database Service` OCPU + storage quotes
+  - `Oracle Analytics Cloud Professional` OCPU quotes
+  - `Oracle Analytics Cloud Enterprise` OCPU quotes
+- active quote quantity-replacement coverage now also explicitly includes:
+  - `Base Database Service` OCPU changes
+  - `Base Database Service` storage changes
+  - `Oracle Analytics Cloud Professional` OCPU changes
+  - `Oracle Analytics Cloud Enterprise` OCPU changes
+- active quote quantity/variant replacement coverage now also explicitly includes:
+  - `Base Database Service` edition changes
+  - `Base Database Service` OCPU-to-ECPU changes
+  - `Base Database Service` ECPU license flips
+  - `Base Database Service` ECPU edition changes
+  - `Database Cloud Service` OCPU changes
+  - `Database Cloud Service` edition changes
+  - `Database Cloud Service` license flips for edition-sensitive variants
+  - `Database Cloud Service` standard and extreme-performance edition transitions
+  - `Exadata Dedicated Infrastructure` ECPU changes
+  - `Exadata Dedicated Infrastructure` X11M infrastructure changes
+  - `Exadata Cloud@Customer` ECPU changes
+  - `Exadata Cloud@Customer` X10M infrastructure changes
+  - `Exadata Exascale` ECPU changes
+  - `Exadata Exascale` storage-size changes
+  - `Exadata Exascale` storage-model changes
+- active quote follow-up detection now also treats edition-only changes and Exadata infrastructure-only changes as valid quote mutations, instead of dropping into unnecessary clarification mode
+- `Oracle Analytics Cloud` named-user quotes remain intentionally protected from license-mode follow-ups because the user-based path does not depend on `BYOL` versus `License Included`
+- fixed a metadata-capability edge case where `null` extracted inputs could be treated as present values, which was incorrectly suppressing OAC OCPU license flips on active quotes
 - unsupported license follow-ups are ignored for non-licensable families instead of contaminating the active prompt
 - composite component-removal follow-ups for `WAF`, `DNS`, `Load Balancer`, `Health Checks`, and `API Gateway` now originate from family metadata instead of a hardcoded assistant list
 - composite follow-ups now support targeted component replacement for recognized families, starting with replacement flows such as `DNS -> Health Checks`
@@ -146,6 +174,12 @@ Completed in the current execution wave:
   - Flexible Load Balancer + DNS
   - FastConnect + DNS on aggregate guided-workbook totals
   - Monitoring Retrieval + Health Checks on both single-request RVTools paths and aggregate guided-workbook totals
+  - Flexible Load Balancer + DNS on aggregate RVTools migration totals
+  - Flexible Load Balancer + Monitoring Retrieval on aggregate guided-workbook totals
+  - FastConnect + Health Checks on aggregate RVTools migration totals
+  - Flexible Load Balancer + Monitoring Retrieval on aggregate RVTools migration totals
+  - FastConnect + Health Checks on aggregate guided-workbook totals
+- workbook-focused regression fixtures now also use reusable aggregate builders so additional guided-bundle cases can be added without repeating the full RVTools or inventory workbook scaffolding each time
 - parity coverage now also includes mixed database, integration, analytics, observability, and edge bundles:
   - Base Database + Data Safe + Load Balancer + DNS
   - Base Database + Oracle Integration Cloud + Oracle Analytics Cloud + FastConnect + DNS
@@ -184,6 +218,39 @@ Completed in the current execution wave:
 - workbook and RVTools follow-up coverage now also includes persisted mixed bundles where shared `FastConnect` or `Monitoring Retrieval` components are explicitly removed without dropping compute and storage context
 - workbook and RVTools follow-up coverage now also includes persisted mixed bundles where shared services are safely replaced, including `FastConnect -> DNS`, `Monitoring Retrieval -> Health Checks`, `DNS -> Health Checks`, and `Health Checks -> DNS`
 - workbook and RVTools follow-up coverage now also includes persisted mixed bundles where parameter-only follow-ups mutate the intended shared service in place, including `FastConnect bandwidth`, `DNS query volume`, and `Health Checks endpoint count`
+- workbook and RVTools follow-up coverage now also includes symmetric persisted mixed `FastConnect + Monitoring Retrieval` regressions across both source types for:
+  - `Monitoring Retrieval` removal
+  - `FastConnect -> DNS`
+  - `Monitoring Retrieval -> Health Checks`
+- workbook and RVTools follow-up coverage now also includes persisted mixed `FastConnect + Health Checks` regressions for:
+  - RVTools-origin `Health Checks` endpoint mutations that preserve neighboring `FastConnect`
+  - workbook-origin `Health Checks` removal that preserves neighboring `FastConnect`
+  - RVTools-origin `Health Checks -> DNS` replacement that preserves neighboring `FastConnect`
+- workbook and RVTools follow-up coverage now also includes symmetric persisted mixed `FastConnect + DNS` regressions for:
+  - workbook-origin `DNS` removal that preserves neighboring `FastConnect`
+  - RVTools-origin `FastConnect` removal that preserves neighboring `DNS`
+  - workbook-origin `DNS -> Health Checks` replacement that preserves neighboring `FastConnect`
+- workbook and RVTools follow-up coverage now also includes persisted mixed `Load Balancer + Monitoring Retrieval` regressions for:
+  - workbook-origin shape-plus-`VPU` changes that must preserve both shared services
+  - RVTools-origin shape-plus-capacity-reservation changes that must preserve both shared services
+  - workbook-origin `Load Balancer` bandwidth mutations that must preserve neighboring `Monitoring Retrieval`
+  - RVTools-origin `Load Balancer` bandwidth mutations that must preserve neighboring `Monitoring Retrieval`
+- workbook and RVTools follow-up coverage now also includes symmetric persisted mixed `Load Balancer + Monitoring Retrieval` regressions for:
+  - workbook-origin `Monitoring Retrieval` removal that preserves neighboring `Load Balancer`
+  - RVTools-origin `Load Balancer` removal that preserves neighboring `Monitoring Retrieval`
+  - workbook-origin `Monitoring Retrieval -> Health Checks` replacement that preserves neighboring `Load Balancer`
+- workbook and RVTools follow-up coverage now also includes persisted mixed `Load Balancer + DNS` bundles where shared services can be removed or replaced safely without dropping compute or block storage context, including:
+  - `DNS` query-volume changes
+  - `DNS -> Health Checks`
+  - `DNS` removal
+  - `Load Balancer` removal
+- workbook and RVTools follow-up coverage now also includes persisted mixed `Load Balancer + Health Checks` bundles where shared services can be removed or replaced safely without dropping compute or block storage context, including:
+  - `Load Balancer` removal across workbook-origin and RVTools-origin sources
+  - `Health Checks` removal across workbook-origin and RVTools-origin sources
+  - `Health Checks -> DNS`
+- workbook and RVTools follow-up coverage now also includes persisted mixed `Monitoring Retrieval + Health Checks` bundles where neighboring observability services can now be safely removed, replaced, or mutated in place without dropping compute or block storage context
+- workbook and RVTools follow-up coverage now also includes persisted mixed `Flexible Load Balancer + Monitoring Retrieval` bundles where monitoring-only datapoint changes mutate just the observability segment while preserving the neighboring load balancer plus the surrounding compute/storage quote context
+- active `OCI Monitoring` follow-ups now preserve neighboring composite context when `Monitoring Retrieval` switches to `Monitoring Ingestion`, including persisted mixed bundles that combine monitoring with `FastConnect`, `Flexible Load Balancer`, or `Health Checks`
 - conceptual prerequisite questions such as required inputs before quoting a service now stay in discovery mode even when the controller returns `quote_request`
 - active-quote conceptual follow-ups now answer in natural language instead of mutating the persisted quote source for covered composition questions such as:
   - required quote `SKU` / component questions
@@ -192,15 +259,30 @@ Completed in the current execution wave:
 - short active-quote discovery questions now skip the early session-quote prompt merge, so billing and component questions do not become accidentally quotable before intent guardrails run
 - `normalizer.js` now also de-prioritizes explicit `quote_request` routes when the prompt text is clearly discovery/explanation-oriented, including pricing-dimension prompts that contain measurable inputs
 
-Validation status as of April 9, 2026:
+Validation status as of April 12, 2026:
 
-- targeted suites for workbook, parity, and assistant follow-ups are green
+- targeted suites for workbook, parity, assistant follow-ups, metadata, and session follow-up helpers are green
 - quote export endpoint tests are green in sandbox through the socketless export-response harness
-- current assistant follow-up regression suite result: `242 pass / 0 fail`
-- workbook-focused suite result: `27 pass / 0 fail`
-- current parity suite result: `136 pass / 0 fail`
+- current assistant follow-up regression suite result: `148 pass / 0 fail`
+- service-families metadata suite result: `15 pass / 0 fail`
+- session follow-up helper suite result: `9 pass / 0 fail`
+- workbook-focused suite result: `40 pass / 0 fail`
+- current parity suite result: `154 pass / 0 fail`
 - quote export endpoint suite result: `3 pass / 0 fail`
-- current full-suite result in sandbox: `483 pass / 0 fail`
+- current full-suite result in sandbox: `760 pass / 0 fail`
+
+Live assistant validation baseline as of April 10, 2026:
+
+- fixed live quality regression command is now available:
+  - `npm run quality:assistant:fixed`
+- fixed report path:
+  - `/tmp/pricing-assistant-quality-20260410-final.json`
+- current live quality baseline:
+  - `100 / 100 pass`
+  - `averageScore = 0.9865`
+  - `failures = 0`
+  - `throttledRetries = 0`
+- this baseline complements parity and follow-up regressions by validating semantic discovery quality for major OCI services instead of only deterministic arithmetic or route safety
 
 ## Execution Principles
 
@@ -231,7 +313,7 @@ Goal:
 Primary files:
 
 - [calculator-parity.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/calculator-parity.test.js)
-- [assistant-regressions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-regressions.test.js)
+- [focused assistant regression suites](/Users/javierchan/Documents/GitHub/oci/pricing/server/test)
 - [excel.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/excel.test.js)
 
 Immediate task list:
@@ -252,14 +334,153 @@ Immediate task list:
 
 Recently completed in this workstream:
 
+- added a mixed observability parity bundle that combines:
+  - `Monitoring Ingestion`
+  - `Monitoring Retrieval`
+  - `Notifications HTTPS Delivery`
+  - `Log Analytics archival storage`
+- added a larger enterprise operations/security parity bundle that combines:
+  - monitoring ingestion + retrieval
+  - log analytics active + archival storage
+  - notifications HTTPS delivery
+  - DNS
+  - health checks
+  - network firewall
+- added a larger global customer platform parity bundle that combines:
+  - mixed `E4.Flex` + `E5.Flex` compute
+  - block, file, and object storage
+  - load balancer, WAF, firewall, DNS, health checks, and FastConnect
+  - Oracle Integration Cloud + Oracle Analytics Cloud
+  - Base Database Service
+  - log analytics active + archival storage
 - added enterprise database bundles that combine Base Database, Database Cloud Service, and Exadata Cloud@Customer with Data Safe, monitoring, health checks, notifications, and log analytics
 - widened deterministic parity around observability-heavy database scenarios without changing the broader execution sequence
 - added autonomous database bundles that combine Autonomous AI Lakehouse and Autonomous AI Transaction Processing with Data Integration, firewall, load balancer, DNS, monitoring, notifications, and health checks
+- added a new analytics/integration workspace parity bundle that combines:
+  - Oracle Integration Cloud Standard
+  - Oracle Analytics Cloud Professional
+  - OCI Data Integration workspace usage
+  - FastConnect
+  - Log Analytics archival storage
+- added a new Base Database parity bundle that combines:
+  - Base Database Service
+  - Oracle Integration Cloud Standard
+  - Oracle Analytics Cloud Professional
+  - Data Safe for on-premises and compute databases
+  - Monitoring ingestion
+- added a new autonomous storage parity bundle that combines:
+  - Autonomous AI Lakehouse License Included
+  - autonomous database storage
+  - Object Storage
+  - Log Analytics archival storage
+  - Notifications HTTPS delivery
+- added a new serverless edge/security parity bundle that combines:
+  - Flexible Load Balancer
+  - Web Application Firewall
+  - API Gateway
+  - DNS
+  - Health Checks
+  - Notifications HTTPS delivery
+- added a new Base Database BYOL transport-platform parity bundle that combines:
+  - Base Database Service BYOL
+  - Oracle Integration Cloud Standard BYOL
+  - Oracle Analytics Cloud Professional BYOL OCPU
+  - FastConnect
+- added a new Database Cloud Service BYOL OCPU parity bundle that combines:
+  - Database Cloud Service BYOL
+  - Oracle Integration Cloud Enterprise BYOL
+  - Oracle Analytics Cloud Professional BYOL OCPU
+  - Object Storage
+- added a new Exadata Dedicated transport-and-file-storage platform bundle that combines:
+  - Exadata Dedicated Infrastructure
+  - Oracle Integration Cloud Standard License Included
+  - Oracle Analytics Cloud Enterprise
+  - File Storage
+  - FastConnect
 - added workbook and RVTools regressions that compose workbook-derived compute workloads with shared `FastConnect + Monitoring Retrieval` services
 - added workbook-origin and RVTools-origin follow-up regressions that preserve shared `FastConnect + Monitoring Retrieval` services when mixed quotes are mutated through shape, VPU, and capacity-reservation changes
+- added workbook-origin and RVTools-origin follow-up regressions that preserve shared `Load Balancer + DNS` services when mixed quotes are mutated through shape, VPU, and capacity-reservation changes
+- added RVTools aggregate workbook coverage for shared `FastConnect + Monitoring Retrieval` so multi-VM transport-plus-observability totals now stay protected alongside the existing edge and health-check bundles
+- added guided inventory aggregate workbook coverage for shared `Load Balancer + Health Checks` so AMD guided workloads now also keep that edge-plus-probing combination stable under the same shared-service total model
 - fixed composite follow-up metadata so workbook-origin and RVTools-origin mixed quotes can remove shared `FastConnect` and `Monitoring Retrieval` services safely, then locked that behavior with regressions
 - extended composite follow-up metadata so workbook-origin and RVTools-origin mixed quotes can also replace shared `FastConnect`, `Monitoring Retrieval`, `DNS`, and `Health Checks` services safely, then locked that behavior with regressions
 - fixed composite follow-up replacement routing so parameter-only mutations in mixed workbook/RVTools quotes target the intended shared family instead of falling back to append behavior, then locked that behavior with regressions for `FastConnect bandwidth`, `DNS query volume`, and `Health Checks endpoint count`
+- revalidated parity coverage at `146 pass / 0 fail` and the full server suite at `678 pass / 0 fail` after landing the new BYOL and Exadata platform bundles
+- revalidated workbook-focused coverage at `35 pass / 0 fail` and the full server suite at `680 pass / 0 fail` after landing the new aggregate workbook shared-service cases
+- added workbook-origin and RVTools-origin mixed follow-up regressions for the shared `Load Balancer + Health Checks` bundle so persisted quotes now explicitly protect:
+  - `Load Balancer` removal without dropping compute, block storage, or `Health Checks`
+  - `Health Checks` removal without dropping compute, block storage, or `Load Balancer`
+  - `Health Checks -> DNS` replacement while preserving the neighboring `Load Balancer`
+- revalidated the focused mixed-compute assistant follow-up suite at `90 pass / 0 fail` and the full server suite at `686 pass / 0 fail` after landing the new `Load Balancer + Health Checks` persisted-bundle regressions
+- added workbook-origin and RVTools-origin mixed follow-up regressions for the shared `Load Balancer + DNS` bundle so persisted quotes now explicitly protect:
+  - `DNS -> Health Checks` replacement from workbook-origin quotes while preserving the neighboring `Load Balancer`
+  - `DNS` removal from workbook-origin quotes without dropping compute, block storage, or `Load Balancer`
+  - `Load Balancer` removal from RVTools-origin quotes without dropping compute, block storage, or `DNS`
+- revalidated the focused mixed-compute assistant follow-up suite at `93 pass / 0 fail` and the full server suite at `689 pass / 0 fail` after landing the new `Load Balancer + DNS` persisted-bundle regressions
+- added symmetric workbook-origin and RVTools-origin mixed follow-up regressions for the shared `FastConnect + Monitoring Retrieval` bundle so persisted quotes now explicitly protect:
+  - `Monitoring Retrieval` removal from workbook-origin quotes without dropping compute, block storage, or `FastConnect`
+  - `FastConnect -> DNS` replacement from RVTools-origin quotes while preserving the neighboring `Monitoring Retrieval`
+  - `Monitoring Retrieval -> Health Checks` replacement from workbook-origin quotes while preserving the neighboring `FastConnect`
+- revalidated the focused mixed-compute assistant follow-up suite at `96 pass / 0 fail` and the full server suite at `692 pass / 0 fail` after landing the new `FastConnect + Monitoring Retrieval` persisted-bundle regressions
+- added workbook-origin and RVTools-origin mixed follow-up regressions for the shared `Load Balancer + Monitoring Retrieval` bundle so persisted quotes now explicitly protect:
+  - workbook-origin shape plus `VPU` changes without dropping the neighboring `Load Balancer` and `Monitoring Retrieval`
+  - RVTools-origin shape plus `capacity reservation` changes without dropping the neighboring `Load Balancer` and `Monitoring Retrieval`
+  - workbook-origin `Load Balancer` bandwidth changes without dropping the neighboring `Monitoring Retrieval`
+- revalidated the focused mixed-compute assistant follow-up suite at `99 pass / 0 fail` and the full server suite at `695 pass / 0 fail` after landing the new `Load Balancer + Monitoring Retrieval` persisted-bundle regressions
+- parallel lane work added workbook-origin and RVTools-origin mixed follow-up regressions for the shared `FastConnect + Health Checks` bundle so persisted quotes now explicitly protect:
+  - `Health Checks` endpoint mutations from RVTools-origin quotes while preserving neighboring `FastConnect`
+  - `Health Checks` removal from workbook-origin quotes without dropping compute, block storage, or `FastConnect`
+  - `Health Checks -> DNS` replacement from RVTools-origin quotes while preserving neighboring `FastConnect`
+- parallel lane work also added RVTools aggregate workbook coverage for the shared `Load Balancer + Health Checks` bundle so the migration aggregate path now matches the existing guided-inventory aggregate coverage for that same edge-plus-probing combination
+- revalidated the focused mixed-compute assistant follow-up suite at `102 pass / 0 fail`, the workbook-focused suite at `36 pass / 0 fail`, and the full server suite at `699 pass / 0 fail` after integrating the parallel lanes
+- a subsequent parallel lane round added workbook-origin and RVTools-origin mixed follow-up regressions for the shared `Load Balancer + Monitoring Retrieval` bundle so persisted quotes now explicitly protect:
+  - `Monitoring Retrieval` removal from workbook-origin quotes while preserving neighboring `Load Balancer`
+  - `Load Balancer` removal from RVTools-origin quotes while preserving neighboring `Monitoring Retrieval`
+  - `Monitoring Retrieval -> Health Checks` replacement from workbook-origin quotes while preserving neighboring `Load Balancer`
+- that same parallel round also added RVTools aggregate workbook coverage for the shared `FastConnect + DNS` bundle and new deterministic parity for:
+  - `Database Cloud Service BYOL + OIC Standard BYOL + OAC Professional + Monitoring Retrieval + Health Checks`
+  - `Base Database Service BYOL + FastConnect + Network Firewall + DNS + Monitoring Ingestion`
+- revalidated the focused mixed-compute assistant follow-up suite at `105 pass / 0 fail`, the workbook-focused suite at `37 pass / 0 fail`, the parity suite at `148 pass / 0 fail`, and the full server suite at `705 pass / 0 fail` after integrating the second parallel lane round
+- a later parallel lane round added workbook-origin and RVTools-origin mixed follow-up regressions for the shared `FastConnect + DNS` bundle so persisted quotes now explicitly protect:
+  - `DNS` removal from workbook-origin quotes while preserving neighboring `FastConnect`
+  - `FastConnect` removal from RVTools-origin quotes while preserving neighboring `DNS`
+  - `DNS -> Health Checks` replacement from workbook-origin quotes while preserving neighboring `FastConnect`
+- that same round also added RVTools aggregate workbook coverage for the shared `Monitoring Retrieval + Health Checks` observability-edge bundle and new deterministic parity for:
+  - `Database Cloud Service BYOL + OIC Enterprise BYOL + OAC Professional BYOL + Network Firewall + Monitoring Retrieval`
+  - `Base Database Service Enterprise License Included + File Storage + Object Storage + Monitoring Ingestion`
+- revalidated the focused mixed-compute assistant follow-up suite at `108 pass / 0 fail`, the workbook-focused suite at `38 pass / 0 fail`, the parity suite at `150 pass / 0 fail`, and the full server suite at `711 pass / 0 fail` after integrating the latest parallel lane round
+- a subsequent consolidation slice added workbook aggregate coverage for the shared `FastConnect + Load Balancer` bundle and refreshed the shared observability-edge workbook path for `Monitoring Retrieval + Health Checks`
+- the next workbook symmetry slice added the guided-inventory mirror for the shared `FastConnect + Load Balancer` aggregate bundle, so both RVTools and inventory workbook paths now protect that shared edge combination
+- the next follow-up symmetry slice added the `RVTools` mirror for `Load Balancer + Health Checks -> DNS`, so that shared edge replacement now works in both source directions instead of only the workbook-origin path
+- the next declarative slice added active-quote replacement metadata for `OCI Monitoring`, so `Monitoring Ingestion <-> Monitoring Retrieval` plus datapoint mutations now flow through family-owned rules instead of ad hoc handling
+- that same slice added direct runtime regressions for active `OCI Monitoring` quote flips in both directions and extended the follow-up capability artifact coverage so the generated registry stays aligned with the new metadata
+- the next parity slice added two smaller observability-edge regression cases so deterministic totals are now pinned for:
+  - `Monitoring Ingestion + Health Checks`
+  - `Monitoring Retrieval + Health Checks`
+- that same slice expanded deterministic parity for:
+  - `Database Cloud Service BYOL + OIC Standard BYOL + OAC Professional + Monitoring Retrieval + Monitoring Ingestion`
+  - `Base Database Service BYOL + File Storage + Archive Storage + Infrequent Access retrieval + Monitoring Ingestion`
+- a follow-up metadata slice moved `OCI Data Safe` and `OCI Log Analytics` composite replacement ownership into declarative family metadata and locked that capability through both unit tests and the emitted follow-up capability matrix artifact
+- the next mixed-follow-up symmetry slice extended the same `Monitoring Retrieval -> Monitoring Ingestion` protection to persisted `Flexible Load Balancer + Monitoring Retrieval` bundles across both workbook-origin and RVTools-origin quotes, proving the monitoring replacement fix is not limited to `FastConnect` composites
+- the next observability symmetry slice extended that same `Monitoring Retrieval -> Monitoring Ingestion` protection to persisted `Monitoring Retrieval + Health Checks` bundles across both workbook-origin and RVTools-origin quotes, proving the monitoring replacement fix now holds across the three hardened observability/edge neighbor patterns
+- the next observability-removal slice closed the remaining mixed `Monitoring Retrieval + Health Checks` removal symmetry by proving workbook-origin `Monitoring Retrieval` removal and RVTools-origin `Health Checks` removal both preserve the neighboring service and the surrounding compute/storage quote context
+- the next observability-parameter slice closed the remaining parameter-only symmetry for mixed `Monitoring Retrieval + Health Checks` bundles by proving both workbook-origin and RVTools-origin datapoint changes mutate only the monitoring segment while preserving neighboring `Health Checks` plus the surrounding compute/storage quote context
+- the next load-balancer observability slice closed the same parameter-only symmetry for mixed `Flexible Load Balancer + Monitoring Retrieval` bundles by proving both workbook-origin and RVTools-origin datapoint changes mutate only the monitoring segment while preserving the neighboring load balancer plus the surrounding compute/storage quote context
+- the next fastconnect-observability symmetry slice closed the remaining parameter-only and bandwidth-mirror gaps for mixed `FastConnect + Monitoring Retrieval` bundles by proving workbook-origin and RVTools-origin datapoint changes mutate only the monitoring segment while preserving neighboring `FastConnect`, and by proving the RVTools-origin bandwidth-only follow-up mutates only the `FastConnect` segment while preserving monitoring plus the surrounding compute/storage quote context
+- the next fastconnect-health-checks symmetry slice closed the remaining workbook/RVTools mirror gaps for mixed `FastConnect + Health Checks` bundles by proving both source types now preserve neighboring `FastConnect` when `Health Checks` endpoint counts change, when `Health Checks` is removed, and when `Health Checks` is replaced by `DNS`
+- the next observability-dns slice added the missing RVTools mirror for `Health Checks -> DNS` inside mixed `Monitoring Retrieval` bundles and added a workbook-origin parameter-only regression proving `DNS` query-volume changes preserve neighboring `Monitoring Retrieval` plus the surrounding compute/storage quote context
+- the next observability-dns symmetry slice closed the remaining RVTools parameter mirror for shared `Monitoring Retrieval + DNS` bundles and added a workbook-origin removal regression, proving both source types now preserve neighboring `Monitoring Retrieval` when `DNS` query volume changes and proving workbook-origin `DNS` removal preserves the surrounding compute/storage quote context
+- the next observability-dns removal slice closed the remaining RVTools removal mirror for shared `Monitoring Retrieval + DNS` bundles, so both workbook-origin and RVTools-origin quotes now preserve neighboring `Monitoring Retrieval` when `DNS` is removed from the persisted quote source
+- the next observability-dns datapoint slice closed the remaining monitoring-parameter mirror for shared `Monitoring Retrieval + DNS` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `DNS` when `Monitoring Retrieval` datapoint changes are applied to the persisted quote source
+- the next fastconnect-dns parameter slice closed the remaining DNS-volume mirror for shared `FastConnect + DNS` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `FastConnect` when `DNS` query-volume changes are applied to the persisted quote source
+- the next fastconnect-observability-dns parameter slice closed the remaining DNS-volume mirror for shared `FastConnect + Monitoring Retrieval + DNS` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `FastConnect` and `Monitoring Retrieval` when `DNS` query-volume changes are applied to the persisted quote source
+- the next fastconnect-health-checks-dns symmetry slice closed the remaining source mirror for shared `FastConnect + Health Checks + DNS` bundles, proving both workbook-origin and RVTools-origin `DNS` query-volume changes preserve neighboring `FastConnect` and `Health Checks` plus the surrounding compute/storage quote context
+- the next fastconnect-health-checks-dns removal symmetry slice closed the remaining source mirror for removing `DNS` from shared `FastConnect + Health Checks + DNS` bundles, proving both workbook-origin and RVTools-origin quotes preserve neighboring `FastConnect`, neighboring `Health Checks`, and the surrounding compute/storage quote context
+- the next load-balancer-dns parameter symmetry slice closed the remaining source mirror for shared `Load Balancer + DNS` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `Flexible Load Balancer` when `DNS` query-volume changes are applied to the persisted quote source
+- the next load-balancer-observability parameter symmetry slice closed the remaining source mirror for shared `Load Balancer + Monitoring Retrieval` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `Monitoring Retrieval` when `Load Balancer` bandwidth changes are applied to the persisted quote source
+- the next load-balancer-health-checks removal symmetry slice closed the remaining source mirror for removing `Load Balancer` from shared `Load Balancer + Health Checks` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `Health Checks` plus the surrounding compute/storage quote context
+- the next load-balancer-health-checks removal symmetry slice also closed the remaining source mirror for removing `Health Checks` from shared `Load Balancer + Health Checks` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `Flexible Load Balancer` plus the surrounding compute/storage quote context
+- revalidated the focused mixed-compute assistant follow-up suite at `148 pass / 0 fail`, the service-families metadata suite at `15 pass / 0 fail`, the session follow-up helper suite at `9 pass / 0 fail`, the workbook-focused suite at `40 pass / 0 fail`, the parity suite at `154 pass / 0 fail`, and the full server suite at `760 pass / 0 fail` after integrating the latest regression and metadata slices
 
 Suggested first gaps to cover:
 
@@ -296,6 +517,7 @@ Immediate task list:
 - move pricing dimension explanations into `context-packs.js`
 - move reusable canonical request shaping into `service-families.js`
 - continue formalizing `quotePlan` as the contract between intent and pricing
+- continue extracting comparison-specific clarification and response shaping out of `assistant.js`
 
 Recently completed in this workstream:
 
@@ -305,6 +527,58 @@ Recently completed in this workstream:
 - reduced dependence on the generic replacement fallback by skipping it when a covered family already resolved the follow-up through metadata
 - completed the current active-quote replacement hardening wave so the covered quantity and sizing follow-ups now resolve through family metadata instead of shared assistant rules
 - hardened active-quote family detection for workbook and RVTools quotes with explicit Flex shapes so shape-plus-sizing follow-ups route to `compute_flex`
+- moved the current non-follow-up extracted-input aliasing for `security_waf` and `security_data_safe` out of `assistant.js` into declarative family metadata in `service-families.js`
+- added focused unit coverage for family input normalization so future family migrations can land without expanding assistant branching
+- moved the structured discovery fallback builder out of `assistant.js` and into `context-packs.js`, so SKU-composition and billing-guidance fallbacks now live beside the rest of the service context assembly
+- extracted discovery and billing-question classification into a dedicated declarative module so `assistant.js` no longer owns those regex rules inline
+- extracted lightweight heuristic intent construction and discovery override behavior into a dedicated module so `assistant.js` no longer decides those fallback routes inline
+- extracted reconciliation between analyzed intent and heuristic fallback into a dedicated helper so `assistant.js` no longer merges those decision paths inline
+- extracted quote-followup route forcing and modify-quote override behavior into a dedicated helper so `assistant.js` no longer mutates those follow-up intent fields inline
+- extracted contextual follow-up post-processing and post-intent Flex-comparison preparation into a dedicated helper so `assistant.js` no longer mutates those request-shaping fields inline
+- extracted Flex-comparison clarification and deterministic reply shaping into a dedicated helper so `assistant.js` no longer duplicates that comparison policy before and after intent analysis
+- extracted greeting and FastConnect-specific early deterministic replies into a dedicated helper so `assistant.js` no longer owns those canned-response guards inline
+- extracted generic compute-shape clarification detection into a dedicated helper so `assistant.js` no longer parses VM sizing clarification policy inline
+- extracted license-choice detection and clarification decision logic into a dedicated helper so `assistant.js` no longer owns that BYOL-versus-License-Included policy inline
+- extracted BYOL ambiguity detection and quote-line filtering into the same license helper so `assistant.js` no longer owns most of the license-selection policy
+- extracted mixed-license ambiguity clarification payload building into the same helper so `assistant.js` no longer formats that BYOL confirmation branch inline
+- extracted quote-unresolved payload shaping into a dedicated helper so `assistant.js` no longer owns both the family-specific and generic unresolved-quote response branches inline
+- extracted the final answer-mode fallback payload shaping into a dedicated helper so `assistant.js` no longer owns the last generic guidance branch inline
+- extracted post-reformulation quote clarification state handling into a dedicated helper so `assistant.js` no longer owns pre-quote clarification, missing-input gating, and clarification-flag cleanup inline
+- extracted canonical family request shaping and preflight quote selection into a dedicated helper so `assistant.js` no longer merges parsed active-quote inputs, canonical rewrites, modifier preservation, and preflight quote preference inline
+- added focused unit coverage for canonical request guardrails so family rewrites that would drop family-owned replacement signals fall back to the safer active-quote request instead of mutating the quote source incorrectly
+- kept family input normalization reusable in the same helper path so family-owned aliases such as WAF instance counts remain normalized before canonical request reconstruction
+- extracted quote entry preparation into a dedicated helper so `assistant.js` no longer owns route-driven follow-up request reuse, uncovered-compute discovery fallback gating, and deterministic top-service promotion inline
+- added focused unit coverage for quote entry preparation, including `effectiveQuoteText` selection, unsupported compute fallback detection, and safe deterministic promotion of catalog-backed services
+- validated the extraction with assistant regressions covering workbook-style route follow-ups, unsupported legacy VM aliases, and deterministic HPC service quoting
+- documented a project-level sub-agent operating model in `docs/SUBAGENT_STRATEGY.md` so future parallel execution can accelerate helper extraction, test growth, and docs maintenance without diluting architectural ownership of the core assistant flow
+- extracted the early deterministic direct-quote fast paths into a dedicated helper so `assistant.js` no longer owns the initial composite-quote and simple transactional quote branches inline before intent analysis
+- added focused unit coverage for those fast paths, including composite success, transactional service-level success, and null fallthrough when the request must continue into the intent pipeline
+- revalidated the extraction with assistant regressions for composite bundles and storage/network narratives plus calculator parity cases that depend on the same deterministic entry behavior
+- extracted the remaining pre-intent early-exit orchestration into a dedicated helper so `assistant.js` no longer owns greeting replies, generic compute shape clarification payload shaping, early flex-comparison clarification, and direct flex comparison replies inline
+- added focused unit coverage for that early-routing helper and revalidated it with the existing greeting, compute-shape, and flex-comparison suites plus assistant regressions for pre-intent discovery and composite quote behavior
+- validated this slice using the new sub-agent strategy: a bounded explorer confirmed the extraction boundary and regression set while the primary agent kept integration, verification, and documentation ownership
+- extracted the mid-flow discovery routing into a dedicated helper so `assistant.js` no longer owns registry-query construction, catalog listing replies, structured discovery fallback routing, and general-answer discovery payload shaping inline
+- added focused unit coverage for discovery routing, including deterministic `topService` selection, catalog-response fast paths, structured discovery replies, and null fallthrough into quote flow
+- revalidated the extraction with discovery classifier, context-pack fallback coverage, and broad assistant discovery regressions covering catalog requests, billing questions, required-input questions, SKU composition prompts, and safe service-unavailable fallbacks
+- consolidated the quote-entry transition into `quote-entry-preparation.js` so `assistant.js` no longer owns unsupported-compute discovery fallback payload shaping or deterministic `topService` promotion inline before quote request shaping
+- expanded focused unit coverage for quote-entry preparation to include safe unsupported-compute discovery payloads and promoted deterministic service routing after discovery has already fallen through
+- revalidated that consolidation with assistant regressions covering unsupported legacy VM aliases, billing prompts that must remain in discovery, deterministic HPC quoting, and Autonomous AI Lakehouse quote entry behavior
+- extended the same helper into a quote-ready state contract so `assistant.js` no longer stitches together family resolution, quote-entry fallback handling, deterministic top-service promotion, and request shaping inline before clarification
+- added focused unit coverage for quote-ready state preparation, including the guardrail that skips request shaping when unsupported compute must fall back to discovery and the happy path that returns `familyMeta`, `reformulatedRequest`, and `preflightQuote`
+- revalidated that contract with assistant regressions covering deterministic HPC entry, license-choice entry paths, active FastConnect follow-ups, compute shape follow-ups, and quote narratives for FastConnect and Block Volume
+- extracted the post-clarification response phase into a dedicated helper so `assistant.js` no longer owns license-choice prompting, final clarification payload shaping, deterministic quote execution, BYOL ambiguity handling, unresolved quote routing, and generic answer fallback inline
+- added focused unit coverage for post-clarification routing across clarification-first behavior, license-choice prompts, successful quote execution, unresolved quote fallback, and generic answer fallback
+- revalidated the extraction with assistant regressions covering OIC Standard and Autonomous AI Lakehouse license-choice paths, unresolved family-specific quote behavior, VM clarification guardrails, and deterministic quote narratives
+- extracted the remaining intent-resolution bridge into a dedicated helper so `assistant.js` no longer owns GenAI intent analysis fallback, quote-followup route overrides, post-intent follow-up reconciliation, and post-intent flex comparison terminal replies inline
+- added focused unit coverage for that bridge, including GenAI failure fallback, quote-followup override ordering, post-intent flex comparison terminal replies, and normal intent pass-through
+- revalidated the extraction with intent/follow-up helper suites plus assistant regressions covering service-unavailable fallback, discovery guardrails, quote-followup reuse, and flex comparison reply behavior
+- extracted active-quote clarification and license-follow-up heuristics into `clarification-followup.js` so short clarification answers, product-context recovery, license directive normalization, session quote reuse, and inline shape-selection rewrites no longer remain embedded in `assistant.js`
+- added focused unit coverage for the new clarification-followup helper, including contextual clarification merges, prior-product recovery, license-mode directive extraction, and inline shape replacement guardrails
+- revalidated that extraction with a green `11 pass / 0 fail` helper suite while keeping the full server suite green at `675 pass / 0 fail`
+- extracted active-quote session mutation orchestration into `session-quote-followup.js` so composite service removal/replacement, license-mode rewrites, currency changes, modifier persistence, active family inference, and route-driven follow-up prompt reuse no longer remain embedded in `assistant.js`
+- added focused unit coverage for the new session follow-up helper, including shape switching with preserved block storage, composite removals and sibling replacements, active-family inference for Flex quotes, route-driven follow-up reuse, critical modifier preservation, and short prefixed-answer normalization
+- revalidated that session follow-up extraction with a green `19 pass / 0 fail` focused helper run and a green `675 pass / 0 fail` full server suite
+- completed a full green pass of `pricing/server/test/*.test.js` after the refactor wave, confirming that the extracted orchestration helpers still compose correctly across regressions, parity, workbook flows, export paths, and helper suites
 
 Refactor targets to prefer:
 
@@ -319,6 +593,11 @@ Exit criteria:
 - new family additions mostly require metadata + context pack changes
 - `quotePlan` carries enough structured intent that fewer assistant heuristics are needed
 
+Current status note:
+
+- `assistant.js` is now primarily a coordinator over helper modules instead of the main owner of family policy and response formatting
+- the next highest-value slices are coverage expansion, parity hardening, and deeper follow-up capability rollout, not helper extraction for its own sake
+
 ### 3. Follow-Up Coverage Expansion
 
 Status: third priority
@@ -331,7 +610,7 @@ Primary files:
 
 - [assistant.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/assistant.js)
 - [service-families.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/service-families.js)
-- [assistant-regressions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-regressions.test.js)
+- [focused assistant regression suites](/Users/javierchan/Documents/GitHub/oci/pricing/server/test)
 
 Immediate task list:
 
@@ -361,6 +640,56 @@ Exit criteria:
 - each supported family documents what follow-ups are allowed
 - each supported follow-up type has regression coverage
 - follow-up behavior is driven by metadata where possible
+
+Latest completed slice:
+
+- added deterministic regression coverage for active-quote license flips in `Base Database Service` and OAC OCPU families
+- expanded the assistant fixture catalog so follow-up regressions now exercise real Base Database and OAC Enterprise OCPU SKUs instead of no-op gaps
+- corrected `service-families.js` capability evaluation so `null` optional inputs are treated as missing, which keeps `OAC users` quotes non-licensable while restoring `OAC OCPU` license flips
+- encoded metadata-driven quantity replacement for `Base Database Service` and OAC OCPU quotes so active follow-ups replace the existing sizing signal instead of appending duplicate quantities into the prompt
+- added deterministic regressions for active Base Database OCPU/storage changes and OAC Professional/Enterprise OCPU changes
+- extended the same metadata-driven pattern to `Database Cloud Service` and `Exadata Exascale`, including Exascale storage-model replacement between filesystem and smart database storage
+- added deterministic regressions for active Database Cloud Service OCPU changes plus Exadata Exascale ECPU, storage-size, and storage-model changes
+- extended the same active-quote hardening slice to edition-only and infrastructure-only follow-ups that were previously under-detected by the session follow-up gate
+- added deterministic regressions for:
+  - `Database Cloud Service` edition changes
+  - `Exadata Dedicated Infrastructure` ECPU changes on X11M infrastructure
+  - `Exadata Dedicated Infrastructure` X11M infrastructure swaps
+  - `Exadata Cloud@Customer` ECPU changes on X10M infrastructure
+  - `Exadata Cloud@Customer` X10M infrastructure swaps
+- extended family metadata so `Base Database Service` edition follow-ups replace the active edition token instead of appending a second edition into the persisted prompt
+- added deterministic regressions for:
+  - `Base Database Service` edition changes while preserving license mode, compute sizing, and storage
+  - `Base Database Service` compute-mode shifts from `OCPUs` to `ECPUs`
+  - `Database Cloud Service` license flips for `Extreme Performance` so edition-sensitive BYOL routing stays deterministic
+- added deterministic regressions for:
+  - `Base Database Service` ECPU quotes switching from `License Included` to `BYOL`
+  - `Base Database Service` ECPU edition swaps such as `Enterprise -> Standard`
+  - `Database Cloud Service` `Enterprise -> Standard` edition swaps on `License Included`
+  - `Database Cloud Service` `Extreme Performance -> Standard` edition swaps on `BYOL`
+- extended composite follow-up metadata so persisted mixed bundles can now remove `OCI Data Safe`, `OCI Log Analytics`, `Oracle Integration Cloud Standard`, and `Oracle Analytics Cloud Professional` without dropping the rest of the quote
+- added deterministic regressions for those four composite-removal paths across mixed database, observability, integration, and analytics bundles
+- hardened the assistant follow-up orchestrator so an explicit composite removal short-circuits later family replacement passes, avoiding collateral edits such as `sin OIC Standard` mutating `Base Database Service Enterprise` into `Standard`
+- extended the same composite follow-up metadata so persisted mixed bundles can now replace `Oracle Integration Cloud Standard -> Oracle Integration Cloud Enterprise` and `Oracle Analytics Cloud Professional -> Oracle Analytics Cloud Enterprise` safely inside the same quote
+- added deterministic regressions for those sibling-service replacement paths across mixed platform bundles that also keep `Base Database Service` intact
+- hardened the assistant follow-up orchestrator so explicit composite replacements also short-circuit later family replacement passes, avoiding collateral edits such as `cambia OIC Standard por OIC Enterprise ...` mutating `Base Database Service Enterprise` into `Standard`
+- added the reverse deterministic regressions for `Oracle Integration Cloud Enterprise -> Oracle Integration Cloud Standard` and `Oracle Analytics Cloud Enterprise -> Oracle Analytics Cloud Professional`, confirming the same mixed-bundle safety in both directions without further production changes
+- extended family metadata so `OCI Data Safe` can now switch between `Database Cloud Service` and `On-Premises Databases`, normalizing the quantity wording between `databases` and `target databases` instead of appending inconsistent tokens
+- extended family metadata so `OCI Log Analytics` can now switch between `Active Storage` and `Archival Storage` while preserving the storage-capacity token
+- added deterministic regressions for those two family-owned variant swaps both on direct active quotes and inside persisted mixed database bundles that also include `Exadata Cloud@Customer`
+- added the reverse deterministic regressions for the same `OCI Data Safe` and `OCI Log Analytics` variant swaps, confirming symmetric behavior for both direct active quotes and persisted mixed database bundles without additional production changes
+- added focused `service-families` unit coverage so the follow-up capability matrix itself is now validated directly for:
+  - `OIC` / `OAC` composite replacement capability flags
+  - `Data Safe` variant and quantity replacement rules
+  - `Log Analytics` variant and capacity replacement rules
+  - composite-removal registry membership for `Data Safe` and `Log Analytics`
+- added a reusable follow-up capability matrix export in `service-families.js` so tests and future tooling can inspect supported family behavior directly instead of inferring it from raw metadata or long assistant regressions
+- emitted that same capability matrix into `pricing/data/rule-registry/followup_capability_matrix.json` and added a rule-registry test so the generated artifact stays aligned with hardened family metadata
+- revalidated with:
+  - `node --test pricing/server/test/service-families.test.js`
+  - `node --test pricing/server/test/rule-registry.test.js`
+  - `node --test pricing/server/test/assistant-*.test.js`
+  - `node --test pricing/server/test/*.test.js`
 
 ### 4. Workbook And RVTools Hardening
 
@@ -421,6 +750,200 @@ Immediate task list:
   - warnings
 - strengthen startup and `/api/health` diagnostics
 - expand tests around versioned session writes and conflict handling
+
+### 5A. Safe Parallel Execution Lanes
+
+Status: in progress
+
+Goal:
+
+- increase delivery throughput without increasing behavioral drift, merge churn, or regression ambiguity
+
+Current operating decision:
+
+- use `3 execution lanes` with up to `4 sub-agents` plus one primary integrator for this stage
+- keep `assistant.js`, `service-families.js`, and shared plan/docs under single-writer ownership
+- treat lane-based ownership as the required operating model, not an optional coordination preference
+
+Recently advanced:
+
+- partitioned the biggest regression hotspot by extracting stable blocks out of [assistant-regressions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-regressions.test.js)
+- introduced a shared assistant regression harness in [assistant-test-helpers.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-test-helpers.js) so new suites reuse the same `assistant.js` bootstrap and catalog fixture instead of duplicating setup
+- split low-risk, high-signal regression domains into dedicated files:
+  - [assistant-followup-compute-composite-regressions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-followup-compute-composite-regressions.test.js)
+  - [assistant-deterministic-service-bundles-regressions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-deterministic-service-bundles-regressions.test.js)
+  - [assistant-expert-summary.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-expert-summary.test.js)
+  - [assistant-sanitization.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-sanitization.test.js)
+- extracted a second bounded lane for platform and database follow-ups into:
+  - [assistant-followup-platform-database-regressions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-followup-platform-database-regressions.test.js)
+- extracted the `routing/discovery` regression lane into:
+  - [assistant-routing-discovery-regressions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-routing-discovery-regressions.test.js)
+- extracted the deterministic compute-shape lane into:
+  - [assistant-deterministic-compute-regressions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-deterministic-compute-regressions.test.js)
+- extracted the canonical request / request-shaping lane into:
+  - [assistant-request-shaping-regressions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-request-shaping-regressions.test.js)
+- extracted the direct-quote unit-conversion lane into:
+  - [assistant-direct-quote-unit-conversions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-direct-quote-unit-conversions.test.js)
+- extracted the last residual deterministic-quote lane into:
+  - [assistant-residual-deterministic-quotes.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-residual-deterministic-quotes.test.js)
+- extracted the flex-comparison tail into:
+  - [assistant-flex-comparison-regressions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-flex-comparison-regressions.test.js)
+- retired [assistant-regressions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-regressions.test.js) after the remaining coverage was fully partitioned into focused suites
+- hardened the emitted follow-up capability matrix artifact with an explicit `security_waf` guard in [rule-registry.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/rule-registry.test.js), so the registry suite now fails if `OCI Web Application Firewall` loses its canonical entry, composite remove/replace flags, or active-quote rule presence
+- revalidated with:
+  - `node --test pricing/server/test/assistant-routing-discovery-regressions.test.js pricing/server/test/assistant-followup-platform-database-regressions.test.js pricing/server/test/assistant-followup-compute-composite-regressions.test.js pricing/server/test/assistant-deterministic-service-bundles-regressions.test.js pricing/server/test/assistant-deterministic-compute-regressions.test.js pricing/server/test/assistant-request-shaping-regressions.test.js pricing/server/test/assistant-direct-quote-unit-conversions.test.js pricing/server/test/assistant-residual-deterministic-quotes.test.js pricing/server/test/assistant-flex-comparison-regressions.test.js pricing/server/test/assistant-expert-summary.test.js pricing/server/test/assistant-sanitization.test.js`
+  - `node --test pricing/server/test/*.test.js`
+
+Reference:
+
+- [PARALLEL_EXECUTION_LANES.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/PARALLEL_EXECUTION_LANES.md)
+- [SUBAGENT_STRATEGY.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/SUBAGENT_STRATEGY.md)
+
+Immediate task list:
+
+- keep follow-up metadata work isolated from orchestration work
+- reduce regression hotspot pressure by partitioning broad assistant coverage over time
+- keep docs and registry alignment under a dedicated lane instead of piggybacking on runtime slices
+- use the `3-lane` / `4-sub-agent` model as the proving ground before considering broader multi-agent parallelism
+- keep future assistant regression additions routed into the existing focused suites instead of recreating a new monolith
+
+Exit criteria:
+
+- the team can run parallel slices without conflicting edits on the current hotspot files
+- validation ownership is clear per lane
+- the `3-lane` / `4-sub-agent` model shows higher throughput without more regression churn
+
+### 6. Structured Discovery Knowledge Layer
+
+Status: future strategic workstream
+
+Goal:
+
+- improve discovery, SKU-composition, billing-explanation, and required-input answers without relying on an expanding set of prompt-specific rules in `assistant.js`
+
+Why this workstream exists:
+
+- recent manual evaluations showed that the current discovery path is operational but still uneven on deeper conceptual prompts such as:
+  - service quote composition
+  - required quote inputs
+  - billing dimension explanations
+  - cross-variant comparisons such as `Standard vs Enterprise` or `BYOL vs License Included`
+- the current architecture already prefers deterministic and metadata-driven behavior, so the next meaningful step is not “more regex”, but a richer structured knowledge layer that the assistant can retrieve and explain consistently
+
+Strategic intent:
+
+- keep deterministic pricing as the source of truth
+- keep `GenAI` responsible for interpretation and explanation, not arithmetic
+- reduce future maintenance cost by replacing one-off discovery heuristics with structured service blueprints and reusable response plans
+
+Primary files expected to change when this work starts:
+
+- [service-families.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/service-families.js)
+- [context-packs.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/context-packs.js)
+- [assistant.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/assistant.js)
+- [normalizer.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/normalizer.js)
+- new generated or curated registry artifacts under:
+  - `pricing/data/rule-registry/`
+
+Proposed design direction:
+
+- introduce `service composition blueprints` per family
+- introduce a small set of declarative `response types`
+- improve retrieval so the assistant answers from the right blueprint rather than from free-form inference
+
+Proposed blueprint contract per family:
+
+- canonical family id
+- quote intent aliases and discovery aliases
+- required inputs:
+  - mandatory
+  - optional
+  - conditional
+- quote composition:
+  - required pricing components
+  - optional components
+  - variant-specific components
+- billing dimensions:
+  - metric name
+  - pricing unit
+  - what user input drives the quantity
+- licensing structure:
+  - `BYOL`
+  - `License Included`
+  - cases where licensing does not apply
+- example deterministic quote patterns
+- known pitfalls and unsupported assumptions
+
+Examples of families to pilot first:
+
+- `compute_vm_generic`
+- `integration_oic`
+- `storage_block`
+- `database_base_db`
+- `network_load_balancer`
+
+Proposed response types to introduce:
+
+- `sku_composition`
+- `billing_explanation`
+- `required_inputs`
+- `variant_comparison`
+- `quote_request`
+- `quote_followup`
+
+Expected runtime flow after this work:
+
+1. normalize prompt text
+2. classify response type and likely family
+3. retrieve the relevant family blueprint and context pack
+4. answer from structured fields instead of free-form improvisation
+5. fall back safely only when the blueprint is missing or insufficient
+
+What this should reduce over time:
+
+- family-specific regex growth
+- prompt-specific branching in `assistant.js`
+- misleading partial answers that are directionally correct but operationally incomplete
+- model-to-model variability for conceptual discovery questions
+
+What this should improve:
+
+- consistency of discovery answers across model changes
+- accuracy of SKU-composition explanations
+- coverage for “what do I need before quoting X?” questions
+- quality of service-variant explanations such as `Standard vs Enterprise`
+- resilience when switching GenAI models with different prompt behavior
+
+Evaluation strategy when this workstream starts:
+
+- convert a curated set of manual discovery prompts into a fixed capability regression
+- score by:
+  - route correctness
+  - family correctness
+  - concept coverage
+  - required SKU / component coverage
+  - unsupported-case honesty
+- keep service-level manual review for the first pilot families before widening the blueprint perimeter
+
+Suggested implementation order:
+
+1. define the blueprint schema and a minimal loader
+2. pilot `compute_vm_generic` and `integration_oic`
+3. route `sku_composition` and `required_inputs` answers through the blueprint layer
+4. add `billing_explanation` support for storage and networking families
+5. expand to database and security families
+6. retire overlapping heuristics from `assistant.js` once parity is proven
+
+Entry criteria for starting this workstream:
+
+- the current declarative refactor wave has reduced enough inline assistant logic that a new blueprint layer can be added cleanly
+- the active parity and follow-up work is stable enough that discovery improvements do not compete with unresolved deterministic regressions
+
+Exit criteria:
+
+- at least the pilot families answer structured discovery questions primarily from blueprints instead of prompt-specific assistant logic
+- model swaps do not materially change the quality of core discovery answers for the pilot set
+- new family discovery support mostly requires blueprint/context data instead of adding more assistant branching
 - expand tests around session isolation and race-style mutation sequences
 - revisit HTTP endpoint tests that currently require loopback listening in restricted environments
 
@@ -458,7 +981,7 @@ Primary files:
 - [normalizer.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/normalizer.js)
 - [assistant.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/assistant.js)
 - [context-packs.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/context-packs.js)
-- [assistant-regressions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-regressions.test.js)
+- [focused assistant regression suites](/Users/javierchan/Documents/GitHub/oci/pricing/server/test)
 - [normalizer.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/normalizer.test.js)
 
 Pending task list:

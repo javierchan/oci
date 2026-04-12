@@ -61,10 +61,23 @@ Execute the plan sequentially, end-to-end, with senior developer judgment, prior
 
 - Keep `pricing/docs/EXECUTION_PLAN.md` aligned with the real implementation state.
 - Use `pricing/docs/COVERAGE_ROADMAP.md` as the primary roadmap reference.
+- Use `pricing/docs/SUBAGENT_STRATEGY.md` when deciding whether work should stay with the main agent or be delegated into bounded parallel slices.
 - Do not revert user changes that were not made by the agent.
 - Prefer declarative and reusable solutions over prompt-specific patches.
 - Treat deterministic behavior, regression safety, and parity confidence as first-class concerns.
 - Report progress briefly and concretely, focused on outcomes and blockers.
+
+## Sub-Agent Delegation Policy
+
+- Use sub-agents only when the task has a bounded write scope, independent validation, and low architectural coupling.
+- Keep architecture, orchestration, and final integration ownership with the primary agent.
+- Prefer sub-agents for:
+  1. focused tests,
+  2. docs alignment,
+  3. isolated helper extraction,
+  4. family metadata extensions with clear ownership.
+- Avoid delegating broad `assistant.js` behavior redesign unless the write scope and intended behavior are already fully defined.
+- Always validate delegated work before considering the slice complete.
 
 ## Validation Notes
 

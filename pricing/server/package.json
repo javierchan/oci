@@ -7,7 +7,8 @@
     "start": "node index.js",
     "test": "node --test ./test/*.test.js",
     "fuzz:assistant": "node ./scripts/assistant-fuzz.js",
-    "quality:assistant": "node ./scripts/assistant-quality.js"
+    "quality:assistant": "node ./scripts/assistant-quality.js",
+    "quality:assistant:fixed": "node ./scripts/assistant-quality.js --count 100 --concurrency 1 --delay-ms 800 --jitter-ms 300 --max-retries 3 --retry-base-ms 2500 --retry-max-ms 15000 --seed 20260410 --report /tmp/pricing-assistant-quality-20260410-final.json"
   },
   "dependencies": {
     "express": "^4.18.2",

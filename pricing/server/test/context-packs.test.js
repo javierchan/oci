@@ -6,7 +6,7 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const { normalizeCatalog } = require(path.join(ROOT, 'catalog.js'));
-const { buildAssistantContextPack, buildCatalogListingReply, buildUncoveredComputeReply, summarizeContextPack } = require(path.join(ROOT, 'context-packs.js'));
+const { buildAssistantContextPack, buildCatalogListingReply, buildStructuredDiscoveryFallback, buildUncoveredComputeReply, summarizeContextPack } = require(path.join(ROOT, 'context-packs.js'));
 
 function metric(id, displayName, unitDisplayName = '') {
   return { id, displayName, unitDisplayName };
@@ -1179,4 +1179,43 @@ test('context pack summary keeps required inputs, license modes, and unsupported
   assert.equal(summary.computeCoverage.matchedUncoveredCommercialModel, 'metered');
   assert.equal(summary.computeCoverage.requiresSeparateLicensing, true);
   assert.ok(summary.computeCoverage.matchedUncoveredAlternatives.includes('Quote the underlying OCI compute shape separately'));
+});
+
+test('context packs can build a structured discovery fallback with SKU lines for catalog-backed families', () => {
+  const index = buildIndex();
+  const pack = buildAssistantContextPack(index, {
+    userText: 'How is Data Safe for On-Premises Databases billed?',
+    intent: {
+      route: 'product_discovery',
+      serviceFamily: 'security_data_safe',
+      quotePlan: { action: 'discover', targetType: 'service', domain: 'security' },
+      extractedInputs: {},
+    },
+    sessionContext: {},
+  });
+
+  const message = buildStructuredDiscoveryFallback(pack);
+  assert.match(message, /main quote SKUs/i);
+  assert.match(message, /B92733/i);
+  assert.match(message, /Data Safe for On-Premises Databases/i);
+  assert.match(message, /Relevant variants: Database Cloud Service, On-Premises Databases/i);
+});
+
+test('context packs can build a structured discovery fallback for compute families without universal SKU claims', () => {
+  const index = buildIndex();
+  const pack = buildAssistantContextPack(index, {
+    userText: "Cuales son los SKU's requeridos en una quote de Virtual Machines \\(Instances\\)?",
+    intent: {
+      route: 'product_discovery',
+      serviceFamily: 'compute_vm_generic',
+      quotePlan: { action: 'discover', targetType: 'service', domain: 'compute' },
+      extractedInputs: {},
+    },
+    sessionContext: {},
+  });
+
+  const message = buildStructuredDiscoveryFallback(pack);
+  assert.match(message, /consistent quote is usually built from OCPU, memory, and attached Block Storage assumptions/i);
+  assert.match(message, /To build a reliable quote, I still need:/i);
+  assert.match(message, /shape family/i);
 });

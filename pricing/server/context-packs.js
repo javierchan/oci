@@ -844,6 +844,56 @@ function buildAssistantContextPack(index, { userText, intent, sessionContext }) 
   return pack;
 }
 
+function buildStructuredDiscoveryFallback(contextPack) {
+  const family = contextPack?.serviceContext?.family;
+  if (!family) return '';
+  const familyMeta = getServiceFamily(family.id || '');
+  const familyPartNumbers = Array.isArray(familyMeta?.partNumbers) ? familyMeta.partNumbers : [];
+  const products = Array.isArray(contextPack?.serviceContext?.products)
+    ? contextPack.serviceContext.products.filter((product) => product?.partNumber && product?.displayName)
+    : [];
+  let uniqueProducts = products.filter((product, index, items) =>
+    items.findIndex((candidate) => String(candidate.partNumber || '') === String(product.partNumber || '')) === index
+  );
+  if (familyPartNumbers.length) {
+    uniqueProducts = uniqueProducts.filter((product) => familyPartNumbers.includes(String(product.partNumber || '')));
+  } else if (family.domain === 'compute') {
+    uniqueProducts = [];
+  }
+  const requiredGuidance = (Array.isArray(family.requiredInputGuidance) ? family.requiredInputGuidance : [])
+    .map((item) => (typeof item === 'string' ? item : (item?.label || item?.key || '')))
+    .map((label) => String(label).replace(/\binstance count\b/i, 'instances'))
+    .filter(Boolean);
+  const lines = [];
+  if (uniqueProducts.length) {
+    lines.push(`For \`${family.canonical}\`, the main quote SKUs are:`);
+    for (const product of uniqueProducts.slice(0, 6)) {
+      lines.push(`- \`${product.partNumber}\` - ${product.displayName}`);
+    }
+  } else if (family.domain === 'compute') {
+    lines.push(`For \`${family.canonical}\`, a consistent quote is usually built from OCPU, memory, and attached Block Storage assumptions, plus VPU when block performance matters, rather than from one universal SKU.`);
+  } else {
+    lines.push(`For \`${family.canonical}\`, the quote structure depends on the family configuration and required inputs.`);
+  }
+
+  if (requiredGuidance.length) {
+    lines.push('');
+    lines.push('To build a reliable quote, I still need:');
+    for (const label of requiredGuidance.slice(0, 6)) {
+      lines.push(`- ${label}`);
+    }
+  }
+  if (Array.isArray(family.licenseModes) && family.licenseModes.length) {
+    lines.push('');
+    lines.push(`License options: ${family.licenseModes.join(', ')}.`);
+  }
+  if (family.options?.variants?.length) {
+    lines.push('');
+    lines.push(`Relevant variants: ${family.options.variants.slice(0, 6).join(', ')}.`);
+  }
+  return lines.join('\n').trim();
+}
+
 function stringifyContextPack(pack) {
   return JSON.stringify(pack, null, 2);
 }
@@ -899,6 +949,7 @@ function summarizeContextPack(pack) {
 module.exports = {
   buildAssistantContextPack,
   buildCatalogListingReply,
+  buildStructuredDiscoveryFallback,
   canSafelyQuoteUncoveredComputeVariant,
   buildUncoveredComputeReply,
   findUncoveredComputeVariant,
