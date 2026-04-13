@@ -42,6 +42,7 @@ Completed in the current execution wave:
 - parity coverage now also includes mixed edge and networking/security bundles:
   - Load Balancer + WAF + DNS + Health Checks
   - Network Firewall + Monitoring Retrieval + Notifications HTTPS Delivery + Health Checks
+  - Network Firewall + WAF + Load Balancer + DNS + Health Checks
 - workbook parsing now recognizes more guided selections:
   - `vSphere` and `ESXi` as VMware
   - `AHV` as another hypervisor
@@ -54,6 +55,7 @@ Completed in the current execution wave:
   - compute modifier updates
 - active quote follow-ups can now switch license mode cleanly for covered families instead of appending ambiguous `BYOL` / `License Included` tokens
 - license-mode follow-ups now consult family metadata before mutating the active quote source
+- active quote license-flip coverage now also explicitly includes the reverse `BYOL -> License Included` path for `Oracle Integration Cloud Standard`, so the family can now round-trip license mode changes symmetrically on persisted quotes
 - active quote license-flip coverage now explicitly includes:
   - `Base Database Service` OCPU + storage quotes
   - `Oracle Analytics Cloud Professional` OCPU quotes
@@ -237,14 +239,16 @@ Completed in the current execution wave:
   - RVTools-origin `Load Balancer` bandwidth mutations that must preserve neighboring `Monitoring Retrieval`
 - workbook and RVTools follow-up coverage now also includes symmetric persisted mixed `Load Balancer + Monitoring Retrieval` regressions for:
   - workbook-origin `Monitoring Retrieval` removal that preserves neighboring `Load Balancer`
+  - RVTools-origin `Monitoring Retrieval` removal that preserves neighboring `Load Balancer`
   - RVTools-origin `Load Balancer` removal that preserves neighboring `Monitoring Retrieval`
   - workbook-origin `Monitoring Retrieval -> Health Checks` replacement that preserves neighboring `Load Balancer`
 - workbook and RVTools follow-up coverage now also includes persisted mixed `Load Balancer + DNS` bundles where shared services can be removed or replaced safely without dropping compute or block storage context, including:
   - `DNS` query-volume changes
   - `DNS -> Health Checks`
-  - `DNS` removal
-  - `Load Balancer` removal
+  - `DNS` removal across workbook-origin and RVTools-origin sources
+  - `Load Balancer` removal across workbook-origin and RVTools-origin sources
 - workbook and RVTools follow-up coverage now also includes persisted mixed `Load Balancer + Health Checks` bundles where shared services can be removed or replaced safely without dropping compute or block storage context, including:
+  - `Load Balancer` bandwidth changes across workbook-origin and RVTools-origin sources
   - `Load Balancer` removal across workbook-origin and RVTools-origin sources
   - `Health Checks` removal across workbook-origin and RVTools-origin sources
   - `Health Checks -> DNS`
@@ -256,20 +260,27 @@ Completed in the current execution wave:
   - required quote `SKU` / component questions
   - compute composition checks such as `Only OCPU, no disk, no memory?`
 - discovery and explanation questions with enough structured inputs to be quotable now stay in `product_discovery` instead of being force-promoted to deterministic quote mode by registry `topService` matching
+- pricing-dimension discovery guardrails now also explicitly cover `OCI Monitoring Retrieval` prompts that include datapoint volumes, so structured discovery answers stay in `product_discovery` even when the route model over-predicts a deterministic quote path
 - short active-quote discovery questions now skip the early session-quote prompt merge, so billing and component questions do not become accidentally quotable before intent guardrails run
 - `normalizer.js` now also de-prioritizes explicit `quote_request` routes when the prompt text is clearly discovery/explanation-oriented, including pricing-dimension prompts that contain measurable inputs
+- natural Spanish prerequisite and quote-preparation phrasings such as `Que me pides para cotizar ...?`, `Antes de cotizar ... que informacion necesito?`, and `Como preparo una quote de ...?` now also normalize into `product_discovery` instead of drifting into generic answer or quote mode
+- hybrid quote-lead prompts such as `Ayudame a cotizar ... que datos faltan?` or `Quote ... but tell me first what inputs you need` now also normalize into `product_discovery` instead of being emitted as deterministic quotes
+- active-quote conceptual pricing questions such as `Como se cobra esto?` and generic SKU requirement questions now also stay in discovery/answer mode instead of forcing `quote_followup` mutation paths
+- colloquial Spanish extraction now also recognizes low-risk wording variants such as `memoria`, `almacenamiento`, `usuarios`, and `instancias de WAF`, so those inputs survive normalization instead of being lost before deterministic quoting
 
 Validation status as of April 12, 2026:
 
 - targeted suites for workbook, parity, assistant follow-ups, metadata, and session follow-up helpers are green
 - quote export endpoint tests are green in sandbox through the socketless export-response harness
-- current assistant follow-up regression suite result: `148 pass / 0 fail`
+- current assistant follow-up regression suite result: `152 pass / 0 fail`
+- platform follow-up regression suite result: `35 pass / 0 fail`
+- routing/discovery regression suite result: `53 pass / 0 fail`
 - service-families metadata suite result: `15 pass / 0 fail`
 - session follow-up helper suite result: `9 pass / 0 fail`
 - workbook-focused suite result: `40 pass / 0 fail`
-- current parity suite result: `154 pass / 0 fail`
+- current parity suite result: `155 pass / 0 fail`
 - quote export endpoint suite result: `3 pass / 0 fail`
-- current full-suite result in sandbox: `760 pass / 0 fail`
+- current full-suite result in sandbox: `781 pass / 0 fail`
 
 Live assistant validation baseline as of April 10, 2026:
 
@@ -480,7 +491,22 @@ Recently completed in this workstream:
 - the next load-balancer-observability parameter symmetry slice closed the remaining source mirror for shared `Load Balancer + Monitoring Retrieval` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `Monitoring Retrieval` when `Load Balancer` bandwidth changes are applied to the persisted quote source
 - the next load-balancer-health-checks removal symmetry slice closed the remaining source mirror for removing `Load Balancer` from shared `Load Balancer + Health Checks` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `Health Checks` plus the surrounding compute/storage quote context
 - the next load-balancer-health-checks removal symmetry slice also closed the remaining source mirror for removing `Health Checks` from shared `Load Balancer + Health Checks` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `Flexible Load Balancer` plus the surrounding compute/storage quote context
-- revalidated the focused mixed-compute assistant follow-up suite at `148 pass / 0 fail`, the service-families metadata suite at `15 pass / 0 fail`, the session follow-up helper suite at `9 pass / 0 fail`, the workbook-focused suite at `40 pass / 0 fail`, the parity suite at `154 pass / 0 fail`, and the full server suite at `760 pass / 0 fail` after integrating the latest regression and metadata slices
+- the next load-balancer-dns removal symmetry slice closed the remaining source mirror for removing `DNS` from shared `Load Balancer + DNS` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `Flexible Load Balancer` plus the surrounding compute/storage quote context
+- the next load-balancer-dns removal symmetry slice also closed the remaining source mirror for removing `Load Balancer` from shared `Load Balancer + DNS` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `DNS` plus the surrounding compute/storage quote context
+- the next load-balancer-health-checks parameter symmetry slice closed the remaining source mirror for `Load Balancer` bandwidth changes inside shared `Load Balancer + Health Checks` bundles, proving both workbook-origin and RVTools-origin quotes now preserve neighboring `Health Checks` plus the surrounding compute/storage quote context
+- the next OIC Standard license symmetry slice closed the reverse `BYOL -> License Included` path for persisted `Oracle Integration Cloud Standard` quotes, so license-mode follow-ups now round-trip cleanly in both directions for that family
+- the next monitoring discovery guardrail slice closed an explicit route-safety gap for `OCI Monitoring Retrieval` pricing-dimension prompts with datapoint volumes, proving those requests stay in `product_discovery` instead of drifting into deterministic quote mode
+- revalidated the focused mixed-compute assistant follow-up suite at `151 pass / 0 fail`, the platform follow-up regression suite at `35 pass / 0 fail`, the routing/discovery regression suite at `50 pass / 0 fail`, the service-families metadata suite at `15 pass / 0 fail`, the session follow-up helper suite at `9 pass / 0 fail`, the workbook-focused suite at `40 pass / 0 fail`, the parity suite at `154 pass / 0 fail`, and the full server suite at `765 pass / 0 fail` after integrating the latest regression and metadata slices
+- the next load-balancer observability removal symmetry slice closed the remaining source mirror for removing `Monitoring Retrieval` from shared `Load Balancer + Monitoring Retrieval` bundles, proving both workbook-origin and RVTools-origin quotes preserve neighboring `Flexible Load Balancer` plus the surrounding compute/storage quote context
+- the next parity hardening slice added deterministic coverage for a `Network Firewall + WAF + Load Balancer + DNS + Health Checks` composite edge/security bundle, expanding mixed networking/security proof without adding runtime risk
+- revalidated the focused mixed-compute assistant follow-up suite at `152 pass / 0 fail`, the parity suite at `155 pass / 0 fail`, and the full server suite at `767 pass / 0 fail` after integrating the latest symmetry and parity slices
+- the next input-interpretation slice hardened discovery routing for natural Spanish prerequisite and quote-preparation prompts, proving phrases such as `Que me pides para cotizar ...?`, `Antes de cotizar ... que informacion necesito?`, and `Como preparo una quote de ...?` stay in `product_discovery` instead of drifting into generic answer or deterministic quote paths
+- revalidated the focused interpretation lanes at `82 pass / 0 fail`, the routing/discovery regression suite at `51 pass / 0 fail`, and the full server suite at `771 pass / 0 fail` after integrating the latest input-interpretation guardrails
+- the next hybrid-intent slice hardened discovery routing for quote-lead prompts that actually ask for missing inputs first, proving phrases such as `Ayudame a cotizar OIC Standard, que datos faltan?` and `Quote OCI DNS, but tell me first what inputs you need` stay in `product_discovery` instead of being mis-routed into deterministic quote paths
+- that same slice also hardened active-quote conceptual guards so pricing-explanation and generic SKU requirement questions stay in answer/discovery mode instead of forcing `quote_followup` mutation on the persisted quote source
+- revalidated the focused interpretation lanes at `99 pass / 0 fail`, the routing/discovery regression suite at `53 pass / 0 fail`, and the full server suite at `777 pass / 0 fail` after integrating the latest hybrid-intent and active-quote guardrails
+- the next extraction slice hardened low-risk colloquial Spanish input parsing for `memoria`, `almacenamiento`, `usuarios`, and `instancias de WAF`, so those values now survive normalization into structured inputs instead of being lost before deterministic quote shaping
+- revalidated the extraction lane at `28 pass / 0 fail` and the full server suite at `781 pass / 0 fail` after integrating the latest colloquial-input normalization guards
 
 Suggested first gaps to cover:
 

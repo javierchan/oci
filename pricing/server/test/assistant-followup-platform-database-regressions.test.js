@@ -193,6 +193,44 @@ test('session follow-up can switch the active OIC Standard quote from license in
   assert.doesNotMatch(reply.message, /B89639/);
 });
 
+test('session follow-up can switch the active OIC Standard quote from BYOL to license included', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'integration_oic_standard',
+    serviceName: 'Oracle Integration Cloud Standard',
+    extractedInputs: { instances: 1 },
+    confidence: 0.9,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'License Included',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Oracle Integration Cloud Standard BYOL 1 instance 744h/month',
+        label: 'Oracle Integration Cloud Standard',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\bLicense Included\b/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\bBYOL\b/i);
+  assert.match(reply.message, /B89639/);
+  assert.doesNotMatch(reply.message, /B89643/);
+});
+
 test('session follow-up can switch the active Base Database quote from license included to BYOL while keeping edition and storage', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -1535,4 +1573,3 @@ test('session follow-up can switch the active Exadata Cloud@Customer quote infra
   assert.match(reply.message, /B96615/);
   assert.doesNotMatch(reply.message, /B96611/);
 });
-

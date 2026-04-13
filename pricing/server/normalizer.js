@@ -169,8 +169,8 @@ function extractStructuredInputs(text) {
     /(\d[\d,]*(?:\.\d+)?)\s*ecpus?\b/i,
   ]);
   const parsedMemoryGb = matchNumber(source, [
-    /(\d[\d,]*(?:\.\d+)?)\s*gb\s*(?:ram|memory)\b/i,
-    /(?:ram|memory)[^\d]{0,20}(\d[\d,]*(?:\.\d+)?)\s*gb\b/i,
+    /(\d[\d,]*(?:\.\d+)?)\s*gb\s*(?:de\s+)?(?:ram|memory|memoria)\b/i,
+    /(?:ram|memory|memoria)[^\d]{0,20}(\d[\d,]*(?:\.\d+)?)\s*gb\b/i,
   ]);
   const memoryGb = shape?.kind === 'fixed'
     ? (Number.isFinite(Number(shape.fixedMemoryGb)) ? Number(shape.fixedMemoryGb) : parsedMemoryGb)
@@ -192,7 +192,7 @@ function extractStructuredInputs(text) {
     /(\d[\d,]*(?:\.\d+)?)\s*mb\b/i,
   ]);
   const users = matchNumber(source, [
-    /(\d[\d,]*(?:\.\d+)?)\s*(?:users?|named users?)\b/i,
+    /(\d[\d,]*(?:\.\d+)?)\s*(?:users?|named users?|usuarios?)\b/i,
   ]);
   const firewallInstances = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*firewalls?\b/i,
@@ -200,6 +200,7 @@ function extractStructuredInputs(text) {
   ]);
   const wafInstances = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*(?:waf|web application firewall)\s*(?:instances?)?\b/i,
+    /(\d[\d,]*(?:\.\d+)?)\s*instancias?\s+de\s+(?:waf|web application firewall)\b/i,
     /(\d[\d,]*(?:\.\d+)?)\s*polic(?:y|ies)\b/i,
   ]);
   const dataProcessedGb = matchNumber(source, [
@@ -310,13 +311,13 @@ function extractStructuredInputs(text) {
 
 function extractStorageCapacityGb(source) {
   const capacityTb = matchNumber(source, [
-    /(\d[\d,]*(?:\.\d+)?)\s*tb\b(?:\s+(?:block(?:\s+storage)?|block\s+volumes?|file storage|object storage|database storage|log analytics|storage))\b/i,
-    /(?:block volumes?|block storage|file storage|object storage|database storage|log analytics|storage)[^\d]{0,20}(\d[\d,]*(?:\.\d+)?)\s*tb\b/i,
+    /(\d[\d,]*(?:\.\d+)?)\s*tb\b(?:\s+(?:de\s+)?(?:block(?:\s+storage)?|block\s+volumes?|file storage|object storage|database storage|log analytics|storage|almacenamiento))\b/i,
+    /(?:block volumes?|block storage|file storage|object storage|database storage|log analytics|storage|almacenamiento)[^\d]{0,20}(\d[\d,]*(?:\.\d+)?)\s*tb\b/i,
   ]);
   if (capacityTb !== null) return capacityTb * 1024;
   return matchNumber(source, [
-    /(\d[\d,]*(?:\.\d+)?)\s*gb\b(?:\s+(?:block(?:\s+storage)?|block\s+volumes?|file storage|object storage|database storage|log analytics|storage))\b/i,
-    /(?:block volumes?|block storage|file storage|object storage|database storage|log analytics|storage)[^\d]{0,20}(\d[\d,]*(?:\.\d+)?)\s*gb\b/i,
+    /(\d[\d,]*(?:\.\d+)?)\s*gb\b(?:\s+(?:de\s+)?(?:block(?:\s+storage)?|block\s+volumes?|file storage|object storage|database storage|log analytics|storage|almacenamiento))\b/i,
+    /(?:block volumes?|block storage|file storage|object storage|database storage|log analytics|storage|almacenamiento)[^\d]{0,20}(\d[\d,]*(?:\.\d+)?)\s*gb\b/i,
   ]);
 }
 
@@ -368,7 +369,7 @@ function isPricingDiscoveryQuestion(text) {
   const source = String(text || '');
   if (!source) return false;
   if (isSkuCompositionDiscoveryQuestion(source)) return true;
-  if (/\b(?:how|como|cómo)\b.*\b(?:build|structure|compose|arma|armar|construye|construir|compone|componer)\b.*\b(?:quote|cotiz(?:ar|ación))\b/i.test(source)) return true;
+  if (/\b(?:how|como|cómo)\b.*\b(?:build|structure|compose|prepare|arma|armar|construye|construir|compone|componer|preparo|preparar)\b.*\b(?:quote|cotiz(?:ar|ación))\b/i.test(source)) return true;
   if (/\b(how|como|cómo)\b.*\b(?:billed|charged|priced|cobra|cobran|costea|pricing)\b/i.test(source)) return true;
   if (/\b(?:pricing model|billing model|cost model|modelo de cobro|modelo de pricing)\b/i.test(source)) return true;
   if (/\b(?:pricing dimensions?|billing dimensions?)\b/i.test(source)) return true;
@@ -387,6 +388,10 @@ function isLicensingDiscoveryQuestion(text) {
   if (/\b(?:what|which|que|qué)\b.*\b(?:license|licensing|licencia)\b/i.test(source)) return true;
   if (/\b(?:prerequisite|prerequisites|prerrequisito|prerrequisitos|required inputs?|required information)\b/i.test(source)) return true;
   if (/\b(?:what|which|que|qué|how|como|cómo)\b.*\b(?:need|needed|required|require|information|inputs?|datos?)\b.*\b(?:quote|price|pricing|cotizar|cotización|costo)\b/i.test(source)) return true;
+  if (/\b(?:what|which|que|qué)\b.*\b(?:me pides|datos necesitas|informaci[oó]n necesitas?|need from me|need from us|faltan|falta)\b.*\b(?:quote|price|pricing|cotizar|cotización|costo)\b/i.test(source)) return true;
+  if (/\b(?:before|antes de)\b.*\b(?:quote|quoting|cotizar|cotización)\b.*\b(?:what|which|que|qué)\b.*\b(?:inputs?|information|datos|need|needed|necesito|necesitas|required)\b/i.test(source)) return true;
+  if (/\b(?:quote|cotiza(?:r|me)?|cotización|estimate|estim(?:a|ar)|quiero\s+cotizar|necesito\s+cotizar|ay[uú]dame\s+a\s+cotizar)\b.*\b(?:but|pero|first|primero|and|y)\b.*\b(?:what inputs?|what information|need from me|need from us|missing|faltan|falta|datos?|informaci[oó]n|que\s+te\s+falta|que\s+me\s+falta|si\s+falta\s+algo)\b/i.test(source)) return true;
+  if (/\b(?:quote|cotiza(?:r|me)?|cotización|estimate|estim(?:a|ar)|quiero\s+cotizar|necesito\s+cotizar|ay[uú]dame\s+a\s+cotizar)\b.*\b(?:what inputs?|what information|need from me|need from us|missing|faltan|falta|datos?|informaci[oó]n|que\s+te\s+falta|que\s+me\s+falta|si\s+falta\s+algo)\b/i.test(source)) return true;
   if (/\b(?:what|which|que|qué)\b.*\b(?:need|necesito|requiere|requiero)\b.*\b(?:for|para)\b.*\b(?:oracle integration cloud|base database service|autonomous|analytics cloud|database cloud service)\b/i.test(source)) return true;
   return false;
 }

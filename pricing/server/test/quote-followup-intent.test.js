@@ -38,6 +38,21 @@ test('quote follow-up intent does not force route for discovery-style active-quo
   assert.equal(result, false);
 });
 
+test('quote follow-up intent does not force route for conceptual active-quote pricing and prerequisite questions', () => {
+  const baseArgs = {
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Flexible Load Balancer 100 Mbps',
+      },
+    },
+    isSessionQuoteFollowUp: () => true,
+  };
+
+  assert.equal(shouldForceQuoteFollowUpRoute({ ...baseArgs, userText: 'que datos faltan para cotizar esto?' }), false);
+  assert.equal(shouldForceQuoteFollowUpRoute({ ...baseArgs, userText: 'como se cobra esto?' }), false);
+  assert.equal(shouldForceQuoteFollowUpRoute({ ...baseArgs, userText: 'que SKUs lleva esto?' }), false);
+});
+
 test('quote follow-up intent override sets quote-followup route and modify-quote plan', () => {
   const nextIntent = applyQuoteFollowUpIntentOverride({
     route: 'general_answer',

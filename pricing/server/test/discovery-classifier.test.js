@@ -27,6 +27,11 @@ test('discovery classifier keeps billing and pricing-dimensions prompts in disco
   assert.equal(isDiscoveryOrExplanationQuestion('How is OCI Health Checks billed for 12 endpoints?'), true);
   assert.equal(isDiscoveryOrExplanationQuestion('Explain OCI FastConnect pricing dimensions for 10 Gbps.'), true);
   assert.equal(isDiscoveryOrExplanationQuestion('What options do we have for Network Firewall in OCI?'), true);
+  assert.equal(isDiscoveryOrExplanationQuestion('Que me pides para cotizar OCI Health Checks?'), true);
+  assert.equal(isDiscoveryOrExplanationQuestion('Antes de cotizar Base Database Service, que informacion necesito?'), true);
+  assert.equal(isDiscoveryOrExplanationQuestion('Como preparo una quote de OIC Standard?'), true);
+  assert.equal(isDiscoveryOrExplanationQuestion('Cotiza Base Database Service, pero primero dime que informacion necesitas'), true);
+  assert.equal(isDiscoveryOrExplanationQuestion('Quote OCI DNS, but tell me first what inputs you need'), true);
 });
 
 test('discovery classifier does not misclassify explicit quote prompts as discovery', () => {

@@ -3276,6 +3276,49 @@ test('session follow-up can change load balancer bandwidth in an active workbook
   assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\b100 Mbps\b/i);
 });
 
+test('session follow-up can change load balancer bandwidth in an active RVTools-origin mixed health-checks quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'network_load_balancer',
+    serviceName: 'OCI Load Balancer',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '150 Mbps',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus Flexible Load Balancer 100 Mbps plus Health Checks 5 endpoints',
+        label: 'RVTools quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B94176/);
+  assert.match(reply.message, /B94177/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.message, /B93030/);
+  assert.match(reply.message, /B93031/);
+  assert.match(reply.message, /B90325/);
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus Flexible Load Balancer 150 Mbps plus (?:OCI )?Health Checks 5 endpoints/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /\b100 Mbps\b/i);
+});
+
 test('session follow-up can change load balancer bandwidth in an active workbook-origin mixed monitoring quote source', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -3488,6 +3531,49 @@ test('session follow-up can remove monitoring retrieval from an active workbook-
   assert.match(reply.message, /B93031/);
   assert.doesNotMatch(reply.message, /B90926/);
   assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E5\.Flex 8 OCPUs 64 GB RAM with 300 GB Block Storage and 20 VPUs plus Flexible Load Balancer 100 Mbps/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /Monitoring Retrieval/i);
+});
+
+test('session follow-up can remove monitoring retrieval from an active RVTools-origin mixed load-balancer quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'sin Monitoring Retrieval',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard3.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus Flexible Load Balancer 100 Mbps plus Monitoring Retrieval 4000000 datapoints',
+        label: 'RVTools quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B94176/);
+  assert.match(reply.message, /B94177/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.message, /B93030/);
+  assert.match(reply.message, /B93031/);
+  assert.doesNotMatch(reply.message, /B90926/);
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus Flexible Load Balancer 100 Mbps/i);
   assert.doesNotMatch(reply.sessionContext.lastQuote.source, /Monitoring Retrieval/i);
 });
 
@@ -4010,6 +4096,49 @@ test('session follow-up can remove DNS from an active RVTools-origin mixed load-
   assert.doesNotMatch(reply.message, /B88525/);
   assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard3\.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus Flexible Load Balancer 100 Mbps/i);
   assert.doesNotMatch(reply.sessionContext.lastQuote.source, /DNS/i);
+});
+
+test('session follow-up can remove load balancer from an active workbook-origin mixed dns quote source', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: 'sin Load Balancer',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote VM.Standard.E5.Flex 8 OCPUs 64 GB RAM with 300 GB Block Storage and 20 VPUs plus Flexible Load Balancer 100 Mbps plus DNS 5000000 queries per month',
+        label: 'Excel quotation',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.message, /B97384/);
+  assert.match(reply.message, /B97385/);
+  assert.match(reply.message, /B91961/);
+  assert.match(reply.message, /B91962/);
+  assert.match(reply.message, /B88525/);
+  assert.doesNotMatch(reply.message, /B93030/);
+  assert.doesNotMatch(reply.message, /B93031/);
+  assert.match(reply.sessionContext.lastQuote.source, /VM\.Standard\.E5\.Flex 8 OCPUs 64 GB RAM with 300 GB Block Storage and 20 VPUs plus (?:OCI )?DNS 5000000 queries per month/i);
+  assert.doesNotMatch(reply.sessionContext.lastQuote.source, /Load Balancer/i);
 });
 
 test('session follow-up can remove load balancer from an active RVTools-origin mixed dns quote source', async () => {

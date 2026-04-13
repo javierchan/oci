@@ -1584,6 +1584,25 @@ test('calculator parity: network firewall plus observability bundle stays aligne
   assert.match(quote.markdown, /B90325/);
 });
 
+test('calculator parity: network firewall edge security bundle keeps firewall routing and protection lines aligned', () => {
+  const index = buildCalculatorIndex();
+  const quote = quoteFromPrompt(
+    index,
+    'Quote Network Firewall 1 firewall and 12000 GB data processed per month plus Web Application Firewall with 2 instances and 25000000 requests per month plus Flexible Load Balancer 100 Mbps plus DNS 5000000 queries per month plus Health Checks 10 endpoints',
+  );
+
+  assert.equal(quote.ok, true);
+  assertWithin(quote.totals.monthly, 2097.586, 0.1);
+  assert.match(quote.markdown, /B95403/);
+  assert.match(quote.markdown, /B95404/);
+  assert.match(quote.markdown, /B94579/);
+  assert.match(quote.markdown, /B94277/);
+  assert.match(quote.markdown, /B93030/);
+  assert.match(quote.markdown, /B93031/);
+  assert.match(quote.markdown, /B88525/);
+  assert.match(quote.markdown, /B90325/);
+});
+
 test('calculator parity: base database edge bundle keeps database, security, and networking lines aligned', () => {
   const index = buildCalculatorIndex();
   const quote = quoteFromPrompt(

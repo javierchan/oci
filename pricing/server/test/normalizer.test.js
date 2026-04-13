@@ -94,6 +94,94 @@ test('normalizer routes OIC prerequisite questions to product discovery instead 
   assert.equal(result.quotePlan.useDeterministicEngine, false);
 });
 
+test('normalizer routes natural spanish required-input questions to product discovery instead of quote', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Antes de cotizar Base Database Service, que informacion necesito?',
+    assumptions: [],
+    serviceFamily: 'database_base_db',
+    serviceName: 'Base Database Service',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Antes de cotizar Base Database Service, que informacion necesito?');
+
+  assert.equal(result.route, 'product_discovery');
+  assert.equal(result.quotePlan.action, 'discover');
+  assert.equal(result.quotePlan.targetType, 'service');
+  assert.equal(result.quotePlan.useDeterministicEngine, false);
+});
+
+test('normalizer routes natural quote-preparation questions to product discovery instead of quote', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Como preparo una quote de OIC Standard?',
+    assumptions: [],
+    serviceFamily: 'integration_oic_standard',
+    serviceName: 'Oracle Integration Cloud Standard',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Como preparo una quote de OIC Standard?');
+
+  assert.equal(result.route, 'product_discovery');
+  assert.equal(result.quotePlan.action, 'discover');
+  assert.equal(result.quotePlan.targetType, 'service');
+  assert.equal(result.quotePlan.useDeterministicEngine, false);
+});
+
+test('normalizer routes hybrid quote-lead missing-input questions to product discovery instead of quote', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Ayudame a cotizar OIC Standard, que datos faltan?',
+    assumptions: [],
+    serviceFamily: 'integration_oic_standard',
+    serviceName: 'Oracle Integration Cloud Standard',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Ayudame a cotizar OIC Standard, que datos faltan?');
+
+  assert.equal(result.route, 'product_discovery');
+  assert.equal(result.quotePlan.action, 'discover');
+  assert.equal(result.quotePlan.targetType, 'service');
+  assert.equal(result.quotePlan.useDeterministicEngine, false);
+});
+
+test('normalizer routes hybrid quote-lead explanation-first questions to product discovery instead of quote', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote OCI DNS, but tell me first what inputs you need',
+    assumptions: [],
+    serviceFamily: 'network_dns',
+    serviceName: 'DNS',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote OCI DNS, but tell me first what inputs you need');
+
+  assert.equal(result.route, 'product_discovery');
+  assert.equal(result.quotePlan.action, 'discover');
+  assert.equal(result.quotePlan.targetType, 'service');
+  assert.equal(result.quotePlan.useDeterministicEngine, false);
+});
+
 test('normalizer routes generic OIC SKU composition questions to product discovery and infers the generic OIC family', () => {
   const result = normalizeIntentResult({
     intent: 'quote',
@@ -444,4 +532,83 @@ test('normalizer routes catalog listing questions to product discovery with cata
   assert.equal(result.quotePlan.action, 'discover');
   assert.equal(result.quotePlan.targetType, 'catalog');
   assert.equal(result.quotePlan.useDeterministicEngine, false);
+});
+
+test('normalizer extracts spanish memory and storage wording from compute prompts', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote VM.Standard.E4.Flex 4 OCPUs con 32 GB de memoria y 200 GB de almacenamiento',
+    assumptions: [],
+    serviceFamily: 'compute_flex',
+    serviceName: 'Virtual Machine Flex',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote VM.Standard.E4.Flex 4 OCPUs con 32 GB de memoria y 200 GB de almacenamiento');
+
+  assert.equal(result.extractedInputs.ocpus, 4);
+  assert.equal(result.extractedInputs.memoryGb, 32);
+  assert.equal(result.extractedInputs.capacityGb, 200);
+});
+
+test('normalizer extracts spanish users wording from analytics prompts', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote Oracle Analytics Cloud Enterprise 50 usuarios',
+    assumptions: [],
+    serviceFamily: 'analytics_oac_enterprise',
+    serviceName: 'Oracle Analytics Cloud Enterprise',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote Oracle Analytics Cloud Enterprise 50 usuarios');
+
+  assert.equal(result.extractedInputs.users, 50);
+});
+
+test('normalizer extracts spanish waf instance wording from security prompts', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote Web Application Firewall con 2 instancias de WAF y 25000000 requests por mes',
+    assumptions: [],
+    serviceFamily: 'security_waf',
+    serviceName: 'Web Application Firewall',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote Web Application Firewall con 2 instancias de WAF y 25000000 requests por mes');
+
+  assert.equal(result.extractedInputs.wafInstances, 2);
+  assert.equal(result.extractedInputs.requestCount, 25000000);
+});
+
+test('normalizer extracts spanish storage wording in tb units', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote Base Database Service con 2 TB de almacenamiento',
+    assumptions: [],
+    serviceFamily: 'database_base_db',
+    serviceName: 'Base Database Service',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote Base Database Service con 2 TB de almacenamiento');
+
+  assert.equal(result.extractedInputs.capacityGb, 2048);
 });

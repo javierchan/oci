@@ -11,10 +11,11 @@ function buildHeuristicIntentFromText(userText) {
   const inferredFamily = inferServiceFamily(source);
   const family = getServiceFamily(inferredFamily);
   if (!family && !hasExplicitQuoteLead(source)) return null;
+  const discoveryLike = isDiscoveryOrExplanationQuestion(source);
   const baseIntent = {
-    intent: hasExplicitQuoteLead(source) ? 'quote' : 'discover',
-    route: hasExplicitQuoteLead(source) ? 'quote_request' : 'product_discovery',
-    shouldQuote: hasExplicitQuoteLead(source),
+    intent: discoveryLike ? 'discover' : (hasExplicitQuoteLead(source) ? 'quote' : 'discover'),
+    route: discoveryLike ? 'product_discovery' : (hasExplicitQuoteLead(source) ? 'quote_request' : 'product_discovery'),
+    shouldQuote: discoveryLike ? false : hasExplicitQuoteLead(source),
     needsClarification: false,
     clarificationQuestion: '',
     reformulatedRequest: source,
@@ -34,7 +35,7 @@ function shouldApplyHeuristicIntentOverride(userText, intent = {}) {
   if (!source) return false;
   return (
     (hasExplicitQuoteLead(source) && (!intent.shouldQuote || intent.route === 'general_answer')) ||
-    (isDiscoveryOrExplanationQuestion(source) && intent.route === 'general_answer')
+    (isDiscoveryOrExplanationQuestion(source) && intent.route !== 'product_discovery')
   );
 }
 

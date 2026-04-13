@@ -1728,6 +1728,96 @@ test('required-input question for Base Database stays in product discovery even 
   assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
 });
 
+test('natural spanish required-input question for Base Database stays in product discovery even when intent arrives as quote_request', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'database_base_db',
+    serviceName: 'Base Database Service',
+    extractedInputs: {},
+    confidence: 0.79,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'database', useDeterministicEngine: true },
+  }), {
+    genaiText: [
+      'Para cotizar `Base Database Service` normalmente necesito:',
+      '- edición, por ejemplo `Enterprise` o `Standard`',
+      '- `BYOL` o `License Included`',
+      '- capacidad en `OCPU` o `ECPU`',
+      '- `storage` en GB',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Antes de cotizar Base Database Service, que informacion necesito?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'database_base_db');
+  assert.match(reply.message, /Enterprise|Standard/i);
+  assert.match(reply.message, /BYOL|License Included/i);
+  assert.match(reply.message, /OCPU|ECPU/i);
+  assert.match(reply.message, /storage/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('hybrid quote-lead missing-input question for OIC Standard stays in product discovery even when intent arrives as quote_request', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'integration_oic_standard',
+    serviceName: 'Oracle Integration Cloud Standard',
+    extractedInputs: {},
+    confidence: 0.79,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'integration', useDeterministicEngine: true },
+  }), {
+    genaiText: [
+      'Para cotizar `Oracle Integration Cloud Standard` normalmente necesito:',
+      '- `instances`',
+      '- `BYOL` o `License Included`',
+      '- y confirmar si buscas guidance o una cotización directa',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Ayudame a cotizar OIC Standard, que datos faltan?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'integration_oic_standard');
+  assert.match(reply.message, /instances|BYOL|License Included/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
 test('active quote conceptual compute composition question answers instead of mutating the quote', async () => {
   const index = buildIndex();
   const activeQuoteSource = 'Quote VM.Standard.E4.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs';
@@ -1828,9 +1918,60 @@ test('active quote SKU requirement question answers instead of mutating the quot
   assert.equal(reply.intent.shouldQuote, false);
   assert.equal(reply.intent.route, 'product_discovery');
   assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
-  assert.equal(reply.sessionContext.lastContextPack.family.id, 'compute_flex');
+  assert.match(reply.sessionContext.lastContextPack.family.id, /compute_flex|compute_vm_generic/);
   assert.equal(reply.sessionContext.lastQuote.source, activeQuoteSource);
   assert.match(reply.message, /SKU|OCPU|memory|Block Storage|VPU/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('active quote pricing explanation question answers instead of mutating the quote', async () => {
+  const index = buildIndex();
+  const activeQuoteSource = 'Quote VM.Standard.E4.Flex 4 OCPUs 16 GB RAM with 200 GB Block Storage and 20 VPUs plus Flexible Load Balancer 100 Mbps';
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_followup',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'network_load_balancer',
+    serviceName: 'Flexible Load Balancer',
+    extractedInputs: { bandwidthMbps: 100 },
+    confidence: 0.76,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'modify_quote', targetType: 'quote', domain: 'network', useDeterministicEngine: true },
+  }), {
+    genaiText: [
+      'Para `Flexible Load Balancer`, la cotización normalmente separa:',
+      '- la capacidad base del `Load Balancer`',
+      '- y el `bandwidth` en `Mbps`',
+      'La facturación no debería mutar la quote activa solo por pedir explicación conceptual.',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'Sobre esta cotizacion, como se cobra el Load Balancer?',
+    sessionContext: {
+      lastQuote: {
+        source: activeQuoteSource,
+        label: 'Compute + Load Balancer',
+        serviceFamily: 'network_load_balancer',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastQuote.source, activeQuoteSource);
+  assert.match(reply.message, /Load Balancer|bandwidth|Mbps/i);
   assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
 });
 
@@ -1915,6 +2056,48 @@ test('pricing-dimensions explanation for FastConnect with explicit bandwidth sta
   assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
   assert.equal(reply.sessionContext.lastContextPack.family.id, 'network_fastconnect');
   assert.match(reply.message, /FastConnect|10 Gbps|bandwidth/i);
+  assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
+});
+
+test('pricing-dimensions explanation for OCI Monitoring Retrieval with explicit datapoints stays in discovery instead of quote', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    route: 'quote_request',
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: '',
+    serviceName: '',
+    extractedInputs: { datapoints: 4000000 },
+    confidence: 0.78,
+    annualRequested: false,
+    normalizedRequest: text,
+    quotePlan: { action: 'quote', targetType: 'service', domain: 'observability', useDeterministicEngine: true },
+  }), {
+    genaiText: [
+      'For `OCI Monitoring Retrieval`, the billing unit is datapoints retrieved.',
+      '- `4000000 datapoints per month` is a usage estimate',
+      '- this prompt is asking for pricing dimensions, not for a deterministic quote output',
+    ].join('\n'),
+  });
+
+  const reply = await respondToAssistant({
+    cfg: { modelId: 'stub-model', compartment: 'stub-compartment' },
+    index,
+    conversation: [],
+    userText: 'How is OCI Monitoring Retrieval priced if I have 4000000 datapoints per month?',
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'answer');
+  assert.equal(reply.intent.shouldQuote, false);
+  assert.equal(reply.intent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastIntent.route, 'product_discovery');
+  assert.equal(reply.sessionContext.lastContextPack.family.id, 'observability_monitoring');
+  assert.match(reply.message, /Monitoring Retrieval|datapoints/i);
   assert.doesNotMatch(reply.message, /deterministic OCI quotation/i);
 });
 

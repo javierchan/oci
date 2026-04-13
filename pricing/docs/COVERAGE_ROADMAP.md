@@ -94,6 +94,9 @@ Implemented:
 - active-quote conceptual follow-ups now answer without mutating the persisted quote source for covered SKU/component and compute-composition questions
 - discovery and explanation prompts with quotable numeric inputs now stay in answer/discovery mode instead of being auto-promoted into deterministic quotes by registry fallback matching
 - route normalization now also overrides explicit `quote_request` outputs for clearly explanatory pricing-dimension prompts with measurable inputs
+- route normalization now also covers natural Spanish prerequisite and quote-preparation phrasings so they stay in `product_discovery` instead of falling through to generic answer or quote flows
+- route normalization now also covers hybrid quote-lead prompts that really ask for missing inputs first, and active-quote conceptual pricing questions no longer force `quote_followup` mutation paths
+- structured extraction now also covers low-risk colloquial Spanish wording for `memoria`, `almacenamiento`, `usuarios`, and `instancias de WAF`
 - safer unsupported-service replies when deterministic pricing should not run
 
 Reference:
@@ -197,9 +200,10 @@ Implemented:
 - workbook-origin and RVTools-origin mixed follow-ups now also have regression coverage for shared `Load Balancer + DNS` bundles when:
   - `DNS` query-volume changes preserve neighboring `Flexible Load Balancer`
   - `DNS` is replaced by `Health Checks`
-  - `DNS` is removed
-  - `Load Balancer` is removed
+  - `DNS` is removed across workbook-origin and RVTools-origin sources
+  - `Load Balancer` is removed across workbook-origin and RVTools-origin sources
 - workbook-origin and RVTools-origin mixed follow-ups now also have regression coverage for shared `Load Balancer + Health Checks` bundles when:
+  - `Load Balancer` bandwidth changes preserve neighboring `Health Checks` across workbook-origin and RVTools-origin sources
   - `Load Balancer` is removed across workbook-origin and RVTools-origin sources
   - `Health Checks` is removed across workbook-origin and RVTools-origin sources
   - `Health Checks` is replaced by `DNS`
@@ -280,6 +284,8 @@ Implemented:
   - `Oracle Integration Cloud Enterprise -> Oracle Integration Cloud Standard`
   - `Oracle Analytics Cloud Enterprise -> Oracle Analytics Cloud Professional`
 - explicit composite-replacement follow-ups now suppress later family-level replacement passes, which prevents accidental mutations such as `cambia OIC Standard por OIC Enterprise ...` rewriting `Base Database Service Enterprise` into `Standard`
+- `Oracle Integration Cloud Standard` persisted follow-ups now also cover the reverse `BYOL -> License Included` license flip, so the family can now round-trip both license modes symmetrically on active quotes
+- pricing-dimension discovery guardrails now also explicitly cover `OCI Monitoring Retrieval` prompts with datapoint volumes, so those questions remain in `product_discovery` instead of being mis-promoted into deterministic quote flows
 - active-quote variant parity now also covers family-owned variant swaps for:
   - `OCI Data Safe` (`Database Cloud Service <-> On-Premises Databases`)
   - `OCI Log Analytics` (`Active Storage <-> Archival Storage`)
@@ -302,14 +308,16 @@ Reference:
 
 Current test baseline:
 
-- assistant follow-up regression suite: `148 pass / 0 fail`
+- assistant follow-up regression suite: `151 pass / 0 fail`
+- platform follow-up regression suite: `35 pass / 0 fail`
+- routing/discovery regression suite: `50 pass / 0 fail`
 - service-families metadata suite: `15 pass / 0 fail`
 - rule-registry artifact suite: `3 pass / 0 fail`
 - session follow-up helper suite: `9 pass / 0 fail`
 - workbook-focused suite: `40 pass / 0 fail`
 - parity suite: `154 pass / 0 fail`
 - quote export endpoint suite: `3 pass / 0 fail`
-- full server suite in sandbox: `760 pass / 0 fail`
+- full server suite in sandbox: `765 pass / 0 fail`
 
 This is the operational baseline at the time of this documentation update.
 
@@ -319,9 +327,18 @@ Most recently closed conservative slices:
 - workbook-origin and RVTools-origin follow-up coverage now also includes shared `FastConnect + Health Checks + DNS` bundles where `DNS` query-volume changes mutate only the `DNS` segment while preserving neighboring `FastConnect`, neighboring `Health Checks`, and the surrounding compute/storage quote context
 - workbook-origin and RVTools-origin follow-up coverage now also includes shared `FastConnect + Health Checks + DNS` bundles where `DNS` removal preserves neighboring `FastConnect`, neighboring `Health Checks`, and the surrounding compute/storage quote context
 - workbook-origin and RVTools-origin follow-up coverage now also includes shared `Load Balancer + DNS` bundles where `DNS` query-volume changes mutate only the `DNS` segment while preserving neighboring `Flexible Load Balancer` and the surrounding compute/storage quote context
+- workbook-origin and RVTools-origin follow-up coverage now also includes shared `Load Balancer + DNS` bundles where removing `DNS` preserves neighboring `Flexible Load Balancer` and the surrounding compute/storage quote context
+- workbook-origin and RVTools-origin follow-up coverage now also includes shared `Load Balancer + DNS` bundles where removing `Load Balancer` preserves neighboring `DNS` and the surrounding compute/storage quote context
 - workbook-origin and RVTools-origin follow-up coverage now also includes shared `Load Balancer + Monitoring Retrieval` bundles where `Load Balancer` bandwidth changes mutate only the `Load Balancer` segment while preserving neighboring `Monitoring Retrieval` and the surrounding compute/storage quote context
 - workbook-origin and RVTools-origin follow-up coverage now also includes shared `Load Balancer + Health Checks` bundles where removing `Load Balancer` preserves neighboring `Health Checks` and the surrounding compute/storage quote context
 - workbook-origin and RVTools-origin follow-up coverage now also includes shared `Load Balancer + Health Checks` bundles where removing `Health Checks` preserves neighboring `Flexible Load Balancer` and the surrounding compute/storage quote context
+- workbook-origin and RVTools-origin follow-up coverage now also includes shared `Load Balancer + Health Checks` bundles where `Load Balancer` bandwidth changes mutate only the `Load Balancer` segment while preserving neighboring `Health Checks` and the surrounding compute/storage quote context
+- persisted `Oracle Integration Cloud Standard` quotes now also have symmetric license-mode follow-up coverage for `License Included -> BYOL` and `BYOL -> License Included`
+- `OCI Monitoring Retrieval` pricing-dimension questions with explicit datapoint volumes now also have regression coverage proving they stay in `product_discovery` instead of being emitted as deterministic quotes
+- natural Spanish prerequisite prompts such as `Antes de cotizar ... que informacion necesito?` now also have regression coverage proving they stay in `product_discovery` even when the controller arrives as `quote_request`
+- hybrid prompts such as `Ayudame a cotizar ... que datos faltan?` now also have regression coverage proving they stay in `product_discovery` even when the controller arrives as `quote_request`
+- active-quote conceptual pricing and SKU questions now also have regression coverage proving they answer without mutating the persisted quote source
+- colloquial extraction prompts for `memoria`, `almacenamiento`, `usuarios`, and `instancias de WAF` now also have direct normalization coverage so those signals are preserved before quote shaping
 
 ## What Is Explicitly Closed
 
@@ -379,6 +396,7 @@ Recently advanced:
 - added deterministic parity for a `Database Cloud Service + OIC Standard BYOL + OAC Professional + Monitoring Retrieval + Monitoring Ingestion` bundle
 - added deterministic parity for a `Base Database BYOL + File Storage + Archive Storage + Infrequent Access retrieval + Monitoring Ingestion` bundle
 - added deterministic parity for a `Load Balancer + WAF + API Gateway + DNS + Health Checks + Notifications` serverless edge/security bundle
+- added deterministic parity for a `Network Firewall + WAF + Load Balancer + DNS + Health Checks` composite edge/security bundle
 - added deterministic parity for a `Base Database BYOL + OIC Standard BYOL + OAC Professional BYOL OCPU + FastConnect` transport-platform bundle
 - added deterministic parity for a `Database Cloud Service BYOL + OIC Enterprise BYOL + OAC Professional BYOL OCPU + Object Storage` platform bundle
 - added deterministic parity for an `Exadata Dedicated + OIC Standard + OAC Enterprise + File Storage + FastConnect` storage-heavy platform bundle
