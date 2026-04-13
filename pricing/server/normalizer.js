@@ -192,7 +192,7 @@ function extractStructuredInputs(text) {
     /(\d[\d,]*(?:\.\d+)?)\s*mb\b/i,
   ]);
   const users = matchNumber(source, [
-    /(\d[\d,]*(?:\.\d+)?)\s*(?:users?|named users?|usuarios?)\b/i,
+    /(\d[\d,]*(?:\.\d+)?)([kmb])?\s*(?:users?|named users?|usuarios?)\b/i,
   ]);
   const firewallInstances = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*firewalls?\b/i,
@@ -204,20 +204,22 @@ function extractStructuredInputs(text) {
     /(\d[\d,]*(?:\.\d+)?)\s*polic(?:y|ies)\b/i,
   ]);
   const dataProcessedGb = matchNumber(source, [
-    /(\d[\d,]*(?:\.\d+)?)\s*gb\b[^\n,.;]*processed per hour/i,
-    /(\d[\d,]*(?:\.\d+)?)\s*gb\b[^\n,.;]*data processed/i,
-    /data processed[^\d]*(\d[\d,]*(?:\.\d+)?)\s*gb\b/i,
-    /processed[^\d]*(\d[\d,]*(?:\.\d+)?)\s*gb\b[^\n,.;]*per hour/i,
-    /(\d[\d,]*(?:\.\d+)?)\s*gb\b[^\n,.;]*(?:traffic|throughput)/i,
+    /(\d[\d,]*(?:\.\d+)?)([kmb])?\s*gb\b[^\n,.;]*processed per hour/i,
+    /(\d[\d,]*(?:\.\d+)?)([kmb])?\s*gb\b[^\n,.;]*data processed/i,
+    /data processed[^\d]*(\d[\d,]*(?:\.\d+)?)([kmb])?\s*gb\b/i,
+    /processed[^\d]*(\d[\d,]*(?:\.\d+)?)([kmb])?\s*gb\b[^\n,.;]*per hour/i,
+    /(\d[\d,]*(?:\.\d+)?)([kmb])?\s*gb\b[^\n,.;]*(?:traffic|throughput|tr[aá]fico)/i,
+    /(?:traffic|throughput|tr[aá]fico)[^\d]*(\d[\d,]*(?:\.\d+)?)([kmb])?\s*gb\b/i,
   ]);
   const requestCount = matchNumber(source, [
-    /(\d[\d,]*(?:\.\d+)?)\s*(?:requests?|api calls?|transactions?|queries?|emails?|messages?|sms(?: messages?)?|tokens?|datapoints?|events?|delivery operations?)\b/i,
+    /(\d[\d,]*(?:\.\d+)?)([kmb])?\s*(?:requests?|reqs?|api calls?|transactions?|queries?|consultas?|solicitudes?|peticiones?|emails?|messages?|sms(?: messages?)?|tokens?|datapoints?|events?|delivery operations?)\b/i,
   ]);
   const gpus = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*gpus?\b/i,
   ]);
   const quantity = matchNumber(source, [
-    /(\d[\d,]*(?:\.\d+)?)\s*(?:(?:managed|target)\s+)?(?:databases?|devices?|stations?|jobs?|resources?|nodes?|clusters?|models?|endpoints?|gpus?)\b/i,
+    /(\d[\d,]*(?:\.\d+)?)([kmb])?\s*recursos?\s+administrados?\b/i,
+    /(\d[\d,]*(?:\.\d+)?)([kmb])?\s*(?:(?:managed|target)\s+)?(?:databases?|devices?|stations?|jobs?|resources?|nodes?|nodos?|clusters?|models?|endpoints?|gpus?)\b/i,
   ]);
   const executionHours = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*execution hours?\b/i,
@@ -230,7 +232,7 @@ function extractStructuredInputs(text) {
     /(\d[\d,]*(?:\.\d+)?)\s*minutes?\s+of output media content\b/i,
   ]);
   const workspaceCount = matchNumber(source, [
-    /(\d[\d,]*(?:\.\d+)?)\s*workspaces?\b/i,
+    /(\d[\d,]*(?:\.\d+)?)([kmb])?\s*(?:workspaces?|espacios?\s+de\s+trabajo)\b/i,
   ]);
   const provisionedConcurrencyUnits = matchNumber(source, [
     /(\d[\d,]*(?:\.\d+)?)\s*provisioned concurrency/i,
@@ -430,9 +432,19 @@ function isCompositeOrComparisonRequest(text) {
 function matchNumber(source, patterns) {
   for (const pattern of patterns) {
     const match = String(source || '').match(pattern);
-    if (match) return Number(String(match[1]).replace(/,/g, ''));
+    if (match) return parseCapturedNumber(match[1], match[2]);
   }
   return null;
+}
+
+function parseCapturedNumber(rawNumber, rawMagnitude = '') {
+  const base = Number(String(rawNumber || '').replace(/,/g, ''));
+  if (!Number.isFinite(base)) return null;
+  const magnitude = String(rawMagnitude || '').trim().toLowerCase();
+  if (magnitude === 'k') return base * 1000;
+  if (magnitude === 'm') return base * 1000000;
+  if (magnitude === 'b') return base * 1000000000;
+  return base;
 }
 
 function matchText(source, patterns, transform = (value) => value) {

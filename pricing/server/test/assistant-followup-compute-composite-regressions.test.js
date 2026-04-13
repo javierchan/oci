@@ -5522,6 +5522,44 @@ test('session follow-up can change query volume in the active DNS quote', async 
   assert.ok(line);
 });
 
+test('session follow-up can change query volume in the active DNS quote with spanish consultas wording', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'networking',
+    serviceName: 'OCI DNS',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '7m consultas por mes',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote OCI DNS 5000000 queries per month',
+        label: 'OCI DNS',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b7000000 queries per month\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B88525');
+  assert.ok(line);
+  assert.equal(Number(line.quantity) > 0, true);
+});
+
 test('session follow-up can change API call volume in the active API Gateway quote', async () => {
   const index = buildIndex();
   const { respondToAssistant } = loadAssistantWithStubs((text) => ({
@@ -5557,6 +5595,85 @@ test('session follow-up can change API call volume in the active API Gateway quo
   assert.match(reply.sessionContext.lastQuote.source, /\b12000000 API calls per month\b/i);
   const line = reply.quote.lineItems.find((item) => item.partNumber === 'B92072');
   assert.ok(line);
+});
+
+test('session follow-up can change API call volume in the active API Gateway quote with spanish solicitudes wording', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'networking',
+    serviceName: 'API Gateway',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '2m solicitudes por mes',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote API Gateway 5000000 API calls per month',
+        label: 'API Gateway',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b2000000 API calls per month\b/i);
+  const line = reply.quote.lineItems.find((item) => item.partNumber === 'B92072');
+  assert.ok(line);
+  assert.equal(Number(line.quantity) > 0, true);
+});
+
+test('session follow-up can change request volume in the active WAF quote with spanish peticiones wording', async () => {
+  const index = buildIndex();
+  const { respondToAssistant } = loadAssistantWithStubs((text) => ({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: text,
+    assumptions: [],
+    serviceFamily: 'security_waf',
+    serviceName: 'Web Application Firewall',
+    extractedInputs: {},
+    confidence: 0.95,
+    annualRequested: false,
+    normalizedRequest: text,
+  }));
+
+  const reply = await respondToAssistant({
+    cfg: {},
+    index,
+    conversation: [],
+    userText: '1.5m peticiones por mes',
+    sessionContext: {
+      lastQuote: {
+        source: 'Quote Web Application Firewall with 2 instances and 50000000 requests per month',
+        label: 'Web Application Firewall',
+      },
+    },
+  });
+
+  assert.equal(reply.ok, true);
+  assert.equal(reply.mode, 'quote');
+  assert.match(reply.sessionContext.lastQuote.source, /\b1500000 requests per month\b/i);
+  assert.match(reply.sessionContext.lastQuote.source, /\b2 instances\b/i);
+  assert.match(reply.message, /B94579/);
+  assert.match(reply.message, /B94277/);
+  const requestLine = reply.quote.lineItems.find((item) => item.partNumber === 'B94277');
+  assert.ok(requestLine);
+  assert.equal(Number(requestLine.quantity) > 0, true);
 });
 
 test('session follow-up can change email volume in the active Email Delivery quote', async () => {

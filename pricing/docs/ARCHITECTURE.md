@@ -4,6 +4,13 @@
 
 `pricing` is a deterministic OCI pricing engine with a natural-language assistant on top.
 
+Document role:
+
+- this file is the source of truth for architectural intent and stable runtime contracts
+- sequencing lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/EXECUTION_PLAN.md)
+- validated runtime coverage state lives in [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md)
+- the full docs map lives in [Docs Guide](/Users/javierchan/Documents/GitHub/oci/pricing/docs/README.md)
+
 The design target is:
 
 1. Understand human input with `GenAI + structured product context`
@@ -88,6 +95,26 @@ This architecture is **implemented and in active hardening**, not a prototype.
 - `quotePlan` formalizes the next action
 - deterministic engine calculates
 - assistant explains without altering totals
+
+## Stable Contracts
+
+These contracts should change rarely and deliberately:
+
+- deterministic pricing remains the source of truth for quote totals and line-item composition
+- `GenAI` may interpret, clarify, and explain, but it must not invent arithmetic, SKUs, or unsupported license assumptions
+- session state is server-authoritative
+- workbook and RVTools follow-ups are resolved from backend-owned context, not from client-only state
+- quote export is derived from persisted deterministic quote state
+
+## Evolving Areas
+
+These areas are intentionally still being hardened:
+
+- family metadata depth and capability coverage
+- discovery and explanation structure
+- active-quote follow-up breadth across more families
+- parity breadth for larger mixed OCI bundles
+- operational hardening such as observability, startup resilience, and concurrency safeguards
 
 ## Sources Of Truth
 

@@ -110,6 +110,9 @@ test('clarification follow-up detects session quote follow-up prompts conservati
   assert.equal(isSessionQuoteFollowUp('add 2 instances'), true);
   assert.equal(isSessionQuoteFollowUp('capacity reservation 0.7'), true);
   assert.equal(isSessionQuoteFollowUp('VM.Standard.E5.Flex'), true);
+  assert.equal(isSessionQuoteFollowUp('7m consultas por mes'), true);
+  assert.equal(isSessionQuoteFollowUp('2m solicitudes por mes'), true);
+  assert.equal(isSessionQuoteFollowUp('1.5m peticiones por mes'), true);
   assert.equal(isSessionQuoteFollowUp('tell me about OIC billing dimensions in general'), false);
 });
 

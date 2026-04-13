@@ -2232,6 +2232,24 @@ test('calculator parity: base database integration analytics security bundle kee
   assert.match(quote.markdown, /B90925/);
 });
 
+test('calculator parity: base database integration analytics workspace storage bundle keeps database and shared platform lines aligned', () => {
+  const index = buildCalculatorIndex();
+  const quote = quoteFromPrompt(
+    index,
+    'Quote Base Database Service Enterprise License Included 4 OCPUs and 1000 GB storage plus Oracle Integration Cloud Standard License Included 2 instances 744h/month plus Oracle Analytics Cloud Enterprise 50 users plus OCI Data Integration workspace usage 2 workspaces 744h/month plus File Storage 5 TB and 10 performance units per GB per month',
+  );
+
+  assert.equal(quote.ok, true);
+  assertWithin(quote.totals.monthly, 23433.6152, 0.1);
+  assert.match(quote.markdown, /B90570/);
+  assert.match(quote.markdown, /B111584/);
+  assert.match(quote.markdown, /B89639/);
+  assert.match(quote.markdown, /B92683/);
+  assert.match(quote.markdown, /B92598/);
+  assert.match(quote.markdown, /B89057/);
+  assert.match(quote.markdown, /B109546/);
+});
+
 test('calculator parity: base database BYOL transport platform bundle keeps database analytics integration and network lines aligned', () => {
   const index = buildCalculatorIndex();
   const quote = quoteFromPrompt(
@@ -2275,6 +2293,22 @@ test('calculator parity: Database Cloud Service BYOL ocpu platform bundle keeps 
   assert.match(quote.markdown, /B88404/);
   assert.match(quote.markdown, /B89644/);
   assert.match(quote.markdown, /B89636/);
+  assert.match(quote.markdown, /B91628/);
+});
+
+test('calculator parity: Database Cloud Service BYOL integration analytics data-processing storage bundle keeps shared platform lines aligned', () => {
+  const index = buildCalculatorIndex();
+  const quote = quoteFromPrompt(
+    index,
+    'Quote Database Cloud Service BYOL 8 OCPUs plus Oracle Integration Cloud Enterprise BYOL 2 instances 744h/month plus Oracle Analytics Cloud Professional BYOL 2 OCPUs 744h/month plus OCI Data Integration 150 GB processed per hour for 744h/month plus Object Storage 10 TB per month',
+  );
+
+  assert.equal(quote.ok, true);
+  assertWithin(quote.totals.monthly, 7113.6576, 0.1);
+  assert.match(quote.markdown, /B88404/);
+  assert.match(quote.markdown, /B89644/);
+  assert.match(quote.markdown, /B89636/);
+  assert.match(quote.markdown, /B92599/);
   assert.match(quote.markdown, /B91628/);
 });
 

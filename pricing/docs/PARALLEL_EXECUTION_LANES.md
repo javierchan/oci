@@ -4,6 +4,14 @@
 
 Define a safe parallel execution model for the current `pricing` stage.
 
+Document role:
+
+- this file is the source of truth for safe concurrency topology, ownership lanes, and collision control
+- it does not define what product slice should be executed next
+- that sequencing lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/EXECUTION_PLAN.md)
+- delegation policy lives in [Sub-Agent Strategy](/Users/javierchan/Documents/GitHub/oci/pricing/docs/SUBAGENT_STRATEGY.md)
+- the full docs map lives in [Docs Guide](/Users/javierchan/Documents/GitHub/oci/pricing/docs/README.md)
+
 This document is deliberately conservative.
 
 Its job is not to maximize raw throughput.

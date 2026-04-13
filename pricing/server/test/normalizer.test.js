@@ -612,3 +612,194 @@ test('normalizer extracts spanish storage wording in tb units', () => {
 
   assert.equal(result.extractedInputs.capacityGb, 2048);
 });
+
+test('normalizer extracts compact request counts from reqs abbreviation', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote Web Application Firewall con 250k reqs por mes y 2 instancias de WAF',
+    assumptions: [],
+    serviceFamily: 'security_waf',
+    serviceName: 'Web Application Firewall',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote Web Application Firewall con 250k reqs por mes y 2 instancias de WAF');
+
+  assert.equal(result.extractedInputs.requestCount, 250000);
+  assert.equal(result.extractedInputs.wafInstances, 2);
+});
+
+test('normalizer extracts compact query counts from dns prompts', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote DNS con 10k queries por mes',
+    assumptions: [],
+    serviceFamily: 'network_dns',
+    serviceName: 'OCI DNS',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote DNS con 10k queries por mes');
+
+  assert.equal(result.extractedInputs.requestCount, 10000);
+});
+
+test('normalizer preserves spanish ancho de banda extraction', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote Load Balancer con ancho de banda de 300 Mbps',
+    assumptions: [],
+    serviceFamily: 'network_load_balancer',
+    serviceName: 'Load Balancer',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote Load Balancer con ancho de banda de 300 Mbps');
+
+  assert.equal(result.extractedInputs.bandwidthMbps, 300);
+});
+
+test('normalizer extracts compact spanish traffic phrasing for processed data', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote Network Firewall con 2.5m GB de trafico',
+    assumptions: [],
+    serviceFamily: 'security_network_firewall',
+    serviceName: 'Network Firewall',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote Network Firewall con 2.5m GB de trafico');
+
+  assert.equal(result.extractedInputs.dataProcessedGb, 2500000);
+});
+
+test('normalizer extracts spanish managed resources wording from fleet prompts', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote Fleet Application Management 8 recursos administrados por mes',
+    assumptions: [],
+    serviceFamily: 'ops_fleet_application_management',
+    serviceName: 'Fleet Application Management',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote Fleet Application Management 8 recursos administrados por mes');
+
+  assert.equal(result.extractedInputs.quantity, 8);
+});
+
+test('normalizer extracts spanish workspace wording from data integration prompts', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote OCI Data Integration workspace usage 3 espacios de trabajo 744h/month',
+    assumptions: [],
+    serviceFamily: 'integration_data_integration_workspace',
+    serviceName: 'OCI Data Integration Workspace Usage',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote OCI Data Integration workspace usage 3 espacios de trabajo 744h/month');
+
+  assert.equal(result.extractedInputs.workspaceCount, 3);
+});
+
+test('normalizer extracts spanish node wording from generic quantity prompts', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote cluster HPC con 4 nodos',
+    assumptions: [],
+    serviceFamily: 'compute_hpc',
+    serviceName: 'HPC Cluster',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote cluster HPC con 4 nodos');
+
+  assert.equal(result.extractedInputs.quantity, 4);
+});
+
+test('normalizer extracts spanish consultas wording for dns request volume', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote DNS con 700k consultas por mes',
+    assumptions: [],
+    serviceFamily: 'network_dns',
+    serviceName: 'OCI DNS',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote DNS con 700k consultas por mes');
+
+  assert.equal(result.extractedInputs.requestCount, 700000);
+});
+
+test('normalizer extracts spanish solicitudes wording for api gateway volume', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote API Gateway con 2m solicitudes por mes',
+    assumptions: [],
+    serviceFamily: 'network_api_gateway',
+    serviceName: 'API Gateway',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote API Gateway con 2m solicitudes por mes');
+
+  assert.equal(result.extractedInputs.requestCount, 2000000);
+});
+
+test('normalizer extracts spanish peticiones wording for waf request volume', () => {
+  const result = normalizeIntentResult({
+    intent: 'quote',
+    shouldQuote: true,
+    needsClarification: false,
+    clarificationQuestion: '',
+    reformulatedRequest: 'Quote Web Application Firewall con 1.5m peticiones por mes',
+    assumptions: [],
+    serviceFamily: 'security_waf',
+    serviceName: 'Web Application Firewall',
+    extractedInputs: {},
+    confidence: 0.8,
+    annualRequested: false,
+    quotePlan: {},
+  }, 'Quote Web Application Firewall con 1.5m peticiones por mes');
+
+  assert.equal(result.extractedInputs.requestCount, 1500000);
+});

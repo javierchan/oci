@@ -4,6 +4,13 @@
 
 This document is the operational roadmap for the `pricing` agent.
 
+Document role:
+
+- this file is the source of truth for validated coverage posture, coverage gaps, and runtime test baselines
+- tactical sequencing lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/EXECUTION_PLAN.md)
+- architecture intent lives in [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ARCHITECTURE.md)
+- the full docs map lives in [Docs Guide](/Users/javierchan/Documents/GitHub/oci/pricing/docs/README.md)
+
 Use it to answer:
 
 - what is already implemented
@@ -97,6 +104,10 @@ Implemented:
 - route normalization now also covers natural Spanish prerequisite and quote-preparation phrasings so they stay in `product_discovery` instead of falling through to generic answer or quote flows
 - route normalization now also covers hybrid quote-lead prompts that really ask for missing inputs first, and active-quote conceptual pricing questions no longer force `quote_followup` mutation paths
 - structured extraction now also covers low-risk colloquial Spanish wording for `memoria`, `almacenamiento`, `usuarios`, and `instancias de WAF`
+- structured extraction now also covers low-risk compact usage phrasing such as `reqs`, `10k queries`, and `2.5m GB de trafico`, while preserving explicit `ancho de banda` phrasing through regression coverage
+- structured extraction now also covers low-risk Spanish quantity wording for `recursos administrados`, `espacios de trabajo`, and `nodos`, while reusing the existing `quantity` and `workspaceCount` fields instead of introducing new parsing branches
+- structured extraction now also covers low-risk Spanish transactional wording for `consultas`, `solicitudes`, and `peticiones`, reusing the existing `requestCount` field instead of adding service-specific parsing paths
+- active-quote follow-ups now also accept low-risk Spanish transactional phrasing for selected families, beginning with DNS, API Gateway, and WAF request-volume updates that are normalized back into canonical quote text before deterministic pricing runs
 - safer unsupported-service replies when deterministic pricing should not run
 
 Reference:
@@ -249,6 +260,8 @@ Implemented:
 - parity now also covers Autonomous AI Lakehouse and Autonomous AI Transaction Processing bundles that mix Data Integration, firewall, load balancer, DNS, monitoring, notifications, and health checks
 - parity now also covers an analytics/integration transport bundle that combines Oracle Integration Cloud, Oracle Analytics Cloud, OCI Data Integration workspace usage, FastConnect, and Log Analytics archival storage
 - parity now also covers a Base Database platform bundle that combines Base Database Service, Oracle Integration Cloud, Oracle Analytics Cloud, Data Safe, and monitoring ingestion in one deterministic request
+- parity now also covers a Base Database workspace-and-storage platform bundle that combines Base Database Service, Oracle Integration Cloud, Oracle Analytics Cloud, OCI Data Integration workspace usage, and File Storage in one deterministic request
+- parity now also covers a Database Cloud Service BYOL data-processing platform bundle that combines Database Cloud Service, Oracle Integration Cloud, Oracle Analytics Cloud, OCI Data Integration processed throughput, and Object Storage in one deterministic request
 - parity now also covers an autonomous storage bundle that combines Autonomous AI Lakehouse, autonomous database storage, Object Storage, Log Analytics archival storage, and Notifications HTTPS delivery
 - parity now also covers a serverless edge/security bundle that combines load balancer, WAF, API Gateway, DNS, health checks, and Notifications HTTPS delivery
 - parity now also covers a mixed observability stack that combines monitoring ingestion, monitoring retrieval, notifications HTTPS delivery, and log analytics archival storage
@@ -308,21 +321,27 @@ Reference:
 
 Current test baseline:
 
-- assistant follow-up regression suite: `151 pass / 0 fail`
+- assistant follow-up regression suite: `155 pass / 0 fail`
 - platform follow-up regression suite: `35 pass / 0 fail`
-- routing/discovery regression suite: `50 pass / 0 fail`
+- routing/discovery regression suite: `53 pass / 0 fail`
 - service-families metadata suite: `15 pass / 0 fail`
 - rule-registry artifact suite: `3 pass / 0 fail`
 - session follow-up helper suite: `9 pass / 0 fail`
+- assistant session/context helper suite: `6 pass / 0 fail`
+- composite quote segmentation helper suite: `5 pass / 0 fail`
+- composite quote builder helper suite: `5 pass / 0 fail`
+- assistant quote rendering helper suite: `3 pass / 0 fail`
+- assistant quote narrative helper suite: `5 pass / 0 fail`
 - workbook-focused suite: `40 pass / 0 fail`
-- parity suite: `154 pass / 0 fail`
+- parity suite: `157 pass / 0 fail`
 - quote export endpoint suite: `3 pass / 0 fail`
-- full server suite in sandbox: `765 pass / 0 fail`
+- full server suite in sandbox: `832 pass / 0 fail`
 
 This is the operational baseline at the time of this documentation update.
 
 Most recently closed conservative slices:
 
+- deterministic narrative/profile shaping now has its own helper boundary in `assistant-quote-narrative.js`, with focused coverage for profile inference, expert-summary shaping, considerations fallback, consumption explanation grouping, and assistant-facing money formatting
 - workbook-origin and RVTools-origin follow-up coverage now also includes shared `FastConnect + Monitoring Retrieval + DNS` bundles where `DNS` query-volume changes mutate only the `DNS` segment while preserving neighboring `FastConnect`, neighboring `Monitoring Retrieval`, and the surrounding compute/storage quote context
 - workbook-origin and RVTools-origin follow-up coverage now also includes shared `FastConnect + Health Checks + DNS` bundles where `DNS` query-volume changes mutate only the `DNS` segment while preserving neighboring `FastConnect`, neighboring `Health Checks`, and the surrounding compute/storage quote context
 - workbook-origin and RVTools-origin follow-up coverage now also includes shared `FastConnect + Health Checks + DNS` bundles where `DNS` removal preserves neighboring `FastConnect`, neighboring `Health Checks`, and the surrounding compute/storage quote context
@@ -338,7 +357,19 @@ Most recently closed conservative slices:
 - natural Spanish prerequisite prompts such as `Antes de cotizar ... que informacion necesito?` now also have regression coverage proving they stay in `product_discovery` even when the controller arrives as `quote_request`
 - hybrid prompts such as `Ayudame a cotizar ... que datos faltan?` now also have regression coverage proving they stay in `product_discovery` even when the controller arrives as `quote_request`
 - active-quote conceptual pricing and SKU questions now also have regression coverage proving they answer without mutating the persisted quote source
+- compact usage prompts such as `250k reqs`, `10k queries`, and `2.5m GB de trafico` now also have regression coverage proving those values survive normalization into structured quote inputs
+- Spanish `ancho de banda` phrasing now also has explicit extraction coverage, so existing bandwidth parsing remains pinned as future normalization slices land
+- Spanish quantity prompts such as `8 recursos administrados`, `3 espacios de trabajo`, and `4 nodos` now also have regression coverage proving those values survive normalization into the existing quote input fields
+- Spanish transactional prompts such as `700k consultas`, `2m solicitudes`, and `1.5m peticiones` now also have regression coverage proving those values survive normalization into the existing `requestCount` field
+- active Spanish follow-ups such as `7m consultas por mes`, `2m solicitudes por mes`, and `1.5m peticiones por mes` now also have regression coverage proving the active quote is mutated instead of restarted and that the resulting prompt stays canonical for deterministic pricing
 - colloquial extraction prompts for `memoria`, `almacenamiento`, `usuarios`, and `instancias de WAF` now also have direct normalization coverage so those signals are preserved before quote shaping
+- low-risk assistant helper extraction now also has direct unit coverage for registry-query shaping and quote-assumption filtering, reducing assistant-owned surface area without changing runtime quote behavior
+- low-risk assistant helper extraction now also covers reusable service-unavailable response shaping, flex-comparison parsing/context helpers, and session/context shaping without changing deterministic quote behavior
+- assistant-owned session state shaping now has direct helper coverage for quote summarization, export payload generation, clarification persistence, and session-summary rendering
+- assistant-owned composite bundle parsing now also has direct helper coverage for service-signal detection, segment splitting, shared-hours propagation, and segment normalization without changing deterministic bundle totals
+- assistant-owned composite deterministic quote assembly now also has direct helper coverage for canonical fallback selection, preferred-quote selection, and mixed-bundle composition without changing deterministic bundle totals
+- assistant-owned deterministic quote rendering now also has direct helper coverage for markdown table rendering and assistant-specific numeric formatting without changing quote output semantics
+- low-risk assistant helper extraction now also has direct unit coverage for the reusable service-unavailable fallback message, reducing assistant-owned surface area without changing discovery or intent fallback behavior
 
 ## What Is Explicitly Closed
 
@@ -399,6 +430,8 @@ Recently advanced:
 - added deterministic parity for a `Network Firewall + WAF + Load Balancer + DNS + Health Checks` composite edge/security bundle
 - added deterministic parity for a `Base Database BYOL + OIC Standard BYOL + OAC Professional BYOL OCPU + FastConnect` transport-platform bundle
 - added deterministic parity for a `Database Cloud Service BYOL + OIC Enterprise BYOL + OAC Professional BYOL OCPU + Object Storage` platform bundle
+- added deterministic parity for a `Base Database + OIC Standard + OAC Enterprise + OCI Data Integration workspace + File Storage` platform bundle
+- added deterministic parity for a `Database Cloud Service BYOL + OIC Enterprise BYOL + OAC Professional BYOL OCPU + OCI Data Integration processed throughput + Object Storage` platform bundle
 - added deterministic parity for an `Exadata Dedicated + OIC Standard + OAC Enterprise + File Storage + FastConnect` storage-heavy platform bundle
 - added workbook aggregate regression coverage for `RVTools-derived compute + FastConnect + Monitoring Retrieval`
 - added workbook aggregate regression coverage for `guided inventory AMD workloads + Flexible Load Balancer + Health Checks`

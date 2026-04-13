@@ -185,8 +185,15 @@ const SERVICE_FAMILIES = [
       },
       replaceWithinActiveQuote: [
         {
-          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*queries?\b(?:\s+per\s+month)?/i,
-          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*queries?\b(?:\s+per\s+month)?/i,
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?(?:[kmb])?\s*(?:queries?|consultas?)\b(?:\s+(?:per|por)\s+month|\s+por\s+mes)?/i,
+          apply(nextPrompt, sourceMatch) {
+            const amount = normalizeFollowUpCountToken(sourceMatch);
+            if (!amount) return nextPrompt;
+            if (/\b\d[\d,]*(?:\.\d+)?(?:[kmb])?\s*queries?\b(?:\s+per\s+month)?/i.test(nextPrompt)) {
+              return nextPrompt.replace(/\b\d[\d,]*(?:\.\d+)?(?:[kmb])?\s*queries?\b(?:\s+per\s+month)?/i, `${amount} queries per month`);
+            }
+            return `${String(nextPrompt || '').trim()} ${amount} queries per month`.trim();
+          },
         },
       ],
     },
@@ -1392,6 +1399,17 @@ const SERVICE_FAMILIES = [
       },
       replaceWithinActiveQuote: [
         {
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?(?:[kmb])?\s*(?:requests?|solicitudes?|peticiones?)\b(?:\s+(?:per|por)\s+month|\s+por\s+mes)?/i,
+          apply(nextPrompt, sourceMatch) {
+            const amount = normalizeFollowUpCountToken(sourceMatch);
+            if (!amount) return nextPrompt;
+            if (/\b\d[\d,]*(?:\.\d+)?(?:[kmb])?\s*requests?\b(?:\s+per\s+month)?/i.test(nextPrompt)) {
+              return nextPrompt.replace(/\b\d[\d,]*(?:\.\d+)?(?:[kmb])?\s*requests?\b(?:\s+per\s+month)?/i, `${amount} requests per month`);
+            }
+            return `${String(nextPrompt || '').trim()} ${amount} requests per month`.trim();
+          },
+        },
+        {
           sourcePattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
           targetPattern: /\b\d+(?:\.\d+)?\s*(?:instances?|instancias?)\b/i,
         },
@@ -1453,8 +1471,15 @@ const SERVICE_FAMILIES = [
       },
       replaceWithinActiveQuote: [
         {
-          sourcePattern: /\b\d[\d,]*(?:\.\d+)?\s*api calls?\b(?:\s+per\s+month)?/i,
-          targetPattern: /\b\d[\d,]*(?:\.\d+)?\s*api calls?\b(?:\s+per\s+month)?/i,
+          sourcePattern: /\b\d[\d,]*(?:\.\d+)?(?:[kmb])?\s*(?:api calls?|solicitudes?|peticiones?)\b(?:\s+(?:per|por)\s+month|\s+por\s+mes)?/i,
+          apply(nextPrompt, sourceMatch) {
+            const amount = normalizeFollowUpCountToken(sourceMatch);
+            if (!amount) return nextPrompt;
+            if (/\b\d[\d,]*(?:\.\d+)?(?:[kmb])?\s*api calls?\b(?:\s+per\s+month)?/i.test(nextPrompt)) {
+              return nextPrompt.replace(/\b\d[\d,]*(?:\.\d+)?(?:[kmb])?\s*api calls?\b(?:\s+per\s+month)?/i, `${amount} API calls per month`);
+            }
+            return `${String(nextPrompt || '').trim()} ${amount} API calls per month`.trim();
+          },
         },
       ],
     },
@@ -1902,6 +1927,26 @@ function classifyDomain(name) {
 function numberLike(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+}
+
+function normalizeFollowUpCountToken(sourceMatch) {
+  const token = String(sourceMatch || '').match(/\b\d[\d,]*(?:\.\d+)?(?:[kmb])?\b/i)?.[0];
+  if (!token) return '';
+  const parsed = parseCompactNumberToken(token);
+  return parsed === null ? '' : String(parsed);
+}
+
+function parseCompactNumberToken(value) {
+  const token = String(value || '').trim().toLowerCase();
+  const match = token.match(/^(\d[\d,]*(?:\.\d+)?)([kmb])?$/i);
+  if (!match) return null;
+  const base = Number(String(match[1] || '').replace(/,/g, ''));
+  if (!Number.isFinite(base)) return null;
+  const magnitude = String(match[2] || '').toLowerCase();
+  if (magnitude === 'k') return base * 1000;
+  if (magnitude === 'm') return base * 1000000;
+  if (magnitude === 'b') return base * 1000000000;
+  return base;
 }
 
 function detectLicenseMode(source) {

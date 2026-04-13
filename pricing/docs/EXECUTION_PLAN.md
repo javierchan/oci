@@ -4,6 +4,13 @@
 
 This document turns the current `pricing` roadmap into an executable work plan.
 
+Document role:
+
+- this file is the source of truth for tactical sequencing, active priorities, and exit criteria
+- architecture intent lives in [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ARCHITECTURE.md)
+- validated runtime coverage state lives in [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md)
+- the full docs map lives in [Docs Guide](/Users/javierchan/Documents/GitHub/oci/pricing/docs/README.md)
+
 Use it to answer:
 
 - what to do next
@@ -15,6 +22,12 @@ This plan is intentionally tactical. It complements:
 
 - [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md)
 - [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ARCHITECTURE.md)
+
+## How To Use This Plan
+
+- use `Next Concrete Tasks`, status headings, and exit criteria as the primary navigation points
+- treat long completed-slice sections as execution traceability, not as the fastest way to find the next step
+- if a detail is already covered as validated runtime state, prefer [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md) instead of duplicating the same interpretation here
 
 ## Current Working Read
 
@@ -268,19 +281,25 @@ Completed in the current execution wave:
 - active-quote conceptual pricing questions such as `Como se cobra esto?` and generic SKU requirement questions now also stay in discovery/answer mode instead of forcing `quote_followup` mutation paths
 - colloquial Spanish extraction now also recognizes low-risk wording variants such as `memoria`, `almacenamiento`, `usuarios`, and `instancias de WAF`, so those inputs survive normalization instead of being lost before deterministic quoting
 
-Validation status as of April 12, 2026:
+Validation status as of April 13, 2026:
 
 - targeted suites for workbook, parity, assistant follow-ups, metadata, and session follow-up helpers are green
 - quote export endpoint tests are green in sandbox through the socketless export-response harness
 - current assistant follow-up regression suite result: `152 pass / 0 fail`
+- current compute/composite follow-up regression suite result: `155 pass / 0 fail`
 - platform follow-up regression suite result: `35 pass / 0 fail`
 - routing/discovery regression suite result: `53 pass / 0 fail`
 - service-families metadata suite result: `15 pass / 0 fail`
 - session follow-up helper suite result: `9 pass / 0 fail`
+- assistant session/context helper suite result: `6 pass / 0 fail`
+- composite quote segmentation helper suite result: `5 pass / 0 fail`
+- composite quote builder helper suite result: `5 pass / 0 fail`
+- assistant quote rendering helper suite result: `3 pass / 0 fail`
+- assistant quote narrative helper suite result: `5 pass / 0 fail`
 - workbook-focused suite result: `40 pass / 0 fail`
-- current parity suite result: `155 pass / 0 fail`
+- current parity suite result: `157 pass / 0 fail`
 - quote export endpoint suite result: `3 pass / 0 fail`
-- current full-suite result in sandbox: `781 pass / 0 fail`
+- current full-suite result in sandbox: `832 pass / 0 fail`
 
 Live assistant validation baseline as of April 10, 2026:
 
@@ -507,6 +526,39 @@ Recently completed in this workstream:
 - revalidated the focused interpretation lanes at `99 pass / 0 fail`, the routing/discovery regression suite at `53 pass / 0 fail`, and the full server suite at `777 pass / 0 fail` after integrating the latest hybrid-intent and active-quote guardrails
 - the next extraction slice hardened low-risk colloquial Spanish input parsing for `memoria`, `almacenamiento`, `usuarios`, and `instancias de WAF`, so those values now survive normalization into structured inputs instead of being lost before deterministic quote shaping
 - revalidated the extraction lane at `28 pass / 0 fail` and the full server suite at `781 pass / 0 fail` after integrating the latest colloquial-input normalization guards
+- the next compact-input extraction slice hardened low-risk normalization for abbreviated and magnitude-compressed usage wording, so prompts such as `250k reqs`, `10k queries`, and `2.5m GB de trafico` now survive into structured inputs instead of being dropped during normalization
+- that same slice also locked the already-working Spanish `ancho de banda` phrasing behind explicit regression coverage, so `Load Balancer con ancho de banda de 300 Mbps` remains protected as the parser evolves
+- revalidated the extraction lane at `32 pass / 0 fail`, the routing/discovery regression suite at `53 pass / 0 fail`, and the full server suite at `785 pass / 0 fail` after integrating the latest compact-input normalization guards
+- the next spanish-quantity extraction slice hardened a few still-anglophone quantity paths, so prompts such as `8 recursos administrados`, `3 espacios de trabajo`, and `4 nodos` now survive normalization into the existing structured quantity fields instead of being lost before quote shaping
+- that same slice also extended compact-number support to those quantity-oriented fields, keeping the parser consistent as the project adds more colloquial usage phrasing
+- revalidated the extraction lane at `35 pass / 0 fail`, the routing/discovery regression suite at `53 pass / 0 fail`, and the full server suite at `788 pass / 0 fail` after integrating the latest spanish-quantity normalization guards
+- the next spanish-transactional extraction slice hardened request-volume parsing for `consultas`, `solicitudes`, and `peticiones`, so Spanish transactional prompts now survive normalization into `requestCount` instead of being dropped unless the user phrased them in English
+- that same slice kept the change deliberately narrow to first-turn extraction only, preserving the existing routing/discovery guardrails while improving quote-readiness for DNS, API Gateway, WAF, and similar transactional families
+- revalidated the extraction lane at `38 pass / 0 fail`, the routing/discovery regression suite at `53 pass / 0 fail`, and the full server suite at `791 pass / 0 fail` after integrating the latest spanish-transactional normalization guards
+- the next spanish transactional follow-up slice extended active-quote mutation support for DNS, API Gateway, and WAF so short follow-ups such as `7m consultas por mes`, `2m solicitudes por mes`, and `1.5m peticiones por mes` now reuse the active quote instead of falling back to a fresh quote path
+- that same slice kept the runtime canonical internally by converting those Spanish follow-up volumes back into family-native prompt text before deterministic quoting, which preserved quote stability while widening natural-language input support
+- revalidated the focused assistant follow-up suite at `155 pass / 0 fail`, the routing/discovery regression suite at `53 pass / 0 fail`, and the full server suite at `794 pass / 0 fail` after integrating the latest spanish transactional follow-up guards
+- the next parity slice expanded mixed `database + analytics + integration` proof with a shared workspace-and-storage bundle for `Base Database Service + Oracle Integration Cloud + Oracle Analytics Cloud + OCI Data Integration + File Storage`
+- that same parity slice also expanded mixed BYOL platform proof with `Database Cloud Service + Oracle Integration Cloud + Oracle Analytics Cloud + OCI Data Integration processed throughput + Object Storage`, so both workspace-based and throughput-based integration paths are now pinned in deterministic totals
+- revalidated the parity suite at `157 pass / 0 fail`, the service-families metadata suite at `15 pass / 0 fail`, and the full server suite at `796 pass / 0 fail` after integrating the latest mixed platform parity additions
+- the next boundary-hardening slice completed the first low-risk extractions from `assistant.js`, moving registry-query shaping into `request-query-helpers.js` and assumption formatting into `quote-assumptions.js` without changing runtime behavior
+- that same slice added direct unit coverage for the extracted helpers and kept the affected routing and post-clarification flows green, confirming the extraction reduced assistant-owned surface area without altering quote behavior
+- revalidated the new helper suites, the affected routing suites, and the full server suite at `802 pass / 0 fail` after integrating the latest boundary-hardening extraction slice
+- the next boundary-hardening slice continued the same low-risk extraction track by moving `buildServiceUnavailableMessage()` into `assistant-response-helpers.js`, keeping the fallback message reusable while removing another small policy-free helper from `assistant.js`
+- that same slice added direct unit coverage for the extracted fallback helper and revalidated the intent and discovery consumers, confirming the extraction kept assistant behavior stable while shrinking inline helper surface area
+- revalidated the new fallback-helper suite, the affected intent/discovery suites, and the full server suite at `804 pass / 0 fail` after integrating the latest boundary-hardening extraction slice
+- the next boundary-hardening slice extracted the flex-comparison helper cluster into `flex-comparison-helpers.js`, removing the parsing and comparison-context support logic from `assistant.js` while keeping early-routing and post-intent behavior stable
+- that same slice added focused helper coverage and revalidated the affected routing, follow-up, flex-comparison-flow, intent, and full backend suites to confirm no regression in comparison handling
+- the next boundary-hardening slice extracted session/context shaping into `assistant-session-context.js`, moving quote summarization, export-payload shaping, and session-summary assembly out of `assistant.js` without changing server-authoritative session behavior
+- that same slice added direct unit coverage for session/context shaping and revalidated routing/discovery, composite follow-up, quote export, and the full backend suite at `814 pass / 0 fail`
+- the next boundary-hardening slice extracted composite detection and segmentation into `composite-quote-segmentation.js`, moving the parsing support for mixed-service bundles out of `assistant.js` while leaving deterministic composite assembly in place for a later bounded cut
+- that same slice added focused unit coverage for composite segmentation and revalidated bundle regressions, routing/discovery, quote export, and the full backend suite at `819 pass / 0 fail`
+- the next boundary-hardening slice extracted composite deterministic quote assembly into `composite-quote-builder.js`, moving bundle composition, canonical fallback preference, and quote-selection logic out of `assistant.js` while preserving the same deterministic collaborators
+- that same slice added focused unit coverage for composite quote assembly and revalidated direct fast paths, bundle regressions, quote-entry preparation, and the full backend suite at `824 pass / 0 fail`
+- the next boundary-hardening slice extracted the assistant-side deterministic quote rendering helpers into `assistant-quote-rendering.js`, moving markdown rendering and numeric display formatting out of `assistant.js` while keeping the assistant-specific formatting contract unchanged
+- that same slice added focused helper coverage and revalidated post-clarification routing, direct fast paths, bundle regressions, and the full backend suite at `827 pass / 0 fail`
+- the next boundary-hardening slice extracted deterministic narrative/profile shaping into `assistant-quote-narrative.js`, moving profile inference, deterministic expert-summary construction, considerations fallback logic, consumption-group explanation, and shared currency formatting out of `assistant.js` while keeping quote narrative assembly and GenAI enrichment orchestration centralized
+- that same slice added focused narrative-helper coverage and revalidated deterministic summary behavior, direct fast paths, post-clarification routing, bundle regressions, and the full backend suite at `832 pass / 0 fail`
 
 Suggested first gaps to cover:
 
@@ -1065,24 +1117,30 @@ Exit criteria:
 - keep generic and conceptual questions out of deterministic quote paths
 - add regressions for ambiguous prompts before expanding frontend guidance UX
 
+### Phase 6. Model-Deterministic Boundary Hardening
+
+- preserve deterministic pricing as the execution contract
+- let `GenAI` handle interpretation, normalization, clarification, and explanation
+- reduce ad hoc rule growth by moving reusable behavior into metadata, blueprints, and response plans
+- avoid shifting final pricing arithmetic or SKU selection into model-only behavior
+
+This phase does not replace the current roadmap. It formalizes the intended division of responsibility so future simplification work stays aligned with the existing architecture.
+
 ## Next Concrete Tasks
 
 These are the recommended next tasks to execute immediately:
 
-1. Add parity cases for:
-   - mixed networking/security bundles
-   - more database combinations
-   - analytics + integration bundles
-2. Add workbook and RVTools regression cases for:
-   - shape changes after the initial workbook quote
-   - workbook-origin modifier updates
-   - larger VMware inventory cases
-3. Build an `assistant.js` branch inventory and label each branch as:
-   - move to `service-families`
-   - move to `context-packs`
-   - keep in assistant orchestration
-4. Define a follow-up capability matrix per family before adding more ad hoc follow-up code
-5. After the current sequence is stable, schedule the generic-question routing hardening slice for backend intent and fallback control
+1. Extract the composite detection and segmentation helper cluster from `assistant.js` into a bounded helper module:
+   - completed in `composite-quote-segmentation.js`
+2. Extract the deterministic composite quote assembly cluster from `assistant.js` into a bounded helper module:
+   - completed in `composite-quote-builder.js`
+3. Extract the next bounded deterministic narrative/profile helper cluster:
+   - completed in `assistant-quote-narrative.js`
+4. After narrative/profile shaping is isolated, define the next boundary cut between:
+   - deterministic narrative/profile helpers
+   - GenAI quote-enrichment orchestration
+   - context-pack / explanation shaping helpers
+5. Continue the model-vs-deterministic boundary strategy by moving reusable interpretation support into metadata or helper modules, not into more prompt-specific branches
 
 ## Definition Of Progress
 
@@ -1091,6 +1149,76 @@ This work should be considered real progress only when at least one of these is 
 - parity coverage increases
 - declarative family metadata replaces manual assistant logic
 - deterministic follow-up behavior becomes reusable across families
+
+### 6. Model-Deterministic Boundary Strategy
+
+Status: active strategic track, executed incrementally without changing the current roadmap order
+
+Goal:
+
+- reduce long-term maintenance cost without weakening deterministic pricing guarantees
+- keep the pricing agent strong at natural-language understanding while preventing model drift in final quote construction
+- replace future prompt-specific branches with structured metadata and knowledge artifacts where possible
+
+Working rule:
+
+- do not move arithmetic, SKU selection, or final quote composition responsibility out of the deterministic engine
+- do move interpretation, discovery, explanation, and reusable family semantics into structured metadata and retrieval-friendly artifacts
+
+What is already covered:
+
+- the architecture already keeps `GenAI` on interpretation and explanation while deterministic pricing remains the source of truth
+- `assistant.js` has already been reduced from a monolithic policy owner into more of an orchestrator over helper modules
+- active-quote follow-up behavior is already moving into family-owned metadata and a reusable capability matrix
+- routing hardening already protects discovery and conceptual questions from falling into quote execution when they should stay explanatory
+- low-risk normalization work already broadens user-language coverage without changing the deterministic quote contract
+- parity and regression coverage already give us a safety net so structural simplifications can happen without blind spots
+
+What is still missing:
+
+- a written responsibility map for which behaviors belong in:
+  - `assistant.js`
+  - `service-families.js`
+  - `context-packs.js`
+  - deterministic quote/build logic
+- declarative `service blueprints` for discovery-heavy families so required inputs, composition, billing dimensions, and licensing answers stop depending on narrow assistant heuristics
+- a small set of reusable `response types` for discovery answers such as:
+  - required inputs
+  - billing explanation
+  - quote composition
+  - variant comparison
+- an explicit review pass over remaining `assistant.js` branches to decide:
+  - keep
+  - move to metadata
+  - move to structured knowledge
+- a pruning rule so future parity additions stay focused on high-value deterministic contracts instead of turning into an unbounded combinatorial suite
+
+Priority order inside this strategy:
+
+1. document the ownership boundary clearly so new work stops adding accidental assistant policy
+2. inventory remaining `assistant.js` branches and classify them by destination
+3. pilot structured service blueprints for a small family set with high discovery value:
+   - `compute_vm_generic`
+   - `integration_oic`
+   - `database_base_db`
+   - `storage_block`
+   - `network_load_balancer`
+4. route discovery-style answers through those blueprints before expanding more one-off heuristics
+5. only after the blueprint layer proves stable, revisit whether some parity cases are redundant versus still contract-critical
+
+Recommended next implementation slice for this track:
+
+- add the boundary strategy to the execution plan
+- treat the `assistant.js` branch inventory as the first concrete deliverable
+- use [Assistant Branch Inventory](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ASSISTANT_BRANCH_INVENTORY.md) as the tracking artifact for milestone status, branch classification, and anti-loop scope control
+- keep current parity / workbook / follow-up slices moving in parallel, but evaluate each new change against the boundary rule before adding fresh assistant-owned logic
+
+Exit criteria:
+
+- contributors can explain where new behavior belongs before implementing it
+- discovery improvements are increasingly powered by structured family knowledge instead of prompt-specific conditionals
+- deterministic pricing remains the source of truth for quote totals and line-item composition
+- future rule growth shifts from ad hoc branches toward metadata and curated knowledge artifacts
 - runtime diagnostics or concurrency behavior become measurably stronger
 
 If a change only fixes one prompt phrasing and does not improve those dimensions, it should not count as a milestone.

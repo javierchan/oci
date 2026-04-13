@@ -113,7 +113,7 @@ function isSessionQuoteFollowUp(text) {
   if (/^(y|and|ahora|now)\b/i.test(source)) return true;
   if (/\b(?:with|without|con|sin)\b/i.test(source)) return true;
   if (/\b(?:standard|enterprise|high performance|extreme performance)\b/i.test(source)) return true;
-  if (/\b(?:instances?|instancias?|vpus?|ocpus?|ecpus?|gb|tb|mbps|gbps|users?|firewalls?|endpoints?|databases?|workspaces?|managed resources?|jobs?|queries?|api calls?|emails?|messages?|delivery operations?|datapoints?|transactions?)\b/i.test(source)) return true;
+  if (/\b(?:instances?|instancias?|vpus?|ocpus?|ecpus?|gb|tb|mbps|gbps|users?|firewalls?|endpoints?|databases?|workspaces?|managed resources?|jobs?|queries?|consultas?|api calls?|solicitudes?|peticiones?|emails?|messages?|delivery operations?|datapoints?|transactions?)\b/i.test(source)) return true;
   if (/\b(?:byol|license included|licencia incluida|on[- ]?demand|reserved|amd|intel|ampere|arm)\b/i.test(source)) return true;
   if (/\b(?:usd|mxn|eur|brl|gbp|cad|jpy)\b/i.test(source)) return true;
   if (/\b(?:capacity reservation|reservation utilization|preemptible|burstable|baseline)\b/i.test(source)) return true;

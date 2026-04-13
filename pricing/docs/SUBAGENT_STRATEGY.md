@@ -4,6 +4,14 @@
 
 Define how to use sub-agents in the `pricing` codebase to improve delivery speed without sacrificing deterministic behavior, regression safety, architectural consistency, or assistant response quality.
 
+Document role:
+
+- this file is the source of truth for when delegation is appropriate
+- it defines delegation policy, not product sequencing
+- active work order lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/EXECUTION_PLAN.md)
+- parallel lane ownership lives in [Parallel Execution Lanes](/Users/javierchan/Documents/GitHub/oci/pricing/docs/PARALLEL_EXECUTION_LANES.md)
+- the full docs map lives in [Docs Guide](/Users/javierchan/Documents/GitHub/oci/pricing/docs/README.md)
+
 This document is intentionally operational. It is not a research note. Its goal is to help us decide:
 
 - when sub-agents are useful

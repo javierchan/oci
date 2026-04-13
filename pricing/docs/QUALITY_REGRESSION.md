@@ -4,6 +4,13 @@
 
 This document defines the fixed live-quality regression for the `pricing` assistant.
 
+Document role:
+
+- this file is the source of truth for the live semantic-quality regression against the running assistant
+- deterministic runtime coverage does not belong here; that lives in [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md)
+- tactical sequencing does not belong here; that lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/EXECUTION_PLAN.md)
+- the full docs map lives in [Docs Guide](/Users/javierchan/Documents/GitHub/oci/pricing/docs/README.md)
+
 The goal is different from deterministic calculator parity:
 
 - parity proves that the pricing engine resolves SKUs and totals correctly
