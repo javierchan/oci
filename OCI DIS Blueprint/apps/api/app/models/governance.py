@@ -60,3 +60,15 @@ class AssumptionSet(Base, UUIDMixin, TimestampMixin):
     #   "functions_default_memory_mb": 256
     # }
     notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class PromptTemplateVersion(Base, UUIDMixin, TimestampMixin):
+    """Versioned deterministic narrative templates for M6 justification assembly."""
+
+    __tablename__ = "prompt_template_versions"
+
+    version: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    template_config: Mapped[dict] = mapped_column(JSON, nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)

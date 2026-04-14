@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_sync_database_url
-from app.models import AssumptionSet, AuditEvent, DictionaryOption, PatternDefinition
+from app.models import AssumptionSet, AuditEvent, DictionaryOption, PatternDefinition, PromptTemplateVersion
 
 PATTERNS: list[dict[str, str]] = [
     {"pattern_id": "#01", "name": "Request-Reply", "category": "SÍNCRONO"},
@@ -90,6 +90,45 @@ DICTIONARY_OPTIONS: list[dict[str, object]] = [
     {"category": "TOOLS", "code": None, "value": "OCI Object Storage", "sort_order": 11},
     {"category": "TOOLS", "code": None, "value": "OCI APM", "sort_order": 12},
 ]
+
+PROMPT_TEMPLATE = {
+    "version": "1.0.0",
+    "name": "Deterministic Justification Template",
+    "is_default": True,
+    "template_config": {
+        "summary": (
+            "La integracion {interface_name} conecta {source_system} con {destination_system} "
+            "y actualmente mantiene estado QA {qa_status}."
+        ),
+        "blocks": [
+            {
+                "title": "Contexto",
+                "body": (
+                    "Interfaz {interface_id} para la marca {brand} dentro del proceso {business_process}. "
+                    "Opera con frecuencia {frequency} y {payload_text}."
+                ),
+            },
+            {
+                "title": "Patron",
+                "body": (
+                    "Se documenta {pattern_label}. Racional: {pattern_rationale}."
+                ),
+            },
+            {
+                "title": "Implementacion",
+                "body": (
+                    "Tipo {type}, trigger {trigger_type} y herramientas base {core_tools}. "
+                    "Politica de reintento: {retry_policy}."
+                ),
+            },
+            {
+                "title": "Gobierno QA",
+                "body": "Estado QA {qa_status}. Observaciones: {qa_reasons}.",
+            },
+        ],
+    },
+    "notes": "Seeded default template for deterministic methodology narratives.",
+}
 
 
 def _audit(session: Session, event_type: str, entity_type: str, entity_id: str, new_value: dict[str, object]) -> None:
@@ -175,14 +214,42 @@ def seed_assumption_set(session: Session) -> int:
     return 0
 
 
+def seed_prompt_template(session: Session) -> int:
+    existing = session.scalar(
+        select(PromptTemplateVersion).where(PromptTemplateVersion.version == PROMPT_TEMPLATE["version"])
+    )
+    if existing is None:
+        existing = PromptTemplateVersion(**PROMPT_TEMPLATE)
+        session.add(existing)
+        session.flush()
+        _audit(
+            session,
+            "seed_insert",
+            "prompt_template_version",
+            existing.id,
+            {"version": PROMPT_TEMPLATE["version"]},
+        )
+        return 1
+    existing.name = str(PROMPT_TEMPLATE["name"])
+    existing.is_default = bool(PROMPT_TEMPLATE["is_default"])
+    existing.template_config = dict(PROMPT_TEMPLATE["template_config"])
+    existing.notes = PROMPT_TEMPLATE["notes"]
+    return 0
+
+
 def main() -> None:
     engine = create_engine(get_sync_database_url())
     with Session(engine) as session:
         patterns = seed_patterns(session)
         assumptions = seed_assumption_set(session)
         dictionary_options = seed_dictionary_options(session)
+        prompt_templates = seed_prompt_template(session)
         session.commit()
-        print(f"Seed complete: patterns={patterns}, assumptions={assumptions}, dictionary_options={dictionary_options}")
+        print(
+            "Seed complete: "
+            f"patterns={patterns}, assumptions={assumptions}, "
+            f"dictionary_options={dictionary_options}, prompt_templates={prompt_templates}"
+        )
 
 
 if __name__ == "__main__":
