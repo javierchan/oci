@@ -41,6 +41,39 @@ None
 
 ---
 
+## Remediation — Audit Cleanup
+
+**Completed:** 2026-04-14
+**Status:** ✅ Complete
+
+### What was fixed
+
+- Committed 17 modified and 4 untracked milestone files for M8, M9, and M10 into reproducible git history
+- Moved the worktree off detached HEAD onto the `main` branch
+- Removed 3 unused imports in `packages/calc-engine/` to clear Ruff `F401` findings
+- Added `apps/web/.eslintrc.json` so the ESLint quality gate runs successfully
+- Installed `mypy` in `.venv` and added it to `apps/api/requirements.txt`
+- Updated `README.md` so M8, M9, and M10 are marked `✅ Complete`
+
+### Verification results
+
+```text
+pytest:  26 passed
+ruff:    All checks passed!
+tsc:     0 errors
+ESLint:  running (17 warnings, <=50 limit)
+Docker:  6/6 containers Up
+git:     working tree clean
+```
+
+### Gaps / known limitations
+
+- ESLint warnings still remain and should be triaged before tightening `--max-warnings` to `0`
+- Benchmark DB parity (144 rows) is not yet demonstrated in the live database; the current first project still reports 13 catalog rows
+- mypy errors are not yet triaged; this remediation only confirms that the tool is installed and runnable
+
+---
+
 ## M14 — Map Pan + Visual Improvements
 
 **Completed:** 2026-04-14
