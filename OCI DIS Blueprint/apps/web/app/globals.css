@@ -1,3 +1,235 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --color-qa-ok-bg: #dcfce7;
+  --color-qa-ok-text: #15803d;
+  --color-qa-ok-border: #86efac;
+
+  --color-qa-revisar-bg: #fef9c3;
+  --color-qa-revisar-text: #92400e;
+  --color-qa-revisar-border: #fde047;
+
+  --color-qa-pending-bg: #f1f5f9;
+  --color-qa-pending-text: #475569;
+  --color-qa-pending-border: #cbd5e1;
+
+  --color-pat-sync-bg: #dbeafe;
+  --color-pat-sync-text: #1e40af;
+  --color-pat-async-bg: #ede9fe;
+  --color-pat-async-text: #5b21b6;
+  --color-pat-both-bg: #fae8ff;
+  --color-pat-both-text: #86198f;
+
+  --color-complexity-alto-bg: #fee2e2;
+  --color-complexity-alto-text: #991b1b;
+  --color-complexity-medio-bg: #ffedd5;
+  --color-complexity-medio-text: #9a3412;
+  --color-complexity-bajo-bg: #f0fdf4;
+  --color-complexity-bajo-text: #166534;
+
+  --color-table-header-bg: #f8fafc;
+  --color-table-row-hover: #f1f5f9;
+  --color-table-border: #e2e8f0;
+
+  --color-surface: #ffffff;
+  --color-surface-2: #f8fafc;
+  --color-surface-3: #f1f5f9;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94a3b8;
+  --color-border: #e2e8f0;
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+}
+
+.dark {
+  --color-qa-ok-bg: #052e16;
+  --color-qa-ok-text: #86efac;
+  --color-qa-ok-border: #166534;
+
+  --color-qa-revisar-bg: #422006;
+  --color-qa-revisar-text: #fde047;
+  --color-qa-revisar-border: #854d0e;
+
+  --color-qa-pending-bg: #1e293b;
+  --color-qa-pending-text: #94a3b8;
+  --color-qa-pending-border: #334155;
+
+  --color-pat-sync-bg: #1e3a5f;
+  --color-pat-sync-text: #93c5fd;
+  --color-pat-async-bg: #2e1065;
+  --color-pat-async-text: #c4b5fd;
+  --color-pat-both-bg: #4a044e;
+  --color-pat-both-text: #f0abfc;
+
+  --color-complexity-alto-bg: #450a0a;
+  --color-complexity-alto-text: #fca5a5;
+  --color-complexity-medio-bg: #431407;
+  --color-complexity-medio-text: #fdba74;
+  --color-complexity-bajo-bg: #052e16;
+  --color-complexity-bajo-text: #86efac;
+
+  --color-surface: #0f172a;
+  --color-surface-2: #1e293b;
+  --color-surface-3: #334155;
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #475569;
+  --color-border: #334155;
+  --color-accent: #60a5fa;
+  --color-accent-hover: #93c5fd;
+}
+
+html {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-text-primary);
+  }
+}
+
+@layer components {
+  .app-card {
+    @apply rounded-[2rem] border shadow-sm;
+    background-color: var(--color-surface-2);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+  }
+
+  .app-card-muted {
+    @apply rounded-[1.75rem] border;
+    background-color: var(--color-surface-3);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+  }
+
+  .app-kicker {
+    @apply text-xs uppercase tracking-[0.25em];
+    color: var(--color-accent);
+  }
+
+  .app-label {
+    @apply text-xs uppercase tracking-[0.25em];
+    color: var(--color-text-secondary);
+  }
+
+  .app-muted {
+    color: var(--color-text-secondary);
+  }
+
+  .app-muted-subtle {
+    color: var(--color-text-muted);
+  }
+
+  .app-link {
+    @apply text-sm font-semibold transition;
+    color: var(--color-accent);
+  }
+
+  .app-link:hover {
+    color: var(--color-accent-hover);
+  }
+
+  .app-input {
+    @apply w-full rounded-2xl border px-4 py-3 text-sm outline-none transition;
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+  }
+
+  .app-input::placeholder {
+    color: var(--color-text-muted);
+  }
+
+  .app-input:focus {
+    border-color: var(--color-accent);
+  }
+
+  .app-button-primary {
+    @apply inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-semibold text-white transition;
+    background-color: var(--color-accent);
+  }
+
+  .app-button-primary:hover {
+    background-color: var(--color-accent-hover);
+  }
+
+  .app-button-primary:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .app-button-secondary {
+    @apply inline-flex items-center justify-center rounded-full border px-5 py-3 text-sm font-semibold transition;
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text-secondary);
+  }
+
+  .app-button-secondary:hover {
+    background-color: var(--color-surface-3);
+    color: var(--color-text-primary);
+  }
+
+  .app-button-secondary:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .app-table-shell {
+    @apply overflow-hidden rounded-[2rem] border shadow-sm;
+    background-color: var(--color-surface-2);
+    border-color: var(--color-border);
+  }
+
+  .app-table-header {
+    background-color: var(--color-table-header-bg);
+    color: var(--color-text-secondary);
+  }
+
+  .app-table-header th {
+    @apply text-xs font-semibold uppercase tracking-wide;
+  }
+
+  .app-table-row {
+    color: var(--color-text-primary);
+  }
+
+  .app-table-row:hover {
+    background-color: var(--color-table-row-hover);
+  }
+
+  .app-theme-chip {
+    @apply rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em];
+    border-color: var(--color-border);
+    background-color: var(--color-surface-3);
+    color: var(--color-text-secondary);
+  }
+}
+
+@keyframes flow {
+  from {
+    stroke-dashoffset: 20;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.graph-edge-animated {
+  stroke-dasharray: 6 4;
+  animation: flow 1.5s linear infinite;
+}
+
+.graph-edge-animated:hover {
+  animation-play-state: paused;
+  stroke-width: 3;
+}

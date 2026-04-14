@@ -1,5 +1,6 @@
 /* Project dashboard page with latest import, QA, and volumetry metrics. */
 
+import { Breadcrumb } from "@/components/breadcrumb";
 import { RecalculateButton } from "@/components/recalculate-button";
 import { VolumetryCard } from "@/components/volumetry-card";
 import { api } from "@/lib/api";
@@ -38,16 +39,25 @@ export default async function ProjectDashboardPage({
 
   return (
     <div className="space-y-8">
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="app-card p-6">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-sky-700">Project Dashboard</p>
-            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950">
+            <p className="app-kicker">Project Dashboard</p>
+            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
               {project.name}
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
               Track the current import footprint, QA exposure, and latest technical sizing for this assessment workspace.
             </p>
+            <div className="mt-4">
+              <Breadcrumb
+                items={[
+                  { label: "Home", href: "/projects" },
+                  { label: "Projects", href: "/projects" },
+                  { label: project.name },
+                ]}
+              />
+            </div>
           </div>
           <RecalculateButton projectId={projectId} />
         </div>
