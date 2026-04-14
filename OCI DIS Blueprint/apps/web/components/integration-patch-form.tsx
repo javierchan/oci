@@ -5,6 +5,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { startTransition, useEffect, useRef, useState } from "react";
 
+import { IntegrationCanvas } from "@/components/integration-canvas";
 import { PatternBadge } from "@/components/pattern-badge";
 import { QaBadge } from "@/components/qa-badge";
 import { api } from "@/lib/api";
@@ -17,6 +18,8 @@ type IntegrationPatchFormProps = {
   toolOptions: DictionaryOption[];
 };
 
+type PatternCategory = "SÍNCRONO" | "ASÍNCRONO" | "SÍNCRONO + ASÍNCRONO";
+
 function parseCoreTools(value: string | null): string[] {
   if (!value) {
     return [];
@@ -25,6 +28,13 @@ function parseCoreTools(value: string | null): string[] {
     .split(",")
     .map((entry: string) => entry.trim())
     .filter(Boolean);
+}
+
+function normalizePatternCategory(value: string | null | undefined): PatternCategory | null {
+  if (value === "SÍNCRONO" || value === "ASÍNCRONO" || value === "SÍNCRONO + ASÍNCRONO") {
+    return value;
+  }
+  return null;
 }
 
 export function IntegrationPatchForm({
@@ -52,6 +62,8 @@ export function IntegrationPatchForm({
       patternDefinition,
     ]),
   );
+  const activePatternId = selectedPattern || null;
+  const activePatternDefinition = activePatternId ? patternMap.get(activePatternId) ?? null : null;
 
   useEffect(() => {
     if (searchParams.get("focus") === "patch") {
@@ -214,6 +226,25 @@ export function IntegrationPatchForm({
           })}
         </div>
       </fieldset>
+
+      {integration.source_system ? (
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+            Integration Design Canvas
+          </h3>
+          <IntegrationCanvas
+            sourceSystem={integration.source_system}
+            sourceTechnology={integration.source_technology}
+            destinationSystem={integration.destination_system}
+            destinationTechnology={integration.destination_technology_1}
+            selectedPattern={activePatternId}
+            coreTools={selectedTools}
+            payloadKb={integration.payload_per_execution_kb}
+            frequency={integration.frequency}
+            patternCategory={normalizePatternCategory(activePatternDefinition?.category)}
+          />
+        </div>
+      ) : null}
 
       {currentIntegration.qa_reasons.length > 0 ? (
         <section className="rounded-[1.5rem] border border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] p-4">
