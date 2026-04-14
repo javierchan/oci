@@ -1,17 +1,24 @@
-"""Recalculation router — /recalculate (PRD-035)."""
-from fastapi import APIRouter, BackgroundTasks, status
+"""Recalculation router — synchronous M4 trigger endpoint."""
+
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.db import get_db
+from app.schemas.volumetry import VolumetrySnapshotResponse
+from app.services import recalc_service
 
 router = APIRouter(prefix="/recalculate", tags=["Recalculate"])
 
 
-@router.post("/{project_id}", status_code=status.HTTP_202_ACCEPTED, summary="Trigger full project recalculation")
-async def recalculate_project(project_id: str, background_tasks: BackgroundTasks = BackgroundTasks()):
-    """
-    Queues a full deterministic recalculation for the project.
-    Returns a job ID to poll for status. On completion creates an immutable VolumetrySnapshot.
-    Triggered when: assumptions change, pattern changes, payload changes, trigger type changes.
-    """
-    return {"job_id": "placeholder", "project_id": project_id, "status": "queued"}
+@router.post("/{project_id}", response_model=VolumetrySnapshotResponse, status_code=status.HTTP_202_ACCEPTED, summary="Trigger full project recalculation")
+async def recalculate_project(
+    project_id: str,
+    actor_id: str = "api-user",
+    db: AsyncSession = Depends(get_db),
+) -> VolumetrySnapshotResponse:
+    async with db.begin():
+        snapshot = await recalc_service.recalculate_project(project_id, actor_id, db)
+    return recalc_service.serialize_snapshot(snapshot)
 
 
 @router.post("/{project_id}/scoped", status_code=status.HTTP_202_ACCEPTED, summary="Recalculate a subset of rows")
