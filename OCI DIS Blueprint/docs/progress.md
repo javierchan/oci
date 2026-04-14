@@ -40,3 +40,43 @@ Page reachability:
 None
 
 ---
+
+## M12 — Source Lineage + Template
+
+**Completed:** 2026-04-14
+**Status:** ✅ Complete
+
+### What was implemented
+
+- `apps/api/app/schemas/catalog.py` and `apps/api/app/services/catalog_service.py` — lineage responses now include `column_names` and `import_batch_date`, with canonical field labels derived from the stored import header map
+- `apps/web/app/projects/[projectId]/catalog/[integrationId]/page.tsx` — source lineage now renders human-readable field names, hides empty columns by default, and exposes a `Show all columns` toggle
+- `apps/api/app/routers/exports.py` and `apps/api/app/services/export_service.py` — added `GET /api/v1/exports/template/xlsx` to generate the offline capture workbook with instructions, styled headers, example row, validations, and frozen panes
+- `apps/web/components/import-upload.tsx` — added the download action for the capture template directly on the import screen
+- `apps/web/lib/types.ts` — updated frontend lineage contracts for the new API shape
+
+### Verification results
+
+```text
+TypeScript: 0 errors
+ruff: All checks passed!
+pytest: 26 passed, 2 warnings
+docker compose ps: 6/6 containers Up
+Lineage smoke:
+- column_names present: True
+- import_batch_date present: True
+Template smoke:
+- bytes returned: 6314
+- header row starts with: ['#', 'ID de Interfaz', 'Marca', 'Proceso de Negocio', 'Interfaz']
+- example row TBQ: Y
+- freeze panes: A6
+Template import smoke:
+- import status: completed
+- loaded count: 1
+- excluded count: 0
+```
+
+### Gaps / known limitations
+
+None
+
+---
