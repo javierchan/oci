@@ -1,7 +1,7 @@
 """Exports router — synchronous artifact generation for M7."""
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
@@ -9,6 +9,16 @@ from app.schemas.export import ExportJobResponse
 from app.services import export_service
 
 router = APIRouter(prefix="/exports", tags=["Exports"])
+
+
+@router.get("/template/xlsx", summary="Download the offline capture template workbook")
+async def download_capture_template(db: AsyncSession = Depends(get_db)) -> Response:
+    workbook_bytes = await export_service.generate_capture_template(db)
+    return Response(
+        content=workbook_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=oci-dis-capture-template.xlsx"},
+    )
 
 
 @router.post("/{project_id}/xlsx", response_model=ExportJobResponse, summary="Export catalog as XLSX")

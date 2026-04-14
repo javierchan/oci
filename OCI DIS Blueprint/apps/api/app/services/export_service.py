@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException
 from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Project, VolumetrySnapshot
+from app.models import DictionaryOption, Project, VolumetrySnapshot
 from app.schemas.export import ExportJobResponse
 from app.services import dashboard_service, justification_service, recalc_service
 from app.services.catalog_service import list_integrations
@@ -22,6 +25,73 @@ from app.services.serializers import sanitize_for_json
 EXPORT_ROOT = Path("uploads/exports")
 FILES_DIR = EXPORT_ROOT / "files"
 JOBS_DIR = EXPORT_ROOT / "jobs"
+TEMPLATE_SHEET_NAME = "Catálogo de Integraciones"
+
+TEMPLATE_HEADERS = [
+    "#",
+    "ID de Interfaz",
+    "Marca",
+    "Proceso de Negocio",
+    "Interfaz",
+    "Descripción",
+    "Tipo",
+    "Estado Interfaz",
+    "Complejidad",
+    "Alcance Inicial",
+    "Estado",
+    "Estado de Mapeo",
+    "Sistema de Origen",
+    "Tecnología de Origen",
+    "API Reference",
+    "Propietario de Origen",
+    "Sistema de Destino",
+    "Tecnología de Destino",
+    "Propietario de Destino",
+    "Frecuencia",
+    "Tamaño KB",
+    "TBQ",
+    "Patrones",
+    "Incertidumbre",
+    "Owner",
+]
+
+TEMPLATE_EXAMPLE_ROW = [
+    1,
+    "INT-001",
+    "Oracle",
+    "Finance & Accounting",
+    "GL Journal Entry Sync",
+    "Nightly GL sync from SAP to Oracle ATP",
+    "Scheduled",
+    "En Progreso",
+    "Medio",
+    "Si",
+    "En Progreso",
+    "Pendiente",
+    "SAP ECC",
+    "REST",
+    "/api/v1/gl",
+    "Finance Team",
+    "Oracle ATP",
+    "REST",
+    "ATP Team",
+    "Una vez al día",
+    150,
+    "Y",
+    "#02",
+    "",
+    "Finance Architect",
+]
+
+REQUIRED_HEADER_COLUMNS = {3, 4, 5, 13, 17, 20, 22}
+GOVERNED_HEADER_COLUMNS = {7, 9, 14, 18, 21}
+
+BLUE_FILL = PatternFill(fill_type="solid", fgColor="4472C4")
+YELLOW_FILL = PatternFill(fill_type="solid", fgColor="FFC000")
+GRAY_FILL = PatternFill(fill_type="solid", fgColor="808080")
+WHITE_FONT = Font(color="FFFFFF", bold=True)
+BLACK_FONT = Font(color="000000", bold=True)
+EXAMPLE_FONT = Font(color="6B7280", italic=True)
 
 
 def _ensure_export_dirs() -> None:
@@ -31,6 +101,36 @@ def _ensure_export_dirs() -> None:
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _escape_excel_list(values: list[str]) -> str:
+    return '"' + ",".join(value.replace('"', '""') for value in values) + '"'
+
+
+async def _dictionary_values(category: str, db: AsyncSession) -> list[str]:
+    result = await db.scalars(
+        select(DictionaryOption.value)
+        .where(
+            DictionaryOption.category == category,
+            DictionaryOption.is_active.is_(True),
+        )
+        .order_by(DictionaryOption.sort_order, DictionaryOption.value)
+    )
+    return [value for value in result.all() if value]
+
+
+def _header_fill(index: int) -> PatternFill:
+    if index in REQUIRED_HEADER_COLUMNS:
+        return BLUE_FILL
+    if index in GOVERNED_HEADER_COLUMNS:
+        return YELLOW_FILL
+    return GRAY_FILL
+
+
+def _header_font(index: int) -> Font:
+    if index in GOVERNED_HEADER_COLUMNS:
+        return BLACK_FONT
+    return WHITE_FONT
 
 
 async def _load_project(project_id: str, db: AsyncSession) -> Project:
@@ -117,6 +217,72 @@ def _excel_cell_value(value: object) -> object:
     if isinstance(serialized, (list, dict)):
         return json.dumps(serialized, ensure_ascii=True)
     return serialized
+
+
+async def generate_capture_template(db: AsyncSession) -> bytes:
+    """Build the offline integration-capture workbook template."""
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = TEMPLATE_SHEET_NAME
+
+    sheet.merge_cells("A1:Y1")
+    sheet.merge_cells("A2:Y2")
+    sheet.merge_cells("A3:Y3")
+    sheet["A1"] = "OCI DIS Blueprint — Integration Capture Template"
+    sheet["A2"] = "Fill from row 7 onwards. Do not modify rows 1-5. Required fields marked with *. TBQ column must be Y for import."
+    sheet["A3"] = f"Template v1.0 — generated {_utc_now().date().isoformat()}"
+
+    for row_index in (1, 2, 3):
+        cell = sheet[f"A{row_index}"]
+        cell.alignment = Alignment(wrap_text=True)
+        cell.font = Font(bold=row_index == 1, size=14 if row_index == 1 else 11)
+
+    for column_index, header in enumerate(TEMPLATE_HEADERS, start=1):
+        cell = sheet.cell(row=5, column=column_index, value=header)
+        cell.fill = _header_fill(column_index)
+        cell.font = _header_font(column_index)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for column_index, value in enumerate(TEMPLATE_EXAMPLE_ROW, start=1):
+        cell = sheet.cell(row=6, column=column_index, value=value)
+        cell.font = EXAMPLE_FONT
+        cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    frequency_values, trigger_values, complexity_values = await _load_template_validations(db)
+    validations = [
+        ("T7:T200", frequency_values),
+        ("G7:G200", trigger_values),
+        ("I7:I200", complexity_values),
+        ("V7:V200", ["Y", "N"]),
+    ]
+    for cell_range, values in validations:
+        if not values:
+            continue
+        validation = DataValidation(
+            type="list",
+            formula1=_escape_excel_list(values),
+            allow_blank=True,
+        )
+        validation.add(cell_range)
+        sheet.add_data_validation(validation)
+
+    for column_index, header in enumerate(TEMPLATE_HEADERS, start=1):
+        max_length = max(len(str(header)), len(str(TEMPLATE_EXAMPLE_ROW[column_index - 1])))
+        sheet.column_dimensions[sheet.cell(row=5, column=column_index).column_letter].width = max(12, max_length * 1.2)
+
+    sheet.freeze_panes = "A6"
+
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+async def _load_template_validations(db: AsyncSession) -> tuple[list[str], list[str], list[str]]:
+    frequency_values = await _dictionary_values("FREQUENCY", db)
+    trigger_values = await _dictionary_values("TRIGGER_TYPE", db)
+    complexity_values = await _dictionary_values("COMPLEXITY", db)
+    return frequency_values, trigger_values, complexity_values
 
 
 def _render_basic_pdf(lines: list[str], file_path: Path) -> None:
