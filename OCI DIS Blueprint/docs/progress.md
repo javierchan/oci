@@ -41,6 +41,33 @@ None
 
 ---
 
+## M14 — Map Pan + Visual Improvements
+
+**Completed:** 2026-04-14
+**Status:** ✅ Complete
+
+### What was implemented
+
+- `apps/web/components/graph-controls.tsx` — added select/pan mode toggle with `V` and `H` shortcut support, alongside the existing filter, color, zoom, and export controls
+- `apps/web/components/integration-graph.tsx` — added viewport-based pan and cursor-centered zoom, animated flow edges, hover dim/highlight behavior, node tooltip, edge hover label, legend, and richer node labeling with integration and brand counts
+- `apps/web/app/projects/[projectId]/graph/page.tsx` — introduced shared viewport/mode state, keyboard shortcuts, theme-aware KPI cards, and graph reset wiring
+
+### Verification results
+
+```text
+TypeScript: 0 errors
+ruff: All checks passed!
+pytest: 26 passed, 2 warnings
+docker compose ps: 6/6 containers Up
+Graph route reachability: OK
+```
+
+### Gaps / known limitations
+
+None
+
+---
+
 ## M13 — Integration Design Canvas
 
 **Completed:** 2026-04-14
