@@ -94,16 +94,22 @@ docker-compose.yml Local dev stack
 
 See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the full ordered build plan.
 
-| # | Milestone | Status |
-|---|-----------|--------|
-| M1 | Schema + Migrations | ✅ Complete |
-| M2 | Import Engine | ✅ Complete |
-| M3 | Catalog Grid API | ✅ Complete |
-| M4 | Calculation Engine | ✅ Complete |
-| M5 | Dashboard API | ✅ Complete |
-| M6 | Justification Narratives | ✅ Complete |
-| M7 | Exports | ✅ Complete |
-| M8 | Admin + Governance | ✅ Complete |
+| Milestone | Description | Status | Completed |
+|-----------|-------------|--------|-----------|
+| M1 | Schema + Migrations | ✅ Complete | 2026-04-13 |
+| M2 | Import Engine | ✅ Complete | 2026-04-13 |
+| M3 | Catalog Grid API | ✅ Complete | 2026-04-13 |
+| M4 | Calculation Engine | ✅ Complete | 2026-04-13 |
+| M5 | Dashboard API | ✅ Complete | 2026-04-13 |
+| M6 | Justification Narratives | ✅ Complete | 2026-04-13 |
+| M7 | Exports | ✅ Complete | 2026-04-13 |
+| M8 | Admin + Governance | ✅ Complete | 2026-04-14 |
+| M9 | Integration Capture Wizard | ⚠ Partial | — |
+| M10 | System Dependency Map | ⚠ Partial | — |
+| M11 | Navigation + Theme | ✅ Complete | 2026-04-14 |
+| M12 | Source Lineage + Template | ⏳ Pending | — |
+| M13 | Integration Design Canvas | ⏳ Pending | — |
+| M14 | Map Pan + Visual Improvements | ⏳ Pending | — |
 
 ## Validation Snapshot
 
