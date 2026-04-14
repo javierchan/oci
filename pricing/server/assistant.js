@@ -15,15 +15,9 @@ const { runChat, extractChatText } = require('./genai');
 const { analyzeIntent, analyzeImageIntent, buildSessionContextBlock } = require('./intent-extractor');
 const { buildAssistantContextPack, buildCatalogListingReply, buildStructuredDiscoveryFallback, buildUncoveredComputeReply, canSafelyQuoteUncoveredComputeVariant, findUncoveredComputeVariant, stringifyContextPack, summarizeContextPack } = require('./context-packs');
 const { buildServiceUnavailableMessage } = require('./assistant-response-helpers');
-const {
-  buildQuoteEnrichmentContextBlock,
-  sanitizeQuoteEnrichment,
-  shouldAllowMigrationNotes,
-} = require('./assistant-quote-enrichment');
-const {
-  buildQuoteNarrativeMessage,
-} = require('./assistant-quote-assembly');
-const { fmt, money, toMarkdownQuote } = require('./assistant-quote-rendering');
+const { sanitizeQuoteEnrichment } = require('./assistant-quote-enrichment');
+const { buildQuoteNarrative } = require('./assistant-quote-orchestrator');
+const { toMarkdownQuote } = require('./assistant-quote-rendering');
 const {
   buildAssistantSessionContext,
 } = require('./assistant-session-context');
@@ -102,18 +96,6 @@ const STRUCTURED_DISCOVERY_PROMPT = [
   'If the context does not contain enough information to answer safely, say the service is not available in the current pricing knowledge base.',
   'Do not generate a quote unless the system explicitly says this is a deterministic quote path.',
   'Use concise natural markdown and prefer short lists when enumerating options.',
-].join('\n');
-
-const QUOTE_ENRICHMENT_PROMPT = [
-  'You are enriching an OCI pricing response that was already calculated deterministically.',
-  'Do not change any numbers, SKUs, totals, assumptions, or warnings.',
-  'Do not invent pricing, architecture, licensing, or migration facts.',
-  'Do not restate totals, do not rebuild arithmetic, and do not infer discrepancies.',
-  'Write short, useful markdown only, with the tone of the requested OCI expert role.',
-  'Return at most two short bullet lists:',
-  '- OCI considerations for this technology',
-  '- Migration notes when the source clearly comes from VMware or RVTools',
-  'If a section does not apply, omit it.',
 ].join('\n');
 
 const FLEX_SHAPE_TOKEN_PATTERN_SOURCE = '(?:(?:vm|bm)\\.)?(?:(?:[a-z][a-z0-9]*)\\.)*(?:[a-z]+\\d+|[a-z]\\d+)\\.flex';
@@ -238,30 +220,6 @@ async function writeStructuredContextReply(cfg, conversation, userText, sessionC
   }
 }
 
-async function buildGenAIQuoteEnrichment(cfg, userText, quote, assumptions) {
-  if (!cfg?.ok || !quote?.ok) return '';
-  const lineItems = Array.isArray(quote.lineItems) ? quote.lineItems : [];
-  if (!lineItems.length) return '';
-  const technologyProfile = inferQuoteTechnologyProfile(quote);
-  const allowMigrationNotes = shouldAllowMigrationNotes(userText, quote);
-  const contextBlock = buildQuoteEnrichmentContextBlock(userText, quote, assumptions, technologyProfile);
-
-  try {
-    const response = await runChat({
-      cfg,
-      systemPrompt: QUOTE_ENRICHMENT_PROMPT,
-      messages: [{ role: 'user', content: contextBlock }],
-      maxTokens: 350,
-      temperature: 0.2,
-      topP: 0.6,
-      topK: -1,
-    });
-    return sanitizeQuoteEnrichment(extractChatText(response?.data || response).trim(), { allowMigrationNotes });
-  } catch (_error) {
-    return '';
-  }
-}
-
 function inferQuoteTechnologyProfile(quote) {
   return inferQuoteTechnologyProfileHelper(quote);
 }
@@ -276,19 +234,6 @@ function buildDeterministicConsiderationsFallback(quote, assumptions) {
 
 function formatMoney(value, currencyCode = 'USD') {
   return formatMoneyHelper(value, currencyCode);
-}
-
-async function buildQuoteNarrative(cfg, userText, quote, assumptions) {
-  const enrichment = await buildGenAIQuoteEnrichment(cfg, userText, quote, assumptions);
-  const explanation = buildConsumptionExplanation(quote);
-  return buildQuoteNarrativeMessage({
-    quote,
-    assumptions,
-    expertSummary: buildDeterministicExpertSummary(quote),
-    enrichment,
-    fallbackConsiderations: buildDeterministicConsiderationsFallback(quote, assumptions),
-    consumptionExplanation: explanation,
-  });
 }
 
 function buildConsumptionExplanation(quote) {

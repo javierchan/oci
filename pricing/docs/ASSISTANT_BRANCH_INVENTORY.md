@@ -183,6 +183,9 @@ Recently validated slice:
   - `buildQuoteNarrativeMessage()`
 - extracted the deterministic quote payload builder into [quote-response-payload.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/quote-response-payload.js):
   - `buildDeterministicQuotePayload()`
+- extracted the quote narrative/orchestration cluster into [assistant-quote-orchestrator.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/assistant-quote-orchestrator.js):
+  - `buildGenAIQuoteEnrichment()`
+  - `buildQuoteNarrative()`
 - added focused unit coverage in:
   - [request-query-helpers.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/request-query-helpers.test.js)
   - [quote-assumptions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/quote-assumptions.test.js)
@@ -196,7 +199,8 @@ Recently validated slice:
   - [assistant-quote-enrichment.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-quote-enrichment.test.js)
   - [assistant-quote-assembly.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-quote-assembly.test.js)
   - [quote-response-payload.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/quote-response-payload.test.js)
-- revalidated the affected routing, bundle, intent, follow-up, quote-export, deterministic-summary, sanitization, quote-assembly, quote-payload, and full server suites at `839 pass / 0 fail`
+  - [assistant-quote-orchestrator.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-quote-orchestrator.test.js)
+- revalidated the affected routing, bundle, intent, follow-up, quote-export, deterministic-summary, sanitization, quote-assembly, quote-payload, quote-orchestration, and full server suites at `841 pass / 0 fail`
 
 ### Milestone 3. Structured Knowledge Pilot Targets
 
@@ -245,7 +249,7 @@ The next concrete slice for this track is:
 
 1. keep `assistant.js` responsible for quote-narrative orchestration while deterministic narrative support now lives in `assistant-quote-narrative.js`
 2. define the next bounded cut between:
-   - quote-narrative orchestration in `assistant.js`
+   - quote routing/orchestration in `assistant.js`
    - the routing helpers that invoke `buildQuoteNarrative()`
    - a reusable quote-routing adapter boundary
 3. continue inventorying assistant-owned helpers that still encode policy after the narrative extraction is no longer inline

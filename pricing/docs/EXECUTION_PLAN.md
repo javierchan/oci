@@ -299,10 +299,11 @@ Validation status as of April 13, 2026:
 - assistant quote enrichment helper suite result: `3 pass / 0 fail`
 - assistant quote assembly helper suite result: `3 pass / 0 fail`
 - quote response payload helper suite result: `1 pass / 0 fail`
+- assistant quote orchestrator helper suite result: `2 pass / 0 fail`
 - workbook-focused suite result: `40 pass / 0 fail`
 - current parity suite result: `157 pass / 0 fail`
 - quote export endpoint suite result: `3 pass / 0 fail`
-- current full-suite result in sandbox: `839 pass / 0 fail`
+- current full-suite result in sandbox: `841 pass / 0 fail`
 
 Live assistant validation baseline as of April 10, 2026:
 
@@ -568,6 +569,8 @@ Recently completed in this workstream:
 - that same slice added focused quote-assembly helper coverage and revalidated deterministic narratives, sanitization behavior, direct fast paths, post-clarification routing, bundle regressions, and the full backend suite at `838 pass / 0 fail`
 - the next boundary-hardening slice extracted the deterministic quote payload builder into `quote-response-payload.js`, removing repeated `mode: quote` payload assembly from direct fast paths and post-clarification routing while keeping quote-narrative orchestration centralized in `assistant.js`
 - that same slice added focused payload-helper coverage and revalidated direct fast paths, post-clarification routing, deterministic bundle narratives, and the full backend suite at `839 pass / 0 fail`
+- the next boundary-hardening slice extracted quote narrative/orchestration into `assistant-quote-orchestrator.js`, moving `buildGenAIQuoteEnrichment()` and `buildQuoteNarrative()` out of `assistant.js` while keeping top-level assistant sequencing and routing ownership centralized
+- that same slice added focused orchestrator coverage and revalidated direct fast paths, post-clarification routing, deterministic bundle narratives, sanitization behavior, and the full backend suite at `841 pass / 0 fail`
 
 Suggested first gaps to cover:
 

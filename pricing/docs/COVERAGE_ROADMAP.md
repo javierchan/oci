@@ -335,15 +335,17 @@ Current test baseline:
 - assistant quote enrichment helper suite: `3 pass / 0 fail`
 - assistant quote assembly helper suite: `3 pass / 0 fail`
 - quote response payload helper suite: `1 pass / 0 fail`
+- assistant quote orchestrator helper suite: `2 pass / 0 fail`
 - workbook-focused suite: `40 pass / 0 fail`
 - parity suite: `157 pass / 0 fail`
 - quote export endpoint suite: `3 pass / 0 fail`
-- full server suite in sandbox: `839 pass / 0 fail`
+- full server suite in sandbox: `841 pass / 0 fail`
 
 This is the operational baseline at the time of this documentation update.
 
 Most recently closed conservative slices:
 
+- quote narrative/orchestration now has its own helper boundary in `assistant-quote-orchestrator.js`, with focused coverage for deterministic narrative assembly under GenAI failure and GenAI sanitization success paths
 - deterministic quote payload assembly now has its own helper boundary in `quote-response-payload.js`, with focused coverage for quote-mode payload construction shared by direct fast paths and post-clarification routing
 - quote-narrative assembly now has its own helper boundary in `assistant-quote-assembly.js`, with focused coverage for deterministic lead construction and stable final narrative assembly
 - quote-enrichment support now has its own helper boundary in `assistant-quote-enrichment.js`, with focused coverage for enrichment-context shaping, migration-note gating, and quote-enrichment sanitization
