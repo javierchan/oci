@@ -39,8 +39,9 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
   const [error, setError] = useState<string>("");
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
-  const [zoom, setZoom] = useState<number>(1);
+  const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [colorMode, setColorMode] = useState<"qa" | "bp">("qa");
+  const [mode, setMode] = useState<"select" | "pan">("select");
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +86,20 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
     };
   }, [filters, params.projectId]);
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key.toLowerCase() === "v") {
+        setMode("select");
+      }
+      if (event.key.toLowerCase() === "h") {
+        setMode("pan");
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   function handleFilterChange(field: keyof GraphParams, value: string): void {
     setFilters((current) => ({
       ...current,
@@ -120,10 +135,12 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
         onFilterChange={handleFilterChange}
         colorMode={colorMode}
         onColorModeChange={setColorMode}
-        zoom={zoom}
-        onZoomIn={() => setZoom((current) => current * 1.2)}
-        onZoomOut={() => setZoom((current) => current / 1.2)}
-        onZoomReset={() => setZoom(1)}
+        mode={mode}
+        onModeChange={setMode}
+        zoom={viewport.scale}
+        onZoomIn={() => setViewport((current) => ({ ...current, scale: Math.min(current.scale * 1.2, 4) }))}
+        onZoomOut={() => setViewport((current) => ({ ...current, scale: Math.max(current.scale / 1.2, 0.2) }))}
+        onZoomReset={() => setViewport({ x: 0, y: 0, scale: 1 })}
         meta={graph.meta}
         svgRef={svgRef}
       />
@@ -139,22 +156,22 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
       <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
         <div className="space-y-4">
           <section className="grid gap-4 md:grid-cols-3">
-            <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Nodes</p>
-              <p className="mt-3 text-3xl font-semibold text-slate-950">{graph.meta.node_count}</p>
+            <article className="app-card p-5">
+              <p className="app-label">Nodes</p>
+              <p className="mt-3 text-3xl font-semibold text-[var(--color-text-primary)]">{graph.meta.node_count}</p>
             </article>
-            <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Edges</p>
-              <p className="mt-3 text-3xl font-semibold text-slate-950">{graph.meta.edge_count}</p>
+            <article className="app-card p-5">
+              <p className="app-label">Edges</p>
+              <p className="mt-3 text-3xl font-semibold text-[var(--color-text-primary)]">{graph.meta.edge_count}</p>
             </article>
-            <article className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Integrations</p>
-              <p className="mt-3 text-3xl font-semibold text-slate-950">{graph.meta.integration_count}</p>
+            <article className="app-card p-5">
+              <p className="app-label">Integrations</p>
+              <p className="mt-3 text-3xl font-semibold text-[var(--color-text-primary)]">{graph.meta.integration_count}</p>
             </article>
           </section>
 
           {loading ? (
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-10 text-sm text-slate-500 shadow-sm">
+            <div className="app-card p-10 text-sm text-[var(--color-text-secondary)]">
               Building force layout…
             </div>
           ) : (
@@ -170,9 +187,11 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
                 setSelectedEdge(edge);
                 setSelectedNode(null);
               }}
-              zoom={zoom}
               colorMode={colorMode}
               svgRef={svgRef}
+              mode={mode}
+              viewport={viewport}
+              onViewportChange={setViewport}
             />
           )}
         </div>

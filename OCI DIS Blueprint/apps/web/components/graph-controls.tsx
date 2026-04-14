@@ -2,10 +2,13 @@
 
 /* Filter, color mode, zoom, and export controls for the system dependency graph. */
 
+import { Hand, MousePointer } from "lucide-react";
 import type { RefObject } from "react";
 
 import { GraphExportButton } from "@/components/graph-export-button";
 import type { GraphMeta, GraphParams } from "@/lib/types";
+
+type GraphMode = "select" | "pan";
 
 type GraphControlsProps = {
   projectId: string;
@@ -13,6 +16,8 @@ type GraphControlsProps = {
   onFilterChange: (field: keyof GraphParams, value: string) => void;
   colorMode: "qa" | "bp";
   onColorModeChange: (mode: "qa" | "bp") => void;
+  mode: GraphMode;
+  onModeChange: (mode: GraphMode) => void;
   zoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -27,6 +32,8 @@ export function GraphControls({
   onFilterChange,
   colorMode,
   onColorModeChange,
+  mode,
+  onModeChange,
   zoom,
   onZoomIn,
   onZoomOut,
@@ -107,6 +114,25 @@ export function GraphControls({
             ].join(" ")}
           >
             Business Process
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-3)] p-1">
+          <button
+            type="button"
+            onClick={() => onModeChange("select")}
+            title="Select (V)"
+            className={mode === "select" ? "rounded p-2 bg-[var(--color-accent)] text-white" : "rounded p-2 text-[var(--color-text-secondary)]"}
+          >
+            <MousePointer className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onModeChange("pan")}
+            title="Pan (H)"
+            className={mode === "pan" ? "rounded p-2 bg-[var(--color-accent)] text-white" : "rounded p-2 text-[var(--color-text-secondary)]"}
+          >
+            <Hand className="h-4 w-4" />
           </button>
         </div>
 
