@@ -297,10 +297,12 @@ Validation status as of April 13, 2026:
 - assistant quote rendering helper suite result: `3 pass / 0 fail`
 - assistant quote narrative helper suite result: `5 pass / 0 fail`
 - assistant quote enrichment helper suite result: `3 pass / 0 fail`
+- assistant quote assembly helper suite result: `3 pass / 0 fail`
+- quote response payload helper suite result: `1 pass / 0 fail`
 - workbook-focused suite result: `40 pass / 0 fail`
 - current parity suite result: `157 pass / 0 fail`
 - quote export endpoint suite result: `3 pass / 0 fail`
-- current full-suite result in sandbox: `835 pass / 0 fail`
+- current full-suite result in sandbox: `839 pass / 0 fail`
 
 Live assistant validation baseline as of April 10, 2026:
 
@@ -562,6 +564,10 @@ Recently completed in this workstream:
 - that same slice added focused narrative-helper coverage and revalidated deterministic summary behavior, direct fast paths, post-clarification routing, bundle regressions, and the full backend suite at `832 pass / 0 fail`
 - the next boundary-hardening slice extracted quote-enrichment support into `assistant-quote-enrichment.js`, moving enrichment-context shaping, migration-note gating, and sanitization utilities out of `assistant.js` while keeping the `runChat()` call and final quote-narrative orchestration centralized
 - that same slice added focused enrichment-helper coverage and revalidated sanitization behavior, direct fast paths, post-clarification routing, bundle regressions, and the full backend suite at `835 pass / 0 fail`
+- the next boundary-hardening slice extracted quote-narrative assembly into `assistant-quote-assembly.js`, moving the deterministic lead and final message assembly out of `assistant.js` while keeping GenAI enrichment decisions and top-level quote routing centralized
+- that same slice added focused quote-assembly helper coverage and revalidated deterministic narratives, sanitization behavior, direct fast paths, post-clarification routing, bundle regressions, and the full backend suite at `838 pass / 0 fail`
+- the next boundary-hardening slice extracted the deterministic quote payload builder into `quote-response-payload.js`, removing repeated `mode: quote` payload assembly from direct fast paths and post-clarification routing while keeping quote-narrative orchestration centralized in `assistant.js`
+- that same slice added focused payload-helper coverage and revalidated direct fast paths, post-clarification routing, deterministic bundle narratives, and the full backend suite at `839 pass / 0 fail`
 
 Suggested first gaps to cover:
 

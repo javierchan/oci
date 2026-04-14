@@ -14,6 +14,7 @@ Catalogo_Integracion.xlsx
 *.env
 
 # Python
+.venv/
 __pycache__/
 *.py[cod]
 *.pyo

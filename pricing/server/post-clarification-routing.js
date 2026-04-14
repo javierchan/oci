@@ -1,5 +1,7 @@
 'use strict';
 
+const { buildDeterministicQuotePayload } = require('./quote-response-payload');
+
 async function resolvePostClarificationRouting(options = {}, deps = {}) {
   const {
     cfg,
@@ -82,13 +84,15 @@ async function resolvePostClarificationRouting(options = {}, deps = {}) {
     if (quote.ok) {
       return {
         intent: nextIntent,
-        payload: {
-          ok: true,
-          mode: 'quote',
-          message: await buildQuoteNarrative(cfg, effectiveUserText, quote, assumptions),
+        payload: await buildDeterministicQuotePayload({
+          cfg,
+          userText: effectiveUserText,
           quote,
+          assumptions,
           intent: nextIntent,
-        },
+        }, {
+          buildQuoteNarrative,
+        }),
       };
     }
 

@@ -20,6 +20,9 @@ const {
   sanitizeQuoteEnrichment,
   shouldAllowMigrationNotes,
 } = require('./assistant-quote-enrichment');
+const {
+  buildQuoteNarrativeMessage,
+} = require('./assistant-quote-assembly');
 const { fmt, money, toMarkdownQuote } = require('./assistant-quote-rendering');
 const {
   buildAssistantSessionContext,
@@ -276,33 +279,16 @@ function formatMoney(value, currencyCode = 'USD') {
 }
 
 async function buildQuoteNarrative(cfg, userText, quote, assumptions) {
-  const matched = quote.resolution?.label || 'the requested OCI product';
-  const totals = quote.totals || {};
-  const request = quote.request || {};
-  const lineCount = Array.isArray(quote.lineItems) ? quote.lineItems.length : 0;
-  const currencyCode = totals.currencyCode || 'USD';
-  const totalSentence = request.annualRequested
-    ? `The estimate includes ${lineCount} priced line${lineCount === 1 ? '' : 's'} and the calculated annual total is **${formatMoney(totals.annual, currencyCode)}**.`
-    : `The estimate includes ${lineCount} priced line${lineCount === 1 ? '' : 's'} and the calculated monthly total is **${formatMoney(totals.monthly, currencyCode)}**.`;
-  const parts = [
-    `I prepared a deterministic OCI quotation for \`${matched}\`.`,
-    totalSentence,
-  ];
-  if (assumptions.length) {
-    parts.push(`Key assumptions:\n${assumptions.join('\n')}`);
-  }
-  parts.push(buildDeterministicExpertSummary(quote));
   const enrichment = await buildGenAIQuoteEnrichment(cfg, userText, quote, assumptions);
-  parts.push(enrichment || buildDeterministicConsiderationsFallback(quote, assumptions));
   const explanation = buildConsumptionExplanation(quote);
-  if (explanation.length) {
-    parts.push(`How OCI measures this:\n${explanation.join('\n')}`);
-  }
-  parts.push(`### OCI quotation\n\n${quote.markdown}`);
-  if (quote.warnings?.length) {
-    parts.push(`Warnings:\n${quote.warnings.map((item) => `- ${item}`).join('\n')}`);
-  }
-  return parts.join('\n\n');
+  return buildQuoteNarrativeMessage({
+    quote,
+    assumptions,
+    expertSummary: buildDeterministicExpertSummary(quote),
+    enrichment,
+    fallbackConsiderations: buildDeterministicConsiderationsFallback(quote, assumptions),
+    consumptionExplanation: explanation,
+  });
 }
 
 function buildConsumptionExplanation(quote) {

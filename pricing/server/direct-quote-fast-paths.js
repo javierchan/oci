@@ -1,5 +1,7 @@
 'use strict';
 
+const { buildDeterministicQuotePayload } = require('./quote-response-payload');
+
 function isSimpleTransactionalQuoteRequest(parsedRequest = {}, compositeLike = false) {
   return !compositeLike &&
     Number.isFinite(Number(parsedRequest.requestCount)) &&
@@ -30,21 +32,20 @@ async function resolveDirectQuoteFastPath(options = {}, deps = {}) {
     const compositeQuote = buildCompositeQuoteFromSegments(index, effectiveUserText);
     if (compositeQuote?.ok) {
       return {
-        ok: true,
-        mode: 'quote',
-        message: await buildQuoteNarrative(
+        ...(await buildDeterministicQuotePayload({
           cfg,
-          effectiveUserText,
-          compositeQuote,
-          formatAssumptions([], parsePromptRequest(effectiveUserText)),
-        ),
-        quote: compositeQuote,
-        intent: {
-          intent: 'quote',
-          shouldQuote: true,
-          needsClarification: false,
-          clarificationQuestion: '',
-        },
+          userText: effectiveUserText,
+          quote: compositeQuote,
+          assumptions: formatAssumptions([], parsePromptRequest(effectiveUserText)),
+          intent: {
+            intent: 'quote',
+            shouldQuote: true,
+            needsClarification: false,
+            clarificationQuestion: '',
+          },
+        }, {
+          buildQuoteNarrative,
+        })),
       };
     }
   }
@@ -54,21 +55,20 @@ async function resolveDirectQuoteFastPath(options = {}, deps = {}) {
     const rawQuote = quoteFromPrompt(index, effectiveUserText);
     if (rawQuote.ok && rawQuote.resolution?.type === 'service') {
       return {
-        ok: true,
-        mode: 'quote',
-        message: await buildQuoteNarrative(
+        ...(await buildDeterministicQuotePayload({
           cfg,
-          effectiveUserText,
-          rawQuote,
-          formatAssumptions([], rawParsedRequest),
-        ),
-        quote: rawQuote,
-        intent: {
-          intent: 'quote',
-          shouldQuote: true,
-          needsClarification: false,
-          clarificationQuestion: '',
-        },
+          userText: effectiveUserText,
+          quote: rawQuote,
+          assumptions: formatAssumptions([], rawParsedRequest),
+          intent: {
+            intent: 'quote',
+            shouldQuote: true,
+            needsClarification: false,
+            clarificationQuestion: '',
+          },
+        }, {
+          buildQuoteNarrative,
+        })),
       };
     }
   }
