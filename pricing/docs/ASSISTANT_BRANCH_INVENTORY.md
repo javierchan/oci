@@ -131,7 +131,7 @@ Current read:
 
 - the top-level orchestration flow is already in better shape than the helper layer
 - the recent low-risk extraction wave validated the helper-module pattern for assistant-owned support logic without changing pricing behavior
-- the next higher-value extraction area is now the boundary between deterministic narrative helpers and GenAI enrichment orchestration, because rendering, segmentation, assembly, and deterministic narrative shaping already have dedicated destinations
+- quote narrative, quote-routing, dependency wiring, and GenAI response-writer adapters now have dedicated helper boundaries, so the next higher-value extraction area is the remaining assistant-local request/intent bridge logic still owned inline by `assistant.js`
 
 Recently validated slice:
 
@@ -186,6 +186,21 @@ Recently validated slice:
 - extracted the quote narrative/orchestration cluster into [assistant-quote-orchestrator.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/assistant-quote-orchestrator.js):
   - `buildGenAIQuoteEnrichment()`
   - `buildQuoteNarrative()`
+- extracted the assistant quote-routing cluster into [assistant-quote-routing.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/assistant-quote-routing.js):
+  - `resolveAssistantQuoteRouting()`
+- extracted the quote-routing dependency assembly cluster into [quote-routing-deps.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/quote-routing-deps.js):
+  - `buildDirectQuoteFastPathDeps()`
+  - `buildPostClarificationRoutingDeps()`
+  - `buildAssistantQuoteRoutingDeps()`
+- extracted the early/intent/discovery dependency assembly cluster into [assistant-orchestration-deps.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/assistant-orchestration-deps.js):
+  - `buildEarlyAssistantRoutingDeps()`
+  - `buildIntentPipelineDeps()`
+  - `buildDiscoveryRoutingStateDeps()`
+  - `buildDiscoveryRoutePayloadDeps()`
+- extracted the assistant reply-writer cluster into [assistant-reply-writers.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/assistant-reply-writers.js):
+  - `buildConversationMessages()`
+  - `writeNaturalReply()`
+  - `writeStructuredContextReply()`
 - added focused unit coverage in:
   - [request-query-helpers.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/request-query-helpers.test.js)
   - [quote-assumptions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/quote-assumptions.test.js)
@@ -200,7 +215,11 @@ Recently validated slice:
   - [assistant-quote-assembly.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-quote-assembly.test.js)
   - [quote-response-payload.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/quote-response-payload.test.js)
   - [assistant-quote-orchestrator.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-quote-orchestrator.test.js)
-- revalidated the affected routing, bundle, intent, follow-up, quote-export, deterministic-summary, sanitization, quote-assembly, quote-payload, quote-orchestration, and full server suites at `841 pass / 0 fail`
+  - [assistant-quote-routing.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-quote-routing.test.js)
+  - [quote-routing-deps.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/quote-routing-deps.test.js)
+  - [assistant-orchestration-deps.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-orchestration-deps.test.js)
+  - [assistant-reply-writers.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-reply-writers.test.js)
+- revalidated the affected routing, bundle, intent, follow-up, quote-export, deterministic-summary, sanitization, quote-assembly, quote-payload, quote-orchestration, quote-routing, dependency-bundle, orchestration-dependency, reply-writer, and full server suites at `853 pass / 0 fail`
 
 ### Milestone 3. Structured Knowledge Pilot Targets
 
@@ -247,9 +266,9 @@ Exit criteria:
 
 The next concrete slice for this track is:
 
-1. keep `assistant.js` responsible for quote-narrative orchestration while deterministic narrative support now lives in `assistant-quote-narrative.js`
-2. define the next bounded cut between:
-   - quote routing/orchestration in `assistant.js`
-   - the routing helpers that invoke `buildQuoteNarrative()`
-   - a reusable quote-routing adapter boundary
-3. continue inventorying assistant-owned helpers that still encode policy after the narrative extraction is no longer inline
+1. keep `assistant.js` responsible for top-level sequencing while quote-routing orchestration now lives in `assistant-quote-routing.js`
+2. extract the remaining assistant-local request/intent bridge helpers still owned inline by `assistant.js`, starting with:
+   - `isCompositeOrComparisonRequest()`
+   - `enrichExtractedInputsForFamily()`
+   - `summarizeMatches()`
+3. continue inventorying assistant-owned helpers that still encode policy after the route handoff, dependency wiring, response-writer adapters, and request/intent bridges are no longer inline

@@ -281,7 +281,7 @@ Completed in the current execution wave:
 - active-quote conceptual pricing questions such as `Como se cobra esto?` and generic SKU requirement questions now also stay in discovery/answer mode instead of forcing `quote_followup` mutation paths
 - colloquial Spanish extraction now also recognizes low-risk wording variants such as `memoria`, `almacenamiento`, `usuarios`, and `instancias de WAF`, so those inputs survive normalization instead of being lost before deterministic quoting
 
-Validation status as of April 13, 2026:
+Validation status as of April 14, 2026:
 
 - targeted suites for workbook, parity, assistant follow-ups, metadata, and session follow-up helpers are green
 - quote export endpoint tests are green in sandbox through the socketless export-response harness
@@ -300,10 +300,14 @@ Validation status as of April 13, 2026:
 - assistant quote assembly helper suite result: `3 pass / 0 fail`
 - quote response payload helper suite result: `1 pass / 0 fail`
 - assistant quote orchestrator helper suite result: `2 pass / 0 fail`
+- assistant quote routing helper suite result: `2 pass / 0 fail`
+- quote routing deps helper suite result: `3 pass / 0 fail`
+- assistant orchestration deps helper suite result: `3 pass / 0 fail`
+- assistant reply writers helper suite result: `4 pass / 0 fail`
 - workbook-focused suite result: `40 pass / 0 fail`
 - current parity suite result: `157 pass / 0 fail`
 - quote export endpoint suite result: `3 pass / 0 fail`
-- current full-suite result in sandbox: `841 pass / 0 fail`
+- current full-suite result in sandbox: `853 pass / 0 fail`
 
 Live assistant validation baseline as of April 10, 2026:
 
@@ -571,6 +575,14 @@ Recently completed in this workstream:
 - that same slice added focused payload-helper coverage and revalidated direct fast paths, post-clarification routing, deterministic bundle narratives, and the full backend suite at `839 pass / 0 fail`
 - the next boundary-hardening slice extracted quote narrative/orchestration into `assistant-quote-orchestrator.js`, moving `buildGenAIQuoteEnrichment()` and `buildQuoteNarrative()` out of `assistant.js` while keeping top-level assistant sequencing and routing ownership centralized
 - that same slice added focused orchestrator coverage and revalidated direct fast paths, post-clarification routing, deterministic bundle narratives, sanitization behavior, and the full backend suite at `841 pass / 0 fail`
+- the next boundary-hardening slice extracted quote routing orchestration into `assistant-quote-routing.js`, moving quote-candidate preparation, clarification-state reconciliation, and post-clarification handoff out of `assistant.js` while keeping top-level assistant sequencing centralized
+- that same slice added focused routing-helper coverage and revalidated direct fast paths, post-clarification routing, deterministic bundle narratives, quote orchestration behavior, and the full backend suite at `843 pass / 0 fail`
+- the next boundary-hardening slice extracted shared quote-routing dependency assembly into `quote-routing-deps.js`, collapsing repeated dependency wiring for direct fast paths, post-clarification routing, and assistant quote routing into a pure helper boundary while keeping all deterministic collaborators unchanged
+- that same slice added focused dependency-bundle coverage and revalidated direct fast paths, post-clarification routing, quote orchestration, quote routing, and the full backend suite at `846 pass / 0 fail`
+- the next boundary-hardening slice extracted shared early-routing, intent-pipeline, and discovery-routing dependency assembly into `assistant-orchestration-deps.js`, collapsing the remaining large collaborator bundles inline in `assistant.js` into a pure orchestration helper while keeping the underlying helper modules and GenAI behavior unchanged
+- that same slice added focused orchestration-dependency coverage and revalidated early routing, intent pipeline, discovery routing, quote routing, quote-routing deps, and the full backend suite at `849 pass / 0 fail`
+- the next boundary-hardening slice extracted the GenAI response-writer adapters into `assistant-reply-writers.js`, moving natural-reply and structured-discovery chat assembly out of `assistant.js` while preserving the same prompts, chat parameters, and injected collaborators used by the existing routing and unresolved-answer paths
+- that same slice added focused reply-writer coverage and revalidated discovery regressions, discovery routing, answer fallback, quote unresolved behavior, and the full backend suite at `853 pass / 0 fail`
 
 Suggested first gaps to cover:
 
