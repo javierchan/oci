@@ -184,6 +184,12 @@ def _response_from_record(record: JustificationRecord) -> JustificationRecordRes
     )
 
 
+def serialize_justification_record(record: JustificationRecord) -> JustificationRecordResponse:
+    """Serialize a stored justification record for reuse across services."""
+
+    return _response_from_record(record)
+
+
 def _transient_response(
     project_id: str,
     integration_id: str,
@@ -530,3 +536,40 @@ async def override_justification(
         db=db,
     )
     return _response_from_record(record)
+
+
+async def reset_justification(
+    project_id: str,
+    integration_id: str,
+    actor_id: str,
+    db: AsyncSession,
+) -> JustificationRecordResponse:
+    """Delete a persisted justification record and return the regenerated deterministic draft."""
+
+    row = await _load_integration(project_id, integration_id, db)
+    record = await _load_record(project_id, integration_id, db)
+    pattern_names = await _pattern_name_map(db)
+    template_config = await _default_template_config(db)
+    response = _transient_response(
+        project_id=project_id,
+        integration_id=integration_id,
+        narrative=_narrative_from_row(row, pattern_names, template_config),
+    )
+    if record is None:
+        return response
+
+    old_value = _response_from_record(record).model_dump()
+    deleted_record_id = record.id
+    await db.delete(record)
+    await db.flush()
+    await audit_service.emit(
+        event_type="justification_reset",
+        entity_type="justification_record",
+        entity_id=deleted_record_id,
+        actor_id=actor_id,
+        old_value=old_value,
+        new_value=response.model_dump(),
+        project_id=project_id,
+        db=db,
+    )
+    return response

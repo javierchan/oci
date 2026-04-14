@@ -73,6 +73,14 @@ class OverrideJustificationRequest(BaseModel):
     override_notes: Optional[str] = None
 
 
+class ResetJustificationRequest(BaseModel):
+    """Reset request payload."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    actor_id: str = "api-user"
+
+
 class PromptTemplateVersionResponse(BaseModel):
     """Serialized narrative template version."""
 

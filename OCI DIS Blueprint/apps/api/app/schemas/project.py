@@ -38,3 +38,28 @@ class ProjectListResponse(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     projects: list[ProjectResponse]
+
+
+class ProjectArchiveResponse(BaseModel):
+    """Archive action result for one project."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    project: ProjectResponse
+    detail: str
+
+
+class ProjectDeleteResponse(BaseModel):
+    """Deletion result for one archived project."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    project_id: str
+    detail: str
+    deleted_import_batches: int
+    deleted_source_rows: int
+    deleted_integrations: int
+    deleted_justifications: int
+    deleted_volumetry_snapshots: int
+    deleted_dashboard_snapshots: int
+    deleted_audit_events: int

@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.schemas.imports import ImportBatchListResponse, ImportBatchResponse, SourceRowListResponse
+from app.schemas.imports import (
+    ImportBatchDeleteResponse,
+    ImportBatchListResponse,
+    ImportBatchResponse,
+    SourceRowListResponse,
+)
 from app.services import import_service
 
 router = APIRouter(prefix="/imports", tags=["Imports"])
@@ -75,3 +80,18 @@ async def get_import_rows(
     db: AsyncSession = Depends(get_db),
 ) -> SourceRowListResponse:
     return await import_service.list_import_rows(project_id, batch_id, db, page=page, page_size=page_size)
+
+
+@router.delete(
+    "/{project_id}/{batch_id}",
+    response_model=ImportBatchDeleteResponse,
+    summary="Remove an import batch and recalculate the project",
+)
+async def delete_import(
+    project_id: str,
+    batch_id: str,
+    actor_id: str = "api-user",
+    db: AsyncSession = Depends(get_db),
+) -> ImportBatchDeleteResponse:
+    async with db.begin():
+        return await import_service.delete_import_batch(project_id, batch_id, actor_id, db)

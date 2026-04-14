@@ -9,18 +9,22 @@ from fastapi import HTTPException
 from openpyxl import load_workbook
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.calc_engine import evaluate_qa, executions_per_day, parse_rows, payload_per_hour_kb
-from app.models import CatalogIntegration, ImportBatch, Project, SourceIntegrationRow
+from app.models import CatalogIntegration, ImportBatch, JustificationRecord, Project, SourceIntegrationRow
 from app.models.project import ImportStatus
 from app.schemas.imports import (
+    ImportBatchDeleteResponse,
     ImportBatchListResponse,
     ImportBatchResponse,
     NormalizationEventResponse,
     SourceRowListResponse,
     SourceRowResponse,
 )
-from app.services import audit_service
+from app.services import audit_service, recalc_service
+from app.services.catalog_service import serialize_catalog_integration
+from app.services.justification_service import serialize_justification_record
 from app.services.serializers import parse_bool, parse_float, parse_int, parse_text, sanitize_for_json
 
 SOURCE_SHEET_NAME = "Catálogo de Integraciones"
@@ -372,3 +376,105 @@ async def save_upload_file(file_name: str, contents: bytes, upload_dir: Path) ->
     destination = upload_dir / f"{uuid.uuid4()}-{file_name}"
     destination.write_bytes(contents)
     return str(destination)
+
+
+async def delete_import_batch(
+    project_id: str,
+    batch_id: str,
+    actor_id: str,
+    db: AsyncSession,
+) -> ImportBatchDeleteResponse:
+    """Remove one import batch and its governed descendants, then recalculate the project."""
+
+    batch = await db.scalar(
+        select(ImportBatch)
+        .options(selectinload(ImportBatch.source_rows))
+        .where(
+            ImportBatch.project_id == project_id,
+            ImportBatch.id == batch_id,
+        )
+    )
+    if batch is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Import batch not found", "error_code": "IMPORT_BATCH_NOT_FOUND"},
+        )
+    if batch.status in {ImportStatus.PENDING, ImportStatus.PROCESSING}:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Cannot remove an import while it is still processing.",
+                "error_code": "IMPORT_BATCH_ACTIVE",
+            },
+        )
+
+    old_value = serialize_batch(batch).model_dump()
+    source_rows = list(batch.source_rows)
+    source_row_ids = [row.id for row in source_rows]
+    integrations = (
+        await db.scalars(
+            select(CatalogIntegration).where(CatalogIntegration.source_row_id.in_(source_row_ids))
+        )
+    ).all() if source_row_ids else []
+    integration_ids = [integration.id for integration in integrations]
+    justifications = (
+        await db.scalars(
+            select(JustificationRecord).where(
+                JustificationRecord.project_id == project_id,
+                JustificationRecord.integration_id.in_(integration_ids),
+            )
+        )
+    ).all() if integration_ids else []
+
+    for record in justifications:
+        await audit_service.emit(
+            event_type="justification_deleted",
+            entity_type="justification_record",
+            entity_id=record.id,
+            actor_id=actor_id,
+            old_value=serialize_justification_record(record).model_dump(),
+            new_value=None,
+            project_id=project_id,
+            db=db,
+        )
+        await db.delete(record)
+
+    for integration in integrations:
+        await audit_service.emit(
+            event_type="catalog_deleted",
+            entity_type="catalog_integration",
+            entity_id=integration.id,
+            actor_id=actor_id,
+            old_value=serialize_catalog_integration(integration).model_dump(),
+            new_value=None,
+            project_id=project_id,
+            db=db,
+        )
+        await db.delete(integration)
+
+    for source_row in source_rows:
+        await db.delete(source_row)
+    await db.delete(batch)
+    await db.flush()
+
+    snapshot = await recalc_service.recalculate_project(project_id=project_id, actor_id=actor_id, db=db)
+    response = ImportBatchDeleteResponse(
+        project_id=project_id,
+        batch_id=batch_id,
+        detail="Import removed and project recalculated.",
+        deleted_source_rows=len(source_rows),
+        deleted_integrations=len(integrations),
+        deleted_justifications=len(justifications),
+        recalculated_snapshot_id=snapshot.id,
+    )
+    await audit_service.emit(
+        event_type="import_deleted",
+        entity_type="import_batch",
+        entity_id=batch_id,
+        actor_id=actor_id,
+        old_value=old_value,
+        new_value=response.model_dump(),
+        project_id=project_id,
+        db=db,
+    )
+    return response
