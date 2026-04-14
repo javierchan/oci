@@ -96,14 +96,25 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 
 | # | Milestone | Status |
 |---|-----------|--------|
-| M1 | Schema + Migrations | 🔲 Pending |
-| M2 | Import Engine | 🔲 Pending |
-| M3 | Catalog Grid API | 🔲 Pending |
-| M4 | Calculation Engine | 🔲 Pending |
-| M5 | Dashboard API | 🔲 Pending |
-| M6 | Justification Narratives | 🔲 Pending |
-| M7 | Exports | 🔲 Pending |
-| M8 | Admin + Governance | 🔲 Pending |
+| M1 | Schema + Migrations | ✅ Complete |
+| M2 | Import Engine | ✅ Complete |
+| M3 | Catalog Grid API | ✅ Complete |
+| M4 | Calculation Engine | ✅ Complete |
+| M5 | Dashboard API | ✅ Complete |
+| M6 | Justification Narratives | ✅ Complete |
+| M7 | Exports | ✅ Complete |
+| M8 | Admin + Governance | ✅ Complete |
+
+## Validation Snapshot
+
+Phase 1 parity has been validated in Docker against the benchmark workbook rules:
+
+- Import parity: `157` TBQ=`Y` rows, `13` excluded `Duplicado 2`, `144` loaded rows in source order
+- Reference seed data: `17` patterns, `1` default assumption set, `40` dictionary options
+- Calc-engine parity: `26 passed`
+- Web and API stack: all six containers running and healthy in Docker Compose
+
+Implementation and benchmark notes for milestones `M1` through `M8` are captured in [`docs/phase1-validation.md`](./docs/phase1-validation.md).
 
 ---
 
