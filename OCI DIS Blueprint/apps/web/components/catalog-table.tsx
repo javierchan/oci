@@ -1,10 +1,11 @@
 "use client";
 
-/* Interactive catalog table with filters, search, and pagination. */
+/* Interactive catalog table with filters, search, contextual actions, and pagination. */
 
 import { useDeferredValue, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { ComplexityBadge } from "@/components/complexity-badge";
 import { PatternBadge } from "@/components/pattern-badge";
 import { QaBadge } from "@/components/qa-badge";
 import { api } from "@/lib/api";
@@ -13,9 +14,18 @@ import type { CatalogPage, Integration, PatternDefinition } from "@/lib/types";
 
 type CatalogTableProps = {
   projectId: string;
+  projectName: string;
   initialPage: CatalogPage;
   patterns: PatternDefinition[];
   brands: string[];
+  initialFilters: {
+    search: string;
+    qa_status: string;
+    pattern: string;
+    brand: string;
+    source_system: string;
+    destination_system: string;
+  };
 };
 
 export function CatalogTable({
@@ -23,12 +33,15 @@ export function CatalogTable({
   initialPage,
   patterns,
   brands,
+  initialFilters,
 }: CatalogTableProps): JSX.Element {
   const router = useRouter();
-  const [search, setSearch] = useState<string>("");
-  const [qaStatus, setQaStatus] = useState<string>("");
-  const [pattern, setPattern] = useState<string>("");
-  const [brand, setBrand] = useState<string>("");
+  const [search, setSearch] = useState<string>(initialFilters.search);
+  const [qaStatus, setQaStatus] = useState<string>(initialFilters.qa_status);
+  const [pattern, setPattern] = useState<string>(initialFilters.pattern);
+  const [brand, setBrand] = useState<string>(initialFilters.brand);
+  const [sourceSystem] = useState<string>(initialFilters.source_system);
+  const [destinationSystem] = useState<string>(initialFilters.destination_system);
   const [page, setPage] = useState<number>(initialPage.page);
   const [data, setData] = useState<CatalogPage>(initialPage);
   const [loading, setLoading] = useState<boolean>(false);
@@ -49,6 +62,8 @@ export function CatalogTable({
           qa_status: qaStatus || undefined,
           pattern: pattern || undefined,
           brand: brand || undefined,
+          source_system: sourceSystem || undefined,
+          destination_system: destinationSystem || undefined,
         });
         if (!cancelled) {
           setData(response);
@@ -69,13 +84,37 @@ export function CatalogTable({
     return () => {
       cancelled = true;
     };
-  }, [brand, deferredSearch, page, pattern, projectId, qaStatus]);
+  }, [brand, deferredSearch, destinationSystem, page, pattern, projectId, qaStatus, sourceSystem]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (search) {
+      params.set("search", search);
+    }
+    if (qaStatus) {
+      params.set("qa_status", qaStatus);
+    }
+    if (pattern) {
+      params.set("pattern", pattern);
+    }
+    if (brand) {
+      params.set("brand", brand);
+    }
+    if (sourceSystem) {
+      params.set("source_system", sourceSystem);
+    }
+    if (destinationSystem) {
+      params.set("destination_system", destinationSystem);
+    }
+    const query = params.toString();
+    router.replace(`/projects/${projectId}/catalog${query ? `?${query}` : ""}`);
+  }, [brand, destinationSystem, pattern, projectId, qaStatus, router, search, sourceSystem]);
 
   const totalPages = Math.max(1, Math.ceil(data.total / data.page_size));
-  const patternNames = new Map<string, string>(
+  const patternMap = new Map<string, PatternDefinition>(
     patterns.map((patternDefinition: PatternDefinition) => [
       patternDefinition.pattern_id,
-      patternDefinition.name,
+      patternDefinition,
     ]),
   );
 
@@ -86,23 +125,23 @@ export function CatalogTable({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="app-card p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end">
           <label className="flex-1">
-            <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Search</span>
+            <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">Search</span>
             <input
               value={search}
               onChange={(event) => resetPageAndSet(setSearch, event.target.value)}
-              placeholder="Interface, system, description…"
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+              placeholder="Interface, system, description..."
+              className="app-input"
             />
           </label>
           <label className="min-w-[12rem]">
-            <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">QA Status</span>
+            <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">QA Status</span>
             <select
               value={qaStatus}
               onChange={(event) => resetPageAndSet(setQaStatus, event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+              className="app-input"
             >
               <option value="">All</option>
               <option value="OK">OK</option>
@@ -111,11 +150,11 @@ export function CatalogTable({
             </select>
           </label>
           <label className="min-w-[14rem]">
-            <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Pattern</span>
+            <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">Pattern</span>
             <select
               value={pattern}
               onChange={(event) => resetPageAndSet(setPattern, event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+              className="app-input"
             >
               <option value="">All</option>
               {patterns.map((patternDefinition: PatternDefinition) => (
@@ -126,11 +165,11 @@ export function CatalogTable({
             </select>
           </label>
           <label className="min-w-[12rem]">
-            <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Brand</span>
+            <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">Brand</span>
             <select
               value={brand}
               onChange={(event) => resetPageAndSet(setBrand, event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+              className="app-input"
             >
               <option value="">All</option>
               {brands.map((brandName: string) => (
@@ -140,72 +179,118 @@ export function CatalogTable({
               ))}
             </select>
           </label>
-          <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">
-            {data.total} integrations
-          </div>
+          <div className="app-theme-chip">{data.total} integrations</div>
         </div>
+        {sourceSystem || destinationSystem ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {sourceSystem ? (
+              <span className="app-theme-chip">Source: {sourceSystem}</span>
+            ) : null}
+            {destinationSystem ? (
+              <span className="app-theme-chip">Destination: {destinationSystem}</span>
+            ) : null}
+          </div>
+        ) : null}
         {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
       </section>
 
-      <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+      <section className="app-table-shell">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-left">
-            <thead className="bg-slate-950 text-xs uppercase tracking-[0.25em] text-slate-400">
+          <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
+            <thead className="app-table-header">
               <tr>
-                <th className="px-6 py-4 font-medium">#</th>
-                <th className="px-6 py-4 font-medium">Interface ID</th>
-                <th className="px-6 py-4 font-medium">Brand</th>
-                <th className="px-6 py-4 font-medium">Interface Name</th>
-                <th className="px-6 py-4 font-medium">Pattern</th>
-                <th className="px-6 py-4 font-medium">Frequency</th>
-                <th className="px-6 py-4 font-medium">Payload KB</th>
-                <th className="px-6 py-4 font-medium">QA Status</th>
+                <th className="px-6 py-4">#</th>
+                <th className="px-6 py-4">Interface ID</th>
+                <th className="px-6 py-4">Brand</th>
+                <th className="px-6 py-4">Interface Name</th>
+                <th className="px-6 py-4">Pattern</th>
+                <th className="px-6 py-4">Frequency</th>
+                <th className="px-6 py-4">Complexity</th>
+                <th className="px-6 py-4">Payload KB</th>
+                <th className="px-6 py-4">QA Status</th>
+                <th className="px-6 py-4">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {data.integrations.map((integration: Integration) => (
-                <tr
-                  key={integration.id}
-                  onClick={() =>
-                    router.push(`/projects/${projectId}/catalog/${integration.id}`)
-                  }
-                  className="cursor-pointer text-sm text-slate-700 transition hover:bg-slate-50"
-                >
-                  <td className="px-6 py-4 font-medium text-slate-950">{integration.seq_number}</td>
-                  <td className="px-6 py-4">{integration.interface_id ?? "—"}</td>
-                  <td className="px-6 py-4">{integration.brand ?? "—"}</td>
-                  <td className="px-6 py-4">{integration.interface_name ?? "—"}</td>
-                  <td className="px-6 py-4">
-                    <PatternBadge
-                      patternId={integration.selected_pattern}
-                      name={
-                        integration.selected_pattern
-                          ? patternNames.get(integration.selected_pattern) ?? null
-                          : null
-                      }
-                    />
-                  </td>
-                  <td className="px-6 py-4">{integration.frequency ?? "—"}</td>
-                  <td className="px-6 py-4">{formatNumber(integration.payload_per_execution_kb, 1)}</td>
-                  <td className="px-6 py-4">
-                    <QaBadge status={integration.qa_status} />
-                  </td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-[var(--color-table-border)]">
+              {data.integrations.map((integration: Integration) => {
+                const patternDefinition = integration.selected_pattern
+                  ? patternMap.get(integration.selected_pattern)
+                  : null;
+                return (
+                  <tr
+                    key={integration.id}
+                    onClick={() => router.push(`/projects/${projectId}/catalog/${integration.id}`)}
+                    className="app-table-row cursor-pointer text-sm transition"
+                  >
+                    <td className="px-6 py-4 font-medium text-[var(--color-text-primary)]">{integration.seq_number}</td>
+                    <td className="px-6 py-4">
+                      <div>
+                        <p className="font-medium text-[var(--color-text-primary)]">{integration.interface_id ?? "—"}</p>
+                        <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+                          {integration.source_row_id ? `Lineage ${integration.source_row_id.slice(0, 8)}` : "Manual capture"}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-[var(--color-text-secondary)]">{integration.brand ?? "—"}</td>
+                    <td className="px-6 py-4 text-[var(--color-text-primary)]">{integration.interface_name ?? "—"}</td>
+                    <td className="px-6 py-4">
+                      <PatternBadge
+                        patternId={integration.selected_pattern}
+                        name={patternDefinition?.name ?? null}
+                        category={patternDefinition?.category ?? null}
+                      />
+                    </td>
+                    <td className="px-6 py-4 text-[var(--color-text-secondary)]">{integration.frequency ?? "—"}</td>
+                    <td className="px-6 py-4">
+                      <ComplexityBadge value={integration.complexity} />
+                    </td>
+                    <td className="px-6 py-4 text-[var(--color-text-secondary)]">
+                      {formatNumber(integration.payload_per_execution_kb, 1)}
+                    </td>
+                    <td className="px-6 py-4">
+                      <QaBadge status={integration.qa_status} />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            router.push(`/projects/${projectId}/catalog/${integration.id}`);
+                          }}
+                          className="app-link"
+                        >
+                          View
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            router.push(`/projects/${projectId}/catalog/${integration.id}?focus=patch#patch-form`);
+                          }}
+                          className="text-sm font-semibold text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)]"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
-        <div className="flex flex-col gap-4 border-t border-slate-200 px-6 py-4 md:flex-row md:items-center md:justify-between">
-          <div className="text-sm text-slate-500">
-            {loading ? "Refreshing catalog…" : `Page ${data.page} of ${totalPages}`}
+        <div className="flex flex-col gap-4 border-t border-[var(--color-border)] px-6 py-4 md:flex-row md:items-center md:justify-between">
+          <div className="text-sm text-[var(--color-text-secondary)]">
+            {loading ? "Refreshing catalog..." : `Page ${data.page} of ${totalPages}`}
           </div>
           <div className="flex gap-3">
             <button
               type="button"
               onClick={() => setPage((current: number) => Math.max(1, current - 1))}
               disabled={page <= 1 || loading}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+              className="app-button-secondary px-4 py-2"
             >
               Prev
             </button>
@@ -213,7 +298,7 @@ export function CatalogTable({
               type="button"
               onClick={() => setPage((current: number) => Math.min(totalPages, current + 1))}
               disabled={page >= totalPages || loading}
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+              className="app-button-secondary px-4 py-2"
             >
               Next
             </button>

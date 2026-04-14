@@ -3,19 +3,32 @@
 type PatternBadgeProps = {
   patternId: string | null;
   name?: string | null;
+  category?: string | null;
 };
 
-export function PatternBadge({ patternId, name }: PatternBadgeProps): JSX.Element {
+function patternColor(category: string | null | undefined): string {
+  if (category === "SÍNCRONO") {
+    return "bg-[var(--color-pat-sync-bg)] text-[var(--color-pat-sync-text)]";
+  }
+  if (category === "ASÍNCRONO") {
+    return "bg-[var(--color-pat-async-bg)] text-[var(--color-pat-async-text)]";
+  }
+  return "bg-[var(--color-pat-both-bg)] text-[var(--color-pat-both-text)]";
+}
+
+export function PatternBadge({ patternId, name, category }: PatternBadgeProps): JSX.Element {
   if (!patternId) {
     return (
-      <span className="inline-flex rounded-full border border-slate-400/20 bg-slate-400/10 px-3 py-1 text-xs font-medium text-slate-400">
+      <span className="inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-medium text-[var(--color-text-muted)]">
         —
       </span>
     );
   }
 
   return (
-    <span className="inline-flex rounded-full border border-sky-400/30 bg-sky-400/10 px-3 py-1 text-xs font-medium text-sky-100">
+    <span
+      className={`inline-flex rounded-full border border-transparent px-3 py-1 text-xs font-medium ${patternColor(category)}`}
+    >
       {name ? `${patternId} ${name}` : patternId}
     </span>
   );

@@ -5,9 +5,11 @@ type QaBadgeProps = {
 };
 
 const QA_STYLES: Record<string, string> = {
-  OK: "border-emerald-400/40 bg-emerald-400/15 text-emerald-200",
-  REVISAR: "border-amber-400/40 bg-amber-400/15 text-amber-200",
-  PENDING: "border-slate-400/30 bg-slate-400/10 text-slate-300",
+  OK: "bg-[var(--color-qa-ok-bg)] text-[var(--color-qa-ok-text)] border border-[var(--color-qa-ok-border)]",
+  REVISAR:
+    "bg-[var(--color-qa-revisar-bg)] text-[var(--color-qa-revisar-text)] border border-[var(--color-qa-revisar-border)]",
+  PENDING:
+    "bg-[var(--color-qa-pending-bg)] text-[var(--color-qa-pending-text)] border border-[var(--color-qa-pending-border)]",
 };
 
 export function QaBadge({ status }: QaBadgeProps): JSX.Element {

@@ -37,7 +37,7 @@ export function RecalculateButton({ projectId }: RecalculateButtonProps): JSX.El
         type="button"
         onClick={handleClick}
         disabled={pending}
-        className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+        className="app-button-primary"
       >
         {pending ? "Running…" : "Run Recalculation"}
       </button>
