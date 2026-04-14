@@ -104,8 +104,8 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M6 | Justification Narratives | ✅ Complete | 2026-04-13 |
 | M7 | Exports | ✅ Complete | 2026-04-13 |
 | M8 | Admin + Governance | ✅ Complete | 2026-04-14 |
-| M9 | Integration Capture Wizard | ⚠ Partial | — |
-| M10 | System Dependency Map | ⚠ Partial | — |
+| M9 | Integration Capture Wizard | ✅ Complete | 2026-04-14 |
+| M10 | System Dependency Map | ✅ Complete | 2026-04-14 |
 | M11 | Navigation + Theme | ✅ Complete | 2026-04-14 |
 | M12 | Source Lineage + Template | ✅ Complete | 2026-04-14 |
 | M13 | Integration Design Canvas | ✅ Complete | 2026-04-14 |
