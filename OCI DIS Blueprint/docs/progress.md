@@ -41,6 +41,31 @@ None
 
 ---
 
+## M13 — Integration Design Canvas
+
+**Completed:** 2026-04-14
+**Status:** ✅ Complete
+
+### What was implemented
+
+- `apps/web/components/integration-canvas.tsx` — reactive architecture-flow canvas that renders source, selected OCI tool nodes, and destination in canonical left-to-right order
+- `apps/web/components/integration-patch-form.tsx` — canvas integration directly below the core-tools selector so unsaved pattern and tool changes update the design preview immediately
+- Client-side execution and billing estimates added to the canvas annotation strip to show payload, OIC billing messages, and destination context without requiring a save round-trip
+
+### Verification results
+
+```text
+TypeScript: 0 errors
+Detail route reachability: OK
+docker compose ps: 6/6 containers Up
+```
+
+### Gaps / known limitations
+
+None
+
+---
+
 ## M12 — Source Lineage + Template
 
 **Completed:** 2026-04-14
