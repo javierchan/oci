@@ -152,7 +152,7 @@ def seed_patterns(session: Session) -> int:
             select(PatternDefinition).where(PatternDefinition.pattern_id == pattern_data["pattern_id"])
         )
         if existing is None:
-            existing = PatternDefinition(**pattern_data)
+            existing = PatternDefinition(**pattern_data, is_system=True)
             session.add(existing)
             session.flush()
             _audit(session, "seed_insert", "pattern_definition", existing.id, pattern_data)
@@ -160,6 +160,7 @@ def seed_patterns(session: Session) -> int:
         else:
             existing.name = pattern_data["name"]
             existing.category = pattern_data["category"]
+            existing.is_system = True
     return count
 
 
