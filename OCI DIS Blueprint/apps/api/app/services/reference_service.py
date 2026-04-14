@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
+
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AssumptionSet, DictionaryOption, PatternDefinition
+from app.models import AssumptionSet, CatalogIntegration, DictionaryOption, PatternDefinition
 from app.schemas.reference import (
     AssumptionSetCreate,
     AssumptionSetListResponse,
@@ -18,10 +20,15 @@ from app.schemas.reference import (
     DictionaryOptionListResponse,
     DictionaryOptionResponse,
     DictionaryOptionUpdate,
+    PatternDefinitionCreate,
     PatternDefinitionResponse,
+    PatternDefinitionUpdate,
     PatternListResponse,
 )
 from app.services import audit_service
+from app.services.serializers import split_csv
+
+PATTERN_ID_RE = re.compile(r"^#\d{2}$")
 
 
 def serialize_pattern(pattern: PatternDefinition) -> PatternDefinitionResponse:
@@ -33,8 +40,13 @@ def serialize_pattern(pattern: PatternDefinition) -> PatternDefinitionResponse:
         name=pattern.name,
         category=pattern.category,
         description=pattern.description,
+        components=split_csv(pattern.oci_components),
+        flow=pattern.technical_flow,
+        is_system=pattern.is_system,
         is_active=pattern.is_active,
         version=pattern.version,
+        created_at=pattern.created_at,
+        updated_at=pattern.updated_at,
     )
 
 
@@ -88,6 +100,155 @@ async def get_pattern(pattern_id: str, db: AsyncSession) -> PatternDefinitionRes
             detail={"detail": "Pattern not found", "error_code": "PATTERN_NOT_FOUND"},
         )
     return serialize_pattern(result)
+
+
+def _validate_pattern_id(pattern_id: str) -> str:
+    normalized = pattern_id.strip()
+    if not PATTERN_ID_RE.fullmatch(normalized):
+        raise HTTPException(
+            status_code=400,
+            detail={"detail": "Pattern ID must use #NN format.", "error_code": "INVALID_PATTERN_ID"},
+        )
+    return normalized
+
+
+def _join_components(components: list[str] | None) -> str | None:
+    if components is None:
+        return None
+    normalized = [item.strip() for item in components if item.strip()]
+    return ", ".join(normalized) if normalized else None
+
+
+async def _load_pattern(pattern_id: str, db: AsyncSession) -> PatternDefinition:
+    pattern = await db.scalar(select(PatternDefinition).where(PatternDefinition.pattern_id == pattern_id))
+    if pattern is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Pattern not found", "error_code": "PATTERN_NOT_FOUND"},
+        )
+    return pattern
+
+
+async def create_pattern(
+    data: PatternDefinitionCreate,
+    actor_id: str,
+    db: AsyncSession,
+) -> PatternDefinitionResponse:
+    """Create a custom pattern definition and emit an audit event."""
+
+    pattern_id = _validate_pattern_id(data.pattern_id)
+    existing = await db.scalar(select(PatternDefinition.id).where(PatternDefinition.pattern_id == pattern_id))
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={"detail": "Pattern ID already exists", "error_code": "PATTERN_EXISTS"},
+        )
+
+    pattern = PatternDefinition(
+        pattern_id=pattern_id,
+        name=data.name,
+        category=data.category,
+        description=data.description,
+        oci_components=_join_components(data.components),
+        technical_flow=data.flow,
+        is_system=False,
+    )
+    db.add(pattern)
+    await db.flush()
+    await db.refresh(pattern)
+    response = serialize_pattern(pattern)
+    await audit_service.emit(
+        event_type="pattern_created",
+        entity_type="pattern_definition",
+        entity_id=pattern.id,
+        actor_id=actor_id,
+        old_value=None,
+        new_value=response.model_dump(),
+        project_id=None,
+        db=db,
+    )
+    return response
+
+
+async def update_pattern(
+    pattern_id: str,
+    data: PatternDefinitionUpdate,
+    actor_id: str,
+    db: AsyncSession,
+) -> PatternDefinitionResponse:
+    """Patch one pattern definition and emit an audit event."""
+
+    pattern = await _load_pattern(pattern_id, db)
+    patch = data.model_dump(exclude_none=True)
+    if not patch:
+        return serialize_pattern(pattern)
+
+    old_value = serialize_pattern(pattern).model_dump()
+    if "components" in patch:
+        pattern.oci_components = _join_components(data.components)
+        patch.pop("components", None)
+    if "flow" in patch:
+        pattern.technical_flow = data.flow
+        patch.pop("flow", None)
+    for field, value in patch.items():
+        setattr(pattern, field, value)
+    await db.flush()
+    await db.refresh(pattern)
+    response = serialize_pattern(pattern)
+    await audit_service.emit(
+        event_type="pattern_updated",
+        entity_type="pattern_definition",
+        entity_id=pattern.id,
+        actor_id=actor_id,
+        old_value=old_value,
+        new_value=response.model_dump(),
+        project_id=None,
+        db=db,
+    )
+    return response
+
+
+async def delete_pattern(pattern_id: str, actor_id: str, db: AsyncSession) -> None:
+    """Delete one non-system pattern that is not currently referenced by the catalog."""
+
+    pattern = await _load_pattern(pattern_id, db)
+    if pattern.is_system:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "System patterns cannot be deleted.",
+                "error_code": "SYSTEM_PATTERN_DELETE_FORBIDDEN",
+            },
+        )
+
+    in_use_count = await db.scalar(
+        select(func.count())
+        .select_from(CatalogIntegration)
+        .where(CatalogIntegration.selected_pattern == pattern.pattern_id)
+    )
+    if (in_use_count or 0) > 0:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": f"Pattern in use by {in_use_count} integrations.",
+                "error_code": "PATTERN_IN_USE",
+            },
+        )
+
+    old_value = serialize_pattern(pattern).model_dump()
+    pattern_id_internal = pattern.id
+    await db.delete(pattern)
+    await db.flush()
+    await audit_service.emit(
+        event_type="pattern_deleted",
+        entity_type="pattern_definition",
+        entity_id=pattern_id_internal,
+        actor_id=actor_id,
+        old_value=old_value,
+        new_value=None,
+        project_id=None,
+        db=db,
+    )
 
 
 async def list_dictionary_categories(db: AsyncSession) -> DictionaryCategoryListResponse:

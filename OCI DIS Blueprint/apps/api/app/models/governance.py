@@ -20,6 +20,7 @@ class PatternDefinition(Base, UUIDMixin, TimestampMixin):
     when_not_to_use: Mapped[Optional[str]] = mapped_column(Text)
     technical_flow: Mapped[Optional[str]] = mapped_column(Text)
     business_value: Mapped[Optional[str]] = mapped_column(Text)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     version: Mapped[str] = mapped_column(String(20), default="1.0.0")
 

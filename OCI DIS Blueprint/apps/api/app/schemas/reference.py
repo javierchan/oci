@@ -8,18 +8,48 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class PatternDefinitionCreate(BaseModel):
+    """Admin payload to create a custom pattern definition."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    pattern_id: str
+    name: str
+    category: str
+    description: Optional[str] = None
+    components: Optional[list[str]] = None
+    flow: Optional[str] = None
+
+
+class PatternDefinitionUpdate(BaseModel):
+    """Admin payload to update a custom or system pattern definition."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    name: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    components: Optional[list[str]] = None
+    flow: Optional[str] = None
+
+
 class PatternDefinitionResponse(BaseModel):
     """Serialized pattern definition."""
 
-    model_config = ConfigDict(strict=True, extra="forbid")
+    model_config = ConfigDict(strict=True, extra="forbid", from_attributes=True)
 
     id: str
     pattern_id: str
     name: str
     category: str
     description: Optional[str]
+    components: Optional[list[str]]
+    flow: Optional[str]
+    is_system: bool
     is_active: bool
     version: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class PatternListResponse(BaseModel):
