@@ -6,12 +6,16 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const assistantPath = path.join(ROOT, 'assistant.js');
+const assistantRuntimeDepsPath = path.join(ROOT, 'assistant-runtime-deps.js');
+const assistantReplyWritersPath = path.join(ROOT, 'assistant-reply-writers.js');
 const intentPath = path.join(ROOT, 'intent-extractor.js');
 const genaiPath = path.join(ROOT, 'genai.js');
 const { normalizeCatalog } = require(path.join(ROOT, 'catalog.js'));
 
 function loadAssistantWithStubs(intentResolver, options = {}) {
   delete require.cache[assistantPath];
+  delete require.cache[assistantRuntimeDepsPath];
+  delete require.cache[assistantReplyWritersPath];
   delete require.cache[intentPath];
   delete require.cache[genaiPath];
 

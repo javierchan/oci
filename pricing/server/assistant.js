@@ -17,10 +17,6 @@ const { buildAssistantContextPack, buildCatalogListingReply, buildStructuredDisc
 const { buildServiceUnavailableMessage } = require('./assistant-response-helpers');
 const { sanitizeQuoteEnrichment } = require('./assistant-quote-enrichment');
 const { buildQuoteNarrative } = require('./assistant-quote-orchestrator');
-const {
-  writeNaturalReply: writeNaturalReplyHelper,
-  writeStructuredContextReply: writeStructuredContextReplyHelper,
-} = require('./assistant-reply-writers');
 const { toMarkdownQuote } = require('./assistant-quote-rendering');
 const {
   buildAssistantSessionContext,
@@ -55,17 +51,6 @@ const { resolveDirectQuoteFastPath } = require('./direct-quote-fast-paths');
 const { resolveEarlyAssistantRouting } = require('./early-assistant-routing');
 const { buildDiscoveryRoutingState, resolveDiscoveryRoutePayload } = require('./discovery-routing');
 const { resolvePostClarificationRouting } = require('./post-clarification-routing');
-const { resolveAssistantQuoteRouting } = require('./assistant-quote-routing');
-const {
-  buildDiscoveryRoutePayloadDeps,
-  buildDiscoveryRoutingStateDeps,
-  buildEarlyAssistantRoutingDeps,
-  buildIntentPipelineDeps,
-} = require('./assistant-orchestration-deps');
-const {
-  buildAssistantQuoteRoutingDeps,
-  buildDirectQuoteFastPathDeps,
-} = require('./quote-routing-deps');
 const { resolveIntentPipeline } = require('./intent-pipeline');
 const { prepareQuoteCandidateState } = require('./quote-entry-preparation');
 const {
@@ -93,6 +78,25 @@ const {
   buildFlexComparisonNarrative,
   buildFlexComparisonReplyPayload,
 } = require('./flex-comparison-flow');
+
+const RESPONSE_PROMPT = [
+  'You are an OCI pricing specialist speaking to a customer.',
+  'Be concise, natural, and practical.',
+  'If a deterministic quotation is provided, explain what was matched and mention any assumptions or warnings.',
+  'Do not invent prices, SKUs, tiers, or formulas.',
+  'If no quotation is available, explain the situation clearly and ask at most one next question when needed.',
+  'Do not render tables.',
+  'Use plain markdown.',
+].join('\n');
+
+const STRUCTURED_DISCOVERY_PROMPT = [
+  'You are an OCI pricing discovery specialist.',
+  'Answer only using the structured product context provided by the system.',
+  'Do not invent OCI services, shapes, pricing rules, modifiers, or availability.',
+  'If the context does not contain enough information to answer safely, say the service is not available in the current pricing knowledge base.',
+  'Do not generate a quote unless the system explicitly says this is a deterministic quote path.',
+  'Use concise natural markdown and prefer short lists when enumerating options.',
+].join('\n');
 
 const FLEX_SHAPE_TOKEN_PATTERN_SOURCE = '(?:(?:vm|bm)\\.)?(?:(?:[a-z][a-z0-9]*)\\.)*(?:[a-z]+\\d+|[a-z]\\d+)\\.flex';
 const FLEX_SHAPE_TOKEN_INLINE_PATTERN = new RegExp(`\\b${FLEX_SHAPE_TOKEN_PATTERN_SOURCE}\\b`, 'i');
@@ -149,20 +153,71 @@ function enrichExtractedInputsForFamily(intent = {}) {
 }
 
 async function writeNaturalReply(cfg, conversation, userText, context, sessionContext) {
-  return writeNaturalReplyHelper(cfg, conversation, userText, context, sessionContext, {
-    buildSessionContextBlock,
-    runChat,
-    extractChatText,
+  const history = Array.isArray(conversation) ? conversation.slice(-6) : [];
+  const sessionBlock = buildSessionContextBlock(sessionContext);
+  const contextBlock = [
+    sessionBlock,
+    `User request: ${userText}`,
+    `Intent: ${context.intent || 'quote'}`,
+    context.summary ? `Summary: ${context.summary}` : '',
+    context.quoteMarkdown ? `Quotation markdown:\n${context.quoteMarkdown}` : '',
+    context.warningLines?.length ? `Warnings:\n${context.warningLines.join('\n')}` : '',
+    context.assumptionLines?.length ? `Assumptions:\n${context.assumptionLines.join('\n')}` : '',
+    context.candidateLines?.length ? `Candidates:\n${context.candidateLines.join('\n')}` : '',
+  ].filter(Boolean).join('\n\n');
+
+  const messages = [
+    ...history.map((item) => ({
+      role: item.role === 'assistant' ? 'assistant' : 'user',
+      content: String(item.content || ''),
+    })),
+    { role: 'user', content: contextBlock },
+  ];
+
+  const response = await runChat({
+    cfg,
+    systemPrompt: RESPONSE_PROMPT,
+    messages,
+    maxTokens: 900,
+    temperature: 0.35,
+    topP: 0.7,
+    topK: -1,
   });
+  return extractChatText(response?.data || response).trim();
 }
 
 async function writeStructuredContextReply(cfg, conversation, userText, sessionContext, contextPack) {
-  return writeStructuredContextReplyHelper(cfg, conversation, userText, sessionContext, contextPack, {
-    buildSessionContextBlock,
-    stringifyContextPack,
-    runChat,
-    extractChatText,
-  });
+  if (!cfg?.modelId || !cfg?.compartment) return '';
+  const history = Array.isArray(conversation) ? conversation.slice(-6) : [];
+  const sessionBlock = buildSessionContextBlock(sessionContext);
+  const contextBlock = [
+    sessionBlock,
+    `User request: ${String(userText || '').trim()}`,
+    `Structured product context:\n${stringifyContextPack(contextPack)}`,
+  ].filter(Boolean).join('\n\n');
+
+  const messages = [
+    ...history.map((item) => ({
+      role: item.role === 'assistant' ? 'assistant' : 'user',
+      content: String(item.content || ''),
+    })),
+    { role: 'user', content: contextBlock },
+  ];
+
+  try {
+    const response = await runChat({
+      cfg,
+      systemPrompt: STRUCTURED_DISCOVERY_PROMPT,
+      messages,
+      maxTokens: 700,
+      temperature: 0.2,
+      topP: 0.5,
+      topK: -1,
+    });
+    return extractChatText(response?.data || response).trim();
+  } catch {
+    return '';
+  }
 }
 
 function inferQuoteTechnologyProfile(quote) {
@@ -208,7 +263,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     userText,
     effectiveUserText,
     index,
-  }, buildEarlyAssistantRoutingDeps({
+  }, {
     buildEarlyAssistantReply,
     detectGenericComputeShapeClarification,
     extractFlexComparisonContext,
@@ -220,7 +275,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     buildFlexComparisonReplyPayload,
     buildFlexComparisonQuote,
     buildFlexComparisonNarrative,
-  }));
+  });
   if (earlyRoutingPayload) return respond(earlyRoutingPayload);
 
   const directQuoteFastPath = await resolveDirectQuoteFastPath({
@@ -228,13 +283,13 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     index,
     effectiveUserText,
     compositeLike,
-  }, buildDirectQuoteFastPathDeps({
+  }, {
     buildCompositeQuoteFromSegments,
     buildQuoteNarrative,
     formatAssumptions,
     parsePromptRequest,
     quoteFromPrompt,
-  }));
+  });
   if (directQuoteFastPath) return respond(directQuoteFastPath);
 
   const intentPipeline = await resolveIntentPipeline({
@@ -247,7 +302,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     contextualFollowUp,
     flexComparison,
     index,
-  }, buildIntentPipelineDeps({
+  }, {
     analyzeIntent,
     analyzeImageIntent,
     fallbackIntentOnAnalysisFailure,
@@ -262,7 +317,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     buildFlexComparisonReplyPayload,
     buildFlexComparisonQuote,
     buildFlexComparisonNarrative,
-  }));
+  });
   if (intentPipeline.payload) return respond(intentPipeline.payload);
   const enrichedIntent = intentPipeline.intent;
   const {
@@ -274,12 +329,12 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     effectiveUserText,
     userText,
     intent: enrichedIntent,
-  }, buildDiscoveryRoutingStateDeps({
+  }, {
     buildRegistryQuery,
     searchServiceRegistry,
     serviceHasRequiredInputs,
     buildCatalogListingReply,
-  }));
+  });
   const discoveryRoutePayload = await resolveDiscoveryRoutePayload({
     cfg,
     index,
@@ -290,7 +345,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     intent: enrichedIntent,
     catalogReply,
     isDiscoveryIntent,
-  }, buildDiscoveryRoutePayloadDeps({
+  }, {
     buildAssistantContextPack,
     writeStructuredContextReply,
     buildStructuredDiscoveryFallback,
@@ -298,21 +353,18 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     hasExplicitQuoteLead,
     buildServiceUnavailableMessage,
     summarizeContextPack,
-  }));
+  });
   if (discoveryRoutePayload) return respond(discoveryRoutePayload);
-  const quoteRoute = await resolveAssistantQuoteRouting({
-    cfg,
+  const quoteCandidateState = prepareQuoteCandidateState({
     index,
-    conversation,
+    sessionContext,
     userText,
     effectiveUserText,
-    sessionContext,
     intent: enrichedIntent,
     topService,
     contextualFollowUp,
     compositeLike,
-  }, buildAssistantQuoteRoutingDeps({
-    prepareQuoteCandidateState,
+  }, {
     getServiceFamily,
     mergeSessionQuoteFollowUpByRoute,
     findUncoveredComputeVariant,
@@ -325,11 +377,37 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     buildQuoteRequestShape,
     preserveCriticalPromptModifiers,
     choosePreferredQuote,
-    reconcileQuoteClarificationState,
+  });
+  if (quoteCandidateState.fallbackPayload) return respond(quoteCandidateState.fallbackPayload);
+  const effectiveQuoteText = quoteCandidateState.effectiveQuoteText;
+  Object.assign(enrichedIntent, quoteCandidateState.intent);
+  const familyMeta = quoteCandidateState.familyMeta;
+  const reformulatedRequest = quoteCandidateState.reformulatedRequest;
+  const preflightQuote = quoteCandidateState.preflightQuote;
+  const quoteClarificationState = reconcileQuoteClarificationState({
+    intent: enrichedIntent,
+    reformulatedRequest,
+    effectiveUserText,
+    userText,
+    familyMeta,
+    preflightQuote,
     getPreQuoteClarification,
     getMissingRequiredInputs,
     getClarificationMessage,
-    resolvePostClarificationRouting,
+  });
+  const postClarification = await resolvePostClarificationRouting({
+    cfg,
+    index,
+    conversation,
+    userText,
+    effectiveUserText,
+    sessionContext,
+    intent: enrichedIntent,
+    familyMeta,
+    reformulatedRequest,
+    preflightQuote,
+    quoteClarificationState,
+  }, {
     hasExplicitByolChoice,
     shouldAskLicenseChoice,
     buildLicenseChoiceClarificationPayload,
@@ -345,9 +423,9 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     buildAnswerFallbackPayload,
     summarizeMatches,
     writeNaturalReply,
-  }));
-  Object.assign(enrichedIntent, quoteRoute.intent);
-  return respond(quoteRoute.payload);
+  });
+  Object.assign(enrichedIntent, postClarification.intent);
+  return respond(postClarification.payload);
 }
 
 module.exports = {
