@@ -6,7 +6,6 @@ and must pass before any Milestone is considered done (PRD-050, PRD-052).
 
 Run with: pytest packages/calc-engine/src/tests/test_volumetry.py -v
 """
-import math
 import pytest
 from ..engine.volumetry import (
     Assumptions,

@@ -6,7 +6,6 @@ Benchmark expectations from workbook TBQ Audit tab:
   - 13 excluded (Duplicado 2)
   - 144 loaded in exact order
 """
-import pytest
 from ..engine.importer import parse_rows, should_include, normalize_frequency, build_header_map
 
 
