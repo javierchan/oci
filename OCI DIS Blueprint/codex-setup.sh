@@ -60,6 +60,7 @@ fi
   sqlalchemy==2.0.30 \
   alembic==1.13.1 \
   asyncpg==0.29.0 \
+  psycopg2-binary==2.9.9 \
   pydantic==2.7.1 \
   pydantic-settings==2.2.1 \
   python-multipart==0.0.9 \

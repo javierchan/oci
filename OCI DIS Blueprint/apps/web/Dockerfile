@@ -5,7 +5,7 @@ WORKDIR /app
 # ---------- deps ----------
 FROM base AS deps
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 # ---------- development ----------
 FROM deps AS development

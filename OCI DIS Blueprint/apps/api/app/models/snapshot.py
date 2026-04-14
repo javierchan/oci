@@ -1,8 +1,8 @@
-"""Immutable calculation and dashboard snapshots — PRD-035, PRD-044."""
+"""Immutable calculation, dashboard, justification, and audit snapshots."""
 from __future__ import annotations
 from typing import Optional
 from sqlalchemy import String, JSON, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, UUIDMixin
 
@@ -16,7 +16,7 @@ class VolumetrySnapshot(Base, UUIDMixin, TimestampMixin):
     triggered_by: Mapped[str] = mapped_column(String(36), nullable=False)  # user_id
     row_results: Mapped[dict] = mapped_column(JSON, nullable=False)  # {integration_id: {driver: value}}
     consolidated: Mapped[dict] = mapped_column(JSON, nullable=False)  # OIC, DI, Functions, Streaming totals
-    metadata: Mapped[Optional[dict]] = mapped_column(JSON)
+    snapshot_metadata: Mapped[Optional[dict]] = mapped_column("metadata", JSON)
 
 
 class DashboardSnapshot(Base, UUIDMixin, TimestampMixin):
@@ -57,4 +57,4 @@ class AuditEvent(Base, UUIDMixin, TimestampMixin):
     correlation_id: Mapped[Optional[str]] = mapped_column(String(36))
     old_value: Mapped[Optional[dict]] = mapped_column(JSON)
     new_value: Mapped[Optional[dict]] = mapped_column(JSON)
-    metadata: Mapped[Optional[dict]] = mapped_column(JSON)
+    audit_metadata: Mapped[Optional[dict]] = mapped_column("metadata", JSON)
