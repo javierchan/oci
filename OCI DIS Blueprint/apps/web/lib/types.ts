@@ -147,10 +147,12 @@ export interface LineageDetail {
   source_row_id: string;
   source_row_number: number;
   raw_data: Record<string, unknown>;
+  column_names: Record<string, string>;
   included: boolean;
   exclusion_reason: string | null;
   normalization_events: NormalizationEvent[];
   import_batch_id: string;
+  import_batch_date: string;
   import_filename: string;
 }
 

@@ -25,6 +25,31 @@ function stringifyValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function hasLineageValue(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+  if (typeof value === "string") {
+    return value.trim() !== "";
+  }
+  return true;
+}
+
+function compareLineageKeys(left: string, right: string): number {
+  const leftIsNumeric = /^\d+$/.test(left);
+  const rightIsNumeric = /^\d+$/.test(right);
+  if (leftIsNumeric && rightIsNumeric) {
+    return Number(left) - Number(right);
+  }
+  if (leftIsNumeric) {
+    return -1;
+  }
+  if (rightIsNumeric) {
+    return 1;
+  }
+  return left.localeCompare(right);
+}
+
 export default async function IntegrationDetailPage({
   params,
 }: IntegrationDetailPageProps): Promise<JSX.Element> {
@@ -42,6 +67,9 @@ export default async function IntegrationDetailPage({
   const integration = detail.integration;
   const lineage = detail.lineage;
   const sourceRowHref = `/projects/${params.projectId}/import?batch_id=${lineage.import_batch_id}&row=${lineage.source_row_number}`;
+  const lineageEntries = Object.entries(lineage.raw_data).sort(([left], [right]) => compareLineageKeys(left, right));
+  const populatedLineageEntries = lineageEntries.filter(([, value]) => hasLineageValue(value));
+  const hiddenLineageEntries = lineageEntries.filter(([, value]) => !hasLineageValue(value));
 
   return (
     <div className="space-y-8">
@@ -147,14 +175,51 @@ export default async function IntegrationDetailPage({
 
             <div className="app-card-muted mt-6 p-4">
               <p className="app-label">Raw Column Values</p>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {Object.entries(lineage.raw_data).map(([key, value]: [string, unknown]) => (
-                  <div key={key} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
-                    <p className="app-label">Column {key}</p>
-                    <p className="mt-2 break-all text-sm text-[var(--color-text-primary)]">{stringifyValue(value)}</p>
-                  </div>
-                ))}
+              <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+                <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
+                  <thead className="app-table-header">
+                    <tr>
+                      <th className="px-4 py-3">Field</th>
+                      <th className="px-4 py-3">Source Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
+                    {populatedLineageEntries.map(([key, value]: [string, unknown]) => (
+                      <tr key={key} className="app-table-row">
+                        <td className="px-4 py-3 font-medium text-[var(--color-text-primary)]">
+                          {lineage.column_names?.[key] ?? `Column ${key}`}
+                        </td>
+                        <td className="px-4 py-3 text-[var(--color-text-secondary)]">
+                          {stringifyValue(value)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+              {hiddenLineageEntries.length > 0 ? (
+                <details className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+                  <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-[var(--color-accent)]">
+                    Show all columns ({hiddenLineageEntries.length})
+                  </summary>
+                  <div className="border-t border-[var(--color-border)]">
+                    <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
+                      <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
+                        {hiddenLineageEntries.map(([key, value]: [string, unknown]) => (
+                          <tr key={key} className="app-table-row">
+                            <td className="px-4 py-3 font-medium text-[var(--color-text-primary)]">
+                              {lineage.column_names?.[key] ?? `Column ${key}`}
+                            </td>
+                            <td className="px-4 py-3 text-[var(--color-text-secondary)]">
+                              {stringifyValue(value)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              ) : null}
             </div>
 
             <div className="app-card-muted mt-6 p-4">

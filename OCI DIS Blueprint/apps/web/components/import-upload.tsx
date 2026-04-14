@@ -5,6 +5,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { Download } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
@@ -20,6 +21,7 @@ type ImportUploadProps = {
 };
 
 type UploadPhase = "idle" | "pending" | "processing" | "completed" | "failed";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 function formatBytes(size: number): string {
   if (size < 1024) {
@@ -107,13 +109,23 @@ export function ImportUpload({
   return (
     <div className="space-y-8">
       <section className="app-card p-6">
-        <div className="mb-4">
-          <h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
-            Upload Integration Workbook
-          </h2>
-          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            Project: {projectName}
-          </p>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
+              Upload Integration Workbook
+            </h2>
+            <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+              Project: {projectName}
+            </p>
+          </div>
+          <a
+            href={`${API_BASE}/api/v1/exports/template/xlsx`}
+            download="oci-dis-capture-template.xlsx"
+            className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]"
+          >
+            <Download className="h-4 w-4" />
+            Download capture template
+          </a>
         </div>
         <div
           role="button"

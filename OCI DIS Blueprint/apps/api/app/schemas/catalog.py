@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,6 +19,58 @@ class CatalogIntegrationPatch(BaseModel):
     retry_policy: Optional[str] = None
     core_tools: Optional[str] = None
     additional_tools_overlays: Optional[str] = None
+
+
+class ManualIntegrationCreate(BaseModel):
+    """Payload for guided manual capture of a new integration."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    interface_id: Optional[str] = None
+    brand: str
+    business_process: str
+    interface_name: str
+    description: Optional[str] = None
+    source_system: str
+    source_technology: Optional[str] = None
+    source_api_reference: Optional[str] = None
+    source_owner: Optional[str] = None
+    destination_system: str
+    destination_technology: Optional[str] = None
+    destination_owner: Optional[str] = None
+    type: Optional[str] = None
+    frequency: Optional[str] = None
+    payload_per_execution_kb: Optional[float] = None
+    complexity: Optional[str] = None
+    uncertainty: Optional[str] = None
+    selected_pattern: Optional[str] = None
+    pattern_rationale: Optional[str] = None
+    core_tools: Optional[list[str]] = None
+    tbq: str = "Y"
+    initial_scope: Optional[str] = None
+    owner: Optional[str] = None
+
+
+class OICEstimateRequest(BaseModel):
+    """Live OIC estimate request with no persistence side effects."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    frequency: Optional[str] = None
+    payload_per_execution_kb: Optional[float] = None
+    response_kb: float = 0.0
+
+
+class OICEstimateResponse(BaseModel):
+    """Live OIC estimate response."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    billing_msgs_per_execution: Optional[float] = None
+    billing_msgs_per_month: Optional[float] = None
+    peak_packs_per_hour: Optional[float] = None
+    executions_per_day: Optional[float] = None
+    computable: bool
 
 
 class CatalogIntegrationResponse(BaseModel):
@@ -92,11 +144,13 @@ class LineageDetail(BaseModel):
 
     source_row_id: str
     source_row_number: int
-    raw_data: dict[str, object]
+    raw_data: dict[str, Any]
+    column_names: dict[str, str] = Field(default_factory=dict)
     included: bool
     exclusion_reason: Optional[str] = None
     normalization_events: list[dict[str, object]] = Field(default_factory=list)
     import_batch_id: str
+    import_batch_date: datetime
     import_filename: str
 
 
@@ -126,3 +180,17 @@ class BulkPatchResult(BaseModel):
 
     updated: int
     errors: list[str] = Field(default_factory=list)
+
+
+class CatalogIntegrationDeleteResponse(BaseModel):
+    """Removal result for one catalog integration."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    project_id: str
+    integration_id: str
+    detail: str
+    deleted_source_row_id: Optional[str] = None
+    deleted_import_batch_id: Optional[str] = None
+    deleted_justification_id: Optional[str] = None
+    recalculated_snapshot_id: Optional[str] = None
