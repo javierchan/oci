@@ -1,0 +1,74 @@
+# ============================================================
+# OCI DIS Blueprint — .gitignore
+# ============================================================
+
+# Source workbook — sensitive customer data, tracked separately
+Catalogo_Integracion.xlsx
+*.xlsx
+*.xls
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+.venv/
+venv/
+env/
+pip-log.txt
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Docker
+*.override.yml
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Uploads / exports (runtime generated)
+uploads/
+exports/
+
+# Test fixtures — generated snapshots (not seed data)
+packages/test-fixtures/snapshots/*.json
+
+# Logs
+*.log
+logs/

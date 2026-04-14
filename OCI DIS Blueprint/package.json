@@ -1,0 +1,31 @@
+{
+  "name": "oci-dis-blueprint",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OCI Integration Design Blueprint — monorepo",
+  "workspaces": [
+    "apps/web",
+    "packages/ui",
+    "packages/shared-schema",
+    "packages/test-fixtures"
+  ],
+  "scripts": {
+    "dev": "docker compose up --build",
+    "dev:infra": "docker compose up db redis minio -d",
+    "dev:api": "docker compose up api worker -d",
+    "dev:web": "docker compose up web -d",
+    "build": "docker compose build",
+    "down": "docker compose down",
+    "test": "docker compose run --rm api pytest packages/calc-engine/src/tests -v",
+    "test:web": "docker compose run --rm web npm test",
+    "logs": "docker compose logs -f",
+    "db:migrate": "docker compose run --rm api alembic upgrade head",
+    "db:rollback": "docker compose run --rm api alembic downgrade -1",
+    "db:seed": "docker compose run --rm api python -m app.migrations.seed",
+    "lint:api": "docker compose run --rm api ruff check app/",
+    "lint:web": "docker compose run --rm web npm run lint"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

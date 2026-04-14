@@ -15,6 +15,11 @@ const { runChat, extractChatText } = require('./genai');
 const { analyzeIntent, analyzeImageIntent, buildSessionContextBlock } = require('./intent-extractor');
 const { buildAssistantContextPack, buildCatalogListingReply, buildStructuredDiscoveryFallback, buildUncoveredComputeReply, canSafelyQuoteUncoveredComputeVariant, findUncoveredComputeVariant, stringifyContextPack, summarizeContextPack } = require('./context-packs');
 const { buildServiceUnavailableMessage } = require('./assistant-response-helpers');
+const {
+  buildQuoteEnrichmentContextBlock,
+  sanitizeQuoteEnrichment,
+  shouldAllowMigrationNotes,
+} = require('./assistant-quote-enrichment');
 const { fmt, money, toMarkdownQuote } = require('./assistant-quote-rendering');
 const {
   buildAssistantSessionContext,
@@ -234,24 +239,9 @@ async function buildGenAIQuoteEnrichment(cfg, userText, quote, assumptions) {
   if (!cfg?.ok || !quote?.ok) return '';
   const lineItems = Array.isArray(quote.lineItems) ? quote.lineItems : [];
   if (!lineItems.length) return '';
-  const request = quote.request || {};
-  const totals = quote.totals || {};
   const technologyProfile = inferQuoteTechnologyProfile(quote);
-  const allowMigrationNotes = request?.metadata?.inventorySource === 'rvtools' || /\bvmware\b|\brvtools\b/i.test(String(userText || ''));
-  const contextBlock = [
-    `User request: ${String(userText || '').trim()}`,
-    `Expert role: ${technologyProfile.role}`,
-    `Technology profile: ${technologyProfile.name}`,
-    `OCI expert focus: ${technologyProfile.focus}`,
-    `Matched label: ${quote.resolution?.label || 'n/a'}`,
-    `Monthly total: ${formatMoney(totals.monthly, totals.currencyCode || 'USD')}`,
-    `Annual total: ${formatMoney(totals.annual, totals.currencyCode || 'USD')}`,
-    assumptions.length ? `Assumptions:\n${assumptions.join('\n')}` : '',
-    quote.warnings?.length ? `Warnings:\n${quote.warnings.map((item) => `- ${item}`).join('\n')}` : '',
-    `Line items:\n${lineItems.slice(0, 12).map((line) => `- ${line.service || '-'} | ${line.product} | ${line.metric || '-'} | qty ${fmt(line.quantity)} | monthly ${money(line.monthly)}`).join('\n')}`,
-    request?.metadata?.inventorySource ? `Inventory source: ${request.metadata.inventorySource}` : '',
-    request?.metadata?.vmwareVcpus ? `VMware vCPUs in source request: ${request.metadata.vmwareVcpus}` : '',
-  ].filter(Boolean).join('\n\n');
+  const allowMigrationNotes = shouldAllowMigrationNotes(userText, quote);
+  const contextBlock = buildQuoteEnrichmentContextBlock(userText, quote, assumptions, technologyProfile);
 
   try {
     const response = await runChat({
@@ -267,43 +257,6 @@ async function buildGenAIQuoteEnrichment(cfg, userText, quote, assumptions) {
   } catch (_error) {
     return '';
   }
-}
-
-function sanitizeQuoteEnrichment(text, options = {}) {
-  const source = String(text || '').trim();
-  if (!source) return '';
-  const allowMigrationNotes = options.allowMigrationNotes !== false;
-  const lines = source.split('\n');
-  const kept = [];
-  let activeSection = '';
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      if (kept.length && kept[kept.length - 1] !== '') kept.push('');
-      continue;
-    }
-    if (/^#{1,6}\s+/i.test(trimmed)) {
-      if (/migration notes/i.test(trimmed)) {
-        if (!allowMigrationNotes) {
-          activeSection = '';
-          continue;
-        }
-        activeSection = 'migration';
-        kept.push('## Migration Notes');
-      } else if (/oci considerations/i.test(trimmed)) {
-        activeSection = 'considerations';
-        kept.push('## OCI Considerations');
-      } else {
-        activeSection = '';
-      }
-      continue;
-    }
-    if (!activeSection) continue;
-    if (/\$|monthly total|annual total|breakdown of costs|costs are calculated|potential miscalculation|discrepanc/i.test(trimmed)) continue;
-    if (/\b=\b/.test(trimmed) && /\d/.test(trimmed)) continue;
-    kept.push(line);
-  }
-  return kept.join('\n').trim();
 }
 
 function inferQuoteTechnologyProfile(quote) {

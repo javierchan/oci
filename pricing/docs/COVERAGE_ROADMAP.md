@@ -332,15 +332,17 @@ Current test baseline:
 - composite quote builder helper suite: `5 pass / 0 fail`
 - assistant quote rendering helper suite: `3 pass / 0 fail`
 - assistant quote narrative helper suite: `5 pass / 0 fail`
+- assistant quote enrichment helper suite: `3 pass / 0 fail`
 - workbook-focused suite: `40 pass / 0 fail`
 - parity suite: `157 pass / 0 fail`
 - quote export endpoint suite: `3 pass / 0 fail`
-- full server suite in sandbox: `832 pass / 0 fail`
+- full server suite in sandbox: `835 pass / 0 fail`
 
 This is the operational baseline at the time of this documentation update.
 
 Most recently closed conservative slices:
 
+- quote-enrichment support now has its own helper boundary in `assistant-quote-enrichment.js`, with focused coverage for enrichment-context shaping, migration-note gating, and quote-enrichment sanitization
 - deterministic narrative/profile shaping now has its own helper boundary in `assistant-quote-narrative.js`, with focused coverage for profile inference, expert-summary shaping, considerations fallback, consumption explanation grouping, and assistant-facing money formatting
 - workbook-origin and RVTools-origin follow-up coverage now also includes shared `FastConnect + Monitoring Retrieval + DNS` bundles where `DNS` query-volume changes mutate only the `DNS` segment while preserving neighboring `FastConnect`, neighboring `Monitoring Retrieval`, and the surrounding compute/storage quote context
 - workbook-origin and RVTools-origin follow-up coverage now also includes shared `FastConnect + Health Checks + DNS` bundles where `DNS` query-volume changes mutate only the `DNS` segment while preserving neighboring `FastConnect`, neighboring `Health Checks`, and the surrounding compute/storage quote context

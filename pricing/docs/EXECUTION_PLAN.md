@@ -296,10 +296,11 @@ Validation status as of April 13, 2026:
 - composite quote builder helper suite result: `5 pass / 0 fail`
 - assistant quote rendering helper suite result: `3 pass / 0 fail`
 - assistant quote narrative helper suite result: `5 pass / 0 fail`
+- assistant quote enrichment helper suite result: `3 pass / 0 fail`
 - workbook-focused suite result: `40 pass / 0 fail`
 - current parity suite result: `157 pass / 0 fail`
 - quote export endpoint suite result: `3 pass / 0 fail`
-- current full-suite result in sandbox: `832 pass / 0 fail`
+- current full-suite result in sandbox: `835 pass / 0 fail`
 
 Live assistant validation baseline as of April 10, 2026:
 
@@ -559,6 +560,8 @@ Recently completed in this workstream:
 - that same slice added focused helper coverage and revalidated post-clarification routing, direct fast paths, bundle regressions, and the full backend suite at `827 pass / 0 fail`
 - the next boundary-hardening slice extracted deterministic narrative/profile shaping into `assistant-quote-narrative.js`, moving profile inference, deterministic expert-summary construction, considerations fallback logic, consumption-group explanation, and shared currency formatting out of `assistant.js` while keeping quote narrative assembly and GenAI enrichment orchestration centralized
 - that same slice added focused narrative-helper coverage and revalidated deterministic summary behavior, direct fast paths, post-clarification routing, bundle regressions, and the full backend suite at `832 pass / 0 fail`
+- the next boundary-hardening slice extracted quote-enrichment support into `assistant-quote-enrichment.js`, moving enrichment-context shaping, migration-note gating, and sanitization utilities out of `assistant.js` while keeping the `runChat()` call and final quote-narrative orchestration centralized
+- that same slice added focused enrichment-helper coverage and revalidated sanitization behavior, direct fast paths, post-clarification routing, bundle regressions, and the full backend suite at `835 pass / 0 fail`
 
 Suggested first gaps to cover:
 

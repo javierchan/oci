@@ -1,0 +1,31 @@
+{
+  "_comment": "Benchmark expectations from workbook TBQ Audit tab. These values must match after import of the source Catalogo_Integracion.xlsx. Used by parity tests (PRD-051).",
+  "source_file": "Catalogo_Integracion.xlsx",
+  "source_tab": "Catálogo de Integraciones",
+  "import_parity": {
+    "tbq_y_source_rows": 157,
+    "excluded_duplicado_2": 13,
+    "loaded_rows": 144,
+    "expected_order": "source_order_preserved",
+    "header_row": 5,
+    "data_start_row": 6
+  },
+  "dashboard_parity": {
+    "source_tab": "TPL - Dashboard",
+    "total_integrations": 144,
+    "with_formal_id": 11,
+    "qa_ok": 0,
+    "qa_revisar": 144,
+    "without_formal_id": 133,
+    "pattern_assigned": 144,
+    "payload_informed": 142
+  },
+  "patterns": {
+    "source_tab": "TPL - Patrones",
+    "total_patterns": 17
+  },
+  "assumptions_version": "1.0.0",
+  "oic_billing_threshold_kb": 50,
+  "oic_pack_size_msgs_per_hour": 5000,
+  "month_days": 30
+}

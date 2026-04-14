@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  calc-engine-tests:
+    name: Calc Engine Parity Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t oci-dis-api --target development apps/api/
+      - name: Run parity tests
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/packages:/packages:ro \
+            oci-dis-api \
+            pytest /packages/calc-engine/src/tests -v --tb=short
+
+  api-lint:
+    name: API Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t oci-dis-api --target development apps/api/
+      - name: Run ruff
+        run: docker run --rm oci-dis-api ruff check app/
+
+  web-typecheck:
+    name: Web TypeScript Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build web image
+        run: docker build -t oci-dis-web --target development apps/web/
+      - name: Type check
+        run: docker run --rm oci-dis-web npm run type-check
+
+  web-lint:
+    name: Web ESLint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build web image
+        run: docker build -t oci-dis-web --target development apps/web/
+      - name: Lint
+        run: docker run --rm oci-dis-web npm run lint
+
+  integration-tests:
+    name: API Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dis
+          POSTGRES_PASSWORD: dis
+          POSTGRES_DB: oci_dis_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t oci-dis-api --target development apps/api/
+      - name: Run API tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://dis:dis@postgres:5432/oci_dis_test
+          REDIS_URL: redis://redis:6379/0
+        run: |
+          docker run --rm \
+            --network ${{ job.services.postgres.network }} \
+            -e DATABASE_URL=$DATABASE_URL \
+            -e REDIS_URL=$REDIS_URL \
+            oci-dis-api \
+            pytest app/tests -v --tb=short

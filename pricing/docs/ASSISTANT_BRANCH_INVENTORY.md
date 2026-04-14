@@ -174,6 +174,10 @@ Recently validated slice:
   - `buildConsumptionExplanation()`
   - `classifyConsumptionGroup()`
   - `formatMoney()`
+- extracted the assistant quote-enrichment support cluster into [assistant-quote-enrichment.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/assistant-quote-enrichment.js):
+  - `buildQuoteEnrichmentContextBlock()`
+  - `sanitizeQuoteEnrichment()`
+  - `shouldAllowMigrationNotes()`
 - added focused unit coverage in:
   - [request-query-helpers.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/request-query-helpers.test.js)
   - [quote-assumptions.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/quote-assumptions.test.js)
@@ -184,7 +188,8 @@ Recently validated slice:
   - [composite-quote-builder.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/composite-quote-builder.test.js)
   - [assistant-quote-rendering.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-quote-rendering.test.js)
   - [assistant-quote-narrative.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-quote-narrative.test.js)
-- revalidated the affected routing, bundle, intent, follow-up, quote-export, deterministic-summary, and full server suites at `832 pass / 0 fail`
+  - [assistant-quote-enrichment.test.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/test/assistant-quote-enrichment.test.js)
+- revalidated the affected routing, bundle, intent, follow-up, quote-export, deterministic-summary, sanitization, and full server suites at `835 pass / 0 fail`
 
 ### Milestone 3. Structured Knowledge Pilot Targets
 
@@ -234,6 +239,6 @@ The next concrete slice for this track is:
 1. keep `assistant.js` responsible for quote-narrative orchestration while deterministic narrative support now lives in `assistant-quote-narrative.js`
 2. define the next bounded cut between:
    - deterministic narrative/profile helpers
-   - `buildGenAIQuoteEnrichment()`
+   - quote-enrichment support helpers
    - `buildQuoteNarrative()` assembly
 3. continue inventorying assistant-owned helpers that still encode policy after the narrative extraction is no longer inline
