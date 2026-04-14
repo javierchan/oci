@@ -12,15 +12,17 @@ from app.core.calc_engine import (
     Assumptions,
     IntegrationInput,
     consolidate_project,
+    executions_per_day as calc_executions_per_day,
     di_data_processed_gb,
     functions_execution_units,
     functions_invocations_per_month,
     oic_billing_messages_per_month,
+    payload_per_hour_kb as calc_payload_per_hour_kb,
     payload_per_month_kb,
     streaming_gb_per_month,
     streaming_partition_count,
 )
-from app.models import AssumptionSet, CatalogIntegration, Project, VolumetrySnapshot
+from app.models import AssumptionSet, CatalogIntegration, DictionaryOption, Project, VolumetrySnapshot
 from app.schemas.volumetry import (
     ConsolidatedMetrics,
     DIMetrics,
@@ -56,6 +58,60 @@ def _integration_input(row: CatalogIntegration) -> IntegrationInput:
         is_fan_out=row.is_fan_out,
         fan_out_targets=row.fan_out_targets,
         selected_pattern=row.selected_pattern,
+    )
+
+
+async def _frequency_map(db: AsyncSession) -> dict[str, float | None]:
+    options = (
+        await db.scalars(
+            select(DictionaryOption).where(
+                DictionaryOption.category == "FREQUENCY",
+                DictionaryOption.is_active.is_(True),
+            )
+        )
+    ).all()
+    return {option.value: option.executions_per_day for option in options}
+
+
+def _resolved_executions_per_day(
+    row: CatalogIntegration,
+    frequency_map: dict[str, float | None],
+) -> float | None:
+    if row.frequency and row.frequency in frequency_map:
+        return frequency_map[row.frequency]
+    if row.frequency:
+        calc_result = calc_executions_per_day(row.frequency)
+        if calc_result is not None:
+            return calc_result.value
+    return row.executions_per_day
+
+
+def _resolved_payload_per_hour_kb(
+    payload_per_execution: float | None,
+    executions_day: float | None,
+    stored_value: float | None,
+) -> float | None:
+    if payload_per_execution is not None and executions_day is not None:
+        return calc_payload_per_hour_kb(payload_per_execution, executions_day).value
+    return stored_value
+
+
+def _integration_input_with_overrides(
+    row: CatalogIntegration,
+    executions_day: float | None,
+) -> IntegrationInput:
+    base = _integration_input(row)
+    return IntegrationInput(
+        integration_id=base.integration_id,
+        payload_per_execution_kb=base.payload_per_execution_kb,
+        executions_per_day=executions_day,
+        trigger_type=base.trigger_type,
+        is_real_time=base.is_real_time,
+        core_tools=base.core_tools,
+        response_size_kb=base.response_size_kb,
+        is_fan_out=base.is_fan_out,
+        fan_out_targets=base.fan_out_targets,
+        selected_pattern=base.selected_pattern,
     )
 
 
@@ -113,7 +169,18 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
     ).all()
 
     assumptions = _to_assumptions(assumption_set)
-    row_inputs = [_integration_input(row) for row in integrations]
+    frequency_map = await _frequency_map(db)
+    derived_inputs: dict[str, tuple[float | None, float | None]] = {}
+    row_inputs: list[IntegrationInput] = []
+    for row in integrations:
+        executions_day = _resolved_executions_per_day(row, frequency_map)
+        payload_hour = _resolved_payload_per_hour_kb(
+            row.payload_per_execution_kb,
+            executions_day,
+            row.payload_per_hour_kb,
+        )
+        derived_inputs[row.id] = (executions_day, payload_hour)
+        row_inputs.append(_integration_input_with_overrides(row, executions_day))
     consolidated = consolidate_project(row_inputs, assumptions)
     row_results: dict[str, dict[str, object]] = {}
 
@@ -122,22 +189,25 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
     peak_streaming_partitions = 0
 
     for row in integrations:
+        executions_day, payload_hour = derived_inputs[row.id]
         monthly_payload_kb = (
-            payload_per_month_kb(row.payload_per_execution_kb, row.executions_per_day, assumptions).value
-            if row.payload_per_execution_kb is not None and row.executions_per_day is not None
+            payload_per_month_kb(row.payload_per_execution_kb, executions_day, assumptions).value
+            if row.payload_per_execution_kb is not None and executions_day is not None
             else None
         )
         oic_msgs_month = (
             oic_billing_messages_per_month(
                 row.payload_per_execution_kb,
                 row.response_size_kb or 0.0,
-                row.executions_per_day,
+                executions_day,
                 assumptions,
             ).value
-            if row.payload_per_execution_kb is not None and row.executions_per_day is not None
+            if row.payload_per_execution_kb is not None and executions_day is not None
             else None
         )
-        functions_invocations = functions_invocations_per_month(_integration_input(row), assumptions).value
+        functions_invocations = functions_invocations_per_month(
+            _integration_input_with_overrides(row, executions_day), assumptions
+        ).value
         functions_units = (
             functions_execution_units(
                 functions_invocations or 0.0,
@@ -155,8 +225,8 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
             streaming_gb_per_month(monthly_payload_kb).value if monthly_payload_kb is not None else None
         )
         streaming_partitions = (
-            streaming_partition_count((row.payload_per_hour_kb or 0.0) / 3600.0, assumptions).value
-            if row.payload_per_hour_kb is not None
+            streaming_partition_count((payload_hour or 0.0) / 3600.0, assumptions).value
+            if payload_hour is not None
             else None
         )
 
@@ -168,8 +238,8 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
             peak_streaming_partitions = max(peak_streaming_partitions, int(streaming_partitions))
 
         row_results[row.id] = {
-            "executions_per_day": row.executions_per_day,
-            "payload_per_hour_kb": row.payload_per_hour_kb,
+            "executions_per_day": executions_day,
+            "payload_per_hour_kb": payload_hour,
             "oic_billing_msgs_month": oic_msgs_month,
             "functions_invocations_month": functions_invocations,
             "functions_execution_units_gb_s": functions_units,
@@ -202,6 +272,9 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
         project_id=project_id,
         db=db,
     )
+    from app.services import dashboard_service
+
+    await dashboard_service.create_dashboard_snapshot(project_id=project_id, volumetry_snapshot=snapshot, db=db)
     await db.refresh(snapshot)
     return snapshot
 

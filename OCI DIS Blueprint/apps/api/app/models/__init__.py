@@ -1,7 +1,7 @@
 """Model registry used by Alembic and application imports."""
 
 from app.models.base import Base
-from app.models.governance import AssumptionSet, DictionaryOption, PatternDefinition
+from app.models.governance import AssumptionSet, DictionaryOption, PatternDefinition, PromptTemplateVersion
 from app.models.project import CatalogIntegration, ImportBatch, Project, SourceIntegrationRow
 from app.models.snapshot import AuditEvent, DashboardSnapshot, JustificationRecord, VolumetrySnapshot
 
@@ -15,6 +15,7 @@ __all__ = [
     "ImportBatch",
     "JustificationRecord",
     "PatternDefinition",
+    "PromptTemplateVersion",
     "Project",
     "SourceIntegrationRow",
     "VolumetrySnapshot",
