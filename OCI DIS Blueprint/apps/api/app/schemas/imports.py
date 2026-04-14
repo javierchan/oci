@@ -69,3 +69,17 @@ class SourceRowListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class ImportBatchDeleteResponse(BaseModel):
+    """Removal result for one import batch."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    project_id: str
+    batch_id: str
+    detail: str
+    deleted_source_rows: int
+    deleted_integrations: int
+    deleted_justifications: int
+    recalculated_snapshot_id: Optional[str] = None

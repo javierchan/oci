@@ -13,6 +13,7 @@ from app.schemas.justification import (
     PromptTemplateVersionListResponse,
     PromptTemplateVersionResponse,
     PromptTemplateVersionUpdate,
+    ResetJustificationRequest,
 )
 from app.services import justification_service
 from app.services.authz import require_admin
@@ -145,5 +146,25 @@ async def override_justification(
             actor_id=body.actor_id,
             override_text=body.override_text,
             override_notes=body.override_notes,
+            db=db,
+        )
+
+
+@router.delete(
+    "/{project_id}/{integration_id}",
+    response_model=JustificationRecordResponse,
+    summary="Reset a persisted justification back to the deterministic draft",
+)
+async def reset_justification(
+    project_id: str,
+    integration_id: str,
+    body: ResetJustificationRequest,
+    db: AsyncSession = Depends(get_db),
+) -> JustificationRecordResponse:
+    async with db.begin():
+        return await justification_service.reset_justification(
+            project_id=project_id,
+            integration_id=integration_id,
+            actor_id=body.actor_id,
             db=db,
         )
