@@ -1,4 +1,9 @@
-"""Core domain models — project, import, source row, and catalog entities."""
+"""Core domain models — Project, ImportBatch, SourceIntegrationRow, CatalogIntegration.
+
+These are the primary working entities described in PRD-044.
+Raw source rows remain immutable after import; CatalogIntegration is the
+governed working copy. Snapshots carry calculation lineage.
+"""
 from __future__ import annotations
 from typing import Optional
 from sqlalchemy import String, Integer, Float, Boolean, JSON, ForeignKey, Enum as SAEnum
@@ -42,10 +47,10 @@ class Project(Base, UUIDMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(2000))
     status: Mapped[ProjectStatus] = mapped_column(
-        SAEnum(ProjectStatus, native_enum=False), default=ProjectStatus.DRAFT
+        SAEnum(ProjectStatus), default=ProjectStatus.DRAFT
     )
     owner_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    project_metadata: Mapped[Optional[dict]] = mapped_column("metadata", JSON)
+    metadata: Mapped[Optional[dict]] = mapped_column(JSON)
 
     import_batches: Mapped[list["ImportBatch"]] = relationship(back_populates="project")
     catalog_integrations: Mapped[list["CatalogIntegration"]] = relationship(back_populates="project")
@@ -59,7 +64,7 @@ class ImportBatch(Base, UUIDMixin, TimestampMixin):
     parser_version: Mapped[str] = mapped_column(String(50), nullable=False)
     prompt_version: Mapped[Optional[str]] = mapped_column(String(50))
     status: Mapped[ImportStatus] = mapped_column(
-        SAEnum(ImportStatus, native_enum=False), default=ImportStatus.PENDING
+        SAEnum(ImportStatus), default=ImportStatus.PENDING
     )
     source_row_count: Mapped[Optional[int]] = mapped_column(Integer)
     tbq_y_count: Mapped[Optional[int]] = mapped_column(Integer)
@@ -84,7 +89,6 @@ class SourceIntegrationRow(Base, UUIDMixin, TimestampMixin):
     normalization_events: Mapped[Optional[list]] = mapped_column(JSON)  # [{field, old, new, rule}]
 
     import_batch: Mapped["ImportBatch"] = relationship(back_populates="source_rows")
-    catalog_integrations: Mapped[list["CatalogIntegration"]] = relationship(back_populates="source_row")
 
 
 class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
@@ -156,4 +160,3 @@ class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
     uncertainty: Mapped[Optional[str]] = mapped_column(String(255))
 
     project: Mapped["Project"] = relationship(back_populates="catalog_integrations")
-    source_row: Mapped[Optional["SourceIntegrationRow"]] = relationship(back_populates="catalog_integrations")

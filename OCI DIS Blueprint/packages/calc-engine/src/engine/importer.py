@@ -11,6 +11,7 @@ Implements PRD-015 through PRD-019:
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
+import re
 
 
 # ---------------------------------------------------------------------------

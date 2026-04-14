@@ -61,7 +61,6 @@ class IntegrationInput:
     response_size_kb: Optional[float]
     is_fan_out: Optional[bool]
     fan_out_targets: Optional[int]
-    selected_pattern: Optional[str] = None
     # Optional overrides (for Functions)
     override_invocations_per_month: Optional[float] = None
     override_duration_ms: Optional[int] = None
@@ -309,9 +308,8 @@ def consolidate_project(
 
     for row in rows:
         tools = (row.core_tools or "").lower()
-        has_selected_pattern = bool(row.selected_pattern)
 
-        if "oic" in tools or "oracle integration" in tools or has_selected_pattern:
+        if "oic" in tools or "oracle integration" in tools:
             oic_rows.append(row)
         if "data integration" in tools or "odi" in tools:
             di_rows.append(row)
