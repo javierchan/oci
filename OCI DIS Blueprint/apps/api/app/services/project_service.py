@@ -170,8 +170,8 @@ async def delete_project(project_id: str, actor_id: str, db: AsyncSession) -> Pr
 
     for snapshot in dashboard_snapshots:
         await db.delete(snapshot)
-    for snapshot in volumetry_snapshots:
-        await db.delete(snapshot)
+    for volumetry_snapshot in volumetry_snapshots:
+        await db.delete(volumetry_snapshot)
     for record in justifications:
         await db.delete(record)
     for integration in integrations:

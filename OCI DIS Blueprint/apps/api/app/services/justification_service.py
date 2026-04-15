@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, cast
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -30,7 +30,7 @@ from app.services import audit_service
 from app.services.serializers import sanitize_for_json, split_csv
 
 
-FALLBACK_TEMPLATE = {
+FALLBACK_TEMPLATE: dict[str, object] = {
     "summary": (
         "La integracion {interface_name} conecta {source_system} con {destination_system} "
         "y actualmente mantiene estado QA {qa_status}."
@@ -132,7 +132,7 @@ def _narrative_from_row(
     context = _SafeFormatDict(_template_context(row, pattern_names))
     summary_template = str(template_config.get("summary") or FALLBACK_TEMPLATE["summary"])
     blocks_config = template_config.get("blocks")
-    blocks = blocks_config if isinstance(blocks_config, list) else FALLBACK_TEMPLATE["blocks"]
+    blocks = cast(list[object], blocks_config) if isinstance(blocks_config, list) else cast(list[object], FALLBACK_TEMPLATE["blocks"])
 
     methodology_blocks = [
         MethodologyBlock(
@@ -219,7 +219,7 @@ async def _default_template_config(db: AsyncSession) -> dict[str, object]:
     )
     if template is None:
         return FALLBACK_TEMPLATE
-    return template.template_config
+    return cast(dict[str, object], template.template_config)
 
 
 async def _load_integration(project_id: str, integration_id: str, db: AsyncSession) -> CatalogIntegration:
@@ -464,7 +464,7 @@ async def approve_justification(
         db.add(record)
     else:
         record.state = "approved"
-        record.deterministic_text = sanitize_for_json(narrative.model_dump())
+        record.deterministic_text = cast(dict[str, object], sanitize_for_json(narrative.model_dump()))
         record.approved_by = actor_id
         record.override_notes = None
 
@@ -518,7 +518,7 @@ async def override_justification(
         db.add(record)
     else:
         record.state = "overridden"
-        record.deterministic_text = sanitize_for_json(narrative.model_dump())
+        record.deterministic_text = cast(dict[str, object], sanitize_for_json(narrative.model_dump()))
         record.approved_by = actor_id
         record.override_notes = override_notes
 

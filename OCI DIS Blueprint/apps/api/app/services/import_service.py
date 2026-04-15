@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from typing import Any, cast
 
 from fastapi import HTTPException
 from openpyxl import load_workbook
@@ -260,13 +261,18 @@ async def process_import(batch_id: str, file_path: str, db: AsyncSession) -> Imp
         await db.flush()
 
         for event in normalization_events:
+            event_dict = cast(dict[str, Any], event)
             await audit_service.emit(
                 event_type="normalization",
                 entity_type="source_integration_row",
                 entity_id=source_row.id,
                 actor_id="system-import",
-                old_value={"field": event["field"], "value": event["old_value"]},
-                new_value={"field": event["field"], "value": event["new_value"], "rule": event["rule"]},
+                old_value={"field": event_dict["field"], "value": event_dict["old_value"]},
+                new_value={
+                    "field": event_dict["field"],
+                    "value": event_dict["new_value"],
+                    "rule": event_dict["rule"],
+                },
                 project_id=batch.project_id,
                 db=db,
                 correlation_id=correlation_id,
@@ -278,7 +284,7 @@ async def process_import(batch_id: str, file_path: str, db: AsyncSession) -> Imp
                     project_id=batch.project_id,
                     source_row_id=source_row.id,
                     raw_data=source_row.raw_data,
-                    normalization_events=normalization_events,
+                    normalization_events=cast(list[dict[str, Any]], normalization_events),
                     header_map=import_result.header_map,
                 )
             )
@@ -302,7 +308,7 @@ async def mark_import_failed(batch_id: str, error_details: dict[str, object], db
     if batch is None:
         return
     batch.status = ImportStatus.FAILED
-    batch.error_details = sanitize_for_json(error_details)
+    batch.error_details = cast(dict[str, Any] | None, sanitize_for_json(error_details))
     await db.flush()
 
 

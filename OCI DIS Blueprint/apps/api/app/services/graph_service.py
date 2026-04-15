@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Optional
+from typing import Any, Optional, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,11 +73,11 @@ async def compute_graph(
                     "business_processes": set(),
                 },
             )
-            current["integration_count"] = int(current["integration_count"]) + 1
+            current["integration_count"] = int(cast(Any, current["integration_count"])) + 1
             if is_source:
-                current["as_source_count"] = int(current["as_source_count"]) + 1
+                current["as_source_count"] = int(cast(Any, current["as_source_count"])) + 1
             else:
-                current["as_destination_count"] = int(current["as_destination_count"]) + 1
+                current["as_destination_count"] = int(cast(Any, current["as_destination_count"])) + 1
             if row.brand:
                 current_brands = current["brands"]
                 assert isinstance(current_brands, set)
@@ -99,9 +99,9 @@ async def compute_graph(
                 "qa_statuses": defaultdict(int),
             },
         )
-        edge["integration_ids"].append(row.id)
-        edge["integration_names"].append(row.interface_name or row.interface_id or row.id)
-        edge["integration_qa_statuses"].append(row.qa_status or "PENDING")
+        cast(list[str], edge["integration_ids"]).append(row.id)
+        cast(list[str], edge["integration_names"]).append(row.interface_name or row.interface_id or row.id)
+        cast(list[str], edge["integration_qa_statuses"]).append(row.qa_status or "PENDING")
         if row.business_process:
             edge_business_processes = edge["business_processes"]
             assert isinstance(edge_business_processes, set)
@@ -118,9 +118,9 @@ async def compute_graph(
         GraphNode(
             id=node_id,
             label=str(state["label"]),
-            integration_count=int(state["integration_count"]),
-            as_source_count=int(state["as_source_count"]),
-            as_destination_count=int(state["as_destination_count"]),
+            integration_count=int(cast(Any, state["integration_count"])),
+            as_source_count=int(cast(Any, state["as_source_count"])),
+            as_destination_count=int(cast(Any, state["as_destination_count"])),
             brands=sorted(cast_set(state["brands"])),
             business_processes=sorted(cast_set(state["business_processes"])),
         )
