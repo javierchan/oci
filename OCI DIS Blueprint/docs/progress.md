@@ -250,3 +250,36 @@ Template import smoke:
 None
 
 ---
+
+## Post-Audit Remediation — Project Patch, API Tests, and OpenAPI Traceability
+
+**Completed:** 2026-04-15
+**Status:** ✅ Complete
+
+### What was implemented
+
+- `apps/api/app/schemas/project.py`, `apps/api/app/services/project_service.py`, and `apps/api/app/routers/projects.py` — replaced the stubbed project patch route with a typed, service-backed implementation that emits `project_updated` audit events
+- `apps/api/app/tests/` — added the backend API integration test harness with isolated async SQLite fixtures and route-level coverage for project patch/audit, manual catalog capture/lineage, and the capture-template export endpoint
+- `.github/workflows/api-validation.yml` — added a reproducible backend validation gate that runs Ruff, mypy, the API integration suite, calc-engine parity tests, and the OpenAPI sync check
+- `apps/api/scripts/export_openapi.py` and `docs/api/openapi.yaml` — restored the source-controlled OpenAPI artifact and added a `--check` mode for drift detection
+- `README.md` — documented the refresh and verification commands for the committed OpenAPI artifact
+
+### Verification results
+
+```text
+ruff: All checks passed!
+mypy: 0 errors
+API integration tests: 3 passed
+calc-engine parity: 26 passed
+TypeScript: 0 errors
+OpenAPI sync: up to date
+Workflow sanity:
+- name: API Validation
+- job: backend-quality
+```
+
+### Gaps / known limitations
+
+- The export-template API test triggers `openpyxl` deprecation warnings from library internals, but endpoint behavior remains correct.
+
+---
