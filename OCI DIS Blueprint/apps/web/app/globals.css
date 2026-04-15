@@ -82,6 +82,31 @@
   --color-accent-hover: #93c5fd;
 }
 
+input,
+select,
+textarea {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: var(--color-surface-2);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.dark select {
+  color-scheme: dark;
+}
+
 html {
   color-scheme: light;
 }

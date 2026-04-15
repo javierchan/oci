@@ -15,7 +15,7 @@ export function CaptureStepIdentity({
         <input
           value={form.brand}
           onChange={(event) => updateField("brand", event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+          className="app-input"
           placeholder="Grupo / brand"
         />
       </label>
@@ -24,7 +24,7 @@ export function CaptureStepIdentity({
         <input
           value={form.business_process}
           onChange={(event) => updateField("business_process", event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+          className="app-input"
           placeholder="Finance, HR, Supply Chain…"
         />
       </label>
@@ -33,7 +33,7 @@ export function CaptureStepIdentity({
         <input
           value={form.interface_name}
           onChange={(event) => updateField("interface_name", event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+          className="app-input"
           placeholder="Descriptive integration name"
         />
       </label>
@@ -42,7 +42,7 @@ export function CaptureStepIdentity({
         <input
           value={form.interface_id ?? ""}
           onChange={(event) => updateField("interface_id", event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+          className="app-input"
           placeholder="Optional formal identifier"
         />
       </label>
@@ -51,7 +51,7 @@ export function CaptureStepIdentity({
         <input
           value={form.owner ?? ""}
           onChange={(event) => updateField("owner", event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+          className="app-input"
           placeholder="Business or technical owner"
         />
       </label>
@@ -61,7 +61,7 @@ export function CaptureStepIdentity({
           value={form.description ?? ""}
           onChange={(event) => updateField("description", event.target.value)}
           rows={4}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+          className="app-input"
           placeholder="What does this integration do?"
         />
       </label>
@@ -70,7 +70,7 @@ export function CaptureStepIdentity({
         <input
           value={form.initial_scope ?? ""}
           onChange={(event) => updateField("initial_scope", event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+          className="app-input"
           placeholder="Optional scope note"
         />
       </label>

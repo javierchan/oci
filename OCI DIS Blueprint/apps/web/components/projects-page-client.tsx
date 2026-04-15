@@ -28,6 +28,10 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [activeProjectId, setActiveProjectId] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const nameCounts = projects.reduce((accumulator: Record<string, number>, row: ProjectRow) => {
+    accumulator[row.project.name] = (accumulator[row.project.name] ?? 0) + 1;
+    return accumulator;
+  }, {});
 
   async function handleCreateProject(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -176,7 +180,14 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                 <tr key={row.project.id} className="app-table-row text-sm">
                   <td className="px-6 py-5">
                     <div>
-                      <p className="font-semibold text-[var(--color-text-primary)]">{row.project.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-[var(--color-text-primary)]">{row.project.name}</p>
+                        {nameCounts[row.project.name] > 1 ? (
+                          <span className="text-xs font-mono text-[var(--color-text-muted)]">
+                            #{row.project.id.slice(-8)}
+                          </span>
+                        ) : null}
+                      </div>
                       <p className="mt-1 text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">
                         {row.project.owner_id}
                       </p>

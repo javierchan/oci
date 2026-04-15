@@ -110,7 +110,7 @@ export default async function IntegrationDetailPage({
         </div>
       </section>
 
-      <div className="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid items-start gap-8 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="space-y-6">
           <article className="app-card p-6">
             <p className="app-label">Source Data</p>

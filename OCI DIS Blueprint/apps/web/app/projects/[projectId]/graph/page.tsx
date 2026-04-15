@@ -151,6 +151,14 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
         </div>
       ) : null}
 
+      {graph.nodes.length < 3 ? (
+        <div className="mx-4 mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-text-secondary)]">
+          <span className="font-medium text-[var(--color-text-primary)]">Limited topology: </span>
+          This project's integrations share fewer than 3 distinct systems. Import a workbook with varied source and
+          destination system names to see the full dependency map.
+        </div>
+      ) : null}
+
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">

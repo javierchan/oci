@@ -87,37 +87,37 @@ export default async function ProjectDashboardPage({
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
-        <article className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+        <article className="app-card p-6">
           <p className="text-xs uppercase tracking-[0.25em] text-slate-500">QA Breakdown</p>
           <div className="mt-5 grid gap-4 md:grid-cols-3">
-            <div className="rounded-[1.5rem] border border-emerald-200 bg-emerald-50 p-5">
-              <p className="text-xs uppercase tracking-[0.25em] text-emerald-700">OK</p>
-              <p className="mt-3 text-3xl font-semibold text-emerald-950">
+            <div className="rounded-[1.5rem] border border-[var(--color-qa-ok-text)]/20 bg-[var(--color-qa-ok-bg)] p-5 text-[var(--color-qa-ok-text)]">
+              <p className="text-xs uppercase tracking-[0.25em]">OK</p>
+              <p className="mt-3 text-3xl font-semibold">
                 {qaBreakdown.OK ?? 0}
               </p>
             </div>
-            <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 p-5">
-              <p className="text-xs uppercase tracking-[0.25em] text-amber-700">REVISAR</p>
-              <p className="mt-3 text-3xl font-semibold text-amber-950">
+            <div className="rounded-[1.5rem] border border-[var(--color-qa-revisar-text)]/20 bg-[var(--color-qa-revisar-bg)] p-5 text-[var(--color-qa-revisar-text)]">
+              <p className="text-xs uppercase tracking-[0.25em]">REVISAR</p>
+              <p className="mt-3 text-3xl font-semibold">
                 {qaBreakdown.REVISAR ?? 0}
               </p>
             </div>
-            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">PENDING</p>
-              <p className="mt-3 text-3xl font-semibold text-slate-950">
+            <div className="rounded-[1.5rem] border border-[var(--color-qa-pending-text)]/20 bg-[var(--color-qa-pending-bg)] p-5 text-[var(--color-qa-pending-text)]">
+              <p className="text-xs uppercase tracking-[0.25em]">PENDING</p>
+              <p className="mt-3 text-3xl font-semibold">
                 {qaBreakdown.PENDING ?? 0}
               </p>
             </div>
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Catalog Rows</p>
-              <p className="mt-3 text-3xl font-semibold text-slate-950">{catalogPage.total}</p>
+            <div className="app-card-muted p-5">
+              <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">Catalog Rows</p>
+              <p className="mt-3 text-3xl font-semibold text-[var(--color-text-primary)]">{catalogPage.total}</p>
             </div>
-            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Snapshots</p>
-              <p className="mt-3 text-3xl font-semibold text-slate-950">{snapshots.snapshots.length}</p>
+            <div className="app-card-muted p-5">
+              <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">Snapshots</p>
+              <p className="mt-3 text-3xl font-semibold text-[var(--color-text-primary)]">{snapshots.snapshots.length}</p>
             </div>
           </div>
         </article>

@@ -111,6 +111,13 @@ export function CatalogTable({
   }, [brand, destinationSystem, pattern, projectId, qaStatus, router, search, sourceSystem]);
 
   const totalPages = Math.max(1, Math.ceil(data.total / data.page_size));
+  const hasActiveFilters =
+    search !== "" ||
+    qaStatus !== "" ||
+    pattern !== "" ||
+    brand !== "" ||
+    sourceSystem !== "" ||
+    destinationSystem !== "";
   const patternMap = new Map<string, PatternDefinition>(
     patterns.map((patternDefinition: PatternDefinition) => [
       patternDefinition.pattern_id,
@@ -179,6 +186,21 @@ export function CatalogTable({
               ))}
             </select>
           </label>
+          {hasActiveFilters ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setQaStatus("");
+                setPattern("");
+                setBrand("");
+                setPage(1);
+              }}
+              className="rounded border border-[var(--color-border)] px-3 py-1.5 text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-2)]"
+            >
+              Clear filters
+            </button>
+          ) : null}
           <div className="app-theme-chip">{data.total} integrations</div>
         </div>
         {sourceSystem || destinationSystem ? (
