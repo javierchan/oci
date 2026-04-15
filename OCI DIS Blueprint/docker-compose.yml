@@ -112,8 +112,7 @@ services:
       target: development
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
-      INTERNAL_API_URL: http://api:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
     ports:
       - "3000:3000"
     volumes:

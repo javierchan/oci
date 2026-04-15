@@ -12,15 +12,13 @@ const {
   inferQuoteTechnologyProfile: inferQuoteTechnologyProfileHelper,
 } = require('./assistant-quote-narrative');
 const { runChat, extractChatText } = require('./genai');
+const { resolveGenAIRequestOptions } = require('./genai-profiles');
 const { analyzeIntent, analyzeImageIntent, buildSessionContextBlock } = require('./intent-extractor');
+const { logger, summarizeTrace } = require('./logger');
 const { buildAssistantContextPack, buildCatalogListingReply, buildStructuredDiscoveryFallback, buildUncoveredComputeReply, canSafelyQuoteUncoveredComputeVariant, findUncoveredComputeVariant, stringifyContextPack, summarizeContextPack } = require('./context-packs');
 const { buildServiceUnavailableMessage } = require('./assistant-response-helpers');
 const { sanitizeQuoteEnrichment } = require('./assistant-quote-enrichment');
 const { buildQuoteNarrative } = require('./assistant-quote-orchestrator');
-const {
-  writeNaturalReply: writeNaturalReplyHelper,
-  writeStructuredContextReply: writeStructuredContextReplyHelper,
-} = require('./assistant-reply-writers');
 const { toMarkdownQuote } = require('./assistant-quote-rendering');
 const {
   buildAssistantSessionContext,
@@ -55,17 +53,6 @@ const { resolveDirectQuoteFastPath } = require('./direct-quote-fast-paths');
 const { resolveEarlyAssistantRouting } = require('./early-assistant-routing');
 const { buildDiscoveryRoutingState, resolveDiscoveryRoutePayload } = require('./discovery-routing');
 const { resolvePostClarificationRouting } = require('./post-clarification-routing');
-const { resolveAssistantQuoteRouting } = require('./assistant-quote-routing');
-const {
-  buildDiscoveryRoutePayloadDeps,
-  buildDiscoveryRoutingStateDeps,
-  buildEarlyAssistantRoutingDeps,
-  buildIntentPipelineDeps,
-} = require('./assistant-orchestration-deps');
-const {
-  buildAssistantQuoteRoutingDeps,
-  buildDirectQuoteFastPathDeps,
-} = require('./quote-routing-deps');
 const { resolveIntentPipeline } = require('./intent-pipeline');
 const { prepareQuoteCandidateState } = require('./quote-entry-preparation');
 const {
@@ -93,6 +80,25 @@ const {
   buildFlexComparisonNarrative,
   buildFlexComparisonReplyPayload,
 } = require('./flex-comparison-flow');
+
+const RESPONSE_PROMPT = [
+  'You are an OCI pricing specialist speaking to a customer.',
+  'Be concise, natural, and practical.',
+  'If a deterministic quotation is provided, explain what was matched and mention any assumptions or warnings.',
+  'Do not invent prices, SKUs, tiers, or formulas.',
+  'If no quotation is available, explain the situation clearly and ask at most one next question when needed.',
+  'Do not render tables.',
+  'Use plain markdown.',
+].join('\n');
+
+const STRUCTURED_DISCOVERY_PROMPT = [
+  'You are an OCI pricing discovery specialist.',
+  'Answer only using the structured product context provided by the system.',
+  'Do not invent OCI services, shapes, pricing rules, modifiers, or availability.',
+  'If the context does not contain enough information to answer safely, say the service is not available in the current pricing knowledge base.',
+  'Do not generate a quote unless the system explicitly says this is a deterministic quote path.',
+  'Use concise natural markdown and prefer short lists when enumerating options.',
+].join('\n');
 
 const FLEX_SHAPE_TOKEN_PATTERN_SOURCE = '(?:(?:vm|bm)\\.)?(?:(?:[a-z][a-z0-9]*)\\.)*(?:[a-z]+\\d+|[a-z]\\d+)\\.flex';
 const FLEX_SHAPE_TOKEN_INLINE_PATTERN = new RegExp(`\\b${FLEX_SHAPE_TOKEN_PATTERN_SOURCE}\\b`, 'i');
@@ -149,20 +155,71 @@ function enrichExtractedInputsForFamily(intent = {}) {
 }
 
 async function writeNaturalReply(cfg, conversation, userText, context, sessionContext) {
-  return writeNaturalReplyHelper(cfg, conversation, userText, context, sessionContext, {
-    buildSessionContextBlock,
-    runChat,
-    extractChatText,
+  const history = Array.isArray(conversation) ? conversation.slice(-6) : [];
+  const sessionBlock = buildSessionContextBlock(sessionContext);
+  const contextBlock = [
+    sessionBlock,
+    `User request: ${userText}`,
+    `Intent: ${context.intent || 'quote'}`,
+    context.summary ? `Summary: ${context.summary}` : '',
+    context.quoteMarkdown ? `Quotation markdown:\n${context.quoteMarkdown}` : '',
+    context.warningLines?.length ? `Warnings:\n${context.warningLines.join('\n')}` : '',
+    context.assumptionLines?.length ? `Assumptions:\n${context.assumptionLines.join('\n')}` : '',
+    context.candidateLines?.length ? `Candidates:\n${context.candidateLines.join('\n')}` : '',
+  ].filter(Boolean).join('\n\n');
+
+  const messages = [
+    ...history.map((item) => ({
+      role: item.role === 'assistant' ? 'assistant' : 'user',
+      content: String(item.content || ''),
+    })),
+    { role: 'user', content: contextBlock },
+  ];
+  const requestOptions = resolveGenAIRequestOptions('narrative', cfg);
+
+  const response = await runChat({
+    cfg,
+    ...requestOptions,
+    systemPrompt: RESPONSE_PROMPT,
+    messages,
+    logger: context.logger,
+    trace: context.trace,
   });
+  return extractChatText(response?.data || response).trim();
 }
 
-async function writeStructuredContextReply(cfg, conversation, userText, sessionContext, contextPack) {
-  return writeStructuredContextReplyHelper(cfg, conversation, userText, sessionContext, contextPack, {
-    buildSessionContextBlock,
-    stringifyContextPack,
-    runChat,
-    extractChatText,
-  });
+async function writeStructuredContextReply(cfg, conversation, userText, sessionContext, contextPack, options = {}) {
+  if (!cfg?.modelId || !cfg?.compartment) return '';
+  const history = Array.isArray(conversation) ? conversation.slice(-6) : [];
+  const sessionBlock = buildSessionContextBlock(sessionContext);
+  const contextBlock = [
+    sessionBlock,
+    `User request: ${String(userText || '').trim()}`,
+    `Structured product context:\n${stringifyContextPack(contextPack)}`,
+  ].filter(Boolean).join('\n\n');
+
+  const messages = [
+    ...history.map((item) => ({
+      role: item.role === 'assistant' ? 'assistant' : 'user',
+      content: String(item.content || ''),
+    })),
+    { role: 'user', content: contextBlock },
+  ];
+  const requestOptions = resolveGenAIRequestOptions('discovery', cfg);
+
+  try {
+    const response = await runChat({
+      cfg,
+      ...requestOptions,
+      systemPrompt: STRUCTURED_DISCOVERY_PROMPT,
+      messages,
+      logger: options.logger,
+      trace: options.trace,
+    });
+    return extractChatText(response?.data || response).trim();
+  } catch {
+    return '';
+  }
 }
 
 function inferQuoteTechnologyProfile(quote) {
@@ -189,7 +246,9 @@ function classifyConsumptionGroup(pattern, line) {
   return classifyConsumptionGroupHelper(pattern, line);
 }
 
-async function respondToAssistant({ cfg, index, conversation, userText, imageDataUrl, sessionContext }) {
+async function respondToAssistant({ cfg, index, conversation, userText, imageDataUrl, sessionContext, logger: requestLogger, trace }) {
+  const activeLogger = requestLogger || logger;
+  const activeTrace = trace || { genaiCalls: [] };
   const effectiveUserText = mergeSessionQuoteFollowUp(
     sessionContext,
     mergeClarificationAnswer(conversation, userText),
@@ -200,6 +259,13 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
   });
   const contextualFollowUp = isShortContextualAnswer(userText);
   const compositeLike = isCompositeOrComparisonRequest(effectiveUserText);
+  activeLogger.debug({
+    event: 'assistant.pipeline.start',
+    hasImage: Boolean(imageDataUrl),
+    conversationDepth: Array.isArray(conversation) ? conversation.length : 0,
+    contextualFollowUp,
+    compositeLike,
+  }, 'Starting assistant pipeline');
   const {
     payload: earlyRoutingPayload,
     flexComparison,
@@ -208,7 +274,7 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     userText,
     effectiveUserText,
     index,
-  }, buildEarlyAssistantRoutingDeps({
+  }, {
     buildEarlyAssistantReply,
     detectGenericComputeShapeClarification,
     extractFlexComparisonContext,
@@ -220,22 +286,28 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     buildFlexComparisonReplyPayload,
     buildFlexComparisonQuote,
     buildFlexComparisonNarrative,
-  }));
-  if (earlyRoutingPayload) return respond(earlyRoutingPayload);
+  });
+  if (earlyRoutingPayload) {
+    logAssistantOutcome(activeLogger, activeTrace, 'early_exit', earlyRoutingPayload, earlyRoutingPayload.intent || null);
+    return respond(earlyRoutingPayload);
+  }
 
   const directQuoteFastPath = await resolveDirectQuoteFastPath({
     cfg,
     index,
     effectiveUserText,
     compositeLike,
-  }, buildDirectQuoteFastPathDeps({
+  }, {
     buildCompositeQuoteFromSegments,
     buildQuoteNarrative,
     formatAssumptions,
     parsePromptRequest,
     quoteFromPrompt,
-  }));
-  if (directQuoteFastPath) return respond(directQuoteFastPath);
+  });
+  if (directQuoteFastPath) {
+    logAssistantOutcome(activeLogger, activeTrace, 'fast_path', directQuoteFastPath, directQuoteFastPath.intent || null);
+    return respond(directQuoteFastPath);
+  }
 
   const intentPipeline = await resolveIntentPipeline({
     cfg,
@@ -247,9 +319,9 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     contextualFollowUp,
     flexComparison,
     index,
-  }, buildIntentPipelineDeps({
-    analyzeIntent,
-    analyzeImageIntent,
+  }, {
+    analyzeIntent: (...args) => analyzeIntent(...args, { logger: activeLogger, trace: activeTrace }),
+    analyzeImageIntent: (...args) => analyzeImageIntent(...args, { logger: activeLogger, trace: activeTrace }),
     fallbackIntentOnAnalysisFailure,
     buildServiceUnavailableMessage,
     enrichExtractedInputsForFamily,
@@ -262,8 +334,11 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     buildFlexComparisonReplyPayload,
     buildFlexComparisonQuote,
     buildFlexComparisonNarrative,
-  }));
-  if (intentPipeline.payload) return respond(intentPipeline.payload);
+  });
+  if (intentPipeline.payload) {
+    logAssistantOutcome(activeLogger, activeTrace, 'full_pipeline', intentPipeline.payload, intentPipeline.payload.intent || null);
+    return respond(intentPipeline.payload);
+  }
   const enrichedIntent = intentPipeline.intent;
   const {
     topService,
@@ -274,12 +349,12 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     effectiveUserText,
     userText,
     intent: enrichedIntent,
-  }, buildDiscoveryRoutingStateDeps({
+  }, {
     buildRegistryQuery,
     searchServiceRegistry,
     serviceHasRequiredInputs,
     buildCatalogListingReply,
-  }));
+  });
   const discoveryRoutePayload = await resolveDiscoveryRoutePayload({
     cfg,
     index,
@@ -290,29 +365,29 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     intent: enrichedIntent,
     catalogReply,
     isDiscoveryIntent,
-  }, buildDiscoveryRoutePayloadDeps({
+  }, {
     buildAssistantContextPack,
-    writeStructuredContextReply,
+    writeStructuredContextReply: (...args) => writeStructuredContextReply(...args, { logger: activeLogger, trace: activeTrace }),
     buildStructuredDiscoveryFallback,
     isConceptualPricingQuestion,
     hasExplicitQuoteLead,
     buildServiceUnavailableMessage,
     summarizeContextPack,
-  }));
-  if (discoveryRoutePayload) return respond(discoveryRoutePayload);
-  const quoteRoute = await resolveAssistantQuoteRouting({
-    cfg,
+  });
+  if (discoveryRoutePayload) {
+    logAssistantOutcome(activeLogger, activeTrace, 'full_pipeline', discoveryRoutePayload, enrichedIntent);
+    return respond(discoveryRoutePayload);
+  }
+  const quoteCandidateState = prepareQuoteCandidateState({
     index,
-    conversation,
+    sessionContext,
     userText,
     effectiveUserText,
-    sessionContext,
     intent: enrichedIntent,
     topService,
     contextualFollowUp,
     compositeLike,
-  }, buildAssistantQuoteRoutingDeps({
-    prepareQuoteCandidateState,
+  }, {
     getServiceFamily,
     mergeSessionQuoteFollowUpByRoute,
     findUncoveredComputeVariant,
@@ -325,11 +400,37 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     buildQuoteRequestShape,
     preserveCriticalPromptModifiers,
     choosePreferredQuote,
-    reconcileQuoteClarificationState,
+  });
+  if (quoteCandidateState.fallbackPayload) return respond(quoteCandidateState.fallbackPayload);
+  const effectiveQuoteText = quoteCandidateState.effectiveQuoteText;
+  Object.assign(enrichedIntent, quoteCandidateState.intent);
+  const familyMeta = quoteCandidateState.familyMeta;
+  const reformulatedRequest = quoteCandidateState.reformulatedRequest;
+  const preflightQuote = quoteCandidateState.preflightQuote;
+  const quoteClarificationState = reconcileQuoteClarificationState({
+    intent: enrichedIntent,
+    reformulatedRequest,
+    effectiveUserText,
+    userText,
+    familyMeta,
+    preflightQuote,
     getPreQuoteClarification,
     getMissingRequiredInputs,
     getClarificationMessage,
-    resolvePostClarificationRouting,
+  });
+  const postClarification = await resolvePostClarificationRouting({
+    cfg,
+    index,
+    conversation,
+    userText,
+    effectiveUserText,
+    sessionContext,
+    intent: enrichedIntent,
+    familyMeta,
+    reformulatedRequest,
+    preflightQuote,
+    quoteClarificationState,
+  }, {
     hasExplicitByolChoice,
     shouldAskLicenseChoice,
     buildLicenseChoiceClarificationPayload,
@@ -344,10 +445,33 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     buildQuoteUnresolvedPayload,
     buildAnswerFallbackPayload,
     summarizeMatches,
-    writeNaturalReply,
-  }));
-  Object.assign(enrichedIntent, quoteRoute.intent);
-  return respond(quoteRoute.payload);
+    writeNaturalReply: (...args) => writeNaturalReply(...args, { logger: activeLogger, trace: activeTrace }),
+  });
+  Object.assign(enrichedIntent, postClarification.intent);
+  logAssistantOutcome(activeLogger, activeTrace, 'full_pipeline', postClarification.payload, enrichedIntent);
+  return respond(postClarification.payload);
+}
+
+function classifyAssistantOutcome(payload = {}) {
+  if (payload?.needsClarification || payload?.question) return 'clarification';
+  if (payload?.quote || payload?.quoteMarkdown || payload?.totals || payload?.mode === 'quote') return 'quote';
+  return 'answer';
+}
+
+function logAssistantOutcome(activeLogger, trace, routingPath, payload, intent) {
+  const traceSummary = summarizeTrace(trace);
+  activeLogger.info({
+    event: 'assistant.pipeline.complete',
+    routingPath,
+    outcome: classifyAssistantOutcome(payload),
+    route: intent?.route || payload?.intent?.route || '',
+    serviceFamily: intent?.serviceFamily || payload?.intent?.serviceFamily || '',
+    shouldQuote: Boolean(intent?.shouldQuote ?? payload?.intent?.shouldQuote),
+    genaiCallCount: traceSummary.genaiCallCount,
+    genaiLatencyMs: traceSummary.genaiLatencyMs,
+    quoteProduced: classifyAssistantOutcome(payload) === 'quote',
+    clarificationTriggered: classifyAssistantOutcome(payload) === 'clarification',
+  }, 'Completed assistant pipeline');
 }
 
 module.exports = {

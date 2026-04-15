@@ -20,7 +20,6 @@ class PatternDefinition(Base, UUIDMixin, TimestampMixin):
     when_not_to_use: Mapped[Optional[str]] = mapped_column(Text)
     technical_flow: Mapped[Optional[str]] = mapped_column(Text)
     business_value: Mapped[Optional[str]] = mapped_column(Text)
-    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     version: Mapped[str] = mapped_column(String(20), default="1.0.0")
 
@@ -60,16 +59,4 @@ class AssumptionSet(Base, UUIDMixin, TimestampMixin):
     #   "functions_default_duration_ms": 200,
     #   "functions_default_memory_mb": 256
     # }
-    notes: Mapped[Optional[str]] = mapped_column(Text)
-
-
-class PromptTemplateVersion(Base, UUIDMixin, TimestampMixin):
-    """Versioned deterministic narrative templates for M6 justification assembly."""
-
-    __tablename__ = "prompt_template_versions"
-
-    version: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
-    template_config: Mapped[dict] = mapped_column(JSON, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text)
