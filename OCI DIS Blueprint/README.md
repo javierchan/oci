@@ -110,6 +110,7 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M12 | Source Lineage + Template | ✅ Complete | 2026-04-14 |
 | M13 | Integration Design Canvas | ✅ Complete | 2026-04-14 |
 | M14 | Map Pan + Visual Improvements | ✅ Complete | 2026-04-14 |
+| Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
 
