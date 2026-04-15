@@ -1,0 +1,7339 @@
+{
+  "components": {
+    "schemas": {
+      "ApproveJustificationRequest": {
+        "additionalProperties": false,
+        "description": "Approval request payload.",
+        "properties": {
+          "actor_id": {
+            "default": "api-user",
+            "title": "Actor Id",
+            "type": "string"
+          }
+        },
+        "title": "ApproveJustificationRequest",
+        "type": "object"
+      },
+      "AssumptionSetCreate": {
+        "additionalProperties": false,
+        "description": "Admin payload to create a new versioned assumption set.",
+        "properties": {
+          "assumptions": {
+            "title": "Assumptions",
+            "type": "object"
+          },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "label",
+          "assumptions"
+        ],
+        "title": "AssumptionSetCreate",
+        "type": "object"
+      },
+      "AssumptionSetListResponse": {
+        "additionalProperties": false,
+        "description": "Assumption set list response.",
+        "properties": {
+          "assumption_sets": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionSetResponse"
+            },
+            "title": "Assumption Sets",
+            "type": "array"
+          }
+        },
+        "title": "AssumptionSetListResponse",
+        "type": "object"
+      },
+      "AssumptionSetResponse": {
+        "additionalProperties": false,
+        "description": "Serialized assumption set.",
+        "properties": {
+          "assumptions": {
+            "title": "Assumptions",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "label",
+          "is_default",
+          "assumptions",
+          "notes",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AssumptionSetResponse",
+        "type": "object"
+      },
+      "AssumptionSetUpdate": {
+        "additionalProperties": false,
+        "description": "Admin payload to update an existing assumption set.",
+        "properties": {
+          "assumptions": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumptions"
+          },
+          "is_default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Default"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "title": "AssumptionSetUpdate",
+        "type": "object"
+      },
+      "AuditEventListResponse": {
+        "additionalProperties": false,
+        "description": "Paginated audit list response.",
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventResponse"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "AuditEventListResponse",
+        "type": "object"
+      },
+      "AuditEventResponse": {
+        "additionalProperties": false,
+        "description": "Serialized audit event.",
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "new_value": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Value"
+          },
+          "old_value": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Value"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "actor_id",
+          "event_type",
+          "entity_type",
+          "entity_id",
+          "created_at"
+        ],
+        "title": "AuditEventResponse",
+        "type": "object"
+      },
+      "Body_upload_and_import_api_v1_imports__project_id__post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_and_import_api_v1_imports__project_id__post",
+        "type": "object"
+      },
+      "BulkPatchRequest": {
+        "additionalProperties": false,
+        "description": "Bulk patch request payload.",
+        "properties": {
+          "actor_id": {
+            "default": "api-user",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "integration_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Integration Ids",
+            "type": "array"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/CatalogIntegrationPatch"
+          }
+        },
+        "required": [
+          "integration_ids",
+          "patch"
+        ],
+        "title": "BulkPatchRequest",
+        "type": "object"
+      },
+      "BulkPatchResult": {
+        "additionalProperties": false,
+        "description": "Bulk patch operation result.",
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "updated"
+        ],
+        "title": "BulkPatchResult",
+        "type": "object"
+      },
+      "CatalogIntegrationDeleteResponse": {
+        "additionalProperties": false,
+        "description": "Removal result for one catalog integration.",
+        "properties": {
+          "deleted_import_batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted Import Batch Id"
+          },
+          "deleted_justification_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted Justification Id"
+          },
+          "deleted_source_row_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted Source Row Id"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "recalculated_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recalculated Snapshot Id"
+          }
+        },
+        "required": [
+          "project_id",
+          "integration_id",
+          "detail"
+        ],
+        "title": "CatalogIntegrationDeleteResponse",
+        "type": "object"
+      },
+      "CatalogIntegrationDetail": {
+        "additionalProperties": false,
+        "description": "Catalog row plus detailed lineage.",
+        "properties": {
+          "integration": {
+            "$ref": "#/components/schemas/CatalogIntegrationResponse"
+          },
+          "lineage": {
+            "$ref": "#/components/schemas/LineageDetail"
+          }
+        },
+        "required": [
+          "integration",
+          "lineage"
+        ],
+        "title": "CatalogIntegrationDetail",
+        "type": "object"
+      },
+      "CatalogIntegrationPatch": {
+        "additionalProperties": false,
+        "description": "Allowed architect-owned fields for row updates.",
+        "properties": {
+          "additional_tools_overlays": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additional Tools Overlays"
+          },
+          "comments": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comments"
+          },
+          "core_tools": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Core Tools"
+          },
+          "pattern_rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern Rationale"
+          },
+          "retry_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Policy"
+          },
+          "selected_pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Pattern"
+          }
+        },
+        "title": "CatalogIntegrationPatch",
+        "type": "object"
+      },
+      "CatalogIntegrationResponse": {
+        "additionalProperties": false,
+        "description": "Serialized catalog row with QA fields.",
+        "properties": {
+          "additional_tools_overlays": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additional Tools Overlays"
+          },
+          "base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base"
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "business_process": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Process"
+          },
+          "calendarization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendarization"
+          },
+          "comments": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comments"
+          },
+          "complexity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Complexity"
+          },
+          "core_tools": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Core Tools"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "destination_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Owner"
+          },
+          "destination_system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination System"
+          },
+          "destination_technology_1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Technology 1"
+          },
+          "destination_technology_2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Technology 2"
+          },
+          "executions_per_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executions Per Day"
+          },
+          "fan_out_targets": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fan Out Targets"
+          },
+          "frequency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequency"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "initial_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Scope"
+          },
+          "interface_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface Id"
+          },
+          "interface_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface Name"
+          },
+          "interface_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface Status"
+          },
+          "is_fan_out": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Fan Out"
+          },
+          "is_real_time": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Real Time"
+          },
+          "mapping_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mapping Status"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "pattern_rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern Rationale"
+          },
+          "payload_per_execution_kb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload Per Execution Kb"
+          },
+          "payload_per_hour_kb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload Per Hour Kb"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "qa_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Qa Reasons",
+            "type": "array"
+          },
+          "qa_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qa Status"
+          },
+          "response_size_kb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Size Kb"
+          },
+          "retry_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Policy"
+          },
+          "selected_pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Pattern"
+          },
+          "seq_number": {
+            "title": "Seq Number",
+            "type": "integer"
+          },
+          "source_api_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Api Reference"
+          },
+          "source_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Owner"
+          },
+          "source_row_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Row Id"
+          },
+          "source_system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source System"
+          },
+          "source_technology": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Technology"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "trigger_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Type"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "uncertainty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "source_row_id",
+          "seq_number",
+          "interface_id",
+          "owner",
+          "brand",
+          "business_process",
+          "interface_name",
+          "description",
+          "status",
+          "mapping_status",
+          "initial_scope",
+          "complexity",
+          "frequency",
+          "type",
+          "base",
+          "interface_status",
+          "is_real_time",
+          "trigger_type",
+          "response_size_kb",
+          "payload_per_execution_kb",
+          "is_fan_out",
+          "fan_out_targets",
+          "source_system",
+          "source_technology",
+          "source_api_reference",
+          "source_owner",
+          "destination_system",
+          "destination_technology_1",
+          "destination_technology_2",
+          "destination_owner",
+          "executions_per_day",
+          "payload_per_hour_kb",
+          "selected_pattern",
+          "pattern_rationale",
+          "comments",
+          "retry_policy",
+          "core_tools",
+          "additional_tools_overlays",
+          "qa_status",
+          "calendarization",
+          "uncertainty",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CatalogIntegrationResponse",
+        "type": "object"
+      },
+      "CatalogListResponse": {
+        "additionalProperties": false,
+        "description": "Paginated catalog list response.",
+        "properties": {
+          "integrations": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogIntegrationResponse"
+            },
+            "title": "Integrations",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "integrations",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "CatalogListResponse",
+        "type": "object"
+      },
+      "CompletenessChart": {
+        "additionalProperties": false,
+        "description": "Completeness breakdown for key governed fields.",
+        "properties": {
+          "comments_informed": {
+            "default": 0,
+            "title": "Comments Informed",
+            "type": "integer"
+          },
+          "core_tools_informed": {
+            "default": 0,
+            "title": "Core Tools Informed",
+            "type": "integer"
+          },
+          "qa_ok": {
+            "default": 0,
+            "title": "Qa Ok",
+            "type": "integer"
+          },
+          "qa_pending": {
+            "default": 0,
+            "title": "Qa Pending",
+            "type": "integer"
+          },
+          "qa_revisar": {
+            "default": 0,
+            "title": "Qa Revisar",
+            "type": "integer"
+          },
+          "rationale_informed": {
+            "default": 0,
+            "title": "Rationale Informed",
+            "type": "integer"
+          },
+          "retry_policy_informed": {
+            "default": 0,
+            "title": "Retry Policy Informed",
+            "type": "integer"
+          }
+        },
+        "title": "CompletenessChart",
+        "type": "object"
+      },
+      "ConsolidatedMetrics": {
+        "additionalProperties": false,
+        "description": "Top-level consolidated metrics object.",
+        "properties": {
+          "data_integration": {
+            "$ref": "#/components/schemas/DIMetrics"
+          },
+          "functions": {
+            "$ref": "#/components/schemas/FunctionsMetrics"
+          },
+          "oic": {
+            "$ref": "#/components/schemas/OICMetrics"
+          },
+          "queue": {
+            "$ref": "#/components/schemas/QueueMetrics"
+          },
+          "streaming": {
+            "$ref": "#/components/schemas/StreamingMetrics"
+          }
+        },
+        "required": [
+          "oic",
+          "data_integration",
+          "functions",
+          "streaming",
+          "queue"
+        ],
+        "title": "ConsolidatedMetrics",
+        "type": "object"
+      },
+      "CoverageChart": {
+        "additionalProperties": false,
+        "description": "Coverage metrics for populated catalog fields.",
+        "properties": {
+          "pattern_assigned": {
+            "default": 0,
+            "title": "Pattern Assigned",
+            "type": "integer"
+          },
+          "payload_informed": {
+            "default": 0,
+            "title": "Payload Informed",
+            "type": "integer"
+          },
+          "source_destination_informed": {
+            "default": 0,
+            "title": "Source Destination Informed",
+            "type": "integer"
+          },
+          "total_integrations": {
+            "default": 0,
+            "title": "Total Integrations",
+            "type": "integer"
+          },
+          "with_interface_id": {
+            "default": 0,
+            "title": "With Interface Id",
+            "type": "integer"
+          },
+          "without_interface_id": {
+            "default": 0,
+            "title": "Without Interface Id",
+            "type": "integer"
+          }
+        },
+        "title": "CoverageChart",
+        "type": "object"
+      },
+      "DIMetrics": {
+        "additionalProperties": false,
+        "description": "Data Integration consolidated metrics.",
+        "properties": {
+          "data_processed_gb_month": {
+            "default": 0.0,
+            "title": "Data Processed Gb Month",
+            "type": "number"
+          },
+          "row_count": {
+            "default": 0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "workspace_active": {
+            "default": false,
+            "title": "Workspace Active",
+            "type": "boolean"
+          }
+        },
+        "title": "DIMetrics",
+        "type": "object"
+      },
+      "DashboardCharts": {
+        "additionalProperties": false,
+        "description": "Composite dashboard chart payload.",
+        "properties": {
+          "completeness": {
+            "$ref": "#/components/schemas/CompletenessChart"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/CoverageChart"
+          },
+          "pattern_mix": {
+            "items": {
+              "$ref": "#/components/schemas/PatternMixEntry"
+            },
+            "title": "Pattern Mix",
+            "type": "array"
+          },
+          "payload_distribution": {
+            "items": {
+              "$ref": "#/components/schemas/PayloadDistributionBucket"
+            },
+            "title": "Payload Distribution",
+            "type": "array"
+          }
+        },
+        "required": [
+          "coverage",
+          "completeness"
+        ],
+        "title": "DashboardCharts",
+        "type": "object"
+      },
+      "DashboardKPIStrip": {
+        "additionalProperties": false,
+        "description": "Top-line technical KPIs for the dashboard.",
+        "properties": {
+          "di_data_processed_gb_month": {
+            "default": 0.0,
+            "title": "Di Data Processed Gb Month",
+            "type": "number"
+          },
+          "di_workspace_active": {
+            "default": false,
+            "title": "Di Workspace Active",
+            "type": "boolean"
+          },
+          "functions_execution_units_gb_s": {
+            "default": 0.0,
+            "title": "Functions Execution Units Gb S",
+            "type": "number"
+          },
+          "oic_msgs_month": {
+            "default": 0.0,
+            "title": "Oic Msgs Month",
+            "type": "number"
+          },
+          "peak_packs_hour": {
+            "default": 0.0,
+            "title": "Peak Packs Hour",
+            "type": "number"
+          }
+        },
+        "title": "DashboardKPIStrip",
+        "type": "object"
+      },
+      "DashboardMaturity": {
+        "additionalProperties": false,
+        "description": "High-level technical maturity indicators.",
+        "properties": {
+          "governed_pct": {
+            "default": 0.0,
+            "title": "Governed Pct",
+            "type": "number"
+          },
+          "pattern_assigned_pct": {
+            "default": 0.0,
+            "title": "Pattern Assigned Pct",
+            "type": "number"
+          },
+          "payload_informed_pct": {
+            "default": 0.0,
+            "title": "Payload Informed Pct",
+            "type": "number"
+          },
+          "qa_ok_pct": {
+            "default": 0.0,
+            "title": "Qa Ok Pct",
+            "type": "number"
+          }
+        },
+        "title": "DashboardMaturity",
+        "type": "object"
+      },
+      "DashboardRisk": {
+        "additionalProperties": false,
+        "description": "Technical risk summary with drill-through IDs.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "integration_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Integration Ids",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "count"
+        ],
+        "title": "DashboardRisk",
+        "type": "object"
+      },
+      "DashboardSnapshotListResponse": {
+        "additionalProperties": false,
+        "description": "Dashboard snapshot collection.",
+        "properties": {
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardSnapshotSummary"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "DashboardSnapshotListResponse",
+        "type": "object"
+      },
+      "DashboardSnapshotResponse": {
+        "additionalProperties": false,
+        "description": "Full technical dashboard snapshot response.",
+        "properties": {
+          "charts": {
+            "$ref": "#/components/schemas/DashboardCharts"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kpi_strip": {
+            "$ref": "#/components/schemas/DashboardKPIStrip"
+          },
+          "maturity": {
+            "$ref": "#/components/schemas/DashboardMaturity"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "risks": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardRisk"
+            },
+            "title": "Risks",
+            "type": "array"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "volumetry_snapshot_id": {
+            "title": "Volumetry Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "project_id",
+          "volumetry_snapshot_id",
+          "mode",
+          "kpi_strip",
+          "charts",
+          "maturity",
+          "created_at"
+        ],
+        "title": "DashboardSnapshotResponse",
+        "type": "object"
+      },
+      "DashboardSnapshotSummary": {
+        "additionalProperties": false,
+        "description": "List view for persisted dashboard snapshots.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "volumetry_snapshot_id": {
+            "title": "Volumetry Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "volumetry_snapshot_id",
+          "mode",
+          "created_at"
+        ],
+        "title": "DashboardSnapshotSummary",
+        "type": "object"
+      },
+      "DictionaryCategoryListResponse": {
+        "additionalProperties": false,
+        "description": "Dictionary category summary list.",
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryCategorySummary"
+            },
+            "title": "Categories",
+            "type": "array"
+          }
+        },
+        "required": [
+          "categories"
+        ],
+        "title": "DictionaryCategoryListResponse",
+        "type": "object"
+      },
+      "DictionaryCategorySummary": {
+        "additionalProperties": false,
+        "description": "Summary of dictionary category counts.",
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "option_count": {
+            "title": "Option Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "category",
+          "option_count"
+        ],
+        "title": "DictionaryCategorySummary",
+        "type": "object"
+      },
+      "DictionaryOptionCreate": {
+        "additionalProperties": false,
+        "description": "Admin payload to create a governed dictionary option.",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "executions_per_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executions Per Day"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "is_volumetric": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Volumetric"
+          },
+          "sort_order": {
+            "default": 0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "version": {
+            "default": "1.0.0",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "DictionaryOptionCreate",
+        "type": "object"
+      },
+      "DictionaryOptionListResponse": {
+        "additionalProperties": false,
+        "description": "Dictionary option list response.",
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryOptionResponse"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "category",
+          "options"
+        ],
+        "title": "DictionaryOptionListResponse",
+        "type": "object"
+      },
+      "DictionaryOptionResponse": {
+        "additionalProperties": false,
+        "description": "Serialized dictionary option.",
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "executions_per_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executions Per Day"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "code",
+          "value",
+          "description",
+          "executions_per_day",
+          "sort_order",
+          "is_active"
+        ],
+        "title": "DictionaryOptionResponse",
+        "type": "object"
+      },
+      "DictionaryOptionUpdate": {
+        "additionalProperties": false,
+        "description": "Admin payload to update one governed dictionary option.",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "executions_per_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executions Per Day"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "is_volumetric": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Volumetric"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "title": "DictionaryOptionUpdate",
+        "type": "object"
+      },
+      "ExportJobResponse": {
+        "additionalProperties": false,
+        "description": "Metadata for one generated export artifact.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "project_id",
+          "snapshot_id",
+          "format",
+          "status",
+          "filename",
+          "download_url",
+          "created_at"
+        ],
+        "title": "ExportJobResponse",
+        "type": "object"
+      },
+      "FunctionsMetrics": {
+        "additionalProperties": false,
+        "description": "Oracle Functions consolidated metrics.",
+        "properties": {
+          "row_count": {
+            "default": 0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "total_execution_units_gb_s": {
+            "default": 0.0,
+            "title": "Total Execution Units Gb S",
+            "type": "number"
+          },
+          "total_invocations_month": {
+            "default": 0.0,
+            "title": "Total Invocations Month",
+            "type": "number"
+          }
+        },
+        "title": "FunctionsMetrics",
+        "type": "object"
+      },
+      "GraphEdge": {
+        "description": "One directed source-to-destination relationship in the dependency graph.",
+        "properties": {
+          "business_processes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Business Processes",
+            "type": "array"
+          },
+          "dominant_qa_status": {
+            "title": "Dominant Qa Status",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "integration_count": {
+            "title": "Integration Count",
+            "type": "integer"
+          },
+          "integration_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Integration Ids",
+            "type": "array"
+          },
+          "integration_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Integration Names",
+            "type": "array"
+          },
+          "integration_qa_statuses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Integration Qa Statuses",
+            "type": "array"
+          },
+          "patterns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Patterns",
+            "type": "array"
+          },
+          "qa_statuses": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Qa Statuses",
+            "type": "object"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "target",
+          "integration_count",
+          "integration_ids",
+          "integration_names",
+          "integration_qa_statuses",
+          "business_processes",
+          "patterns",
+          "qa_statuses",
+          "dominant_qa_status"
+        ],
+        "title": "GraphEdge",
+        "type": "object"
+      },
+      "GraphMeta": {
+        "description": "Summary metadata for the rendered graph.",
+        "properties": {
+          "brands": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
+          "business_processes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Business Processes",
+            "type": "array"
+          },
+          "edge_count": {
+            "title": "Edge Count",
+            "type": "integer"
+          },
+          "integration_count": {
+            "title": "Integration Count",
+            "type": "integer"
+          },
+          "node_count": {
+            "title": "Node Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "node_count",
+          "edge_count",
+          "integration_count",
+          "business_processes",
+          "brands"
+        ],
+        "title": "GraphMeta",
+        "type": "object"
+      },
+      "GraphNode": {
+        "description": "One system node in the dependency graph.",
+        "properties": {
+          "as_destination_count": {
+            "title": "As Destination Count",
+            "type": "integer"
+          },
+          "as_source_count": {
+            "title": "As Source Count",
+            "type": "integer"
+          },
+          "brands": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Brands",
+            "type": "array"
+          },
+          "business_processes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Business Processes",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "integration_count": {
+            "title": "Integration Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "integration_count",
+          "as_source_count",
+          "as_destination_count",
+          "brands",
+          "business_processes"
+        ],
+        "title": "GraphNode",
+        "type": "object"
+      },
+      "GraphResponse": {
+        "description": "Full graph payload returned by the catalog graph endpoint.",
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/GraphMeta"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes",
+          "edges",
+          "meta"
+        ],
+        "title": "GraphResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImportBatchDeleteResponse": {
+        "additionalProperties": false,
+        "description": "Removal result for one import batch.",
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "deleted_integrations": {
+            "title": "Deleted Integrations",
+            "type": "integer"
+          },
+          "deleted_justifications": {
+            "title": "Deleted Justifications",
+            "type": "integer"
+          },
+          "deleted_source_rows": {
+            "title": "Deleted Source Rows",
+            "type": "integer"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "recalculated_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recalculated Snapshot Id"
+          }
+        },
+        "required": [
+          "project_id",
+          "batch_id",
+          "detail",
+          "deleted_source_rows",
+          "deleted_integrations",
+          "deleted_justifications"
+        ],
+        "title": "ImportBatchDeleteResponse",
+        "type": "object"
+      },
+      "ImportBatchListResponse": {
+        "additionalProperties": false,
+        "description": "Serialized import batch collection.",
+        "properties": {
+          "import_batches": {
+            "items": {
+              "$ref": "#/components/schemas/ImportBatchResponse"
+            },
+            "title": "Import Batches",
+            "type": "array"
+          }
+        },
+        "required": [
+          "import_batches"
+        ],
+        "title": "ImportBatchListResponse",
+        "type": "object"
+      },
+      "ImportBatchResponse": {
+        "additionalProperties": false,
+        "description": "Serialized import batch.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_details": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Details"
+          },
+          "excluded_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Count"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "header_map": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Header Map"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "loaded_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loaded Count"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "source_row_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Row Count"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tbq_y_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tbq Y Count"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "filename",
+          "parser_version",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ImportBatchResponse",
+        "type": "object"
+      },
+      "JustificationListResponse": {
+        "additionalProperties": false,
+        "description": "Project-level collection of justification narratives.",
+        "properties": {
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/JustificationRecordResponse"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "JustificationListResponse",
+        "type": "object"
+      },
+      "JustificationNarrative": {
+        "additionalProperties": false,
+        "description": "Structured deterministic narrative content.",
+        "properties": {
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "methodology_blocks": {
+            "items": {
+              "$ref": "#/components/schemas/MethodologyBlock"
+            },
+            "title": "Methodology Blocks",
+            "type": "array"
+          },
+          "override_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Text"
+          },
+          "qa_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Qa Reasons",
+            "type": "array"
+          },
+          "qa_status": {
+            "title": "Qa Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary",
+          "qa_status"
+        ],
+        "title": "JustificationNarrative",
+        "type": "object"
+      },
+      "JustificationRecordResponse": {
+        "additionalProperties": false,
+        "description": "Serialized justification record or generated draft narrative.",
+        "properties": {
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "narrative": {
+            "$ref": "#/components/schemas/JustificationNarrative"
+          },
+          "override_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Notes"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "project_id",
+          "integration_id",
+          "state",
+          "narrative"
+        ],
+        "title": "JustificationRecordResponse",
+        "type": "object"
+      },
+      "LineageDetail": {
+        "additionalProperties": false,
+        "description": "Source lineage for a catalog row.",
+        "properties": {
+          "column_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Column Names",
+            "type": "object"
+          },
+          "exclusion_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusion Reason"
+          },
+          "import_batch_date": {
+            "format": "date-time",
+            "title": "Import Batch Date",
+            "type": "string"
+          },
+          "import_batch_id": {
+            "title": "Import Batch Id",
+            "type": "string"
+          },
+          "import_filename": {
+            "title": "Import Filename",
+            "type": "string"
+          },
+          "included": {
+            "title": "Included",
+            "type": "boolean"
+          },
+          "normalization_events": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Normalization Events",
+            "type": "array"
+          },
+          "raw_data": {
+            "title": "Raw Data",
+            "type": "object"
+          },
+          "source_row_id": {
+            "title": "Source Row Id",
+            "type": "string"
+          },
+          "source_row_number": {
+            "title": "Source Row Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_row_id",
+          "source_row_number",
+          "raw_data",
+          "included",
+          "import_batch_id",
+          "import_batch_date",
+          "import_filename"
+        ],
+        "title": "LineageDetail",
+        "type": "object"
+      },
+      "ManualIntegrationCreate": {
+        "additionalProperties": false,
+        "description": "Payload for guided manual capture of a new integration.",
+        "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "business_process": {
+            "title": "Business Process",
+            "type": "string"
+          },
+          "complexity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Complexity"
+          },
+          "core_tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Core Tools"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "destination_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Owner"
+          },
+          "destination_system": {
+            "title": "Destination System",
+            "type": "string"
+          },
+          "destination_technology": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Technology"
+          },
+          "frequency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequency"
+          },
+          "initial_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Scope"
+          },
+          "interface_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interface Id"
+          },
+          "interface_name": {
+            "title": "Interface Name",
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "pattern_rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern Rationale"
+          },
+          "payload_per_execution_kb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload Per Execution Kb"
+          },
+          "selected_pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Pattern"
+          },
+          "source_api_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Api Reference"
+          },
+          "source_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Owner"
+          },
+          "source_system": {
+            "title": "Source System",
+            "type": "string"
+          },
+          "source_technology": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Technology"
+          },
+          "tbq": {
+            "default": "Y",
+            "title": "Tbq",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "uncertainty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty"
+          }
+        },
+        "required": [
+          "brand",
+          "business_process",
+          "interface_name",
+          "source_system",
+          "destination_system"
+        ],
+        "title": "ManualIntegrationCreate",
+        "type": "object"
+      },
+      "MethodologyBlock": {
+        "additionalProperties": false,
+        "description": "One deterministic narrative section.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "body"
+        ],
+        "title": "MethodologyBlock",
+        "type": "object"
+      },
+      "NormalizationEventResponse": {
+        "additionalProperties": false,
+        "description": "Serialized normalization event.",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "new_value": {
+            "title": "New Value"
+          },
+          "old_value": {
+            "title": "Old Value"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "rule"
+        ],
+        "title": "NormalizationEventResponse",
+        "type": "object"
+      },
+      "OICEstimateRequest": {
+        "additionalProperties": false,
+        "description": "Live OIC estimate request with no persistence side effects.",
+        "properties": {
+          "frequency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequency"
+          },
+          "payload_per_execution_kb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload Per Execution Kb"
+          },
+          "response_kb": {
+            "default": 0.0,
+            "title": "Response Kb",
+            "type": "number"
+          }
+        },
+        "title": "OICEstimateRequest",
+        "type": "object"
+      },
+      "OICEstimateResponse": {
+        "additionalProperties": false,
+        "description": "Live OIC estimate response.",
+        "properties": {
+          "billing_msgs_per_execution": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Msgs Per Execution"
+          },
+          "billing_msgs_per_month": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Msgs Per Month"
+          },
+          "computable": {
+            "title": "Computable",
+            "type": "boolean"
+          },
+          "executions_per_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executions Per Day"
+          },
+          "peak_packs_per_hour": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Packs Per Hour"
+          }
+        },
+        "required": [
+          "computable"
+        ],
+        "title": "OICEstimateResponse",
+        "type": "object"
+      },
+      "OICMetrics": {
+        "additionalProperties": false,
+        "description": "OIC consolidated metrics.",
+        "properties": {
+          "peak_billing_msgs_hour": {
+            "default": 0.0,
+            "title": "Peak Billing Msgs Hour",
+            "type": "number"
+          },
+          "peak_packs_hour": {
+            "default": 0.0,
+            "title": "Peak Packs Hour",
+            "type": "number"
+          },
+          "row_count": {
+            "default": 0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "total_billing_msgs_month": {
+            "default": 0.0,
+            "title": "Total Billing Msgs Month",
+            "type": "number"
+          }
+        },
+        "title": "OICMetrics",
+        "type": "object"
+      },
+      "OverrideJustificationRequest": {
+        "additionalProperties": false,
+        "description": "Override request payload.",
+        "properties": {
+          "actor_id": {
+            "default": "api-user",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "override_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Notes"
+          },
+          "override_text": {
+            "title": "Override Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "override_text"
+        ],
+        "title": "OverrideJustificationRequest",
+        "type": "object"
+      },
+      "PatternDefinitionCreate": {
+        "additionalProperties": false,
+        "description": "Admin payload to create a custom pattern definition.",
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "components": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Components"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pattern_id": {
+            "title": "Pattern Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pattern_id",
+          "name",
+          "category"
+        ],
+        "title": "PatternDefinitionCreate",
+        "type": "object"
+      },
+      "PatternDefinitionResponse": {
+        "additionalProperties": false,
+        "description": "Serialized pattern definition.",
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "components": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Components"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "is_system": {
+            "title": "Is System",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pattern_id": {
+            "title": "Pattern Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "pattern_id",
+          "name",
+          "category",
+          "description",
+          "components",
+          "flow",
+          "is_system",
+          "is_active",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PatternDefinitionResponse",
+        "type": "object"
+      },
+      "PatternDefinitionUpdate": {
+        "additionalProperties": false,
+        "description": "Admin payload to update a custom or system pattern definition.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "components": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Components"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "PatternDefinitionUpdate",
+        "type": "object"
+      },
+      "PatternListResponse": {
+        "additionalProperties": false,
+        "description": "Pattern list response.",
+        "properties": {
+          "patterns": {
+            "items": {
+              "$ref": "#/components/schemas/PatternDefinitionResponse"
+            },
+            "title": "Patterns",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "PatternListResponse",
+        "type": "object"
+      },
+      "PatternMixEntry": {
+        "additionalProperties": false,
+        "description": "Pattern-assignment count entry.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pattern_id": {
+            "title": "Pattern Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pattern_id",
+          "name",
+          "count"
+        ],
+        "title": "PatternMixEntry",
+        "type": "object"
+      },
+      "PayloadDistributionBucket": {
+        "additionalProperties": false,
+        "description": "Payload bucket count entry.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "count"
+        ],
+        "title": "PayloadDistributionBucket",
+        "type": "object"
+      },
+      "ProjectArchiveResponse": {
+        "additionalProperties": false,
+        "description": "Archive action result for one project.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ProjectResponse"
+          }
+        },
+        "required": [
+          "project",
+          "detail"
+        ],
+        "title": "ProjectArchiveResponse",
+        "type": "object"
+      },
+      "ProjectCreateRequest": {
+        "additionalProperties": false,
+        "description": "Payload for creating a project.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "owner_id"
+        ],
+        "title": "ProjectCreateRequest",
+        "type": "object"
+      },
+      "ProjectDeleteResponse": {
+        "additionalProperties": false,
+        "description": "Deletion result for one archived project.",
+        "properties": {
+          "deleted_audit_events": {
+            "title": "Deleted Audit Events",
+            "type": "integer"
+          },
+          "deleted_dashboard_snapshots": {
+            "title": "Deleted Dashboard Snapshots",
+            "type": "integer"
+          },
+          "deleted_import_batches": {
+            "title": "Deleted Import Batches",
+            "type": "integer"
+          },
+          "deleted_integrations": {
+            "title": "Deleted Integrations",
+            "type": "integer"
+          },
+          "deleted_justifications": {
+            "title": "Deleted Justifications",
+            "type": "integer"
+          },
+          "deleted_source_rows": {
+            "title": "Deleted Source Rows",
+            "type": "integer"
+          },
+          "deleted_volumetry_snapshots": {
+            "title": "Deleted Volumetry Snapshots",
+            "type": "integer"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "detail",
+          "deleted_import_batches",
+          "deleted_source_rows",
+          "deleted_integrations",
+          "deleted_justifications",
+          "deleted_volumetry_snapshots",
+          "deleted_dashboard_snapshots",
+          "deleted_audit_events"
+        ],
+        "title": "ProjectDeleteResponse",
+        "type": "object"
+      },
+      "ProjectListResponse": {
+        "additionalProperties": false,
+        "description": "Paginated-ish project list response.",
+        "properties": {
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectResponse"
+            },
+            "title": "Projects",
+            "type": "array"
+          }
+        },
+        "required": [
+          "projects"
+        ],
+        "title": "ProjectListResponse",
+        "type": "object"
+      },
+      "ProjectPatchRequest": {
+        "additionalProperties": false,
+        "description": "Payload for partially updating project metadata.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          }
+        },
+        "title": "ProjectPatchRequest",
+        "type": "object"
+      },
+      "ProjectResponse": {
+        "additionalProperties": false,
+        "description": "Serialized project resource.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "owner_id",
+          "description",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProjectResponse",
+        "type": "object"
+      },
+      "PromptTemplateVersionCreate": {
+        "additionalProperties": false,
+        "description": "Admin payload to create a versioned narrative template.",
+        "properties": {
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "template_config": {
+            "title": "Template Config",
+            "type": "object"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "name",
+          "template_config"
+        ],
+        "title": "PromptTemplateVersionCreate",
+        "type": "object"
+      },
+      "PromptTemplateVersionListResponse": {
+        "additionalProperties": false,
+        "description": "List of versioned narrative templates.",
+        "properties": {
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/PromptTemplateVersionResponse"
+            },
+            "title": "Templates",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "PromptTemplateVersionListResponse",
+        "type": "object"
+      },
+      "PromptTemplateVersionResponse": {
+        "additionalProperties": false,
+        "description": "Serialized narrative template version.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "template_config": {
+            "title": "Template Config",
+            "type": "object"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "name",
+          "is_default",
+          "template_config",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PromptTemplateVersionResponse",
+        "type": "object"
+      },
+      "PromptTemplateVersionUpdate": {
+        "additionalProperties": false,
+        "description": "Admin payload to update a versioned narrative template.",
+        "properties": {
+          "is_default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Default"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "template_config": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Config"
+          }
+        },
+        "title": "PromptTemplateVersionUpdate",
+        "type": "object"
+      },
+      "QueueMetrics": {
+        "additionalProperties": false,
+        "description": "OCI Queue consolidated metrics.",
+        "properties": {
+          "row_count": {
+            "default": 0,
+            "title": "Row Count",
+            "type": "integer"
+          }
+        },
+        "title": "QueueMetrics",
+        "type": "object"
+      },
+      "RecalculationJobStatusResponse": {
+        "additionalProperties": false,
+        "description": "Snapshot-backed status payload for synchronous recalculation requests.",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "integration_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Integration Ids",
+            "type": "array"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "default": "project",
+            "title": "Scope",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "project_id",
+          "status"
+        ],
+        "title": "RecalculationJobStatusResponse",
+        "type": "object"
+      },
+      "ResetJustificationRequest": {
+        "additionalProperties": false,
+        "description": "Reset request payload.",
+        "properties": {
+          "actor_id": {
+            "default": "api-user",
+            "title": "Actor Id",
+            "type": "string"
+          }
+        },
+        "title": "ResetJustificationRequest",
+        "type": "object"
+      },
+      "ScopedRecalculationRequest": {
+        "additionalProperties": false,
+        "description": "Request body for a scoped recalculation trigger.",
+        "properties": {
+          "actor_id": {
+            "default": "api-user",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "integration_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Integration Ids",
+            "type": "array"
+          }
+        },
+        "title": "ScopedRecalculationRequest",
+        "type": "object"
+      },
+      "SourceRowListResponse": {
+        "additionalProperties": false,
+        "description": "Paginated list of source rows.",
+        "properties": {
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRowResponse"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rows",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "SourceRowListResponse",
+        "type": "object"
+      },
+      "SourceRowResponse": {
+        "additionalProperties": false,
+        "description": "Serialized source integration row.",
+        "properties": {
+          "exclusion_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusion Reason"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "included": {
+            "title": "Included",
+            "type": "boolean"
+          },
+          "normalization_events": {
+            "items": {
+              "$ref": "#/components/schemas/NormalizationEventResponse"
+            },
+            "title": "Normalization Events",
+            "type": "array"
+          },
+          "raw_data": {
+            "title": "Raw Data",
+            "type": "object"
+          },
+          "source_row_number": {
+            "title": "Source Row Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "source_row_number",
+          "included",
+          "raw_data"
+        ],
+        "title": "SourceRowResponse",
+        "type": "object"
+      },
+      "StreamingMetrics": {
+        "additionalProperties": false,
+        "description": "OCI Streaming consolidated metrics.",
+        "properties": {
+          "partition_count": {
+            "default": 0,
+            "title": "Partition Count",
+            "type": "integer"
+          },
+          "row_count": {
+            "default": 0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "total_gb_month": {
+            "default": 0.0,
+            "title": "Total Gb Month",
+            "type": "number"
+          }
+        },
+        "title": "StreamingMetrics",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VolumetrySnapshotListResponse": {
+        "additionalProperties": false,
+        "description": "List of volumetry snapshots.",
+        "properties": {
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/VolumetrySnapshotResponse"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          }
+        },
+        "title": "VolumetrySnapshotListResponse",
+        "type": "object"
+      },
+      "VolumetrySnapshotResponse": {
+        "additionalProperties": false,
+        "description": "Serialized volumetry snapshot.",
+        "properties": {
+          "assumption_set_version": {
+            "title": "Assumption Set Version",
+            "type": "string"
+          },
+          "consolidated": {
+            "$ref": "#/components/schemas/ConsolidatedMetrics"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "row_results": {
+            "additionalProperties": {
+              "type": "object"
+            },
+            "title": "Row Results",
+            "type": "object"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "triggered_by": {
+            "title": "Triggered By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "project_id",
+          "assumption_set_version",
+          "triggered_by",
+          "row_results",
+          "consolidated",
+          "created_at"
+        ],
+        "title": "VolumetrySnapshotResponse",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "API-first platform for OCI Integration Design assessment. Enables engineers to import, govern, calculate volumetry, and export OCI integration catalogs aligned with Oracle Integration Cloud (OIC) patterns.",
+    "title": "OCI DIS Blueprint API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/assumptions/": {
+      "get": {
+        "operationId": "list_assumption_sets_api_v1_assumptions__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssumptionSetListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List assumption sets",
+        "tags": [
+          "Assumptions"
+        ]
+      },
+      "post": {
+        "operationId": "create_assumption_set_api_v1_assumptions__post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssumptionSetCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssumptionSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a versioned assumption set",
+        "tags": [
+          "Assumptions"
+        ]
+      }
+    },
+    "/api/v1/assumptions/default": {
+      "get": {
+        "operationId": "get_default_api_v1_assumptions_default_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssumptionSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get default assumption set",
+        "tags": [
+          "Assumptions"
+        ]
+      }
+    },
+    "/api/v1/assumptions/{version}": {
+      "get": {
+        "operationId": "get_assumption_set_api_v1_assumptions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssumptionSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get assumption set by version",
+        "tags": [
+          "Assumptions"
+        ]
+      },
+      "patch": {
+        "operationId": "update_assumption_set_api_v1_assumptions__version__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssumptionSetUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssumptionSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update an assumption set",
+        "tags": [
+          "Assumptions"
+        ]
+      }
+    },
+    "/api/v1/assumptions/{version}/default": {
+      "post": {
+        "operationId": "set_default_assumption_set_api_v1_assumptions__version__default_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssumptionSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote an assumption set to default",
+        "tags": [
+          "Assumptions"
+        ]
+      }
+    },
+    "/api/v1/audit/{project_id}": {
+      "get": {
+        "operationId": "list_audit_events_api_v1_audit__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "event_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query audit events",
+        "tags": [
+          "Audit"
+        ]
+      }
+    },
+    "/api/v1/catalog/{project_id}": {
+      "get": {
+        "operationId": "list_integrations_api_v1_catalog__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pattern",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pattern"
+            }
+          },
+          {
+            "in": "query",
+            "name": "brand",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand"
+            }
+          },
+          {
+            "in": "query",
+            "name": "qa_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Qa Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_system",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source System"
+            }
+          },
+          {
+            "in": "query",
+            "name": "destination_system",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Destination System"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List catalog integrations with filters/search",
+        "tags": [
+          "Catalog"
+        ]
+      },
+      "post": {
+        "operationId": "create_integration_api_v1_catalog__project_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualIntegrationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogIntegrationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a catalog integration from manual capture",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/{project_id}/bulk-patch": {
+      "post": {
+        "operationId": "bulk_patch_api_v1_catalog__project_id__bulk_patch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkPatchResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bulk update selected rows",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/{project_id}/duplicates": {
+      "get": {
+        "operationId": "find_duplicates_api_v1_catalog__project_id__duplicates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_system",
+            "required": true,
+            "schema": {
+              "title": "Source System",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "destination_system",
+            "required": true,
+            "schema": {
+              "title": "Destination System",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "business_process",
+            "required": true,
+            "schema": {
+              "title": "Business Process",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogIntegrationResponse"
+                  },
+                  "title": "Response Find Duplicates Api V1 Catalog  Project Id  Duplicates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check for duplicate source/destination/business process matches",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/{project_id}/estimate": {
+      "post": {
+        "operationId": "estimate_oic_api_v1_catalog__project_id__estimate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OICEstimateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OICEstimateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get a live OIC estimate for capture inputs",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/{project_id}/graph": {
+      "get": {
+        "operationId": "get_graph_api_v1_catalog__project_id__graph_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "business_process",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Process"
+            }
+          },
+          {
+            "in": "query",
+            "name": "brand",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand"
+            }
+          },
+          {
+            "in": "query",
+            "name": "qa_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Qa Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get the system dependency graph",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/{project_id}/systems": {
+      "get": {
+        "operationId": "list_systems_api_v1_catalog__project_id__systems_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response List Systems Api V1 Catalog  Project Id  Systems Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List unique systems for autocomplete",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/{project_id}/{integration_id}": {
+      "delete": {
+        "operationId": "delete_integration_api_v1_catalog__project_id___integration_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogIntegrationDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove a catalog integration and recalculate the project",
+        "tags": [
+          "Catalog"
+        ]
+      },
+      "get": {
+        "operationId": "get_integration_api_v1_catalog__project_id___integration_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogIntegrationDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get single integration with lineage",
+        "tags": [
+          "Catalog"
+        ]
+      },
+      "patch": {
+        "operationId": "update_integration_api_v1_catalog__project_id___integration_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogIntegrationPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogIntegrationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update architect-owned fields",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/{project_id}/{integration_id}/lineage": {
+      "get": {
+        "operationId": "get_lineage_api_v1_catalog__project_id___integration_id__lineage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineageDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get source lineage for a row",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/dashboard/{project_id}/snapshots": {
+      "get": {
+        "operationId": "list_dashboard_snapshots_api_v1_dashboard__project_id__snapshots_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSnapshotListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List dashboard snapshots",
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/v1/dashboard/{project_id}/snapshots/{snapshot_id}": {
+      "get": {
+        "operationId": "get_dashboard_snapshot_api_v1_dashboard__project_id__snapshots__snapshot_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get dashboard snapshot",
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/v1/dictionaries/": {
+      "get": {
+        "operationId": "list_categories_api_v1_dictionaries__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DictionaryCategoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List all dictionary categories",
+        "tags": [
+          "Dictionaries"
+        ]
+      }
+    },
+    "/api/v1/dictionaries/{category}": {
+      "get": {
+        "operationId": "list_options_api_v1_dictionaries__category__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category",
+            "required": true,
+            "schema": {
+              "title": "Category",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DictionaryOptionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List options for a category",
+        "tags": [
+          "Dictionaries"
+        ]
+      },
+      "post": {
+        "operationId": "create_option_api_v1_dictionaries__category__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category",
+            "required": true,
+            "schema": {
+              "title": "Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DictionaryOptionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DictionaryOptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a governed dictionary option",
+        "tags": [
+          "Dictionaries"
+        ]
+      }
+    },
+    "/api/v1/dictionaries/{category}/{option_id}": {
+      "delete": {
+        "operationId": "delete_option_api_v1_dictionaries__category___option_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category",
+            "required": true,
+            "schema": {
+              "title": "Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "option_id",
+            "required": true,
+            "schema": {
+              "title": "Option Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DictionaryOptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Deactivate a governed dictionary option",
+        "tags": [
+          "Dictionaries"
+        ]
+      },
+      "patch": {
+        "operationId": "update_option_api_v1_dictionaries__category___option_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category",
+            "required": true,
+            "schema": {
+              "title": "Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "option_id",
+            "required": true,
+            "schema": {
+              "title": "Option Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DictionaryOptionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DictionaryOptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update a governed dictionary option",
+        "tags": [
+          "Dictionaries"
+        ]
+      }
+    },
+    "/api/v1/exports/template/xlsx": {
+      "get": {
+        "operationId": "download_capture_template_api_v1_exports_template_xlsx_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Download the offline capture template workbook",
+        "tags": [
+          "Exports"
+        ]
+      }
+    },
+    "/api/v1/exports/{project_id}/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_export_job_api_v1_exports__project_id__jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Poll export job status",
+        "tags": [
+          "Exports"
+        ]
+      }
+    },
+    "/api/v1/exports/{project_id}/jobs/{job_id}/download": {
+      "get": {
+        "operationId": "download_export_api_v1_exports__project_id__jobs__job_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download generated export artifact",
+        "tags": [
+          "Exports"
+        ]
+      }
+    },
+    "/api/v1/exports/{project_id}/json": {
+      "post": {
+        "operationId": "export_json_api_v1_exports__project_id__json_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export project snapshot as JSON",
+        "tags": [
+          "Exports"
+        ]
+      }
+    },
+    "/api/v1/exports/{project_id}/pdf": {
+      "post": {
+        "operationId": "export_pdf_api_v1_exports__project_id__pdf_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export dashboard as PDF",
+        "tags": [
+          "Exports"
+        ]
+      }
+    },
+    "/api/v1/exports/{project_id}/xlsx": {
+      "post": {
+        "operationId": "export_xlsx_api_v1_exports__project_id__xlsx_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export catalog as XLSX",
+        "tags": [
+          "Exports"
+        ]
+      }
+    },
+    "/api/v1/imports/{project_id}": {
+      "get": {
+        "operationId": "list_imports_api_v1_imports__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List import batches for a project",
+        "tags": [
+          "Imports"
+        ]
+      },
+      "post": {
+        "operationId": "upload_and_import_api_v1_imports__project_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_and_import_api_v1_imports__project_id__post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload source file and queue an import batch",
+        "tags": [
+          "Imports"
+        ]
+      }
+    },
+    "/api/v1/imports/{project_id}/{batch_id}": {
+      "delete": {
+        "operationId": "delete_import_api_v1_imports__project_id___batch_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove an import batch and recalculate the project",
+        "tags": [
+          "Imports"
+        ]
+      },
+      "get": {
+        "operationId": "get_import_api_v1_imports__project_id___batch_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get import batch status and stats",
+        "tags": [
+          "Imports"
+        ]
+      }
+    },
+    "/api/v1/imports/{project_id}/{batch_id}/rows": {
+      "get": {
+        "operationId": "get_import_rows_api_v1_imports__project_id___batch_id__rows_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRowListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get source rows with inclusion/exclusion reasons",
+        "tags": [
+          "Imports"
+        ]
+      }
+    },
+    "/api/v1/justifications/templates": {
+      "get": {
+        "operationId": "list_prompt_templates_api_v1_justifications_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptTemplateVersionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List narrative templates",
+        "tags": [
+          "Justifications"
+        ]
+      },
+      "post": {
+        "operationId": "create_prompt_template_api_v1_justifications_templates_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromptTemplateVersionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptTemplateVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a narrative template version",
+        "tags": [
+          "Justifications"
+        ]
+      }
+    },
+    "/api/v1/justifications/templates/{version}": {
+      "get": {
+        "operationId": "get_prompt_template_api_v1_justifications_templates__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptTemplateVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get one narrative template version",
+        "tags": [
+          "Justifications"
+        ]
+      },
+      "patch": {
+        "operationId": "update_prompt_template_api_v1_justifications_templates__version__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromptTemplateVersionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptTemplateVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update a narrative template version",
+        "tags": [
+          "Justifications"
+        ]
+      }
+    },
+    "/api/v1/justifications/templates/{version}/default": {
+      "post": {
+        "operationId": "set_default_prompt_template_api_v1_justifications_templates__version__default_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptTemplateVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote a narrative template to default",
+        "tags": [
+          "Justifications"
+        ]
+      }
+    },
+    "/api/v1/justifications/{project_id}": {
+      "get": {
+        "operationId": "list_justifications_api_v1_justifications__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JustificationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List justification records",
+        "tags": [
+          "Justifications"
+        ]
+      }
+    },
+    "/api/v1/justifications/{project_id}/{integration_id}": {
+      "delete": {
+        "operationId": "reset_justification_api_v1_justifications__project_id___integration_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetJustificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JustificationRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset a persisted justification back to the deterministic draft",
+        "tags": [
+          "Justifications"
+        ]
+      },
+      "get": {
+        "operationId": "get_justification_api_v1_justifications__project_id___integration_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JustificationRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get justification for an integration",
+        "tags": [
+          "Justifications"
+        ]
+      }
+    },
+    "/api/v1/justifications/{project_id}/{integration_id}/approve": {
+      "post": {
+        "description": "Sets state=approved, records approved_by, and emits an AuditEvent.",
+        "operationId": "approve_justification_api_v1_justifications__project_id___integration_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveJustificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JustificationRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve a justification narrative",
+        "tags": [
+          "Justifications"
+        ]
+      }
+    },
+    "/api/v1/justifications/{project_id}/{integration_id}/override": {
+      "post": {
+        "operationId": "override_justification_api_v1_justifications__project_id___integration_id__override_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OverrideJustificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JustificationRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Override with custom narrative",
+        "tags": [
+          "Justifications"
+        ]
+      }
+    },
+    "/api/v1/patterns/": {
+      "get": {
+        "operationId": "list_patterns_api_v1_patterns__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatternListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List all integration patterns",
+        "tags": [
+          "Patterns"
+        ]
+      },
+      "post": {
+        "operationId": "create_pattern_api_v1_patterns__post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Admin",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatternDefinitionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatternDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a custom pattern definition",
+        "tags": [
+          "Patterns"
+        ]
+      }
+    },
+    "/api/v1/patterns/{pattern_id}": {
+      "delete": {
+        "operationId": "delete_pattern_api_v1_patterns__pattern_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pattern_id",
+            "required": true,
+            "schema": {
+              "title": "Pattern Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Admin",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete a custom pattern definition",
+        "tags": [
+          "Patterns"
+        ]
+      },
+      "get": {
+        "operationId": "get_pattern_api_v1_patterns__pattern_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pattern_id",
+            "required": true,
+            "schema": {
+              "title": "Pattern Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatternDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get a pattern by ID (e.g. #01)",
+        "tags": [
+          "Patterns"
+        ]
+      },
+      "patch": {
+        "operationId": "update_pattern_api_v1_patterns__pattern_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pattern_id",
+            "required": true,
+            "schema": {
+              "title": "Pattern Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Admin",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatternDefinitionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatternDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update a pattern definition",
+        "tags": [
+          "Patterns"
+        ]
+      }
+    },
+    "/api/v1/projects/": {
+      "get": {
+        "operationId": "list_projects_api_v1_projects__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List all projects",
+        "tags": [
+          "Projects"
+        ]
+      },
+      "post": {
+        "operationId": "create_project_api_v1_projects__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a project",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}": {
+      "delete": {
+        "operationId": "delete_project_api_v1_projects__project_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete an archived project",
+        "tags": [
+          "Projects"
+        ]
+      },
+      "get": {
+        "operationId": "get_project_api_v1_projects__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get project by ID",
+        "tags": [
+          "Projects"
+        ]
+      },
+      "patch": {
+        "operationId": "update_project_api_v1_projects__project_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update project metadata",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/archive": {
+      "post": {
+        "operationId": "archive_project_api_v1_projects__project_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectArchiveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive a project",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/v1/recalculate/{project_id}": {
+      "post": {
+        "operationId": "recalculate_project_api_v1_recalculate__project_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecalculationJobStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trigger full project recalculation",
+        "tags": [
+          "Recalculate"
+        ]
+      }
+    },
+    "/api/v1/recalculate/{project_id}/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_job_status_api_v1_recalculate__project_id__jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecalculationJobStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Poll recalculation job status",
+        "tags": [
+          "Recalculate"
+        ]
+      }
+    },
+    "/api/v1/recalculate/{project_id}/scoped": {
+      "post": {
+        "description": "Queue a scoped recalculation while preserving the selected integration scope.",
+        "operationId": "recalculate_scoped_api_v1_recalculate__project_id__scoped_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScopedRecalculationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecalculationJobStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recalculate a subset of rows",
+        "tags": [
+          "Recalculate"
+        ]
+      }
+    },
+    "/api/v1/volumetry/{project_id}/snapshots": {
+      "get": {
+        "operationId": "list_snapshots_api_v1_volumetry__project_id__snapshots_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumetrySnapshotListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List volumetry snapshots",
+        "tags": [
+          "Volumetry"
+        ]
+      }
+    },
+    "/api/v1/volumetry/{project_id}/snapshots/{snapshot_id}": {
+      "get": {
+        "operationId": "get_snapshot_api_v1_volumetry__project_id__snapshots__snapshot_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumetrySnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get full volumetry snapshot",
+        "tags": [
+          "Volumetry"
+        ]
+      }
+    },
+    "/api/v1/volumetry/{project_id}/snapshots/{snapshot_id}/consolidated": {
+      "get": {
+        "operationId": "get_consolidated_api_v1_volumetry__project_id__snapshots__snapshot_id__consolidated_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsolidatedMetrics"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Consolidated driver totals",
+        "tags": [
+          "Volumetry"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "Health"
+        ]
+      }
+    }
+  }
+}

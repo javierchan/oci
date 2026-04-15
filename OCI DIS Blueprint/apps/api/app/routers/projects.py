@@ -9,6 +9,7 @@ from app.schemas.project import (
     ProjectCreateRequest,
     ProjectDeleteResponse,
     ProjectListResponse,
+    ProjectPatchRequest,
     ProjectResponse,
 )
 from app.services import project_service
@@ -57,7 +58,12 @@ async def delete_project(
         return await project_service.delete_project(project_id, actor_id, db)
 
 
-@router.patch("/{project_id}", summary="Update project metadata")
-async def update_project(project_id: str, body: dict):
-    # TODO: partial update + audit
-    return {"id": project_id, **body}
+@router.patch("/{project_id}", response_model=ProjectResponse, summary="Update project metadata")
+async def update_project(
+    project_id: str,
+    body: ProjectPatchRequest,
+    actor_id: str = "api-user",
+    db: AsyncSession = Depends(get_db),
+) -> ProjectResponse:
+    async with db.begin():
+        return await project_service.update_project(project_id, body, actor_id, db)

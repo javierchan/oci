@@ -64,6 +64,12 @@ docker compose run --rm api pytest app/tests -v
 
 # Web type check
 docker compose run --rm web npm run type-check
+
+# Refresh the committed OpenAPI artifact
+./.venv/bin/python apps/api/scripts/export_openapi.py
+
+# Verify the committed OpenAPI artifact is in sync
+./.venv/bin/python apps/api/scripts/export_openapi.py --check
 ```
 
 ---

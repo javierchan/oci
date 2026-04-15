@@ -22,6 +22,7 @@ from app.schemas.project import (
     ProjectCreateRequest,
     ProjectDeleteResponse,
     ProjectListResponse,
+    ProjectPatchRequest,
     ProjectResponse,
 )
 from app.services import audit_service
@@ -76,6 +77,43 @@ async def get_project(project_id: str, db: AsyncSession) -> Project:
     if project is None:
         raise _not_found()
     return project
+
+
+async def update_project(
+    project_id: str,
+    body: ProjectPatchRequest,
+    actor_id: str,
+    db: AsyncSession,
+) -> ProjectResponse:
+    """Partially update project metadata and emit an audit event when values change."""
+
+    project = await get_project(project_id, db)
+    patch_data = body.model_dump(exclude_unset=True)
+    response_before = serialize_project(project)
+
+    changed = False
+    for field_name, new_value in patch_data.items():
+        if getattr(project, field_name) != new_value:
+            setattr(project, field_name, new_value)
+            changed = True
+
+    if not changed:
+        return response_before
+
+    await db.flush()
+    await db.refresh(project)
+    response_after = serialize_project(project)
+    await audit_service.emit(
+        event_type="project_updated",
+        entity_type="project",
+        entity_id=project.id,
+        actor_id=actor_id,
+        old_value=response_before.model_dump(),
+        new_value=response_after.model_dump(),
+        project_id=project.id,
+        db=db,
+    )
+    return response_after
 
 
 async def archive_project(project_id: str, actor_id: str, db: AsyncSession) -> ProjectArchiveResponse:
