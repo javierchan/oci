@@ -1,398 +1,397 @@
 # Project Audit Report
 
-**Generated:** 2026-04-14 23:59
+**Generated:** 2026-04-14 18:21 CST
 **Repository:** https://github.com/javierchan/oci.git
-**Branch:** HEAD (detached)
-**Commit:** `f6dd336 docs: M14 complete — update progress log and milestone table`
+**Branch:** codex/codex-active-work
+**Commit:** 6cf2d1c docs: browser QA remediation complete
 **Auditor:** Codex (automated)
 
 ---
 
 ## Executive Summary
 
-The repository is functionally broad and the running Docker stack is healthy, but the checked-out worktree is not in a clean, reproducible milestone state. Based on code presence, route inventory, runtime probes, and the repo’s own milestone docs, `11/14` milestones are auditable as complete, `3/14` are partial, and none are clearly not started.
+The codebase is functionally broad and the local stack is healthy: calc-engine parity tests pass, Ruff is clean, TypeScript is clean, the Docker stack is up, and the live API responds with 46 paths / 64 operations. The repository now contains implementations through M14 plus a documented Browser QA remediation pass. Most milestone work is present in source and reflected in `README.md` and `docs/progress.md`.
 
-The strongest positive signals are:
-- Docker stack is up and healthy (`6/6` containers running).
-- Calc-engine parity tests pass (`26 passed`).
-- TypeScript check passes.
-- M11 through M14 are documented and validated in `docs/progress.md`.
-- Runtime endpoint coverage is broad (`46` paths, `64` operations).
+The main drift is quality-gate related rather than feature absence. The strict frontend lint gate currently fails under `npx eslint . --ext .ts,.tsx --max-warnings 0`, and backend `mypy` still reports 10 type errors in service code. Those do not prevent the app from running locally, but they do prevent a fully clean “all gates green” release posture. The Browser QA milestone is therefore assessed as `⚠ Partial` even though the UX fixes are present.
 
-The main blockers are repository hygiene and reproducibility, not missing UI:
-- The repo is on a detached `HEAD`.
-- Milestone-critical backend files for M8-M10 are still modified or untracked in the worktree.
-- Runtime behavior for M9/M10 exists, but key backend artifacts are not all preserved in committed history.
-- Repo-wide lint/type tooling is inconsistent with the documented Docker-first workflow.
+Summary:
+
+- Total milestones assessed: 15
+- Complete: 14
+- Partial: 1
+- Not started: 0
+- In progress: 0
+- Critical blockers: 1
+
+Formal definition-of-done metrics:
+
+- Formal AGENTS milestones with explicit checklist items: M1-M8 only
+- Definition-of-done items total: 35
+- Items verified: 32
+- Items with gaps or unverified drift: 3
+
+---
 
 ## Repository Profile
 
-- Product plan source: `AGENTS.md`
-- Human-facing status source: `README.md`
-- Milestone execution log source: `docs/progress.md`
-- Stack detected:
-  - FastAPI / Python backend in `apps/api/`
-  - Next.js / TypeScript frontend in `apps/web/`
-  - Docker Compose stack via `docker-compose.yml`
-  - Alembic config in `apps/api/alembic.ini`
-  - Calc-engine tests in `packages/calc-engine/src/tests`
-- Shell compatibility note:
-  - The repo is running under `zsh`, and unmatched glob patterns fail there.
-  - For stack detection, `bash -lc 'shopt -s nullglob; ...'` was used to avoid false negatives.
+Project shape:
 
-### Repository Summary
+- Backend: FastAPI in `apps/api/`
+- Frontend: Next.js 14 / TypeScript in `apps/web/`
+- Calc engine: pure Python in `packages/calc-engine/`
+- Docker stack: `docker-compose.yml`
+- Migrations: `apps/api/migrations/` and `apps/api/alembic.ini`
+- Tests: `packages/calc-engine/src/tests`
 
-- Remote: `https://github.com/javierchan/oci.git`
-- Branch: `HEAD`
-- Latest commit: `f6dd336 docs: M14 complete — update progress log and milestone table`
-- Oldest commit date in local history: `2026-01-07`
-- Newest commit date in local history: `2026-04-14`
-- Total commits in local history: `210`
-- Commits in prior 7-day window: `3`
-- Commits in last 7 days: `21`
-- Source files counted (`*.py`, `*.ts`, `*.tsx`, excluding build/vendor dirs): `122`
-- `cloc` availability: unavailable in this environment (`zsh:1: command not found: cloc`)
-
-### Working Tree State
-
-The worktree is dirty. Key milestone-related changes are not fully committed:
+Repository summary:
 
 ```text
- M apps/api/app/core/calc_engine.py
- M apps/api/app/migrations/seed.py
- M apps/api/app/models/governance.py
- M apps/api/app/routers/catalog.py
- M apps/api/app/routers/imports.py
- M apps/api/app/routers/justifications.py
- M apps/api/app/routers/patterns.py
- M apps/api/app/routers/projects.py
- M apps/api/app/schemas/imports.py
- M apps/api/app/schemas/justification.py
- M apps/api/app/schemas/project.py
- M apps/api/app/schemas/reference.py
- M apps/api/app/services/import_service.py
- M apps/api/app/services/justification_service.py
- M apps/api/app/services/project_service.py
- M apps/api/app/services/reference_service.py
- M package-lock.json
-?? apps/api/app/schemas/graph.py
-?? apps/api/app/services/graph_service.py
-?? apps/api/migrations/versions/20260414_0003_add_is_system_to_pattern_definitions.py
-?? docs/status-report.md
+git log --format="%ad" --date=short | tail -1
+2026-01-07
+
+git log --format="%ad" --date=short | head -1
+2026-04-14
+
+git log --oneline | wc -l
+     223
+
+git shortlog -sn --no-merges | head -5
+[no output]
+
+git status --short
+[no output]
+
+git stash list 2>/dev/null | head -5
+[no output]
+
+find . -not -path '*/node_modules/*' -not -path '*/.venv/*' -not -path '*/.git/*' -not -path '*/dist/*' \( -name '*.py' -o -name '*.ts' -o -name '*.tsx' \) | wc -l
+     122
+
+cloc . --exclude-dir=node_modules,.venv,.git,dist,__pycache__ --quiet --sum-one 2>/dev/null | tail -3
+[no output]
 ```
+
+Branch and activity:
+
+```text
+git status --short --branch
+## codex/codex-active-work...origin/codex/codex-active-work
+
+git branch -vv
+* codex/codex-active-work  6cf2d1c [origin/codex/codex-active-work] docs: browser QA remediation complete
+  main                     5aa6670 [origin/main] merge: bring safe branch into main
++ vscode/codex-active-work 701778d (/Users/javierchan/Documents/GitHub/oci) [origin/vscode/codex-active-work] chore(oci-dis-blueprint): checkpoint current work
+
+git worktree list
+/Users/javierchan/Documents/GitHub/oci       701778d [vscode/codex-active-work]
+/Users/javierchan/.codex/worktrees/b3b4/oci  89159b2 (detached HEAD)
+/Users/javierchan/.codex/worktrees/b840/oci  6cf2d1c [codex/codex-active-work]
+
+git remote -v
+origin  https://github.com/javierchan/oci.git (fetch)
+origin  https://github.com/javierchan/oci.git (push)
+
+git log --oneline -5
+6cf2d1c docs: browser QA remediation complete
+0362e17 fix: browser test findings — dark mode inputs, scroll bug, theme persistence, UX enhancements
+6f2655f docs: audit remediation complete — progress log and milestone table updated
+edb4de6 docs: mark M8-M10 complete in milestone table
+7bc800f chore: add mypy to API requirements
+```
+
+Repo-shape note:
+
+- The repo-shape detection commands were run under `bash -lc` because the shell for this worktree is `zsh`, and unmatched globs can fail there.
+
+Progress trend:
+
+```text
+git log --oneline --since="14 days ago" --until="7 days ago" | wc -l
+       3
+
+git log --oneline --since="7 days ago" | wc -l
+      34
+```
+
+---
 
 ## Milestone Status
-
-### Progress Metrics
-
-```text
-Total milestones: 14
-Complete: 11
-Partial: 3
-Not started: 0
-In progress: 0
-
-Definition-of-done items total: 14
-Items verified: 11
-Items with gaps: 3
-```
 
 ### M1 — Schema + Migrations
 **Status:** ✅ Complete
 
 Evidence:
+
 - Core models exist in `apps/api/app/models/project.py`, `apps/api/app/models/snapshot.py`, and `apps/api/app/models/governance.py`.
-- Seed script exists at `apps/api/app/migrations/seed.py`.
-- Alembic config and migrations are present in `apps/api/alembic.ini` and `apps/api/migrations/versions/`.
-- Reference data is queryable through runtime endpoints:
-  - `patterns_total=17`
-  - `assumptions_total=2`
-  - `dictionary_categories=5`
+- Alembic migration files exist in `apps/api/migrations/versions/20260413_0001_initial_schema.py`, `apps/api/migrations/versions/20260414_0002_prompt_template_versions.py`, and `apps/api/migrations/versions/20260414_0003_add_is_system_to_pattern_definitions.py`.
+- Seed logic exists in `apps/api/app/migrations/seed.py` and references `PatternDefinition`, `DictionaryOption`, `AssumptionSet`, `AuditEvent`, and `PromptTemplateVersion`.
 
 Gaps:
-- The audit did not rerun `alembic upgrade head`.
-- Database table inventory query did not return usable output against the expected database name.
+
+- None found in source.
 
 Deviation:
-- The repo is Docker-first, but some audit/local verification tooling still assumes a host `.venv`.
+
+- None.
 
 ### M2 — Import Engine
 **Status:** ✅ Complete
 
 Evidence:
-- Import service exists at `apps/api/app/services/import_service.py`.
-- Importer engine exists at `packages/calc-engine/src/engine/importer.py`.
-- Import endpoints are registered:
-  - `POST GET /api/v1/imports/{project_id}`
-  - `GET DELETE /api/v1/imports/{project_id}/{batch_id}`
-  - `GET /api/v1/imports/{project_id}/{batch_id}/rows`
-- Calc-engine parity suite passes:
-  - `26 passed in 0.05s`
-- Benchmark expectations file exists at `packages/test-fixtures/benchmarks/parity-expectations.json` with `157 / 13 / 144` parity targets.
+
+- Import router endpoints are present in `apps/api/app/routers/imports.py`, including `POST /api/v1/imports/{project_id}`, batch list/detail, rows, and delete routes.
+- Import persistence models exist in `apps/api/app/models/project.py` for `ImportBatch`, `SourceIntegrationRow`, and `CatalogIntegration`.
+- Business logic is implemented in `apps/api/app/services/import_service.py`.
+- Calc-engine parity remains green: `26 passed in 0.06s`, including importer tests.
 
 Gaps:
-- Current first-project runtime data is not the benchmark dataset (`catalog_total=13`), so benchmark-loaded row counts were not re-proven against the live DB during this audit.
+
+- None found in source.
+
+Deviation:
+
+- Live DB benchmark parity was not re-proven during this audit; current confidence comes from source, prior project docs, and passing calc-engine parity tests.
 
 ### M3 — Catalog Grid API
 **Status:** ✅ Complete
 
 Evidence:
-- Catalog service exists at `apps/api/app/services/catalog_service.py`.
-- Catalog router exists at `apps/api/app/routers/catalog.py`.
-- Registered routes include:
-  - `GET POST /api/v1/catalog/{project_id}`
-  - `POST /api/v1/catalog/{project_id}/bulk-patch`
-  - `GET PATCH DELETE /api/v1/catalog/{project_id}/{integration_id}`
-  - `GET /api/v1/catalog/{project_id}/{integration_id}/lineage`
-- Endpoint probes passed:
-  - `GET /catalog/{pid}`
-  - `GET /catalog/{pid}/duplicates`
-  - `GET /catalog/{pid}/systems`
-  - `POST /catalog/{pid}/estimate`
+
+- `apps/api/app/routers/catalog.py` exposes list, manual create, duplicate check, systems autocomplete, estimate, detail, patch, bulk-patch, lineage, graph, and delete routes.
+- `apps/api/app/services/catalog_service.py` contains lineage and column-name mapping logic (`get_lineage`, `_build_column_names`).
+- Frontend catalog surfaces exist in `apps/web/app/projects/[projectId]/catalog/page.tsx` and `apps/web/app/projects/[projectId]/catalog/[integrationId]/page.tsx`.
+- `apps/web/components/catalog-table.tsx` provides search, filter, pagination, view/edit actions, and the new clear-filters control.
 
 Gaps:
-- None found at the API-surface level during this audit.
+
+- None found in source.
+
+Deviation:
+
+- None.
 
 ### M4 — Calculation Engine
 **Status:** ✅ Complete
 
 Evidence:
-- Recalculation service exists at `apps/api/app/services/recalc_service.py`.
-- Volumetry engine exists at `packages/calc-engine/src/engine/volumetry.py`.
-- Recalculate routes are registered:
-  - `POST /api/v1/recalculate/{project_id}`
-  - `GET /api/v1/recalculate/{project_id}/jobs/{job_id}`
-  - `POST /api/v1/recalculate/{project_id}/scoped`
-- Volumetry snapshot routes are registered and healthy:
-  - `GET /api/v1/volumetry/{project_id}/snapshots`
-  - `GET /api/v1/volumetry/{project_id}/snapshots/{snapshot_id}`
-  - `GET /api/v1/volumetry/{project_id}/snapshots/{snapshot_id}/consolidated`
-- First project has `snapshots_total=4`.
+
+- Recalculation routes exist in `apps/api/app/routers/recalculate.py`.
+- Volumetry snapshot routes exist in `apps/api/app/routers/volumetry.py`.
+- Snapshot model exists at `apps/api/app/models/snapshot.py:10`.
+- Calc-engine parity remains green: `26 passed in 0.06s`.
 
 Gaps:
-- None found in route/file coverage.
 
-### M5 — Dashboard API / Core Frontend
+- None found in source.
+
+Deviation:
+
+- Backend type-check cleanliness has drifted; `mypy` still reports service-level issues in recalculation-related code.
+
+### M5 — Dashboard API
 **Status:** ✅ Complete
 
 Evidence:
-- Dashboard page exists at `apps/web/app/projects/[projectId]/page.tsx`.
-- Dashboard endpoints are registered:
-  - `GET /api/v1/dashboard/{project_id}/snapshots`
-  - `GET /api/v1/dashboard/{project_id}/snapshots/{snapshot_id}`
-- Frontend core pages are present:
-  - `apps/web/app/projects/page.tsx`
-  - `apps/web/app/projects/[projectId]/import/page.tsx`
-  - `apps/web/app/projects/[projectId]/catalog/page.tsx`
-  - `apps/web/app/projects/[projectId]/catalog/[integrationId]/page.tsx`
-- Endpoint probe passed:
-  - `GET /dashboard/{pid}/snapshots`
+
+- Dashboard routes exist in `apps/api/app/routers/dashboard.py` for snapshot list and detail.
+- `apps/api/app/services/dashboard_service.py` builds `kpi_strip`, `coverage`, `completeness`, `pattern_mix`, `payload_distribution`, `risks`, and `maturity`.
+- Dashboard schemas exist in `apps/api/app/schemas/dashboard.py`.
+- A project dashboard page exists in `apps/web/app/projects/[projectId]/page.tsx`.
 
 Gaps:
-- The audit did not compare dashboard values against workbook benchmark outputs.
+
+- No source-level gaps in the API.
+
+Deviation:
+
+- The current web dashboard page is a thinner KPI/QA summary view and does not render the full snapshot charts/risks payload produced by `dashboard_service.py`, so the frontend is lighter than the AGENTS milestone description even though the API layer is present.
 
 ### M6 — Justification Narratives
 **Status:** ✅ Complete
 
 Evidence:
-- Router exists at `apps/api/app/routers/justifications.py`.
-- Runtime endpoints are registered:
-  - `GET /api/v1/justifications/{project_id}`
-  - `GET DELETE /api/v1/justifications/{project_id}/{integration_id}`
-  - `POST /api/v1/justifications/{project_id}/{integration_id}/approve`
-  - `POST /api/v1/justifications/{project_id}/{integration_id}/override`
-- Template governance routes also exist:
-  - `GET POST /api/v1/justifications/templates`
-  - `GET PATCH /api/v1/justifications/templates/{version}`
-  - `POST /api/v1/justifications/templates/{version}/default`
-- Endpoint probe passed:
-  - `GET /justifications/{pid}`
+
+- Narrative and approval routes are present in `apps/api/app/routers/justifications.py`.
+- Deterministic narrative and prompt-template services exist in `apps/api/app/services/justification_service.py`.
+- `JustificationRecord` exists in `apps/api/app/models/snapshot.py:35`.
+- Prompt versioning support exists in `apps/api/app/models/governance.py:66` and related schema/router/service files.
 
 Gaps:
-- Approval/override behavior was not individually smoke-tested in this audit.
+
+- None found in source.
+
+Deviation:
+
+- None.
 
 ### M7 — Exports
 **Status:** ✅ Complete
 
 Evidence:
-- Export router exists at `apps/api/app/routers/exports.py`.
-- Export service exists at `apps/api/app/services/export_service.py`.
-- Runtime export routes are registered:
-  - `POST /api/v1/exports/{project_id}/xlsx`
-  - `POST /api/v1/exports/{project_id}/pdf`
-  - `POST /api/v1/exports/{project_id}/json`
-  - `GET /api/v1/exports/{project_id}/jobs/{job_id}`
-  - `GET /api/v1/exports/{project_id}/jobs/{job_id}/download`
-- Additional template export exists:
-  - `GET /api/v1/exports/template/xlsx`
-- M12 smoke validated the template workbook as a real XLSX artifact.
+
+- Export routes for XLSX, PDF, JSON, template download, job status, and artifact download exist in `apps/api/app/routers/exports.py`.
+- Export generation logic exists in `apps/api/app/services/export_service.py`, including `generate_capture_template`.
+- Export response schema exists in `apps/api/app/schemas/export.py`.
 
 Gaps:
-- Project-scoped XLSX/PDF/JSON export job generation was not directly smoke-tested during this audit.
+
+- None found in source.
+
+Deviation:
+
+- Benchmark-structure validation for exported artifacts was not re-run in this audit pass.
 
 ### M8 — Admin + Governance
-**Status:** ⚠ Partial
+**Status:** ✅ Complete
 
 Evidence:
-- Admin UI pages exist:
-  - `apps/web/app/admin/page.tsx`
-  - `apps/web/app/admin/patterns/page.tsx`
-  - `apps/web/app/admin/dictionaries/page.tsx`
-  - `apps/web/app/admin/assumptions/page.tsx`
-- Governance routes are registered:
-  - Patterns: `GET POST /api/v1/patterns/`, `GET PATCH DELETE /api/v1/patterns/{pattern_id}`
-  - Dictionaries: `GET POST /api/v1/dictionaries/{category}`, `PATCH DELETE /api/v1/dictionaries/{category}/{option_id}`
-  - Assumptions: `GET POST /api/v1/assumptions/`, `GET PATCH /api/v1/assumptions/{version}`, `POST /api/v1/assumptions/{version}/default`
-- Runtime probes passed for `/patterns`, `/dictionaries`, and `/assumptions`.
+
+- Pattern CRUD routes exist in `apps/api/app/routers/patterns.py` (`GET`, `POST`, `PATCH`, `DELETE`).
+- Dictionary CRUD exists in `apps/api/app/routers/dictionaries.py`.
+- Assumption versioning and defaulting exists in `apps/api/app/routers/assumptions.py` and `apps/api/app/services/reference_service.py`.
+- Prompt template versioning exists in `apps/api/app/routers/justifications.py` and `apps/api/app/models/governance.py`.
+- Admin pages exist in `apps/web/app/admin/page.tsx`, `apps/web/app/admin/patterns/page.tsx`, `apps/web/app/admin/dictionaries/page.tsx`, and `apps/web/app/admin/assumptions/page.tsx`.
 
 Gaps:
-- `apps/api/migrations/versions/20260414_0003_add_is_system_to_pattern_definitions.py` exists but is untracked.
-- Governance-related backend files remain modified in the worktree:
-  - `apps/api/app/models/governance.py`
-  - `apps/api/app/routers/patterns.py`
-  - `apps/api/app/services/reference_service.py`
-  - `apps/api/app/migrations/seed.py`
-- Because the migration and backend artifacts are not fully committed, M8 is not reproducible from committed history.
+
+- None found in source.
 
 Deviation:
-- `README.md` says M8 is complete, but the governance migration and related backend files are not in a clean committed state.
+
+- Recalculation-after-governance-change behavior was not re-executed in this audit; current assessment relies on source coverage plus prior progress documentation.
 
 ### M9 — Integration Capture Wizard
-**Status:** ⚠ Partial
+**Status:** ✅ Complete
 
 Evidence:
-- Capture pages exist:
-  - `apps/web/app/projects/[projectId]/capture/page.tsx`
-  - `apps/web/app/projects/[projectId]/capture/new/page.tsx`
-- Capture components exist:
-  - `apps/web/components/capture-wizard.tsx`
-  - `apps/web/components/oic-estimate-preview.tsx`
-  - `apps/web/components/qa-preview.tsx`
-  - `apps/web/components/system-autocomplete.tsx`
-- `apps/web/components/capture-wizard.tsx` is explicitly a five-step flow with duplicate checks and submit handling.
-- Runtime routes are registered and healthy:
-  - `GET POST /api/v1/catalog/{project_id}`
-  - `GET /api/v1/catalog/{project_id}/systems`
-  - `GET /api/v1/catalog/{project_id}/duplicates`
-  - `POST /api/v1/catalog/{project_id}/estimate`
-- Endpoint probes passed for all four M9 backend routes.
+
+- Manual create, systems autocomplete, duplicate check, and live estimate routes exist in `apps/api/app/routers/catalog.py`.
+- Capture wizard page exists in `apps/web/app/projects/[projectId]/capture/new/page.tsx`.
+- Wizard and step components exist in `apps/web/components/capture-wizard.tsx`, `capture-step-identity.tsx`, `capture-step-source.tsx`, `capture-step-destination.tsx`, and `capture-step-technical.tsx`.
+- Supporting UX exists in `apps/web/components/oic-estimate-preview.tsx` and `apps/web/components/system-autocomplete.tsx`.
 
 Gaps:
-- Capture-related backend files are still modified in the worktree:
-  - `apps/api/app/routers/catalog.py`
-  - `apps/api/app/services/catalog_service.py`
-- The audit did not perform browser-level validation of step-by-step form behavior, duplicate warning UX, or post-submit catalog visibility.
+
+- None found in source.
 
 Deviation:
-- `README.md` still marks M9 as partial, while the codebase and runtime expose substantial M9 functionality.
+
+- None.
 
 ### M10 — System Dependency Map
-**Status:** ⚠ Partial
+**Status:** ✅ Complete
 
 Evidence:
-- Graph page and components exist:
-  - `apps/web/app/projects/[projectId]/graph/page.tsx`
-  - `apps/web/components/integration-graph.tsx`
-  - `apps/web/components/graph-controls.tsx`
-  - `apps/web/components/graph-detail-panel.tsx`
-  - `apps/web/components/graph-export-button.tsx`
-- Runtime route exists and passed:
-  - `GET /api/v1/catalog/{project_id}/graph`
-- Graph backend artifacts exist in the worktree:
-  - `apps/api/app/services/graph_service.py`
-  - `apps/api/app/schemas/graph.py`
+
+- Graph route exists at `GET /api/v1/catalog/{project_id}/graph` in `apps/api/app/routers/catalog.py`.
+- Graph service exists in `apps/api/app/services/graph_service.py`.
+- Graph schema exists in `apps/api/app/schemas/graph.py`.
+- Frontend surfaces exist in `apps/web/app/projects/[projectId]/graph/page.tsx`, `apps/web/components/graph-controls.tsx`, `apps/web/components/integration-graph.tsx`, and `apps/web/components/graph-detail-panel.tsx`.
 
 Gaps:
-- `apps/api/app/services/graph_service.py` is untracked.
-- `apps/api/app/schemas/graph.py` is untracked.
-- Because the backend graph files are not committed, the milestone is not reproducible from versioned history even though the current runtime exposes the endpoint.
+
+- None found in source.
 
 Deviation:
-- `README.md` still marks M10 as partial, and in this case the partial status is justified by the untracked backend graph artifacts.
+
+- None.
 
 ### M11 — Navigation + Theme
 **Status:** ✅ Complete
 
 Evidence:
-- `docs/progress.md` contains an M11 completion entry with validation output.
-- Theme/navigation files exist:
-  - `apps/web/components/breadcrumb.tsx`
-  - `apps/web/components/theme-toggle.tsx`
-  - `apps/web/lib/use-theme.ts`
-  - `apps/web/app/layout.tsx`
-  - `apps/web/app/globals.css`
-- Runtime/validation evidence from progress log:
-  - `TypeScript: 0 errors`
-  - `ruff: All checks passed!`
-  - `pytest: 26 passed, 2 warnings`
-  - `docker compose ps: 6/6 containers Up`
+
+- Breadcrumb component exists in `apps/web/components/breadcrumb.tsx` and is imported across project/admin pages.
+- Theme persistence logic exists in `apps/web/lib/use-theme.ts` with the `oci-dis-theme` storage key.
+- No-flash theme initialization exists in `apps/web/app/layout.tsx`.
+- Shared theme tokens and dark-mode variables exist in `apps/web/app/globals.css`.
 
 Gaps:
-- None found beyond documentation-ordering debt noted below.
+
+- None found in source.
+
+Deviation:
+
+- The repo-level strict ESLint gate still reports a `no-unused-vars` warning in `apps/web/lib/use-theme.ts`, but the theme feature itself is implemented.
 
 ### M12 — Source Lineage + Template
 **Status:** ✅ Complete
 
 Evidence:
-- M12 completion is documented in `docs/progress.md`.
-- Lineage schema/service updates are present in:
-  - `apps/api/app/schemas/catalog.py`
-  - `apps/api/app/services/catalog_service.py`
-- Template export is present in:
-  - `apps/api/app/routers/exports.py`
-  - `apps/api/app/services/export_service.py`
+
+- `column_names` is present in `apps/web/lib/types.ts` and `apps/api/app/schemas/catalog.py`.
+- Lineage column-name generation exists in `apps/api/app/services/catalog_service.py`.
+- Template download route exists in `apps/api/app/routers/exports.py`.
+- Template generation exists in `apps/api/app/services/export_service.py`.
 - Import-page download action exists in `apps/web/components/import-upload.tsx`.
-- Audit smoke checks confirmed:
-  - `lineage column_names: True`
-  - `lineage import_batch_date: True`
-  - valid XLSX bytes returned
-  - template import smoke completed successfully
 
 Gaps:
-- None found.
+
+- None found in source.
+
+Deviation:
+
+- None.
 
 ### M13 — Integration Design Canvas
 **Status:** ✅ Complete
 
 Evidence:
-- `apps/web/components/integration-canvas.tsx` exists.
-- `apps/web/components/integration-patch-form.tsx` integrates the canvas.
-- `docs/progress.md` contains an M13 completion entry.
-- Validation evidence:
-  - `TypeScript: 0 errors`
-  - detail route reachability verified
+
+- `apps/web/components/integration-canvas.tsx` exists and is wired into `apps/web/components/integration-patch-form.tsx`.
+- The canvas is rendered from the integration detail page path `apps/web/app/projects/[projectId]/catalog/[integrationId]/page.tsx`.
 
 Gaps:
-- None found.
+
+- None found in source.
+
+Deviation:
+
+- None.
 
 ### M14 — Map Pan + Visual Improvements
 **Status:** ✅ Complete
 
 Evidence:
-- `apps/web/components/graph-controls.tsx` includes select/pan mode support.
-- `apps/web/components/integration-graph.tsx` includes viewport pan/zoom, animated edges, hover behavior, tooltip, legend, and count labels.
-- `apps/web/app/projects/[projectId]/graph/page.tsx` owns mode and viewport state.
-- `docs/progress.md` contains an M14 completion entry.
-- Validation evidence:
-  - `TypeScript: 0 errors`
-  - graph route reachability verified
-  - final `ruff`, `pytest`, and `docker compose ps` were clean
+
+- Graph mode controls exist in `apps/web/components/graph-controls.tsx`.
+- Interactive pan/zoom rendering exists in `apps/web/components/integration-graph.tsx`.
+- Graph page state wiring exists in `apps/web/app/projects/[projectId]/graph/page.tsx`.
+- `apps/web/app/globals.css` includes animated edge styling via `@keyframes flow` and `.graph-edge-animated`.
 
 Gaps:
-- None found.
+
+- None found in source.
+
+Deviation:
+
+- The strict ESLint gate reports warnings in `apps/web/components/graph-controls.tsx` and `apps/web/components/integration-graph.tsx`, but the feature implementation is present.
+
+### Browser QA — Bug Fixes + UX Enhancements
+**Status:** ⚠ Partial
+
+Evidence:
+
+- Browser remediation changes are documented in `docs/progress.md:44`.
+- Recent implementation commit exists: `0362e17 fix: browser test findings — dark mode inputs, scroll bug, theme persistence, UX enhancements`.
+- Relevant source updates are present in `apps/web/app/globals.css`, `apps/web/lib/use-theme.ts`, `apps/web/components/system-autocomplete.tsx`, `apps/web/components/catalog-table.tsx`, `apps/web/components/import-upload.tsx`, `apps/web/components/projects-page-client.tsx`, and `apps/web/components/capture-wizard.tsx`.
+
+Gaps:
+
+- The strict frontend lint gate fails: `apps/web/components/system-autocomplete.tsx` now triggers `react/no-unescaped-entities`, and the repo still has 17 warnings under `--max-warnings 0`.
+
+Deviation:
+
+- Functionally, the UX fixes are present; operationally, the milestone is not fully clean under the stricter audit lint gate.
+
+---
 
 ## Verification Results
 
-### Context Discovery
-
-Files read:
-- `AGENTS.md`
-- `README.md`
-- `docs/progress.md`
-
-### Stack Detection
+### Stack / Shape Detection
 
 ```text
+bash -lc 'shopt -s nullglob; ls pyproject.toml setup.py requirements*.txt apps/api/requirements*.txt 2>/dev/null; echo "---"; ls package.json apps/web/package.json tsconfig.json 2>/dev/null; echo "---"; ls docker-compose.yml docker-compose.yaml Dockerfile 2>/dev/null; echo "---"; ls -d apps/api/migrations apps/api/alembic.ini alembic.ini 2>/dev/null; echo "---"; ls -d packages/*/src/tests tests __tests__ cypress playwright 2>/dev/null; echo "---"; ls .github/workflows/*.yml .gitlab-ci.yml Jenkinsfile 2>/dev/null'
 apps/api/requirements.txt
 ---
 apps/web/package.json
@@ -407,174 +406,87 @@ packages/calc-engine/src/tests
 ---
 ```
 
-### Repository Summary Commands
+### Backend Verification
 
-`git remote get-url origin`
 ```text
-https://github.com/javierchan/oci.git
-```
-
-`git branch --show-current`
-```text
-(no output)
-```
-
-`git rev-parse --abbrev-ref HEAD`
-```text
-HEAD
-```
-
-`git log --oneline -1`
-```text
-f6dd336 docs: M14 complete — update progress log and milestone table
-```
-
-`git log --format="%ad" --date=short | tail -1`
-```text
-2026-01-07
-```
-
-`git log --format="%ad" --date=short | head -1`
-```text
-2026-04-14
-```
-
-`git log --oneline | wc -l`
-```text
-     210
-```
-
-`git shortlog -sn --no-merges | head -5`
-```text
-(no output)
-```
-
-`git status --short`
-```text
- M apps/api/app/core/calc_engine.py
- M apps/api/app/migrations/seed.py
- M apps/api/app/models/governance.py
- M apps/api/app/routers/catalog.py
- M apps/api/app/routers/imports.py
- M apps/api/app/routers/justifications.py
- M apps/api/app/routers/patterns.py
- M apps/api/app/routers/projects.py
- M apps/api/app/schemas/imports.py
- M apps/api/app/schemas/justification.py
- M apps/api/app/schemas/project.py
- M apps/api/app/schemas/reference.py
- M apps/api/app/services/import_service.py
- M apps/api/app/services/justification_service.py
- M apps/api/app/services/project_service.py
- M apps/api/app/services/reference_service.py
- M package-lock.json
-?? apps/api/app/schemas/graph.py
-?? apps/api/app/services/graph_service.py
-?? apps/api/migrations/versions/20260414_0003_add_is_system_to_pattern_definitions.py
-?? docs/status-report.md
-```
-
-`git stash list | head -5`
-```text
-(no output)
-```
-
-`find ... | wc -l`
-```text
-     122
-```
-
-`cloc ...`
-```text
-zsh:1: command not found: cloc
-```
-
-`git log --oneline --since="14 days ago" --until="7 days ago" | wc -l`
-```text
-       3
-```
-
-`git log --oneline --since="7 days ago" | wc -l`
-```text
-      21
-```
-
-### Verification Commands
-
-`./.venv/bin/python -m pytest --tb=short -q 2>&1 | tail -40`
-```text
+./.venv/bin/python -m pytest --tb=short -q 2>&1 | tail -40
 ..........................                                               [100%]
-26 passed in 0.05s
+26 passed in 0.06s
+
+./.venv/bin/python -m ruff check . 2>&1 | tail -20
+All checks passed!
+
+./.venv/bin/python -m mypy apps/api/app --ignore-missing-imports --no-error-summary 2>&1 | tail -10
+apps/api/app/services/recalc_service.py:126: error: Argument after ** must be a mapping, not "object"  [arg-type]
+apps/api/app/services/recalc_service.py:127: error: Argument after ** must be a mapping, not "object"  [arg-type]
+apps/api/app/services/recalc_service.py:128: error: Argument after ** must be a mapping, not "object"  [arg-type]
+apps/api/app/services/recalc_service.py:129: error: Argument after ** must be a mapping, not "object"  [arg-type]
+apps/api/app/services/import_service.py:268: error: Value of type "object" is not indexable  [index]
+apps/api/app/services/import_service.py:269: error: Value of type "object" is not indexable  [index]
+apps/api/app/services/import_service.py:281: error: Argument "normalization_events" to "_build_catalog_integration" has incompatible type "list[object]"; expected "list[dict[str, object]]"  [arg-type]
+apps/api/app/services/import_service.py:305: error: Incompatible types in assignment (expression has type "object", variable has type "SQLCoreOperations[dict[Any, Any] | None] | dict[Any, Any] | None")  [assignment]
+apps/api/app/services/export_service.py:185: error: Argument 1 to "ExportJobResponse" has incompatible type "**dict[str, object]"; expected "str"  [arg-type]
+apps/api/app/services/export_service.py:185: error: Argument 1 to "ExportJobResponse" has incompatible type "**dict[str, object]"; expected "datetime"  [arg-type]
 ```
 
-`./.venv/bin/python -m ruff check . 2>&1 | tail -20`
+### Frontend Verification
+
 ```text
-packages/calc-engine/src/engine/importer.py:14:8: F401 [*] `re` imported but unused
-packages/calc-engine/src/tests/test_importer.py:9:8: F401 [*] `pytest` imported but unused
-packages/calc-engine/src/tests/test_volumetry.py:9:8: F401 [*] `math` imported but unused
-Found 3 errors.
-[*] 3 fixable with the `--fix` option.
+cd apps/web && npx tsc --noEmit --skipLibCheck 2>&1 | tail -30; cd ../..
+[no output]
+
+cd apps/web && npx eslint . --ext .ts,.tsx --max-warnings 0 2>&1 | tail -20; cd ../..
+  16:46  warning  'value' is defined but never used. Allowed unused args must match /^_/u  no-unused-vars
+  18:23  warning  'mode' is defined but never used. Allowed unused args must match /^_/u   no-unused-vars
+  20:18  warning  'mode' is defined but never used. Allowed unused args must match /^_/u   no-unused-vars
+
+/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/apps/web/components/integration-graph.tsx
+  17:17  warning  'node' is defined but never used. Allowed unused args must match /^_/u     no-unused-vars
+  18:17  warning  'edge' is defined but never used. Allowed unused args must match /^_/u     no-unused-vars
+  24:5   warning  'updater' is defined but never used. Allowed unused args must match /^_/u  no-unused-vars
+  26:11  warning  'current' is defined but never used. Allowed unused args must match /^_/u  no-unused-vars
+
+/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/apps/web/components/system-autocomplete.tsx
+  13:14  warning  'value' is defined but never used. Allowed unused args must match /^_/u  no-unused-vars
+  98:37  error    `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`          react/no-unescaped-entities
+  98:45  error    `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`          react/no-unescaped-entities
+
+/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/apps/web/lib/use-theme.ts
+  11:14  warning  'theme' is defined but never used. Allowed unused args must match /^_/u  no-unused-vars
+
+✖ 20 problems (3 errors, 17 warnings)
 ```
 
-`./.venv/bin/python -m mypy apps/api/app --ignore-missing-imports --no-error-summary 2>&1 | tail -10`
+### Docker / Live Environment
+
 ```text
-/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/.venv/bin/python: No module named mypy
-```
-
-`cd apps/web && npx tsc --noEmit --skipLibCheck 2>&1 | tail -30; cd ../..`
-```text
-(no output)
-```
-
-`cd apps/web && npx eslint . --ext .ts,.tsx --max-warnings 0 2>&1 | tail -20; cd ../..`
-```text
-
-Oops! Something went wrong! :(
-
-ESLint: 8.57.1
-
-ESLint couldn't find a configuration file. To set up a configuration file for this project, please run:
-
-    npm init @eslint/config
-
-ESLint looked for configuration files in /Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/apps/web/app/admin/assumptions/[version] and its ancestors. If it found none, it then looked in your home directory.
-
-If you think you already have a configuration file or if you need more help, please stop by the ESLint Discord server: https://eslint.org/chat
-```
-
-`docker compose ps`
-```text
+docker compose ps 2>&1
 NAME                       IMAGE                    COMMAND                  SERVICE   CREATED        STATUS                  PORTS
-ocidisblueprint-api-1      ocidisblueprint-api      "uvicorn app.main:ap…"   api       4 hours ago    Up 4 hours (healthy)    0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-ocidisblueprint-db-1       postgres:16-alpine       "docker-entrypoint.s…"   db        18 hours ago   Up 18 hours (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
-ocidisblueprint-minio-1    minio/minio:latest       "/usr/bin/docker-ent…"   minio     18 hours ago   Up 18 hours (healthy)   0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
-ocidisblueprint-redis-1    redis:7-alpine           "docker-entrypoint.s…"   redis     18 hours ago   Up 18 hours (healthy)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
-ocidisblueprint-web-1      ocidisblueprint-web      "docker-entrypoint.s…"   web       4 hours ago    Up 4 hours              0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
-ocidisblueprint-worker-1   ocidisblueprint-worker   "celery -A app.worke…"   worker    18 hours ago   Up 18 hours             8000/tcp
-```
+ocidisblueprint-api-1      ocidisblueprint-api      "uvicorn app.main:ap…"   api       5 hours ago    Up 5 hours (healthy)    0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+ocidisblueprint-db-1       postgres:16-alpine       "docker-entrypoint.s…"   db        19 hours ago   Up 19 hours (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+ocidisblueprint-minio-1    minio/minio:latest       "/usr/bin/docker-ent…"   minio     19 hours ago   Up 19 hours (healthy)   0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+ocidisblueprint-redis-1    redis:7-alpine           "docker-entrypoint.s…"   redis     19 hours ago   Up 19 hours (healthy)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+ocidisblueprint-web-1      ocidisblueprint-web      "docker-entrypoint.s…"   web       5 hours ago    Up 5 hours              0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+ocidisblueprint-worker-1   ocidisblueprint-worker   "celery -A app.worke…"   worker    19 hours ago   Up 19 hours             8000/tcp
 
-`docker compose ps --format json ...`
-```text
-Could not parse docker compose json: Extra data: line 2 column 1 (char 1870)
-```
+docker compose ps --format json 2>/dev/null | python3 -c ...
+zsh rerun note: initial inline Python parse failed under zsh quoting.
+bash rerun result: docker compose ps --format json produced no output
 
-`curl -sf http://localhost:8000/health ...`
-```text
+curl -sf http://localhost:8000/health 2>/dev/null && echo "API: UP" || echo "API: DOWN"
 {"status":"ok","version":"1.0.0"}API: UP
-```
 
-`curl -sf http://localhost:8000/openapi.json ...`
-```text
+curl -sf http://localhost:8000/openapi.json 2>/dev/null | python3 -c ...
 Registered endpoints: 46 paths, 64 operations
+
+docker compose exec -T db psql -U postgres -d dis_blueprint -c "SELECT schemaname, tablename, n_live_tup AS rows FROM pg_stat_user_tables ORDER BY tablename;" 2>&1 | head -30
+psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: FATAL:  role "postgres" does not exist
 ```
 
-`docker compose exec -T db psql -U postgres -d dis_blueprint -c ... | head -30`
-```text
-(no output)
-```
+### Dependency Drift
 
-`./.venv/bin/pip list --outdated | head -20`
 ```text
+./.venv/bin/pip list --outdated 2>/dev/null | head -20
 Package           Version Latest  Type
 ----------------- ------- ------- -----
 aiosqlite         0.20.0  0.22.1  wheel
@@ -595,10 +507,8 @@ pydantic_core     2.18.2  2.46.0  wheel
 pydantic-settings 2.2.1   2.13.1  wheel
 pytest            8.2.0   9.0.3   wheel
 pytest-asyncio    0.23.6  1.3.0   wheel
-```
 
-`cd apps/web && npm outdated --depth=0 | head -20; cd ../..`
-```text
+cd apps/web && npm outdated --depth=0 2>/dev/null | head -20; cd ../..
 Package                Current    Wanted   Latest  Location                           Depended by
 @types/node           20.19.39  20.19.39   25.6.0  node_modules/@types/node           web@npm:@oci-dis/web@1.0.0
 @types/react           18.3.28   18.3.28  19.2.14  node_modules/@types/react          web@npm:@oci-dis/web@1.0.0
@@ -619,208 +529,51 @@ zod                    3.25.76   3.25.76    4.3.6  node_modules/zod             
 zustand                  4.5.7     4.5.7   5.0.12  node_modules/zustand               web@npm:@oci-dis/web@1.0.0
 ```
 
-### Endpoint Inventory
-
-```text
-Total endpoints: 46
-  GET POST                       /api/v1/assumptions/
-  GET                            /api/v1/assumptions/default
-  GET PATCH                      /api/v1/assumptions/{version}
-  POST                           /api/v1/assumptions/{version}/default
-  GET                            /api/v1/audit/{project_id}
-  GET POST                       /api/v1/catalog/{project_id}
-  POST                           /api/v1/catalog/{project_id}/bulk-patch
-  GET                            /api/v1/catalog/{project_id}/duplicates
-  POST                           /api/v1/catalog/{project_id}/estimate
-  GET                            /api/v1/catalog/{project_id}/graph
-  GET                            /api/v1/catalog/{project_id}/systems
-  GET PATCH DELETE               /api/v1/catalog/{project_id}/{integration_id}
-  GET                            /api/v1/catalog/{project_id}/{integration_id}/lineage
-  GET                            /api/v1/dashboard/{project_id}/snapshots
-  GET                            /api/v1/dashboard/{project_id}/snapshots/{snapshot_id}
-  GET                            /api/v1/dictionaries/
-  GET POST                       /api/v1/dictionaries/{category}
-  PATCH DELETE                   /api/v1/dictionaries/{category}/{option_id}
-  GET                            /api/v1/exports/template/xlsx
-  GET                            /api/v1/exports/{project_id}/jobs/{job_id}
-  GET                            /api/v1/exports/{project_id}/jobs/{job_id}/download
-  POST                           /api/v1/exports/{project_id}/json
-  POST                           /api/v1/exports/{project_id}/pdf
-  POST                           /api/v1/exports/{project_id}/xlsx
-  POST GET                       /api/v1/imports/{project_id}
-  GET DELETE                     /api/v1/imports/{project_id}/{batch_id}
-  GET                            /api/v1/imports/{project_id}/{batch_id}/rows
-  GET POST                       /api/v1/justifications/templates
-  GET PATCH                      /api/v1/justifications/templates/{version}
-  POST                           /api/v1/justifications/templates/{version}/default
-  GET                            /api/v1/justifications/{project_id}
-  GET DELETE                     /api/v1/justifications/{project_id}/{integration_id}
-  POST                           /api/v1/justifications/{project_id}/{integration_id}/approve
-  POST                           /api/v1/justifications/{project_id}/{integration_id}/override
-  GET POST                       /api/v1/patterns/
-  GET PATCH DELETE               /api/v1/patterns/{pattern_id}
-  GET POST                       /api/v1/projects/
-  GET DELETE PATCH               /api/v1/projects/{project_id}
-  POST                           /api/v1/projects/{project_id}/archive
-  POST                           /api/v1/recalculate/{project_id}
-  GET                            /api/v1/recalculate/{project_id}/jobs/{job_id}
-  POST                           /api/v1/recalculate/{project_id}/scoped
-  GET                            /api/v1/volumetry/{project_id}/snapshots
-  GET                            /api/v1/volumetry/{project_id}/snapshots/{snapshot_id}
-  GET                            /api/v1/volumetry/{project_id}/snapshots/{snapshot_id}/consolidated
-  GET                            /health
-```
-
-### File Inventory
-
-```text
-Present: 56 / 56
-  OK       2484 bytes   API entry point  (apps/api/app/main.py)
-  OK       1546 bytes   Config / settings  (apps/api/app/core/config.py)
-  OK       1433 bytes   DB session  (apps/api/app/core/db.py)
-  OK       7522 bytes   Core models  (apps/api/app/models/project.py)
-  OK       3361 bytes   Snapshot models  (apps/api/app/models/snapshot.py)
-  OK       3638 bytes   Governance models  (apps/api/app/models/governance.py)
-  OK      19000 bytes   Import service  (apps/api/app/services/import_service.py)
-  OK      26797 bytes   Catalog service  (apps/api/app/services/catalog_service.py)
-  OK      11925 bytes   Recalc service  (apps/api/app/services/recalc_service.py)
-  OK       2930 bytes   Audit service  (apps/api/app/services/audit_service.py)
-  OK       6549 bytes   Graph service  (apps/api/app/services/graph_service.py)
-  OK      17244 bytes   Export service  (apps/api/app/services/export_service.py)
-  OK       5786 bytes   Catalog schemas  (apps/api/app/schemas/catalog.py)
-  OK       1356 bytes   Graph schemas  (apps/api/app/schemas/graph.py)
-  OK       2284 bytes   Projects router  (apps/api/app/routers/projects.py)
-  OK       3421 bytes   Imports router  (apps/api/app/routers/imports.py)
-  OK       5956 bytes   Catalog router  (apps/api/app/routers/catalog.py)
-  OK       2712 bytes   Patterns router  (apps/api/app/routers/patterns.py)
-  OK       2873 bytes   Dictionaries router  (apps/api/app/routers/dictionaries.py)
-  OK       2889 bytes   Assumptions router  (apps/api/app/routers/assumptions.py)
-  OK       1374 bytes   Recalculate router  (apps/api/app/routers/recalculate.py)
-  OK       1412 bytes   Volumetry router  (apps/api/app/routers/volumetry.py)
-  OK       1069 bytes   Audit router  (apps/api/app/routers/audit.py)
-  OK       2670 bytes   Exports router  (apps/api/app/routers/exports.py)
-  OK       5745 bytes   Justifications router  (apps/api/app/routers/justifications.py)
-  OK      12035 bytes   Seed script  (apps/api/app/migrations/seed.py)
-  OK        913 bytes   Pattern migration  (apps/api/migrations/versions/20260414_0003_add_is_system_to_pattern_definitions.py)
-  OK      13685 bytes   Volumetry engine  (packages/calc-engine/src/engine/volumetry.py)
-  OK       2385 bytes   QA engine  (packages/calc-engine/src/engine/qa.py)
-  OK       8004 bytes   Importer engine  (packages/calc-engine/src/engine/importer.py)
-  OK       4501 bytes   Volumetry tests  (packages/calc-engine/src/tests/test_volumetry.py)
-  OK       5342 bytes   Importer tests  (packages/calc-engine/src/tests/test_importer.py)
-  OK       2163 bytes   Root layout  (apps/web/app/layout.tsx)
-  OK       1410 bytes   Projects list page  (apps/web/app/projects/page.tsx)
-  OK       6630 bytes   Dashboard page  (apps/web/app/projects/[projectId]/page.tsx)
-  OK       1989 bytes   Import page  (apps/web/app/projects/[projectId]/import/page.tsx)
-  OK       2983 bytes   Catalog page  (apps/web/app/projects/[projectId]/catalog/page.tsx)
-  OK      13319 bytes   Detail page  (apps/web/app/projects/[projectId]/catalog/[integrationId]/page.tsx)
-  OK       3199 bytes   Capture history page  (apps/web/app/projects/[projectId]/capture/page.tsx)
-  OK       2021 bytes   Capture wizard page  (apps/web/app/projects/[projectId]/capture/new/page.tsx)
-  OK       6966 bytes   Graph page  (apps/web/app/projects/[projectId]/graph/page.tsx)
-  OK       3058 bytes   Admin hub page  (apps/web/app/admin/page.tsx)
-  OK      10170 bytes   Admin patterns page  (apps/web/app/admin/patterns/page.tsx)
-  OK       1955 bytes   Admin dictionaries page  (apps/web/app/admin/dictionaries/page.tsx)
-  OK       7706 bytes   Admin assumptions page  (apps/web/app/admin/assumptions/page.tsx)
-  OK      12537 bytes   Catalog table  (apps/web/components/catalog-table.tsx)
-  OK      12820 bytes   Capture wizard component  (apps/web/components/capture-wizard.tsx)
-  OK       3862 bytes   OIC estimate preview  (apps/web/components/oic-estimate-preview.tsx)
-  OK       2811 bytes   QA preview component  (apps/web/components/qa-preview.tsx)
-  OK      13942 bytes   Graph component  (apps/web/components/integration-graph.tsx)
-  OK       6548 bytes   Integration canvas  (apps/web/components/integration-canvas.tsx)
-  OK       1658 bytes   Theme toggle  (apps/web/components/theme-toggle.tsx)
-  OK       1125 bytes   Breadcrumb component  (apps/web/components/breadcrumb.tsx)
-  OK       5389 bytes   Docker Compose stack  (docker-compose.yml)
-  OK        908 bytes   API Dockerfile  (apps/api/Dockerfile)
-  OK        872 bytes   Web Dockerfile  (apps/web/Dockerfile)
-```
-
-### Endpoint Probe Summary
-
-```text
-Endpoint checks: 15/15 passed
-  OK   200   GET /projects
-  OK   200   GET /patterns
-  OK   200   GET /dictionaries
-  OK   200   GET /assumptions
-  OK   200   GET /health
-  OK   200   GET /catalog/{pid}
-  OK   200   GET /catalog/{pid}/graph
-  OK   200   GET /catalog/{pid}/systems
-  OK   200   GET /catalog/{pid}/duplicates
-  OK   200   POST /catalog/{pid}/estimate
-  OK   200   GET /imports/{pid}
-  OK   200   GET /volumetry/{pid}/snapshots
-  OK   200   GET /audit/{pid}
-  OK   200   GET /justifications/{pid}
-  OK   200   GET /dashboard/{pid}/snapshots
-```
+---
 
 ## Pending Tasks
 
 ### CRITICAL
 
-- `apps/api/app/services/graph_service.py` — M10 — Graph backend logic exists in the worktree but is untracked, so the current dependency-map backend is not reproducible from committed history.
-- `apps/api/app/schemas/graph.py` — M10 — Graph response schema is untracked, which makes the OpenAPI/runtime graph surface depend on non-versioned files.
-- `apps/api/migrations/versions/20260414_0003_add_is_system_to_pattern_definitions.py` — M8 — The `is_system` migration exists but is untracked, so governance schema evolution is not safely preserved.
+- `apps/web/components/system-autocomplete.tsx`, `apps/web/components/graph-controls.tsx`, `apps/web/components/integration-graph.tsx`, `apps/web/lib/use-theme.ts` — Browser QA / M11 / M14: the strict frontend lint gate fails with `3 errors` and `17 warnings`, blocking a zero-warning release-quality audit.
 
 ### INCOMPLETE
 
-- `apps/api/app/routers/catalog.py` and `apps/api/app/services/catalog_service.py` — M9 — Manual capture backend behavior exists and passes endpoint probes, but the implementation is still dirty in the worktree and not fully reconciled with README milestone status.
-- `README.md` — M9/M10 — Milestones are still marked `⚠ Partial` even though large portions of the implementation are present and serving.
-- `docs/progress.md` — M11-M14 — The file is not append-only in chronological order, which deviates from the documented milestone logging contract.
-- `apps/web` ESLint workflow — repo-wide frontend quality gate — `npx eslint . --ext .ts,.tsx --max-warnings 0` fails because no ESLint config file is present.
-- Repo-wide Python lint workflow — repository quality gate — `./.venv/bin/python -m ruff check .` fails on three unused imports in `packages/calc-engine/`.
-- Host type-check workflow — repository quality gate — `mypy` is not installed in the local `.venv`, so the documented audit command cannot run successfully.
-- Benchmark project state in live DB — M2/M5 — First-project runtime data does not match benchmark scale (`catalog_total=13` instead of `144`), so live benchmark parity is not demonstrated in the current database.
+- `apps/api/app/services/recalc_service.py`, `apps/api/app/services/import_service.py`, `apps/api/app/services/export_service.py` — M2 / M4 / M7: backend `mypy` still reports 10 type errors, so the type-check gate is not clean.
+- `apps/web/app/projects/[projectId]/page.tsx` — M5: the current dashboard UI does not expose the full chart/risk snapshot payload that the backend dashboard service already produces.
+- `docker compose exec -T db psql -U postgres -d dis_blueprint ...` — environment verification: the documented audit DB probe is not reproducible in the running local stack because the `postgres` role is unavailable.
 
 ### DEFERRED
 
-- Project-scoped export smoke (`/api/v1/exports/{project_id}/{format}`) — M7 — Export job creation exists, but this audit did not generate real project export artifacts because it focused on repository status rather than artifact QA.
-- Browser-level interaction proof for M9/M10 — M9/M10 — Wizard UX details and graph interaction details were inferred from code and route reachability, not validated through browser automation in this audit.
+- `.venv` Python dependencies and `apps/web/package.json` dependencies — dependency maintenance: numerous packages are outdated, but upgrades were not part of this audit and should be handled in a planned dependency-refresh pass.
+
+---
 
 ## Debt Markers
 
-Search result:
-
 ```text
+grep -r "TODO\|FIXME\|HACK\|PLACEHOLDER\|XXX\|NOCOMMIT" --include="*.py" --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=.venv -n . 2>/dev/null | grep -v "test_\|spec\." | head -30
 ./apps/api/app/routers/projects.py:62:    # TODO: partial update + audit
 ```
 
-Additional debt noted during audit:
-- Detached `HEAD` instead of a named working branch.
-- Dirty/untracked milestone files in `apps/api/`.
-- Documentation drift between `README.md`, `docs/progress.md`, and current runtime behavior.
-- Tooling drift between Docker-first repo guidance and host-`.venv` audit commands.
+Observations:
+
+- The explicit debt signal is small, but the stricter lint/type gates reveal quality debt beyond inline TODO markers.
+- `docs/progress.md` currently contains milestone entries for M11, M12, M13, M14, Browser QA, and audit remediation; earlier milestones are tracked more heavily via `README.md` and git history than via progress-log continuity.
+
+---
 
 ## Recommended Next Actions
 
-1. Commit or reconcile the untracked/dirty backend milestone files for M8-M10, especially `apps/api/app/services/graph_service.py`, `apps/api/app/schemas/graph.py`, and `apps/api/migrations/versions/20260414_0003_add_is_system_to_pattern_definitions.py`.
-2. Move off detached `HEAD` onto a named branch and get the worktree clean before any further milestone claims or releases.
-3. Decide on the repo-wide quality-gate contract:
-   - either make `.venv` + `mypy` + ESLint config first-class and keep host audit commands,
-   - or rewrite docs/audit workflows around Docker-only execution.
-4. Resolve repo-wide `ruff check .` failures in `packages/calc-engine/` and add an ESLint config if frontend linting is meant to be required.
-5. Re-run a benchmark-data validation pass against a seeded benchmark project so M2 and M5 parity can be demonstrated from the current live DB, not only from prior docs.
+1. Fix the frontend lint regressions in `apps/web/components/system-autocomplete.tsx` and the unused-parameter warnings in graph/theme components, then rerun `npx eslint . --ext .ts,.tsx --max-warnings 0`.
+2. Triage and resolve the 10 backend `mypy` errors in `apps/api/app/services/recalc_service.py`, `apps/api/app/services/import_service.py`, and `apps/api/app/services/export_service.py`.
+3. Decide whether M5 should stay “API-complete / UI-light” or whether `apps/web/app/projects/[projectId]/page.tsx` should render the full dashboard snapshot charts and risk data already generated by `dashboard_service.py`.
+4. Document or fix the database credentials expected by the audit SQL probe so table-level verification can be reproduced from the checked-out repo without guesswork.
+5. Plan a dependency-refresh pass once the branch is otherwise stable, prioritizing FastAPI, Pydantic, Next.js, TypeScript, and ESLint ecosystem packages.
+
+---
 
 ## Dependency Drift
 
-### Python
+Python drift is significant across the backend toolchain (`fastapi`, `pydantic`, `alembic`, `pytest`, `celery`, `asyncpg`). Frontend drift is also broad, with the largest potential migration surfaces around `next`, `react`, `eslint`, `typescript`, `tailwindcss`, and `zod`. None of these should be upgraded as part of a milestone audit, but they should be scheduled and scoped because future lint/build/tooling friction is likely to increase if they continue to lag.
 
-The local `.venv` has a meaningful backlog of outdated packages. High-impact examples:
-- `fastapi 0.111.0 -> 0.135.3`
-- `pydantic 2.7.1 -> 2.13.0`
-- `alembic 1.13.1 -> 1.18.4`
-- `celery 5.4.0 -> 5.6.3`
-- `pytest 8.2.0 -> 9.0.3`
-
-### Frontend
-
-The frontend toolchain also has notable drift:
-- `next 14.2.3 -> 16.2.3`
-- `react/react-dom 18.3.1 -> 19.2.x`
-- `typescript 5.9.3 -> 6.0.2`
-- `tailwindcss 3.4.19 -> 4.2.2`
-- `eslint 8.57.1 -> 10.2.0`
-
-Audit interpretation:
-- This drift is not automatically a blocker.
-- It does increase upgrade risk, especially if the repo remains dirty and late-milestone backend changes are not yet committed.
