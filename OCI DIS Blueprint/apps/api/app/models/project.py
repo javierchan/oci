@@ -1,14 +1,12 @@
-"""Core domain models — Project, ImportBatch, SourceIntegrationRow, CatalogIntegration.
+"""Core domain models — project, import, source row, and catalog entities."""
 
-These are the primary working entities described in PRD-044.
-Raw source rows remain immutable after import; CatalogIntegration is the
-governed working copy. Snapshots carry calculation lineage.
-"""
 from __future__ import annotations
-from typing import Optional
-from sqlalchemy import String, Integer, Float, Boolean, JSON, ForeignKey, Enum as SAEnum
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 import enum
+from typing import Optional
+
+from sqlalchemy import Boolean, Enum as SAEnum, Float, ForeignKey, Integer, JSON, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, UUIDMixin
 
@@ -47,10 +45,10 @@ class Project(Base, UUIDMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(2000))
     status: Mapped[ProjectStatus] = mapped_column(
-        SAEnum(ProjectStatus), default=ProjectStatus.DRAFT
+        SAEnum(ProjectStatus, native_enum=False), default=ProjectStatus.DRAFT
     )
     owner_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    metadata: Mapped[Optional[dict]] = mapped_column(JSON)
+    project_metadata: Mapped[Optional[dict]] = mapped_column("metadata", JSON)
 
     import_batches: Mapped[list["ImportBatch"]] = relationship(back_populates="project")
     catalog_integrations: Mapped[list["CatalogIntegration"]] = relationship(back_populates="project")
@@ -64,13 +62,13 @@ class ImportBatch(Base, UUIDMixin, TimestampMixin):
     parser_version: Mapped[str] = mapped_column(String(50), nullable=False)
     prompt_version: Mapped[Optional[str]] = mapped_column(String(50))
     status: Mapped[ImportStatus] = mapped_column(
-        SAEnum(ImportStatus), default=ImportStatus.PENDING
+        SAEnum(ImportStatus, native_enum=False), default=ImportStatus.PENDING
     )
     source_row_count: Mapped[Optional[int]] = mapped_column(Integer)
     tbq_y_count: Mapped[Optional[int]] = mapped_column(Integer)
     excluded_count: Mapped[Optional[int]] = mapped_column(Integer)
     loaded_count: Mapped[Optional[int]] = mapped_column(Integer)
-    header_map: Mapped[Optional[dict]] = mapped_column(JSON)  # normalized header map
+    header_map: Mapped[Optional[dict]] = mapped_column(JSON)
     error_details: Mapped[Optional[dict]] = mapped_column(JSON)
 
     project: Mapped["Project"] = relationship(back_populates="import_batches")
@@ -78,27 +76,29 @@ class ImportBatch(Base, UUIDMixin, TimestampMixin):
 
 
 class SourceIntegrationRow(Base, UUIDMixin, TimestampMixin):
-    """Immutable raw source record — never mutated after import (PRD-023)."""
+    """Immutable raw source record — never mutated after import."""
+
     __tablename__ = "source_integration_rows"
 
     import_batch_id: Mapped[str] = mapped_column(ForeignKey("import_batches.id"), nullable=False)
     source_row_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    raw_data: Mapped[dict] = mapped_column(JSON, nullable=False)  # verbatim row
+    raw_data: Mapped[dict] = mapped_column(JSON, nullable=False)
     included: Mapped[bool] = mapped_column(Boolean, nullable=False)
     exclusion_reason: Mapped[Optional[str]] = mapped_column(String(500))
-    normalization_events: Mapped[Optional[list]] = mapped_column(JSON)  # [{field, old, new, rule}]
+    normalization_events: Mapped[Optional[list]] = mapped_column(JSON)
 
     import_batch: Mapped["ImportBatch"] = relationship(back_populates="source_rows")
+    catalog_integrations: Mapped[list["CatalogIntegration"]] = relationship(back_populates="source_row")
 
 
 class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
-    """Governed working entity — architect-editable, fully audited (PRD-010, PRD-044)."""
+    """Governed working entity — architect-editable, fully audited."""
+
     __tablename__ = "catalog_integrations"
 
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
     source_row_id: Mapped[Optional[str]] = mapped_column(ForeignKey("source_integration_rows.id"))
 
-    # IDENTIFICATION (columns B-H in workbook)
     seq_number: Mapped[int] = mapped_column(Integer, nullable=False)
     interface_id: Mapped[Optional[str]] = mapped_column(String(100))
     owner: Mapped[Optional[str]] = mapped_column(String(255))
@@ -107,13 +107,11 @@ class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
     interface_name: Mapped[Optional[str]] = mapped_column(String(500))
     description: Mapped[Optional[str]] = mapped_column(String(2000))
 
-    # TRACKING (columns I-L)
     status: Mapped[Optional[str]] = mapped_column(String(100))
     mapping_status: Mapped[Optional[str]] = mapped_column(String(100))
     initial_scope: Mapped[Optional[str]] = mapped_column(String(255))
     complexity: Mapped[Optional[str]] = mapped_column(String(100))
 
-    # TECHNICAL DETAILS (columns M-R)
     frequency: Mapped[Optional[str]] = mapped_column(String(255))
     type: Mapped[Optional[str]] = mapped_column(String(100))
     base: Mapped[Optional[str]] = mapped_column(String(255))
@@ -121,29 +119,24 @@ class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
     is_real_time: Mapped[Optional[bool]] = mapped_column(Boolean)
     trigger_type: Mapped[Optional[str]] = mapped_column(String(100))
 
-    # VOLUMETRY — PRIMARY INPUTS (columns S-V)
     response_size_kb: Mapped[Optional[float]] = mapped_column(Float)
     payload_per_execution_kb: Mapped[Optional[float]] = mapped_column(Float)
     is_fan_out: Mapped[Optional[bool]] = mapped_column(Boolean)
     fan_out_targets: Mapped[Optional[int]] = mapped_column(Integer)
 
-    # SOURCE APPLICATION (columns W-Z)
     source_system: Mapped[Optional[str]] = mapped_column(String(255))
     source_technology: Mapped[Optional[str]] = mapped_column(String(255))
     source_api_reference: Mapped[Optional[str]] = mapped_column(String(1000))
     source_owner: Mapped[Optional[str]] = mapped_column(String(255))
 
-    # DESTINATION APPLICATION (columns AA-AD)
     destination_system: Mapped[Optional[str]] = mapped_column(String(255))
     destination_technology_1: Mapped[Optional[str]] = mapped_column(String(255))
     destination_technology_2: Mapped[Optional[str]] = mapped_column(String(255))
     destination_owner: Mapped[Optional[str]] = mapped_column(String(255))
 
-    # DERIVED FIELDS (columns AF-AG — calculated, not typed — PRD-021)
     executions_per_day: Mapped[Optional[float]] = mapped_column(Float)
     payload_per_hour_kb: Mapped[Optional[float]] = mapped_column(Float)
 
-    # ARCHITECTURAL FIELDS — architect-owned (columns AH-AN — PRD-022)
     selected_pattern: Mapped[Optional[str]] = mapped_column(String(100))
     pattern_rationale: Mapped[Optional[str]] = mapped_column(String(2000))
     comments: Mapped[Optional[str]] = mapped_column(String(4000))
@@ -151,12 +144,11 @@ class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
     core_tools: Mapped[Optional[str]] = mapped_column(String(1000))
     additional_tools_overlays: Mapped[Optional[str]] = mapped_column(String(1000))
 
-    # QA (column AN — PRD-025)
     qa_status: Mapped[Optional[str]] = mapped_column(String(50))
     qa_reasons: Mapped[Optional[list]] = mapped_column(JSON)
 
-    # Misc
     calendarization: Mapped[Optional[str]] = mapped_column(String(255))
     uncertainty: Mapped[Optional[str]] = mapped_column(String(255))
 
     project: Mapped["Project"] = relationship(back_populates="catalog_integrations")
+    source_row: Mapped[Optional["SourceIntegrationRow"]] = relationship(back_populates="catalog_integrations")
