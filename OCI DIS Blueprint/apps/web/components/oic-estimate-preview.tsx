@@ -30,6 +30,7 @@ export function OicEstimatePreview({
   const [estimate, setEstimate] = useState<OICEstimateResponse>(EMPTY_ESTIMATE);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
+  const showActivationHint = !frequency || payloadPerExecutionKb === undefined || payloadPerExecutionKb === null;
 
   useEffect(() => {
     const hasInputs = Boolean(frequency) && payloadPerExecutionKb !== undefined;
@@ -85,9 +86,10 @@ export function OicEstimatePreview({
         {loading ? <span className="text-xs uppercase tracking-[0.2em] text-slate-400">Calculating…</span> : null}
       </div>
 
-      {!estimate.computable && !loading ? (
-        <p className="mt-4 text-sm leading-6 text-slate-300">
-          Add both a governed frequency and payload size to preview OIC billing and pack pressure.
+      {showActivationHint && !loading ? (
+        <p className="py-4 text-center text-xs text-slate-300">
+          Select a <strong>Frequency</strong> and enter a <strong>Payload KB</strong> above to preview OIC billing and
+          pack pressure.
         </p>
       ) : null}
 
@@ -117,7 +119,9 @@ export function OicEstimatePreview({
             className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4"
           >
             <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{metric.label}</p>
-            <p className="mt-3 text-2xl font-semibold text-white">{loading ? "…" : metric.value}</p>
+            <p className="mt-3 text-2xl font-semibold text-white">
+              {showActivationHint && !loading ? "—" : loading ? "…" : metric.value}
+            </p>
           </article>
         ))}
       </div>

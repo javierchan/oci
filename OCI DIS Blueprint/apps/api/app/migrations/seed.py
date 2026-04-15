@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -91,7 +93,7 @@ DICTIONARY_OPTIONS: list[dict[str, object]] = [
     {"category": "TOOLS", "code": None, "value": "OCI APM", "sort_order": 12},
 ]
 
-PROMPT_TEMPLATE = {
+PROMPT_TEMPLATE: dict[str, Any] = {
     "version": "1.0.0",
     "name": "Deterministic Justification Template",
     "is_default": True,
@@ -155,7 +157,7 @@ def seed_patterns(session: Session) -> int:
             existing = PatternDefinition(**pattern_data, is_system=True)
             session.add(existing)
             session.flush()
-            _audit(session, "seed_insert", "pattern_definition", existing.id, pattern_data)
+            _audit(session, "seed_insert", "pattern_definition", existing.id, cast(dict[str, object], pattern_data))
             count += 1
         else:
             existing.name = pattern_data["name"]
@@ -176,19 +178,19 @@ def seed_dictionary_options(session: Session) -> int:
         if existing is None:
             existing = DictionaryOption(
                 category=str(option_data["category"]),
-                code=option_data.get("code"),
+                code=cast(str | None, option_data.get("code")),
                 value=str(option_data["value"]),
-                executions_per_day=option_data.get("executions_per_day"),
-                sort_order=int(option_data["sort_order"]),
+                executions_per_day=cast(float | None, option_data.get("executions_per_day")),
+                sort_order=int(cast(int, option_data["sort_order"])),
             )
             session.add(existing)
             session.flush()
             _audit(session, "seed_insert", "dictionary_option", existing.id, option_data)
             count += 1
         else:
-            existing.code = option_data.get("code")
-            existing.executions_per_day = option_data.get("executions_per_day")
-            existing.sort_order = int(option_data["sort_order"])
+            existing.code = cast(str | None, option_data.get("code"))
+            existing.executions_per_day = cast(float | None, option_data.get("executions_per_day"))
+            existing.sort_order = int(cast(int, option_data["sort_order"]))
     return count
 
 
@@ -210,8 +212,8 @@ def seed_assumption_set(session: Session) -> int:
         return 1
     existing.label = str(ASSUMPTION_SET["label"])
     existing.is_default = bool(ASSUMPTION_SET["is_default"])
-    existing.assumptions = dict(ASSUMPTION_SET["assumptions"])
-    existing.notes = ASSUMPTION_SET["notes"]
+    existing.assumptions = cast(dict[str, Any], dict(cast(dict[str, Any], ASSUMPTION_SET["assumptions"])))
+    existing.notes = cast(str | None, ASSUMPTION_SET["notes"])
     return 0
 
 
@@ -233,8 +235,8 @@ def seed_prompt_template(session: Session) -> int:
         return 1
     existing.name = str(PROMPT_TEMPLATE["name"])
     existing.is_default = bool(PROMPT_TEMPLATE["is_default"])
-    existing.template_config = dict(PROMPT_TEMPLATE["template_config"])
-    existing.notes = PROMPT_TEMPLATE["notes"]
+    existing.template_config = cast(dict[str, Any], dict(PROMPT_TEMPLATE["template_config"]))
+    existing.notes = cast(str | None, PROMPT_TEMPLATE["notes"])
     return 0
 
 

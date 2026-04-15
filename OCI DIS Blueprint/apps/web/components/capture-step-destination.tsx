@@ -33,7 +33,7 @@ export function CaptureStepDestination({
           <input
             value={form.destination_technology ?? ""}
             onChange={(event) => updateField("destination_technology", event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+            className="app-input"
             placeholder="REST, ATP, SOAP…"
           />
         </label>
@@ -42,7 +42,7 @@ export function CaptureStepDestination({
           <input
             value={form.destination_owner ?? ""}
             onChange={(event) => updateField("destination_owner", event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+            className="app-input"
             placeholder="Receiving team or owner"
           />
         </label>

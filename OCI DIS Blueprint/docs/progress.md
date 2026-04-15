@@ -41,6 +41,57 @@ None
 
 ---
 
+## Quality Gates — ESLint + mypy Clean (2026-04-14)
+
+**Status:** ✅ Complete
+
+- Fixed `react/no-unescaped-entities` in `system-autocomplete.tsx`
+- Prefixed unused callback params with `_` across `graph-controls.tsx`,
+  `integration-graph.tsx`, `use-theme.ts`, `system-autocomplete.tsx`
+- Fixed 10 mypy errors in `recalc_service.py`, `import_service.py`,
+  `export_service.py` using `cast(dict[str, Any], ...)` at ORM return sites
+- All five quality gates now green: pytest, ruff, mypy, tsc, eslint
+
+---
+
+## Browser Test Remediation — Bug Fixes + UX Enhancements
+
+**Completed:** 2026-04-14
+**Status:** ✅ Complete
+
+### What was fixed
+
+**Bugs:**
+- BUG-01: Dark mode form inputs — added CSS baseline for input/select/textarea in `globals.css`
+- BUG-02: Dashboard QA cards dark mode — replaced hardcoded colors with CSS variable tokens
+- BUG-03: Phantom scroll on detail page — fixed two-column layout with `items-start`
+- BUG-04: Theme not persisted across navigation — fixed `useTheme` hook initialization and storage key consistency
+- BUG-05: Autocomplete silent empty state — added a “will be created as new” hint and loading indicator
+
+**Enhancements:**
+- ENH-01: Projects list duplicate names — added `#id` suffixes for duplicate project names
+- ENH-02: Graph trivial topology — added an info banner when nodes are below meaningful map size
+- ENH-03: OIC Estimate activation hint — replaced “—” guidance with a clearer prompt when frequency or payload are missing
+- ENH-04: Admin hub global scope warning — added an amber warning banner for global governance impact
+- ENH-05: Import history filename — now shows uploaded workbook filenames with the batch UUID on hover
+- ENH-06: Catalog clear filters button — added a one-click reset action when any filter is active
+- ENH-07: Capture wizard sessionStorage — persists form state and restores the current step, with an unload warning guard
+
+### Verification results
+
+```text
+TypeScript: 0 errors
+ruff: All checks passed!
+pytest: 26 passed
+docker compose: 6/6 containers Up
+```
+
+### Gaps / known limitations
+
+None
+
+---
+
 ## Remediation — Audit Cleanup
 
 **Completed:** 2026-04-14

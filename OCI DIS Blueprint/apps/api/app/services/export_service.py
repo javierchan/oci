@@ -6,6 +6,7 @@ import json
 from io import BytesIO
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -182,7 +183,7 @@ def _job_from_payload(payload: dict[str, object]) -> ExportJobResponse:
     normalized = {key: value for key, value in payload.items() if key != "file_path"}
     if isinstance(created_at, str):
         normalized["created_at"] = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-    return ExportJobResponse(**normalized)
+    return ExportJobResponse(**cast(dict[str, Any], normalized))
 
 
 async def _build_job(

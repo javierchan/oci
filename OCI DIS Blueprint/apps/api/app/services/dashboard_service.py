@@ -85,7 +85,7 @@ async def _load_catalog_rows(project_id: str, db: AsyncSession) -> list[CatalogI
         .where(CatalogIntegration.project_id == project_id)
         .order_by(CatalogIntegration.seq_number, CatalogIntegration.created_at)
     )
-    return rows.all()
+    return list(rows.all())
 
 
 async def _pattern_name_map(db: AsyncSession) -> dict[str, str]:
@@ -136,7 +136,7 @@ def _build_charts(rows: list[CatalogIntegration], pattern_names: dict[str, str])
     )
 
     pattern_counts: Counter[str] = Counter(
-        row.selected_pattern if _has_text(row.selected_pattern) else "UNASSIGNED"
+        (row.selected_pattern or "UNASSIGNED") if _has_text(row.selected_pattern) else "UNASSIGNED"
         for row in rows
     )
     pattern_mix = [
@@ -276,9 +276,9 @@ async def _ensure_project_dashboard_snapshots(project_id: str, db: AsyncSession)
             .where(DashboardSnapshot.project_id == project_id)
             .order_by(DashboardSnapshot.created_at.desc())
         )
-        return dashboard_snapshots.all()
+        return list(dashboard_snapshots.all())
 
-    return existing_list
+    return list(existing_list)
 
 
 async def list_snapshots(project_id: str, db: AsyncSession) -> DashboardSnapshotListResponse:

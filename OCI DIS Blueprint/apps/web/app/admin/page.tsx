@@ -21,6 +21,13 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
           Changes here affect all projects. System patterns seeded from the workbook cannot be deleted.
         </p>
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+          <span className="mt-0.5">⚠️</span>
+          <span>
+            Changes here affect <strong>all projects</strong>. System patterns (seeded from the workbook) can be
+            edited but not deleted. Dictionary and assumption changes take effect on the next recalculation.
+          </span>
+        </div>
         <div className="mt-4">
           <Breadcrumb items={[{ label: "Home", href: "/projects" }, { label: "Admin" }]} />
         </div>

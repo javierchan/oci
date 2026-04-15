@@ -293,7 +293,15 @@ export function ImportUpload({
             <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
               {history.map((batch: ImportBatch) => (
                 <tr key={batch.id} className="app-table-row">
-                  <td className="px-6 py-4 font-mono text-xs text-[var(--color-text-muted)]">{batch.id.slice(0, 8)}</td>
+                  <td className="px-6 py-4 font-mono text-xs text-[var(--color-text-secondary)]">
+                    {batch.filename ? (
+                      <span title={batch.id}>{batch.filename}</span>
+                    ) : (
+                      <span className="opacity-60" title={batch.id}>
+                        {batch.id.slice(0, 8)}…
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-[var(--color-text-secondary)]">{formatDate(batch.created_at)}</td>
                   <td className="px-6 py-4 font-medium text-[var(--color-text-primary)]">{batch.loaded_count ?? 0}</td>
                   <td className="px-6 py-4 text-[var(--color-text-secondary)]">{batch.excluded_count ?? 0}</td>

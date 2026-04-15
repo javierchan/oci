@@ -94,16 +94,34 @@ docker-compose.yml Local dev stack
 
 See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the full ordered build plan.
 
-| # | Milestone | Status |
-|---|-----------|--------|
-| M1 | Schema + Migrations | 🔲 Pending |
-| M2 | Import Engine | 🔲 Pending |
-| M3 | Catalog Grid API | 🔲 Pending |
-| M4 | Calculation Engine | 🔲 Pending |
-| M5 | Dashboard API | 🔲 Pending |
-| M6 | Justification Narratives | 🔲 Pending |
-| M7 | Exports | 🔲 Pending |
-| M8 | Admin + Governance | 🔲 Pending |
+| Milestone | Description | Status | Completed |
+|-----------|-------------|--------|-----------|
+| M1 | Schema + Migrations | ✅ Complete | 2026-04-13 |
+| M2 | Import Engine | ✅ Complete | 2026-04-13 |
+| M3 | Catalog Grid API | ✅ Complete | 2026-04-13 |
+| M4 | Calculation Engine | ✅ Complete | 2026-04-13 |
+| M5 | Dashboard API | ✅ Complete | 2026-04-13 |
+| M6 | Justification Narratives | ✅ Complete | 2026-04-13 |
+| M7 | Exports | ✅ Complete | 2026-04-13 |
+| M8 | Admin + Governance | ✅ Complete | 2026-04-14 |
+| M9 | Integration Capture Wizard | ✅ Complete | 2026-04-14 |
+| M10 | System Dependency Map | ✅ Complete | 2026-04-14 |
+| M11 | Navigation + Theme | ✅ Complete | 2026-04-14 |
+| M12 | Source Lineage + Template | ✅ Complete | 2026-04-14 |
+| M13 | Integration Design Canvas | ✅ Complete | 2026-04-14 |
+| M14 | Map Pan + Visual Improvements | ✅ Complete | 2026-04-14 |
+| Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
+
+## Validation Snapshot
+
+Phase 1 parity has been validated in Docker against the benchmark workbook rules:
+
+- Import parity: `157` TBQ=`Y` rows, `13` excluded `Duplicado 2`, `144` loaded rows in source order
+- Reference seed data: `17` patterns, `1` default assumption set, `40` dictionary options
+- Calc-engine parity: `26 passed`
+- Web and API stack: all six containers running and healthy in Docker Compose
+
+Implementation and benchmark notes for milestones `M1` through `M8` are captured in [`docs/phase1-validation.md`](./docs/phase1-validation.md).
 
 ---
 

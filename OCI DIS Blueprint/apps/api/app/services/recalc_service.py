@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import fields
+from typing import Any, cast
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -116,11 +117,11 @@ def _integration_input_with_overrides(
 
 
 def _serialize_consolidated(consolidated: dict[str, object]) -> ConsolidatedMetrics:
-    oic = consolidated.get("oic", {})
-    data_integration = consolidated.get("data_integration", {})
-    functions = consolidated.get("functions", {})
-    streaming = consolidated.get("streaming", {})
-    queue = consolidated.get("queue", {})
+    oic = cast(dict[str, Any], consolidated.get("oic", {}))
+    data_integration = cast(dict[str, Any], consolidated.get("data_integration", {}))
+    functions = cast(dict[str, Any], consolidated.get("functions", {}))
+    streaming = cast(dict[str, Any], consolidated.get("streaming", {}))
+    queue = cast(dict[str, Any], consolidated.get("queue", {}))
     return ConsolidatedMetrics(
         oic=OICMetrics(**oic),
         data_integration=DIMetrics(**data_integration),

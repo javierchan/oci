@@ -33,7 +33,7 @@ export function CaptureStepTechnical({
           <select
             value={form.type ?? ""}
             onChange={(event) => updateField("type", event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+            className="app-input"
           >
             <option value="">Select trigger type</option>
             {triggerTypeOptions.map((option) => (
@@ -48,7 +48,7 @@ export function CaptureStepTechnical({
           <select
             value={form.frequency ?? ""}
             onChange={(event) => updateField("frequency", event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+            className="app-input"
           >
             <option value="">Select frequency</option>
             {frequencyOptions.map((option) => (
@@ -71,7 +71,7 @@ export function CaptureStepTechnical({
                 event.target.value === "" ? undefined : Number(event.target.value),
               )
             }
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+            className="app-input"
             placeholder="0.0"
           />
         </label>
@@ -80,7 +80,7 @@ export function CaptureStepTechnical({
           <select
             value={form.complexity ?? ""}
             onChange={(event) => updateField("complexity", event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+            className="app-input"
           >
             <option value="">Select complexity</option>
             {complexityOptions.map((option) => (
@@ -95,7 +95,7 @@ export function CaptureStepTechnical({
           <input
             value={form.uncertainty ?? ""}
             onChange={(event) => updateField("uncertainty", event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+            className="app-input"
             placeholder="Resolved, TBD, medium confidence…"
           />
         </label>
@@ -104,7 +104,7 @@ export function CaptureStepTechnical({
           <select
             value={form.selected_pattern ?? ""}
             onChange={(event) => updateField("selected_pattern", event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+            className="app-input"
           >
             <option value="">Unassigned</option>
             {patterns.map((pattern) => (
@@ -120,7 +120,7 @@ export function CaptureStepTechnical({
             value={form.pattern_rationale ?? ""}
             onChange={(event) => updateField("pattern_rationale", event.target.value)}
             rows={4}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+            className="app-input"
             placeholder="Why is this the best fit for the integration?"
           />
         </label>

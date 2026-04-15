@@ -24,7 +24,7 @@ export function CaptureStepSource({
         <input
           value={form.source_technology ?? ""}
           onChange={(event) => updateField("source_technology", event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+          className="app-input"
           placeholder="REST, JDBC, FTP, SOAP…"
         />
       </label>
@@ -33,7 +33,7 @@ export function CaptureStepSource({
         <input
           value={form.source_api_reference ?? ""}
           onChange={(event) => updateField("source_api_reference", event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+          className="app-input"
           placeholder="/api/v1/orders or reference URL"
         />
       </label>
@@ -42,7 +42,7 @@ export function CaptureStepSource({
         <input
           value={form.source_owner ?? ""}
           onChange={(event) => updateField("source_owner", event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none focus:border-sky-400"
+          className="app-input"
           placeholder="Team or owner"
         />
       </label>

@@ -23,7 +23,10 @@ import type {
 export type CaptureStepProps = {
   projectId: string;
   form: ManualIntegrationCreate;
-  updateField: <K extends keyof ManualIntegrationCreate>(field: K, value: ManualIntegrationCreate[K]) => void;
+  updateField: <K extends keyof ManualIntegrationCreate>(
+    _field: K,
+    _value: ManualIntegrationCreate[K],
+  ) => void;
   patterns: PatternDefinition[];
   toolOptions: DictionaryOption[];
   frequencyOptions: DictionaryOption[];
@@ -56,6 +59,7 @@ const STEP_LABELS = [
   "Technical",
   "Review",
 ] as const;
+const SESSION_KEY_PREFIX = "capture-wizard-";
 
 const stepSchemas = [
   z.object({
@@ -107,8 +111,62 @@ export function CaptureWizard({
   const [submitError, setSubmitError] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [createdIntegration, setCreatedIntegration] = useState<Integration | null>(null);
+  const sessionKey = `${SESSION_KEY_PREFIX}${projectId}`;
 
   const stepTitle = STEP_LABELS[currentStep];
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(sessionKey);
+      if (!saved) {
+        return;
+      }
+      const parsed = JSON.parse(saved) as {
+        step?: number;
+        formData?: ManualIntegrationCreate;
+      };
+      if (typeof parsed.step === "number" && parsed.step >= 0 && parsed.step < STEP_LABELS.length) {
+        setCurrentStep(parsed.step);
+      }
+      if (parsed.formData) {
+        setForm({
+          ...INITIAL_FORM,
+          ...parsed.formData,
+        });
+      }
+    } catch (error) {}
+  }, [sessionKey]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        sessionKey,
+        JSON.stringify({
+          step: currentStep,
+          formData: form,
+        }),
+      );
+    } catch (error) {}
+  }, [currentStep, form, sessionKey]);
+
+  useEffect(() => {
+    const hasData =
+      Boolean(form.interface_name?.trim()) ||
+      Boolean(form.source_system?.trim()) ||
+      Boolean(form.destination_system?.trim());
+
+    if (!hasData) {
+      return;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [form]);
 
   useEffect(() => {
     const shouldCheck =
@@ -244,6 +302,7 @@ export function CaptureWizard({
     setSubmitError("");
     try {
       const created = await api.createIntegration(projectId, cleanForm(form));
+      sessionStorage.removeItem(sessionKey);
       setCreatedIntegration(created);
       startTransition(() => {
         router.refresh();
@@ -256,6 +315,7 @@ export function CaptureWizard({
   }
 
   function resetWizard(): void {
+    sessionStorage.removeItem(sessionKey);
     setForm(INITIAL_FORM);
     setCurrentStep(0);
     setErrors({});

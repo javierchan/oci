@@ -12,7 +12,7 @@ type AdminPatternFormProps = {
   initialValue?: PatternDefinition | null;
   isLoading: boolean;
   error: string;
-  onSubmit: (value: PatternDefinitionCreate) => void | Promise<void>;
+  onSubmit: (_value: PatternDefinitionCreate) => void | Promise<void>;
   onCancel: () => void;
 };
 
