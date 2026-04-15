@@ -42,6 +42,36 @@ import type {
 const PUBLIC_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const INTERNAL_BASE = process.env.INTERNAL_API_URL ?? PUBLIC_BASE;
 
+export class ApiError extends Error {
+  status: number;
+  path: string;
+  body: string;
+
+  constructor(status: number, path: string, body: string) {
+    super(`API ${status} ${path}: ${body}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.path = path;
+    this.body = body;
+  }
+}
+
+export function isApiErrorStatus(
+  error: unknown,
+  status: number,
+  pathPrefix?: string,
+): error is ApiError {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+
+  if (error.status !== status) {
+    return false;
+  }
+
+  return pathPrefix ? error.path.startsWith(pathPrefix) : true;
+}
+
 function resolveBase(): string {
   return typeof window === "undefined" ? INTERNAL_BASE : PUBLIC_BASE;
 }
@@ -79,7 +109,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`API ${response.status} ${path}: ${body}`);
+    throw new ApiError(response.status, path, body);
   }
 
   if (response.status === 204) {

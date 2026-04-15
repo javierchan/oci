@@ -8,9 +8,10 @@ import { Breadcrumb } from "@/components/breadcrumb";
 import { GraphControls } from "@/components/graph-controls";
 import { GraphDetailPanel } from "@/components/graph-detail-panel";
 import { IntegrationGraph } from "@/components/integration-graph";
-import { api } from "@/lib/api";
+import { api, isApiErrorStatus } from "@/lib/api";
 import type { GraphEdge, GraphNode, GraphParams, GraphResponse } from "@/lib/types";
 import type { Project } from "@/lib/types";
+import { useRouter } from "next/navigation";
 
 type GraphPageProps = {
   params: {
@@ -31,6 +32,7 @@ const EMPTY_GRAPH: GraphResponse = {
 };
 
 export default function GraphPage({ params }: GraphPageProps): JSX.Element {
+  const router = useRouter();
   const svgRef = useRef<SVGSVGElement>(null);
   const [graph, setGraph] = useState<GraphResponse>(EMPTY_GRAPH);
   const [project, setProject] = useState<Project | null>(null);
@@ -45,15 +47,29 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
 
   useEffect(() => {
     let cancelled = false;
-    void api.getProject(params.projectId).then((response) => {
-      if (!cancelled) {
-        setProject(response);
-      }
-    });
+    void api
+      .getProject(params.projectId)
+      .then((response) => {
+        if (!cancelled) {
+          setProject(response);
+        }
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (isApiErrorStatus(error, 404, "/api/v1/projects/")) {
+          router.replace("/projects");
+          return;
+        }
+
+        setError(error instanceof Error ? error.message : "Unable to load project.");
+      });
     return () => {
       cancelled = true;
     };
-  }, [params.projectId]);
+  }, [params.projectId, router]);
 
   useEffect(() => {
     let cancelled = false;
