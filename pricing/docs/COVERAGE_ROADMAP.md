@@ -336,15 +336,23 @@ Current test baseline:
 - assistant quote assembly helper suite: `3 pass / 0 fail`
 - quote response payload helper suite: `1 pass / 0 fail`
 - assistant quote orchestrator helper suite: `2 pass / 0 fail`
+- assistant quote routing helper suite: `2 pass / 0 fail`
+- quote routing deps helper suite: `3 pass / 0 fail`
+- assistant orchestration deps helper suite: `3 pass / 0 fail`
+- assistant reply writers helper suite: `4 pass / 0 fail`
 - workbook-focused suite: `40 pass / 0 fail`
 - parity suite: `157 pass / 0 fail`
 - quote export endpoint suite: `3 pass / 0 fail`
-- full server suite in sandbox: `841 pass / 0 fail`
+- full server suite in sandbox: `853 pass / 0 fail`
 
 This is the operational baseline at the time of this documentation update.
 
 Most recently closed conservative slices:
 
+- GenAI response-writer adapters now have their own helper boundary in `assistant-reply-writers.js`, with focused coverage for natural-reply assembly, structured-discovery reply assembly, and failure-safe discovery fallbacks
+- shared early-routing, intent-pipeline, and discovery-routing dependency assembly now has its own helper boundary in `assistant-orchestration-deps.js`, with focused coverage for the orchestration dependency bundles that `assistant.js` passes into those entry points
+- shared quote-routing dependency assembly now has its own helper boundary in `quote-routing-deps.js`, with focused coverage for the direct-fast-path, post-clarification, and assistant-routing dependency bundles
+- quote-routing orchestration now has its own helper boundary in `assistant-quote-routing.js`, with focused coverage for quote-candidate fallback and post-clarification handoff behavior
 - quote narrative/orchestration now has its own helper boundary in `assistant-quote-orchestrator.js`, with focused coverage for deterministic narrative assembly under GenAI failure and GenAI sanitization success paths
 - deterministic quote payload assembly now has its own helper boundary in `quote-response-payload.js`, with focused coverage for quote-mode payload construction shared by direct fast paths and post-clarification routing
 - quote-narrative assembly now has its own helper boundary in `assistant-quote-assembly.js`, with focused coverage for deterministic lead construction and stable final narrative assembly
