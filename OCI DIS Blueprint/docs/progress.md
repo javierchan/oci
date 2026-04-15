@@ -41,6 +41,19 @@ None
 
 ---
 
+## Quality Gates — ESLint + mypy Clean (2026-04-14)
+
+**Status:** ✅ Complete
+
+- Fixed `react/no-unescaped-entities` in `system-autocomplete.tsx`
+- Prefixed unused callback params with `_` across `graph-controls.tsx`,
+  `integration-graph.tsx`, `use-theme.ts`, `system-autocomplete.tsx`
+- Fixed 10 mypy errors in `recalc_service.py`, `import_service.py`,
+  `export_service.py` using `cast(dict[str, Any], ...)` at ORM return sites
+- All five quality gates now green: pytest, ruff, mypy, tsc, eslint
+
+---
+
 ## Browser Test Remediation — Bug Fixes + UX Enhancements
 
 **Completed:** 2026-04-14
