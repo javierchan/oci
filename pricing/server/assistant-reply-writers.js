@@ -1,6 +1,7 @@
 'use strict';
 
 const { runChat, extractChatText } = require('./genai');
+const { resolveGenAIRequestOptions } = require('./genai-profiles');
 const { buildSessionContextBlock } = require('./intent-extractor');
 const { stringifyContextPack } = require('./context-packs');
 
@@ -52,15 +53,13 @@ async function writeNaturalReply(cfg, conversation, userText, context = {}, sess
     context.assumptionLines?.length ? `Assumptions:\n${context.assumptionLines.join('\n')}` : '',
     context.candidateLines?.length ? `Candidates:\n${context.candidateLines.join('\n')}` : '',
   ].filter(Boolean).join('\n\n');
+  const requestOptions = resolveGenAIRequestOptions('narrative', cfg);
 
   const response = await runChatImpl({
     cfg,
+    ...requestOptions,
     systemPrompt: RESPONSE_PROMPT,
     messages: buildConversationMessages(conversation, contextBlock),
-    maxTokens: 900,
-    temperature: 0.35,
-    topP: 0.7,
-    topK: -1,
   });
   return extractChatTextImpl(response?.data || response).trim();
 }
@@ -74,6 +73,7 @@ async function writeStructuredContextReply(cfg, conversation, userText, sessionC
   } = deps;
 
   if (!cfg?.modelId || !cfg?.compartment) return '';
+  const requestOptions = resolveGenAIRequestOptions('discovery', cfg);
 
   const sessionBlock = buildSessionContextBlockImpl(sessionContext);
   const contextBlock = [
@@ -85,12 +85,9 @@ async function writeStructuredContextReply(cfg, conversation, userText, sessionC
   try {
     const response = await runChatImpl({
       cfg,
+      ...requestOptions,
       systemPrompt: STRUCTURED_DISCOVERY_PROMPT,
       messages: buildConversationMessages(conversation, contextBlock),
-      maxTokens: 700,
-      temperature: 0.2,
-      topP: 0.5,
-      topK: -1,
     });
     return extractChatTextImpl(response?.data || response).trim();
   } catch {

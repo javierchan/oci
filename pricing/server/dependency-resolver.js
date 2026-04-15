@@ -3,7 +3,11 @@
 const { searchProducts, searchPresets, searchWorkbookServices, searchServiceRegistry } = require('./catalog');
 const { getWorkbookPart, getWorkbookService } = require('./workbook-rules');
 const { inferConsumptionPattern, inferQuantityForPattern } = require('./consumption-model');
-const { getServiceFamily } = require('./service-families');
+const {
+  getServiceFamily,
+  getDependencyResolutionPlan,
+  shouldUseDetailedDependencyProductSelection,
+} = require('./service-families');
 
 const FAMILY_RESOLVERS = {
   network_fastconnect: resolveFastConnectComponents,
@@ -49,7 +53,9 @@ function resolveRequestDependencies(index, request) {
     }, request);
   }
 
-  if (isCompositeWorkloadRequest(request.source)) {
+  const dependencyPlan = getDependencyResolutionPlan(request);
+
+  if (dependencyPlan.mode === 'composite') {
     const components = resolveCompositeWorkload(index, request);
     if (components.length) {
       return finalizeResolution(index, components, {
@@ -60,48 +66,17 @@ function resolveRequestDependencies(index, request) {
     }
   }
 
-  if (request.shape?.kind === 'flex' || request.shape?.kind === 'fixed') {
-    const components = resolveFlexComponents(index, request);
+  if (dependencyPlan.familyId && FAMILY_RESOLVERS[dependencyPlan.familyId]) {
+    const family = dependencyPlan.family || getServiceFamily(dependencyPlan.declaredFamilyId || dependencyPlan.familyId);
+    const components = enrichFamilyComponentsForDependencies(
+      dependencyPlan.familyId,
+      index,
+      request,
+      FAMILY_RESOLVERS[dependencyPlan.familyId](index, request),
+    );
     return finalizeResolution(index, components, {
       type: 'product',
-      label: request.shape.shapeName || `${request.shape.family}.${request.shape.series}.shape`,
-      candidates: components.map((item) => item.product.fullDisplayName),
-    }, request);
-  }
-
-  if (request.serviceFamily && FAMILY_RESOLVERS[request.serviceFamily]) {
-    const family = getServiceFamily(request.serviceFamily);
-    const components = FAMILY_RESOLVERS[request.serviceFamily](index, request);
-    return finalizeResolution(index, components, {
-      type: 'product',
-      label: family?.canonical || request.serviceFamily,
-      candidates: components.map((item) => item.product.fullDisplayName),
-    }, request);
-  }
-
-  if (isFastConnectRequest(request.source)) {
-    const components = resolveFastConnectComponents(index, request);
-    return finalizeResolution(index, components, {
-      type: 'product',
-      label: 'FastConnect',
-      candidates: components.map((item) => item.product.fullDisplayName),
-    }, request);
-  }
-
-  if (isBlockVolumeRequest(request.source)) {
-    const components = resolveBlockVolumeComponents(index, request);
-    return finalizeResolution(index, components, {
-      type: 'product',
-      label: 'Block Volume',
-      candidates: components.map((item) => item.product.fullDisplayName),
-    }, request);
-  }
-
-  if (isFunctionsRequest(request.source)) {
-    const components = resolveFunctionsComponents(index, request);
-    return finalizeResolution(index, components, {
-      type: 'product',
-      label: 'OCI Functions',
+      label: family?.canonical || dependencyPlan.familyId,
       candidates: components.map((item) => item.product.fullDisplayName),
     }, request);
   }
@@ -126,7 +101,7 @@ function resolveRequestDependencies(index, request) {
     }, request);
   }
 
-  if (productMatches.length && isDetailedMediaFlowRequest(request.productQuery)) {
+  if (productMatches.length && shouldUseDetailedDependencyProductSelection(dependencyPlan.familyId || request.serviceFamily, request.productQuery)) {
     const best = selectDetailedMediaFlowProduct(productMatches, request.productQuery) || productMatches[0];
     return finalizeResolution(index, [{ product: best }], {
       type: 'product',
@@ -249,13 +224,6 @@ function findFirstResolvableRegistryMatch(index, request, registryMatches) {
   return null;
 }
 
-function isDetailedMediaFlowRequest(text) {
-  const source = String(text || '').toLowerCase();
-  return /\bmedia flow\b/.test(source) &&
-    /\b(sd|hd|4k)\b/.test(source) &&
-    /\b(?:below 30fps|above 30fps and below 60fps|above 60fps and below 120fps)\b/.test(source);
-}
-
 function selectDetailedMediaFlowProduct(matches, query) {
   const source = String(query || '').toLowerCase();
   const expectedTags = [];
@@ -288,6 +256,14 @@ function finalizeResolution(index, components, resolution, request = {}) {
     warnings: expanded.warnings,
     resolution,
   };
+}
+
+function enrichFamilyComponentsForDependencies(familyId, index, request, components) {
+  const enriched = Array.isArray(components) ? components.slice() : [];
+  if (familyId !== 'compute_flex') return enriched;
+  const hasAttachedBlockVolume = hasNumericValue(request?.capacityGb) || hasNumericValue(request?.vpuPerGb);
+  if (!hasAttachedBlockVolume) return enriched;
+  return dedupeComponents([...enriched, ...resolveBlockVolumeComponents(index, request)]);
 }
 
 function shouldExpandWorkbookPrerequisites(request = {}) {
@@ -448,44 +424,6 @@ function shouldPreferPreset(query) {
   const text = String(query || '').toLowerCase();
   if (!text) return false;
   return /\b(architecture|3-tier|three-tier|stack|landing zone|environment|solution|workload|platform)\b/.test(text);
-}
-
-function isCompositeWorkloadRequest(text) {
-  const source = String(text || '').toLowerCase();
-  const hits = [
-    /\bload balancer\b/.test(source),
-    /\bblock storage\b|\bblock volumes?\b/.test(source),
-    /\bfile storage\b/.test(source),
-    /\bobject storage\b/.test(source),
-    /\bobject storage\b[^\n]*\brequests?\b/.test(source),
-    /\barchive storage\b/.test(source),
-    /\binfrequent access storage\b/.test(source),
-    /\bfastconnect\b|\bfast connect\b/.test(source),
-    /\b(?:oci )?functions\b|\bserverless\b/.test(source),
-    /\bapi gateway\b/.test(source),
-    /\b(?:waf|web application firewall)\b/.test(source),
-    /\bdns\b/.test(source),
-    /\bhealth checks?\b/.test(source),
-    /\bnetwork firewall\b/.test(source),
-    /\bmonitoring (?:ingestion|retrieval)\b/.test(source),
-    /\bnotifications https delivery\b/.test(source),
-    /\blog analytics\b/.test(source),
-    /\bdata integration\b/.test(source),
-    /\bbase database service\b/.test(source),
-    /\bdatabase cloud service\b/.test(source),
-    /\boracle integration cloud\b|\boic\b/.test(source),
-    /\boracle analytics cloud\b|\boac\b/.test(source),
-    /\bdata safe\b/.test(source),
-    /\bautonomous ai (?:lakehouse|transaction processing)\b/.test(source),
-    /\bexadata exascale\b/.test(source),
-    /\bexadata dedicated infrastructure\b/.test(source),
-    /\bexadata cloud@customer\b|\bexadata cloud at customer\b/.test(source),
-    /\b(?:vm|bm)\.[a-z0-9.]+(?:\.flex|\.\d+)\b/.test(source) ||
-      /\b(?:standard|optimized)\d+(?:\.\d+|\.flex)\b/.test(source) ||
-      /\bdenseio\.[ea]\d+\.flex\b/.test(source) ||
-      /\b[ea]\d+\.flex\b/.test(source),
-  ].filter(Boolean).length;
-  return hits >= 2 || /\b3-tier\b|\bthree-tier\b|\barchitecture\b/.test(source);
 }
 
 function resolveCompositeWorkload(index, request) {
@@ -1125,10 +1063,6 @@ function classifyComputeMetric(product) {
   return 'compute-component';
 }
 
-function isFastConnectRequest(text) {
-  return /\bfast\s?connect\b/i.test(String(text || ''));
-}
-
 function resolveFastConnectComponents(index, request) {
   const source = String(request.source || '');
   const match = source.match(/(\d+(?:\.\d+)?)\s*g(?:bp?s?)?\b/i);
@@ -1150,17 +1084,6 @@ function resolveFastConnectComponents(index, request) {
     new RegExp(`\\b${portGbps}\\s*g(?:bp?s?)?\\b`, 'i').test(item.displayName)
   );
   return fallback ? [{ product: fallback, quantity: 1, instances: 1, dependencyKind: 'fastconnect-port' }] : [];
-}
-
-function isBlockVolumeRequest(text) {
-  const source = String(text || '').toLowerCase();
-  return /\bblock volumes?\b|\bblock storage\b/.test(source) && /\bvpu'?s?\b|\bperformance\b/.test(source);
-}
-
-function isFunctionsRequest(text) {
-  const source = String(text || '').toLowerCase();
-  return /\b(oracle functions|oci functions|functions|serverless)\b/.test(source) &&
-    (/\binvocations?\b/.test(source) || /\bexecution time\b/.test(source) || /\bmemory\b/.test(source));
 }
 
 function resolveNetworkFirewallComponents(index, request) {

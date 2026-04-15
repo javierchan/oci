@@ -6,6 +6,94 @@ const path = require('path');
 
 const common = require('oci-common');
 const genai = require('oci-generativeaiinference');
+const {
+  normalizeGenAIProfileName,
+  resolveGenAIRequestOptions,
+} = require('./genai-profiles');
+const { logger, recordGenAICall } = require('./logger');
+
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getGenAITokenBudget(env = process.env) {
+  return parsePositiveInteger(env?.OCI_GENAI_TOKEN_BUDGET, 12000);
+}
+
+function estimateTextTokens(text) {
+  const source = String(text || '').trim();
+  if (!source) return 0;
+  return Math.ceil(source.length / 4);
+}
+
+function estimateChatInputTokens({ systemPrompt, messages }) {
+  let total = estimateTextTokens(systemPrompt);
+  for (const message of messages || []) {
+    total += estimateTextTokens(message?.role);
+    if (Array.isArray(message?.content)) {
+      for (const content of message.content) {
+        if (typeof content?.text === 'string') total += estimateTextTokens(content.text);
+      }
+      continue;
+    }
+    total += estimateTextTokens(message?.content);
+  }
+  return total;
+}
+
+function maybeWarnOnTokenBudget({ logger: requestLogger, profile, kind, modelId, systemPrompt, messages, env = process.env }) {
+  const estimatedInputTokens = estimateChatInputTokens({ systemPrompt, messages });
+  const tokenBudget = getGenAITokenBudget(env);
+  if (estimatedInputTokens > tokenBudget) {
+    (requestLogger || logger).warn({
+      event: 'genai.token_budget.exceeded',
+      profile: profile || '',
+      kind: kind || 'chat',
+      modelId: modelId || '',
+      estimatedInputTokens,
+      tokenBudget,
+      messageCount: Array.isArray(messages) ? messages.length : 0,
+    }, 'Estimated GenAI prompt exceeds configured token budget');
+  }
+  return {
+    estimatedInputTokens,
+    tokenBudget,
+    exceeded: estimatedInputTokens > tokenBudget,
+  };
+}
+
+function extractUsageMetadata(payload) {
+  return payload?.chatResult?.chatResponse?.usage
+    || payload?.chatResponse?.usage
+    || payload?.usage
+    || null;
+}
+
+function logGenAIUsage({ logger: requestLogger, profile, kind, modelId, response }) {
+  const usage = extractUsageMetadata(response?.data || response);
+  if (!usage) return null;
+  const promptTokens = Number(usage?.promptTokens || 0);
+  const completionTokens = Number(usage?.completionTokens || 0);
+  const totalTokens = Number(usage?.totalTokens || 0);
+  const cachedPromptTokens = Number(usage?.promptTokensDetails?.cachedTokens || 0);
+  (requestLogger || logger).debug({
+    event: 'genai.request.usage',
+    profile: profile || '',
+    kind: kind || 'chat',
+    modelId: modelId || '',
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    cachedPromptTokens,
+  }, 'GenAI token usage reported');
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    cachedPromptTokens,
+  };
+}
 
 function parseSimpleYaml(filePath) {
   if (!filePath || !fs.existsSync(filePath)) return {};
@@ -32,13 +120,23 @@ function loadGenAISettings(env) {
   const endpoint = env.OCI_GENAI_ENDPOINT || cfg.endpoint || '';
   const endpointRegion = endpoint.match(/inference\.generativeai\.([a-z0-9-]+)\./i)?.[1] || '';
   const region = endpointRegion || env.OCI_REGION || 'us-chicago-1';
+  const baseModelId = env.OCI_GENAI_MODEL || cfg.base_model_id || '';
+  const narrativeModelId = env.OCI_GENAI_MODEL_NARRATIVE || cfg.narrative_model_id || baseModelId;
+  const discoveryModelId = env.OCI_GENAI_MODEL_DISCOVERY || cfg.discovery_model_id || narrativeModelId || baseModelId;
+  const intentModelId = env.OCI_GENAI_MODEL_INTENT || cfg.intent_model_id || baseModelId || narrativeModelId || discoveryModelId;
+  const imageModelId = env.OCI_GENAI_MODEL_IMAGE || cfg.image_model_id || narrativeModelId || discoveryModelId || baseModelId;
 
   return {
     configPath,
     profile: env.OCI_GENAI_PROFILE || cfg.oci_profile || env.OCI_CLI_PROFILE || 'DEFAULT',
     endpoint: endpoint || `https://inference.generativeai.${region}.oci.oraclecloud.com`,
     compartmentId: env.OCI_GENAI_COMPARTMENT || cfg.compartment_id || env.OCI_COMPARTMENT || '',
-    modelId: env.OCI_GENAI_MODEL || cfg.base_model_id || '',
+    modelId: baseModelId || narrativeModelId || discoveryModelId || intentModelId || imageModelId,
+    defaultProfile: normalizeGenAIProfileName(env.OCI_GENAI_DEFAULT_PROFILE || cfg.default_profile || 'narrative'),
+    narrativeModelId,
+    discoveryModelId,
+    intentModelId,
+    imageModelId,
     region,
   };
 }
@@ -86,7 +184,7 @@ function shouldRetryWithMaxCompletionTokens(error) {
   return /max_tokens/i.test(message) && /max_completion_tokens/i.test(message);
 }
 
-async function executeChatWithFallback({ client, cfg, messages, maxTokens, temperature, topP, topK }) {
+async function executeChatWithFallback({ client, cfg, messages, maxTokens, temperature, topP, topK, logMeta = {} }) {
   const primaryChatDetails = buildChatDetails({
     cfg,
     messages,
@@ -100,6 +198,14 @@ async function executeChatWithFallback({ client, cfg, messages, maxTokens, tempe
     return await client.chat({ chatDetails: primaryChatDetails });
   } catch (error) {
     if (!shouldRetryWithMaxCompletionTokens(error)) throw error;
+    logMeta.logger?.warn({
+      event: 'genai.max_tokens_retry',
+      profile: logMeta.profile,
+      kind: logMeta.kind,
+      modelId: cfg?.modelId || '',
+      message: error.message,
+      fallbackUsed: 'maxCompletionTokens',
+    }, 'GenAI request rejected maxTokens; retrying with maxCompletionTokens');
     const fallbackChatDetails = buildChatDetails({
       cfg,
       messages,
@@ -113,9 +219,32 @@ async function executeChatWithFallback({ client, cfg, messages, maxTokens, tempe
   }
 }
 
-async function runChat({ cfg, systemPrompt, messages, maxTokens, temperature = 0.7, topP = 0.75, topK = -1 }) {
+function resolveChatExecutionOptions(cfg, profile, overrides = {}) {
+  const resolved = resolveGenAIRequestOptions(profile, cfg, overrides);
+  return {
+    cfg: {
+      ...cfg,
+      modelId: resolved.modelId || cfg?.modelId || '',
+    },
+    maxTokens: resolved.maxTokens,
+    temperature: resolved.temperature,
+    topP: resolved.topP,
+    topK: resolved.topK,
+  };
+}
+
+async function runChat({ cfg, systemPrompt, messages, profile, maxTokens, temperature, topP, topK, modelId, logger: requestLogger, trace }) {
+  const resolvedProfile = profile || cfg?.defaultProfile || 'narrative';
+  const execution = resolveChatExecutionOptions(cfg, resolvedProfile, {
+    maxTokens,
+    temperature,
+    topP,
+    topK,
+    modelId,
+  });
   const client = createInferenceClient(cfg);
   const models = genai.models;
+  const activeLogger = requestLogger || logger;
 
   const chatMessages = [];
   if (systemPrompt) {
@@ -131,20 +260,100 @@ async function runChat({ cfg, systemPrompt, messages, maxTokens, temperature = 0
     });
   }
 
-  return executeChatWithFallback({
-    client,
-    cfg,
+  // The current OCI Node SDK surface does not expose a clear request-side prompt-cache
+  // control for chat requests, so M6 relies on prompt truncation now. If SDK support
+  // lands later, cache keys should be based on stable prompt/context content plus
+  // profile, not conversation turn order.
+  const tokenBudgetState = maybeWarnOnTokenBudget({
+    logger: activeLogger,
+    profile: resolvedProfile,
+    kind: 'chat',
+    modelId: execution.cfg?.modelId || '',
+    systemPrompt,
     messages: chatMessages,
-    maxTokens: Number(maxTokens || 2000),
+  });
+  const startedAt = Date.now();
+  activeLogger.debug({
+    event: 'genai.request.start',
+    kind: 'chat',
+    profile: resolvedProfile,
+    modelId: execution.cfg?.modelId || '',
+    messageCount: chatMessages.length,
+    estimatedInputTokens: tokenBudgetState.estimatedInputTokens,
+  }, 'Starting GenAI chat request');
+
+  try {
+    const response = await executeChatWithFallback({
+      client,
+      cfg: execution.cfg,
+      messages: chatMessages,
+      maxTokens: execution.maxTokens,
+      temperature: execution.temperature,
+      topP: execution.topP,
+      topK: execution.topK,
+      logMeta: {
+        kind: 'chat',
+        profile: resolvedProfile,
+        logger: activeLogger,
+      },
+    });
+    const latencyMs = Date.now() - startedAt;
+    recordGenAICall(trace, {
+      kind: 'chat',
+      profile: resolvedProfile,
+      modelId: execution.cfg?.modelId || '',
+      latencyMs,
+      ok: true,
+    });
+    logGenAIUsage({
+      logger: activeLogger,
+      profile: resolvedProfile,
+      kind: 'chat',
+      modelId: execution.cfg?.modelId || '',
+      response,
+    });
+    activeLogger.debug({
+      event: 'genai.request.success',
+      kind: 'chat',
+      profile: resolvedProfile,
+      modelId: execution.cfg?.modelId || '',
+      latencyMs,
+    }, 'Completed GenAI chat request');
+    return response;
+  } catch (error) {
+    const latencyMs = Date.now() - startedAt;
+    recordGenAICall(trace, {
+      kind: 'chat',
+      profile: resolvedProfile,
+      modelId: execution.cfg?.modelId || '',
+      latencyMs,
+      ok: false,
+      errorMessage: error.message,
+    });
+    activeLogger.warn({
+      event: 'genai.request.failure',
+      kind: 'chat',
+      profile: resolvedProfile,
+      modelId: execution.cfg?.modelId || '',
+      latencyMs,
+      errorMessage: error.message,
+    }, 'GenAI chat request failed');
+    throw error;
+  }
+}
+
+async function runMultimodalChat({ cfg, systemPrompt, userText, imageDataUrl, profile, maxTokens, temperature, topP, topK, modelId, logger: requestLogger, trace }) {
+  const resolvedProfile = profile || 'image';
+  const execution = resolveChatExecutionOptions(cfg, resolvedProfile, {
+    maxTokens,
     temperature,
     topP,
     topK,
+    modelId,
   });
-}
-
-async function runMultimodalChat({ cfg, systemPrompt, userText, imageDataUrl, maxTokens, temperature = 0.2, topP = 0.5, topK = -1 }) {
   const client = createInferenceClient(cfg);
   const models = genai.models;
+  const activeLogger = requestLogger || logger;
 
   const userContent = [];
   if (userText) {
@@ -175,15 +384,83 @@ async function runMultimodalChat({ cfg, systemPrompt, userText, imageDataUrl, ma
     content: userContent,
   });
 
-  return executeChatWithFallback({
-    client,
-    cfg,
+  const tokenBudgetState = maybeWarnOnTokenBudget({
+    logger: activeLogger,
+    profile: resolvedProfile,
+    kind: 'multimodal_chat',
+    modelId: execution.cfg?.modelId || '',
+    systemPrompt,
     messages,
-    maxTokens: Number(maxTokens || 1200),
-    temperature,
-    topP,
-    topK,
   });
+  const startedAt = Date.now();
+  activeLogger.debug({
+    event: 'genai.request.start',
+    kind: 'multimodal_chat',
+    profile: resolvedProfile,
+    modelId: execution.cfg?.modelId || '',
+    hasImage: Boolean(imageDataUrl),
+    hasText: Boolean(userText),
+    estimatedInputTokens: tokenBudgetState.estimatedInputTokens,
+  }, 'Starting GenAI multimodal request');
+
+  try {
+    const response = await executeChatWithFallback({
+      client,
+      cfg: execution.cfg,
+      messages,
+      maxTokens: execution.maxTokens,
+      temperature: execution.temperature,
+      topP: execution.topP,
+      topK: execution.topK,
+      logMeta: {
+        kind: 'multimodal_chat',
+        profile: resolvedProfile,
+        logger: activeLogger,
+      },
+    });
+    const latencyMs = Date.now() - startedAt;
+    recordGenAICall(trace, {
+      kind: 'multimodal_chat',
+      profile: resolvedProfile,
+      modelId: execution.cfg?.modelId || '',
+      latencyMs,
+      ok: true,
+    });
+    logGenAIUsage({
+      logger: activeLogger,
+      profile: resolvedProfile,
+      kind: 'multimodal_chat',
+      modelId: execution.cfg?.modelId || '',
+      response,
+    });
+    activeLogger.debug({
+      event: 'genai.request.success',
+      kind: 'multimodal_chat',
+      profile: resolvedProfile,
+      modelId: execution.cfg?.modelId || '',
+      latencyMs,
+    }, 'Completed GenAI multimodal request');
+    return response;
+  } catch (error) {
+    const latencyMs = Date.now() - startedAt;
+    recordGenAICall(trace, {
+      kind: 'multimodal_chat',
+      profile: resolvedProfile,
+      modelId: execution.cfg?.modelId || '',
+      latencyMs,
+      ok: false,
+      errorMessage: error.message,
+    });
+    activeLogger.warn({
+      event: 'genai.request.failure',
+      kind: 'multimodal_chat',
+      profile: resolvedProfile,
+      modelId: execution.cfg?.modelId || '',
+      latencyMs,
+      errorMessage: error.message,
+    }, 'GenAI multimodal request failed');
+    throw error;
+  }
 }
 
 function extractChatText(data) {
@@ -217,8 +494,14 @@ function extractChatText(data) {
 module.exports = {
   loadGenAISettings,
   buildChatDetails,
+  estimateChatInputTokens,
+  resolveChatExecutionOptions,
   shouldRetryWithMaxCompletionTokens,
   executeChatWithFallback,
+  extractUsageMetadata,
+  getGenAITokenBudget,
+  logGenAIUsage,
+  maybeWarnOnTokenBudget,
   runChat,
   runMultimodalChat,
   extractChatText,

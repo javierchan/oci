@@ -11,10 +11,11 @@ The goal of this guide is to keep the docs set easy to navigate, low on overlap,
 1. [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ARCHITECTURE.md)
 2. [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/EXECUTION_PLAN.md)
 3. [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md)
-4. [Assistant Branch Inventory](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ASSISTANT_BRANCH_INVENTORY.md)
-5. [Sub-Agent Strategy](/Users/javierchan/Documents/GitHub/oci/pricing/docs/SUBAGENT_STRATEGY.md)
-6. [Parallel Execution Lanes](/Users/javierchan/Documents/GitHub/oci/pricing/docs/PARALLEL_EXECUTION_LANES.md)
-7. [Quality Regression](/Users/javierchan/Documents/GitHub/oci/pricing/docs/QUALITY_REGRESSION.md)
+4. [Improvement Milestones](/Users/javierchan/Documents/GitHub/oci/pricing/docs/IMPROVEMENT_MILESTONES.md)
+5. [Assistant Branch Inventory](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ASSISTANT_BRANCH_INVENTORY.md)
+6. [Sub-Agent Strategy](/Users/javierchan/Documents/GitHub/oci/pricing/docs/SUBAGENT_STRATEGY.md)
+7. [Parallel Execution Lanes](/Users/javierchan/Documents/GitHub/oci/pricing/docs/PARALLEL_EXECUTION_LANES.md)
+8. [Quality Regression](/Users/javierchan/Documents/GitHub/oci/pricing/docs/QUALITY_REGRESSION.md)
 
 ## Source Of Truth Matrix
 
@@ -23,6 +24,7 @@ The goal of this guide is to keep the docs set easy to navigate, low on overlap,
 | What system are we building and what contracts must remain stable? | [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ARCHITECTURE.md) | Architecture owns design intent, stable contracts, and system boundaries. |
 | What should we do next, in what order, and how do we define completion? | [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/EXECUTION_PLAN.md) | This is the tactical sequencing document. |
 | What is already covered, validated, or still missing in runtime coverage? | [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md) | Coverage state and validated baselines belong here. |
+| What architectural problems were identified and how should they be fixed? | [Improvement Milestones](/Users/javierchan/Documents/GitHub/oci/pricing/docs/IMPROVEMENT_MILESTONES.md) | Source of truth for remediation milestones, rationale, and exit criteria. |
 | How should we reduce remaining assistant-owned policy safely? | [Assistant Branch Inventory](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ASSISTANT_BRANCH_INVENTORY.md) | This is the tracking artifact for the boundary-hardening stream. |
 | When should sub-agents be used at all? | [Sub-Agent Strategy](/Users/javierchan/Documents/GitHub/oci/pricing/docs/SUBAGENT_STRATEGY.md) | This defines delegation policy and boundaries. |
 | If sub-agents are used, how should parallel work be partitioned? | [Parallel Execution Lanes](/Users/javierchan/Documents/GitHub/oci/pricing/docs/PARALLEL_EXECUTION_LANES.md) | This defines concurrency topology, not product priorities. |
@@ -39,6 +41,9 @@ The goal of this guide is to keep the docs set easy to navigate, low on overlap,
 - `COVERAGE_ROADMAP.md`
   - should summarize validated coverage and remaining gaps
   - should not duplicate execution sequencing
+- `IMPROVEMENT_MILESTONES.md`
+  - should own the full set of architectural remediation milestones and their exit criteria
+  - should not track active functional coverage work (that belongs in Coverage Roadmap and Execution Plan)
 - `ASSISTANT_BRANCH_INVENTORY.md`
   - should track assistant-boundary work only
   - should not become a general refactor backlog

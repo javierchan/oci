@@ -1,6 +1,7 @@
 'use strict';
 
 const { runChat, extractChatText } = require('./genai');
+const { resolveGenAIRequestOptions } = require('./genai-profiles');
 const {
   buildConsumptionExplanation,
   buildDeterministicConsiderationsFallback,
@@ -33,16 +34,14 @@ async function buildGenAIQuoteEnrichment(cfg, userText, quote, assumptions) {
   const technologyProfile = inferQuoteTechnologyProfile(quote);
   const allowMigrationNotes = shouldAllowMigrationNotes(userText, quote);
   const contextBlock = buildQuoteEnrichmentContextBlock(userText, quote, assumptions, technologyProfile);
+  const requestOptions = resolveGenAIRequestOptions('narrative', cfg);
 
   try {
     const response = await runChat({
       cfg,
+      ...requestOptions,
       systemPrompt: QUOTE_ENRICHMENT_PROMPT,
       messages: [{ role: 'user', content: contextBlock }],
-      maxTokens: 350,
-      temperature: 0.2,
-      topP: 0.6,
-      topK: -1,
     });
     return sanitizeQuoteEnrichment(extractChatText(response?.data || response).trim(), { allowMigrationNotes });
   } catch (_error) {

@@ -438,9 +438,13 @@ Recently advanced:
 - added deterministic parity for a `Network Firewall + WAF + Load Balancer + DNS + Health Checks` composite edge/security bundle
 - added deterministic parity for a `Base Database BYOL + OIC Standard BYOL + OAC Professional BYOL OCPU + FastConnect` transport-platform bundle
 - added deterministic parity for a `Database Cloud Service BYOL + OIC Enterprise BYOL + OAC Professional BYOL OCPU + Object Storage` platform bundle
+- added deterministic parity for a `Database Cloud Service + OIC Standard + OAC Enterprise + File Storage + FastConnect` storage-and-transport platform bundle
 - added deterministic parity for a `Base Database + OIC Standard + OAC Enterprise + OCI Data Integration workspace + File Storage` platform bundle
 - added deterministic parity for a `Database Cloud Service BYOL + OIC Enterprise BYOL + OAC Professional BYOL OCPU + OCI Data Integration processed throughput + Object Storage` platform bundle
+- added deterministic parity for a `Database Cloud Service BYOL + OIC Enterprise BYOL + OAC Professional BYOL OCPU + File Storage + FastConnect` storage-and-transport BYOL platform bundle
 - added deterministic parity for an `Exadata Dedicated + OIC Standard + OAC Enterprise + File Storage + FastConnect` storage-heavy platform bundle
+- added deterministic parity for a `Network Firewall + WAF + Load Balancer + DNS + Health Checks + Notifications HTTPS Delivery` composite edge/security/delivery bundle
+- added deterministic parity for an `Exadata Cloud@Customer + Data Safe + Monitoring Retrieval + Health Checks + Notifications HTTPS Delivery` observability-and-delivery bundle
 - added workbook aggregate regression coverage for `RVTools-derived compute + FastConnect + Monitoring Retrieval`
 - added workbook aggregate regression coverage for `guided inventory AMD workloads + Flexible Load Balancer + Health Checks`
 

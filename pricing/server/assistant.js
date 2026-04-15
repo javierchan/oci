@@ -12,7 +12,9 @@ const {
   inferQuoteTechnologyProfile: inferQuoteTechnologyProfileHelper,
 } = require('./assistant-quote-narrative');
 const { runChat, extractChatText } = require('./genai');
+const { resolveGenAIRequestOptions } = require('./genai-profiles');
 const { analyzeIntent, analyzeImageIntent, buildSessionContextBlock } = require('./intent-extractor');
+const { logger, summarizeTrace } = require('./logger');
 const { buildAssistantContextPack, buildCatalogListingReply, buildStructuredDiscoveryFallback, buildUncoveredComputeReply, canSafelyQuoteUncoveredComputeVariant, findUncoveredComputeVariant, stringifyContextPack, summarizeContextPack } = require('./context-packs');
 const { buildServiceUnavailableMessage } = require('./assistant-response-helpers');
 const { sanitizeQuoteEnrichment } = require('./assistant-quote-enrichment');
@@ -173,20 +175,20 @@ async function writeNaturalReply(cfg, conversation, userText, context, sessionCo
     })),
     { role: 'user', content: contextBlock },
   ];
+  const requestOptions = resolveGenAIRequestOptions('narrative', cfg);
 
   const response = await runChat({
     cfg,
+    ...requestOptions,
     systemPrompt: RESPONSE_PROMPT,
     messages,
-    maxTokens: 900,
-    temperature: 0.35,
-    topP: 0.7,
-    topK: -1,
+    logger: context.logger,
+    trace: context.trace,
   });
   return extractChatText(response?.data || response).trim();
 }
 
-async function writeStructuredContextReply(cfg, conversation, userText, sessionContext, contextPack) {
+async function writeStructuredContextReply(cfg, conversation, userText, sessionContext, contextPack, options = {}) {
   if (!cfg?.modelId || !cfg?.compartment) return '';
   const history = Array.isArray(conversation) ? conversation.slice(-6) : [];
   const sessionBlock = buildSessionContextBlock(sessionContext);
@@ -203,16 +205,16 @@ async function writeStructuredContextReply(cfg, conversation, userText, sessionC
     })),
     { role: 'user', content: contextBlock },
   ];
+  const requestOptions = resolveGenAIRequestOptions('discovery', cfg);
 
   try {
     const response = await runChat({
       cfg,
+      ...requestOptions,
       systemPrompt: STRUCTURED_DISCOVERY_PROMPT,
       messages,
-      maxTokens: 700,
-      temperature: 0.2,
-      topP: 0.5,
-      topK: -1,
+      logger: options.logger,
+      trace: options.trace,
     });
     return extractChatText(response?.data || response).trim();
   } catch {
@@ -244,7 +246,9 @@ function classifyConsumptionGroup(pattern, line) {
   return classifyConsumptionGroupHelper(pattern, line);
 }
 
-async function respondToAssistant({ cfg, index, conversation, userText, imageDataUrl, sessionContext }) {
+async function respondToAssistant({ cfg, index, conversation, userText, imageDataUrl, sessionContext, logger: requestLogger, trace }) {
+  const activeLogger = requestLogger || logger;
+  const activeTrace = trace || { genaiCalls: [] };
   const effectiveUserText = mergeSessionQuoteFollowUp(
     sessionContext,
     mergeClarificationAnswer(conversation, userText),
@@ -255,6 +259,13 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
   });
   const contextualFollowUp = isShortContextualAnswer(userText);
   const compositeLike = isCompositeOrComparisonRequest(effectiveUserText);
+  activeLogger.debug({
+    event: 'assistant.pipeline.start',
+    hasImage: Boolean(imageDataUrl),
+    conversationDepth: Array.isArray(conversation) ? conversation.length : 0,
+    contextualFollowUp,
+    compositeLike,
+  }, 'Starting assistant pipeline');
   const {
     payload: earlyRoutingPayload,
     flexComparison,
@@ -276,7 +287,10 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     buildFlexComparisonQuote,
     buildFlexComparisonNarrative,
   });
-  if (earlyRoutingPayload) return respond(earlyRoutingPayload);
+  if (earlyRoutingPayload) {
+    logAssistantOutcome(activeLogger, activeTrace, 'early_exit', earlyRoutingPayload, earlyRoutingPayload.intent || null);
+    return respond(earlyRoutingPayload);
+  }
 
   const directQuoteFastPath = await resolveDirectQuoteFastPath({
     cfg,
@@ -290,7 +304,10 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     parsePromptRequest,
     quoteFromPrompt,
   });
-  if (directQuoteFastPath) return respond(directQuoteFastPath);
+  if (directQuoteFastPath) {
+    logAssistantOutcome(activeLogger, activeTrace, 'fast_path', directQuoteFastPath, directQuoteFastPath.intent || null);
+    return respond(directQuoteFastPath);
+  }
 
   const intentPipeline = await resolveIntentPipeline({
     cfg,
@@ -303,8 +320,8 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     flexComparison,
     index,
   }, {
-    analyzeIntent,
-    analyzeImageIntent,
+    analyzeIntent: (...args) => analyzeIntent(...args, { logger: activeLogger, trace: activeTrace }),
+    analyzeImageIntent: (...args) => analyzeImageIntent(...args, { logger: activeLogger, trace: activeTrace }),
     fallbackIntentOnAnalysisFailure,
     buildServiceUnavailableMessage,
     enrichExtractedInputsForFamily,
@@ -318,7 +335,10 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     buildFlexComparisonQuote,
     buildFlexComparisonNarrative,
   });
-  if (intentPipeline.payload) return respond(intentPipeline.payload);
+  if (intentPipeline.payload) {
+    logAssistantOutcome(activeLogger, activeTrace, 'full_pipeline', intentPipeline.payload, intentPipeline.payload.intent || null);
+    return respond(intentPipeline.payload);
+  }
   const enrichedIntent = intentPipeline.intent;
   const {
     topService,
@@ -347,14 +367,17 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     isDiscoveryIntent,
   }, {
     buildAssistantContextPack,
-    writeStructuredContextReply,
+    writeStructuredContextReply: (...args) => writeStructuredContextReply(...args, { logger: activeLogger, trace: activeTrace }),
     buildStructuredDiscoveryFallback,
     isConceptualPricingQuestion,
     hasExplicitQuoteLead,
     buildServiceUnavailableMessage,
     summarizeContextPack,
   });
-  if (discoveryRoutePayload) return respond(discoveryRoutePayload);
+  if (discoveryRoutePayload) {
+    logAssistantOutcome(activeLogger, activeTrace, 'full_pipeline', discoveryRoutePayload, enrichedIntent);
+    return respond(discoveryRoutePayload);
+  }
   const quoteCandidateState = prepareQuoteCandidateState({
     index,
     sessionContext,
@@ -422,10 +445,33 @@ async function respondToAssistant({ cfg, index, conversation, userText, imageDat
     buildQuoteUnresolvedPayload,
     buildAnswerFallbackPayload,
     summarizeMatches,
-    writeNaturalReply,
+    writeNaturalReply: (...args) => writeNaturalReply(...args, { logger: activeLogger, trace: activeTrace }),
   });
   Object.assign(enrichedIntent, postClarification.intent);
+  logAssistantOutcome(activeLogger, activeTrace, 'full_pipeline', postClarification.payload, enrichedIntent);
   return respond(postClarification.payload);
+}
+
+function classifyAssistantOutcome(payload = {}) {
+  if (payload?.needsClarification || payload?.question) return 'clarification';
+  if (payload?.quote || payload?.quoteMarkdown || payload?.totals || payload?.mode === 'quote') return 'quote';
+  return 'answer';
+}
+
+function logAssistantOutcome(activeLogger, trace, routingPath, payload, intent) {
+  const traceSummary = summarizeTrace(trace);
+  activeLogger.info({
+    event: 'assistant.pipeline.complete',
+    routingPath,
+    outcome: classifyAssistantOutcome(payload),
+    route: intent?.route || payload?.intent?.route || '',
+    serviceFamily: intent?.serviceFamily || payload?.intent?.serviceFamily || '',
+    shouldQuote: Boolean(intent?.shouldQuote ?? payload?.intent?.shouldQuote),
+    genaiCallCount: traceSummary.genaiCallCount,
+    genaiLatencyMs: traceSummary.genaiLatencyMs,
+    quoteProduced: classifyAssistantOutcome(payload) === 'quote',
+    clarificationTriggered: classifyAssistantOutcome(payload) === 'clarification',
+  }, 'Completed assistant pipeline');
 }
 
 module.exports = {

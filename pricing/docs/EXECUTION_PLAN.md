@@ -56,6 +56,12 @@ Completed in the current execution wave:
   - Load Balancer + WAF + DNS + Health Checks
   - Network Firewall + Monitoring Retrieval + Notifications HTTPS Delivery + Health Checks
   - Network Firewall + WAF + Load Balancer + DNS + Health Checks
+  - Network Firewall + WAF + Load Balancer + DNS + Health Checks + Notifications HTTPS Delivery
+- parity coverage now also includes broader database/integration/storage transport bundles:
+  - Database Cloud Service + OIC Standard + OAC Enterprise + File Storage + FastConnect
+  - Database Cloud Service BYOL + OIC Enterprise BYOL + OAC Professional BYOL OCPU + File Storage + FastConnect
+- parity coverage now also includes deeper Exadata Cloud@Customer observability bundles:
+  - Exadata Cloud@Customer + Data Safe + Monitoring Retrieval + Health Checks + Notifications HTTPS Delivery
 - workbook parsing now recognizes more guided selections:
   - `vSphere` and `ESXi` as VMware
   - `AHV` as another hypervisor

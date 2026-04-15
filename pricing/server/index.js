@@ -9,9 +9,11 @@ const { quoteFromPrompt, buildQuote } = require('./quotation-engine');
 const { parseWorkbookBase64, workbookToRequests, analyzeWorkbookForGuidedQuote, buildShapeOptionsForProcessor, parseWorkbookPromptSelections, hasWorkbookSelection } = require('./excel');
 const { normalizeProcessorVendor, findVmShapeByText } = require('./vm-shapes');
 const { loadGenAISettings, runChat, extractChatText } = require('./genai');
+const { resolveGenAIRequestOptions } = require('./genai-profiles');
 const { respondToAssistant } = require('./assistant');
 const sessionStore = require('./session-store');
 const { buildQuoteExportRows, buildQuoteExportCsv, buildQuoteExportWorkbook } = require('./quote-export');
+const { buildRequestLogger, createTrace, logger, summarizeTrace } = require('./logger');
 
 const app  = express();
 const PORT = process.env.PORT || 8742;
@@ -19,7 +21,20 @@ const PORT = process.env.PORT || 8742;
 app.use(express.json({ limit: '25mb' }));
 
 function resolveClientId(req) {
+  // Internal/development trust model: the caller supplies x-client-id (or clientId in
+  // the body) and the server scopes session access to that value. This is acceptable
+  // for local tooling, but production deployment should replace this with an
+  // authenticated principal/token lookup before reading or mutating session state.
   return String(req.get('x-client-id') || req.body?.clientId || 'anonymous').trim() || 'anonymous';
+}
+
+function createRequestId() {
+  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function resolveAssistantSessionContext(storedSession, _requestBodySessionContext) {
+  if (!storedSession?.sessionContext || typeof storedSession.sessionContext !== 'object') return null;
+  return storedSession.sessionContext;
 }
 
 function mapStoredConversation(messages) {
@@ -34,17 +49,17 @@ function mapStoredConversation(messages) {
 // ════════════════════════════════════════════════════════════
 //  OCI GenAI — Config from environment
 // ════════════════════════════════════════════════════════════
-function loadOciConfig() {
+function loadOciConfig(requestLogger = logger) {
   const genai = loadGenAISettings(process.env);
   const user        = process.env.OCI_USER        || '';
   const tenancy     = process.env.OCI_TENANCY      || '';
   const fingerprint = process.env.OCI_FINGERPRINT  || '';
   const region      = genai.region || process.env.OCI_REGION || 'us-chicago-1';
   const compartment = genai.compartmentId || process.env.OCI_COMPARTMENT || tenancy;
-  const modelId     = genai.modelId || process.env.OCI_GENAI_MODEL ||
-    'ocid1.generativeaimodel.oc1.us-chicago-1.amaaaaaask7dceyafjcwpf75fmqoismvwlmzjbprdzzljhfcrirozftbrjoq';
+  const modelId     = genai.modelId || process.env.OCI_GENAI_MODEL || '';
   const endpoint    = genai.endpoint;
   const profile     = genai.profile;
+  const defaultProfile = genai.defaultProfile;
 
   let privateKeyPem = '';
   const keyContent = process.env.OCI_PRIVATE_KEY || '';
@@ -52,17 +67,37 @@ function loadOciConfig() {
   const keyPath    = process.env.OCI_KEY_FILE    || '';
   if (keyContentB64) {
     try { privateKeyPem = Buffer.from(keyContentB64, 'base64').toString('utf8'); }
-    catch(e) { console.warn('OCI_PRIVATE_KEY_B64 decode failed:', e.message); }
+    catch(e) {
+      requestLogger.warn({ event: 'config.private_key_b64_decode_failed', errorMessage: e.message }, 'OCI_PRIVATE_KEY_B64 decode failed');
+    }
   } else if (keyContent) {
     privateKeyPem = keyContent.replace(/\\n/g, '\n');
   }
   else if (keyPath) {
     try { privateKeyPem = fs.readFileSync(keyPath, 'utf8'); }
-    catch(e) { console.warn('OCI_KEY_FILE not readable:', e.message); }
+    catch(e) {
+      requestLogger.warn({ event: 'config.private_key_file_unreadable', errorMessage: e.message, keyPath }, 'OCI_KEY_FILE not readable');
+    }
   }
 
   const ok = !!(user && tenancy && fingerprint && privateKeyPem);
-  return { user, tenancy, fingerprint, region, compartment, modelId, endpoint, profile, privateKeyPem, ok };
+  return {
+    user,
+    tenancy,
+    fingerprint,
+    region,
+    compartment,
+    modelId,
+    endpoint,
+    profile,
+    defaultProfile,
+    intentModelId: genai.intentModelId,
+    narrativeModelId: genai.narrativeModelId,
+    discoveryModelId: genai.discoveryModelId,
+    imageModelId: genai.imageModelId,
+    privateKeyPem,
+    ok,
+  };
 }
 
 const WORKBOOK_ENRICHMENT_PROMPT = [
@@ -171,16 +206,14 @@ async function buildWorkbookEnrichment(cfg, { fileName, requests, warnings, tota
     `Warnings:\n${(warnings || []).slice(0, 6).map((item) => `- ${item}`).join('\n')}`,
     `Representative OCI lines:\n${lineItems.slice(0, 10).map((line) => `- ${line.service || '-'} | ${line.product} | ${line.metric || '-'} | monthly ${formatMoney(line.monthly, currencyCode)}`).join('\n')}`,
   ].filter(Boolean).join('\n\n');
+  const requestOptions = resolveGenAIRequestOptions('narrative', cfg);
 
   try {
     const response = await runChat({
       cfg,
+      ...requestOptions,
       systemPrompt: WORKBOOK_ENRICHMENT_PROMPT,
       messages: [{ role: 'user', content: contextBlock }],
-      maxTokens: 450,
-      temperature: 0.2,
-      topP: 0.6,
-      topK: -1,
     });
     const enrichment = sanitizeWorkbookEnrichment(extractChatText(response?.data || response).trim());
     return enrichment ? `${fallback}\n\n## OCI Expert Notes\n${enrichment}` : fallback;
@@ -551,8 +584,26 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body, persist
 //  POST /api/chat  — OCI GenAI only
 // ════════════════════════════════════════════════════════════
 app.post('/api/chat', async (req, res) => {
-  const cfg = loadOciConfig();
+  const clientId = resolveClientId(req);
+  const sessionId = String(req.body?.sessionId || '').trim();
+  const requestLogger = buildRequestLogger({
+    routeName: '/api/chat',
+    requestId: createRequestId(),
+    clientId,
+    sessionId,
+    profile: String(req.body?.profile || '').trim(),
+  });
+  const trace = createTrace();
+  requestLogger.info({
+    event: 'http.request.start',
+    method: 'POST',
+    hasSystemPrompt: Boolean(req.body?.system),
+    messageCount: Array.isArray(req.body?.messages) ? req.body.messages.length : 0,
+  }, 'Received /api/chat request');
+
+  const cfg = loadOciConfig(requestLogger);
   if (!cfg.ok) {
+    requestLogger.warn({ event: 'http.request.rejected', reason: 'genai_not_configured' }, 'Rejected /api/chat request due to missing OCI GenAI configuration');
     return res.status(500).json({
       type: 'error',
       error: {
@@ -562,25 +613,48 @@ app.post('/api/chat', async (req, res) => {
     });
   }
   try {
+    const requestOptions = resolveGenAIRequestOptions(req.body.profile || cfg.defaultProfile || 'narrative', cfg, {
+      maxTokens: req.body.max_tokens,
+      temperature: req.body.temperature,
+      topP: req.body.top_p,
+      topK: req.body.top_k,
+      modelId: req.body.model,
+    });
     const response = await runChat({
       cfg,
+      ...requestOptions,
       systemPrompt: req.body.system || '',
       messages: req.body.messages || [],
-      maxTokens: req.body.max_tokens || 2000,
+      logger: requestLogger,
+      trace,
     });
     const payload = response && response.data ? response.data : response;
     const text = extractChatText(payload);
+    requestLogger.info({
+      event: 'http.request.complete',
+      method: 'POST',
+      statusCode: 200,
+      modelId: requestOptions.modelId || cfg.modelId,
+      ...summarizeTrace(trace),
+    }, 'Completed /api/chat request');
     return res.json({
       id: 'oci-' + Date.now(),
       type: 'message',
       role: 'assistant',
       content: [{ type: 'text', text: text || '' }],
-      model: cfg.modelId,
+      model: requestOptions.modelId || cfg.modelId,
       stop_reason: 'end_turn',
       raw: text ? undefined : payload,
     });
   } catch (err) {
     const status = Number(err?.status || err?.statusCode || 502);
+    requestLogger.warn({
+      event: 'http.request.failure',
+      method: 'POST',
+      statusCode: Number.isFinite(status) ? status : 502,
+      errorMessage: err?.message || 'OCI GenAI request failed.',
+      ...summarizeTrace(trace),
+    }, 'Failed /api/chat request');
     return res.status(Number.isFinite(status) ? status : 502).json({
       type: 'error',
       error: {
@@ -594,17 +668,35 @@ app.post('/api/chat', async (req, res) => {
 });
 
 app.post('/api/assistant', async (req, res) => {
-  if (!ensureCatalogReady(res)) return;
-  const cfg = loadOciConfig();
+  const clientId = resolveClientId(req);
+  const sessionId = String(req.body?.sessionId || '').trim();
+  const requestLogger = buildRequestLogger({
+    routeName: '/api/assistant',
+    requestId: createRequestId(),
+    clientId,
+    sessionId,
+  });
+  const trace = createTrace();
+  requestLogger.info({
+    event: 'http.request.start',
+    method: 'POST',
+    hasText: Boolean(String(req.body?.text || '').trim()),
+    hasImage: Boolean(String(req.body?.imageDataUrl || '').trim()),
+  }, 'Received /api/assistant request');
+
+  if (!ensureCatalogReady(res)) {
+    requestLogger.warn({ event: 'http.request.rejected', reason: 'catalog_not_ready' }, 'Rejected /api/assistant request because the catalog is not ready');
+    return;
+  }
+  const cfg = loadOciConfig(requestLogger);
   if (!cfg.ok) {
+    requestLogger.warn({ event: 'http.request.rejected', reason: 'genai_not_configured' }, 'Rejected /api/assistant request due to missing OCI GenAI configuration');
     return res.status(500).json({
       ok: false,
       error: 'OCI GenAI is not configured.',
     });
   }
   const text = String(req.body.text || '').trim();
-  const sessionId = String(req.body.sessionId || '').trim();
-  const clientId = resolveClientId(req);
   const storedSession = sessionId ? sessionStore.getSession(clientId, sessionId) : null;
   const effectiveWorkbookContext = getEffectiveWorkbookContext(storedSession);
   const conversation = storedSession
@@ -613,10 +705,11 @@ app.post('/api/assistant', async (req, res) => {
   const imageDataUrl = String(req.body.imageDataUrl || '').trim();
   const userLabel = String(req.body.userLabel || '').trim();
   const persistedUserContent = userLabel || text || (imageDataUrl ? '[Image attached]' : '');
-  const sessionContext = storedSession?.sessionContext || (req.body.sessionContext && typeof req.body.sessionContext === 'object'
-    ? req.body.sessionContext
-    : null);
-  if (!text && !imageDataUrl) return res.status(400).json({ ok: false, error: 'Provide text or imageDataUrl.' });
+  const sessionContext = resolveAssistantSessionContext(storedSession, req.body.sessionContext);
+  if (!text && !imageDataUrl) {
+    requestLogger.warn({ event: 'http.request.rejected', reason: 'missing_text_and_image' }, 'Rejected /api/assistant request because no text or image was provided');
+    return res.status(400).json({ ok: false, error: 'Provide text or imageDataUrl.' });
+  }
 
   try {
     const workbookFollowup = parseWorkbookPromptSelections(text);
@@ -639,6 +732,14 @@ app.post('/api/assistant', async (req, res) => {
         },
         persistMessages: true,
       });
+      requestLogger.info({
+        event: 'http.request.complete',
+        method: 'POST',
+        statusCode: workbookReply.status,
+        routingPath: 'workbook_shortcut',
+        outcome: workbookReply.body?.ok ? 'quote' : 'clarification',
+        ...summarizeTrace(trace),
+      }, 'Completed /api/assistant request');
       return res.status(workbookReply.status).json({
         ...workbookReply.body,
         session: sessionId ? sessionStore.getSession(clientId, sessionId) : null,
@@ -660,6 +761,8 @@ app.post('/api/assistant', async (req, res) => {
       userText: text,
       imageDataUrl,
       sessionContext,
+      logger: requestLogger,
+      trace,
     });
     if (storedSession) {
       sessionStore.appendMessage(clientId, sessionId, {
@@ -682,11 +785,30 @@ app.post('/api/assistant', async (req, res) => {
         workbookContext: reply?.sessionContext?.workbookContext || storedSession.workbookContext || null,
       });
     }
+    requestLogger.info({
+      event: 'http.request.complete',
+      method: 'POST',
+      statusCode: 200,
+      routingPath: reply?.mode || '',
+      route: reply?.intent?.route || '',
+      serviceFamily: reply?.intent?.serviceFamily || '',
+      shouldQuote: Boolean(reply?.intent?.shouldQuote),
+      outcome: reply?.needsClarification || reply?.question ? 'clarification' : (reply?.quote || reply?.quoteMarkdown || reply?.totals ? 'quote' : 'answer'),
+      ...summarizeTrace(trace),
+    }, 'Completed /api/assistant request');
+    
     return res.json({
       ...reply,
       session: sessionId ? sessionStore.getSession(clientId, sessionId) : null,
     });
   } catch (error) {
+    requestLogger.warn({
+      event: 'http.request.failure',
+      method: 'POST',
+      statusCode: 502,
+      errorMessage: error.message,
+      ...summarizeTrace(trace),
+    }, 'Failed /api/assistant request');
     return res.status(502).json({
       ok: false,
       error: error.message || 'Assistant request failed.',
@@ -804,7 +926,14 @@ async function fetchCatalogWithRetries(name, baseUrl, maxAttempts = MAX_FETCH_AT
       lastError = error;
       if (attempt < maxAttempts) {
         const delayMs = Math.min(4000, 500 * (2 ** (attempt - 1)));
-        console.warn(`  ! ${name} attempt ${attempt}/${maxAttempts} failed — ${error.message}; retrying in ${delayMs}ms`);
+        logger.warn({
+          event: 'catalog.fetch.retry',
+          catalogName: name,
+          attempt,
+          maxAttempts,
+          delayMs,
+          errorMessage: error.message,
+        }, `  ! ${name} attempt ${attempt}/${maxAttempts} failed — ${error.message}; retrying in ${delayMs}ms`);
         await sleep(delayMs);
       }
     }
@@ -821,7 +950,14 @@ async function fetchOne(name) {
     writeCatalogSnapshot(name, data);
     const n = data?.items?.length ?? (Array.isArray(data) ? data.length : '?');
     console.log(`  ✓ ${name} (${n} entries, attempt ${store.attempts[name]}/${MAX_FETCH_ATTEMPTS})`);
-  } catch(e) { store.errors[name] = e.message; console.warn(`  ✗ ${name} — ${e.message}`); }
+  } catch(e) {
+    store.errors[name] = e.message;
+    logger.warn({
+      event: 'catalog.fetch.failure',
+      catalogName: name,
+      errorMessage: e.message,
+    }, `  ✗ ${name} — ${e.message}`);
+  }
 }
 
 async function fetchAll() {
@@ -846,7 +982,10 @@ function startCatalogRefreshTimer() {
     if (stale.length) {
       console.log(`↺ Auto-refresh: ${stale.join(', ')}`);
       Promise.all(stale.map(fetchOne)).catch((error) => {
-        console.warn(`Auto-refresh failed: ${error.message}`);
+        logger.warn({
+          event: 'catalog.auto_refresh.failure',
+          errorMessage: error.message,
+        }, `Auto-refresh failed: ${error.message}`);
       });
     }
   }, 60 * 60 * 1000);
@@ -1055,5 +1194,6 @@ module.exports = {
   buildQuoteExportCsv,
   buildQuoteExportWorkbook,
   buildQuoteExportHttpResponse,
+  resolveAssistantSessionContext,
   fetchAll,
 };

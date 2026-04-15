@@ -1,5 +1,38 @@
 'use strict';
 
+const COMPOSITE_DEPENDENCY_PATTERNS = [
+  /\bload balancer\b/i,
+  /\bblock storage\b|\bblock volumes?\b/i,
+  /\bfile storage\b/i,
+  /\bobject storage\b/i,
+  /\bobject storage\b[^\n]*\brequests?\b/i,
+  /\barchive storage\b/i,
+  /\binfrequent access storage\b/i,
+  /\bfastconnect\b|\bfast connect\b/i,
+  /\b(?:oci )?functions\b|\bserverless\b/i,
+  /\bapi gateway\b/i,
+  /\b(?:waf|web application firewall)\b/i,
+  /\bdns\b/i,
+  /\bhealth checks?\b/i,
+  /\bnetwork firewall\b/i,
+  /\bmonitoring (?:ingestion|retrieval)\b/i,
+  /\bnotifications?\b[^\n]*\bhttps delivery\b/i,
+  /\bnotifications?\b[^\n]*\bemail delivery\b/i,
+  /\biam sms\b|\bsms messages?\b/i,
+  /\bthreat intelligence\b/i,
+  /\bfleet application management\b/i,
+  /\boci batch\b|\bbatch\b/i,
+  /\bdata safe\b/i,
+  /\blog analytics\b/i,
+  /\bgenerative ai\b/i,
+  /\bvision\b|\bspeech\b|\bmedia flow\b/i,
+  /\bautonomous(?: ai)? lakehouse\b|\bautonomous data warehouse\b|\bbase database service\b|\bexadata\b|\bdatabase cloud service\b/i,
+  /\boracle integration cloud\b[^\n,;+]*\b(?:standard|enterprise)\b|\boic\b[^\n,;+]*\b(?:standard|enterprise)\b/i,
+  /\boracle analytics cloud\b[^\n,;+]*\b(?:professional|enterprise)\b|\boac\b[^\n,;+]*\b(?:professional|enterprise)\b/i,
+  /\bdata integration\b/i,
+  /\b(?:vm|bm)\.[a-z0-9.]+(?:\.flex|\.\d+)\b/i,
+];
+
 const SERVICE_FAMILIES = [
   {
     id: 'compute_vm_generic',
@@ -26,6 +59,7 @@ const SERVICE_FAMILIES = [
     canonical: 'OCI Block Volume',
     domain: 'storage',
     resolver: 'block_volume',
+    dependencyFallbackOrder: 30,
     aliases: [/\bblock volumes?\b/i, /\bblock storage\b/i],
     partNumbers: ['B91961', 'B91962'],
     rescueInputs: ['capacityGb', 'vpuPerGb'],
@@ -138,6 +172,7 @@ const SERVICE_FAMILIES = [
     canonical: 'OCI FastConnect',
     domain: 'network',
     resolver: 'fastconnect',
+    dependencyFallbackOrder: 20,
     aliases: [/\bfast\s*connect\b/i, /\bfastconnect\b/i],
     rescueInputs: ['bandwidthGbps'],
     followUpCapabilities: {
@@ -1436,6 +1471,7 @@ const SERVICE_FAMILIES = [
     canonical: 'OCI Functions',
     domain: 'serverless',
     resolver: 'functions',
+    dependencyFallbackOrder: 40,
     aliases: [/\boracle functions\b/i, /\boci functions\b/i, /\bfunctions\b/i, /\bserverless\b/i],
     partNumbers: ['B90617', 'B90618'],
     rescueInputs: ['executionMs', 'memoryMb'],
@@ -1606,6 +1642,15 @@ const SERVICE_FAMILIES = [
     canonical: 'OCI Media Flow',
     domain: 'media',
     resolver: 'media_flow',
+    dependencyFallbackOrder: 50,
+    dependencyProductSelector: {
+      type: 'media_flow_detailed',
+      requiredPatterns: [
+        /\bmedia flow\b/i,
+        /\b(sd|hd|4k)\b/i,
+        /\b(?:below 30fps|above 30fps and below 60fps|above 60fps and below 120fps)\b/i,
+      ],
+    },
     aliases: [/\bmedia flow\b/i, /\bmedia services\b[^\n]*\bmedia flow\b/i],
     rescueAnyInputs: ['minuteQuantity'],
     options: {
@@ -1733,6 +1778,8 @@ const SERVICE_FAMILIES = [
     canonical: 'OCI Compute Flex',
     domain: 'compute',
     resolver: 'compute_flex',
+    dependencyFallbackOrder: 10,
+    dependencyTriggerFromShape: true,
     aliases: [
       /\b(?:vm|bm)\.[a-z0-9.]+(?:\.flex|\.\d+)\b/i,
       /\b[ea]\d+\.flex\b/i,
@@ -1763,6 +1810,100 @@ const SERVICE_FAMILIES = [
 
 function getServiceFamily(id) {
   return SERVICE_FAMILIES.find((item) => item.id === id) || null;
+}
+
+function getDependencyTriggerPatterns(family) {
+  if (!family || typeof family !== 'object') return [];
+  if (Array.isArray(family.dependencyTriggers) && family.dependencyTriggers.length) {
+    return family.dependencyTriggers;
+  }
+  return Array.isArray(family.aliases) ? family.aliases : [];
+}
+
+function getDependencyFallbackFamilies() {
+  return SERVICE_FAMILIES
+    .filter((family) => Number.isFinite(Number(family?.dependencyFallbackOrder)))
+    .slice()
+    .sort((left, right) => Number(left.dependencyFallbackOrder) - Number(right.dependencyFallbackOrder));
+}
+
+function detectDependencyFallbackFamily(text) {
+  const source = String(text || '');
+  if (!source) return '';
+  for (const family of getDependencyFallbackFamilies()) {
+    const patterns = getDependencyTriggerPatterns(family);
+    if (patterns.some((pattern) => pattern.test(source))) {
+      return family.id;
+    }
+  }
+  return '';
+}
+
+function detectCompositeDependencyRequest(text) {
+  const source = String(text || '').toLowerCase();
+  if (!source) return false;
+  const hits = COMPOSITE_DEPENDENCY_PATTERNS.filter((pattern) => pattern.test(source)).length;
+  return hits >= 2 || /\b3-tier\b|\bthree-tier\b|\barchitecture\b|\bworkload\b|\bbundle\b|\bstack\b|\bplatform\b/.test(source);
+}
+
+function getDependencyResolutionPlan(request = {}) {
+  const source = String(request?.productQuery || request?.reformulatedRequest || request?.source || '').trim();
+  if (detectCompositeDependencyRequest(source)) {
+    return {
+      mode: 'composite',
+      familyId: '',
+      declaredFamilyId: '',
+      family: null,
+    };
+  }
+
+  const shapeKind = String(request?.shape?.kind || '').trim().toLowerCase();
+  if (shapeKind === 'flex' || shapeKind === 'fixed') {
+    const family = getServiceFamily('compute_flex');
+    return {
+      mode: 'family',
+      familyId: 'compute_flex',
+      declaredFamilyId: family?.id || 'compute_flex',
+      family,
+    };
+  }
+
+  const declaredFamilyId = String(request?.serviceFamily || '').trim();
+  const declaredFamily = getServiceFamily(declaredFamilyId);
+  if (declaredFamily) {
+    return {
+      mode: 'family',
+      familyId: String(declaredFamily.dependencyResolverFamily || declaredFamily.id),
+      declaredFamilyId: declaredFamily.id,
+      family: declaredFamily,
+    };
+  }
+
+  const fallbackFamilyId = detectDependencyFallbackFamily(source);
+  if (!fallbackFamilyId) {
+    return {
+      mode: 'none',
+      familyId: '',
+      declaredFamilyId: '',
+      family: null,
+    };
+  }
+
+  return {
+    mode: 'family',
+    familyId: fallbackFamilyId,
+    declaredFamilyId: fallbackFamilyId,
+    family: getServiceFamily(fallbackFamilyId),
+  };
+}
+
+function shouldUseDetailedDependencyProductSelection(familyId, text) {
+  const family = getServiceFamily(familyId);
+  const selector = family?.dependencyProductSelector;
+  if (!selector || selector.type !== 'media_flow_detailed') return false;
+  const source = String(text || '');
+  return Array.isArray(selector.requiredPatterns)
+    && selector.requiredPatterns.every((pattern) => pattern.test(source));
 }
 
 function normalizeExtractedInputsForFamily(familyId, extractedInputs = {}) {
@@ -1965,6 +2106,11 @@ function hasInputValue(value) {
 module.exports = {
   SERVICE_FAMILIES,
   getServiceFamily,
+  getDependencyFallbackFamilies,
+  detectDependencyFallbackFamily,
+  detectCompositeDependencyRequest,
+  getDependencyResolutionPlan,
+  shouldUseDetailedDependencyProductSelection,
   normalizeExtractedInputsForFamily,
   inferServiceFamily,
   normalizeServiceAliases,

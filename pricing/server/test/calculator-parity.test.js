@@ -2035,6 +2035,23 @@ test('calculator parity: exadata cloud customer health and observability bundle 
   assert.match(quote.markdown, /B90325/);
 });
 
+test('calculator parity: exadata cloud customer health observability and delivery bundle keeps database data safe monitoring checks and notifications aligned', () => {
+  const index = buildCalculatorIndex();
+  const quote = quoteFromPrompt(
+    index,
+    'Quote Exadata Cloud@Customer License Included 8 OCPUs on base system X10M plus Data Safe for Database Cloud Service 8 databases plus Monitoring Retrieval 4000000 datapoints plus Notifications HTTPS Delivery 3000000 delivery operations plus Health Checks 5 endpoints',
+  );
+
+  assert.equal(quote.ok, true);
+  assertWithin(quote.totals.monthly, 9621.5832, 0.1);
+  assert.match(quote.markdown, /B91363/);
+  assert.match(quote.markdown, /B96610/);
+  assert.match(quote.markdown, /B91632/);
+  assert.match(quote.markdown, /B90926/);
+  assert.match(quote.markdown, /B90940/);
+  assert.match(quote.markdown, /B90325/);
+});
+
 test('calculator parity: exadata dedicated edge-security bundle stays aligned', () => {
   const index = buildCalculatorIndex();
   const quote = quoteFromPrompt(
@@ -2177,6 +2194,23 @@ test('calculator parity: Database Cloud Service enterprise platform bundle keeps
   assert.match(quote.markdown, /B88290/);
   assert.match(quote.markdown, /B89640/);
   assert.match(quote.markdown, /B92683/);
+  assert.match(quote.markdown, /B88326/);
+});
+
+test('calculator parity: Database Cloud Service enterprise storage platform bundle keeps database integration analytics file storage and transport lines aligned', () => {
+  const index = buildCalculatorIndex();
+  const quote = quoteFromPrompt(
+    index,
+    'Quote Database Cloud Service Enterprise License Included 8 OCPUs plus Oracle Integration Cloud Standard License Included 2 instances 744h/month plus Oracle Analytics Cloud Enterprise 50 users plus File Storage 5 TB and 10 performance units per GB per month plus FastConnect 10 Gbps',
+  );
+
+  assert.equal(quote.ok, true);
+  assertWithin(quote.totals.monthly, 26494.8976, 0.1);
+  assert.match(quote.markdown, /B88290/);
+  assert.match(quote.markdown, /B89639/);
+  assert.match(quote.markdown, /B92683/);
+  assert.match(quote.markdown, /B89057/);
+  assert.match(quote.markdown, /B109546/);
   assert.match(quote.markdown, /B88326/);
 });
 
@@ -2363,6 +2397,23 @@ test('calculator parity: Database Cloud Service BYOL enterprise edge observabili
   assert.match(quote.markdown, /B90926/);
 });
 
+test('calculator parity: Database Cloud Service BYOL storage platform bundle keeps database integration analytics file storage and transport lines aligned', () => {
+  const index = buildCalculatorIndex();
+  const quote = quoteFromPrompt(
+    index,
+    'Quote Database Cloud Service BYOL 8 OCPUs plus Oracle Integration Cloud Enterprise BYOL 2 instances 744h/month plus Oracle Analytics Cloud Professional BYOL 2 OCPUs 744h/month plus File Storage 5 TB and 10 performance units per GB per month plus FastConnect 10 Gbps',
+  );
+
+  assert.equal(quote.ok, true);
+  assertWithin(quote.totals.monthly, 20233.1376, 0.1);
+  assert.match(quote.markdown, /B88404/);
+  assert.match(quote.markdown, /B89644/);
+  assert.match(quote.markdown, /B89636/);
+  assert.match(quote.markdown, /B89057/);
+  assert.match(quote.markdown, /B109546/);
+  assert.match(quote.markdown, /B88326/);
+});
+
 test('calculator parity: Database Cloud Service BYOL dual-observability platform bundle keeps integration analytics and monitoring lines aligned', () => {
   const index = buildCalculatorIndex();
   const quote = quoteFromPrompt(
@@ -2484,6 +2535,26 @@ test('calculator parity: Notifications HTTPS Delivery 3000000 delivery operation
   const line = quote.lineItems.find((item) => item.partNumber === 'B90940');
   assert.ok(line);
   assertWithin(line.monthly, 12, 0.01);
+});
+
+test('calculator parity: network firewall edge security notifications bundle keeps firewall routing protection and delivery lines aligned', () => {
+  const index = buildCalculatorIndex();
+  const quote = quoteFromPrompt(
+    index,
+    'Quote Network Firewall 1 firewall and 12000 GB data processed per month plus Web Application Firewall with 2 instances and 25000000 requests per month plus Flexible Load Balancer 100 Mbps plus DNS 5000000 queries per month plus Health Checks 10 endpoints plus Notifications HTTPS Delivery 3000000 delivery operations',
+  );
+
+  assert.equal(quote.ok, true);
+  assertWithin(quote.totals.monthly, 2109.586, 0.1);
+  assert.match(quote.markdown, /B95403/);
+  assert.match(quote.markdown, /B95404/);
+  assert.match(quote.markdown, /B94579/);
+  assert.match(quote.markdown, /B94277/);
+  assert.match(quote.markdown, /B93030/);
+  assert.match(quote.markdown, /B93031/);
+  assert.match(quote.markdown, /B88525/);
+  assert.match(quote.markdown, /B90325/);
+  assert.match(quote.markdown, /B90940/);
 });
 
 test('calculator parity: Log Analytics archival storage 600 GB per month stays aligned', () => {
