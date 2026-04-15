@@ -41,6 +41,40 @@ None
 
 ---
 
+## Audit Follow-up — Recalculation Endpoint Cleanup
+
+**Completed:** 2026-04-15
+**Status:** ✅ Complete
+
+### What was implemented
+
+- Verified the 2026-04-15 audit report against the current `codex/codex-active-work` branch and confirmed that the catalog, import, governance, dashboard, justification, export, and audit routers were already restored in this worktree
+- `apps/api/app/routers/recalculate.py` — replaced the remaining placeholder scoped/job endpoints with real snapshot-backed responses
+- `apps/api/app/services/recalc_service.py` — added scoped recalculation validation plus persisted job-status serialization sourced from `VolumetrySnapshot`
+- `apps/api/app/schemas/volumetry.py` — added explicit request/response schemas for scoped recalculation and job polling
+
+### Verification results
+
+```text
+ruff: All checks passed!
+mypy: 0 errors
+TypeScript: 0 errors
+ESLint: 0 warnings / 0 errors
+pytest: 26 passed
+docker compose ps: 6/6 containers Up
+API health: {"status":"ok","version":"1.0.0"}
+Scoped recalculation smoke:
+- POST /api/v1/recalculate/{project_id}/scoped -> completed
+- GET /api/v1/recalculate/{project_id}/jobs/{job_id} -> completed
+- snapshot_id returned from both endpoints and matched the persisted job ID
+```
+
+### Gaps / known limitations
+
+- The 2026-04-15 audit report was generated from `main` and is stale relative to this branch; remaining follow-up should use a fresh audit run before planning larger remediation work
+
+---
+
 ## Quality Gates — ESLint + mypy Clean (2026-04-14)
 
 **Status:** ✅ Complete

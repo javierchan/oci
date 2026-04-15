@@ -34,8 +34,8 @@ import type {
   ProjectDeleteResponse,
   ProjectList,
   ProjectListResponse,
+  RecalculationJobStatus,
   SourceRowList,
-  VolumetrySnapshot,
   VolumetrySnapshotList,
 } from "@/lib/types";
 
@@ -384,10 +384,13 @@ export const api = {
       headers: adminHeaders(),
     }).then(normalizeAssumption),
 
-  recalculate: (projectId: string): Promise<VolumetrySnapshot> =>
-    apiFetch<VolumetrySnapshot>(`/api/v1/recalculate/${projectId}`, {
+  recalculate: (projectId: string): Promise<RecalculationJobStatus> =>
+    apiFetch<RecalculationJobStatus>(`/api/v1/recalculate/${projectId}`, {
       method: "POST",
     }),
+
+  getRecalculationJob: (projectId: string, jobId: string): Promise<RecalculationJobStatus> =>
+    apiFetch<RecalculationJobStatus>(`/api/v1/recalculate/${projectId}/jobs/${jobId}`),
 
   listSnapshots: (projectId: string): Promise<VolumetrySnapshotList> =>
     apiFetch<VolumetrySnapshotList>(`/api/v1/volumetry/${projectId}/snapshots`),

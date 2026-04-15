@@ -30,11 +30,14 @@ from app.schemas.volumetry import (
     FunctionsMetrics,
     OICMetrics,
     QueueMetrics,
+    RecalculationJobStatusResponse,
+    ScopedRecalculationRequest,
     StreamingMetrics,
     VolumetrySnapshotListResponse,
     VolumetrySnapshotResponse,
 )
 from app.services import audit_service
+from app.workers.celery_app import celery_app
 
 
 def _to_assumptions(assumption_set: AssumptionSet) -> Assumptions:
@@ -325,3 +328,164 @@ async def get_consolidated_metrics(project_id: str, snapshot_id: str, db: AsyncS
             detail={"detail": "Volumetry snapshot not found", "error_code": "VOLUMETRY_SNAPSHOT_NOT_FOUND"},
         )
     return _serialize_consolidated(snapshot.consolidated)
+
+
+async def recalculate_scoped(
+    project_id: str,
+    request: ScopedRecalculationRequest,
+    db: AsyncSession,
+) -> RecalculationJobStatusResponse:
+    """Run a full recalculation while annotating the trigger as scoped to specific rows."""
+
+    unique_ids = await validate_scoped_integration_ids(project_id, request.integration_ids, db)
+    snapshot = await recalculate_project(project_id, request.actor_id, db)
+    metadata = dict(snapshot.snapshot_metadata or {})
+    metadata["scope"] = "scoped"
+    metadata["integration_ids"] = unique_ids
+    snapshot.snapshot_metadata = metadata
+    await db.flush()
+    await db.refresh(snapshot)
+    return RecalculationJobStatusResponse(
+        job_id=snapshot.id,
+        project_id=project_id,
+        status="completed",
+        snapshot_id=snapshot.id,
+        scope="scoped",
+        integration_ids=unique_ids,
+        created_at=snapshot.created_at,
+    )
+
+
+async def validate_scoped_integration_ids(
+    project_id: str,
+    integration_ids: list[str],
+    db: AsyncSession,
+) -> list[str]:
+    """Validate and normalize the list of scoped integration IDs."""
+
+    unique_ids = list(dict.fromkeys(integration_ids))
+    if not unique_ids:
+        raise HTTPException(
+            status_code=400,
+            detail={"detail": "At least one integration ID is required.", "error_code": "INTEGRATION_IDS_REQUIRED"},
+        )
+
+    matching_ids = set(
+        (
+            await db.scalars(
+                select(CatalogIntegration.id).where(
+                    CatalogIntegration.project_id == project_id,
+                    CatalogIntegration.id.in_(unique_ids),
+                )
+            )
+        ).all()
+    )
+    missing_ids = [integration_id for integration_id in unique_ids if integration_id not in matching_ids]
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "detail": "One or more catalog integrations were not found in the project.",
+                "error_code": "CATALOG_INTEGRATION_NOT_FOUND",
+                "integration_ids": missing_ids,
+            },
+        )
+    return unique_ids
+
+
+def build_recalculation_job_response(
+    job_id: str,
+    project_id: str,
+    status: str,
+    *,
+    snapshot_id: str | None = None,
+    scope: str = "project",
+    integration_ids: list[str] | None = None,
+    created_at: Any = None,
+) -> RecalculationJobStatusResponse:
+    """Build a normalized job payload for queued or historical recalculation flows."""
+
+    return RecalculationJobStatusResponse(
+        job_id=job_id,
+        project_id=project_id,
+        status=status,
+        snapshot_id=snapshot_id,
+        scope=scope,
+        integration_ids=integration_ids or [],
+        created_at=created_at,
+    )
+
+
+async def get_recalculation_job_status(
+    project_id: str,
+    job_id: str,
+    db: AsyncSession,
+) -> RecalculationJobStatusResponse:
+    """Return the current status for a queued or historical recalculation job."""
+
+    task_result = celery_app.AsyncResult(job_id)
+    if task_result.state in {"PENDING", "RECEIVED", "STARTED", "RETRY"}:
+        normalized = task_result.state.lower()
+        if normalized == "received":
+            normalized = "pending"
+        return build_recalculation_job_response(job_id, project_id, normalized)
+    if task_result.state == "FAILURE":
+        return build_recalculation_job_response(job_id, project_id, "failed")
+    if task_result.state == "SUCCESS":
+        payload = cast(dict[str, Any], task_result.result or {})
+        snapshot_id = cast(str | None, payload.get("snapshot_id"))
+        scope = cast(str, payload.get("scope", "project"))
+        result_integration_ids = cast(list[str], payload.get("integration_ids", []))
+        created_at = payload.get("created_at")
+        if snapshot_id is not None:
+            snapshot = await db.scalar(
+                select(VolumetrySnapshot).where(
+                    VolumetrySnapshot.project_id == project_id,
+                    VolumetrySnapshot.id == snapshot_id,
+                )
+            )
+            if snapshot is not None:
+                metadata = snapshot.snapshot_metadata or {}
+                snapshot_integration_ids = metadata.get("integration_ids")
+                return build_recalculation_job_response(
+                    job_id=job_id,
+                    project_id=project_id,
+                    status="completed",
+                    snapshot_id=snapshot.id,
+                    scope="scoped" if metadata.get("scope") == "scoped" else scope,
+                    integration_ids=snapshot_integration_ids if isinstance(snapshot_integration_ids, list) else result_integration_ids,
+                    created_at=snapshot.created_at,
+                )
+        return build_recalculation_job_response(
+            job_id=job_id,
+            project_id=project_id,
+            status="completed",
+            snapshot_id=snapshot_id,
+            scope=scope,
+            integration_ids=result_integration_ids,
+            created_at=created_at,
+        )
+
+    snapshot = await db.scalar(
+        select(VolumetrySnapshot).where(
+            VolumetrySnapshot.project_id == project_id,
+            VolumetrySnapshot.id == job_id,
+        )
+    )
+    if snapshot is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Recalculation job not found", "error_code": "RECALCULATION_JOB_NOT_FOUND"},
+        )
+
+    metadata = snapshot.snapshot_metadata or {}
+    stored_integration_ids = metadata.get("integration_ids")
+    return build_recalculation_job_response(
+        job_id=snapshot.id,
+        project_id=project_id,
+        status="completed",
+        snapshot_id=snapshot.id,
+        scope="scoped" if metadata.get("scope") == "scoped" else "project",
+        integration_ids=cast(list[str], stored_integration_ids) if isinstance(stored_integration_ids, list) else [],
+        created_at=snapshot.created_at,
+    )

@@ -1,4 +1,4 @@
-"""Import router — upload, process, and inspect import batches."""
+"""Import router — upload, queue, and inspect import batches."""
 
 from pathlib import Path
 
@@ -13,6 +13,7 @@ from app.schemas.imports import (
     SourceRowListResponse,
 )
 from app.services import import_service
+from app.workers.import_worker import process_import_task
 
 router = APIRouter(prefix="/imports", tags=["Imports"])
 
@@ -21,7 +22,7 @@ router = APIRouter(prefix="/imports", tags=["Imports"])
     "/{project_id}",
     response_model=ImportBatchResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Upload source file and trigger import",
+    summary="Upload source file and queue an import batch",
 )
 async def upload_and_import(
     project_id: str,
@@ -41,18 +42,20 @@ async def upload_and_import(
             db=db,
         )
     try:
-        async with db.begin():
-            batch = await import_service.process_import(batch_id=batch.id, file_path=upload_path, db=db)
-    except HTTPException:
-        async with db.begin():
-            await import_service.mark_import_failed(batch.id, {"detail": "Import failed."}, db)
-        raise
+        process_import_task.delay(batch.id, upload_path)
     except Exception as exc:
         async with db.begin():
-            await import_service.mark_import_failed(batch.id, {"detail": str(exc)}, db)
+            await import_service.mark_import_failed(
+                batch.id,
+                {
+                    "detail": "Import dispatch failed.",
+                    "error": str(exc),
+                },
+                db,
+            )
         raise HTTPException(
             status_code=500,
-            detail={"detail": "Import processing failed", "error_code": "IMPORT_PROCESSING_FAILED"},
+            detail={"detail": "Import dispatch failed", "error_code": "IMPORT_DISPATCH_FAILED"},
         ) from exc
     return import_service.serialize_batch(batch)
 

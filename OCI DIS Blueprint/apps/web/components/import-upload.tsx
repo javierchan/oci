@@ -23,6 +23,21 @@ type ImportUploadProps = {
 type UploadPhase = "idle" | "pending" | "processing" | "completed" | "failed";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+function phaseFromBatchStatus(batch: ImportBatch): UploadPhase {
+  switch (batch.status) {
+    case "pending":
+      return "pending";
+    case "processing":
+      return "processing";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    default:
+      return "idle";
+  }
+}
+
 function formatBytes(size: number): string {
   if (size < 1024) {
     return `${size} B`;
@@ -74,7 +89,7 @@ export function ImportUpload({
       const batch = await api.uploadWorkbook(projectId, selectedFile);
       setCurrentBatch(batch);
       setHistory((current: ImportBatch[]) => [batch, ...current]);
-      setPhase("completed");
+      setPhase(phaseFromBatchStatus(batch));
     } catch (caughtError) {
       setPhase("failed");
       setError(caughtError instanceof Error ? caughtError.message : "Upload failed.");
@@ -168,7 +183,7 @@ export function ImportUpload({
           <p className="app-label">Workbook Import</p>
           <h3 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">Upload `Catálogo de Integraciones`</h3>
           <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
-            Drag and drop the workbook here, or click to browse. The API will parse, normalize, and persist rows immediately.
+            Drag and drop the workbook here, or click to browse. The API will queue the workbook, and the worker will parse, normalize, and persist rows in the background.
           </p>
           {selectedFile ? (
             <div className="mt-6 inline-flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4 text-left">
@@ -184,10 +199,10 @@ export function ImportUpload({
           <button
             type="button"
             onClick={handleUpload}
-            disabled={!selectedFile || phase === "processing"}
+            disabled={!selectedFile || phase === "pending" || phase === "processing"}
             className="app-button-primary"
           >
-            {phase === "processing" ? "Importing…" : "Upload & Import"}
+            {phase === "processing" || phase === "pending" ? "Queuing…" : "Upload & Queue Import"}
           </button>
           <span className="app-theme-chip">
             Status: {phase}
@@ -195,28 +210,46 @@ export function ImportUpload({
         </div>
 
         {currentBatch ? (
-          <div className="mt-6 space-y-4 rounded-[1.5rem] border border-[var(--color-qa-ok-border)] bg-[var(--color-qa-ok-bg)] p-5">
-            <div className="grid gap-4 md:grid-cols-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">Loaded</p>
-              <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.loaded_count ?? 0}</p>
+          currentBatch.status === "completed" ? (
+            <div className="mt-6 space-y-4 rounded-[1.5rem] border border-[var(--color-qa-ok-border)] bg-[var(--color-qa-ok-bg)] p-5">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">Loaded</p>
+                  <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.loaded_count ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">Excluded</p>
+                  <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.excluded_count ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">TBQ = Y</p>
+                  <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.tbq_y_count ?? 0}</p>
+                </div>
+              </div>
+              <Link
+                href={`/projects/${projectId}/import?batch_id=${currentBatch.id}`}
+                className="app-link inline-flex"
+              >
+                View imported rows →
+              </Link>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">Excluded</p>
-              <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.excluded_count ?? 0}</p>
+          ) : (
+            <div className="mt-6 space-y-3 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+              <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">Batch queued</p>
+              <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">
+                Import batch {currentBatch.id.slice(0, 8)} is {currentBatch.status}.
+              </h3>
+              <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
+                The workbook has been accepted and the background worker is processing it. Refresh this page or open the batch detail to watch the counts update.
+              </p>
+              <Link
+                href={`/projects/${projectId}/import?batch_id=${currentBatch.id}`}
+                className="app-link inline-flex"
+              >
+                View batch status →
+              </Link>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">TBQ = Y</p>
-              <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.tbq_y_count ?? 0}</p>
-            </div>
-          </div>
-            <Link
-              href={`/projects/${projectId}/import?batch_id=${currentBatch.id}`}
-              className="app-link inline-flex"
-            >
-              View imported rows →
-            </Link>
-          </div>
+          )
         ) : null}
 
         {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}

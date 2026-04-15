@@ -347,6 +347,16 @@ export interface VolumetrySnapshotList {
   snapshots: VolumetrySnapshot[];
 }
 
+export interface RecalculationJobStatus {
+  job_id: string;
+  project_id: string;
+  status: string;
+  snapshot_id: string | null;
+  scope: string;
+  integration_ids: string[];
+  created_at: string | null;
+}
+
 export interface AuditEvent {
   id: string;
   project_id: string | null;
