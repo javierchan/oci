@@ -25,7 +25,7 @@ Each milestone is self-contained: it names the problem, the root cause, the targ
 | [M4](#m4--genai-configuration-externalization) | GenAI Configuration Externalization | High | complete |
 | [M5](#m5--structured-logging) | Structured Logging | High | complete |
 | [M6](#m6--prompt-caching-and-token-optimization) | Prompt Caching and Token Optimization | High | complete |
-| [M7](#m7--semantic-error-handling-and-error-codes) | Semantic Error Handling and Error Codes | High | open |
+| [M7](#m7--semantic-error-handling-and-error-codes) | Semantic Error Handling and Error Codes | High | complete |
 | [M8](#m8--api-versioning-and-contract-hardening) | API Versioning and Contract Hardening | Medium | open |
 | [M9](#m9--authentication-and-rate-limiting) | Authentication and Rate Limiting | Medium | open |
 | [M10](#m10--observability-and-cost-metrics) | Observability and Cost Metrics | Medium | open |
