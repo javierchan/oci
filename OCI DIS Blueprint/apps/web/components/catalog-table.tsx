@@ -125,7 +125,7 @@ export function CatalogTable({
     ]),
   );
 
-  function resetPageAndSet(setter: (value: string) => void, value: string): void {
+  function resetPageAndSet(setter: (_value: string) => void, value: string): void {
     setter(value);
     setPage(1);
   }

@@ -8,7 +8,7 @@ export type Theme = "light" | "dark" | "system";
 
 export function useTheme(): {
   theme: Theme;
-  setTheme: (theme: Theme) => void;
+  setTheme: (_theme: Theme) => void;
 } {
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === "undefined") {

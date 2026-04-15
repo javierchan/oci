@@ -11,7 +11,7 @@ type AdminDictionaryFormProps = {
   initialValue?: DictOption | null;
   isLoading: boolean;
   error: string;
-  onSubmit: (value: DictOptionCreate) => void | Promise<void>;
+  onSubmit: (_value: DictOptionCreate) => void | Promise<void>;
   onCancel: () => void;
 };
 

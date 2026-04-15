@@ -14,16 +14,16 @@ type IntegrationGraphProps = {
   graph: GraphResponse;
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
-  onNodeClick: (node: GraphNode) => void;
-  onEdgeClick: (edge: GraphEdge) => void;
+  onNodeClick: (_node: GraphNode) => void;
+  onEdgeClick: (_edge: GraphEdge) => void;
   colorMode: "qa" | "bp";
   svgRef: RefObject<SVGSVGElement>;
   mode: GraphMode;
   viewport: { x: number; y: number; scale: number };
   onViewportChange: (
-    updater:
+    _updater:
       | { x: number; y: number; scale: number }
-      | ((current: { x: number; y: number; scale: number }) => { x: number; y: number; scale: number }),
+      | ((_current: { x: number; y: number; scale: number }) => { x: number; y: number; scale: number }),
   ) => void;
 };
 

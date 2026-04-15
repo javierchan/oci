@@ -3,7 +3,7 @@
 /* Category-scoped dictionary governance page with create, edit, and deactivate actions. */
 
 import { Pencil, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Breadcrumb } from "@/components/breadcrumb";
 import { AdminConfirmDelete } from "@/components/admin-confirm-delete";
@@ -30,7 +30,7 @@ export default function AdminDictionaryCategoryPage({
   const [editingOption, setEditingOption] = useState<DictOption | null>(null);
   const [deletingOption, setDeletingOption] = useState<DictOption | null>(null);
 
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
       const response = await api.listDictionaryOptions(category);
@@ -50,11 +50,11 @@ export default function AdminDictionaryCategoryPage({
     } finally {
       setLoading(false);
     }
-  }
+  }, [category]);
 
   useEffect(() => {
     void load();
-  }, [category]);
+  }, [load]);
 
   async function handleCreate(value: DictOptionCreate): Promise<void> {
     setSaving(true);

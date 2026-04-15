@@ -23,7 +23,10 @@ import type {
 export type CaptureStepProps = {
   projectId: string;
   form: ManualIntegrationCreate;
-  updateField: <K extends keyof ManualIntegrationCreate>(field: K, value: ManualIntegrationCreate[K]) => void;
+  updateField: <K extends keyof ManualIntegrationCreate>(
+    _field: K,
+    _value: ManualIntegrationCreate[K],
+  ) => void;
   patterns: PatternDefinition[];
   toolOptions: DictionaryOption[];
   frequencyOptions: DictionaryOption[];

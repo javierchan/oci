@@ -11,7 +11,7 @@ type AdminAssumptionFormProps = {
   suggestedVersion: string;
   isLoading: boolean;
   error: string;
-  onSubmit: (value: AssumptionSetCreate) => void | Promise<void>;
+  onSubmit: (_value: AssumptionSetCreate) => void | Promise<void>;
   onCancel: () => void;
 };
 

@@ -13,11 +13,11 @@ type GraphMode = "select" | "pan";
 type GraphControlsProps = {
   projectId: string;
   filters: GraphParams;
-  onFilterChange: (field: keyof GraphParams, value: string) => void;
+  onFilterChange: (_field: keyof GraphParams, _value: string) => void;
   colorMode: "qa" | "bp";
-  onColorModeChange: (mode: "qa" | "bp") => void;
+  onColorModeChange: (_mode: "qa" | "bp") => void;
   mode: GraphMode;
-  onModeChange: (mode: GraphMode) => void;
+  onModeChange: (_mode: GraphMode) => void;
   zoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;

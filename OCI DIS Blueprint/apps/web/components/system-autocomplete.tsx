@@ -10,7 +10,7 @@ type SystemAutocompleteProps = {
   projectId: string;
   label: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange: (_value: string) => void;
   placeholder: string;
   description?: string;
 };
@@ -95,7 +95,7 @@ export function SystemAutocomplete({
       ) : null}
       {focused && query.length >= 2 && !loading && suggestions.length === 0 ? (
         <div className="mt-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm italic text-[var(--color-text-muted)]">
-          No existing systems match "{query}" — it will be created as a new system.
+          No existing systems match &quot;{query}&quot; — it will be created as a new system.
         </div>
       ) : null}
       <p className="mt-2 text-xs text-slate-500">
