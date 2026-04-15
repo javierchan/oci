@@ -1,5 +1,6 @@
 'use strict';
 
+const { CatalogError } = require('./errors');
 const { loadWorkbookRules, searchWorkbookServices } = require('./workbook-rules');
 const { buildServiceRegistry, searchServiceRegistry, serviceHasRequiredInputs } = require('./service-registry');
 
@@ -10,146 +11,154 @@ const MODIFIERS = {
 };
 
 function normalizeCatalog(rawData) {
-  const productsRaw = rawData?.['products.json'];
-  const apexProductsRaw = rawData?.['products-apex.json'];
-  const metricsRaw = rawData?.['metrics.json'];
-  const presetsRaw = rawData?.['productpresets.json'];
+  try {
+    const productsRaw = rawData?.['products.json'];
+    const apexProductsRaw = rawData?.['products-apex.json'];
+    const metricsRaw = rawData?.['metrics.json'];
+    const presetsRaw = rawData?.['productpresets.json'];
 
-  const productItems = Array.isArray(productsRaw?.items) ? productsRaw.items : (Array.isArray(productsRaw) ? productsRaw : []);
-  const apexProductItems = Array.isArray(apexProductsRaw?.items) ? apexProductsRaw.items : (Array.isArray(apexProductsRaw) ? apexProductsRaw : []);
-  const metricItems = Array.isArray(metricsRaw?.items) ? metricsRaw.items : (Array.isArray(metricsRaw) ? metricsRaw : []);
-  const presetItems = Array.isArray(presetsRaw?.items) ? presetsRaw.items : (Array.isArray(presetsRaw) ? presetsRaw : []);
+    const productItems = Array.isArray(productsRaw?.items) ? productsRaw.items : (Array.isArray(productsRaw) ? productsRaw : []);
+    const apexProductItems = Array.isArray(apexProductsRaw?.items) ? apexProductsRaw.items : (Array.isArray(apexProductsRaw) ? apexProductsRaw : []);
+    const metricItems = Array.isArray(metricsRaw?.items) ? metricsRaw.items : (Array.isArray(metricsRaw) ? metricsRaw : []);
+    const presetItems = Array.isArray(presetsRaw?.items) ? presetsRaw.items : (Array.isArray(presetsRaw) ? presetsRaw : []);
 
-  const metricsById = new Map();
-  for (const metric of metricItems) {
-    metricsById.set(String(metric.id), metric);
-  }
-
-  const products = [];
-  const productsByPartNumber = new Map();
-  const productKeyToIndex = new Map();
-
-  function normalizeDisplayKey(value) {
-    return String(value || '')
-      .replace(/\u00a0/g, ' ')
-      .replace(/[–—]/g, '-')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-  }
-
-  function inferPriceTypeFromMetric(metricDisplayName) {
-    const source = String(metricDisplayName || '').toLowerCase();
-    if (!source) return '';
-    if (/\bper hour\b|\bhour\b/.test(source)) return 'HOUR';
-    if (/\bper month\b|\bmonth\b/.test(source)) return 'MONTH';
-    if (/\bper day\b|\bday\b/.test(source)) return 'DAY';
-    return '';
-  }
-
-  function addOrMergeProduct(normalized) {
-    const key = [
-      String(normalized.partNumber || '').trim().toUpperCase(),
-      normalizeDisplayKey(normalized.displayName),
-      normalizeDisplayKey(normalized.serviceCategoryDisplayName),
-      normalizeDisplayKey(normalized.metricDisplayName),
-    ].join('|');
-    const existingIndex = productKeyToIndex.get(key);
-    if (existingIndex === undefined) {
-      productKeyToIndex.set(key, products.length);
-      products.push(normalized);
-      if (!productsByPartNumber.has(normalized.partNumber)) productsByPartNumber.set(normalized.partNumber, []);
-      productsByPartNumber.get(normalized.partNumber).push(normalized);
-      return;
-    }
-    const existing = products[existingIndex];
-    existing.priceType = existing.priceType || normalized.priceType;
-    existing.metricId = existing.metricId || normalized.metricId;
-    existing.metricDisplayName = existing.metricDisplayName || normalized.metricDisplayName;
-    existing.metricUnitDisplayName = existing.metricUnitDisplayName || normalized.metricUnitDisplayName;
-    existing.serviceCategoryDisplayName = existing.serviceCategoryDisplayName || normalized.serviceCategoryDisplayName;
-    for (const [currencyCode, prices] of Object.entries(normalized.pricingByCurrency || {})) {
-      if (!existing.pricingByCurrency[currencyCode]) existing.pricingByCurrency[currencyCode] = prices;
-    }
-    for (const [currencyCode, tiers] of Object.entries(normalized.tiersByCurrency || {})) {
-      if (!existing.tiersByCurrency[currencyCode]) existing.tiersByCurrency[currencyCode] = tiers;
-    }
-  }
-
-  function normalizeProductItem(product, sourceType = 'cloudestimator') {
-    const metric = metricsById.get(String(product.metricId));
-    const localizations = Array.isArray(product.currencyCodeLocalizations) ? product.currencyCodeLocalizations : [];
-    const pricingByCurrency = {};
-    const tiersByCurrency = {};
-
-    for (const localization of localizations) {
-      const currencyCode = localization.currencyCode;
-      const prices = Array.isArray(localization.prices) ? localization.prices : [];
-      pricingByCurrency[currencyCode] = prices;
-      tiersByCurrency[currencyCode] = prices
-        .filter((price) => price.model === 'PAY_AS_YOU_GO')
-        .map((price) => ({
-          model: price.model,
-          value: Number(price.value),
-          rangeMin: price.rangeMin == null ? null : (Number.isFinite(Number(price.rangeMin)) ? Number(price.rangeMin) : null),
-          rangeMax: price.rangeMax == null ? null : (Number.isFinite(Number(price.rangeMax)) ? Number(price.rangeMax) : null),
-          rangeUnit: price.rangeUnit || null,
-        }))
-        .sort((a, b) => (a.rangeMin ?? 0) - (b.rangeMin ?? 0));
+    const metricsById = new Map();
+    for (const metric of metricItems) {
+      metricsById.set(String(metric.id), metric);
     }
 
-    return {
-      partNumber: product.partNumber,
-      displayName: product.displayName,
-      fullDisplayName: product.displayName && product.displayName.includes(product.partNumber)
-        ? product.displayName
-        : `${product.partNumber} - ${product.displayName}`,
-      priceType: product.pricetype || inferPriceTypeFromMetric(product.metricName || metric?.displayName || ''),
-      serviceCategoryDisplayName: product.serviceCategoryDisplayName || '',
-      metricId: product.metricId != null ? String(product.metricId) : '',
-      metricDisplayName: product.metricName || metric?.displayName || '',
-      metricUnitDisplayName: metric?.unitDisplayName || '',
-      pricingByCurrency,
-      tiersByCurrency,
-      sourceType,
+    const products = [];
+    const productsByPartNumber = new Map();
+    const productKeyToIndex = new Map();
+
+    function normalizeDisplayKey(value) {
+      return String(value || '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[–—]/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+    }
+
+    function inferPriceTypeFromMetric(metricDisplayName) {
+      const source = String(metricDisplayName || '').toLowerCase();
+      if (!source) return '';
+      if (/\bper hour\b|\bhour\b/.test(source)) return 'HOUR';
+      if (/\bper month\b|\bmonth\b/.test(source)) return 'MONTH';
+      if (/\bper day\b|\bday\b/.test(source)) return 'DAY';
+      return '';
+    }
+
+    function addOrMergeProduct(normalized) {
+      const key = [
+        String(normalized.partNumber || '').trim().toUpperCase(),
+        normalizeDisplayKey(normalized.displayName),
+        normalizeDisplayKey(normalized.serviceCategoryDisplayName),
+        normalizeDisplayKey(normalized.metricDisplayName),
+      ].join('|');
+      const existingIndex = productKeyToIndex.get(key);
+      if (existingIndex === undefined) {
+        productKeyToIndex.set(key, products.length);
+        products.push(normalized);
+        if (!productsByPartNumber.has(normalized.partNumber)) productsByPartNumber.set(normalized.partNumber, []);
+        productsByPartNumber.get(normalized.partNumber).push(normalized);
+        return;
+      }
+      const existing = products[existingIndex];
+      existing.priceType = existing.priceType || normalized.priceType;
+      existing.metricId = existing.metricId || normalized.metricId;
+      existing.metricDisplayName = existing.metricDisplayName || normalized.metricDisplayName;
+      existing.metricUnitDisplayName = existing.metricUnitDisplayName || normalized.metricUnitDisplayName;
+      existing.serviceCategoryDisplayName = existing.serviceCategoryDisplayName || normalized.serviceCategoryDisplayName;
+      for (const [currencyCode, prices] of Object.entries(normalized.pricingByCurrency || {})) {
+        if (!existing.pricingByCurrency[currencyCode]) existing.pricingByCurrency[currencyCode] = prices;
+      }
+      for (const [currencyCode, tiers] of Object.entries(normalized.tiersByCurrency || {})) {
+        if (!existing.tiersByCurrency[currencyCode]) existing.tiersByCurrency[currencyCode] = tiers;
+      }
+    }
+
+    function normalizeProductItem(product, sourceType = 'cloudestimator') {
+      const metric = metricsById.get(String(product.metricId));
+      const localizations = Array.isArray(product.currencyCodeLocalizations) ? product.currencyCodeLocalizations : [];
+      const pricingByCurrency = {};
+      const tiersByCurrency = {};
+
+      for (const localization of localizations) {
+        const currencyCode = localization.currencyCode;
+        const prices = Array.isArray(localization.prices) ? localization.prices : [];
+        pricingByCurrency[currencyCode] = prices;
+        tiersByCurrency[currencyCode] = prices
+          .filter((price) => price.model === 'PAY_AS_YOU_GO')
+          .map((price) => ({
+            model: price.model,
+            value: Number(price.value),
+            rangeMin: price.rangeMin == null ? null : (Number.isFinite(Number(price.rangeMin)) ? Number(price.rangeMin) : null),
+            rangeMax: price.rangeMax == null ? null : (Number.isFinite(Number(price.rangeMax)) ? Number(price.rangeMax) : null),
+            rangeUnit: price.rangeUnit || null,
+          }))
+          .sort((a, b) => (a.rangeMin ?? 0) - (b.rangeMin ?? 0));
+      }
+
+      return {
+        partNumber: product.partNumber,
+        displayName: product.displayName,
+        fullDisplayName: product.displayName && product.displayName.includes(product.partNumber)
+          ? product.displayName
+          : `${product.partNumber} - ${product.displayName}`,
+        priceType: product.pricetype || inferPriceTypeFromMetric(product.metricName || metric?.displayName || ''),
+        serviceCategoryDisplayName: product.serviceCategoryDisplayName || '',
+        metricId: product.metricId != null ? String(product.metricId) : '',
+        metricDisplayName: product.metricName || metric?.displayName || '',
+        metricUnitDisplayName: metric?.unitDisplayName || '',
+        pricingByCurrency,
+        tiersByCurrency,
+        sourceType,
+      };
+    }
+
+    for (const product of productItems) {
+      addOrMergeProduct(normalizeProductItem(product, 'cloudestimator'));
+    }
+
+    for (const product of apexProductItems) {
+      addOrMergeProduct(normalizeProductItem({
+        partNumber: product.partNumber,
+        displayName: product.displayName,
+        serviceCategoryDisplayName: product.serviceCategory,
+        metricId: '',
+        metricName: product.metricName,
+        pricetype: '',
+        currencyCodeLocalizations: product.currencyCodeLocalizations,
+      }, 'apex'));
+    }
+
+    const presets = presetItems.map((item) => ({
+      displayName: item.displayName || '',
+      categories: Array.isArray(item.categories) ? item.categories.map((category) => category.displayName || '').filter(Boolean) : [],
+      presetItems: Array.isArray(item.presetItems) ? item.presetItems.map((presetItem) => ({
+        partNumber: presetItem?.product?.partNumber || '',
+      })).filter((presetItem) => presetItem.partNumber) : [],
+    }));
+
+    const workbookRules = loadWorkbookRules();
+    const baseIndex = {
+      products,
+      productsByPartNumber,
+      metricsById,
+      presets,
+      modifierSets: MODIFIERS,
     };
+    baseIndex.workbookRules = workbookRules;
+    baseIndex.serviceRegistry = buildServiceRegistry(baseIndex);
+    return baseIndex;
+  } catch (error) {
+    throw new CatalogError('OCI catalog normalization failed.', {
+      code: 'CATALOG_INVALID',
+      httpStatus: 503,
+      cause: error,
+    });
   }
-
-  for (const product of productItems) {
-    addOrMergeProduct(normalizeProductItem(product, 'cloudestimator'));
-  }
-
-  for (const product of apexProductItems) {
-    addOrMergeProduct(normalizeProductItem({
-      partNumber: product.partNumber,
-      displayName: product.displayName,
-      serviceCategoryDisplayName: product.serviceCategory,
-      metricId: '',
-      metricName: product.metricName,
-      pricetype: '',
-      currencyCodeLocalizations: product.currencyCodeLocalizations,
-    }, 'apex'));
-  }
-
-  const presets = presetItems.map((item) => ({
-    displayName: item.displayName || '',
-    categories: Array.isArray(item.categories) ? item.categories.map((category) => category.displayName || '').filter(Boolean) : [],
-    presetItems: Array.isArray(item.presetItems) ? item.presetItems.map((presetItem) => ({
-      partNumber: presetItem?.product?.partNumber || '',
-    })).filter((presetItem) => presetItem.partNumber) : [],
-  }));
-
-  const workbookRules = loadWorkbookRules();
-  const baseIndex = {
-    products,
-    productsByPartNumber,
-    metricsById,
-    presets,
-    modifierSets: MODIFIERS,
-  };
-  baseIndex.workbookRules = workbookRules;
-  baseIndex.serviceRegistry = buildServiceRegistry(baseIndex);
-  return baseIndex;
 }
 
 function tokenize(value) {

@@ -13,6 +13,15 @@ const { resolveGenAIRequestOptions } = require('./genai-profiles');
 const { respondToAssistant } = require('./assistant');
 const sessionStore = require('./session-store');
 const { buildQuoteExportRows, buildQuoteExportCsv, buildQuoteExportWorkbook } = require('./quote-export');
+const {
+  PricingError,
+  GenAIError,
+  CatalogError,
+  SessionConflictError,
+  ValidationError,
+  handleError,
+  normalizeError,
+} = require('./errors');
 const { buildRequestLogger, createTrace, logger, summarizeTrace } = require('./logger');
 
 const app  = express();
@@ -98,6 +107,41 @@ function loadOciConfig(requestLogger = logger) {
     privateKeyPem,
     ok,
   };
+}
+
+function ensureOciConfig(requestLogger = logger) {
+  const cfg = loadOciConfig(requestLogger);
+  if (!cfg.ok) {
+    throw new GenAIError('OCI GenAI is not configured.', {
+      code: 'GENAI_NOT_CONFIGURED',
+      httpStatus: 503,
+    });
+  }
+  return cfg;
+}
+
+function createHttpError(message, { code = 'INTERNAL_ERROR', httpStatus = 500, data = null, expose = true, cause = null } = {}) {
+  return new PricingError(message, {
+    code,
+    httpStatus,
+    data,
+    expose,
+    cause,
+  });
+}
+
+function logRequestFailure(requestLogger, trace, method, error, message) {
+  const normalized = normalizeError(error);
+  const logLevel = normalized.httpStatus >= 500 ? 'error' : 'warn';
+  requestLogger?.[logLevel]?.({
+    event: 'http.request.failure',
+    method,
+    statusCode: normalized.httpStatus,
+    errorCode: normalized.code,
+    errorMessage: error?.message || normalized.message,
+    ...summarizeTrace(trace),
+  }, message);
+  return normalized;
 }
 
 const WORKBOOK_ENRICHMENT_PROMPT = [
@@ -245,15 +289,19 @@ function buildQuoteExportHttpResponse(clientId, sessionId, format = 'csv') {
   const session = sessionStore.getSession(clientId, sessionId);
   if (!session) {
     return {
-      status: 404,
-      json: { ok: false, error: 'Session not found.' },
+      error: createHttpError('Session not found.', {
+        code: 'SESSION_NOT_FOUND',
+        httpStatus: 404,
+      }),
     };
   }
   const quoteExport = session.sessionContext?.quoteExport;
   if (!quoteExport?.lineItems?.length) {
     return {
-      status: 404,
-      json: { ok: false, error: 'No exportable quote found in this session.' },
+      error: createHttpError('No exportable quote found in this session.', {
+        code: 'QUOTE_EXPORT_NOT_FOUND',
+        httpStatus: 404,
+      }),
     };
   }
   const normalizedFormat = String(format || 'csv').trim().toLowerCase();
@@ -340,7 +388,11 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body, persist
       : (Number.isFinite(Number(storedSession?.workbookContext?.vpuPerGb)) ? Number(storedSession.workbookContext.vpuPerGb) : null),
   };
   if (!contentBase64) {
-    return { status: 400, body: { ok: false, error: 'Workbook contentBase64 is required.' } };
+    return {
+      error: new ValidationError('Workbook contentBase64 is required.', {
+        code: 'WORKBOOK_CONTENT_REQUIRED',
+      }),
+    };
   }
 
   try {
@@ -353,7 +405,11 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body, persist
     const workbook = parseWorkbookBase64(contentBase64);
     const analysis = analyzeWorkbookForGuidedQuote(workbook);
     if (!analysis.quotableRows) {
-      return { status: 400, body: { ok: false, error: 'No quotable rows were detected in the workbook.' } };
+      return {
+        error: new ValidationError('No quotable rows were detected in the workbook.', {
+          code: 'WORKBOOK_NO_QUOTABLE_ROWS',
+        }),
+      };
     }
     if (!sourcePlatform && analysis.sourceType !== 'rvtools') {
       const question = `I analyzed \`${fileName}\` and found ${analysis.quotableRows} quotable workload${analysis.quotableRows === 1 ? '' : 's'}. Do these workbook rows come from VMware, another hypervisor, or bare metal inventory?`;
@@ -476,7 +532,11 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body, persist
     }
     const selectedShape = shapeOptions.find((option) => option.value === shapeName);
     if (!selectedShape) {
-      return { status: 400, body: { ok: false, error: `Shape ${shapeName} is not a valid flex shape for ${processorVendor}.` } };
+      return {
+        error: new ValidationError(`Shape ${shapeName} is not a valid flex shape for ${processorVendor}.`, {
+          code: 'INVALID_SHAPE_SELECTION',
+        }),
+      };
     }
     const { requests, warnings: workbookWarnings } = workbookToRequests(workbook, {
       sourcePlatform: effectiveSourcePlatform,
@@ -576,7 +636,11 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body, persist
       },
     };
   } catch (error) {
-    return { status: 400, body: { ok: false, error: `Could not parse workbook: ${error.message}` } };
+    return {
+      error: new ValidationError(`Could not parse workbook: ${error.message}`, {
+        code: 'WORKBOOK_PARSE_ERROR',
+      }),
+    };
   }
 }
 
@@ -601,18 +665,8 @@ app.post('/api/chat', async (req, res) => {
     messageCount: Array.isArray(req.body?.messages) ? req.body.messages.length : 0,
   }, 'Received /api/chat request');
 
-  const cfg = loadOciConfig(requestLogger);
-  if (!cfg.ok) {
-    requestLogger.warn({ event: 'http.request.rejected', reason: 'genai_not_configured' }, 'Rejected /api/chat request due to missing OCI GenAI configuration');
-    return res.status(500).json({
-      type: 'error',
-      error: {
-        type: 'configuration_error',
-        message: 'OCI GenAI is not configured. Set OCI_USER, OCI_TENANCY, OCI_FINGERPRINT and OCI_PRIVATE_KEY in your .env file.',
-      }
-    });
-  }
   try {
+    const cfg = ensureOciConfig(requestLogger);
     const requestOptions = resolveGenAIRequestOptions(req.body.profile || cfg.defaultProfile || 'narrative', cfg, {
       maxTokens: req.body.max_tokens,
       temperature: req.body.temperature,
@@ -647,23 +701,8 @@ app.post('/api/chat', async (req, res) => {
       raw: text ? undefined : payload,
     });
   } catch (err) {
-    const status = Number(err?.status || err?.statusCode || 502);
-    requestLogger.warn({
-      event: 'http.request.failure',
-      method: 'POST',
-      statusCode: Number.isFinite(status) ? status : 502,
-      errorMessage: err?.message || 'OCI GenAI request failed.',
-      ...summarizeTrace(trace),
-    }, 'Failed /api/chat request');
-    return res.status(Number.isFinite(status) ? status : 502).json({
-      type: 'error',
-      error: {
-        type: 'oci_genai_error',
-        message: err?.message || 'OCI GenAI request failed.',
-        status: Number.isFinite(status) ? status : undefined,
-        details: err.message,
-      }
-    });
+    logRequestFailure(requestLogger, trace, 'POST', err, 'Failed /api/chat request');
+    return handleError(res, err);
   }
 });
 
@@ -684,34 +723,25 @@ app.post('/api/assistant', async (req, res) => {
     hasImage: Boolean(String(req.body?.imageDataUrl || '').trim()),
   }, 'Received /api/assistant request');
 
-  if (!ensureCatalogReady(res)) {
-    requestLogger.warn({ event: 'http.request.rejected', reason: 'catalog_not_ready' }, 'Rejected /api/assistant request because the catalog is not ready');
-    return;
-  }
-  const cfg = loadOciConfig(requestLogger);
-  if (!cfg.ok) {
-    requestLogger.warn({ event: 'http.request.rejected', reason: 'genai_not_configured' }, 'Rejected /api/assistant request due to missing OCI GenAI configuration');
-    return res.status(500).json({
-      ok: false,
-      error: 'OCI GenAI is not configured.',
-    });
-  }
-  const text = String(req.body.text || '').trim();
-  const storedSession = sessionId ? sessionStore.getSession(clientId, sessionId) : null;
-  const effectiveWorkbookContext = getEffectiveWorkbookContext(storedSession);
-  const conversation = storedSession
-    ? mapStoredConversation(storedSession.messages)
-    : Array.isArray(req.body.conversation) ? req.body.conversation : [];
-  const imageDataUrl = String(req.body.imageDataUrl || '').trim();
-  const userLabel = String(req.body.userLabel || '').trim();
-  const persistedUserContent = userLabel || text || (imageDataUrl ? '[Image attached]' : '');
-  const sessionContext = resolveAssistantSessionContext(storedSession, req.body.sessionContext);
-  if (!text && !imageDataUrl) {
-    requestLogger.warn({ event: 'http.request.rejected', reason: 'missing_text_and_image' }, 'Rejected /api/assistant request because no text or image was provided');
-    return res.status(400).json({ ok: false, error: 'Provide text or imageDataUrl.' });
-  }
-
   try {
+    ensureCatalogReady();
+    const cfg = ensureOciConfig(requestLogger);
+    const text = String(req.body.text || '').trim();
+    const storedSession = sessionId ? sessionStore.getSession(clientId, sessionId) : null;
+    const effectiveWorkbookContext = getEffectiveWorkbookContext(storedSession);
+    const conversation = storedSession
+      ? mapStoredConversation(storedSession.messages)
+      : Array.isArray(req.body.conversation) ? req.body.conversation : [];
+    const imageDataUrl = String(req.body.imageDataUrl || '').trim();
+    const userLabel = String(req.body.userLabel || '').trim();
+    const persistedUserContent = userLabel || text || (imageDataUrl ? '[Image attached]' : '');
+    const sessionContext = resolveAssistantSessionContext(storedSession, req.body.sessionContext);
+    if (!text && !imageDataUrl) {
+      throw new ValidationError('Provide text or imageDataUrl.', {
+        code: 'ASSISTANT_INPUT_REQUIRED',
+      });
+    }
+
     const workbookFollowup = parseWorkbookPromptSelections(text);
     const hasActiveWorkbook = !!effectiveWorkbookContext?.contentBase64;
     const hasWorkbookQuote = storedSession?.sessionContext?.lastQuote?.type === 'workbook_quote';
@@ -732,6 +762,7 @@ app.post('/api/assistant', async (req, res) => {
         },
         persistMessages: true,
       });
+      if (workbookReply.error) throw workbookReply.error;
       requestLogger.info({
         event: 'http.request.complete',
         method: 'POST',
@@ -802,17 +833,8 @@ app.post('/api/assistant', async (req, res) => {
       session: sessionId ? sessionStore.getSession(clientId, sessionId) : null,
     });
   } catch (error) {
-    requestLogger.warn({
-      event: 'http.request.failure',
-      method: 'POST',
-      statusCode: 502,
-      errorMessage: error.message,
-      ...summarizeTrace(trace),
-    }, 'Failed /api/assistant request');
-    return res.status(502).json({
-      ok: false,
-      error: error.message || 'Assistant request failed.',
-    });
+    logRequestFailure(requestLogger, trace, 'POST', error, 'Failed /api/assistant request');
+    return handleError(res, error);
   }
 });
 
@@ -1006,43 +1028,73 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: Object.keys(store.data).length > 0, catalogsLoaded: Object.keys(store.data).length, loading: store.busy, catalogs, ociConfigured: cfg.ok });
 });
 
-function ensureCatalogReady(res) {
+function ensureCatalogReady() {
   if (!store.normalized || !store.normalized.products.length) {
-    res.status(503).json({ ok: false, error: 'OCI catalog is not ready yet.' });
-    return false;
+    throw new CatalogError('OCI catalog is not ready yet.', {
+      code: 'CATALOG_NOT_READY',
+      httpStatus: 503,
+    });
   }
-  return true;
+  return store.normalized;
 }
 
 app.get('/api/catalog/search', (req, res) => {
-  if (!ensureCatalogReady(res)) return;
-  const q = String(req.query.q || '');
-  res.json({
-    ok: true,
-    products: searchProducts(store.normalized, q, 15),
-    presets: searchPresets(store.normalized, q, 10),
-    services: searchServiceRegistry(store.normalized.serviceRegistry, q, 12),
-  });
+  try {
+    const index = ensureCatalogReady();
+    const q = String(req.query.q || '');
+    res.json({
+      ok: true,
+      products: searchProducts(index, q, 15),
+      presets: searchPresets(index, q, 10),
+      services: searchServiceRegistry(index.serviceRegistry, q, 12),
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
 });
 
 app.get('/api/coverage', (req, res) => {
-  if (!ensureCatalogReady(res)) return;
-  const q = String(req.query.q || '').trim();
-  const registry = store.normalized.serviceRegistry || { services: [], summary: {} };
-  const services = q ? searchServiceRegistry(registry, q, 50) : registry.services;
-  res.json({
-    ok: true,
-    summary: registry.summary,
-    services,
-  });
+  try {
+    const index = ensureCatalogReady();
+    const q = String(req.query.q || '').trim();
+    const registry = index.serviceRegistry || { services: [], summary: {} };
+    const services = q ? searchServiceRegistry(registry, q, 50) : registry.services;
+    res.json({
+      ok: true,
+      summary: registry.summary,
+      services,
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
 });
 
 app.get('/api/catalog/:file', (req, res) => {
-  const { file } = req.params;
-  if (!OCI_URLS[file]) return res.status(404).json({ error: 'Unknown catalog' });
-  if (store.busy && !store.data[file]) return res.status(202).json({ error: 'Still loading', loading: true });
-  if (!store.data[file]) return res.status(503).json({ error: store.errors[file] || 'Not available' });
-  res.setHeader('Cache-Control', 'public, max-age=1800').json(store.data[file]);
+  try {
+    const { file } = req.params;
+    if (!OCI_URLS[file]) {
+      throw new CatalogError('Unknown catalog.', {
+        code: 'CATALOG_NOT_FOUND',
+        httpStatus: 404,
+      });
+    }
+    if (store.busy && !store.data[file]) {
+      throw new CatalogError('Still loading.', {
+        code: 'CATALOG_LOADING',
+        httpStatus: 202,
+        data: { loading: true },
+      });
+    }
+    if (!store.data[file]) {
+      throw new CatalogError(store.errors[file] || 'Not available.', {
+        code: 'CATALOG_UNAVAILABLE',
+        httpStatus: 503,
+      });
+    }
+    res.setHeader('Cache-Control', 'public, max-age=1800').json(store.data[file]);
+  } catch (error) {
+    return handleError(res, error);
+  }
 });
 
 app.post('/api/catalog/reload', (_req, res) => {
@@ -1053,48 +1105,59 @@ app.post('/api/catalog/reload', (_req, res) => {
 });
 
 app.post('/api/quote', (req, res) => {
-  if (!ensureCatalogReady(res)) return;
-  const text = String(req.body.text || '');
-  const lines = Array.isArray(req.body.lines) ? req.body.lines : [];
+  try {
+    const index = ensureCatalogReady();
+    const text = String(req.body.text || '');
+    const lines = Array.isArray(req.body.lines) ? req.body.lines : [];
 
-  if (!text && !lines.length) {
-    return res.status(400).json({ ok: false, error: 'Provide text or structured lines.' });
+    if (!text && !lines.length) {
+      throw new ValidationError('Provide text or structured lines.', {
+        code: 'QUOTE_INPUT_REQUIRED',
+      });
+    }
+
+    if (text) return res.json(quoteFromPrompt(index, text));
+
+    const results = lines.map((line) => buildQuote(index, line));
+    const lineItems = results.flatMap((result) => result.lineItems || []);
+    const warnings = results.flatMap((result) => result.warnings || []);
+    const errors = results.filter((result) => !result.ok).map((result) => result.error);
+    const totals = lineItems.reduce((acc, line) => {
+      acc.monthly += line.monthly;
+      acc.annual += line.annual;
+      acc.currencyCode = line.currencyCode;
+      return acc;
+    }, { monthly: 0, annual: 0, currencyCode: 'USD' });
+
+    return res.json({
+      ok: !!lineItems.length,
+      source: 'structured-lines',
+      results,
+      lineItems,
+      warnings,
+      errors,
+      totals,
+    });
+  } catch (error) {
+    return handleError(res, error);
   }
-
-  if (text) return res.json(quoteFromPrompt(store.normalized, text));
-
-  const results = lines.map((line) => buildQuote(store.normalized, line));
-  const lineItems = results.flatMap((result) => result.lineItems || []);
-  const warnings = results.flatMap((result) => result.warnings || []);
-  const errors = results.filter((result) => !result.ok).map((result) => result.error);
-  const totals = lineItems.reduce((acc, line) => {
-    acc.monthly += line.monthly;
-    acc.annual += line.annual;
-    acc.currencyCode = line.currencyCode;
-    return acc;
-  }, { monthly: 0, annual: 0, currencyCode: 'USD' });
-
-  return res.json({
-    ok: !!lineItems.length,
-    source: 'structured-lines',
-    results,
-    lineItems,
-    warnings,
-    errors,
-    totals,
-  });
 });
 
 app.post('/api/excel/estimate', async (req, res) => {
-  if (!ensureCatalogReady(res)) return;
-  const cfg = loadOciConfig();
-  const clientId = resolveClientId(req);
-  const sessionId = String(req.body.sessionId || '').trim();
-  const result = await estimateWorkbookRequest({ cfg, clientId, sessionId, body: req.body, persistMessages: true });
-  return res.status(result.status).json({
-    ...result.body,
-    session: sessionId ? sessionStore.getSession(clientId, sessionId) : null,
-  });
+  try {
+    ensureCatalogReady();
+    const cfg = loadOciConfig();
+    const clientId = resolveClientId(req);
+    const sessionId = String(req.body.sessionId || '').trim();
+    const result = await estimateWorkbookRequest({ cfg, clientId, sessionId, body: req.body, persistMessages: true });
+    if (result.error) return handleError(res, result.error);
+    return res.status(result.status).json({
+      ...result.body,
+      session: sessionId ? sessionStore.getSession(clientId, sessionId) : null,
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
 });
 
 app.get('/api/sessions', (req, res) => {
@@ -1111,7 +1174,12 @@ app.post('/api/sessions', (req, res) => {
 app.get('/api/sessions/:id', (req, res) => {
   const clientId = resolveClientId(req);
   const session = sessionStore.getSession(clientId, req.params.id);
-  if (!session) return res.status(404).json({ ok: false, error: 'Session not found.' });
+  if (!session) {
+    return handleError(res, createHttpError('Session not found.', {
+      code: 'SESSION_NOT_FOUND',
+      httpStatus: 404,
+    }));
+  }
   return res.json({ ok: true, session });
 });
 
@@ -1123,6 +1191,7 @@ app.get('/api/sessions/:id/quote-export', (req, res) => {
       res.setHeader(key, value);
     }
   }
+  if (result.error) return handleError(res, result.error);
   if (result.json) return res.status(result.status).json(result.json);
   return res.status(result.status).send(result.body);
 });
@@ -1135,8 +1204,17 @@ app.post('/api/sessions/:id/messages', (req, res) => {
   }, {
     expectedVersion: req.body?.expectedVersion,
   });
-  if (!session) return res.status(404).json({ ok: false, error: 'Session not found.' });
-  if (session.conflict) return res.status(409).json({ ok: false, error: 'Session version conflict.', session: session.session });
+  if (!session) {
+    return handleError(res, createHttpError('Session not found.', {
+      code: 'SESSION_NOT_FOUND',
+      httpStatus: 404,
+    }));
+  }
+  if (session.conflict) {
+    return handleError(res, new SessionConflictError('Session version conflict.', {
+      data: { session: session.session },
+    }));
+  }
   return res.json({ ok: true, session });
 });
 
@@ -1149,15 +1227,29 @@ app.post('/api/sessions/:id/state', (req, res) => {
   }, {
     expectedVersion: req.body?.expectedVersion,
   });
-  if (!session) return res.status(404).json({ ok: false, error: 'Session not found.' });
-  if (session.conflict) return res.status(409).json({ ok: false, error: 'Session version conflict.', session: session.session });
+  if (!session) {
+    return handleError(res, createHttpError('Session not found.', {
+      code: 'SESSION_NOT_FOUND',
+      httpStatus: 404,
+    }));
+  }
+  if (session.conflict) {
+    return handleError(res, new SessionConflictError('Session version conflict.', {
+      data: { session: session.session },
+    }));
+  }
   return res.json({ ok: true, session });
 });
 
 app.delete('/api/sessions/:id', (req, res) => {
   const clientId = resolveClientId(req);
   const ok = sessionStore.deleteSession(clientId, req.params.id);
-  if (!ok) return res.status(404).json({ ok: false, error: 'Session not found.' });
+  if (!ok) {
+    return handleError(res, createHttpError('Session not found.', {
+      code: 'SESSION_NOT_FOUND',
+      httpStatus: 404,
+    }));
+  }
   return res.json({ ok: true });
 });
 

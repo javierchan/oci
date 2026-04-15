@@ -10,6 +10,7 @@ const {
   normalizeGenAIProfileName,
   resolveGenAIRequestOptions,
 } = require('./genai-profiles');
+const { GenAIError } = require('./errors');
 const { logger, recordGenAICall } = require('./logger');
 
 function parsePositiveInteger(value, fallback) {
@@ -184,6 +185,20 @@ function shouldRetryWithMaxCompletionTokens(error) {
   return /max_tokens/i.test(message) && /max_completion_tokens/i.test(message);
 }
 
+function wrapGenAIError(error, defaults = {}) {
+  if (error instanceof GenAIError) return error;
+  const status = Number(error?.statusCode || error?.status);
+  return new GenAIError(
+    defaults.message || error?.message || 'OCI GenAI request failed.',
+    {
+      code: defaults.code || 'GENAI_UNAVAILABLE',
+      httpStatus: Number.isFinite(status) && status >= 400 ? status : (defaults.httpStatus || 503),
+      data: defaults.data && typeof defaults.data === 'object' ? { ...defaults.data } : null,
+      cause: error,
+    },
+  );
+}
+
 async function executeChatWithFallback({ client, cfg, messages, maxTokens, temperature, topP, topK, logMeta = {} }) {
   const primaryChatDetails = buildChatDetails({
     cfg,
@@ -338,7 +353,7 @@ async function runChat({ cfg, systemPrompt, messages, profile, maxTokens, temper
       latencyMs,
       errorMessage: error.message,
     }, 'GenAI chat request failed');
-    throw error;
+    throw wrapGenAIError(error);
   }
 }
 
@@ -459,7 +474,7 @@ async function runMultimodalChat({ cfg, systemPrompt, userText, imageDataUrl, pr
       latencyMs,
       errorMessage: error.message,
     }, 'GenAI multimodal request failed');
-    throw error;
+    throw wrapGenAIError(error);
   }
 }
 
@@ -502,6 +517,7 @@ module.exports = {
   getGenAITokenBudget,
   logGenAIUsage,
   maybeWarnOnTokenBudget,
+  wrapGenAIError,
   runChat,
   runMultimodalChat,
   extractChatText,
