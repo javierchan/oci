@@ -18,6 +18,16 @@ class ProjectCreateRequest(BaseModel):
     description: Optional[str] = None
 
 
+class ProjectPatchRequest(BaseModel):
+    """Payload for partially updating project metadata."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    name: Optional[str] = None
+    owner_id: Optional[str] = None
+    description: Optional[str] = None
+
+
 class ProjectResponse(BaseModel):
     """Serialized project resource."""
 

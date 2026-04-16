@@ -41,6 +41,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
   const [error, setError] = useState<string>("");
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
+  const [selectedSystem, setSelectedSystem] = useState<string>("");
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [colorMode, setColorMode] = useState<"qa" | "bp">("qa");
   const [mode, setMode] = useState<"select" | "pan">("select");
@@ -149,6 +150,9 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
         projectId={params.projectId}
         filters={filters}
         onFilterChange={handleFilterChange}
+        selectedSystem={selectedSystem}
+        systemOptions={graph.nodes.map((node) => node.label).sort((left, right) => left.localeCompare(right))}
+        onSystemChange={setSelectedSystem}
         colorMode={colorMode}
         onColorModeChange={setColorMode}
         mode={mode}
@@ -212,6 +216,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
                 setSelectedNode(null);
               }}
               colorMode={colorMode}
+              focusedSystemId={selectedSystem}
               svgRef={svgRef}
               mode={mode}
               viewport={viewport}

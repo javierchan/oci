@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
-
 from app.core.db import AsyncSessionLocal
 from app.services import import_service
+from app.workers.async_runner import run_async
 from app.workers.celery_app import celery_app
 
 
@@ -28,4 +27,4 @@ def process_import_task(batch_id: str, file_path: str) -> dict[str, object]:
                     )
                 raise
 
-    return asyncio.run(_run())
+    return run_async(_run())

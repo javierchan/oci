@@ -19,17 +19,28 @@ class DashboardKPIStrip(BaseModel):
     functions_execution_units_gb_s: float = 0.0
 
 
+class CoverageMetric(BaseModel):
+    """Coverage count plus completion ratio for one governed signal."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    complete: int = 0
+    total: int = 0
+    ratio: float = 0.0
+
+
 class CoverageChart(BaseModel):
     """Coverage metrics for populated catalog fields."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
     total_integrations: int = 0
-    with_interface_id: int = 0
-    without_interface_id: int = 0
-    pattern_assigned: int = 0
-    payload_informed: int = 0
-    source_destination_informed: int = 0
+    formal_id: CoverageMetric = Field(default_factory=CoverageMetric)
+    pattern: CoverageMetric = Field(default_factory=CoverageMetric)
+    payload: CoverageMetric = Field(default_factory=CoverageMetric)
+    trigger: CoverageMetric = Field(default_factory=CoverageMetric)
+    source_destination: CoverageMetric = Field(default_factory=CoverageMetric)
+    fan_out: CoverageMetric = Field(default_factory=CoverageMetric)
 
 
 class CompletenessChart(BaseModel):
@@ -65,6 +76,17 @@ class PayloadDistributionBucket(BaseModel):
     count: int
 
 
+class DashboardForecastConfidence(BaseModel):
+    """Truthfulness signal for forecast-like technical metrics."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    level: str = "low"
+    title: str = "Low confidence"
+    message: str = ""
+    payload_coverage_ratio: float = 0.0
+
+
 class DashboardCharts(BaseModel):
     """Composite dashboard chart payload."""
 
@@ -74,6 +96,7 @@ class DashboardCharts(BaseModel):
     completeness: CompletenessChart
     pattern_mix: list[PatternMixEntry] = Field(default_factory=list)
     payload_distribution: list[PayloadDistributionBucket] = Field(default_factory=list)
+    forecast_confidence: DashboardForecastConfidence = Field(default_factory=DashboardForecastConfidence)
 
 
 class DashboardRisk(BaseModel):

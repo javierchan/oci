@@ -1,8 +1,8 @@
-/* Not-found state for invalid or deleted project routes. */
+/* Graceful not-found surface for invalid or deleted project routes. */
 
 import Link from "next/link";
 
-export default function ProjectNotFound(): JSX.Element {
+export default function ProjectNotFoundPage(): JSX.Element {
   return (
     <div className="space-y-6">
       <section className="app-card p-8">

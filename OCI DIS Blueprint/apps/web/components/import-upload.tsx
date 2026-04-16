@@ -8,6 +8,7 @@ import { useRef, useState } from "react";
 import { Download } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { APP_VERSION } from "@/lib/app-version";
 import { formatDate } from "@/lib/format";
 import type { ImportBatch, SourceRowList } from "@/lib/types";
 
@@ -22,6 +23,33 @@ type ImportUploadProps = {
 
 type UploadPhase = "idle" | "pending" | "processing" | "completed" | "failed";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const TEMPLATE_HEADERS = [
+  "#",
+  "ID de Interfaz",
+  "Marca",
+  "Proceso de Negocio",
+  "Interfaz",
+  "Descripción",
+  "Tipo",
+  "Estado Interfaz",
+  "Complejidad",
+  "Alcance Inicial",
+];
+
+function phaseFromBatchStatus(batch: ImportBatch): UploadPhase {
+  switch (batch.status) {
+    case "pending":
+      return "pending";
+    case "processing":
+      return "processing";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    default:
+      return "idle";
+  }
+}
 
 function formatBytes(size: number): string {
   if (size < 1024) {
@@ -74,7 +102,7 @@ export function ImportUpload({
       const batch = await api.uploadWorkbook(projectId, selectedFile);
       setCurrentBatch(batch);
       setHistory((current: ImportBatch[]) => [batch, ...current]);
-      setPhase("completed");
+      setPhase(phaseFromBatchStatus(batch));
     } catch (caughtError) {
       setPhase("failed");
       setError(caughtError instanceof Error ? caughtError.message : "Upload failed.");
@@ -109,23 +137,45 @@ export function ImportUpload({
   return (
     <div className="space-y-8">
       <section className="app-card p-6">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
-              Upload Integration Workbook
-            </h2>
-            <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-              Project: {projectName}
-            </p>
+        <div className="rounded-[1.75rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-6">
+          <p className="app-label">Step 1</p>
+          <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
+            Download the import template
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
+            Use this template to ensure your data matches the expected column order and format for workbook import.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-4">
+            <a
+              href={`${API_BASE}/api/v1/exports/template/xlsx`}
+              download={`oci-dis-import-template-v${APP_VERSION}.xlsx`}
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-text-primary)]"
+            >
+              <Download className="h-4 w-4" />
+              Download Template (.xlsx)
+            </a>
+            <span className="app-theme-chip">Last updated: v{APP_VERSION}</span>
           </div>
-          <a
-            href={`${API_BASE}/api/v1/exports/template/xlsx`}
-            download="oci-dis-capture-template.xlsx"
-            className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]"
-          >
-            <Download className="h-4 w-4" />
-            Download capture template
-          </a>
+          <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">Required columns (in order)</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {TEMPLATE_HEADERS.map((header) => (
+                <span key={header} className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-1 text-sm text-[var(--color-text-secondary)]">
+                  {header}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <p className="app-label">Step 2</p>
+          <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
+            Upload your completed file
+          </h2>
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+            Project: {projectName}
+          </p>
         </div>
         <div
           role="button"
@@ -168,7 +218,7 @@ export function ImportUpload({
           <p className="app-label">Workbook Import</p>
           <h3 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">Upload `Catálogo de Integraciones`</h3>
           <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
-            Drag and drop the workbook here, or click to browse. The API will parse, normalize, and persist rows immediately.
+            Drag and drop the workbook here, or click to browse. The API will queue the workbook, and the worker will parse, normalize, and persist rows in the background.
           </p>
           {selectedFile ? (
             <div className="mt-6 inline-flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4 text-left">
@@ -184,10 +234,10 @@ export function ImportUpload({
           <button
             type="button"
             onClick={handleUpload}
-            disabled={!selectedFile || phase === "processing"}
+            disabled={!selectedFile || phase === "pending" || phase === "processing"}
             className="app-button-primary"
           >
-            {phase === "processing" ? "Importing…" : "Upload & Import"}
+            {phase === "processing" || phase === "pending" ? "Queuing…" : "Upload & Queue Import"}
           </button>
           <span className="app-theme-chip">
             Status: {phase}
@@ -195,28 +245,46 @@ export function ImportUpload({
         </div>
 
         {currentBatch ? (
-          <div className="mt-6 space-y-4 rounded-[1.5rem] border border-[var(--color-qa-ok-border)] bg-[var(--color-qa-ok-bg)] p-5">
-            <div className="grid gap-4 md:grid-cols-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">Loaded</p>
-              <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.loaded_count ?? 0}</p>
+          currentBatch.status === "completed" ? (
+            <div className="mt-6 space-y-4 rounded-[1.5rem] border border-[var(--color-qa-ok-border)] bg-[var(--color-qa-ok-bg)] p-5">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">Loaded</p>
+                  <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.loaded_count ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">Excluded</p>
+                  <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.excluded_count ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">TBQ = Y</p>
+                  <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.tbq_y_count ?? 0}</p>
+                </div>
+              </div>
+              <Link
+                href={`/projects/${projectId}/import?batch_id=${currentBatch.id}`}
+                className="app-link inline-flex"
+              >
+                View imported rows →
+              </Link>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">Excluded</p>
-              <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.excluded_count ?? 0}</p>
+          ) : (
+            <div className="mt-6 space-y-3 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+              <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">Batch queued</p>
+              <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">
+                Import batch {currentBatch.id.slice(0, 8)} is {currentBatch.status}.
+              </h3>
+              <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
+                The workbook has been accepted and the background worker is processing it. Refresh this page or open the batch detail to watch the counts update.
+              </p>
+              <Link
+                href={`/projects/${projectId}/import?batch_id=${currentBatch.id}`}
+                className="app-link inline-flex"
+              >
+                View batch status →
+              </Link>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">TBQ = Y</p>
-              <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.tbq_y_count ?? 0}</p>
-            </div>
-          </div>
-            <Link
-              href={`/projects/${projectId}/import?batch_id=${currentBatch.id}`}
-              className="app-link inline-flex"
-            >
-              View imported rows →
-            </Link>
-          </div>
+          )
         ) : null}
 
         {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}

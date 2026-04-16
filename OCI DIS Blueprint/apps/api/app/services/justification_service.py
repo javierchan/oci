@@ -27,6 +27,7 @@ from app.schemas.justification import (
     PromptTemplateVersionUpdate,
 )
 from app.services import audit_service
+from app.services.pattern_support import get_pattern_support
 from app.services.serializers import sanitize_for_json, split_csv
 
 
@@ -130,6 +131,7 @@ def _narrative_from_row(
     override_text: Optional[str] = None,
 ) -> JustificationNarrative:
     context = _SafeFormatDict(_template_context(row, pattern_names))
+    pattern_support = get_pattern_support(row.selected_pattern)
     summary_template = str(template_config.get("summary") or FALLBACK_TEMPLATE["summary"])
     blocks_config = template_config.get("blocks")
     blocks = cast(list[object], blocks_config) if isinstance(blocks_config, list) else cast(list[object], FALLBACK_TEMPLATE["blocks"])
@@ -142,6 +144,14 @@ def _narrative_from_row(
         for block in blocks
         if isinstance(block, dict)
     ]
+    methodology_blocks.append(
+        MethodologyBlock(
+            title="Pattern Support Boundary",
+            body=(
+                f"{pattern_support.badge_label}. {pattern_support.summary}"
+            ),
+        )
+    )
 
     evidence = [
         f"interface_id={_text(row.interface_id, 'sin ID formal')}",
@@ -150,6 +160,7 @@ def _narrative_from_row(
         f"frequency={_text(row.frequency)}",
         f"payload_kb={row.payload_per_execution_kb if row.payload_per_execution_kb is not None else 'N/A'}",
         f"selected_pattern={row.selected_pattern or 'UNASSIGNED'}",
+        f"pattern_support_level={pattern_support.level}",
     ]
     if row.source_row is not None and row.source_row.import_batch is not None:
         evidence.extend(

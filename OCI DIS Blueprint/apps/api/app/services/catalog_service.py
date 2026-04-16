@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import fields
-from typing import Optional
+from typing import Any, Optional, cast
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select, union
@@ -40,9 +40,10 @@ from app.schemas.catalog import (
     OICEstimateRequest,
     OICEstimateResponse,
 )
-from app.services import audit_service, recalc_service
+from app.services import audit_service, import_service, recalc_service
 from app.services.justification_service import serialize_justification_record
-from app.services.serializers import split_csv
+from app.services.pattern_support import support_reason_code
+from app.services.serializers import parse_float, parse_int, parse_text, sanitize_for_json, split_csv
 
 PATCHABLE_FIELDS = {
     "selected_pattern",
@@ -51,6 +52,68 @@ PATCHABLE_FIELDS = {
     "retry_policy",
     "core_tools",
     "additional_tools_overlays",
+}
+RAW_COLUMN_PATCH_FIELD = "raw_column_values"
+SOURCE_MANAGED_FIELDS = {
+    "seq_number",
+    "interface_id",
+    "owner",
+    "brand",
+    "business_process",
+    "interface_name",
+    "description",
+    "status",
+    "mapping_status",
+    "initial_scope",
+    "complexity",
+    "frequency",
+    "type",
+    "base",
+    "interface_status",
+    "is_real_time",
+    "trigger_type",
+    "response_size_kb",
+    "payload_per_execution_kb",
+    "is_fan_out",
+    "fan_out_targets",
+    "source_system",
+    "source_technology",
+    "source_api_reference",
+    "source_owner",
+    "destination_system",
+    "destination_technology_1",
+    "destination_technology_2",
+    "destination_owner",
+    "executions_per_day",
+    "payload_per_hour_kb",
+    "qa_status",
+    "qa_reasons",
+    "calendarization",
+    "uncertainty",
+}
+MANUAL_SOURCE_ROW_FIELD_PARSERS: dict[str, Any] = {
+    "seq_number": parse_int,
+    "interface_id": parse_text,
+    "owner": parse_text,
+    "brand": parse_text,
+    "business_process": parse_text,
+    "interface_name": parse_text,
+    "description": parse_text,
+    "status": parse_text,
+    "mapping_status": parse_text,
+    "initial_scope": parse_text,
+    "complexity": parse_text,
+    "frequency": parse_text,
+    "type": parse_text,
+    "source_system": parse_text,
+    "source_technology": parse_text,
+    "source_api_reference": parse_text,
+    "source_owner": parse_text,
+    "destination_system": parse_text,
+    "destination_technology_1": parse_text,
+    "destination_owner": parse_text,
+    "payload_per_execution_kb": parse_float,
+    "uncertainty": parse_text,
 }
 
 FIELD_LABELS = {
@@ -143,7 +206,7 @@ def serialize_catalog_integration(row: CatalogIntegration) -> CatalogIntegration
 
 def _fallback_column_label(column_key: str) -> str:
     if column_key.isdigit():
-        return f"Column {column_key}"
+        return f"Column {int(column_key) + 1}"
     return FIELD_LABELS.get(column_key, column_key.replace("_", " ").title())
 
 
@@ -151,9 +214,22 @@ def _build_column_names(source_row: SourceIntegrationRow) -> dict[str, str]:
     batch = source_row.import_batch
     raw_data = source_row.raw_data or {}
     column_names: dict[str, str] = {}
+    raw_headers = import_service._extract_raw_headers(batch.header_map if batch else None)
+
+    if raw_headers:
+        for raw_key, raw_value in raw_data.items():
+            if raw_key in raw_headers.values():
+                column_names[raw_key] = raw_key
+            elif raw_key in raw_headers:
+                column_names[raw_key] = raw_headers[raw_key]
+            else:
+                column_names[raw_key] = FIELD_LABELS.get(raw_key, _fallback_column_label(raw_key))
+        return column_names
 
     if batch.header_map:
         for field_name, column_index in batch.header_map.items():
+            if field_name == import_service.RAW_HEADERS_METADATA_KEY:
+                continue
             column_names[str(column_index)] = FIELD_LABELS.get(
                 field_name,
                 _fallback_column_label(str(column_index)),
@@ -180,6 +256,22 @@ def _lineage_detail(source_row: SourceIntegrationRow) -> LineageDetail:
         import_batch_date=batch.created_at,
         import_filename=batch.filename,
     )
+
+
+def _copy_source_managed_fields(target: CatalogIntegration, rebuilt: CatalogIntegration) -> None:
+    for field in SOURCE_MANAGED_FIELDS:
+        setattr(target, field, getattr(rebuilt, field))
+
+
+def _apply_manual_source_row_updates(row: CatalogIntegration, raw_data: dict[str, object]) -> None:
+    for field_name, parser in MANUAL_SOURCE_ROW_FIELD_PARSERS.items():
+        if field_name not in raw_data:
+            continue
+        setattr(row, field_name, parser(raw_data.get(field_name)))
+    if "type" in raw_data:
+        row.trigger_type = parse_text(raw_data.get("type"))
+    _recompute_derived_fields(row)
+    _recompute_qa(row)
 
 
 async def _load_catalog_row(project_id: str, integration_id: str, db: AsyncSession) -> CatalogIntegration:
@@ -263,9 +355,14 @@ def _recompute_qa(row: CatalogIntegration) -> None:
         is_fan_out=row.is_fan_out,
         fan_out_targets=row.fan_out_targets,
         uncertainty=row.uncertainty,
+        is_active_row=True,
     )
-    row.qa_status = qa_result.status
-    row.qa_reasons = qa_result.reasons
+    reasons = list(qa_result.reasons)
+    support_reason = support_reason_code(row.selected_pattern)
+    if support_reason and support_reason not in reasons:
+        reasons.append(support_reason)
+    row.qa_status = "OK" if not reasons else "REVISAR"
+    row.qa_reasons = reasons
 
 
 async def _load_default_assumptions(db: AsyncSession) -> Assumptions:
@@ -412,6 +509,7 @@ async def manual_create_integration(
         is_fan_out=None,
         fan_out_targets=None,
         uncertainty=data.uncertainty,
+        is_active_row=True,
     )
 
     row = CatalogIntegration(
@@ -584,6 +682,7 @@ async def update_integration(
 
     row = await _load_catalog_row(project_id, integration_id, db)
     patch_data = patch.model_dump(exclude_none=True)
+    raw_column_values = patch_data.pop(RAW_COLUMN_PATCH_FIELD, None)
     invalid_fields = set(patch_data) - PATCHABLE_FIELDS
     if invalid_fields:
         raise HTTPException(
@@ -593,14 +692,49 @@ async def update_integration(
                 "error_code": "INVALID_PATCH_FIELDS",
             },
         )
-    if not patch_data:
+    if not patch_data and raw_column_values is None:
         return serialize_catalog_integration(row)
 
     await _validate_pattern(patch_data.get("selected_pattern"), db)
     await _validate_core_tools(patch_data.get("core_tools"), db)
 
     old_value = serialize_catalog_integration(row).model_dump()
-    recalc_required = False
+    recalc_required = raw_column_values is not None
+
+    if raw_column_values is not None:
+        if row.source_row is None:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "detail": "Raw column values can only be edited for rows with source lineage.",
+                    "error_code": "RAW_COLUMN_VALUES_UNSUPPORTED",
+                },
+            )
+        source_row = row.source_row
+        old_raw_data = cast(dict[str, object], sanitize_for_json(source_row.raw_data or {}))
+        source_row.raw_data = cast(dict[str, Any], sanitize_for_json(raw_column_values))
+        await audit_service.emit(
+            event_type="source_row_update",
+            entity_type="source_integration_row",
+            entity_id=source_row.id,
+            actor_id=actor_id,
+            old_value=old_raw_data,
+            new_value=source_row.raw_data,
+            project_id=project_id,
+            db=db,
+        )
+        if source_row.import_batch and source_row.import_batch.header_map:
+            rebuilt = import_service._build_catalog_integration(
+                project_id=row.project_id,
+                source_row_id=source_row.id,
+                raw_data=cast(dict[str, object], source_row.raw_data),
+                normalization_events=cast(list[dict[str, object]], source_row.normalization_events or []),
+                header_map=source_row.import_batch.header_map,
+            )
+            _copy_source_managed_fields(row, rebuilt)
+        else:
+            _apply_manual_source_row_updates(row, cast(dict[str, object], source_row.raw_data))
+
     for field, value in patch_data.items():
         setattr(row, field, value)
         if field in {"core_tools", "selected_pattern"}:

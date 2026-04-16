@@ -22,13 +22,25 @@ type ProjectsPageClientProps = {
 
 export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps): JSX.Element {
   const router = useRouter();
-  const [projects, setProjects] = useState<ProjectRow[]>(initialProjects);
+  const [projects, setProjects] = useState<ProjectRow[]>(
+    [...initialProjects].sort(
+      (left, right) =>
+        new Date(right.project.created_at).getTime() - new Date(left.project.created_at).getTime(),
+    ),
+  );
   const [showForm, setShowForm] = useState<boolean>(initialProjects.length === 0);
   const [name, setName] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [activeProjectId, setActiveProjectId] = useState<string>("");
+  const [search, setSearch] = useState<string>("");
+  const [showArchived, setShowArchived] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
-  const nameCounts = projects.reduce((accumulator: Record<string, number>, row: ProjectRow) => {
+  const visibleProjects = projects.filter((row) => {
+    const matchesSearch = row.project.name.toLowerCase().includes(search.trim().toLowerCase());
+    const matchesArchive = showArchived || row.project.status !== "archived";
+    return matchesSearch && matchesArchive;
+  });
+  const nameCounts = visibleProjects.reduce((accumulator: Record<string, number>, row: ProjectRow) => {
     accumulator[row.project.name] = (accumulator[row.project.name] ?? 0) + 1;
     return accumulator;
   }, {});
@@ -123,6 +135,31 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
         </button>
       </section>
 
+      <section className="app-card p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <label className="flex-1">
+            <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">
+              Search Projects
+            </span>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Filter by project name..."
+              className="app-input"
+            />
+          </label>
+          <label className="flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-text-secondary)]">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(event) => setShowArchived(event.target.checked)}
+              className="h-4 w-4"
+            />
+            Show archived projects
+          </label>
+        </div>
+      </section>
+
       {showForm ? (
         <section className="app-card p-6">
           <form
@@ -155,11 +192,15 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
         </section>
       ) : null}
 
-      {projects.length === 0 ? (
+      {visibleProjects.length === 0 ? (
         <section className="app-card border-dashed p-10 text-center">
-          <h2 className="text-2xl font-semibold text-[var(--color-text-primary)]">No projects yet</h2>
+          <h2 className="text-2xl font-semibold text-[var(--color-text-primary)]">
+            {projects.length === 0 ? "No projects yet" : "No projects match the current filters"}
+          </h2>
           <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
-            Start by creating a workspace, then upload the OCI workbook to populate the catalog.
+            {projects.length === 0
+              ? "Start by creating a workspace, then upload the OCI workbook to populate the catalog."
+              : "Adjust the search text or archived toggle to broaden the results."}
           </p>
         </section>
       ) : (
@@ -176,7 +217,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-table-border)]">
-              {projects.map((row: ProjectRow) => (
+              {visibleProjects.map((row: ProjectRow) => (
                 <tr key={row.project.id} className="app-table-row text-sm">
                   <td className="px-6 py-5">
                     <div>

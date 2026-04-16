@@ -11,6 +11,7 @@ from app.schemas.project import (
     ProjectCreateRequest,
     ProjectDeleteResponse,
     ProjectListResponse,
+    ProjectPatchRequest,
     ProjectResponse,
 )
 from app.services import project_service
@@ -78,5 +79,19 @@ async def delete_project(
     """Delete one archived project and all related project-scoped records."""
 
     response = await project_service.delete_project(project_id, x_actor_id, db)
+    await db.commit()
+    return response
+
+
+@router.patch("/{project_id}", response_model=ProjectResponse, summary="Update project metadata")
+async def update_project(
+    project_id: str,
+    body: ProjectPatchRequest,
+    x_actor_id: str = Header(default="web-user", alias="X-Actor-Id"),
+    db: AsyncSession = Depends(get_db),
+) -> ProjectResponse:
+    """Update mutable project metadata and emit an audit event."""
+
+    response = await project_service.update_project(project_id, body, x_actor_id, db)
     await db.commit()
     return response

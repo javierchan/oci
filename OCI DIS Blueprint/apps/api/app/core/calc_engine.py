@@ -23,13 +23,14 @@ def _ensure_calc_engine_path() -> None:
 
 _ensure_calc_engine_path()
 
-from engine.importer import ImportResult, NormalizationEvent, ParsedRow, parse_rows  # noqa: E402
-from engine.qa import QAResult, evaluate_qa  # noqa: E402
+from engine.importer import HEADER_ALIASES, ImportResult, NormalizationEvent, ParsedRow, detect_header_row, parse_rows  # noqa: E402
+from engine.qa import QAResult, evaluate_qa, normalize_trigger_type  # noqa: E402
 from engine.volumetry import (  # noqa: E402
     Assumptions,
     CalcResult,
     IntegrationInput,
     consolidate_project,
+    normalize_payload_to_kb,
     oic_billing_messages_per_execution,
     oic_peak_packs_per_hour,
     executions_per_day,
@@ -46,17 +47,21 @@ from engine.volumetry import (  # noqa: E402
 __all__ = [
     "Assumptions",
     "CalcResult",
+    "HEADER_ALIASES",
     "ImportResult",
     "IntegrationInput",
     "NormalizationEvent",
     "ParsedRow",
     "QAResult",
     "consolidate_project",
+    "detect_header_row",
     "di_data_processed_gb",
     "evaluate_qa",
     "executions_per_day",
     "functions_execution_units",
     "functions_invocations_per_month",
+    "normalize_trigger_type",
+    "normalize_payload_to_kb",
     "oic_billing_messages_per_execution",
     "oic_billing_messages_per_month",
     "oic_peak_packs_per_hour",

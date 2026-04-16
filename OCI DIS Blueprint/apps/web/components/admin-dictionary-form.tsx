@@ -28,12 +28,25 @@ export function AdminDictionaryForm({
     value: "",
     description: "",
     executions_per_day: null,
+    is_volumetric: null,
+    sort_order: 0,
+    is_active: true,
+    version: "1.0.0",
   });
   const [validationError, setValidationError] = useState<string>("");
 
   useEffect(() => {
     if (!initialValue) {
-      setForm({ code: "", value: "", description: "", executions_per_day: null });
+      setForm({
+        code: "",
+        value: "",
+        description: "",
+        executions_per_day: null,
+        is_volumetric: null,
+        sort_order: 0,
+        is_active: true,
+        version: "1.0.0",
+      });
       return;
     }
     setForm({
@@ -41,6 +54,10 @@ export function AdminDictionaryForm({
       value: initialValue.value,
       description: initialValue.description ?? "",
       executions_per_day: initialValue.executions_per_day ?? null,
+      is_volumetric: initialValue.is_volumetric ?? null,
+      sort_order: initialValue.sort_order ?? 0,
+      is_active: initialValue.is_active ?? true,
+      version: initialValue.version ?? "1.0.0",
     });
   }, [initialValue]);
 
@@ -55,6 +72,10 @@ export function AdminDictionaryForm({
       value: form.value.trim(),
       description: form.description?.trim() || undefined,
       executions_per_day: category === "FREQUENCY" ? form.executions_per_day ?? null : null,
+      is_volumetric: form.is_volumetric ?? null,
+      sort_order: form.sort_order ?? 0,
+      is_active: form.is_active ?? true,
+      version: form.version?.trim() || "1.0.0",
     });
   }
 
@@ -98,6 +119,32 @@ export function AdminDictionaryForm({
         </label>
       </div>
 
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <label className="block">
+          <span className="app-label mb-2 block">Sort Order</span>
+          <input
+            type="number"
+            value={form.sort_order ?? 0}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                sort_order: Number(event.target.value),
+              }))
+            }
+            className="app-input"
+          />
+        </label>
+
+        <label className="block">
+          <span className="app-label mb-2 block">Version</span>
+          <input
+            value={form.version ?? "1.0.0"}
+            onChange={(event) => setForm((current) => ({ ...current, version: event.target.value }))}
+            className="app-input"
+          />
+        </label>
+      </div>
+
       <label className="mt-4 block">
         <span className="app-label mb-2 block">Description</span>
         <input
@@ -124,6 +171,38 @@ export function AdminDictionaryForm({
           />
         </label>
       ) : null}
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <label className="flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-text-secondary)]">
+          <input
+            type="checkbox"
+            checked={form.is_volumetric ?? false}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                is_volumetric: event.target.checked,
+              }))
+            }
+            className="h-4 w-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+          />
+          <span>Volumetric Option</span>
+        </label>
+
+        <label className="flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-text-secondary)]">
+          <input
+            type="checkbox"
+            checked={form.is_active ?? true}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                is_active: event.target.checked,
+              }))
+            }
+            className="h-4 w-4 rounded border-[var(--color-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+          />
+          <span>Active</span>
+        </label>
+      </div>
 
       {validationError ? <p className="mt-4 text-sm text-rose-600">{validationError}</p> : null}
       {error ? <p className="mt-2 text-sm text-rose-600">{error}</p> : null}

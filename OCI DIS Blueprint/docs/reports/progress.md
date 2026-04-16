@@ -41,6 +41,72 @@ None
 
 ---
 
+## M15 — UX Overhaul P0: Core Workflow Fixes (2026-04-15)
+
+**Status:** ✅ Complete
+
+- Canvas rebuilt as an SVG flow diagram with draggable tool nodes, connectable directed edges, pan, zoom, edge labels, and keyboard delete support
+- Catalog paginated at 20 rows per page with Prev and Next controls plus a rows-per-page selector
+- Invalid project IDs now render a graceful project not-found page instead of the Next.js error overlay
+
+## M16 — UX Overhaul P1: Data Accuracy + Surface Completeness (2026-04-15)
+
+**Status:** ✅ Complete
+
+- Interface Name now resolves from the correct workbook header match instead of falling through to the Interface ID column
+- QA Reasons now render as human-readable guidance cards with a title and actionable hint
+- Dashboard now renders pattern mix, payload distribution, risks, and maturity from the full backend payload
+- Graph auto-fits on load and renders directed arrowheads for flow direction
+- "View in Catalog" from the graph node panel now pre-filters by system
+
+## M17 — UX Overhaul P2: Layout + Polish (2026-04-15)
+
+**Status:** ✅ Complete
+
+- Architect Patch is sticky and keeps Save and Remove actions visible at the top of the panel
+- Audit Trail now shows field names instead of raw numeric array indexes for source-row changes
+- Capture wizard step pills are numbered and render progress/completed states
+- Import page now shows the full required-columns list without truncation
+- Projects list now supports text filtering and an archived-projects toggle
+- Graph now supports filtering by system to highlight a node and its neighbors
+- Admin hub now shows a last-modified date for each governance category
+
+---
+
+## Audit Follow-up — Recalculation Endpoint Cleanup
+
+**Completed:** 2026-04-15
+**Status:** ✅ Complete
+
+### What was implemented
+
+- Verified the 2026-04-15 audit report against the current `codex/codex-active-work` branch and confirmed that the catalog, import, governance, dashboard, justification, export, and audit routers were already restored in this worktree
+- `apps/api/app/routers/recalculate.py` — replaced the remaining placeholder scoped/job endpoints with real snapshot-backed responses
+- `apps/api/app/services/recalc_service.py` — added scoped recalculation validation plus persisted job-status serialization sourced from `VolumetrySnapshot`
+- `apps/api/app/schemas/volumetry.py` — added explicit request/response schemas for scoped recalculation and job polling
+
+### Verification results
+
+```text
+ruff: All checks passed!
+mypy: 0 errors
+TypeScript: 0 errors
+ESLint: 0 warnings / 0 errors
+pytest: 26 passed
+docker compose ps: 6/6 containers Up
+API health: {"status":"ok","version":"1.0.0"}
+Scoped recalculation smoke:
+- POST /api/v1/recalculate/{project_id}/scoped -> completed
+- GET /api/v1/recalculate/{project_id}/jobs/{job_id} -> completed
+- snapshot_id returned from both endpoints and matched the persisted job ID
+```
+
+### Gaps / known limitations
+
+- The 2026-04-15 audit report was generated from `main` and is stale relative to this branch; remaining follow-up should use a fresh audit run before planning larger remediation work
+
+---
+
 ## Quality Gates — ESLint + mypy Clean (2026-04-14)
 
 **Status:** ✅ Complete
@@ -210,6 +276,281 @@ Template import smoke:
 - loaded count: 1
 - excluded count: 0
 ```
+
+### Gaps / known limitations
+
+None
+
+---
+
+## Post-Audit Remediation — Project Patch, API Tests, and OpenAPI Traceability
+
+**Completed:** 2026-04-15
+**Status:** ✅ Complete
+
+### What was implemented
+
+- `apps/api/app/schemas/project.py`, `apps/api/app/services/project_service.py`, and `apps/api/app/routers/projects.py` — replaced the stubbed project patch route with a typed, service-backed implementation that emits `project_updated` audit events
+- `apps/api/app/tests/` — added the backend API integration test harness with isolated async SQLite fixtures and route-level coverage for project patch/audit, manual catalog capture/lineage, and the capture-template export endpoint
+- `.github/workflows/api-validation.yml` — added a reproducible backend validation gate that runs Ruff, mypy, the API integration suite, calc-engine parity tests, and the OpenAPI sync check
+- `apps/api/scripts/export_openapi.py` and `docs/api/openapi.yaml` — restored the source-controlled OpenAPI artifact and added a `--check` mode for drift detection
+- `README.md` — documented the refresh and verification commands for the committed OpenAPI artifact
+
+### Verification results
+
+```text
+ruff: All checks passed!
+mypy: 0 errors
+API integration tests: 3 passed
+calc-engine parity: 26 passed
+TypeScript: 0 errors
+OpenAPI sync: up to date
+Workflow sanity:
+- name: API Validation
+- job: backend-quality
+```
+
+### Gaps / known limitations
+
+- The export-template API test triggers `openpyxl` deprecation warnings from library internals, but endpoint behavior remains correct.
+
+---
+
+## Deferred Follow-up — Export Warning Cleanup + Live Benchmark Dashboard
+
+**Completed:** 2026-04-15
+**Status:** ✅ Complete
+
+### What was implemented
+
+- `apps/api/app/tests/test_exports_api.py` — added targeted `pytest` warning filters for the known upstream `openpyxl` `datetime.utcnow()` deprecation warnings emitted during XLSX export generation
+- Revalidated the export-template integration test so the backend API test suite runs cleanly without library-internal warning noise
+- Refreshed the live benchmark project `Parity Test` (`a51bb83a-110b-4226-94f0-d2f590e3cd1d`) through `POST /api/v1/recalculate/{project_id}`
+- Confirmed the recalculation created a new volumetry snapshot and a new technical dashboard snapshot, so future audits can use a live benchmark project with dashboard evidence instead of relying only on contract checks
+
+### Verification results
+
+```text
+pytest apps/api/app/tests/test_exports_api.py -q -W default: 1 passed, 0 warnings
+pytest apps/api/app/tests -q -W default: 3 passed
+pytest packages/calc-engine/src/tests -q: 26 passed
+ruff: All checks passed!
+mypy: 0 errors
+TypeScript: 0 errors
+docker compose ps: 6/6 containers Up
+API health: {"status":"ok","version":"1.0.0"}
+Parity Test benchmark refresh:
+- before_dashboard_total=8
+- recalculation job completed
+- volumetry_snapshot_id=28f46381-ccb7-4aef-a598-47ea4c7c21f1
+- after_dashboard_total=9
+- latest_dashboard_snapshot_id=47373044-a3e1-43e5-9d0d-b3a0ac6560d1
+- dashboard_mode=technical
+- kpi_oic_msgs_month=12960.0
+```
+
+### Gaps / known limitations
+
+None
+
+---
+
+## Canvas, Graph, Theme, Column & Template UX Fix (2026-04-15)
+
+**Status:** ✅ Complete
+
+- ISSUE 1: Raw column values now show actual Excel header text; cells are inline-editable via PATCH with optimistic update and toast confirmation.
+- ISSUE 2: Integration Design Canvas allows multiple instances of the same tool type (instance-based model); node labels are editable; edges support fan-out (1:N); edge labels and node payload notes added.
+- ISSUE 3: Graph arrowhead markers resized to `markerWidth`/`markerHeight=6`; edge stroke-width baseline reduced; canvas pan/zoom interaction unblocked by fixing `pointer-events` on overlay elements.
+- ISSUE 4: Theme active state driven exclusively by `theme` (user choice), not `resolvedTheme`; sidebar context label sources page name from route segment, never falls back to UUID.
+- ISSUE 5: Import page now has a two-step layout with a prominent template download section; template includes sample row, Reference sheet, frozen headers, and column order aligned with importer.
+
+### Verification results
+
+```text
+pytest: 29 passed
+ruff: All checks passed!
+mypy: 0 errors
+TypeScript: 0 errors
+ESLint: 0 warnings / 0 errors
+docker compose ps: 6/6 containers Up
+API health: {"status":"ok","version":"1.0.0"}
+```
+
+### Gaps / known limitations
+
+None
+
+---
+
+## M18 — Workbook Import Fidelity: Header Semantics + Source Traceability (2026-04-15)
+
+**Status:** ✅ Complete
+
+- Importer header resolution now prioritizes workbook header names, including leading-blank-column ADN layouts and template variants.
+- `Interfaz` now resolves to `interface_name`, `Alcance Inicial` resolves to `initial_scope`, and workbook trigger fields such as `Tipo Trigger OIC` remain traceable.
+- Raw column storage preserves real workbook header labels and only falls back to `Column N` when the source header is actually blank.
+- Import rebuilds now preserve payload `0`, `TBD`, `Duplicado 1`, and source order while excluding only `Duplicado 2`.
+- Destination technology import now splits explicit two-part values conservatively when the workbook provides a combined destination technology cell.
+
+### Verification results
+
+```text
+pytest packages/calc-engine/src/tests -q: 29 passed
+pytest apps/api -q: 5 passed
+ruff: All checks passed!
+mypy: 0 errors
+TypeScript: 0 errors
+ESLint: 0 warnings / 0 errors
+```
+
+### Gaps / known limitations
+
+None
+
+---
+
+## M19 — Governed Reference Data 2.0: Patterns, Frequencies, and Tool Taxonomy (2026-04-15)
+
+**Status:** ✅ Complete
+
+- Seeded all 17 workbook patterns with description/tagline, OCI component details, when-to-use guidance, anti-pattern guidance, technical flow, and business value.
+- Expanded governed frequency data to workbook codes `FQ01`–`FQ16` and aligned alias handling across import normalization, calc-engine frequency logic, and canvas helper estimates.
+- Corrected `Tiempo Real` semantics to the workbook proxy of `24 executions/day`.
+- Added governed tool taxonomy with tool IDs, volumetric flags, direct/proxy descriptions, and a dedicated `OVERLAYS` category for workbook AO values.
+- Extended reference API and admin surfaces so enriched pattern and dictionary metadata can be reviewed and edited without breaking existing governance CRUD flows.
+
+### Verification results
+
+```text
+pytest apps/api -q: 8 passed
+pytest packages/calc-engine/src/tests -q: 31 passed
+ruff: All checks passed!
+mypy: 0 errors
+TypeScript: 0 errors
+ESLint: 0 warnings / 0 errors
+```
+
+### Gaps / known limitations
+
+None
+
+---
+
+## M20 — Canvas Intelligence: Standard Combinations + Overlay Governance (2026-04-15)
+
+**Status:** ✅ Complete
+
+- Added governed workbook combinations `G01`–`G18` to the reference layer and exposed them through a dedicated canvas-governance API payload alongside governed tools and overlays.
+- Reworked canvas persistence so the saved state stores the real flow graph plus derived `core_tools` and overlay metadata separately, while preserving compatibility with older saved canvas versions.
+- Updated the Integration Design Canvas to distinguish core tools from overlays, require a real source-to-destination route through at least one core tool, and surface guided combination plus pattern suggestions from the active flow.
+- Updated the Architect Patch summary so it reflects the actual saved processing route and active overlays instead of implying a fixed OIC-only pipeline.
+- Added focused automated coverage for canvas-governance API output and pure canvas route semantics, including core-vs-overlay separation, connectivity validation, persistence, and governed combination ranking.
+
+### Verification results
+
+```text
+pytest: 40 passed
+ruff: All checks passed!
+mypy: 0 errors
+TypeScript: 0 errors
+ESLint: 0 warnings / 0 errors
+vitest: 4 passed
+```
+
+### Gaps / known limitations
+
+None
+
+---
+
+## M21 — Volumetry Assumption Parity: Service Limits + Unit Governance (2026-04-15)
+
+**Status:** ✅ Complete
+
+- Extended the governed assumption payload with workbook-aligned OIC, Queue, Streaming, Functions, and Data Integration limits, plus preserved workbook source references and service metadata in the versioned assumption JSON.
+- Updated the calc engine and live OIC estimate semantics to respect governed thresholds, workbook month-day defaults, and BYOL vs non-BYOL pack sizes without reintroducing hardcoded drift.
+- Added explicit MB-to-KB payload normalization at import time so workbook values captured in MB are converted exactly once before catalog, dashboard, or preview formulas consume them.
+- Updated the admin assumption surfaces to display and clone the richer governed assumption payload, while keeping workbook metadata attached to new versions.
+- Added focused automated coverage for assumption seeding, governed OIC estimate behavior, and payload normalization so the milestone stays regression-safe.
+
+### Verification results
+
+```text
+pytest: 47 passed
+ruff: All checks passed!
+mypy: 0 errors
+TypeScript: 0 errors
+ESLint: 0 warnings / 0 errors
+```
+
+### Gaps / known limitations
+
+None
+
+---
+
+## M22 — QA Coverage + Confidence Signals (2026-04-16)
+
+**Status:** ✅ Complete
+
+- Decoupled QA activation from formal ID coverage so active rows continue to be evaluated even when the Interface ID is blank, while inactive rows can remain outside QA.
+- Aligned trigger validation with workbook capture vocabulary, including `Scheduled`, `REST Trigger`, `SOAP Trigger`, and `Event Trigger`, without coercing unknown labels into valid values.
+- Expanded dashboard coverage signals to show payload, pattern, trigger, formal ID, source/destination, and fan-out completeness as explicit completion ratios instead of raw counts alone.
+- Added forecast-confidence messaging to the dashboard so sparse payload evidence now produces a visible low- or medium-confidence warning instead of implying precision.
+- Updated integration-detail and capture QA surfaces to distinguish blocking QA issues from coverage signals such as missing formal IDs, missing payload evidence, and preserved workbook uncertainty.
+- Added focused automated coverage for QA activation semantics, workbook trigger acceptance, dashboard confidence thresholds, and legacy dashboard coverage payload normalization.
+
+### Verification results
+
+```text
+pytest: 53 passed
+ruff: All checks passed!
+mypy: 0 errors
+TypeScript: 0 errors
+ESLint: 0 warnings / 0 errors
+```
+
+### Gaps / known limitations
+
+None
+
+---
+
+## M23 — Pattern Coverage 03–17: End-to-End Operationalization (2026-04-16)
+
+**Status:** ✅ Complete
+
+- Added an explicit pattern support matrix that keeps the support boundary honest across API, QA, narratives, exports, and UI surfaces instead of implying parity for all 17 workbook patterns.
+- Classified `#01`, `#02`, and `#05` as parity-ready patterns under the current implementation path, while exposing `#03`–`#17` as reference-only until they receive pattern-specific sizing parity.
+- Updated catalog/import QA so selecting a reference-only pattern now keeps the integration in architect review with a dedicated `PATTERN_REFERENCE_ONLY` reason instead of allowing a misleading green state.
+- Surfaced support-state badges and workbook anti-pattern guidance in admin, capture, architect patch, integration detail, and canvas pattern guidance so users can see the support boundary before saving.
+- Added support-boundary evidence to deterministic narratives and exports, including a dedicated `Pattern Support` workbook sheet plus JSON/PDF notes for selected reference-only patterns.
+- Added focused automated coverage for support metadata exposure and reference-only QA behavior, while keeping all five quality gates green.
+
+### Verification results
+
+```text
+pytest: 55 passed
+ruff: All checks passed!
+mypy: 0 errors
+TypeScript: 0 errors
+ESLint: 0 warnings / 0 errors
+```
+
+### Gaps / known limitations
+
+- Patterns `#03`–`#17` remain reference-only for phase parity. They are documented and selectable, but they still do not have pattern-specific volumetry formulas beyond the shared tool-based sizing paths.
+
+---
+
+## Documentation Alignment — Milestone Register Sync (2026-04-16)
+
+**Status:** ✅ Complete
+
+- Normalized `AGENTS.md` so the milestone register now reflects the executed status of `M1` through `M23` instead of leaving `M1`–`M8`, `M15`–`M17`, and the previously missing `M9`–`M14` out of sync with the repo state.
+- Preserved `README.md` as the concise milestone-status table while restoring `AGENTS.md` as the full milestone contract and execution tracker.
+- Confirmed that `README.md` and `AGENTS.md` now agree on milestone completion through `M23`.
 
 ### Gaps / known limitations
 

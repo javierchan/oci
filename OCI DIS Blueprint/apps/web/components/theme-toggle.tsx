@@ -20,6 +20,7 @@ const OPTIONS: ThemeOption[] = [
 
 export function ThemeToggle(): JSX.Element {
   const { theme, setTheme } = useTheme();
+  const isActive = (value: ThemeOption["value"]): boolean => theme === value;
 
   return (
     <div>
@@ -27,7 +28,7 @@ export function ThemeToggle(): JSX.Element {
       <div className="grid grid-cols-3 gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-1">
         {OPTIONS.map((option) => {
           const Icon = option.icon;
-          const active = theme === option.value;
+          const active = isActive(option.value);
           return (
             <button
               key={option.value}

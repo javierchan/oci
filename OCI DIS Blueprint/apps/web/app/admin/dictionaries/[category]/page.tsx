@@ -42,6 +42,11 @@ export default function AdminDictionaryCategoryPage({
           value: option.value,
           description: option.description,
           executions_per_day: option.executions_per_day,
+          is_volumetric: option.is_volumetric,
+          sort_order: option.sort_order,
+          is_active: option.is_active,
+          version: option.version,
+          updated_at: option.updated_at,
         })),
       );
       setError("");
@@ -175,13 +180,15 @@ export default function AdminDictionaryCategoryPage({
               <th className="px-6 py-4 font-medium">Value</th>
               <th className="px-6 py-4 font-medium">Description</th>
               <th className="px-6 py-4 font-medium">Executions/Day</th>
+              <th className="px-6 py-4 font-medium">Volumetric</th>
+              <th className="px-6 py-4 font-medium">Version</th>
               <th className="px-6 py-4 font-medium">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
             {loading ? (
               <tr>
-                <td className="px-6 py-8 text-[var(--color-text-secondary)]" colSpan={5}>
+                <td className="px-6 py-8 text-[var(--color-text-secondary)]" colSpan={7}>
                   Loading options…
                 </td>
               </tr>
@@ -194,6 +201,14 @@ export default function AdminDictionaryCategoryPage({
                   <td className="px-6 py-4 text-[var(--color-text-secondary)]">
                     {category === "FREQUENCY" ? option.executions_per_day ?? "—" : "—"}
                   </td>
+                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">
+                    {option.is_volumetric === null || option.is_volumetric === undefined
+                      ? "—"
+                      : option.is_volumetric
+                        ? "Yes"
+                        : "No"}
+                  </td>
+                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{option.version ?? "—"}</td>
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap items-center gap-3">
                       <button

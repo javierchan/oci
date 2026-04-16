@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import re
+from typing import Any, cast
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.migrations.reference_seed_data import CANVAS_COMBINATIONS
 from app.models import AssumptionSet, CatalogIntegration, DictionaryOption, PatternDefinition
 from app.schemas.reference import (
     AssumptionSetCreate,
     AssumptionSetListResponse,
     AssumptionSetResponse,
     AssumptionSetUpdate,
+    CanvasCombinationResponse,
+    CanvasGovernanceResponse,
     DictionaryCategoryListResponse,
     DictionaryCategorySummary,
     DictionaryOptionCreate,
@@ -22,10 +26,13 @@ from app.schemas.reference import (
     DictionaryOptionUpdate,
     PatternDefinitionCreate,
     PatternDefinitionResponse,
+    PatternSupportDimensionsResponse,
+    PatternSupportResponse,
     PatternDefinitionUpdate,
     PatternListResponse,
 )
 from app.services import audit_service
+from app.services.pattern_support import get_pattern_support
 from app.services.serializers import split_csv
 
 PATTERN_ID_RE = re.compile(r"^#\d{2}$")
@@ -34,17 +41,36 @@ PATTERN_ID_RE = re.compile(r"^#\d{2}$")
 def serialize_pattern(pattern: PatternDefinition) -> PatternDefinitionResponse:
     """Convert a pattern model into a response schema."""
 
+    support = get_pattern_support(pattern.pattern_id)
     return PatternDefinitionResponse(
         id=pattern.id,
         pattern_id=pattern.pattern_id,
         name=pattern.name,
         category=pattern.category,
         description=pattern.description,
-        components=split_csv(pattern.oci_components),
+        components=_extract_component_names(pattern.oci_components),
+        component_details=pattern.oci_components,
+        when_to_use=pattern.when_to_use,
+        when_not_to_use=pattern.when_not_to_use,
         flow=pattern.technical_flow,
+        business_value=pattern.business_value,
         is_system=pattern.is_system,
         is_active=pattern.is_active,
         version=pattern.version,
+        support=PatternSupportResponse(
+            level=support.level,
+            badge_label=support.badge_label,
+            summary=support.summary,
+            parity_ready=support.parity_ready,
+            dimensions=PatternSupportDimensionsResponse(
+                capture_selection=support.dimensions.capture_selection,
+                qa_validation=support.dimensions.qa_validation,
+                volumetry=support.dimensions.volumetry,
+                dashboard=support.dimensions.dashboard,
+                narratives=support.dimensions.narratives,
+                exports=support.dimensions.exports,
+            ),
+        ),
         created_at=pattern.created_at,
         updated_at=pattern.updated_at,
     )
@@ -60,8 +86,34 @@ def serialize_dictionary_option(option: DictionaryOption) -> DictionaryOptionRes
         value=option.value,
         description=option.description,
         executions_per_day=option.executions_per_day,
+        is_volumetric=option.is_volumetric,
         sort_order=option.sort_order,
         is_active=option.is_active,
+        version=option.version,
+        updated_at=option.updated_at,
+    )
+
+
+def serialize_canvas_combination(combination: dict[str, Any]) -> CanvasCombinationResponse:
+    """Convert one governed canvas-combination record into a response schema."""
+
+    return CanvasCombinationResponse(
+        code=str(combination["code"]),
+        name=str(combination["name"]),
+        capture_standard=str(combination["capture_standard"]),
+        supported_tool_keys=[
+            str(value) for value in cast(list[Any], combination["supported_tool_keys"])
+        ],
+        compatible_pattern_ids=[
+            str(value) for value in cast(list[Any], combination["compatible_pattern_ids"])
+        ],
+        activates_metrics=[str(value) for value in cast(list[Any], combination["activates_metrics"])],
+        activates_volumetric_metrics=bool(combination.get("activates_volumetric_metrics", False)),
+        recommended_overlays=[
+            str(value) for value in cast(list[Any], combination["recommended_overlays"])
+        ],
+        guidance=str(combination["guidance"]),
+        status=str(combination["status"]),
     )
 
 
@@ -112,11 +164,32 @@ def _validate_pattern_id(pattern_id: str) -> str:
     return normalized
 
 
-def _join_components(components: list[str] | None) -> str | None:
+def _extract_component_names(component_details: str | None) -> list[str] | None:
+    if not component_details:
+        return None
+    names: list[str] = []
+    for line in component_details.splitlines():
+        cleaned = line.strip()
+        if not cleaned:
+            continue
+        if "—" in cleaned:
+            cleaned = cleaned.split("—", 1)[0].strip()
+        elif " - " in cleaned:
+            cleaned = cleaned.split(" - ", 1)[0].strip()
+        names.append(cleaned)
+    if not names:
+        names = split_csv(component_details)
+    return names or None
+
+
+def _join_component_details(components: list[str] | None, component_details: str | None) -> str | None:
+    if component_details is not None:
+        normalized_detail = component_details.strip()
+        return normalized_detail or None
     if components is None:
         return None
     normalized = [item.strip() for item in components if item.strip()]
-    return ", ".join(normalized) if normalized else None
+    return "\n".join(normalized) if normalized else None
 
 
 async def _load_pattern(pattern_id: str, db: AsyncSession) -> PatternDefinition:
@@ -149,8 +222,11 @@ async def create_pattern(
         name=data.name,
         category=data.category,
         description=data.description,
-        oci_components=_join_components(data.components),
+        oci_components=_join_component_details(data.components, data.component_details),
+        when_to_use=data.when_to_use,
+        when_not_to_use=data.when_not_to_use,
         technical_flow=data.flow,
+        business_value=data.business_value,
         is_system=False,
     )
     db.add(pattern)
@@ -184,12 +260,22 @@ async def update_pattern(
         return serialize_pattern(pattern)
 
     old_value = serialize_pattern(pattern).model_dump()
-    if "components" in patch:
-        pattern.oci_components = _join_components(data.components)
+    if "components" in patch or "component_details" in patch:
+        pattern.oci_components = _join_component_details(data.components, data.component_details)
         patch.pop("components", None)
+        patch.pop("component_details", None)
     if "flow" in patch:
         pattern.technical_flow = data.flow
         patch.pop("flow", None)
+    if "when_to_use" in patch:
+        pattern.when_to_use = data.when_to_use
+        patch.pop("when_to_use", None)
+    if "when_not_to_use" in patch:
+        pattern.when_not_to_use = data.when_not_to_use
+        patch.pop("when_not_to_use", None)
+    if "business_value" in patch:
+        pattern.business_value = data.business_value
+        patch.pop("business_value", None)
     for field, value in patch.items():
         setattr(pattern, field, value)
     await db.flush()
@@ -278,6 +364,26 @@ async def list_dictionary_options(category: str, db: AsyncSession) -> Dictionary
     return DictionaryOptionListResponse(
         category=normalized_category,
         options=[serialize_dictionary_option(option) for option in result.all()],
+    )
+
+
+async def get_canvas_governance(db: AsyncSession) -> CanvasGovernanceResponse:
+    """Return governed tool, overlay, and combination metadata for the design canvas."""
+
+    tool_options = await db.scalars(
+        select(DictionaryOption)
+        .where(DictionaryOption.category == "TOOLS", DictionaryOption.is_active.is_(True))
+        .order_by(DictionaryOption.sort_order, DictionaryOption.value)
+    )
+    overlay_options = await db.scalars(
+        select(DictionaryOption)
+        .where(DictionaryOption.category == "OVERLAYS", DictionaryOption.is_active.is_(True))
+        .order_by(DictionaryOption.sort_order, DictionaryOption.value)
+    )
+    return CanvasGovernanceResponse(
+        tools=[serialize_dictionary_option(option) for option in tool_options.all()],
+        overlays=[serialize_dictionary_option(option) for option in overlay_options.all()],
+        combinations=[serialize_canvas_combination(combination) for combination in CANVAS_COMBINATIONS],
     )
 
 

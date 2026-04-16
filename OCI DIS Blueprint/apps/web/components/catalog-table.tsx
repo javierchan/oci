@@ -20,6 +20,7 @@ type CatalogTableProps = {
   brands: string[];
   initialFilters: {
     search: string;
+    system?: string;
     qa_status: string;
     pattern: string;
     brand: string;
@@ -36,13 +37,15 @@ export function CatalogTable({
   initialFilters,
 }: CatalogTableProps): JSX.Element {
   const router = useRouter();
-  const [search, setSearch] = useState<string>(initialFilters.search);
+  const initialSystem = initialFilters.system ?? "";
+  const [search, setSearch] = useState<string>(initialSystem || initialFilters.search);
   const [qaStatus, setQaStatus] = useState<string>(initialFilters.qa_status);
   const [pattern, setPattern] = useState<string>(initialFilters.pattern);
   const [brand, setBrand] = useState<string>(initialFilters.brand);
   const [sourceSystem] = useState<string>(initialFilters.source_system);
   const [destinationSystem] = useState<string>(initialFilters.destination_system);
   const [page, setPage] = useState<number>(initialPage.page);
+  const [rowsPerPage, setRowsPerPage] = useState<number>(initialPage.page_size || 20);
   const [data, setData] = useState<CatalogPage>(initialPage);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
@@ -57,7 +60,7 @@ export function CatalogTable({
       try {
         const response = await api.listCatalog(projectId, {
           page,
-          page_size: 50,
+          page_size: rowsPerPage,
           search: deferredSearch || undefined,
           qa_status: qaStatus || undefined,
           pattern: pattern || undefined,
@@ -84,12 +87,15 @@ export function CatalogTable({
     return () => {
       cancelled = true;
     };
-  }, [brand, deferredSearch, destinationSystem, page, pattern, projectId, qaStatus, sourceSystem]);
+  }, [brand, deferredSearch, destinationSystem, page, pattern, projectId, qaStatus, rowsPerPage, sourceSystem]);
 
   useEffect(() => {
     const params = new URLSearchParams();
     if (search) {
       params.set("search", search);
+    }
+    if (initialSystem && search === initialSystem) {
+      params.set("system", initialSystem);
     }
     if (qaStatus) {
       params.set("qa_status", qaStatus);
@@ -108,7 +114,7 @@ export function CatalogTable({
     }
     const query = params.toString();
     router.replace(`/projects/${projectId}/catalog${query ? `?${query}` : ""}`);
-  }, [brand, destinationSystem, pattern, projectId, qaStatus, router, search, sourceSystem]);
+  }, [brand, destinationSystem, initialSystem, pattern, projectId, qaStatus, router, search, sourceSystem]);
 
   const totalPages = Math.max(1, Math.ceil(data.total / data.page_size));
   const hasActiveFilters =
@@ -304,8 +310,26 @@ export function CatalogTable({
         </div>
 
         <div className="flex flex-col gap-4 border-t border-[var(--color-border)] px-6 py-4 md:flex-row md:items-center md:justify-between">
-          <div className="text-sm text-[var(--color-text-secondary)]">
-            {loading ? "Refreshing catalog..." : `Page ${data.page} of ${totalPages}`}
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-6">
+            <div className="text-sm text-[var(--color-text-secondary)]">
+              {loading ? "Refreshing catalog..." : `Page ${data.page} of ${totalPages}`}
+            </div>
+            <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+              Rows per page
+              <select
+                value={rowsPerPage}
+                onChange={(event) => {
+                  const nextPageSize = Number(event.target.value);
+                  setRowsPerPage(nextPageSize);
+                  setPage(1);
+                }}
+                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+              >
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </label>
           </div>
           <div className="flex gap-3">
             <button

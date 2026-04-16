@@ -54,6 +54,22 @@ class AssumptionSet(Base, UUIDMixin, TimestampMixin):
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     assumptions: Mapped[dict] = mapped_column(JSON, nullable=False)
+    # Structure: {
+    #   "oic_rest_max_payload_kb": 51200,
+    #   "oic_ftp_max_payload_kb": 51200,
+    #   "oic_kafka_max_payload_kb": 10240,
+    #   "oic_timeout_s": 300,
+    #   "oic_billing_threshold_kb": 50,
+    #   "oic_pack_size_msgs_per_hour": 5000,
+    #   "oic_byol_pack_size_msgs_per_hour": 20000,
+    #   "month_days": 31,
+    #   "streaming_partition_throughput_mb_s": 1,
+    #   "queue_billing_unit_kb": 64,
+    #   "functions_default_duration_ms": 2000,
+    #   "functions_max_timeout_s": 300,
+    #   "source_references": {...},
+    #   "service_metadata": {...},
+    # }
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
 

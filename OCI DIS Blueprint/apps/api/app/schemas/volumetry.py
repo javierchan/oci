@@ -90,3 +90,26 @@ class VolumetrySnapshotListResponse(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     snapshots: list[VolumetrySnapshotResponse] = Field(default_factory=list)
+
+
+class ScopedRecalculationRequest(BaseModel):
+    """Request body for a scoped recalculation trigger."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    integration_ids: list[str] = Field(default_factory=list)
+    actor_id: str = "api-user"
+
+
+class RecalculationJobStatusResponse(BaseModel):
+    """Snapshot-backed status payload for synchronous recalculation requests."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    job_id: str
+    project_id: str
+    status: str
+    snapshot_id: str | None = None
+    scope: str = "project"
+    integration_ids: list[str] = Field(default_factory=list)
+    created_at: datetime | None = None

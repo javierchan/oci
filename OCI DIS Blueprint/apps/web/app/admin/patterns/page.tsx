@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { Breadcrumb } from "@/components/breadcrumb";
 import { AdminConfirmDelete } from "@/components/admin-confirm-delete";
 import { AdminPatternForm } from "@/components/admin-pattern-form";
+import { PatternSupportBadge } from "@/components/pattern-support-badge";
 import { api } from "@/lib/api";
 import type { PatternDefinition, PatternDefinitionCreate } from "@/lib/types";
 
@@ -28,13 +29,14 @@ export default function AdminPatternsPage(): JSX.Element {
   async function load(): Promise<void> {
     setLoading(true);
     try {
-      const [patternList, toolList, projects] = await Promise.all([
+      const [patternList, toolList, overlayList, projects] = await Promise.all([
         api.listPatterns(),
         api.listDictionaryOptions("TOOLS"),
+        api.listDictionaryOptions("OVERLAYS").catch(() => ({ category: "OVERLAYS", options: [] })),
         api.listProjects(),
       ]);
       setPatterns(patternList.patterns);
-      setToolOptions(toolList.options.map((option) => option.value));
+      setToolOptions([...toolList.options, ...overlayList.options].map((option) => option.value));
       setCatalogProjectId(projects.projects[0]?.id ?? null);
       setError("");
     } catch (caughtError) {
@@ -180,7 +182,8 @@ export default function AdminPatternsPage(): JSX.Element {
               <th className="px-6 py-4 font-medium">Pattern ID</th>
               <th className="px-6 py-4 font-medium">Name</th>
               <th className="px-6 py-4 font-medium">Category</th>
-              <th className="px-6 py-4 font-medium">Components</th>
+              <th className="px-6 py-4 font-medium">Support</th>
+              <th className="px-6 py-4 font-medium">Guidance</th>
               <th className="px-6 py-4 font-medium">System</th>
               <th className="px-6 py-4 font-medium">Actions</th>
             </tr>
@@ -188,7 +191,7 @@ export default function AdminPatternsPage(): JSX.Element {
           <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
             {loading ? (
               <tr>
-                <td className="px-6 py-8 text-[var(--color-text-secondary)]" colSpan={6}>
+                <td className="px-6 py-8 text-[var(--color-text-secondary)]" colSpan={7}>
                   Loading patterns…
                 </td>
               </tr>
@@ -202,10 +205,38 @@ export default function AdminPatternsPage(): JSX.Element {
                       {pattern.description ? (
                         <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">{pattern.description}</p>
                       ) : null}
+                      {pattern.component_details ? (
+                        <p className="mt-2 whitespace-pre-line text-xs leading-5 text-[var(--color-text-muted)]">
+                          {pattern.component_details}
+                        </p>
+                      ) : null}
                     </div>
                   </td>
                   <td className="px-6 py-4 text-[var(--color-text-secondary)]">{pattern.category}</td>
-                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{pattern.components?.join(", ") || "—"}</td>
+                  <td className="px-6 py-4">
+                    <div className="space-y-2">
+                      <PatternSupportBadge support={pattern.support} />
+                      <p className="max-w-xs text-xs leading-5 text-[var(--color-text-secondary)]">
+                        {pattern.support.summary}
+                      </p>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="space-y-2 text-xs leading-5 text-[var(--color-text-secondary)]">
+                      <p>
+                        <span className="font-semibold text-[var(--color-text-primary)]">Use:</span>{" "}
+                        {pattern.when_to_use ?? "—"}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-[var(--color-text-primary)]">Avoid:</span>{" "}
+                        {pattern.when_not_to_use ?? "—"}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-[var(--color-text-primary)]">Business value:</span>{" "}
+                        {pattern.business_value ?? "—"}
+                      </p>
+                    </div>
+                  </td>
                   <td className="px-6 py-4">
                     {pattern.is_system ? (
                       <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-[var(--color-text-secondary)]">

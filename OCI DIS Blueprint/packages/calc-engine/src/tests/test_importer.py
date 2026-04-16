@@ -37,6 +37,69 @@ def _make_valid_row(seq=1, tbq="Y", estado="Definitiva (End-State)"):
     return row
 
 
+def _make_workbook_header_row():
+    """Header row matching the ADN workbook with a leading blank column."""
+    return [
+        None,
+        "#",
+        "ID de interfaz",
+        "Owner",
+        "Marca",
+        "Proceso de Negocio",
+        "Interfaz",
+        "Descripción",
+        "Estado",
+        "Estado de Mapeo",
+        "Alcance Inicial",
+        "Complejidad",
+        "Frecuencia",
+        "Tipo",
+        "Base",
+        "Estado Interfaz",
+        "Tiempo Real (Si/No)",
+        "Tipo Trigger OIC",
+        "Response Size (KB)",
+        "Payload por Ejecución (KB)",
+        "Fan-out (Si/No)",
+        "# Destinos",
+        "Sistema de Origen",
+        "Tecnología de Origen",
+        "API Reference",
+        "Propietario de Origen",
+        "Sistema de Destino",
+        "Tecnología de Destino #1",
+        "Tecnología de Destino #2",
+        "Propietario de Destino",
+        "Calendarización",
+        "Ejec /día",
+        "Payload por hora (KB)",
+        "Patrón Seleccionado (Manual)",
+        "Racional del Patrón (Manual)",
+        "Comentarios / Observaciones",
+        "Retry Policy",
+        "Herramientas Core Cuantificables / Volumétricas",
+        "Herramientas Adicionales / Overlays (Complemento manual)",
+        "QA",
+        "TBQ",
+        "Incertidumbre",
+    ]
+
+
+def _make_workbook_data_row():
+    row = [None] * 42
+    row[1] = 1
+    row[6] = "Store Master Sync"
+    row[10] = "Wave 1"
+    row[12] = "Una vez al día"
+    row[17] = "REST Trigger"
+    row[19] = 0
+    row[27] = "SFTP"
+    row[28] = "API Rest"
+    row[40] = "Y"
+    row[41] = "TBD"
+    return row
+
+
 # ---------------------------------------------------------------------------
 # Header map
 # ---------------------------------------------------------------------------
@@ -51,6 +114,21 @@ def test_header_map_finds_interface_id():
     headers = _make_header_row()
     hmap = build_header_map(headers)
     assert "interface_id" in hmap
+
+
+def test_header_map_prefers_named_workbook_headers():
+    headers = _make_workbook_header_row()
+    hmap = build_header_map(headers)
+    assert hmap["interface_name"] == "6"
+    assert hmap["initial_scope"] == "10"
+    assert hmap["trigger_type"] == "17"
+
+
+def test_header_map_handles_accent_variants():
+    headers = [None, "Patron Seleccionado (Manual)", "Herramientas Core Cuantificables / Volumetricas"]
+    hmap = build_header_map(headers)
+    assert hmap["selected_pattern"] == "1"
+    assert hmap["core_tools"] == "2"
 
 
 # ---------------------------------------------------------------------------
@@ -162,3 +240,19 @@ def test_parity_order_preserved():
     included = [r for r in result.rows if r.included]
     seq_numbers = [r.raw_data.get("0") for r in included]
     assert seq_numbers == sorted(seq_numbers), "Source order must be preserved (PRD-018)"
+
+
+def test_parse_rows_preserves_zero_payload_and_workbook_values() -> None:
+    rows = [
+        [""] * 5,
+        [""] * 5,
+        [""] * 5,
+        [""] * 5,
+        _make_workbook_header_row(),
+        _make_workbook_data_row(),
+    ]
+    result = parse_rows(rows)
+    assert result.loaded_count == 1
+    assert result.rows[0].raw_data["19"] == 0
+    assert result.rows[0].raw_data["17"] == "REST Trigger"
+    assert result.rows[0].raw_data["41"] == "TBD"

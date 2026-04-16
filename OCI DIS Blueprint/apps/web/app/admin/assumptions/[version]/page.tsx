@@ -21,6 +21,37 @@ type ProjectUsage = {
   snapshot: VolumetrySnapshot | null;
 };
 
+type MetadataValue = string | number | boolean;
+
+const SERVICE_METADATA_LABELS: Record<string, string> = {
+  data_integrator_usage_model: "Data Integrator usage model",
+  data_integration_compute_isolated: "DI isolated compute per workspace",
+  functions_cold_start_typical: "Functions cold start typical",
+  functions_ram_default_per_ad: "Functions RAM default per AD",
+  salesforce_batch_limit_millions: "Salesforce batch limit (millions)",
+  file_server_concurrent_connections: "File Server concurrent connections",
+  default_record_size_bytes: "Default record size (bytes)",
+  hours_per_month: "Hours per month",
+};
+
+function readMetadataRecord(
+  assumptions: Record<string, unknown> | undefined,
+  key: string,
+): Record<string, MetadataValue> {
+  const candidate = assumptions?.[key];
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return {};
+  }
+
+  const entries = Object.entries(candidate);
+  return entries.reduce<Record<string, MetadataValue>>((accumulator, [entryKey, value]) => {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      accumulator[entryKey] = value;
+    }
+    return accumulator;
+  }, {});
+}
+
 export default function AdminAssumptionDetailPage({
   params,
 }: AdminAssumptionDetailPageProps): JSX.Element {
@@ -99,6 +130,9 @@ export default function AdminAssumptionDetailPage({
     return <div className="rounded-[2rem] border border-rose-200 bg-rose-50 p-8 text-sm text-rose-700 shadow-sm">{error || "Assumption version not found."}</div>;
   }
 
+  const sourceReferences = readMetadataRecord(assumption.raw_assumptions, "source_references");
+  const serviceMetadata = readMetadataRecord(assumption.raw_assumptions, "service_metadata");
+
   return (
     <div className="space-y-6">
       <section className="app-card p-6">
@@ -159,8 +193,12 @@ export default function AdminAssumptionDetailPage({
               <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.oic_billing_threshold_kb}</dd>
             </div>
             <div className="flex items-center justify-between gap-4">
-              <dt>Pack size (msgs/hour)</dt>
+              <dt>Pack size Non-BYOL (msgs/hour)</dt>
               <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.oic_pack_size_msgs_per_hour}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>Pack size BYOL (msgs/hour)</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.oic_byol_pack_size_msgs_per_hour}</dd>
             </div>
             <div className="flex items-center justify-between gap-4">
               <dt>REST max payload (KB)</dt>
@@ -186,11 +224,45 @@ export default function AdminAssumptionDetailPage({
         </article>
 
         <article className="app-card p-6">
-          <p className="app-label">OCI Services Parameters</p>
+          <p className="app-label">Queue + Streaming</p>
           <dl className="mt-5 space-y-3 text-sm text-[var(--color-text-secondary)]">
             <div className="flex items-center justify-between gap-4">
-              <dt>Streaming partition throughput (MB/s)</dt>
+              <dt>Queue billing unit (KB)</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.queue_billing_unit_kb}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>Queue max message (KB)</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.queue_max_message_kb}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>Queue retention (days)</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.queue_retention_days}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>Queue throughput soft limit (msg/s)</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">
+                {assumption.queue_throughput_soft_limit_msgs_per_second}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>Streaming write throughput (MB/s)</dt>
               <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.streaming_partition_throughput_mb_s}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>Streaming read throughput (MB/s)</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.streaming_read_throughput_mb_s}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>Streaming max message size (MB)</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.streaming_max_message_size_mb}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>Streaming retention (days)</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.streaming_retention_days}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>Streaming default partitions</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.streaming_default_partitions}</dd>
             </div>
             <div className="flex items-center justify-between gap-4">
               <dt>Functions default duration (ms)</dt>
@@ -204,7 +276,61 @@ export default function AdminAssumptionDetailPage({
               <dt>Functions default concurrency</dt>
               <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.functions_default_concurrency}</dd>
             </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>Functions max timeout (seconds)</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.functions_max_timeout_s}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>Functions batch size (records)</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.functions_batch_size_records}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>DI workspaces per region</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{assumption.data_integration_workspaces_per_region}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt>DI deleted workspace retention (days)</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">
+                {assumption.data_integration_deleted_workspace_retention_days}
+              </dd>
+            </div>
           </dl>
+        </article>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        <article className="app-card p-6">
+          <p className="app-label">Workbook Source References</p>
+          {Object.keys(sourceReferences).length === 0 ? (
+            <p className="mt-4 text-sm text-[var(--color-text-secondary)]">No governed source references captured.</p>
+          ) : (
+            <dl className="mt-5 space-y-3 text-sm text-[var(--color-text-secondary)]">
+              {Object.entries(sourceReferences).map(([key, value]) => (
+                <div key={key} className="flex items-start justify-between gap-4">
+                  <dt className="max-w-[16rem] font-medium text-[var(--color-text-primary)]">{key}</dt>
+                  <dd className="max-w-xl text-right">{String(value)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </article>
+
+        <article className="app-card p-6">
+          <p className="app-label">Service Metadata</p>
+          {Object.keys(serviceMetadata).length === 0 ? (
+            <p className="mt-4 text-sm text-[var(--color-text-secondary)]">No workbook metadata captured.</p>
+          ) : (
+            <dl className="mt-5 space-y-3 text-sm text-[var(--color-text-secondary)]">
+              {Object.entries(serviceMetadata).map(([key, value]) => (
+                <div key={key} className="flex items-start justify-between gap-4">
+                  <dt className="max-w-[16rem] font-medium text-[var(--color-text-primary)]">
+                    {SERVICE_METADATA_LABELS[key] ?? key}
+                  </dt>
+                  <dd className="max-w-xl text-right">{String(value)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </article>
       </section>
 
