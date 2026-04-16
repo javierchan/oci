@@ -12,6 +12,7 @@ const {
 } = require('./genai-profiles');
 const { GenAIError } = require('./errors');
 const { logger, recordGenAICall } = require('./logger');
+const { normalizeCallType, recordGenAIMetrics } = require('./metrics');
 
 function parsePositiveInteger(value, fallback) {
   const parsed = Number(value);
@@ -71,29 +72,40 @@ function extractUsageMetadata(payload) {
     || null;
 }
 
+function extractUsageCounts(payload) {
+  const usage = extractUsageMetadata(payload);
+  if (!usage) {
+    // TODO: keep this aligned with the OCI SDK usage object. The current Node SDK
+    // exposes token counts under payload.chatResult.chatResponse.usage (or siblings),
+    // and M10 records 0 when those fields are absent instead of estimating.
+    return {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      cachedPromptTokens: 0,
+    };
+  }
+  return {
+    promptTokens: Number(usage?.promptTokens || 0),
+    completionTokens: Number(usage?.completionTokens || 0),
+    totalTokens: Number(usage?.totalTokens || 0),
+    cachedPromptTokens: Number(usage?.promptTokensDetails?.cachedTokens || 0),
+  };
+}
+
 function logGenAIUsage({ logger: requestLogger, profile, kind, modelId, response }) {
-  const usage = extractUsageMetadata(response?.data || response);
-  if (!usage) return null;
-  const promptTokens = Number(usage?.promptTokens || 0);
-  const completionTokens = Number(usage?.completionTokens || 0);
-  const totalTokens = Number(usage?.totalTokens || 0);
-  const cachedPromptTokens = Number(usage?.promptTokensDetails?.cachedTokens || 0);
+  const usageCounts = extractUsageCounts(response?.data || response);
   (requestLogger || logger).debug({
     event: 'genai.request.usage',
     profile: profile || '',
     kind: kind || 'chat',
     modelId: modelId || '',
-    promptTokens,
-    completionTokens,
-    totalTokens,
-    cachedPromptTokens,
+    promptTokens: usageCounts.promptTokens,
+    completionTokens: usageCounts.completionTokens,
+    totalTokens: usageCounts.totalTokens,
+    cachedPromptTokens: usageCounts.cachedPromptTokens,
   }, 'GenAI token usage reported');
-  return {
-    promptTokens,
-    completionTokens,
-    totalTokens,
-    cachedPromptTokens,
-  };
+  return usageCounts;
 }
 
 function parseSimpleYaml(filePath) {
@@ -313,6 +325,14 @@ async function runChat({ cfg, systemPrompt, messages, profile, maxTokens, temper
       },
     });
     const latencyMs = Date.now() - startedAt;
+    const usage = logGenAIUsage({
+      logger: activeLogger,
+      profile: resolvedProfile,
+      kind: 'chat',
+      modelId: execution.cfg?.modelId || '',
+      response,
+    });
+    const metricsCallType = normalizeCallType(resolvedProfile);
     recordGenAICall(trace, {
       kind: 'chat',
       profile: resolvedProfile,
@@ -320,23 +340,25 @@ async function runChat({ cfg, systemPrompt, messages, profile, maxTokens, temper
       latencyMs,
       ok: true,
     });
-    logGenAIUsage({
-      logger: activeLogger,
-      profile: resolvedProfile,
-      kind: 'chat',
-      modelId: execution.cfg?.modelId || '',
-      response,
+    recordGenAIMetrics({
+      callType: metricsCallType,
+      latencyMs,
+      inputTokens: usage.promptTokens,
+      outputTokens: usage.completionTokens,
     });
     activeLogger.debug({
       event: 'genai.request.success',
       kind: 'chat',
       profile: resolvedProfile,
       modelId: execution.cfg?.modelId || '',
-      latencyMs,
+      latency_ms: latencyMs,
+      genai_tokens_in: usage.promptTokens,
+      genai_tokens_out: usage.completionTokens,
     }, 'Completed GenAI chat request');
     return response;
   } catch (error) {
     const latencyMs = Date.now() - startedAt;
+    const metricsCallType = normalizeCallType(resolvedProfile);
     recordGenAICall(trace, {
       kind: 'chat',
       profile: resolvedProfile,
@@ -345,12 +367,20 @@ async function runChat({ cfg, systemPrompt, messages, profile, maxTokens, temper
       ok: false,
       errorMessage: error.message,
     });
+    recordGenAIMetrics({
+      callType: metricsCallType,
+      latencyMs,
+      inputTokens: 0,
+      outputTokens: 0,
+    });
     activeLogger.warn({
       event: 'genai.request.failure',
       kind: 'chat',
       profile: resolvedProfile,
       modelId: execution.cfg?.modelId || '',
-      latencyMs,
+      latency_ms: latencyMs,
+      genai_tokens_in: 0,
+      genai_tokens_out: 0,
       errorMessage: error.message,
     }, 'GenAI chat request failed');
     throw wrapGenAIError(error);
@@ -434,6 +464,14 @@ async function runMultimodalChat({ cfg, systemPrompt, userText, imageDataUrl, pr
       },
     });
     const latencyMs = Date.now() - startedAt;
+    const usage = logGenAIUsage({
+      logger: activeLogger,
+      profile: resolvedProfile,
+      kind: 'multimodal_chat',
+      modelId: execution.cfg?.modelId || '',
+      response,
+    });
+    const metricsCallType = normalizeCallType(resolvedProfile);
     recordGenAICall(trace, {
       kind: 'multimodal_chat',
       profile: resolvedProfile,
@@ -441,23 +479,25 @@ async function runMultimodalChat({ cfg, systemPrompt, userText, imageDataUrl, pr
       latencyMs,
       ok: true,
     });
-    logGenAIUsage({
-      logger: activeLogger,
-      profile: resolvedProfile,
-      kind: 'multimodal_chat',
-      modelId: execution.cfg?.modelId || '',
-      response,
+    recordGenAIMetrics({
+      callType: metricsCallType,
+      latencyMs,
+      inputTokens: usage.promptTokens,
+      outputTokens: usage.completionTokens,
     });
     activeLogger.debug({
       event: 'genai.request.success',
       kind: 'multimodal_chat',
       profile: resolvedProfile,
       modelId: execution.cfg?.modelId || '',
-      latencyMs,
+      latency_ms: latencyMs,
+      genai_tokens_in: usage.promptTokens,
+      genai_tokens_out: usage.completionTokens,
     }, 'Completed GenAI multimodal request');
     return response;
   } catch (error) {
     const latencyMs = Date.now() - startedAt;
+    const metricsCallType = normalizeCallType(resolvedProfile);
     recordGenAICall(trace, {
       kind: 'multimodal_chat',
       profile: resolvedProfile,
@@ -466,12 +506,20 @@ async function runMultimodalChat({ cfg, systemPrompt, userText, imageDataUrl, pr
       ok: false,
       errorMessage: error.message,
     });
+    recordGenAIMetrics({
+      callType: metricsCallType,
+      latencyMs,
+      inputTokens: 0,
+      outputTokens: 0,
+    });
     activeLogger.warn({
       event: 'genai.request.failure',
       kind: 'multimodal_chat',
       profile: resolvedProfile,
       modelId: execution.cfg?.modelId || '',
-      latencyMs,
+      latency_ms: latencyMs,
+      genai_tokens_in: 0,
+      genai_tokens_out: 0,
       errorMessage: error.message,
     }, 'GenAI multimodal request failed');
     throw wrapGenAIError(error);
@@ -514,6 +562,7 @@ module.exports = {
   shouldRetryWithMaxCompletionTokens,
   executeChatWithFallback,
   extractUsageMetadata,
+  extractUsageCounts,
   getGenAITokenBudget,
   logGenAIUsage,
   maybeWarnOnTokenBudget,

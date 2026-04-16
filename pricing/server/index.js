@@ -11,6 +11,8 @@ const { normalizeProcessorVendor, findVmShapeByText } = require('./vm-shapes');
 const { loadGenAISettings, runChat, extractChatText } = require('./genai');
 const { resolveGenAIRequestOptions } = require('./genai-profiles');
 const { respondToAssistant } = require('./assistant');
+const { createRateLimiter, isSharedApiKeyAuthorized, loadAuthSettings } = require('./auth');
+const { renderPrometheusMetrics } = require('./metrics');
 const sessionStore = require('./session-store');
 const { buildQuoteExportRows, buildQuoteExportCsv, buildQuoteExportWorkbook } = require('./quote-export');
 const {
@@ -25,7 +27,12 @@ const {
 const { buildRequestLogger, createTrace, logger, summarizeTrace } = require('./logger');
 
 const app  = express();
+const apiV1 = express.Router();
 const PORT = process.env.PORT || 8742;
+const LEGACY_API_PREFIX = '/api';
+const VERSIONED_API_PREFIX = '/api/v1';
+const authSettings = loadAuthSettings(process.env);
+const assistantRateLimiter = createRateLimiter(authSettings);
 
 app.use(express.json({ limit: '25mb' }));
 
@@ -39,6 +46,23 @@ function resolveClientId(req) {
 
 function createRequestId() {
   return `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildVersionedApiPath(pathname) {
+  const source = String(pathname || '').trim();
+  if (!source.startsWith(LEGACY_API_PREFIX)) return source || VERSIONED_API_PREFIX;
+  if (source.startsWith(`${VERSIONED_API_PREFIX}/`) || source === VERSIONED_API_PREFIX) return source;
+  return `${VERSIONED_API_PREFIX}${source.slice(LEGACY_API_PREFIX.length)}`;
+}
+
+function redirectLegacyApiRoute(req, res) {
+  const method = String(req.method || 'GET').toUpperCase();
+  const redirectStatus = method === 'GET' || method === 'HEAD' ? 301 : 307;
+  return res.redirect(redirectStatus, buildVersionedApiPath(req.originalUrl || req.url));
+}
+
+function registerLegacyApiAlias(method, routePath) {
+  app[method](routePath, redirectLegacyApiRoute);
 }
 
 function resolveAssistantSessionContext(storedSession, _requestBodySessionContext) {
@@ -128,6 +152,51 @@ function createHttpError(message, { code = 'INTERNAL_ERROR', httpStatus = 500, d
     expose,
     cause,
   });
+}
+
+function requireSharedApiKey(req) {
+  if (isSharedApiKeyAuthorized(req.get('x-api-key'), authSettings)) return;
+  throw createHttpError('Unauthorized.', {
+    code: 'AUTH_UNAUTHORIZED',
+    httpStatus: 401,
+  });
+}
+
+function isMetricsAuthRequired(env = process.env) {
+  return String(env.PRICING_METRICS_REQUIRE_API_KEY || '').trim().toLowerCase() === 'true';
+}
+
+function handleMetricsRequest(req, res) {
+  if (isMetricsAuthRequired() && !isSharedApiKeyAuthorized(req.get('x-api-key'), authSettings)) {
+    return handleError(res, createHttpError('Unauthorized.', {
+      code: 'AUTH_UNAUTHORIZED',
+      httpStatus: 401,
+    }));
+  }
+
+  res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+  return res.status(200).send(renderPrometheusMetrics());
+}
+
+function handleRateLimit(res, { clientId, requestLogger, routeName }) {
+  const rateLimit = assistantRateLimiter.check(clientId);
+  if (rateLimit.allowed) return null;
+
+  res.setHeader('Retry-After', String(rateLimit.retryAfterSeconds));
+  requestLogger?.warn?.({
+    event: 'auth.rate_limit_exceeded',
+    routeName,
+    limit: rateLimit.limit,
+    retryAfterSeconds: rateLimit.retryAfterSeconds,
+  }, `Rate limit exceeded for ${routeName}`);
+
+  return handleError(res, createHttpError('Rate limit exceeded.', {
+    code: 'RATE_LIMITED',
+    httpStatus: 429,
+    data: {
+      retryAfter: rateLimit.retryAfterSeconds,
+    },
+  }));
 }
 
 function logRequestFailure(requestLogger, trace, method, error, message) {
@@ -645,13 +714,13 @@ async function estimateWorkbookRequest({ cfg, clientId, sessionId, body, persist
 }
 
 // ════════════════════════════════════════════════════════════
-//  POST /api/chat  — OCI GenAI only
+//  POST /api/v1/chat  — OCI GenAI only
 // ════════════════════════════════════════════════════════════
-app.post('/api/chat', async (req, res) => {
+apiV1.post('/chat', async (req, res) => {
   const clientId = resolveClientId(req);
   const sessionId = String(req.body?.sessionId || '').trim();
   const requestLogger = buildRequestLogger({
-    routeName: '/api/chat',
+    routeName: '/api/v1/chat',
     requestId: createRequestId(),
     clientId,
     sessionId,
@@ -663,7 +732,13 @@ app.post('/api/chat', async (req, res) => {
     method: 'POST',
     hasSystemPrompt: Boolean(req.body?.system),
     messageCount: Array.isArray(req.body?.messages) ? req.body.messages.length : 0,
-  }, 'Received /api/chat request');
+  }, 'Received /api/v1/chat request');
+  const rateLimited = handleRateLimit(res, {
+    clientId,
+    requestLogger,
+    routeName: '/api/v1/chat',
+  });
+  if (rateLimited) return rateLimited;
 
   try {
     const cfg = ensureOciConfig(requestLogger);
@@ -690,7 +765,7 @@ app.post('/api/chat', async (req, res) => {
       statusCode: 200,
       modelId: requestOptions.modelId || cfg.modelId,
       ...summarizeTrace(trace),
-    }, 'Completed /api/chat request');
+    }, 'Completed /api/v1/chat request');
     return res.json({
       id: 'oci-' + Date.now(),
       type: 'message',
@@ -701,16 +776,16 @@ app.post('/api/chat', async (req, res) => {
       raw: text ? undefined : payload,
     });
   } catch (err) {
-    logRequestFailure(requestLogger, trace, 'POST', err, 'Failed /api/chat request');
+    logRequestFailure(requestLogger, trace, 'POST', err, 'Failed /api/v1/chat request');
     return handleError(res, err);
   }
 });
 
-app.post('/api/assistant', async (req, res) => {
+apiV1.post('/assistant', async (req, res) => {
   const clientId = resolveClientId(req);
   const sessionId = String(req.body?.sessionId || '').trim();
   const requestLogger = buildRequestLogger({
-    routeName: '/api/assistant',
+    routeName: '/api/v1/assistant',
     requestId: createRequestId(),
     clientId,
     sessionId,
@@ -721,7 +796,13 @@ app.post('/api/assistant', async (req, res) => {
     method: 'POST',
     hasText: Boolean(String(req.body?.text || '').trim()),
     hasImage: Boolean(String(req.body?.imageDataUrl || '').trim()),
-  }, 'Received /api/assistant request');
+  }, 'Received /api/v1/assistant request');
+  const rateLimited = handleRateLimit(res, {
+    clientId,
+    requestLogger,
+    routeName: '/api/v1/assistant',
+  });
+  if (rateLimited) return rateLimited;
 
   try {
     ensureCatalogReady();
@@ -770,7 +851,7 @@ app.post('/api/assistant', async (req, res) => {
         routingPath: 'workbook_shortcut',
         outcome: workbookReply.body?.ok ? 'quote' : 'clarification',
         ...summarizeTrace(trace),
-      }, 'Completed /api/assistant request');
+      }, 'Completed /api/v1/assistant request');
       return res.status(workbookReply.status).json({
         ...workbookReply.body,
         session: sessionId ? sessionStore.getSession(clientId, sessionId) : null,
@@ -826,23 +907,31 @@ app.post('/api/assistant', async (req, res) => {
       shouldQuote: Boolean(reply?.intent?.shouldQuote),
       outcome: reply?.needsClarification || reply?.question ? 'clarification' : (reply?.quote || reply?.quoteMarkdown || reply?.totals ? 'quote' : 'answer'),
       ...summarizeTrace(trace),
-    }, 'Completed /api/assistant request');
+    }, 'Completed /api/v1/assistant request');
     
     return res.json({
       ...reply,
       session: sessionId ? sessionStore.getSession(clientId, sessionId) : null,
     });
   } catch (error) {
-    logRequestFailure(requestLogger, trace, 'POST', error, 'Failed /api/assistant request');
+    logRequestFailure(requestLogger, trace, 'POST', error, 'Failed /api/v1/assistant request');
     return handleError(res, error);
   }
 });
 
 // ── Config status ──────────────────────────────────────────
-app.get('/api/providers', (_req, res) => {
+apiV1.get('/providers', (_req, res) => {
   const cfg = loadOciConfig();
-  res.json({ oci: { configured: cfg.ok, region: cfg.region, endpoint: cfg.endpoint, compartment: cfg.compartment, modelId: cfg.modelId, profile: cfg.profile } });
+  res.json({
+    oci: {
+      ok: cfg.ok,
+      configured: cfg.ok,
+      region: '',
+    },
+  });
 });
+
+apiV1.get('/metrics', handleMetricsRequest);
 
 // ════════════════════════════════════════════════════════════
 //  OCI Catalog download
@@ -1015,7 +1104,7 @@ function startCatalogRefreshTimer() {
   return refreshTimer;
 }
 
-app.get('/api/health', (_req, res) => {
+apiV1.get('/health', (_req, res) => {
   const catalogs = {};
   for (const n of Object.keys(OCI_URLS)) catalogs[n] = {
     loaded: !!store.data[n],
@@ -1038,7 +1127,7 @@ function ensureCatalogReady() {
   return store.normalized;
 }
 
-app.get('/api/catalog/search', (req, res) => {
+apiV1.get('/catalog/search', (req, res) => {
   try {
     const index = ensureCatalogReady();
     const q = String(req.query.q || '');
@@ -1053,7 +1142,7 @@ app.get('/api/catalog/search', (req, res) => {
   }
 });
 
-app.get('/api/coverage', (req, res) => {
+apiV1.get('/coverage', (req, res) => {
   try {
     const index = ensureCatalogReady();
     const q = String(req.query.q || '').trim();
@@ -1069,7 +1158,7 @@ app.get('/api/coverage', (req, res) => {
   }
 });
 
-app.get('/api/catalog/:file', (req, res) => {
+apiV1.get('/catalog/:file', (req, res) => {
   try {
     const { file } = req.params;
     if (!OCI_URLS[file]) {
@@ -1097,14 +1186,19 @@ app.get('/api/catalog/:file', (req, res) => {
   }
 });
 
-app.post('/api/catalog/reload', (_req, res) => {
-  Object.keys(store.data).forEach(k => { delete store.data[k]; delete store.loadedAt[k]; });
-  store.normalized = null;
-  fetchAll();
-  res.json({ ok: true });
+apiV1.post('/catalog/reload', (req, res) => {
+  try {
+    requireSharedApiKey(req);
+    Object.keys(store.data).forEach(k => { delete store.data[k]; delete store.loadedAt[k]; });
+    store.normalized = null;
+    fetchAll();
+    return res.json({ ok: true });
+  } catch (error) {
+    return handleError(res, error);
+  }
 });
 
-app.post('/api/quote', (req, res) => {
+apiV1.post('/quote', (req, res) => {
   try {
     const index = ensureCatalogReady();
     const text = String(req.body.text || '');
@@ -1143,7 +1237,7 @@ app.post('/api/quote', (req, res) => {
   }
 });
 
-app.post('/api/excel/estimate', async (req, res) => {
+apiV1.post('/excel/estimate', async (req, res) => {
   try {
     ensureCatalogReady();
     const cfg = loadOciConfig();
@@ -1160,18 +1254,18 @@ app.post('/api/excel/estimate', async (req, res) => {
   }
 });
 
-app.get('/api/sessions', (req, res) => {
+apiV1.get('/sessions', (req, res) => {
   const clientId = resolveClientId(req);
   return res.json({ ok: true, sessions: sessionStore.listSessions(clientId) });
 });
 
-app.post('/api/sessions', (req, res) => {
+apiV1.post('/sessions', (req, res) => {
   const clientId = resolveClientId(req);
   const session = sessionStore.createSession(clientId, req.body?.title || 'New session');
   return res.json({ ok: true, session });
 });
 
-app.get('/api/sessions/:id', (req, res) => {
+apiV1.get('/sessions/:id', (req, res) => {
   const clientId = resolveClientId(req);
   const session = sessionStore.getSession(clientId, req.params.id);
   if (!session) {
@@ -1183,7 +1277,7 @@ app.get('/api/sessions/:id', (req, res) => {
   return res.json({ ok: true, session });
 });
 
-app.get('/api/sessions/:id/quote-export', (req, res) => {
+apiV1.get('/sessions/:id/quote-export', (req, res) => {
   const clientId = resolveClientId(req);
   const result = buildQuoteExportHttpResponse(clientId, req.params.id, req.query.format);
   if (result.headers) {
@@ -1196,7 +1290,7 @@ app.get('/api/sessions/:id/quote-export', (req, res) => {
   return res.status(result.status).send(result.body);
 });
 
-app.post('/api/sessions/:id/messages', (req, res) => {
+apiV1.post('/sessions/:id/messages', (req, res) => {
   const clientId = resolveClientId(req);
   const session = sessionStore.appendMessage(clientId, req.params.id, {
     role: req.body?.role,
@@ -1218,7 +1312,7 @@ app.post('/api/sessions/:id/messages', (req, res) => {
   return res.json({ ok: true, session });
 });
 
-app.post('/api/sessions/:id/state', (req, res) => {
+apiV1.post('/sessions/:id/state', (req, res) => {
   const clientId = resolveClientId(req);
   const session = sessionStore.updateSessionState(clientId, req.params.id, {
     sessionContext: req.body?.sessionContext,
@@ -1241,7 +1335,7 @@ app.post('/api/sessions/:id/state', (req, res) => {
   return res.json({ ok: true, session });
 });
 
-app.delete('/api/sessions/:id', (req, res) => {
+apiV1.delete('/sessions/:id', (req, res) => {
   const clientId = resolveClientId(req);
   const ok = sessionStore.deleteSession(clientId, req.params.id);
   if (!ok) {
@@ -1253,11 +1347,34 @@ app.delete('/api/sessions/:id', (req, res) => {
   return res.json({ ok: true });
 });
 
-app.delete('/api/sessions', (req, res) => {
+apiV1.delete('/sessions', (req, res) => {
   const clientId = resolveClientId(req);
   sessionStore.clearSessions(clientId);
   return res.json({ ok: true });
 });
+
+app.use(VERSIONED_API_PREFIX, apiV1);
+
+app.get('/api/metrics', handleMetricsRequest);
+
+registerLegacyApiAlias('post', '/api/chat');
+registerLegacyApiAlias('post', '/api/assistant');
+registerLegacyApiAlias('get', '/api/providers');
+registerLegacyApiAlias('get', '/api/health');
+registerLegacyApiAlias('get', '/api/catalog/search');
+registerLegacyApiAlias('get', '/api/coverage');
+registerLegacyApiAlias('get', '/api/catalog/:file');
+registerLegacyApiAlias('post', '/api/catalog/reload');
+registerLegacyApiAlias('post', '/api/quote');
+registerLegacyApiAlias('post', '/api/excel/estimate');
+registerLegacyApiAlias('get', '/api/sessions');
+registerLegacyApiAlias('post', '/api/sessions');
+registerLegacyApiAlias('get', '/api/sessions/:id');
+registerLegacyApiAlias('get', '/api/sessions/:id/quote-export');
+registerLegacyApiAlias('post', '/api/sessions/:id/messages');
+registerLegacyApiAlias('post', '/api/sessions/:id/state');
+registerLegacyApiAlias('delete', '/api/sessions/:id');
+registerLegacyApiAlias('delete', '/api/sessions');
 
 app.use(express.static(FRONTEND_DIR));
 app.get('*', (_req, res) => res.sendFile(path.join(FRONTEND_DIR, 'index.html')));
