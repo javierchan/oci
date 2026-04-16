@@ -1,6 +1,5 @@
 """Volumetry router — /volumetry (PRD-027 to PRD-034)."""
 from fastapi import APIRouter, Query
-from typing import Optional
 
 router = APIRouter(prefix="/volumetry", tags=["Volumetry"])
 

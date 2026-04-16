@@ -1,5 +1,5 @@
 """Justifications router — /justifications (PRD-040 to PRD-042)."""
-from fastapi import APIRouter, status
+from fastapi import APIRouter
 
 router = APIRouter(prefix="/justifications", tags=["Justifications"])
 

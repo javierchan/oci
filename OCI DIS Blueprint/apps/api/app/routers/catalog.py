@@ -1,5 +1,5 @@
 """Catalog router — /catalog (PRD-020 to PRD-026)."""
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query
 from typing import Optional
 
 router = APIRouter(prefix="/catalog", tags=["Catalog"])
