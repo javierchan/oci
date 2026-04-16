@@ -7,9 +7,9 @@ This document captures the full set of architectural improvements identified thr
 Document role:
 
 - this file is the source of truth for architectural remediation milestones, their rationale, and their exit criteria
-- sequencing and active tactical work live in [Execution Plan](EXECUTION_PLAN.md)
-- system-level design intent lives in [Architecture](ARCHITECTURE.md)
-- the full docs map lives in [Docs Guide](README.md)
+- sequencing and active tactical work live in [Execution Plan](./EXECUTION_PLAN.md)
+- system-level design intent lives in [Architecture](../core/ARCHITECTURE.md)
+- the full docs map lives in [Pricing Docs](../README.md)
 
 Each milestone is self-contained: it names the problem, the root cause, the target state, the files most likely to change, and what done looks like. Milestones are grouped by risk tier (highest impact / highest risk first).
 
@@ -19,16 +19,16 @@ Each milestone is self-contained: it names the problem, the root cause, the targ
 
 | ID | Title | Tier | Status |
 |----|-------|------|--------|
-| [M1](#m1--service-detection-metadata-migration) | Service Detection Metadata Migration | Critical | complete |
+| [M1](#m1--service-detection-metadata-migration) | Service Detection Metadata Migration | Critical | open |
 | [M2](#m2--genai-intent-output-validation) | GenAI Intent Output Validation | Critical | complete |
 | [M3](#m3--session-store-async-and-hardening) | Session Store Async and Hardening | Critical | complete |
 | [M4](#m4--genai-configuration-externalization) | GenAI Configuration Externalization | High | complete |
 | [M5](#m5--structured-logging) | Structured Logging | High | complete |
 | [M6](#m6--prompt-caching-and-token-optimization) | Prompt Caching and Token Optimization | High | complete |
 | [M7](#m7--semantic-error-handling-and-error-codes) | Semantic Error Handling and Error Codes | High | complete |
-| [M8](#m8--api-versioning-and-contract-hardening) | API Versioning and Contract Hardening | Medium | open |
-| [M9](#m9--authentication-and-rate-limiting) | Authentication and Rate Limiting | Medium | open |
-| [M10](#m10--observability-and-cost-metrics) | Observability and Cost Metrics | Medium | open |
+| [M8](#m8--api-versioning-and-contract-hardening) | API Versioning and Contract Hardening | Medium | complete |
+| [M9](#m9--authentication-and-rate-limiting) | Authentication and Rate Limiting | Medium | complete |
+| [M10](#m10--observability-and-cost-metrics) | Observability and Cost Metrics | Medium | complete |
 
 ---
 
@@ -53,6 +53,17 @@ Additionally, shape resolution is triggered both as a top-level `if` block and v
 
 Service detection logic was added incrementally to `dependency-resolver.js` instead of being declared in `service-families.js`, which already exists as the canonical metadata store for service routing behavior.
 
+### Audit Re-baseline Note
+
+As of April 15, 2026, this milestone is reopened.
+
+- `dependency-resolver.js` still contains residual `request.source` dependencies across generic ranking, composite decomposition, and family-specific input shaping paths.
+- The bounded inventory of those residual paths now lives in `RESIDUAL_SOURCE_DEPENDENCY_INVENTORY` in `pricing/server/dependency-resolver.js`.
+- Closure is now intentionally sequenced in three slices:
+  - this milestone keeps status and scope honest while the residual paths still exist
+  - the next resolver slice removes metadata and composite ownership drift
+  - the final closeout slice revalidates parity and only then marks this milestone complete again
+
 ### Target State
 
 - every service detection signal (`isFastConnectRequest`, `isBlockVolumeRequest`, etc.) is replaced by a metadata key in `service-families.js`
@@ -73,6 +84,11 @@ Service detection logic was added incrementally to `dependency-resolver.js` inst
 - `resolveRequestDependencies()` contains no string matching against `request.source`
 - the duplicate shape-dispatch block is removed and all shape resolution flows through `FAMILY_RESOLVERS`
 - all existing parity and regression tests continue to pass without modification
+
+Current status note:
+
+- these exit criteria are not yet met while `RESIDUAL_SOURCE_DEPENDENCY_INVENTORY` remains non-empty
+- no future milestone should mark M1 complete again until that inventory has been removed and the full server suite is green
 
 ---
 
@@ -350,19 +366,19 @@ The API grew organically alongside the assistant without a versioning strategy o
 
 - all routes are prefixed with `/api/v1/`
 - old routes (`/api/assistant`, etc.) are kept as aliases during a transition window, then removed
-- an OpenAPI 3.1 spec file (`pricing/docs/openapi.yaml`) documents all `/api/v1/` endpoints with request schemas, response schemas, and error codes
+- an OpenAPI 3.1 spec file (`pricing/docs/contracts/openapi.yaml`) documents all `/api/v1/` endpoints with request schemas, response schemas, and error codes
 - `POST /api/v1/assistant` request schema explicitly marks `sessionContext` as ignored (or removes it from the schema entirely)
 - the OpenAPI spec is the source of truth for what fields are valid in each endpoint — no undocumented fields are processed by the server
 
 ### Files Most Likely To Change
 
 - `pricing/server/index.js` — add `/api/v1/` route prefix, keep aliases
-- new file: `pricing/docs/openapi.yaml`
+- new file: `pricing/docs/contracts/openapi.yaml`
 
 ### Exit Criteria
 
 - all new client code uses `/api/v1/` routes
-- `pricing/docs/openapi.yaml` validates against the OpenAPI 3.1 schema (use `openapi-schema-validator` or equivalent)
+- `pricing/docs/contracts/openapi.yaml` validates against the OpenAPI 3.1 schema (use `openapi-schema-validator` or equivalent)
 - a CI check verifies the spec file is present and valid on every merge
 - the old unversioned routes return HTTP 301 redirects to their `/api/v1/` equivalents (or HTTP 410 after the transition window)
 

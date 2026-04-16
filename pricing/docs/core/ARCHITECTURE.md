@@ -7,8 +7,8 @@
 Document role:
 
 - this file is the source of truth for architectural intent and stable runtime contracts
-- sequencing lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/EXECUTION_PLAN.md)
-- validated runtime coverage state lives in [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md)
+- sequencing lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/planning/EXECUTION_PLAN.md)
+- validated runtime coverage state lives in [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/planning/COVERAGE_ROADMAP.md)
 - the full docs map lives in [Docs Guide](/Users/javierchan/Documents/GitHub/oci/pricing/docs/README.md)
 
 The design target is:
@@ -182,7 +182,7 @@ Used for validation of the API-backed assistant layer:
 
 - `pricing/server/scripts/assistant-fuzz.js`
 - `pricing/server/scripts/assistant-quality.js`
-- [QUALITY_REGRESSION.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/QUALITY_REGRESSION.md)
+- [QUALITY_REGRESSION.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/operations/QUALITY_REGRESSION.md)
 
 Purpose:
 

@@ -7,8 +7,8 @@ This document defines the fixed live-quality regression for the `pricing` assist
 Document role:
 
 - this file is the source of truth for the live semantic-quality regression against the running assistant
-- deterministic runtime coverage does not belong here; that lives in [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md)
-- tactical sequencing does not belong here; that lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/EXECUTION_PLAN.md)
+- deterministic runtime coverage does not belong here; that lives in [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/planning/COVERAGE_ROADMAP.md)
+- tactical sequencing does not belong here; that lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/planning/EXECUTION_PLAN.md)
 - the full docs map lives in [Docs Guide](/Users/javierchan/Documents/GitHub/oci/pricing/docs/README.md)
 
 The goal is different from deterministic calculator parity:
@@ -183,9 +183,9 @@ This baseline confirms that the assistant is not only reachable, but also semant
 
 Use the quality regression together with:
 
-- [ARCHITECTURE.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ARCHITECTURE.md)
-- [COVERAGE_ROADMAP.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md)
-- [EXECUTION_PLAN.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/EXECUTION_PLAN.md)
+- [ARCHITECTURE.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/core/ARCHITECTURE.md)
+- [COVERAGE_ROADMAP.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/planning/COVERAGE_ROADMAP.md)
+- [EXECUTION_PLAN.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/planning/EXECUTION_PLAN.md)
 - [assistant-fuzz.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/scripts/assistant-fuzz.js)
 - [assistant-quality.js](/Users/javierchan/Documents/GitHub/oci/pricing/server/scripts/assistant-quality.js)
 
