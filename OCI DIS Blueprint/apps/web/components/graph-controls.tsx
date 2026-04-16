@@ -14,6 +14,9 @@ type GraphControlsProps = {
   projectId: string;
   filters: GraphParams;
   onFilterChange: (_field: keyof GraphParams, _value: string) => void;
+  selectedSystem: string;
+  systemOptions: string[];
+  onSystemChange: (_value: string) => void;
   colorMode: "qa" | "bp";
   onColorModeChange: (_mode: "qa" | "bp") => void;
   mode: GraphMode;
@@ -30,6 +33,9 @@ export function GraphControls({
   projectId,
   filters,
   onFilterChange,
+  selectedSystem,
+  systemOptions,
+  onSystemChange,
   colorMode,
   onColorModeChange,
   mode,
@@ -42,7 +48,7 @@ export function GraphControls({
   svgRef,
 }: GraphControlsProps): JSX.Element {
   return (
-    <section className="app-card p-6">
+    <section className="app-card pointer-events-auto p-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:flex-wrap xl:items-end">
         <label className="min-w-[14rem]">
           <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">Business Process</span>
@@ -87,6 +93,22 @@ export function GraphControls({
             <option value="OK">OK</option>
             <option value="REVISAR">REVISAR</option>
             <option value="PENDING">PENDING</option>
+          </select>
+        </label>
+
+        <label className="min-w-[14rem]">
+          <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">System</span>
+          <select
+            value={selectedSystem}
+            onChange={(event) => onSystemChange(event.target.value)}
+            className="app-input"
+          >
+            <option value="">All</option>
+            {systemOptions.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
           </select>
         </label>
 

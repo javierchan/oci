@@ -17,7 +17,11 @@ async def download_capture_template(db: AsyncSession = Depends(get_db)) -> Respo
     return Response(
         content=workbook_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=oci-dis-capture-template.xlsx"},
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=oci-dis-import-template-v{export_service.TEMPLATE_VERSION}.xlsx"
+            )
+        },
     )
 
 

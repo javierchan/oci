@@ -168,6 +168,7 @@ export interface IntegrationPatch {
   retry_policy?: string;
   core_tools?: string[];
   additional_tools_overlays?: string;
+  raw_column_values?: Record<string, unknown>;
 }
 
 export interface CatalogPage {
@@ -236,6 +237,7 @@ export interface DictionaryOption {
   executions_per_day: number | null;
   sort_order: number;
   is_active: boolean;
+  updated_at?: string;
 }
 
 export interface DictionaryOptionList {
@@ -266,6 +268,7 @@ export interface DictOption {
   value: string;
   description?: string | null;
   executions_per_day?: number | null;
+  updated_at?: string;
 }
 
 export interface OICMetrics {
@@ -466,4 +469,88 @@ export interface GraphParams {
   business_process?: string;
   brand?: string;
   qa_status?: string;
+  system?: string;
+}
+
+export interface DashboardKPIStrip {
+  oic_msgs_month: number;
+  peak_packs_hour: number;
+  di_workspace_active: boolean;
+  di_data_processed_gb_month: number;
+  functions_execution_units_gb_s: number;
+}
+
+export interface DashboardCoverage {
+  total_integrations: number;
+  with_interface_id: number;
+  without_interface_id: number;
+  pattern_assigned: number;
+  payload_informed: number;
+  source_destination_informed: number;
+}
+
+export interface DashboardCompleteness {
+  qa_ok: number;
+  qa_revisar: number;
+  qa_pending: number;
+  rationale_informed: number;
+  core_tools_informed: number;
+  comments_informed: number;
+  retry_policy_informed: number;
+}
+
+export interface DashboardPatternMixEntry {
+  pattern_id: string;
+  name: string;
+  count: number;
+}
+
+export interface DashboardPayloadDistributionBucket {
+  label: string;
+  count: number;
+}
+
+export interface DashboardCharts {
+  coverage: DashboardCoverage;
+  completeness: DashboardCompleteness;
+  pattern_mix: DashboardPatternMixEntry[];
+  payload_distribution: DashboardPayloadDistributionBucket[];
+}
+
+export interface DashboardRisk {
+  code: string;
+  label: string;
+  count: number;
+  integration_ids: string[];
+}
+
+export interface DashboardMaturity {
+  qa_ok_pct: number;
+  pattern_assigned_pct: number;
+  payload_informed_pct: number;
+  governed_pct: number;
+}
+
+export interface DashboardSnapshotSummary {
+  snapshot_id: string;
+  volumetry_snapshot_id: string;
+  mode: string;
+  created_at: string;
+}
+
+export interface DashboardSnapshot {
+  snapshot_id: string;
+  project_id: string;
+  volumetry_snapshot_id: string;
+  mode: string;
+  kpi_strip: DashboardKPIStrip;
+  charts: DashboardCharts;
+  risks: DashboardRisk[];
+  maturity: DashboardMaturity;
+  created_at: string;
+}
+
+export interface DashboardSnapshotList {
+  snapshots: DashboardSnapshotSummary[];
+  total: number;
 }

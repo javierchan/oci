@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 from typing import Any, cast
@@ -11,8 +12,7 @@ from openpyxl import load_workbook
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from app.core.calc_engine import evaluate_qa, executions_per_day, parse_rows, payload_per_hour_kb
+from app.core.calc_engine import detect_header_row, evaluate_qa, executions_per_day, parse_rows, payload_per_hour_kb
 from app.models import CatalogIntegration, ImportBatch, JustificationRecord, Project, SourceIntegrationRow
 from app.models.project import ImportStatus
 from app.schemas.imports import (
@@ -29,6 +29,7 @@ from app.services.justification_service import serialize_justification_record
 from app.services.serializers import parse_bool, parse_float, parse_int, parse_text, sanitize_for_json
 
 SOURCE_SHEET_NAME = "Catálogo de Integraciones"
+RAW_HEADERS_METADATA_KEY = "__raw_headers__"
 FALLBACK_COLUMN_INDEXES: dict[str, int] = {
     "seq_number": 0,
     "interface_id": 1,
@@ -68,6 +69,7 @@ FALLBACK_COLUMN_INDEXES: dict[str, int] = {
     "additional_tools_overlays": 37,
     "qa_status": 38,
     "tbq": 39,
+    "uncertainty": 40,
 }
 
 
@@ -110,10 +112,73 @@ def serialize_source_row(row: SourceIntegrationRow) -> SourceRowResponse:
     )
 
 
+def _extract_raw_headers(header_map: dict[str, str] | None) -> dict[str, str]:
+    if not header_map:
+        return {}
+    encoded_headers = header_map.get(RAW_HEADERS_METADATA_KEY)
+    if not encoded_headers:
+        return {}
+    try:
+        payload = json.loads(encoded_headers)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {str(key): str(value) for key, value in payload.items()}
+
+
+def _normalize_raw_header_label(value: object, index: int, used_labels: set[str]) -> str:
+    base_label = str(value).strip() if value is not None else ""
+    if not base_label:
+        base_label = f"Column {index + 1}"
+
+    label = base_label
+    duplicate_number = 2
+    while label in used_labels:
+        label = f"{base_label} ({duplicate_number})"
+        duplicate_number += 1
+    used_labels.add(label)
+    return label
+
+
+def _build_raw_header_labels(raw_headers: list[object]) -> dict[str, str]:
+    used_labels: set[str] = set()
+    return {
+        str(index): _normalize_raw_header_label(value, index, used_labels)
+        for index, value in enumerate(raw_headers)
+    }
+
+
+def _build_raw_column_values(raw_data: dict[str, object], raw_headers: dict[str, str]) -> dict[str, object]:
+    values: dict[str, object] = {}
+    for raw_key, raw_value in raw_data.items():
+        if raw_key in raw_headers:
+            values[raw_headers[raw_key]] = raw_value
+            continue
+        if raw_key.isdigit():
+            values[f"Column {int(raw_key) + 1}"] = raw_value
+            continue
+        values[raw_key] = raw_value
+    return values
+
+
 def _extract_raw_value(raw_data: dict[str, object], header_map: dict[str, str], field: str) -> object:
+    if field in raw_data:
+        return raw_data.get(field)
+
+    raw_headers = _extract_raw_headers(header_map)
     column_index = header_map.get(field, str(FALLBACK_COLUMN_INDEXES.get(field, -1)))
     if column_index == "-1":
         return None
+    header_label = raw_headers.get(column_index)
+    if header_label and header_label in raw_data:
+        return raw_data.get(header_label)
+    if column_index in raw_data:
+        return raw_data.get(column_index)
+    if column_index.isdigit():
+        fallback_label = f"Column {int(column_index) + 1}"
+        if fallback_label in raw_data:
+            return raw_data.get(fallback_label)
     return raw_data.get(column_index)
 
 
@@ -243,16 +308,23 @@ async def process_import(batch_id: str, file_path: str, db: AsyncSession) -> Imp
     sheet = workbook[SOURCE_SHEET_NAME]
     all_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
     import_result = parse_rows(all_rows)
+    header_row_index = detect_header_row(all_rows)
+    raw_header_labels = _build_raw_header_labels(all_rows[header_row_index] if all_rows else [])
+    stored_header_map = {
+        **import_result.header_map,
+        RAW_HEADERS_METADATA_KEY: json.dumps(raw_header_labels, ensure_ascii=True),
+    }
     correlation_id = str(uuid.uuid4())
 
     for parsed_row in import_result.rows:
         normalization_events = [
             sanitize_for_json(event.__dict__) for event in parsed_row.normalization_events
         ]
+        raw_column_values = _build_raw_column_values(parsed_row.raw_data, raw_header_labels)
         source_row = SourceIntegrationRow(
             import_batch_id=batch.id,
             source_row_number=parsed_row.source_row_number,
-            raw_data=sanitize_for_json(parsed_row.raw_data),
+            raw_data=sanitize_for_json(raw_column_values),
             included=parsed_row.included,
             exclusion_reason=parsed_row.exclusion_reason,
             normalization_events=normalization_events,
@@ -285,7 +357,7 @@ async def process_import(batch_id: str, file_path: str, db: AsyncSession) -> Imp
                     source_row_id=source_row.id,
                     raw_data=source_row.raw_data,
                     normalization_events=cast(list[dict[str, Any]], normalization_events),
-                    header_map=import_result.header_map,
+                    header_map=stored_header_map,
                 )
             )
 
@@ -293,7 +365,7 @@ async def process_import(batch_id: str, file_path: str, db: AsyncSession) -> Imp
     batch.tbq_y_count = import_result.tbq_y_count
     batch.excluded_count = import_result.excluded_count
     batch.loaded_count = import_result.loaded_count
-    batch.header_map = import_result.header_map
+    batch.header_map = stored_header_map
     batch.parser_version = import_result.parser_version
     batch.status = ImportStatus.COMPLETED
     await db.flush()

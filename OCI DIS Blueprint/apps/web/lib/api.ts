@@ -10,6 +10,8 @@ import type {
   CatalogPage,
   CatalogParams,
   ConsolidatedMetrics,
+  DashboardSnapshot,
+  DashboardSnapshotList,
   DictionaryCategoryList,
   DictOption,
   DictOptionCreate,
@@ -202,7 +204,7 @@ function serializeAssumption(
 function serializePatch(body: IntegrationPatch): string {
   return JSON.stringify({
     ...body,
-    core_tools: body.core_tools?.join(", "),
+    core_tools: body.core_tools ? body.core_tools.join(", ") : undefined,
   });
 }
 
@@ -394,6 +396,12 @@ export const api = {
 
   listSnapshots: (projectId: string): Promise<VolumetrySnapshotList> =>
     apiFetch<VolumetrySnapshotList>(`/api/v1/volumetry/${projectId}/snapshots`),
+
+  listDashboardSnapshots: (projectId: string): Promise<DashboardSnapshotList> =>
+    apiFetch<DashboardSnapshotList>(`/api/v1/dashboard/${projectId}/snapshots`),
+
+  getDashboardSnapshot: (projectId: string, snapshotId: string): Promise<DashboardSnapshot> =>
+    apiFetch<DashboardSnapshot>(`/api/v1/dashboard/${projectId}/snapshots/${snapshotId}`),
 
   getConsolidated: (projectId: string, snapshotId: string): Promise<ConsolidatedMetrics> =>
     apiFetch<ConsolidatedMetrics>(`/api/v1/volumetry/${projectId}/snapshots/${snapshotId}/consolidated`),

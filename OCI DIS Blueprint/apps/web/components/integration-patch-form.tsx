@@ -5,7 +5,6 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { startTransition, useEffect, useRef, useState } from "react";
 
-import { IntegrationCanvas } from "@/components/integration-canvas";
 import { PatternBadge } from "@/components/pattern-badge";
 import { QaBadge } from "@/components/qa-badge";
 import { api } from "@/lib/api";
@@ -18,8 +17,6 @@ type IntegrationPatchFormProps = {
   toolOptions: DictionaryOption[];
 };
 
-type PatternCategory = "SÍNCRONO" | "ASÍNCRONO" | "SÍNCRONO + ASÍNCRONO";
-
 function parseCoreTools(value: string | null): string[] {
   if (!value) {
     return [];
@@ -28,13 +25,6 @@ function parseCoreTools(value: string | null): string[] {
     .split(",")
     .map((entry: string) => entry.trim())
     .filter(Boolean);
-}
-
-function normalizePatternCategory(value: string | null | undefined): PatternCategory | null {
-  if (value === "SÍNCRONO" || value === "ASÍNCRONO" || value === "SÍNCRONO + ASÍNCRONO") {
-    return value;
-  }
-  return null;
 }
 
 export function IntegrationPatchForm({
@@ -50,7 +40,6 @@ export function IntegrationPatchForm({
   const [selectedPattern, setSelectedPattern] = useState<string>(integration.selected_pattern ?? "");
   const [patternRationale, setPatternRationale] = useState<string>(integration.pattern_rationale ?? "");
   const [comments, setComments] = useState<string>(integration.comments ?? "");
-  const [selectedTools, setSelectedTools] = useState<string[]>(parseCoreTools(integration.core_tools));
   const [saving, setSaving] = useState<boolean>(false);
   const [deleting, setDeleting] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>("");
@@ -62,22 +51,12 @@ export function IntegrationPatchForm({
       patternDefinition,
     ]),
   );
-  const activePatternId = selectedPattern || null;
-  const activePatternDefinition = activePatternId ? patternMap.get(activePatternId) ?? null : null;
 
   useEffect(() => {
     if (searchParams.get("focus") === "patch") {
       patternSelectRef.current?.focus();
     }
   }, [searchParams]);
-
-  function toggleTool(tool: string): void {
-    setSelectedTools((current: string[]) =>
-      current.includes(tool)
-        ? current.filter((entry: string) => entry !== tool)
-        : [...current, tool],
-    );
-  }
 
   async function handleSave(): Promise<void> {
     setSaving(true);
@@ -88,7 +67,6 @@ export function IntegrationPatchForm({
       selected_pattern: selectedPattern || undefined,
       pattern_rationale: patternRationale || undefined,
       comments: comments || undefined,
-      core_tools: selectedTools,
     };
 
     try {
@@ -130,7 +108,7 @@ export function IntegrationPatchForm({
   }
 
   return (
-    <section id="patch-form" className="app-card space-y-6 p-6">
+    <section id="patch-form" className="app-card sticky top-4 space-y-6 p-6 max-h-[calc(100vh-2rem)] overflow-y-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="app-label">Architect Patch</p>
@@ -139,6 +117,29 @@ export function IntegrationPatchForm({
           </h2>
         </div>
         <QaBadge status={currentIntegration.qa_status} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || deleting}
+          className="app-button-primary"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            void handleDelete();
+          }}
+          disabled={saving || deleting}
+          className="inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+        >
+          {deleting ? "Removing…" : "Remove Integration"}
+        </button>
+        {statusMessage ? <p className="text-sm text-emerald-600">{statusMessage}</p> : null}
+        {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       </div>
 
       <div className="app-card-muted p-4">
@@ -199,86 +200,29 @@ export function IntegrationPatchForm({
         />
       </label>
 
-      <fieldset className="space-y-3">
-        <legend className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">Core Tools</legend>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {toolOptions.map((option: DictionaryOption) => {
-            const checked = selectedTools.includes(option.value);
-            return (
-              <label
-                key={option.id}
-                className={[
-                  "flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition",
-                  checked
-                    ? "border-[var(--color-accent)] bg-[var(--color-surface)] text-[var(--color-text-primary)]"
-                    : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)]",
-                ].join(" ")}
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => toggleTool(option.value)}
-                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                />
-                <span>{option.value}</span>
-              </label>
-            );
-          })}
+      <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+        <p className="app-label">Flow Tools</p>
+        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+          Tool selection now comes directly from the Integration Design Canvas. Add or remove nodes there and save the canvas to update the governed tool list for this integration.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {parseCoreTools(currentIntegration.core_tools).length > 0 ? (
+            parseCoreTools(currentIntegration.core_tools).map((tool) => (
+              <span key={tool} className="app-theme-chip">
+                {tool}
+              </span>
+            ))
+          ) : (
+            <span className="text-sm text-[var(--color-text-muted)]">
+              No flow tools are currently registered. Use the canvas below to add them.
+            </span>
+          )}
         </div>
-      </fieldset>
-
-      {integration.source_system ? (
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-            Integration Design Canvas
-          </h3>
-          <IntegrationCanvas
-            sourceSystem={integration.source_system}
-            sourceTechnology={integration.source_technology}
-            destinationSystem={integration.destination_system}
-            destinationTechnology={integration.destination_technology_1}
-            selectedPattern={activePatternId}
-            coreTools={selectedTools}
-            payloadKb={integration.payload_per_execution_kb}
-            frequency={integration.frequency}
-            patternCategory={normalizePatternCategory(activePatternDefinition?.category)}
-          />
-        </div>
-      ) : null}
-
-      {currentIntegration.qa_reasons.length > 0 ? (
-        <section className="rounded-[1.5rem] border border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] p-4">
-          <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-revisar-text)]">QA Reasons</p>
-          <ul className="mt-3 space-y-2 text-sm text-[var(--color-text-primary)]">
-            {currentIntegration.qa_reasons.map((reason: string) => (
-              <li key={reason}>• {reason}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-4">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving || deleting}
-          className="app-button-primary"
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            void handleDelete();
-          }}
-          disabled={saving || deleting}
-          className="inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
-        >
-          {deleting ? "Removing…" : "Remove Integration"}
-        </button>
-        {statusMessage ? <p className="text-sm text-emerald-600">{statusMessage}</p> : null}
-        {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+        <p className="mt-3 text-xs text-[var(--color-text-muted)]">
+          {toolOptions.length} tool definitions available in the governance dictionary.
+        </p>
       </div>
+
     </section>
   );
 }

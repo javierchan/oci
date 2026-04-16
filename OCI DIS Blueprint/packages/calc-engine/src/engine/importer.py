@@ -2,7 +2,7 @@
 Source File Importer — XLSX/CSV parser with parity-mode row selection.
 
 Implements PRD-015 through PRD-019:
-  - Headers at row 5, data starts at row 6
+  - Supports parity workbooks with headers at row 5 and template uploads with headers at row 1
   - TBQ=Y inclusion, Duplicado 2 exclusion
   - Source order preservation
   - Per-row normalization events
@@ -86,6 +86,17 @@ def _normalize_header(raw: str) -> str:
     return raw.strip().lower().replace("\n", " ")
 
 
+def _header_matches(alias: str, header: str) -> bool:
+    if header == alias:
+        return True
+    return (
+        header.startswith(f"{alias} ")
+        or header.startswith(f"{alias}(")
+        or header.startswith(f"{alias}:")
+        or header.startswith(f"{alias}-")
+    )
+
+
 def build_header_map(raw_headers: list) -> dict[str, str]:
     """Map canonical field names → actual column index (str)."""
     header_map: dict[str, str] = {}
@@ -94,13 +105,30 @@ def build_header_map(raw_headers: list) -> dict[str, str]:
     for field_name, aliases in HEADER_ALIASES.items():
         for alias in aliases:
             for idx, h in enumerate(normalized):
-                if alias in h:
+                if _header_matches(alias, h):
                     header_map[field_name] = str(idx)
                     break
             if field_name in header_map:
                 break
 
     return header_map
+
+
+def detect_header_row(all_rows: list[list], candidate_limit: int = 5) -> int:
+    """Choose the strongest header row candidate from the first few rows."""
+
+    if not all_rows:
+        return 0
+
+    best_index = 0
+    best_score = -1
+    for index, row in enumerate(all_rows[:candidate_limit]):
+        score = len(build_header_map(row))
+        if score > best_score:
+            best_index = index
+            best_score = score
+
+    return best_index
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +203,12 @@ def parse_rows(
     header_row_index: int = 4,   # 0-based = row 5 (PRD-016)
     data_start_index: int = 5,   # 0-based = row 6 (PRD-016)
 ) -> ImportResult:
+    if all_rows:
+        detected_header_row_index = detect_header_row(all_rows)
+        if detected_header_row_index != header_row_index:
+            header_row_index = detected_header_row_index
+            data_start_index = header_row_index + 1
+
     raw_headers = all_rows[header_row_index] if len(all_rows) > header_row_index else []
     header_map = build_header_map(raw_headers)
     data_rows = all_rows[data_start_index:]

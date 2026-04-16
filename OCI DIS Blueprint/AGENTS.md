@@ -142,6 +142,37 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 - [ ] Prompt versioning (for M6 narrative templates)
 - [ ] **Exit criteria**: Admin can update frequency map; recalculation picks up new values
 
+### M15 — UX Overhaul P0: Core Workflow Fixes
+- [ ] Integration Design Canvas rebuilt as SVG flow diagram with draggable nodes,
+      connectable edges (with arrowheads), pan, and zoom
+- [ ] Multiple instances of same tool type allowed (instance-based node model)
+- [ ] Catalog table paginated at 20 rows/page with Prev/Next and rows-per-page selector
+- [ ] Invalid project ID renders graceful not-found page (no Next.js dev error overlay)
+- [ ] **Exit criteria**: Canvas renders a working flow; catalog paginates; 404 shows
+      a user-friendly message; all 5 quality gates green
+
+### M16 — UX Overhaul P1: Data Accuracy + Surface Completeness
+- [ ] Interface Name shows descriptive name from source workbook (not Interface ID)
+- [ ] QA Reasons rendered as human-readable cards with title + actionable hint
+- [ ] Dashboard renders pattern mix, payload distribution, risks, and maturity
+      from the full backend payload (not just KPI strip)
+- [ ] Graph auto-fits all nodes on load with no nodes cut off below viewport
+- [ ] Graph edges have directional arrowheads (source → destination)
+- [ ] "View in Catalog" from graph node panel pre-filters catalog by system name
+- [ ] **Exit criteria**: No integration detail shows ID as name; dashboard uses
+      full backend payload; graph fits viewport; all quality gates green
+
+### M17 — UX Overhaul P2: Layout + Polish
+- [ ] Architect Patch Save button visible without scrolling (sticky panel or top placement)
+- [ ] Audit Trail entries show field names instead of array index notation
+- [ ] Capture wizard step pills numbered (1–5) with progress line and completed state
+- [ ] Import page required columns list shows all columns without truncation
+- [ ] Projects list has text filter and archived-projects toggle
+- [ ] Graph has "filter by system" dropdown to highlight a system and its neighbors
+- [ ] Admin hub shows "Last modified" date per governance category
+- [ ] **Exit criteria**: All checklist items visually confirmed; no regressions;
+      all quality gates green
+
 ---
 
 ## Coding rules

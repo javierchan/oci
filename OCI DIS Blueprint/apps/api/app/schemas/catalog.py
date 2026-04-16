@@ -19,6 +19,7 @@ class CatalogIntegrationPatch(BaseModel):
     retry_policy: Optional[str] = None
     core_tools: Optional[str] = None
     additional_tools_overlays: Optional[str] = None
+    raw_column_values: Optional[dict[str, Any]] = None
 
 
 class ManualIntegrationCreate(BaseModel):

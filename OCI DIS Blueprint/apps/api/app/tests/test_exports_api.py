@@ -8,6 +8,15 @@ import pytest
 from httpx import AsyncClient
 from openpyxl import load_workbook
 
+pytestmark = [
+    pytest.mark.filterwarnings(
+        "ignore:datetime.datetime.utcnow\\(\\) is deprecated and scheduled for removal.*:DeprecationWarning:openpyxl.packaging.core"
+    ),
+    pytest.mark.filterwarnings(
+        "ignore:datetime.datetime.utcnow\\(\\) is deprecated and scheduled for removal.*:DeprecationWarning:openpyxl.writer.excel"
+    ),
+]
+
 
 @pytest.mark.asyncio
 async def test_capture_template_export_returns_valid_workbook(api_client: AsyncClient) -> None:
@@ -23,6 +32,9 @@ async def test_capture_template_export_returns_valid_workbook(api_client: AsyncC
     workbook = load_workbook(filename=BytesIO(response.content))
     sheet = workbook.active
     assert sheet.title == "Catálogo de Integraciones"
-    assert sheet["A1"].value == "OCI DIS Blueprint — Integration Capture Template"
-    assert sheet["A5"].value == "#"
-    assert sheet["B5"].value == "ID de Interfaz"
+    assert sheet["A1"].value == "#"
+    assert sheet["B1"].value == "ID de Interfaz"
+    assert sheet["A2"].value == 1
+    assert sheet.freeze_panes == "A2"
+    assert sheet.auto_filter.ref == "A1:Y2"
+    assert "Reference" in workbook.sheetnames

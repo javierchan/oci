@@ -3,10 +3,13 @@
 import Link from "next/link";
 
 import { Breadcrumb } from "@/components/breadcrumb";
+import { IntegrationDesignCanvasPanel } from "@/components/integration-design-canvas-panel";
 import { IntegrationPatchForm } from "@/components/integration-patch-form";
 import { QaBadge } from "@/components/qa-badge";
+import { RawColumnValuesTable } from "@/components/raw-column-values-table";
 import { api } from "@/lib/api";
 import { formatDate, formatNumber } from "@/lib/format";
+import type { AuditEvent } from "@/lib/types";
 
 type IntegrationDetailPageProps = {
   params: {
@@ -15,7 +18,7 @@ type IntegrationDetailPageProps = {
   };
 };
 
-function stringifyValue(value: unknown): string {
+function formatEventValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "—";
   }
@@ -25,35 +28,123 @@ function stringifyValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function hasLineageValue(value: unknown): boolean {
-  if (value === null || value === undefined) {
-    return false;
-  }
-  if (typeof value === "string") {
-    return value.trim() !== "";
-  }
-  return true;
+const AUDIT_LABELS: Record<string, string> = {
+  additional_tools_overlays: "Canvas flow",
+  selected_pattern: "Pattern",
+  pattern_rationale: "Pattern rationale",
+  comments: "Comments",
+  retry_policy: "Retry policy",
+  core_tools: "Core tools",
+  raw_column_values: "Raw column values",
+  source_system: "Source system",
+  destination_system: "Destination system",
+  interface_name: "Interface name",
+  payload_per_execution_kb: "Payload per execution",
+  frequency: "Frequency",
+  complexity: "Complexity",
+  status: "Status",
+  qa_status: "QA status",
+};
+
+const QA_REASON_LABELS: Record<string, { title: string; hint: string }> = {
+  INVALID_TRIGGER_TYPE: {
+    title: "Trigger type not recognized",
+    hint: "The trigger type value does not match any known OIC trigger. Check the Trigger Type field.",
+  },
+  INVALID_PATTERN: {
+    title: "Pattern not assigned",
+    hint: "Select an OIC integration pattern from the Pattern dropdown on the right.",
+  },
+  MISSING_RATIONALE: {
+    title: "Pattern rationale missing",
+    hint: "Add a brief explanation for the selected pattern in the Pattern Rationale field.",
+  },
+  MISSING_CORE_TOOLS: {
+    title: "No tools selected in canvas",
+    hint: "Use the Integration Design Canvas to add at least one tool to this integration.",
+  },
+};
+
+const SOURCE_ROW_FIELD_NAMES = [
+  "#",
+  "Interface ID",
+  "Owner",
+  "Brand",
+  "Business Process",
+  "Interface Name",
+  "Description",
+  "Status",
+  "Mapping Status",
+  "Initial Scope",
+  "Complexity",
+  "Frequency",
+  "Type",
+  "Base",
+  "Interface Status",
+  "Real Time",
+  "Trigger Type",
+  "Response Size KB",
+  "Payload per Execution KB",
+  "Fan-out",
+  "Fan-out Targets",
+  "Source System",
+  "Source Technology",
+  "Source API Reference",
+  "Source Owner",
+  "Destination System",
+  "Destination Technology 1",
+  "Destination Technology 2",
+  "Destination Owner",
+  "Calendarization",
+];
+
+function isEqualAuditValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function compareLineageKeys(left: string, right: string): number {
-  const leftIsNumeric = /^\d+$/.test(left);
-  const rightIsNumeric = /^\d+$/.test(right);
-  if (leftIsNumeric && rightIsNumeric) {
-    return Number(left) - Number(right);
+function auditFieldLabel(field: string): string {
+  if (/^\d+$/.test(field)) {
+    return SOURCE_ROW_FIELD_NAMES[Number(field)] ?? `Column ${Number(field) + 1}`;
   }
-  if (leftIsNumeric) {
-    return -1;
+  return AUDIT_LABELS[field] ?? field.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function summarizeAuditEvent(event: AuditEvent): { title: string; changes: Array<{ field: string; detail: string }> } {
+  if (event.entity_type === "source_integration_row") {
+    const nextValues = event.new_value ?? {};
+    return {
+      title: "Source lineage updated",
+      changes: Object.keys(nextValues)
+        .slice(0, 6)
+        .map((field) => ({
+          field: auditFieldLabel(field),
+          detail: formatEventValue(nextValues[field]),
+        })),
+    };
   }
-  if (rightIsNumeric) {
-    return 1;
-  }
-  return left.localeCompare(right);
+
+  const oldValue = event.old_value ?? {};
+  const newValue = event.new_value ?? {};
+  const changedFields = Array.from(
+    new Set([...Object.keys(oldValue), ...Object.keys(newValue)]),
+  ).filter((field) => !["created_at", "updated_at"].includes(field) && !isEqualAuditValue(oldValue[field], newValue[field]));
+
+  return {
+    title: event.event_type === "catalog_update" ? "Integration updated" : "Integration change recorded",
+    changes: changedFields.map((field) => ({
+      field: auditFieldLabel(field),
+      detail:
+        field === "additional_tools_overlays"
+          ? "Canvas nodes or connections changed."
+          : `${formatEventValue(oldValue[field])} → ${formatEventValue(newValue[field])}`,
+    })),
+  };
 }
 
 export default async function IntegrationDetailPage({
   params,
 }: IntegrationDetailPageProps): Promise<JSX.Element> {
-  const [project, detail, patterns, tools, audit] = await Promise.all([
+  const [project, detail, patterns, tools, integrationAudit, sourceRowAudit] = await Promise.all([
     api.getProject(params.projectId),
     api.getIntegration(params.projectId, params.integrationId),
     api.listPatterns(),
@@ -62,14 +153,37 @@ export default async function IntegrationDetailPage({
       entity_type: "catalog_integration",
       entity_id: params.integrationId,
     }),
+    api.listAudit(params.projectId, {
+      entity_type: "source_integration_row",
+      entity_id: params.integrationId,
+    }).catch(() => ({
+      events: [],
+      total: 0,
+      page: 1,
+      page_size: 50,
+    })),
   ]);
 
   const integration = detail.integration;
   const lineage = detail.lineage;
   const sourceRowHref = `/projects/${params.projectId}/import?batch_id=${lineage.import_batch_id}&row=${lineage.source_row_number}`;
-  const lineageEntries = Object.entries(lineage.raw_data).sort(([left], [right]) => compareLineageKeys(left, right));
-  const populatedLineageEntries = lineageEntries.filter(([, value]) => hasLineageValue(value));
-  const hiddenLineageEntries = lineageEntries.filter(([, value]) => !hasLineageValue(value));
+  const sourceAuditEvents =
+    lineage.source_row_id && sourceRowAudit.events.length === 0
+      ? (
+          await api.listAudit(params.projectId, {
+            entity_type: "source_integration_row",
+            entity_id: lineage.source_row_id,
+          }).catch(() => ({
+            events: [],
+            total: 0,
+            page: 1,
+            page_size: 50,
+          }))
+        ).events
+      : sourceRowAudit.events;
+  const auditEvents = [...integrationAudit.events, ...sourceAuditEvents].sort(
+    (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+  );
 
   return (
     <div className="space-y-8">
@@ -124,6 +238,12 @@ export default async function IntegrationDetailPage({
                 <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.brand ?? "—"}</dd>
               </div>
               <div>
+                <dt className="app-label">Interface Name</dt>
+                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">
+                  {integration.interface_name ?? "—"}
+                </dd>
+              </div>
+              <div>
                 <dt className="app-label">Business Process</dt>
                 <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.business_process ?? "—"}</dd>
               </div>
@@ -175,51 +295,12 @@ export default async function IntegrationDetailPage({
 
             <div className="app-card-muted mt-6 p-4">
               <p className="app-label">Raw Column Values</p>
-              <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-                <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
-                  <thead className="app-table-header">
-                    <tr>
-                      <th className="px-4 py-3">Field</th>
-                      <th className="px-4 py-3">Source Value</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
-                    {populatedLineageEntries.map(([key, value]: [string, unknown]) => (
-                      <tr key={key} className="app-table-row">
-                        <td className="px-4 py-3 font-medium text-[var(--color-text-primary)]">
-                          {lineage.column_names?.[key] ?? `Column ${key}`}
-                        </td>
-                        <td className="px-4 py-3 text-[var(--color-text-secondary)]">
-                          {stringifyValue(value)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {hiddenLineageEntries.length > 0 ? (
-                <details className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-                  <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-[var(--color-accent)]">
-                    Show all columns ({hiddenLineageEntries.length})
-                  </summary>
-                  <div className="border-t border-[var(--color-border)]">
-                    <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
-                      <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
-                        {hiddenLineageEntries.map(([key, value]: [string, unknown]) => (
-                          <tr key={key} className="app-table-row">
-                            <td className="px-4 py-3 font-medium text-[var(--color-text-primary)]">
-                              {lineage.column_names?.[key] ?? `Column ${key}`}
-                            </td>
-                            <td className="px-4 py-3 text-[var(--color-text-secondary)]">
-                              {stringifyValue(value)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </details>
-              ) : null}
+              <RawColumnValuesTable
+                projectId={params.projectId}
+                integrationId={params.integrationId}
+                initialValues={lineage.raw_data}
+                columnNames={lineage.column_names}
+              />
             </div>
 
             <div className="app-card-muted mt-6 p-4">
@@ -232,7 +313,7 @@ export default async function IntegrationDetailPage({
                     <li key={`${event.field}-${event.rule}`} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
                       <p className="font-medium text-[var(--color-text-primary)]">{event.field}</p>
                       <p className="mt-1 text-[var(--color-text-secondary)]">
-                        {stringifyValue(event.old_value)} → {stringifyValue(event.new_value)}
+                        {formatEventValue(event.old_value)} → {formatEventValue(event.new_value)}
                       </p>
                       <p className="mt-2 text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">{event.rule}</p>
                     </li>
@@ -243,44 +324,100 @@ export default async function IntegrationDetailPage({
           </article>
         </section>
 
-        <IntegrationPatchForm
-          projectId={params.projectId}
-          integration={integration}
-          patterns={patterns.patterns}
-          toolOptions={tools.options}
-        />
+        <aside className="space-y-8">
+          <IntegrationPatchForm
+            projectId={params.projectId}
+            integration={integration}
+            patterns={patterns.patterns}
+            toolOptions={tools.options}
+          />
+
+          {integration.qa_reasons.length > 0 ? (
+            <section className="app-card p-6">
+              <p className="app-label">QA Reasons</p>
+              <div className="mt-4 space-y-3">
+                {integration.qa_reasons.map((reason) => {
+                  const details = QA_REASON_LABELS[reason];
+                  return (
+                    <article
+                      key={reason}
+                      className="rounded-2xl border border-[var(--color-qa-revisar-border)] border-l-4 bg-[var(--color-qa-revisar-bg)] p-4"
+                    >
+                      <p className="font-semibold text-[var(--color-text-primary)]">
+                        {details?.title ?? reason}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                        {details?.hint ?? "Review this validation code in the imported data and update the integration as needed."}
+                      </p>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
+          <section id="audit" className="app-card overflow-hidden">
+            <div className="border-b border-[var(--color-border)] px-6 py-5">
+              <p className="app-label">Audit Trail</p>
+              <h2 className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">Recent changes</h2>
+              <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+                Includes canvas edits, architect patch changes, and source-lineage overrides for this integration.
+              </p>
+            </div>
+            {auditEvents.length === 0 ? (
+              <div className="px-6 py-10 text-sm text-[var(--color-text-secondary)]">
+                No audit events recorded for this integration yet.
+              </div>
+            ) : (
+              <div className="space-y-4 px-6 py-5">
+                {auditEvents.map((event) => {
+                  const summary = summarizeAuditEvent(event);
+                  return (
+                    <article
+                      key={event.id}
+                      className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-[var(--color-text-primary)]">{summary.title}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
+                            {event.entity_type.replace(/_/g, " ")}
+                          </p>
+                        </div>
+                        <div className="text-right text-sm text-[var(--color-text-secondary)]">
+                          <p>{formatDate(event.created_at)}</p>
+                          <p>{event.actor_id}</p>
+                        </div>
+                      </div>
+                      {summary.changes.length > 0 ? (
+                        <ul className="mt-4 space-y-2 text-sm text-[var(--color-text-secondary)]">
+                          {summary.changes.map((change) => (
+                            <li key={`${event.id}-${change.field}`} className="rounded-xl bg-[var(--color-surface-2)] px-3 py-2">
+                              <span className="font-medium text-[var(--color-text-primary)]">{change.field}: </span>
+                              <span>{change.detail}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-4 text-sm text-[var(--color-text-secondary)]">
+                          Change details were recorded without field-level differences.
+                        </p>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </aside>
       </div>
 
-      <section id="audit" className="app-table-shell">
-        <div className="border-b border-[var(--color-border)] px-6 py-5">
-          <p className="app-label">Audit Trail</p>
-          <h2 className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">Recent changes</h2>
-        </div>
-        {audit.events.length === 0 ? (
-          <div className="px-6 py-10 text-sm text-[var(--color-text-secondary)]">No audit events recorded for this integration yet.</div>
-        ) : (
-          <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
-            <thead className="app-table-header">
-              <tr>
-                <th className="px-6 py-4">When</th>
-                <th className="px-6 py-4">Event</th>
-                <th className="px-6 py-4">Actor</th>
-                <th className="px-6 py-4">Entity</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
-              {audit.events.map((event) => (
-                <tr key={event.id} className="app-table-row">
-                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{formatDate(event.created_at)}</td>
-                  <td className="px-6 py-4 font-medium text-[var(--color-text-primary)]">{event.event_type}</td>
-                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{event.actor_id}</td>
-                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{event.entity_type}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      <IntegrationDesignCanvasPanel
+        projectId={params.projectId}
+        integration={integration}
+        patterns={patterns.patterns}
+        toolOptions={tools.options}
+      />
     </div>
   );
 }

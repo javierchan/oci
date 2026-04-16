@@ -1,11 +1,14 @@
 /* Project dashboard page with latest import, QA, and volumetry metrics. */
 
+import { notFound } from "next/navigation";
+
 import { Breadcrumb } from "@/components/breadcrumb";
 import { RecalculateButton } from "@/components/recalculate-button";
 import { VolumetryCard } from "@/components/volumetry-card";
 import { api } from "@/lib/api";
 import { formatCompactNumber, formatNumber } from "@/lib/format";
 import { parityBenchmark } from "@/lib/parity";
+import type { DashboardSnapshot } from "@/lib/types";
 
 type ProjectDashboardPageProps = {
   params: {
@@ -13,20 +16,40 @@ type ProjectDashboardPageProps = {
   };
 };
 
+function isProjectNotFound(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("PROJECT_NOT_FOUND");
+}
+
 export default async function ProjectDashboardPage({
   params,
 }: ProjectDashboardPageProps): Promise<JSX.Element> {
   const projectId = params.projectId;
-  const [project, imports, catalogPage, snapshots] = await Promise.all([
-    api.getProject(projectId),
-    api.listImports(projectId),
-    api.listCatalog(projectId, { page: 1, page_size: 500 }),
-    api.listSnapshots(projectId),
-  ]);
+  let project;
+  let imports;
+  let catalogPage;
+  let snapshots;
+
+  try {
+    [project, imports, catalogPage, snapshots] = await Promise.all([
+      api.getProject(projectId),
+      api.listImports(projectId),
+      api.listCatalog(projectId, { page: 1, page_size: 500 }),
+      api.listSnapshots(projectId),
+    ]);
+  } catch (error) {
+    if (isProjectNotFound(error)) {
+      notFound();
+    }
+    throw error;
+  }
 
   const latestImport = imports.batches[0];
   const latestSnapshot = snapshots.snapshots[0];
   const consolidated = latestSnapshot?.consolidated;
+  const dashboardSnapshots = await api.listDashboardSnapshots(projectId);
+  const latestDashboard: DashboardSnapshot | null = dashboardSnapshots.snapshots[0]
+    ? await api.getDashboardSnapshot(projectId, dashboardSnapshots.snapshots[0].snapshot_id)
+    : null;
 
   const qaBreakdown = catalogPage.integrations.reduce(
     (accumulator: Record<string, number>, integration) => {
@@ -145,6 +168,105 @@ export default async function ProjectDashboardPage({
           </dl>
         </article>
       </section>
+
+      {latestDashboard ? (
+        <section className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
+          <article className="app-card p-6">
+            <p className="app-label">Pattern Mix</p>
+            <div className="mt-4 space-y-3">
+              {latestDashboard.charts.pattern_mix.map((entry) => {
+                const ratio = latestDashboard.charts.coverage.total_integrations
+                  ? (entry.count / latestDashboard.charts.coverage.total_integrations) * 100
+                  : 0;
+                return (
+                  <div key={`${entry.pattern_id}-${entry.name}`} className="space-y-1">
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="font-medium text-[var(--color-text-primary)]">{entry.name}</span>
+                      <span className="text-[var(--color-text-secondary)]">{entry.count}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-[var(--color-surface-3)]">
+                      <div
+                        className="h-2 rounded-full bg-[var(--color-accent)]"
+                        style={{ width: `${Math.max(ratio, entry.count > 0 ? 8 : 0)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </article>
+
+          <article className="app-card p-6">
+            <p className="app-label">Payload Distribution</p>
+            <div className="mt-4 space-y-3">
+              {latestDashboard.charts.payload_distribution.map((bucket) => {
+                const ratio = latestDashboard.charts.coverage.total_integrations
+                  ? (bucket.count / latestDashboard.charts.coverage.total_integrations) * 100
+                  : 0;
+                return (
+                  <div key={bucket.label} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium text-[var(--color-text-primary)]">{bucket.label}</span>
+                      <span className="text-sm text-[var(--color-text-secondary)]">
+                        {bucket.count} ({formatNumber(ratio, 1)}%)
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </article>
+
+          <article className="app-card p-6">
+            <p className="app-label">Risks</p>
+            <div className="mt-4 space-y-3">
+              {latestDashboard.risks.map((risk) => {
+                const severityClass =
+                  risk.count >= 10
+                    ? "border-rose-300 bg-rose-50 text-rose-700"
+                    : risk.count >= 5
+                      ? "border-amber-300 bg-amber-50 text-amber-700"
+                      : "border-sky-300 bg-sky-50 text-sky-700";
+                const severityLabel = risk.count >= 10 ? "High" : risk.count >= 5 ? "Medium" : "Low";
+                return (
+                  <article key={risk.code} className={`rounded-2xl border p-4 ${severityClass}`}>
+                    <p className="text-xs uppercase tracking-[0.2em]">{severityLabel}</p>
+                    <p className="mt-2 font-semibold">{risk.label}</p>
+                    <p className="mt-2 text-sm">
+                      {risk.count} impacted integrations require review before the project can be considered governed.
+                    </p>
+                  </article>
+                );
+              })}
+            </div>
+          </article>
+
+          <article className="app-card p-6">
+            <p className="app-label">Maturity</p>
+            <div className="mt-4 space-y-4">
+              {[
+                ["Governance Maturity", latestDashboard.maturity.governed_pct],
+                ["Pattern Coverage", latestDashboard.maturity.pattern_assigned_pct],
+                ["Payload Coverage", latestDashboard.maturity.payload_informed_pct],
+                ["QA OK", latestDashboard.maturity.qa_ok_pct],
+              ].map(([label, value]) => (
+                <div key={label} className="space-y-1">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="font-medium text-[var(--color-text-primary)]">{label}</span>
+                    <span className="text-[var(--color-text-secondary)]">{formatNumber(Number(value), 1)}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-[var(--color-surface-3)]">
+                    <div
+                      className="h-2 rounded-full bg-[var(--color-accent)]"
+                      style={{ width: `${Math.min(Number(value), 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+      ) : null}
     </div>
   );
 }

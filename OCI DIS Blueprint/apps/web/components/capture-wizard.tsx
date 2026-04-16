@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
+import { Check } from "lucide-react";
 
 import { CaptureStepDestination } from "@/components/capture-step-destination";
 import { CaptureStepIdentity } from "@/components/capture-step-identity";
@@ -363,28 +364,53 @@ export function CaptureWizard({
             <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Step {currentStep + 1} of 5</p>
             <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{stepTitle}</h2>
           </div>
-          <div className="grid w-full gap-3 md:grid-cols-5 lg:max-w-3xl">
-            {STEP_LABELS.map((label, index) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => {
-                  if (index <= currentStep) {
-                    setCurrentStep(index);
-                  }
-                }}
-                className={[
-                  "rounded-2xl border px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] transition",
-                  index === currentStep
-                    ? "border-sky-400 bg-sky-50 text-sky-700"
-                    : index < currentStep
-                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                      : "border-slate-200 bg-slate-50 text-slate-500",
-                ].join(" ")}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="grid w-full gap-3 md:grid-cols-5 lg:max-w-4xl">
+            {STEP_LABELS.map((label, index) => {
+              const isCurrent = index === currentStep;
+              const isCompleted = index < currentStep;
+              return (
+                <div key={label} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (index <= currentStep) {
+                        setCurrentStep(index);
+                      }
+                    }}
+                    className={[
+                      "flex flex-1 items-center gap-3 rounded-2xl border px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] transition",
+                      isCurrent
+                        ? "border-sky-400 bg-sky-50 text-sky-700"
+                        : isCompleted
+                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                          : "border-slate-200 bg-slate-50 text-slate-500",
+                    ].join(" ")}
+                  >
+                    <span
+                      className={[
+                        "inline-flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold",
+                        isCurrent
+                          ? "bg-sky-100 text-sky-700"
+                          : isCompleted
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-200 text-slate-500",
+                      ].join(" ")}
+                    >
+                      {isCompleted ? <Check className="h-4 w-4" /> : index + 1}
+                    </span>
+                    <span>{label}</span>
+                  </button>
+                  {index < STEP_LABELS.length - 1 ? (
+                    <span
+                      className={[
+                        "hidden h-px flex-1 md:block",
+                        isCompleted ? "bg-emerald-300" : "bg-slate-200",
+                      ].join(" ")}
+                    />
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>

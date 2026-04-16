@@ -41,6 +41,38 @@ None
 
 ---
 
+## M15 — UX Overhaul P0: Core Workflow Fixes (2026-04-15)
+
+**Status:** ✅ Complete
+
+- Canvas rebuilt as an SVG flow diagram with draggable tool nodes, connectable directed edges, pan, zoom, edge labels, and keyboard delete support
+- Catalog paginated at 20 rows per page with Prev and Next controls plus a rows-per-page selector
+- Invalid project IDs now render a graceful project not-found page instead of the Next.js error overlay
+
+## M16 — UX Overhaul P1: Data Accuracy + Surface Completeness (2026-04-15)
+
+**Status:** ✅ Complete
+
+- Interface Name now resolves from the correct workbook header match instead of falling through to the Interface ID column
+- QA Reasons now render as human-readable guidance cards with a title and actionable hint
+- Dashboard now renders pattern mix, payload distribution, risks, and maturity from the full backend payload
+- Graph auto-fits on load and renders directed arrowheads for flow direction
+- "View in Catalog" from the graph node panel now pre-filters by system
+
+## M17 — UX Overhaul P2: Layout + Polish (2026-04-15)
+
+**Status:** ✅ Complete
+
+- Architect Patch is sticky and keeps Save and Remove actions visible at the top of the panel
+- Audit Trail now shows field names instead of raw numeric array indexes for source-row changes
+- Capture wizard step pills are numbered and render progress/completed states
+- Import page now shows the full required-columns list without truncation
+- Projects list now supports text filtering and an archived-projects toggle
+- Graph now supports filtering by system to highlight a node and its neighbors
+- Admin hub now shows a last-modified date for each governance category
+
+---
+
 ## Audit Follow-up — Recalculation Endpoint Cleanup
 
 **Completed:** 2026-04-15
@@ -281,5 +313,72 @@ Workflow sanity:
 ### Gaps / known limitations
 
 - The export-template API test triggers `openpyxl` deprecation warnings from library internals, but endpoint behavior remains correct.
+
+---
+
+## Deferred Follow-up — Export Warning Cleanup + Live Benchmark Dashboard
+
+**Completed:** 2026-04-15
+**Status:** ✅ Complete
+
+### What was implemented
+
+- `apps/api/app/tests/test_exports_api.py` — added targeted `pytest` warning filters for the known upstream `openpyxl` `datetime.utcnow()` deprecation warnings emitted during XLSX export generation
+- Revalidated the export-template integration test so the backend API test suite runs cleanly without library-internal warning noise
+- Refreshed the live benchmark project `Parity Test` (`a51bb83a-110b-4226-94f0-d2f590e3cd1d`) through `POST /api/v1/recalculate/{project_id}`
+- Confirmed the recalculation created a new volumetry snapshot and a new technical dashboard snapshot, so future audits can use a live benchmark project with dashboard evidence instead of relying only on contract checks
+
+### Verification results
+
+```text
+pytest apps/api/app/tests/test_exports_api.py -q -W default: 1 passed, 0 warnings
+pytest apps/api/app/tests -q -W default: 3 passed
+pytest packages/calc-engine/src/tests -q: 26 passed
+ruff: All checks passed!
+mypy: 0 errors
+TypeScript: 0 errors
+docker compose ps: 6/6 containers Up
+API health: {"status":"ok","version":"1.0.0"}
+Parity Test benchmark refresh:
+- before_dashboard_total=8
+- recalculation job completed
+- volumetry_snapshot_id=28f46381-ccb7-4aef-a598-47ea4c7c21f1
+- after_dashboard_total=9
+- latest_dashboard_snapshot_id=47373044-a3e1-43e5-9d0d-b3a0ac6560d1
+- dashboard_mode=technical
+- kpi_oic_msgs_month=12960.0
+```
+
+### Gaps / known limitations
+
+None
+
+---
+
+## Canvas, Graph, Theme, Column & Template UX Fix (2026-04-15)
+
+**Status:** ✅ Complete
+
+- ISSUE 1: Raw column values now show actual Excel header text; cells are inline-editable via PATCH with optimistic update and toast confirmation.
+- ISSUE 2: Integration Design Canvas allows multiple instances of the same tool type (instance-based model); node labels are editable; edges support fan-out (1:N); edge labels and node payload notes added.
+- ISSUE 3: Graph arrowhead markers resized to `markerWidth`/`markerHeight=6`; edge stroke-width baseline reduced; canvas pan/zoom interaction unblocked by fixing `pointer-events` on overlay elements.
+- ISSUE 4: Theme active state driven exclusively by `theme` (user choice), not `resolvedTheme`; sidebar context label sources page name from route segment, never falls back to UUID.
+- ISSUE 5: Import page now has a two-step layout with a prominent template download section; template includes sample row, Reference sheet, frozen headers, and column order aligned with importer.
+
+### Verification results
+
+```text
+pytest: 29 passed
+ruff: All checks passed!
+mypy: 0 errors
+TypeScript: 0 errors
+ESLint: 0 warnings / 0 errors
+docker compose ps: 6/6 containers Up
+API health: {"status":"ok","version":"1.0.0"}
+```
+
+### Gaps / known limitations
+
+None
 
 ---

@@ -27,34 +27,37 @@ EXPORT_ROOT = Path("uploads/exports")
 FILES_DIR = EXPORT_ROOT / "files"
 JOBS_DIR = EXPORT_ROOT / "jobs"
 TEMPLATE_SHEET_NAME = "Catálogo de Integraciones"
+REFERENCE_SHEET_NAME = "Reference"
+TEMPLATE_VERSION = "1.0.0"
 
-TEMPLATE_HEADERS = [
-    "#",
-    "ID de Interfaz",
-    "Marca",
-    "Proceso de Negocio",
-    "Interfaz",
-    "Descripción",
-    "Tipo",
-    "Estado Interfaz",
-    "Complejidad",
-    "Alcance Inicial",
-    "Estado",
-    "Estado de Mapeo",
-    "Sistema de Origen",
-    "Tecnología de Origen",
-    "API Reference",
-    "Propietario de Origen",
-    "Sistema de Destino",
-    "Tecnología de Destino",
-    "Propietario de Destino",
-    "Frecuencia",
-    "Tamaño KB",
-    "TBQ",
-    "Patrones",
-    "Incertidumbre",
-    "Owner",
+TEMPLATE_COLUMNS = [
+    ("seq_number", "#", "number", "", "Optional"),
+    ("interface_id", "ID de Interfaz", "text", "", "Optional"),
+    ("brand", "Marca", "text", "", "Required"),
+    ("business_process", "Proceso de Negocio", "text", "", "Required"),
+    ("interface_name", "Interfaz", "text", "", "Required"),
+    ("description", "Descripción", "text", "", "Optional"),
+    ("type", "Tipo", "enum", "Dictionary: TRIGGER_TYPE", "Optional"),
+    ("interface_status", "Estado Interfaz", "text", "", "Optional"),
+    ("complexity", "Complejidad", "enum", "Dictionary: COMPLEXITY", "Optional"),
+    ("initial_scope", "Alcance Inicial", "text", "", "Optional"),
+    ("status", "Estado", "text", "", "Optional"),
+    ("mapping_status", "Estado de Mapeo", "text", "", "Optional"),
+    ("source_system", "Sistema de Origen", "text", "", "Required"),
+    ("source_technology", "Tecnología de Origen", "text", "", "Optional"),
+    ("source_api_reference", "API Reference", "text", "", "Optional"),
+    ("source_owner", "Propietario de Origen", "text", "", "Optional"),
+    ("destination_system", "Sistema de Destino", "text", "", "Required"),
+    ("destination_technology", "Tecnología de Destino", "text", "", "Optional"),
+    ("destination_owner", "Propietario de Destino", "text", "", "Optional"),
+    ("frequency", "Frecuencia", "enum", "Dictionary: FREQUENCY", "Required"),
+    ("payload_per_execution_kb", "Tamaño KB", "number", "", "Optional"),
+    ("tbq", "TBQ", "enum", "Y, N", "Required"),
+    ("patterns", "Patrones", "text", "", "Optional"),
+    ("uncertainty", "Incertidumbre", "text", "", "Optional"),
+    ("owner", "Owner", "text", "", "Optional"),
 ]
+TEMPLATE_HEADERS = [column[1] for column in TEMPLATE_COLUMNS]
 
 TEMPLATE_EXAMPLE_ROW = [
     1,
@@ -132,6 +135,14 @@ def _header_font(index: int) -> Font:
     if index in GOVERNED_HEADER_COLUMNS:
         return BLACK_FONT
     return WHITE_FONT
+
+
+def _set_template_workbook_properties(workbook: Workbook) -> None:
+    created_at = _utc_now()
+    workbook.properties.creator = "OCI DIS Blueprint"
+    workbook.properties.lastModifiedBy = "OCI DIS Blueprint"
+    workbook.properties.created = created_at
+    workbook.properties.modified = created_at
 
 
 async def _load_project(project_id: str, db: AsyncSession) -> Project:
@@ -224,38 +235,27 @@ async def generate_capture_template(db: AsyncSession) -> bytes:
     """Build the offline integration-capture workbook template."""
 
     workbook = Workbook()
+    _set_template_workbook_properties(workbook)
     sheet = workbook.active
     sheet.title = TEMPLATE_SHEET_NAME
 
-    sheet.merge_cells("A1:Y1")
-    sheet.merge_cells("A2:Y2")
-    sheet.merge_cells("A3:Y3")
-    sheet["A1"] = "OCI DIS Blueprint — Integration Capture Template"
-    sheet["A2"] = "Fill from row 7 onwards. Do not modify rows 1-5. Required fields marked with *. TBQ column must be Y for import."
-    sheet["A3"] = f"Template v1.0 — generated {_utc_now().date().isoformat()}"
-
-    for row_index in (1, 2, 3):
-        cell = sheet[f"A{row_index}"]
-        cell.alignment = Alignment(wrap_text=True)
-        cell.font = Font(bold=row_index == 1, size=14 if row_index == 1 else 11)
-
     for column_index, header in enumerate(TEMPLATE_HEADERS, start=1):
-        cell = sheet.cell(row=5, column=column_index, value=header)
+        cell = sheet.cell(row=1, column=column_index, value=header)
         cell.fill = _header_fill(column_index)
         cell.font = _header_font(column_index)
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     for column_index, value in enumerate(TEMPLATE_EXAMPLE_ROW, start=1):
-        cell = sheet.cell(row=6, column=column_index, value=value)
+        cell = sheet.cell(row=2, column=column_index, value=value)
         cell.font = EXAMPLE_FONT
         cell.alignment = Alignment(vertical="top", wrap_text=True)
 
     frequency_values, trigger_values, complexity_values = await _load_template_validations(db)
     validations = [
-        ("T7:T200", frequency_values),
-        ("G7:G200", trigger_values),
-        ("I7:I200", complexity_values),
-        ("V7:V200", ["Y", "N"]),
+        ("T3:T200", frequency_values),
+        ("G3:G200", trigger_values),
+        ("I3:I200", complexity_values),
+        ("V3:V200", ["Y", "N"]),
     ]
     for cell_range, values in validations:
         if not values:
@@ -270,9 +270,27 @@ async def generate_capture_template(db: AsyncSession) -> bytes:
 
     for column_index, header in enumerate(TEMPLATE_HEADERS, start=1):
         max_length = max(len(str(header)), len(str(TEMPLATE_EXAMPLE_ROW[column_index - 1])))
-        sheet.column_dimensions[sheet.cell(row=5, column=column_index).column_letter].width = max(12, max_length * 1.2)
+        column_letter = sheet.cell(row=1, column=column_index).column_letter
+        sheet.column_dimensions[column_letter].width = max(15, max_length * 1.2)
 
-    sheet.freeze_panes = "A6"
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = f"A1:{sheet.cell(row=1, column=len(TEMPLATE_HEADERS)).column_letter}2"
+
+    reference_sheet = workbook.create_sheet(REFERENCE_SHEET_NAME)
+    reference_sheet.append(["Column Name", "Canonical Field", "Data Type", "Accepted Values", "Requirement"])
+    for index, (field_name, header, data_type, accepted_values, requirement) in enumerate(TEMPLATE_COLUMNS, start=1):
+        reference_sheet.append([header, field_name, data_type, accepted_values or "Free text", requirement])
+        reference_sheet.column_dimensions["A"].width = 24
+        reference_sheet.column_dimensions["B"].width = 24
+        reference_sheet.column_dimensions["C"].width = 16
+        reference_sheet.column_dimensions["D"].width = 28
+        reference_sheet.column_dimensions["E"].width = 14
+        if index == 1:
+            for cell in reference_sheet[1]:
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    reference_sheet.freeze_panes = "A2"
+    reference_sheet.auto_filter.ref = "A1:E1"
 
     output = BytesIO()
     workbook.save(output)

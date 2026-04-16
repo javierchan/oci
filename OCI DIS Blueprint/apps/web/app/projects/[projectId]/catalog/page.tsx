@@ -10,6 +10,7 @@ type ProjectCatalogPageProps = {
   };
   searchParams: {
     search?: string;
+    system?: string;
     qa_status?: string;
     pattern?: string;
     brand?: string;
@@ -24,6 +25,7 @@ export default async function ProjectCatalogPage({
 }: ProjectCatalogPageProps): Promise<JSX.Element> {
   const initialFilters = {
     search: searchParams.search ?? "",
+    system: searchParams.system ?? "",
     qa_status: searchParams.qa_status ?? "",
     pattern: searchParams.pattern ?? "",
     brand: searchParams.brand ?? "",
@@ -54,10 +56,10 @@ export default async function ProjectCatalogPage({
   ).sort((left, right) => left.localeCompare(right));
 
   const initialPage = {
-    integrations: allRows.integrations.slice(0, 50),
+    integrations: allRows.integrations.slice(0, 20),
     total: allRows.total,
     page: 1,
-    page_size: 50,
+    page_size: 20,
   };
 
   return (

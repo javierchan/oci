@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { Breadcrumb } from "@/components/breadcrumb";
 import { api } from "@/lib/api";
+import { formatDate } from "@/lib/format";
 
 export default async function AdminHubPage(): Promise<JSX.Element> {
   const [patterns, categories, assumptions] = await Promise.all([
@@ -11,7 +12,23 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
     api.listDictionaryCategories(),
     api.listAssumptions(),
   ]);
+  const dictionaries = await Promise.all(
+    categories.categories.map((category) => api.listDictionaryOptions(category.category)),
+  );
   const defaultAssumption = assumptions.assumption_sets.find((item) => item.is_default);
+  const latestPatternUpdate = patterns.patterns
+    .map((pattern) => pattern.updated_at)
+    .sort()
+    .at(-1);
+  const latestDictionaryUpdate = dictionaries
+    .flatMap((dictionary) => dictionary.options.map((option) => option.updated_at))
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1);
+  const latestAssumptionUpdate = assumptions.assumption_sets
+    .map((assumption) => assumption.updated_at ?? assumption.created_at)
+    .sort()
+    .at(-1);
 
   return (
     <div className="space-y-8">
@@ -41,6 +58,9 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
           <p className="app-label">OIC Patterns</p>
           <p className="mt-4 text-4xl font-semibold text-[var(--color-text-primary)]">{patterns.total}</p>
           <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Seeded and custom integration patterns.</p>
+          <p className="mt-3 text-xs text-[var(--color-text-muted)]">
+            Last modified: {latestPatternUpdate ? formatDate(latestPatternUpdate) : "—"}
+          </p>
           <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage →</span>
         </Link>
 
@@ -51,6 +71,9 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
           <p className="app-label">Dictionaries</p>
           <p className="mt-4 text-4xl font-semibold text-[var(--color-text-primary)]">{categories.categories.length}</p>
           <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Governed option sets used throughout the catalog.</p>
+          <p className="mt-3 text-xs text-[var(--color-text-muted)]">
+            Last modified: {latestDictionaryUpdate ? formatDate(latestDictionaryUpdate) : "—"}
+          </p>
           <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage →</span>
         </Link>
 
@@ -62,6 +85,9 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
           <p className="mt-4 text-4xl font-semibold text-[var(--color-text-primary)]">{assumptions.assumption_sets.length}</p>
           <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
             Active default version: {defaultAssumption?.version ?? "None"}
+          </p>
+          <p className="mt-3 text-xs text-[var(--color-text-muted)]">
+            Last modified: {latestAssumptionUpdate ? formatDate(latestAssumptionUpdate) : "—"}
           </p>
           <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage →</span>
         </Link>

@@ -116,6 +116,9 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M12 | Source Lineage + Template | ✅ Complete | 2026-04-14 |
 | M13 | Integration Design Canvas | ✅ Complete | 2026-04-14 |
 | M14 | Map Pan + Visual Improvements | ✅ Complete | 2026-04-14 |
+| M15 | UX Overhaul P0 — Canvas + Pagination + Error Handling | ✅ Complete | 2026-04-15 |
+| M16 | UX Overhaul P1 — Data Accuracy + Surface Completeness | ✅ Complete | 2026-04-15 |
+| M17 | UX Overhaul P2 — Layout + Polish | ✅ Complete | 2026-04-15 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot

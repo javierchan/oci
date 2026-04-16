@@ -17,6 +17,7 @@ type IntegrationGraphProps = {
   onNodeClick: (_node: GraphNode) => void;
   onEdgeClick: (_edge: GraphEdge) => void;
   colorMode: "qa" | "bp";
+  focusedSystemId: string;
   svgRef: RefObject<SVGSVGElement>;
   mode: GraphMode;
   viewport: { x: number; y: number; scale: number };
@@ -45,11 +46,83 @@ const EDGE_COLORS: Record<string, string> = {
 };
 const BP_COLORS = ["#0ea5e9", "#22c55e", "#f97316", "#eab308", "#8b5cf6", "#ef4444", "#14b8a6", "#f43f5e"];
 
+function edgeStatusKey(status: string): "ok" | "revisar" | "mixed" | "pending" {
+  if (status === "OK") {
+    return "ok";
+  }
+  if (status === "REVISAR") {
+    return "revisar";
+  }
+  if (status === "PENDING") {
+    return "pending";
+  }
+  return "mixed";
+}
+
+function fitViewport(nodes: SimNode[], maxNodeCount: number): { x: number; y: number; scale: number } {
+  if (nodes.length === 0) {
+    return { x: 0, y: 0, scale: 1 };
+  }
+
+  const padding = 40;
+  const bounds = nodes.reduce(
+    (accumulator, node) => {
+      const radius = nodeRadius(node.integration_count, maxNodeCount);
+      return {
+        minX: Math.min(accumulator.minX, (node.x ?? WIDTH / 2) - radius),
+        maxX: Math.max(accumulator.maxX, (node.x ?? WIDTH / 2) + radius),
+        minY: Math.min(accumulator.minY, (node.y ?? HEIGHT / 2) - radius),
+        maxY: Math.max(accumulator.maxY, (node.y ?? HEIGHT / 2) + radius),
+      };
+    },
+    {
+      minX: Number.POSITIVE_INFINITY,
+      maxX: Number.NEGATIVE_INFINITY,
+      minY: Number.POSITIVE_INFINITY,
+      maxY: Number.NEGATIVE_INFINITY,
+    },
+  );
+
+  const contentWidth = Math.max(bounds.maxX - bounds.minX, 1);
+  const contentHeight = Math.max(bounds.maxY - bounds.minY, 1);
+  const scale = Math.min((WIDTH - padding * 2) / contentWidth, (HEIGHT - padding * 2) / contentHeight, 1);
+  return {
+    scale,
+    x: padding - bounds.minX * scale + (WIDTH - padding * 2 - contentWidth * scale) / 2,
+    y: padding - bounds.minY * scale + (HEIGHT - padding * 2 - contentHeight * scale) / 2,
+  };
+}
+
+function shortenEdge(
+  source: Position,
+  target: Position,
+  sourceRadius: number,
+  targetRadius: number,
+): { start: Position; end: Position } {
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const distance = Math.max(Math.hypot(dx, dy), 1);
+  const offsetX = dx / distance;
+  const offsetY = dy / distance;
+  return {
+    start: {
+      id: source.id,
+      x: source.x + offsetX * (sourceRadius + 4),
+      y: source.y + offsetY * (sourceRadius + 4),
+    },
+    end: {
+      id: target.id,
+      x: target.x - offsetX * (targetRadius + 4),
+      y: target.y - offsetY * (targetRadius + 4),
+    },
+  };
+}
+
 function edgeWidth(integrationCount: number, maxCount: number): number {
-  if (maxCount === 0) {
+  if (maxCount <= 1) {
     return 1.5;
   }
-  return 1.5 + (integrationCount / maxCount) * 4.5;
+  return 1.5 + ((integrationCount - 1) / (maxCount - 1)) * 2.5;
 }
 
 function nodeRadius(integrationCount: number, maxCount: number): number {
@@ -94,6 +167,7 @@ export function IntegrationGraph({
   onNodeClick,
   onEdgeClick,
   colorMode,
+  focusedSystemId,
   svgRef,
   mode,
   viewport,
@@ -137,6 +211,7 @@ export function IntegrationGraph({
     sim.tick(300);
     sim.stop();
 
+    onViewportChange(fitViewport(nodes, maxNodeCount));
     setPositions(
       Object.fromEntries(
         nodes.map((node) => [
@@ -149,7 +224,7 @@ export function IntegrationGraph({
         ]),
       ),
     );
-  }, [graph, maxNodeCount]);
+  }, [graph, maxNodeCount, onViewportChange]);
 
   const hoveredEdge = hoveredEdgeId
     ? graph.edges.find((edge) => edge.id === hoveredEdgeId) ?? null
@@ -166,6 +241,18 @@ export function IntegrationGraph({
     const related = graph.edges.filter((edge) => edge.source === activeNodeId || edge.target === activeNodeId);
     return new Set([activeNodeId, ...related.flatMap((edge) => [edge.source, edge.target])]);
   }, [activeNodeId, graph.edges, hoveredEdge]);
+  const focusedSystemNode = focusedSystemId
+    ? graph.nodes.find((node) => node.label === focusedSystemId) ?? null
+    : null;
+  const focusedSystemNeighborhood = useMemo(() => {
+    if (!focusedSystemNode) {
+      return new Set<string>();
+    }
+    const related = graph.edges.filter(
+      (edge) => edge.source === focusedSystemNode.id || edge.target === focusedSystemNode.id,
+    );
+    return new Set([focusedSystemNode.id, ...related.flatMap((edge) => [edge.source, edge.target])]);
+  }, [focusedSystemNode, graph.edges]);
 
   function handleMouseDown(event: React.MouseEvent<SVGSVGElement>): void {
     if (mode !== "pan") {
@@ -194,7 +281,7 @@ export function IntegrationGraph({
     setDragStart(null);
   }
 
-  function handleWheel(event: React.WheelEvent<HTMLDivElement>): void {
+  function handleWheel(event: React.WheelEvent<SVGSVGElement>): void {
     event.preventDefault();
     const svg = svgRef.current;
     if (!svg) {
@@ -220,21 +307,31 @@ export function IntegrationGraph({
         "relative overflow-hidden rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4 shadow-sm",
         mode === "pan" ? (isDragging ? "cursor-grabbing" : "cursor-grab") : "cursor-default",
       ].join(" ")}
-      onWheel={handleWheel}
     >
       <svg
         ref={svgRef}
         width={WIDTH}
         height={HEIGHT}
         className="block"
+        style={{ touchAction: "none" }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
       >
           <defs>
-            <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-              <path d="M0,0 L8,4 L0,8 z" fill="var(--color-text-muted)" />
+            <marker id="arrow-ok" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L6,3 z" fill="#22c55e" />
+            </marker>
+            <marker id="arrow-revisar" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L6,3 z" fill="#f97316" />
+            </marker>
+            <marker id="arrow-mixed" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L6,3 z" fill="#eab308" />
+            </marker>
+            <marker id="arrow-pending" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L6,3 z" fill="#94a3b8" />
             </marker>
           </defs>
 
@@ -245,12 +342,23 @@ export function IntegrationGraph({
             if (!source || !target) {
               return null;
             }
+            const sourceNode = graph.nodes.find((node) => node.id === edge.source);
+            const targetNode = graph.nodes.find((node) => node.id === edge.target);
+            if (!sourceNode || !targetNode) {
+              return null;
+            }
+            const sourceRadius = nodeRadius(sourceNode.integration_count, maxNodeCount);
+            const targetRadius = nodeRadius(targetNode.integration_count, maxNodeCount);
+            const shortened = shortenEdge(source, target, sourceRadius, targetRadius);
             const isHovered = hoveredEdgeId === edge.id;
             const isConnectedToHoveredNode = activeNodeId
               ? edge.source === activeNodeId || edge.target === activeNodeId
               : false;
             const shouldDim =
-              (!!hoveredEdgeId && !isHovered) || (!!activeNodeId && !isConnectedToHoveredNode && !isHovered);
+              (!!hoveredEdgeId && !isHovered) ||
+              (!!activeNodeId && !isConnectedToHoveredNode && !isHovered) ||
+              (!!focusedSystemNode && !focusedSystemNeighborhood.has(edge.source) && !focusedSystemNeighborhood.has(edge.target));
+            const arrowKey = edgeStatusKey(edge.dominant_qa_status);
             return (
               <g
                 key={edge.id}
@@ -264,14 +372,14 @@ export function IntegrationGraph({
                 style={{ cursor: mode === "select" ? "pointer" : undefined }}
               >
                 <line
-                  x1={source.x}
-                  y1={source.y}
-                  x2={target.x}
-                  y2={target.y}
+                  x1={shortened.start.x}
+                  y1={shortened.start.y}
+                  x2={shortened.end.x}
+                  y2={shortened.end.y}
                   className={!shouldDim ? "graph-edge-animated" : undefined}
                   strokeWidth={edgeWidth(edge.integration_count, maxEdgeCount) * (isHovered ? 1.5 : 1)}
                   stroke={EDGE_COLORS[edge.dominant_qa_status] ?? "#d1d5db"}
-                  markerEnd="url(#arrow)"
+                  markerEnd={`url(#arrow-${arrowKey})`}
                   opacity={shouldDim ? 0.2 : selectedEdgeId && selectedEdgeId !== edge.id ? 0.35 : 0.9}
                 />
               </g>
@@ -287,6 +395,8 @@ export function IntegrationGraph({
             const fill = nodeColor(node, graph, colorMode);
             const isSelected = selectedNodeId === node.id;
             const isConnected = connectedNodeIds.size === 0 || connectedNodeIds.has(node.id);
+            const matchesFocusedSystem =
+              focusedSystemNeighborhood.size === 0 || focusedSystemNeighborhood.has(node.id);
             return (
               <g
                 key={node.id}
@@ -305,7 +415,7 @@ export function IntegrationGraph({
                   fill={fill}
                   stroke={isSelected ? "#0f172a" : "white"}
                   strokeWidth={isSelected ? 4 : 2}
-                  opacity={isConnected ? 1 : 0.3}
+                  opacity={isConnected && matchesFocusedSystem ? 1 : 0.2}
                   style={{
                     filter: isConnected && connectedNodeIds.size > 0 ? "drop-shadow(0 0 6px currentColor)" : undefined,
                   }}
@@ -378,7 +488,7 @@ export function IntegrationGraph({
           </g>
         </svg>
 
-      <div className="absolute bottom-4 left-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-xs text-[var(--color-text-secondary)]">
+      <div className="pointer-events-none absolute bottom-4 left-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-xs text-[var(--color-text-secondary)]">
         <div className="mb-2 font-semibold text-[var(--color-text-primary)]">Legend</div>
         <div className="flex items-center gap-2">
           <span className="h-3 w-3 rounded-full bg-[#22c55e]" />

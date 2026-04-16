@@ -77,7 +77,7 @@ export function GraphDetailPanel({
 
         <div className="mt-6">
           <Link
-            href={`/projects/${projectId}/catalog?source_system=${encodeURIComponent(selectedNode.id)}`}
+            href={`/projects/${projectId}/catalog?system=${encodeURIComponent(selectedNode.label)}`}
             className="app-link"
           >
             View in Catalog →

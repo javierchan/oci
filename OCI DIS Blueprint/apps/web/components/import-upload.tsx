@@ -8,6 +8,7 @@ import { useRef, useState } from "react";
 import { Download } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { APP_VERSION } from "@/lib/app-version";
 import { formatDate } from "@/lib/format";
 import type { ImportBatch, SourceRowList } from "@/lib/types";
 
@@ -22,6 +23,18 @@ type ImportUploadProps = {
 
 type UploadPhase = "idle" | "pending" | "processing" | "completed" | "failed";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const TEMPLATE_HEADERS = [
+  "#",
+  "ID de Interfaz",
+  "Marca",
+  "Proceso de Negocio",
+  "Interfaz",
+  "Descripción",
+  "Tipo",
+  "Estado Interfaz",
+  "Complejidad",
+  "Alcance Inicial",
+];
 
 function phaseFromBatchStatus(batch: ImportBatch): UploadPhase {
   switch (batch.status) {
@@ -124,23 +137,45 @@ export function ImportUpload({
   return (
     <div className="space-y-8">
       <section className="app-card p-6">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
-              Upload Integration Workbook
-            </h2>
-            <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-              Project: {projectName}
-            </p>
+        <div className="rounded-[1.75rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-6">
+          <p className="app-label">Step 1</p>
+          <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
+            Download the import template
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
+            Use this template to ensure your data matches the expected column order and format for workbook import.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-4">
+            <a
+              href={`${API_BASE}/api/v1/exports/template/xlsx`}
+              download={`oci-dis-import-template-v${APP_VERSION}.xlsx`}
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-text-primary)]"
+            >
+              <Download className="h-4 w-4" />
+              Download Template (.xlsx)
+            </a>
+            <span className="app-theme-chip">Last updated: v{APP_VERSION}</span>
           </div>
-          <a
-            href={`${API_BASE}/api/v1/exports/template/xlsx`}
-            download="oci-dis-capture-template.xlsx"
-            className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]"
-          >
-            <Download className="h-4 w-4" />
-            Download capture template
-          </a>
+          <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">Required columns (in order)</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {TEMPLATE_HEADERS.map((header) => (
+                <span key={header} className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-1 text-sm text-[var(--color-text-secondary)]">
+                  {header}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <p className="app-label">Step 2</p>
+          <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
+            Upload your completed file
+          </h2>
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+            Project: {projectName}
+          </p>
         </div>
         <div
           role="button"

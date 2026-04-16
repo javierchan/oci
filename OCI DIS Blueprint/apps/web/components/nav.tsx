@@ -6,8 +6,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Network, Settings } from "lucide-react";
 
-import { titleCaseFromPath } from "@/lib/format";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { APP_VERSION } from "@/lib/app-version";
 
 type NavLink = {
   href: string;
@@ -23,11 +23,54 @@ function linkClasses(active: boolean): string {
   ].join(" ");
 }
 
+function contextLabelFromPath(pathname: string): string {
+  const pathParts = pathname.split("/").filter(Boolean);
+  if (pathParts.length === 0) {
+    return "Projects";
+  }
+  if (pathParts[0] === "admin") {
+    if (pathParts[1] === "patterns") {
+      return "Patterns";
+    }
+    if (pathParts[1] === "dictionaries") {
+      return "Dictionaries";
+    }
+    if (pathParts[1] === "assumptions") {
+      return "Assumptions";
+    }
+    return "Admin";
+  }
+  if (pathParts[0] !== "projects") {
+    return "Projects";
+  }
+  if (pathParts.length === 1) {
+    return "Projects";
+  }
+  if (pathParts.length === 2) {
+    return "Dashboard";
+  }
+
+  const section = pathParts[2];
+  if (section === "catalog" && pathParts[3]) {
+    return "Integration Detail";
+  }
+  if (section === "capture" && pathParts[3] === "new") {
+    return "Capture New";
+  }
+  if (section === "graph") {
+    return "Graph";
+  }
+
+  return section
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (char: string) => char.toUpperCase());
+}
+
 export function Nav(): JSX.Element {
   const pathname = usePathname();
   const pathParts = pathname.split("/").filter(Boolean);
   const projectId = pathParts[0] === "projects" && pathParts[1] ? pathParts[1] : null;
-  const sectionTitle = pathname === "/" ? "Projects" : titleCaseFromPath(pathname);
+  const sectionTitle = contextLabelFromPath(pathname);
 
   const baseLinks: NavLink[] = [{ href: "/projects", label: "Projects" }];
   const adminLinks: NavLink[] = [{ href: "/admin", label: "Admin" }];
@@ -107,7 +150,7 @@ export function Nav(): JSX.Element {
           <p className="mt-2 text-lg font-medium text-[var(--color-text-primary)]">{sectionTitle}</p>
         </div>
         <span className="app-theme-chip">
-          v1.0.0
+          v{APP_VERSION}
         </span>
       </div>
     </aside>
