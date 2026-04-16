@@ -7,8 +7,8 @@ This document is the operational roadmap for the `pricing` agent.
 Document role:
 
 - this file is the source of truth for validated coverage posture, coverage gaps, and runtime test baselines
-- tactical sequencing lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/EXECUTION_PLAN.md)
-- architecture intent lives in [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ARCHITECTURE.md)
+- tactical sequencing lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/planning/EXECUTION_PLAN.md)
+- architecture intent lives in [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/core/ARCHITECTURE.md)
 - the full docs map lives in [Docs Guide](/Users/javierchan/Documents/GitHub/oci/pricing/docs/README.md)
 
 Use it to answer:
@@ -607,7 +607,7 @@ Recently advanced:
 
 Reference:
 
-- [PARALLEL_EXECUTION_LANES.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/PARALLEL_EXECUTION_LANES.md)
+- [COLLABORATION_GUIDE.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/collaboration/COLLABORATION_GUIDE.md)
 
 Why this matters:
 

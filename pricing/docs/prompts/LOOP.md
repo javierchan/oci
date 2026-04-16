@@ -11,8 +11,8 @@ discovery answers, and narrative formatting.
 
 Read these files in full, in this order:
 
-1. pricing/docs/IMPROVEMENT_MILESTONES.md   — milestone definitions, target state, and exit criteria
-2. pricing/docs/ARCHITECTURE.md             — system design and stable contracts
+1. pricing/docs/planning/IMPROVEMENT_MILESTONES.md   — milestone definitions, target state, and exit criteria
+2. pricing/docs/core/ARCHITECTURE.md             — system design and stable contracts
 3. pricing/server/assistant.js              — main orchestration pipeline
 4. pricing/server/dependency-resolver.js    — SKU resolution and service detection heuristics
 5. pricing/server/genai.js                  — OCI GenAI integration layer
@@ -79,7 +79,7 @@ Only run these if your assigned milestone matches:
    "Files Most Likely To Change".
 
 6. After all exit criteria pass and `npm test` is green, update the Status field for
-   this milestone in the Milestone Index table in `pricing/docs/IMPROVEMENT_MILESTONES.md`
+   this milestone in the Milestone Index table in `pricing/docs/planning/IMPROVEMENT_MILESTONES.md`
    from `open` to `complete`.
 
 7. End your response with a summary of: files created, files modified, and which
@@ -100,7 +100,7 @@ Only run these if your assigned milestone matches:
 
 Begin with M[N] ([Milestone Title]).
 
-Read the full M[N] section in `pricing/docs/IMPROVEMENT_MILESTONES.md` now.
+Read the full M[N] section in `pricing/docs/planning/IMPROVEMENT_MILESTONES.md` now.
 Then propose your implementation plan — what you will change in each file and why —
 before writing any code. Wait for approval if this is a destructive change
 (deleting functions, removing exports, restructuring a public interface).

@@ -43,9 +43,10 @@ OCI_COMPARTMENT=ocid1.compartment.oc1..xxx
 Browser → localhost:8742 (Docker)
               │
               ├── GET /              → index.html
-              ├── GET /api/health    → catalog status
-              ├── GET /api/catalog/* → OCI price catalogs (RAM)
-              └── POST /api/chat     → OCI GenAI inference endpoint
+              ├── GET /api/v1/health         → catalog status
+              ├── GET /api/v1/catalog/*      → OCI price catalogs (RAM)
+              ├── POST /api/v1/chat          → OCI GenAI inference endpoint
+              └── POST /api/v1/assistant     → deterministic assistant orchestration
               │
               ├──→ oracle.com        (catalogs, at startup + every 6h)
               └──→ inference.generativeai.{region}.oci.oraclecloud.com
@@ -53,8 +54,12 @@ Browser → localhost:8742 (Docker)
 
 Detailed technical docs:
 
-- [Architecture](./docs/ARCHITECTURE.md)
-- [Coverage Roadmap](./docs/COVERAGE_ROADMAP.md)
+- [Docs Guide](./docs/README.md)
+- [Architecture](./docs/core/ARCHITECTURE.md)
+- [Execution Plan](./docs/planning/EXECUTION_PLAN.md)
+- [Coverage Roadmap](./docs/planning/COVERAGE_ROADMAP.md)
+- [Improvement Milestones](./docs/planning/IMPROVEMENT_MILESTONES.md)
+- [OpenAPI Contract](./docs/contracts/openapi.yaml)
 
 Tracking convention:
 
@@ -95,8 +100,9 @@ docker compose up -d --build             # first time (build image)
 docker compose up -d                     # subsequent starts
 docker compose down                      # stop
 docker compose logs -f                   # live logs
-curl http://localhost:8742/api/health    # catalog + OCI status
-curl -X POST localhost:8742/api/catalog/reload  # force catalog refresh
+curl http://localhost:8742/api/v1/health    # catalog + OCI status
+curl -X POST localhost:8742/api/v1/catalog/reload  # force catalog refresh
+curl -X POST localhost:8742/api/v1/assistant -H 'Content-Type: application/json' -d '{"text":"Quote 2 OCPUs of FastConnect 10 Gbps"}'
 python3 tools/build_vm_shape_rules.py    # regenerate calculator-style VM shape rules
 node tools/build_coverage_artifacts.js   # regenerate service family rules + coverage matrix
 ```

@@ -8,8 +8,8 @@ Document role:
 
 - this file is the source of truth for the `assistant.js` boundary-hardening track
 - it is a tracking artifact for ownership reduction, not the general work plan
-- active sequencing lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/EXECUTION_PLAN.md)
-- architecture intent lives in [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ARCHITECTURE.md)
+- active sequencing lives in [Execution Plan](/Users/javierchan/Documents/GitHub/oci/pricing/docs/planning/EXECUTION_PLAN.md)
+- architecture intent lives in [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/core/ARCHITECTURE.md)
 - the full docs map lives in [Docs Guide](/Users/javierchan/Documents/GitHub/oci/pricing/docs/README.md)
 
 It exists to answer:

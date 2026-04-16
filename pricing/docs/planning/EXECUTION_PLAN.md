@@ -7,8 +7,8 @@ This document turns the current `pricing` roadmap into an executable work plan.
 Document role:
 
 - this file is the source of truth for tactical sequencing, active priorities, and exit criteria
-- architecture intent lives in [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ARCHITECTURE.md)
-- validated runtime coverage state lives in [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md)
+- architecture intent lives in [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/core/ARCHITECTURE.md)
+- validated runtime coverage state lives in [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/planning/COVERAGE_ROADMAP.md)
 - the full docs map lives in [Docs Guide](/Users/javierchan/Documents/GitHub/oci/pricing/docs/README.md)
 
 Use it to answer:
@@ -20,14 +20,14 @@ Use it to answer:
 
 This plan is intentionally tactical. It complements:
 
-- [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md)
-- [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ARCHITECTURE.md)
+- [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/planning/COVERAGE_ROADMAP.md)
+- [Architecture](/Users/javierchan/Documents/GitHub/oci/pricing/docs/core/ARCHITECTURE.md)
 
 ## How To Use This Plan
 
 - use `Next Concrete Tasks`, status headings, and exit criteria as the primary navigation points
 - treat long completed-slice sections as execution traceability, not as the fastest way to find the next step
-- if a detail is already covered as validated runtime state, prefer [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/COVERAGE_ROADMAP.md) instead of duplicating the same interpretation here
+- if a detail is already covered as validated runtime state, prefer [Coverage Roadmap](/Users/javierchan/Documents/GitHub/oci/pricing/docs/planning/COVERAGE_ROADMAP.md) instead of duplicating the same interpretation here
 
 ## Current Working Read
 
@@ -44,6 +44,23 @@ The main imbalance today is structural:
 - parity coverage is broad but still thinner than the desired production proof level for mixed scenarios
 - follow-up handling is useful but still uneven across families
 - operational hardening is behind functional coverage
+
+## Audit Follow-up Priorities
+
+The April 15, 2026 audit changed the next execution order.
+
+- the highest-priority live gap on this branch is now resolver hardening, not API/auth/metrics scaffolding
+- versioned API, authentication/rate limiting, and metrics landed after the audit snapshot, so their original findings are no longer the first blocker in source
+- the current critical sequence is:
+  1. re-baseline resolver status and inventory remaining `request.source` dependencies
+  2. remove composite family ownership and generic family selection drift from `dependency-resolver.js`
+  3. re-run targeted parity/regression coverage before re-closing the resolver milestone
+
+Current resolver owner map:
+
+- `M1` keeps milestone status honest and the residual dependency inventory explicit
+- `M2` removes metadata/composite routing drift and replaces free-text family ownership with typed inputs plus family metadata
+- `M3` validates parity, updates coverage notes, and only then allows M1 to be marked complete again
 
 ## Current Status
 
@@ -646,7 +663,7 @@ Recently completed in this workstream:
 - extracted quote entry preparation into a dedicated helper so `assistant.js` no longer owns route-driven follow-up request reuse, uncovered-compute discovery fallback gating, and deterministic top-service promotion inline
 - added focused unit coverage for quote entry preparation, including `effectiveQuoteText` selection, unsupported compute fallback detection, and safe deterministic promotion of catalog-backed services
 - validated the extraction with assistant regressions covering workbook-style route follow-ups, unsupported legacy VM aliases, and deterministic HPC service quoting
-- documented a project-level sub-agent operating model in `docs/SUBAGENT_STRATEGY.md` so future parallel execution can accelerate helper extraction, test growth, and docs maintenance without diluting architectural ownership of the core assistant flow
+- documented a project-level collaboration model in `docs/collaboration/COLLABORATION_GUIDE.md` so future parallel execution can accelerate helper extraction, test growth, and docs maintenance without diluting architectural ownership of the core assistant flow
 - extracted the early deterministic direct-quote fast paths into a dedicated helper so `assistant.js` no longer owns the initial composite-quote and simple transactional quote branches inline before intent analysis
 - added focused unit coverage for those fast paths, including composite success, transactional service-level success, and null fallthrough when the request must continue into the intent pipeline
 - revalidated the extraction with assistant regressions for composite bundles and storage/network narratives plus calculator parity cases that depend on the same deterministic entry behavior
@@ -892,8 +909,7 @@ Recently advanced:
 
 Reference:
 
-- [PARALLEL_EXECUTION_LANES.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/PARALLEL_EXECUTION_LANES.md)
-- [SUBAGENT_STRATEGY.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/SUBAGENT_STRATEGY.md)
+- [COLLABORATION_GUIDE.md](/Users/javierchan/Documents/GitHub/oci/pricing/docs/collaboration/COLLABORATION_GUIDE.md)
 
 Immediate task list:
 
@@ -1148,17 +1164,18 @@ This phase does not replace the current roadmap. It formalizes the intended divi
 
 These are the recommended next tasks to execute immediately:
 
-1. Extract the composite detection and segmentation helper cluster from `assistant.js` into a bounded helper module:
-   - completed in `composite-quote-segmentation.js`
-2. Extract the deterministic composite quote assembly cluster from `assistant.js` into a bounded helper module:
-   - completed in `composite-quote-builder.js`
-3. Extract the next bounded deterministic narrative/profile helper cluster:
-   - completed in `assistant-quote-narrative.js`
-4. After narrative/profile shaping is isolated, define the next boundary cut between:
-   - deterministic narrative/profile helpers
-   - GenAI quote-enrichment orchestration
-   - context-pack / explanation shaping helpers
-5. Continue the model-vs-deterministic boundary strategy by moving reusable interpretation support into metadata or helper modules, not into more prompt-specific branches
+1. Complete the resolver re-baseline slice:
+   - keep `pricing/docs/planning/IMPROVEMENT_MILESTONES.md` honest about M1 being open
+   - keep the residual `request.source` inventory explicit in `dependency-resolver.js`
+2. Remove generic fallback family selection drift from the resolver:
+   - stop using `request.source` to rank or choose generic families when typed request fields or family metadata should own the decision
+3. Move composite ownership and segmentation into metadata:
+   - replace the ordered `resolveComposite*` helper fan-out with declarative family ownership from `service-families.js`
+4. Preserve only low-level deterministic shapers that still have a clear typed-input contract:
+   - if a parser still reads segment text, it must be behind a structured segment request instead of deciding family ownership
+5. Add targeted regression coverage before any closeout:
+   - mixed bundles that currently depend on composite segmentation
+   - family cases that still infer license mode, editions, or retrieval mode from free text
 
 ## Definition Of Progress
 
@@ -1228,7 +1245,7 @@ Recommended next implementation slice for this track:
 
 - add the boundary strategy to the execution plan
 - treat the `assistant.js` branch inventory as the first concrete deliverable
-- use [Assistant Branch Inventory](/Users/javierchan/Documents/GitHub/oci/pricing/docs/ASSISTANT_BRANCH_INVENTORY.md) as the tracking artifact for milestone status, branch classification, and anti-loop scope control
+- use [Assistant Branch Inventory](/Users/javierchan/Documents/GitHub/oci/pricing/docs/collaboration/ASSISTANT_BRANCH_INVENTORY.md) as the tracking artifact for milestone status, branch classification, and anti-loop scope control
 - keep current parity / workbook / follow-up slices moving in parallel, but evaluate each new change against the boundary rule before adding fresh assistant-owned logic
 
 Exit criteria:
