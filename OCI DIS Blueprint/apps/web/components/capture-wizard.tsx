@@ -112,6 +112,7 @@ export function CaptureWizard({
   const [submitError, setSubmitError] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [createdIntegration, setCreatedIntegration] = useState<Integration | null>(null);
+  const [navigationHint, setNavigationHint] = useState<string>("");
   const sessionKey = `${SESSION_KEY_PREFIX}${projectId}`;
 
   const stepTitle = STEP_LABELS[currentStep];
@@ -277,14 +278,14 @@ export function CaptureWizard({
       delete next[field as string];
       return next;
     });
+    setNavigationHint("");
   }
 
-  function validateStep(): boolean {
-    const schema = stepSchemas[currentStep];
+  function collectStepErrors(step: number): Record<string, string> {
+    const schema = stepSchemas[step];
     const result = schema.safeParse(form);
     if (result.success) {
-      setErrors({});
-      return true;
+      return {};
     }
 
     const nextErrors: Record<string, string> = {};
@@ -293,6 +294,15 @@ export function CaptureWizard({
       if (typeof path === "string") {
         nextErrors[path] = issue.message;
       }
+    }
+    return nextErrors;
+  }
+
+  function validateStep(): boolean {
+    const nextErrors = collectStepErrors(currentStep);
+    if (Object.keys(nextErrors).length === 0) {
+      setErrors({});
+      return true;
     }
     setErrors(nextErrors);
     return false;
@@ -335,7 +345,7 @@ export function CaptureWizard({
           Integration captured — {createdIntegration.interface_name ?? createdIntegration.id}
         </h2>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-          The integration now exists in the catalog with a synthetic lineage row and a manual capture audit event.
+          The integration now exists in the catalog with an immutable lineage row and a manual capture audit event.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
@@ -374,16 +384,27 @@ export function CaptureWizard({
                     type="button"
                     onClick={() => {
                       if (index <= currentStep) {
+                        setNavigationHint("");
                         setCurrentStep(index);
+                        return;
                       }
+                      const nextErrors = collectStepErrors(currentStep);
+                      setErrors(nextErrors);
+                      setNavigationHint(
+                        Object.keys(nextErrors).length > 0
+                          ? `Complete the current step first. ${Object.values(nextErrors)[0]}`
+                          : "Use Next to validate the current step before moving forward.",
+                      );
                     }}
+                    aria-disabled={index > currentStep}
                     className={[
                       "flex flex-1 items-center gap-3 rounded-2xl border px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] transition",
                       isCurrent
                         ? "border-sky-400 bg-sky-50 text-sky-700"
                         : isCompleted
                           ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                          : "border-slate-200 bg-slate-50 text-slate-500",
+                          : "border-slate-200 bg-slate-50 text-slate-500 opacity-75",
+                      index > currentStep ? "cursor-not-allowed" : "",
                     ].join(" ")}
                   >
                     <span
@@ -415,6 +436,17 @@ export function CaptureWizard({
         </div>
       </section>
 
+      <p className="text-sm text-[var(--color-text-secondary)]">
+        Completed steps stay clickable for review. Future steps unlock through <span className="font-semibold text-[var(--color-text-primary)]">Next</span> so validation stays consistent.
+      </p>
+
+      {navigationHint ? (
+        <section className="rounded-[1.5rem] border border-amber-300 bg-amber-50 p-5">
+          <p className="text-xs uppercase tracking-[0.25em] text-amber-700">Step Navigation</p>
+          <p className="mt-3 text-sm leading-6 text-amber-900">{navigationHint}</p>
+        </section>
+      ) : null}
+
       {Object.keys(errors).length > 0 ? (
         <section className="rounded-[1.5rem] border border-rose-200 bg-rose-50 p-5">
           <p className="text-xs uppercase tracking-[0.25em] text-rose-700">Validation</p>
@@ -444,7 +476,10 @@ export function CaptureWizard({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           type="button"
-          onClick={() => setCurrentStep((current) => Math.max(0, current - 1))}
+          onClick={() => {
+            setNavigationHint("");
+            setCurrentStep((current) => Math.max(0, current - 1));
+          }}
           disabled={currentStep === 0 || submitting}
           className="inline-flex items-center justify-center rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
         >
@@ -456,7 +491,13 @@ export function CaptureWizard({
               type="button"
               onClick={() => {
                 if (validateStep()) {
+                  setNavigationHint("");
                   setCurrentStep((current) => Math.min(STEP_LABELS.length - 1, current + 1));
+                } else {
+                  const nextErrors = collectStepErrors(currentStep);
+                  setNavigationHint(
+                    Object.values(nextErrors)[0] ?? "Resolve the current step validation issues before moving forward.",
+                  );
                 }
               }}
               className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -468,7 +509,13 @@ export function CaptureWizard({
               type="button"
               onClick={() => {
                 if (validateStep()) {
+                  setNavigationHint("");
                   void handleSubmit();
+                } else {
+                  const nextErrors = collectStepErrors(currentStep);
+                  setNavigationHint(
+                    Object.values(nextErrors)[0] ?? "Resolve the current step validation issues before submitting.",
+                  );
                 }
               }}
               disabled={submitting}

@@ -192,7 +192,7 @@ function buildCoverageSignals(integration: Integration): Array<{ title: string; 
 export default async function IntegrationDetailPage({
   params,
 }: IntegrationDetailPageProps): Promise<JSX.Element> {
-  const [project, detail, patterns, canvasGovernance, integrationAudit, sourceRowAudit] = await Promise.all([
+  const [project, detail, patterns, canvasGovernance, integrationAudit, sourceRowAudit, services] = await Promise.all([
     api.getProject(params.projectId),
     api.getIntegration(params.projectId, params.integrationId),
     api.listPatterns(),
@@ -209,6 +209,10 @@ export default async function IntegrationDetailPage({
       total: 0,
       page: 1,
       page_size: 50,
+    })),
+    api.listServices().catch(() => ({
+      services: [],
+      total: 0,
     })),
   ]);
 
@@ -237,6 +241,11 @@ export default async function IntegrationDetailPage({
   const selectedPatternDefinition = integration.selected_pattern
     ? patternMap.get(integration.selected_pattern) ?? null
     : null;
+  const patternDetail =
+    patterns.patterns.find(
+      (pattern) =>
+        pattern.name === integration.selected_pattern || pattern.pattern_id === integration.selected_pattern,
+    ) ?? selectedPatternDefinition;
 
   return (
     <div className="space-y-8">
@@ -515,6 +524,8 @@ export default async function IntegrationDetailPage({
         projectId={params.projectId}
         integration={integration}
         patterns={patterns.patterns}
+        patternDetail={patternDetail}
+        serviceProfiles={services.services}
         toolOptions={canvasGovernance.tools}
         overlayOptions={canvasGovernance.overlays}
         combinations={canvasGovernance.combinations}

@@ -17,35 +17,33 @@ type AdminPatternFormProps = {
 };
 
 const CATEGORY_SUGGESTIONS = [
-  "SÍNCRONO",
-  "ASÍNCRONO",
-  "SÍNCRONO + ASÍNCRONO",
-  "SEGURIDAD / PERFORMANCE",
-  "RESILIENCIA",
-  "DATOS",
-  "MIGRACIÓN",
-  "DATOS / GARANTÍAS",
-  "DATOS / AVANZADO",
+  "SYNCHRONOUS",
+  "ASYNCHRONOUS",
+  "SECURITY / PERFORMANCE",
+  "RESILIENCE",
+  "DATA",
+  "MIGRATION",
+  "DATA / DELIVERY GUARANTEES",
+  "DATA / ADVANCED",
   "API DESIGN",
-  "ARQUITECTURA / DATOS",
-  "SEGURIDAD",
-  "API DESIGN / ASÍNCRONO",
-  "IA / INTELIGENCIA ARTIFICIAL",
-  "ARQUITECTURA",
-  "ASÍNCRONO / API",
+  "ARCHITECTURE / DATA",
+  "SECURITY",
+  "API DESIGN / ASYNCHRONOUS",
+  "AI",
+  "ARCHITECTURE",
+  "ASYNCHRONOUS / API",
 ];
 
 function defaultPatternValue(): PatternDefinitionCreate {
   return {
     pattern_id: "",
     name: "",
-    category: "SÍNCRONO",
+    category: "SYNCHRONOUS",
     description: "",
-    components: [],
-    component_details: "",
+    oci_components: "",
     when_to_use: "",
     when_not_to_use: "",
-    flow: "",
+    technical_flow: "",
     business_value: "",
   };
 }
@@ -72,21 +70,25 @@ export function AdminPatternForm({
       name: initialValue.name,
       category: initialValue.category,
       description: initialValue.description ?? "",
-      components: initialValue.components ?? [],
-      component_details: initialValue.component_details ?? "",
+      oci_components: initialValue.oci_components ?? "",
       when_to_use: initialValue.when_to_use ?? "",
       when_not_to_use: initialValue.when_not_to_use ?? "",
-      flow: initialValue.flow ?? "",
+      technical_flow: initialValue.technical_flow ?? "",
       business_value: initialValue.business_value ?? "",
     });
   }, [initialValue]);
 
   function toggleComponent(component: string): void {
+    const currentComponents = (form.oci_components ?? "")
+      .split("|")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const nextComponents = currentComponents.includes(component)
+      ? currentComponents.filter((entry) => entry !== component)
+      : [...currentComponents, component];
     setForm((current) => ({
       ...current,
-      components: current.components?.includes(component)
-        ? current.components.filter((entry) => entry !== component)
-        : [...(current.components ?? []), component],
+      oci_components: nextComponents.join(" | "),
     }));
   }
 
@@ -106,11 +108,10 @@ export function AdminPatternForm({
       pattern_id: normalizedId,
       name: form.name.trim(),
       description: form.description?.trim() || undefined,
-      components: form.components?.length ? form.components : undefined,
-      component_details: form.component_details?.trim() || undefined,
+      oci_components: form.oci_components?.trim() || undefined,
       when_to_use: form.when_to_use?.trim() || undefined,
       when_not_to_use: form.when_not_to_use?.trim() || undefined,
-      flow: form.flow?.trim() || undefined,
+      technical_flow: form.technical_flow?.trim() || undefined,
       business_value: form.business_value?.trim() || undefined,
     });
   }
@@ -190,7 +191,12 @@ export function AdminPatternForm({
         <legend className="app-label">OCI Components</legend>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           {toolOptions.map((option) => {
-            const checked = form.components?.includes(option) ?? false;
+            const checked =
+              (form.oci_components ?? "")
+                .split("|")
+                .map((entry) => entry.trim())
+                .filter(Boolean)
+                .includes(option);
             return (
               <label
                 key={option}
@@ -215,10 +221,10 @@ export function AdminPatternForm({
       </fieldset>
 
       <label className="mt-4 block">
-        <span className="app-label mb-2 block">Component Details</span>
+        <span className="app-label mb-2 block">OCI Components (pipe-separated)</span>
         <textarea
-          value={form.component_details}
-          onChange={(event) => setForm((current) => ({ ...current, component_details: event.target.value }))}
+          value={form.oci_components}
+          onChange={(event) => setForm((current) => ({ ...current, oci_components: event.target.value }))}
           rows={5}
           className="app-input"
         />
@@ -245,10 +251,10 @@ export function AdminPatternForm({
       </label>
 
       <label className="mt-4 block">
-        <span className="app-label mb-2 block">Flow Description</span>
+        <span className="app-label mb-2 block">Technical Flow</span>
         <textarea
-          value={form.flow}
-          onChange={(event) => setForm((current) => ({ ...current, flow: event.target.value }))}
+          value={form.technical_flow}
+          onChange={(event) => setForm((current) => ({ ...current, technical_flow: event.target.value }))}
           rows={4}
           className="app-input"
         />

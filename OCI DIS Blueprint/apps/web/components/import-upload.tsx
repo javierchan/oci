@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Download } from "lucide-react";
 
 import { api } from "@/lib/api";
@@ -22,7 +22,10 @@ type ImportUploadProps = {
 };
 
 type UploadPhase = "idle" | "pending" | "processing" | "completed" | "failed";
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(
+  /\/api\/v1\/?$/,
+  "",
+);
 const TEMPLATE_HEADERS = [
   "#",
   "ID de Interfaz",
@@ -78,6 +81,44 @@ export function ImportUpload({
   const [history, setHistory] = useState<ImportBatch[]>(initialBatches);
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [deletingBatchId, setDeletingBatchId] = useState<string>("");
+  const [rowFilter, setRowFilter] = useState<"all" | "included" | "excluded">("all");
+  const [rowSearch, setRowSearch] = useState<string>("");
+  const [rowPage, setRowPage] = useState<number>(1);
+  const [rowPageSize, setRowPageSize] = useState<number>(25);
+
+  const filteredRows = useMemo(() => {
+    if (!initialRows) {
+      return [];
+    }
+    const search = rowSearch.trim().toLowerCase();
+    return initialRows.rows.filter((row) => {
+      const matchesFilter =
+        rowFilter === "all" ||
+        (rowFilter === "included" && row.included) ||
+        (rowFilter === "excluded" && !row.included);
+      if (!matchesFilter) {
+        return false;
+      }
+      if (search === "") {
+        return true;
+      }
+      const previewText = Object.values(row.raw_data)
+        .filter((value) => value !== null && value !== "")
+        .map((value) => String(value).toLowerCase())
+        .join(" ");
+      return (
+        String(row.source_row_number).includes(search) ||
+        (row.exclusion_reason ?? "").toLowerCase().includes(search) ||
+        previewText.includes(search)
+      );
+    });
+  }, [initialRows, rowFilter, rowSearch]);
+
+  const rowTotalPages = Math.max(1, Math.ceil(filteredRows.length / rowPageSize));
+  const visibleRows = useMemo(() => {
+    const startIndex = (rowPage - 1) * rowPageSize;
+    return filteredRows.slice(startIndex, startIndex + rowPageSize);
+  }, [filteredRows, rowPage, rowPageSize]);
 
   function updateSelectedFile(file: File | null): void {
     setSelectedFile(file);
@@ -297,10 +338,92 @@ export function ImportUpload({
               Imported Rows for Batch {initialSelectedBatchId.slice(0, 8)}
             </h2>
             <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
-              Reviewing {initialRows.rows.length} source rows pulled from the selected import batch.
+              Reviewing {initialRows.total} source rows pulled from the selected import batch.
             </p>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+                <label>
+                  <span className="mb-2 block text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">
+                    Search rows
+                  </span>
+                  <input
+                    value={rowSearch}
+                    onChange={(event) => {
+                      setRowSearch(event.target.value);
+                      setRowPage(1);
+                    }}
+                    placeholder="Row number, exclusion, preview text..."
+                    className="app-input"
+                  />
+                </label>
+                <label>
+                  <span className="mb-2 block text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">
+                    Quick filter
+                  </span>
+                  <select
+                    value={rowFilter}
+                    onChange={(event) => {
+                      setRowFilter(event.target.value as "all" | "included" | "excluded");
+                      setRowPage(1);
+                    }}
+                    className="app-input"
+                  >
+                    <option value="all">All rows</option>
+                    <option value="included">Included only</option>
+                    <option value="excluded">Excluded only</option>
+                  </select>
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="app-theme-chip">{filteredRows.length} matching</span>
+                <span className="app-theme-chip">
+                  {initialRows.rows.filter((row) => row.included).length} included
+                </span>
+                <span className="app-theme-chip">
+                  {initialRows.rows.filter((row) => !row.included).length} excluded
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="overflow-x-auto">
+          <div className="space-y-3 p-4 md:hidden">
+            {visibleRows.map((row) => {
+              const preview = Object.values(row.raw_data)
+                .filter((value) => value !== null && value !== "")
+                .slice(0, 4)
+                .map((value) => String(value))
+                .join(" • ");
+              const highlighted = highlightedRowNumber === row.source_row_number;
+              return (
+                <article
+                  key={row.id}
+                  className={`rounded-[1.5rem] border p-4 ${
+                    highlighted
+                      ? "border-[var(--color-accent)] bg-[var(--color-pat-sync-bg)]"
+                      : "border-[var(--color-border)] bg-[var(--color-surface)]"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">
+                        Row {row.source_row_number}
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-[var(--color-text-primary)]">
+                        {row.included ? "Included" : "Excluded"}
+                      </p>
+                    </div>
+                    <span className="app-theme-chip">{row.included ? "Included" : "Excluded"}</span>
+                  </div>
+                  <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
+                    {row.exclusion_reason ?? "No exclusion reason"}
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
+                    {preview || "No preview data"}
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
               <thead className="app-table-header">
                 <tr>
@@ -311,7 +434,7 @@ export function ImportUpload({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
-                {initialRows.rows.map((row) => {
+                {visibleRows.map((row) => {
                   const preview = Object.values(row.raw_data)
                     .filter((value) => value !== null && value !== "")
                     .slice(0, 3)
@@ -336,6 +459,46 @@ export function ImportUpload({
                 })}
               </tbody>
             </table>
+          </div>
+          <div className="flex flex-col gap-4 border-t border-[var(--color-border)] px-6 py-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-6">
+              <div className="text-sm text-[var(--color-text-secondary)]">
+                Page {rowPage} of {rowTotalPages}
+              </div>
+              <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+                Rows per page
+                <select
+                  value={rowPageSize}
+                  onChange={(event) => {
+                    setRowPageSize(Number(event.target.value));
+                    setRowPage(1);
+                  }}
+                  className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </label>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setRowPage((current) => Math.max(1, current - 1))}
+                disabled={rowPage <= 1}
+                className="app-button-secondary px-4 py-2"
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                onClick={() => setRowPage((current) => Math.min(rowTotalPages, current + 1))}
+                disabled={rowPage >= rowTotalPages}
+                className="app-button-secondary px-4 py-2"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </section>
       ) : null}

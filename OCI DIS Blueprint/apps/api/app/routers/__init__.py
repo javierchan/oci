@@ -11,6 +11,7 @@ from .dashboard import router as dashboard_router
 from .justifications import router as justifications_router
 from .audit import router as audit_router
 from .exports import router as exports_router
+from .services import router as services_router
 
 __all__ = [
     "projects_router",
@@ -25,4 +26,5 @@ __all__ = [
     "justifications_router",
     "audit_router",
     "exports_router",
+    "services_router",
 ]

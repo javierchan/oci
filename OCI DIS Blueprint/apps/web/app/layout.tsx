@@ -9,6 +9,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "OCI DIS Blueprint",
   description: "OCI DIS Blueprint frontend workspace",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 type RootLayoutProps = {

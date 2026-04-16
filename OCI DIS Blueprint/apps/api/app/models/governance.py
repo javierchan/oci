@@ -1,4 +1,4 @@
-"""Governance models: patterns, dictionaries, assumptions — PRD-044."""
+"""Governance models: patterns, dictionaries, assumptions, and service profiles."""
 from __future__ import annotations
 from typing import Optional
 from sqlalchemy import String, Integer, Float, Boolean, JSON, Text
@@ -49,8 +49,8 @@ class AssumptionSet(Base, UUIDMixin, TimestampMixin):
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     assumptions: Mapped[dict] = mapped_column(JSON, nullable=False)
     # Structure: {
-    #   "oic_rest_max_payload_kb": 51200,
-    #   "oic_ftp_max_payload_kb": 51200,
+    #   "oic_rest_max_payload_kb": 10240,
+    #   "oic_ftp_max_payload_kb": 10240,
     #   "oic_kafka_max_payload_kb": 10240,
     #   "oic_timeout_s": 300,
     #   "oic_billing_threshold_kb": 50,
@@ -65,6 +65,31 @@ class AssumptionSet(Base, UUIDMixin, TimestampMixin):
     #   "service_metadata": {...},
     # }
     notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class ServiceCapabilityProfile(Base, UUIDMixin, TimestampMixin):
+    """OCI service hard limits, SLAs, pricing, and architectural guidance.
+
+    Sourced from Oracle official documentation (March 2026 Pillar Document,
+    product docs, pricing pages). Labels: "documented limit" = Oracle publishes
+    a hard number; "best practice" = Oracle operational guidance;
+    "inference" = conclusion from documented behavior.
+    """
+
+    __tablename__ = "service_capability_profiles"
+
+    service_id: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(100), nullable=False)
+    sla_uptime_pct: Mapped[Optional[float]] = mapped_column(Float)
+    pricing_model: Mapped[Optional[str]] = mapped_column(String(200))
+    limits: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    architectural_fit: Mapped[Optional[str]] = mapped_column(Text)
+    anti_patterns: Mapped[Optional[str]] = mapped_column(Text)
+    interoperability_notes: Mapped[Optional[str]] = mapped_column(Text)
+    oracle_docs_urls: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    version: Mapped[str] = mapped_column(String(20), default="1.0.0")
 
 
 class PromptTemplateVersion(Base, UUIDMixin, TimestampMixin):

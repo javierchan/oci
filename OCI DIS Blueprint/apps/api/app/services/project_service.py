@@ -44,6 +44,7 @@ def serialize_project(project: Project) -> ProjectResponse:
         owner_id=project.owner_id,
         description=project.description,
         status=project.status.value,
+        project_metadata=project.project_metadata,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )

@@ -557,3 +557,50 @@ ESLint: 0 warnings / 0 errors
 None
 
 ---
+
+## Pattern Taxonomy: Full Content Update + Canvas Integration (2026-04-16)
+
+**Status:** ✅ Complete
+
+- All 17 PatternDefinition records re-seeded with complete English US content:
+  description (tagline), oci_components, when_to_use, when_not_to_use,
+  technical_flow, and business_value.
+- Patterns router (/patterns/) fully implemented — was a stub returning empty data.
+- seed_patterns() bug fixed: removed non-existent is_system attribute reference;
+  upsert branch now refreshes all rich fields on re-run.
+- PatternDefinition TypeScript interface aligned with actual DB column names
+  (oci_components, when_to_use, when_not_to_use, technical_flow, business_value).
+- Integration Design Canvas now renders a PatternDetailPanel when a pattern is
+  assigned: shows tagline, when-to-use checklist, anti-pattern warning block,
+  OCI component chips, 5-step technical flow, and business value.
+
+### Gaps / known limitations
+
+None
+
+---
+
+## OCI Service Capability Profiles (2026-04-16)
+
+**Status:** ✅ Complete
+
+- New ServiceCapabilityProfile model + Alembic migration 20260415_0004.
+- 11 OCI service profiles seeded with authoritative data from Oracle official sources
+  (March 2026 Pillar Document, product docs, pricing pages):
+  API_GATEWAY, OIC3, STREAMING, QUEUE, FUNCTIONS, CONNECTOR_HUB,
+  GOLDENGATE, ORDS, DATA_INTEGRATION, OBSERVABILITY, IAM.
+- Each profile: category, SLA %, pricing model, hard limits (JSON), architectural
+  fit, anti-patterns, interoperability notes, Oracle documentation URLs.
+- AssumptionSet corrected: oic_rest/ftp/kafka_max_payload_kb fixed to 10240 KB.
+  12 new limit keys added (OIC concurrency, API GW body limits, Streaming/Queue/
+  Functions hard limits).
+- New /api/v1/services/ endpoint (GET list + GET by service_id).
+- Integration Design Canvas: tool nodes show SLA + top constraint badge.
+  Functions 99.5% SLA highlighted in amber. Design violation banner when
+  payload exceeds service limits for tools in the integration.
+
+### Gaps / known limitations
+
+None
+
+---

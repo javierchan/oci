@@ -2,7 +2,7 @@
 
 /* React + SVG renderer for the system dependency graph using D3 force layout only for positioning. */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import * as d3 from "d3";
 
@@ -178,6 +178,7 @@ export function IntegrationGraph({
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const viewportRef = useRef(viewport);
 
   const maxNodeCount = useMemo(
     () => Math.max(1, ...graph.nodes.map((node) => node.integration_count)),
@@ -187,6 +188,10 @@ export function IntegrationGraph({
     () => Math.max(1, ...graph.edges.map((edge) => edge.integration_count)),
     [graph.edges],
   );
+
+  useEffect(() => {
+    viewportRef.current = viewport;
+  }, [viewport]);
 
   useEffect(() => {
     const nodes: SimNode[] = graph.nodes.map((node) => ({ ...node }));
@@ -225,6 +230,35 @@ export function IntegrationGraph({
       ),
     );
   }, [graph, maxNodeCount, onViewportChange]);
+
+  useEffect(() => {
+    const element = svgRef.current;
+    if (!element) {
+      return;
+    }
+
+    function handleNativeWheel(event: WheelEvent): void {
+      event.preventDefault();
+      const currentViewport = viewportRef.current;
+      const delta = event.deltaY > 0 ? 0.9 : 1.1;
+      const rect = element!.getBoundingClientRect();
+      const cx = event.clientX - rect.left;
+      const cy = event.clientY - rect.top;
+      onViewportChange(() => {
+        const nextScale = Math.min(Math.max(currentViewport.scale * delta, 0.2), 4);
+        return {
+          scale: nextScale,
+          x: cx - (cx - currentViewport.x) * (nextScale / currentViewport.scale),
+          y: cy - (cy - currentViewport.y) * (nextScale / currentViewport.scale),
+        };
+      });
+    }
+
+    element.addEventListener("wheel", handleNativeWheel, { passive: false });
+    return () => {
+      element.removeEventListener("wheel", handleNativeWheel);
+    };
+  }, [onViewportChange, svgRef]);
 
   const hoveredEdge = hoveredEdgeId
     ? graph.edges.find((edge) => edge.id === hoveredEdgeId) ?? null
@@ -281,26 +315,6 @@ export function IntegrationGraph({
     setDragStart(null);
   }
 
-  function handleWheel(event: React.WheelEvent<SVGSVGElement>): void {
-    event.preventDefault();
-    const svg = svgRef.current;
-    if (!svg) {
-      return;
-    }
-    const delta = event.deltaY > 0 ? 0.9 : 1.1;
-    const rect = svg.getBoundingClientRect();
-    const cx = event.clientX - rect.left;
-    const cy = event.clientY - rect.top;
-    onViewportChange((current) => {
-      const nextScale = Math.min(Math.max(current.scale * delta, 0.2), 4);
-      return {
-        scale: nextScale,
-        x: cx - (cx - current.x) * (nextScale / current.scale),
-        y: cy - (cy - current.y) * (nextScale / current.scale),
-      };
-    });
-  }
-
   return (
     <div
       className={[
@@ -312,13 +326,13 @@ export function IntegrationGraph({
         ref={svgRef}
         width={WIDTH}
         height={HEIGHT}
-        className="block"
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        className="block h-auto w-full"
         style={{ touchAction: "none" }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
       >
           <defs>
             <marker id="arrow-ok" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">

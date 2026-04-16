@@ -22,9 +22,10 @@ import type {
   DictionaryOption,
   OICEstimateResponse,
   PatternDefinition,
+  ServiceCapabilityProfile,
 } from "@/lib/types";
 
-type PatternCategory = "SÍNCRONO" | "ASÍNCRONO" | "SÍNCRONO + ASÍNCRONO";
+type PatternCategory = string;
 type HandlePosition = "top" | "right" | "bottom" | "left";
 type SelectedElement =
   | { kind: "node"; id: string }
@@ -36,7 +37,7 @@ const CANVAS_HEIGHT = 560;
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 2;
 const TOOL_NODE_WIDTH = 188;
-const TOOL_NODE_HEIGHT = 96;
+const TOOL_NODE_HEIGHT = 126;
 const SYSTEM_NODE_WIDTH = 260;
 const SYSTEM_NODE_HEIGHT = 110;
 const HANDLE_RADIUS = 7;
@@ -61,6 +62,8 @@ type IntegrationCanvasProps = {
   destinationSystem: string | null;
   destinationTechnology: string | null;
   selectedPattern: string | null;
+  patternDetail: PatternDefinition | null;
+  serviceProfiles: ServiceCapabilityProfile[];
   coreTools: string[];
   toolOptions: DictionaryOption[];
   overlayOptions: DictionaryOption[];
@@ -74,6 +77,262 @@ type IntegrationCanvasProps = {
   onToolsChange?: (_toolKeys: string[]) => void;
   onConnectionValidityChange?: (_isValid: boolean) => void;
 };
+
+const TOOL_TO_SERVICE_ID: Record<string, string> = {
+  "OIC Gen3": "OIC3",
+  "OCI API Gateway": "API_GATEWAY",
+  "OCI Streaming": "STREAMING",
+  "OCI Queue": "QUEUE",
+  "Oracle Functions": "FUNCTIONS",
+  "OCI Functions": "FUNCTIONS",
+  "OCI Data Integration": "DATA_INTEGRATION",
+  "Oracle ORDS": "ORDS",
+  "Oracle DB": "ORDS",
+  "OCI APM": "OBSERVABILITY",
+  "Oracle GoldenGate": "GOLDENGATE",
+  "OCI Connector Hub": "CONNECTOR_HUB",
+  "OCI IAM": "IAM",
+};
+
+function parsePatternBullets(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("-"))
+    .map((line) => line.replace(/^-+\s*/, ""));
+}
+
+function parsePatternSteps(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^\d+\./.test(line))
+    .map((line) => line.replace(/^\d+\.\s*/, ""));
+}
+
+function parsePatternComponents(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split("|")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function formatLimitLabel(valueKb: number): string {
+  if (valueKb >= 1024 && valueKb % 1024 === 0) {
+    return `${valueKb / 1024} MB`;
+  }
+  if (valueKb >= 1024) {
+    return `${(valueKb / 1024).toFixed(1)} MB`;
+  }
+  return `${valueKb} KB`;
+}
+
+function formatPayloadLabel(valueKb: number): string {
+  if (valueKb >= 1024) {
+    const valueMb = valueKb / 1024;
+    return Number.isInteger(valueMb) ? `${valueMb} MB` : `${valueMb.toFixed(1)} MB`;
+  }
+  return `${valueKb} KB`;
+}
+
+function serviceLimitNumber(limits: Record<string, unknown>, key: string): number | null {
+  const value = limits[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function resolveServiceProfile(
+  toolKey: string,
+  serviceProfilesById: Map<string, ServiceCapabilityProfile>,
+): ServiceCapabilityProfile | null {
+  const serviceId = TOOL_TO_SERVICE_ID[toolKey];
+  return serviceId ? serviceProfilesById.get(serviceId) ?? null : null;
+}
+
+function topConstraintLabel(profile: ServiceCapabilityProfile): string {
+  switch (profile.service_id) {
+    case "OIC3":
+      return "Max msg: 10 MB";
+    case "API_GATEWAY":
+      return "Body: 20 MB / Fn: 6 MB";
+    case "STREAMING":
+      return "1 MB msg | 1 MB/s/partition";
+    case "QUEUE":
+      return "256 KB msg | 10 queues/region";
+    case "FUNCTIONS":
+      return "6 MB body";
+    default:
+      return truncateLabel(profile.pricing_model ?? "See service profile", 40);
+  }
+}
+
+function designViolationsForTools(
+  payloadKb: number | null,
+  toolKeys: Set<string>,
+  serviceProfilesById: Map<string, ServiceCapabilityProfile>,
+): string[] {
+  if (payloadKb === null || payloadKb === undefined) {
+    return [];
+  }
+
+  const violations: string[] = [];
+  const oicProfile = resolveServiceProfile("OIC Gen3", serviceProfilesById);
+  const functionsProfile =
+    resolveServiceProfile("OCI Functions", serviceProfilesById) ??
+    resolveServiceProfile("Oracle Functions", serviceProfilesById);
+  const apiGatewayProfile = resolveServiceProfile("OCI API Gateway", serviceProfilesById);
+  const queueProfile = resolveServiceProfile("OCI Queue", serviceProfilesById);
+  const streamingProfile = resolveServiceProfile("OCI Streaming", serviceProfilesById);
+
+  const oicLimit = oicProfile ? serviceLimitNumber(oicProfile.limits, "max_message_size_kb") : null;
+  if (toolKeys.has("OIC Gen3") && oicLimit !== null && payloadKb > oicLimit) {
+    violations.push(
+      `[OIC Gen3] Payload ${formatPayloadLabel(payloadKb)} exceeds OIC message size limit of ${formatLimitLabel(oicLimit)}`,
+    );
+  }
+
+  const functionsLimit = functionsProfile
+    ? serviceLimitNumber(functionsProfile.limits, "max_invoke_body_kb")
+    : null;
+  if (
+    (toolKeys.has("OCI Functions") || toolKeys.has("Oracle Functions")) &&
+    functionsLimit !== null &&
+    payloadKb > functionsLimit
+  ) {
+    violations.push(
+      `[Oracle Functions] Payload ${formatPayloadLabel(payloadKb)} exceeds Functions invoke body limit of ${formatLimitLabel(functionsLimit)}`,
+    );
+  }
+
+  const apiGatewayLimit = apiGatewayProfile
+    ? serviceLimitNumber(apiGatewayProfile.limits, "max_request_body_kb")
+    : null;
+  if (toolKeys.has("OCI API Gateway") && apiGatewayLimit !== null && payloadKb > apiGatewayLimit) {
+    violations.push(
+      `[OCI API Gateway] Payload ${formatPayloadLabel(payloadKb)} exceeds API Gateway request body limit of ${formatLimitLabel(apiGatewayLimit)}`,
+    );
+  }
+
+  const queueLimit = queueProfile ? serviceLimitNumber(queueProfile.limits, "max_message_size_kb") : null;
+  if (toolKeys.has("OCI Queue") && queueLimit !== null && payloadKb > queueLimit) {
+    violations.push(
+      `[OCI Queue] Payload ${formatPayloadLabel(payloadKb)} exceeds Queue message size limit of ${formatLimitLabel(queueLimit)}`,
+    );
+  }
+
+  const streamingLimit = streamingProfile
+    ? serviceLimitNumber(streamingProfile.limits, "max_message_size_kb")
+    : null;
+  if (toolKeys.has("OCI Streaming") && streamingLimit !== null && payloadKb > streamingLimit) {
+    violations.push(
+      `[OCI Streaming] Payload ${formatPayloadLabel(payloadKb)} exceeds Streaming message size limit of ${formatLimitLabel(streamingLimit)}`,
+    );
+  }
+
+  return violations;
+}
+
+function PatternDetailPanel({ patternDetail }: { patternDetail: PatternDefinition }): JSX.Element {
+  const components = parsePatternComponents(patternDetail.oci_components);
+  const whenToUse = parsePatternBullets(patternDetail.when_to_use);
+  const technicalFlow = parsePatternSteps(patternDetail.technical_flow);
+
+  return (
+    <section className="app-card p-6">
+      <p className="app-kicker">Pattern Guidance</p>
+      <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h3 className="text-2xl font-semibold text-[var(--color-text-primary)]">
+            {patternDetail.pattern_id} · {patternDetail.name}
+          </h3>
+          {patternDetail.description ? (
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-[var(--color-text-secondary)]">
+              {patternDetail.description}
+            </p>
+          ) : null}
+        </div>
+        <span className="app-theme-chip">{patternDetail.category}</span>
+      </div>
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <div className="app-card-muted p-4">
+          <p className="app-label">When to Use</p>
+          {whenToUse.length > 0 ? (
+            <ul className="mt-3 space-y-2 text-sm text-[var(--color-text-secondary)]">
+              {whenToUse.map((item) => (
+                <li key={item} className="flex gap-2">
+                  <span className="text-emerald-600">✅</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-[var(--color-text-muted)]">No usage guidance documented.</p>
+          )}
+        </div>
+
+        <div
+          className="rounded-[1.75rem] border p-4"
+          style={{ background: "#fef3c7", borderColor: "#f59e0b", color: "#78350f" }}
+        >
+          <p className="app-label" style={{ color: "#92400e" }}>
+            Anti-Pattern
+          </p>
+          <p className="mt-3 text-sm leading-6">
+            <span className="mr-2">⚠</span>
+            {patternDetail.when_not_to_use ?? "No anti-pattern guidance documented."}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <p className="app-label">OCI Components</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {components.length > 0 ? (
+            components.map((component) => (
+              <span key={component} className="app-theme-chip">
+                {component}
+              </span>
+            ))
+          ) : (
+            <p className="text-sm text-[var(--color-text-muted)]">No OCI components documented.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <p className="app-label">Technical Flow</p>
+        {technicalFlow.length > 0 ? (
+          <ol className="mt-3 space-y-2 text-sm text-[var(--color-text-secondary)]">
+            {technicalFlow.map((step, index) => (
+              <li key={step} className="flex gap-3">
+                <span className="font-semibold text-[var(--color-text-primary)]">{index + 1}.</span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="mt-3 text-sm text-[var(--color-text-muted)]">No technical flow documented.</p>
+        )}
+      </div>
+
+      <div className="mt-6">
+        <p className="app-label">Business Value</p>
+        <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
+          {patternDetail.business_value ?? "No business value documented."}
+        </p>
+      </div>
+    </section>
+  );
+}
 
 const EMPTY_ESTIMATE: OICEstimateResponse = {
   billing_msgs_per_execution: null,
@@ -122,7 +381,7 @@ function createNode(toolKey: string, index: number, x?: number, y?: number): Can
     label: toolKey,
     payloadNote: "",
     x: x ?? 240 + column * 220,
-    y: y ?? 80 + row * 140,
+    y: y ?? 72 + row * 170,
   };
 }
 
@@ -337,6 +596,8 @@ export function IntegrationCanvas({
   destinationSystem,
   destinationTechnology,
   selectedPattern,
+  patternDetail,
+  serviceProfiles,
   coreTools,
   toolOptions,
   overlayOptions,
@@ -353,6 +614,10 @@ export function IntegrationCanvas({
   const overlayToolKeys = useMemo(
     () => overlayOptions.map((option) => option.value),
     [overlayOptions],
+  );
+  const serviceProfilesById = useMemo(
+    () => new Map(serviceProfiles.map((profile) => [profile.service_id, profile])),
+    [serviceProfiles],
   );
   const overlayToolSet = useMemo(() => new Set(overlayToolKeys), [overlayToolKeys]);
   const patternMap = useMemo(
@@ -377,6 +642,7 @@ export function IntegrationCanvas({
   const [edges, setEdges] = useState<CanvasEdge[]>(() => initialStateRef.current.edges);
   const [canvasWidth, setCanvasWidth] = useState<number>(MIN_CANVAS_WIDTH);
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
+  const viewportRef = useRef(viewport);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedElement, setSelectedElement] = useState<SelectedElement>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
@@ -394,6 +660,10 @@ export function IntegrationCanvas({
   const lastSerializedRef = useRef<string>(
     serializeCanvasState(initialStateRef.current.nodes, initialStateRef.current.edges, initialSemantics),
   );
+
+  useEffect(() => {
+    viewportRef.current = viewport;
+  }, [viewport]);
 
   useEffect(() => {
     const shell = canvasShellRef.current;
@@ -533,6 +803,35 @@ export function IntegrationCanvas({
   }, [canvasWidth]);
 
   useEffect(() => {
+    const element = svgRef.current;
+    if (!element) {
+      return;
+    }
+
+    function handleNativeWheel(event: WheelEvent): void {
+      event.preventDefault();
+      const currentViewport = viewportRef.current;
+      const canvasPoint = eventCanvasPoint(event, element!);
+      const worldBefore = screenToWorld(canvasPoint, currentViewport);
+      const nextScale = clamp(
+        currentViewport.scale * (event.deltaY > 0 ? 0.92 : 1.08),
+        MIN_SCALE,
+        MAX_SCALE,
+      );
+      setViewport({
+        scale: nextScale,
+        x: canvasPoint.x - worldBefore.x * nextScale,
+        y: canvasPoint.y - worldBefore.y * nextScale,
+      });
+    }
+
+    element.addEventListener("wheel", handleNativeWheel, { passive: false });
+    return () => {
+      element.removeEventListener("wheel", handleNativeWheel);
+    };
+  }, []);
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select")) {
@@ -577,16 +876,25 @@ export function IntegrationCanvas({
   const monthlyBilling = oicEstimate.billing_msgs_per_month;
   const canvasCursor = panning ? "grabbing" : "grab";
   const processingToolKeys = semantics.coreToolKeys;
+  const presentToolKeys = useMemo(
+    () => new Set(nodes.map((node) => node.toolKey)),
+    [nodes],
+  );
   const activeOverlayKeys = semantics.overlayKeys;
   const includesOicGen3 = processingToolKeys.some((toolKey) => toolKey.toLowerCase() === "oic gen3");
   const suggestedPatterns = semantics.suggestedPatternIds
     .map((patternId) => patternMap.get(patternId))
     .filter((pattern): pattern is PatternDefinition => Boolean(pattern));
-  const selectedPatternDefinition = selectedPattern ? patternMap.get(selectedPattern) ?? null : null;
+  const selectedPatternDefinition =
+    patternDetail ?? (selectedPattern ? patternMap.get(selectedPattern) ?? null : null);
   const patternMismatch =
     Boolean(selectedPatternDefinition) &&
     semantics.matchedCombinations.length > 0 &&
     !semantics.suggestedPatternIds.includes(selectedPattern ?? "");
+  const designViolations = useMemo(
+    () => designViolationsForTools(payloadKb, presentToolKeys, serviceProfilesById),
+    [payloadKb, presentToolKeys, serviceProfilesById],
+  );
 
   function addNode(toolKey: string, point?: { x: number; y: number }): void {
     const nextNode = createNode(toolKey, nodes.length);
@@ -738,23 +1046,6 @@ export function IntegrationCanvas({
     setConnecting(null);
   }
 
-  function handleWheel(event: React.WheelEvent<SVGSVGElement>): void {
-    event.preventDefault();
-    const svg = svgRef.current;
-    if (!svg) {
-      return;
-    }
-
-    const canvasPoint = eventCanvasPoint(event, svg);
-    const worldBefore = screenToWorld(canvasPoint, viewport);
-    const nextScale = clamp(viewport.scale * (event.deltaY > 0 ? 0.92 : 1.08), MIN_SCALE, MAX_SCALE);
-    setViewport({
-      scale: nextScale,
-      x: canvasPoint.x - worldBefore.x * nextScale,
-      y: canvasPoint.y - worldBefore.y * nextScale,
-    });
-  }
-
   function renderPaletteButton(option: DictionaryOption, isOverlay: boolean): JSX.Element {
     const definition = toolDefinition(option.value);
     return (
@@ -836,6 +1127,20 @@ export function IntegrationCanvas({
         </div>
       </div>
 
+      {designViolations.length > 0 ? (
+        <section
+          className="rounded-[1.75rem] border p-4"
+          style={{ background: "#fef3c7", borderColor: "#f59e0b", color: "#92400e" }}
+        >
+          <p className="font-semibold">⚠ Design Constraints Detected</p>
+          <div className="mt-3 space-y-2 text-sm">
+            {designViolations.map((violation) => (
+              <p key={violation}>• {violation}</p>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div ref={canvasShellRef} className="relative">
           <div className="pointer-events-none absolute left-5 top-5 z-10 inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] shadow-sm backdrop-blur">
@@ -864,7 +1169,6 @@ export function IntegrationCanvas({
               onMouseMove={handleCanvasMouseMove}
               onMouseUp={handleCanvasMouseUp}
               onMouseLeave={handleCanvasMouseUp}
-              onWheel={handleWheel}
               onContextMenu={(event) => event.preventDefault()}
             >
               <defs>
@@ -990,6 +1294,9 @@ export function IntegrationCanvas({
                         surface: "#dbeafe",
                       }
                     : toolDefinition(node.toolKey);
+                  const serviceProfile = node.fixed
+                    ? null
+                    : resolveServiceProfile(node.toolKey, serviceProfilesById);
                   const isOverlayNode = !node.fixed && overlayToolSet.has(node.toolKey);
                   const hovered = hoveredNodeId === node.instanceId;
                   const selected = isNodeSelected(selectedElement, node.instanceId);
@@ -1144,7 +1451,7 @@ export function IntegrationCanvas({
                       ) : !node.fixed ? (
                         <text
                           x={16}
-                          y={84}
+                          y={78}
                           fontSize={10.5}
                           fill={node.payloadNote ? "var(--color-text-secondary)" : "var(--color-text-muted)"}
                           onDoubleClick={(event) => {
@@ -1156,8 +1463,30 @@ export function IntegrationCanvas({
                         </text>
                       ) : null}
 
+                      {!node.fixed && serviceProfile ? (
+                        <foreignObject x={16} y={86} width={width - 32} height={32}>
+                          <div className="app-card-muted h-full rounded-xl px-2 py-1 text-xs text-[var(--color-text-secondary)]">
+                            <div
+                              className="font-semibold"
+                              style={{
+                                color:
+                                  (serviceProfile.sla_uptime_pct ?? 0) < 99.9
+                                    ? "#d97706"
+                                    : "var(--color-text-primary)",
+                              }}
+                            >
+                              SLA{" "}
+                              {serviceProfile.sla_uptime_pct !== null
+                                ? `${serviceProfile.sla_uptime_pct.toFixed(1).replace(/\.0$/, "")}%`
+                                : "n/a"}
+                            </div>
+                            <div className="truncate">{topConstraintLabel(serviceProfile)}</div>
+                          </div>
+                        </foreignObject>
+                      ) : null}
+
                       {!node.fixed ? (
-                        <foreignObject x={16} y={104} width={width - 32} height={28}>
+                        <foreignObject x={16} y={130} width={width - 32} height={28}>
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -1379,6 +1708,8 @@ export function IntegrationCanvas({
           ) : null}
         </div>
       </div>
+
+      {selectedPatternDefinition ? <PatternDetailPanel patternDetail={selectedPatternDefinition} /> : null}
     </div>
   );
 }

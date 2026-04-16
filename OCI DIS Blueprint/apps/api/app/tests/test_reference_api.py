@@ -20,9 +20,9 @@ async def test_patterns_api_returns_enriched_metadata(
             PatternDefinition(
                 pattern_id="#01",
                 name="Request-Reply",
-                category="SÍNCRONO",
+                category="SYNCHRONOUS",
                 description="Immediate response pattern",
-                oci_components="OIC Gen3 — orchestration\nOCI API Gateway — edge",
+                oci_components="OIC Gen3 | OCI API Gateway",
                 when_to_use="Use for low-latency APIs",
                 when_not_to_use="Avoid for long-running jobs",
                 technical_flow="Gateway -> OIC -> ORDS",
@@ -35,8 +35,7 @@ async def test_patterns_api_returns_enriched_metadata(
     response = await api_client.get("/api/v1/patterns/%2301")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["components"] == ["OIC Gen3", "OCI API Gateway"]
-    assert payload["component_details"].startswith("OIC Gen3")
+    assert payload["oci_components"] == "OIC Gen3 | OCI API Gateway"
     assert payload["when_to_use"] == "Use for low-latency APIs"
     assert payload["when_not_to_use"] == "Avoid for long-running jobs"
     assert payload["business_value"] == "Fast partner SLA support"
@@ -149,7 +148,7 @@ async def test_reference_only_patterns_are_explicit_in_pattern_api(
             PatternDefinition(
                 pattern_id="#17",
                 name="Webhook Fanout",
-                category="ASÍNCRONO / API",
+                category="ASYNCHRONOUS / API",
                 description="Distribute one webhook to multiple subscribers",
                 is_system=True,
             )

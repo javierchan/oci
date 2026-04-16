@@ -92,6 +92,28 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
           <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage →</span>
         </Link>
       </section>
+
+      <section className="app-card p-6">
+        <p className="app-label">Synthetic Lab</p>
+        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">
+          Current Delivery Status
+        </h2>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+          Synthetic enterprise generation is available today through the backend service and seed script used for
+          validation runs. The full admin UI for job submission, presets, and cleanup is documented for M24 but is
+          not productized in this screen yet.
+        </p>
+        <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
+          Generated synthetic projects appear in the standard Projects workspace after execution, alongside the
+          generated reports under <code>apps/api/generated-reports/</code>.
+        </p>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <Link href="/projects" className="app-button-primary">
+            Open Projects
+          </Link>
+          <span className="app-theme-chip">Script + Service Available</span>
+        </div>
+      </section>
     </div>
   );
 }

@@ -1,14 +1,17 @@
-"""Patterns router — served from seeded and admin-managed reference data."""
+"""Patterns router — list, read, and govern integration pattern taxonomy."""
 
-from fastapi import APIRouter, Depends, Header, Response, status
+from typing import Any, cast
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
+from app.models import PatternDefinition
 from app.schemas.reference import (
     PatternDefinitionCreate,
     PatternDefinitionResponse,
     PatternDefinitionUpdate,
-    PatternListResponse,
 )
 from app.services import reference_service
 from app.services.authz import require_admin
@@ -16,15 +19,31 @@ from app.services.authz import require_admin
 router = APIRouter(prefix="/patterns", tags=["Patterns"])
 
 
-@router.get("", response_model=PatternListResponse, include_in_schema=False)
-@router.get("/", response_model=PatternListResponse, summary="List all integration patterns")
-async def list_patterns(db: AsyncSession = Depends(get_db)) -> PatternListResponse:
-    return await reference_service.list_patterns(db)
+def _serialize_pattern(pattern: PatternDefinition) -> dict[str, Any]:
+    return cast(dict[str, Any], reference_service.serialize_pattern(pattern).model_dump(mode="json"))
 
 
-@router.get("/{pattern_id}", response_model=PatternDefinitionResponse, summary="Get a pattern by ID (e.g. #01)")
-async def get_pattern(pattern_id: str, db: AsyncSession = Depends(get_db)) -> PatternDefinitionResponse:
-    return await reference_service.get_pattern(pattern_id, db)
+@router.get("", include_in_schema=False)
+@router.get("/", summary="List all integration patterns")
+async def list_patterns(db: AsyncSession = Depends(get_db)) -> dict[str, object]:
+    result = await db.scalars(
+        select(PatternDefinition)
+        .where(PatternDefinition.is_active.is_(True))
+        .order_by(PatternDefinition.pattern_id.asc())
+    )
+    patterns = [_serialize_pattern(pattern) for pattern in result.all()]
+    return {"patterns": patterns, "total": len(patterns)}
+
+
+@router.get("/{pattern_id}", summary="Get a pattern by ID (e.g. #01)")
+async def get_pattern(pattern_id: str, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    pattern = await db.scalar(select(PatternDefinition).where(PatternDefinition.pattern_id == pattern_id))
+    if pattern is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Pattern not found", "error_code": "PATTERN_NOT_FOUND"},
+        )
+    return _serialize_pattern(pattern)
 
 
 @router.post("/", response_model=PatternDefinitionResponse, status_code=status.HTTP_201_CREATED, summary="Create a custom pattern definition")

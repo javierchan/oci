@@ -38,6 +38,7 @@ class ProjectResponse(BaseModel):
     owner_id: str
     description: Optional[str]
     status: str
+    project_metadata: Optional[dict[str, object]] = None
     created_at: datetime
     updated_at: datetime
 
