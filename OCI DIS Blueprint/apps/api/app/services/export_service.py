@@ -20,6 +20,7 @@ from app.models import DictionaryOption, Project, VolumetrySnapshot
 from app.schemas.export import ExportJobResponse
 from app.services import dashboard_service, justification_service, recalc_service
 from app.services.catalog_service import list_integrations
+from app.services.pattern_support import get_pattern_support
 from app.services.serializers import sanitize_for_json
 
 
@@ -231,6 +232,22 @@ def _excel_cell_value(value: object) -> object:
     return serialized
 
 
+def _pattern_support_payload(pattern_ids: list[str]) -> dict[str, object]:
+    selected_pattern_ids = sorted({pattern_id for pattern_id in pattern_ids if pattern_id})
+    return {
+        "fully_supported_pattern_ids": [
+            pattern_id
+            for pattern_id in selected_pattern_ids
+            if get_pattern_support(pattern_id).parity_ready
+        ],
+        "reference_only_pattern_ids": [
+            pattern_id
+            for pattern_id in selected_pattern_ids
+            if not get_pattern_support(pattern_id).parity_ready
+        ],
+    }
+
+
 async def generate_capture_template(db: AsyncSession) -> bytes:
     """Build the offline integration-capture workbook template."""
 
@@ -389,6 +406,24 @@ async def create_xlsx_export(
         for metric, value in metrics.items():
             consolidated_sheet.append([domain, metric, _excel_cell_value(value)])
 
+    support_sheet = workbook.create_sheet("Pattern Support")
+    support_sheet.append(["Pattern ID", "Support", "Parity Ready", "Summary"])
+    selected_pattern_ids = sorted(
+        {
+            str(row.get("selected_pattern"))
+            for row in catalog_rows
+            if row.get("selected_pattern")
+        }
+    )
+    if selected_pattern_ids:
+        for pattern_id in selected_pattern_ids:
+            support = get_pattern_support(pattern_id)
+            support_sheet.append(
+                [pattern_id, support.badge_label, "Yes" if support.parity_ready else "No", support.summary]
+            )
+    else:
+        support_sheet.append(["—", "No assigned patterns", "—", "This export does not include any selected pattern IDs."])
+
     _ensure_export_dirs()
     job_id = str(uuid4())
     file_path = _file_path(job_id, "xlsx")
@@ -427,6 +462,9 @@ async def create_json_export(
             "dashboard": dashboard_snapshot.model_dump(),
             "catalog": catalog_page.model_dump(),
             "justifications": justifications.model_dump(),
+            "pattern_support_boundary": _pattern_support_payload(
+                [item.selected_pattern for item in catalog_page.integrations if item.selected_pattern]
+            ),
             "exported_at": _utc_now(),
         }
     )
@@ -453,6 +491,10 @@ async def create_pdf_export(
 
     project = await _load_project(project_id, db)
     dashboard_snapshot = await dashboard_service.get_snapshot(project_id, snapshot_id, db)
+    catalog_page = await list_integrations(project_id, page=1, page_size=10_000, filters={}, db=db)
+    support_boundary = _pattern_support_payload(
+        [item.selected_pattern for item in catalog_page.integrations if item.selected_pattern]
+    )
 
     lines = [
         f"OCI DIS Blueprint Dashboard Export - {project.name}",
@@ -469,6 +511,16 @@ async def create_pdf_export(
         f"QA OK %: {dashboard_snapshot.maturity.qa_ok_pct:.2f}",
         f"Pattern assigned %: {dashboard_snapshot.maturity.pattern_assigned_pct:.2f}",
     ]
+    if support_boundary["reference_only_pattern_ids"]:
+        lines.append(
+            "Reference-only patterns in use: "
+            + ", ".join(cast(list[str], support_boundary["reference_only_pattern_ids"]))
+        )
+    if support_boundary["fully_supported_pattern_ids"]:
+        lines.append(
+            "Parity-ready patterns in use: "
+            + ", ".join(cast(list[str], support_boundary["fully_supported_pattern_ids"]))
+        )
     for risk in dashboard_snapshot.risks[:5]:
         lines.append(f"Risk {risk.label}: {risk.count}")
 

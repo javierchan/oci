@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.schemas.reference import (
+    CanvasGovernanceResponse,
     DictionaryCategoryListResponse,
     DictionaryOptionCreate,
     DictionaryOptionListResponse,
@@ -20,6 +21,15 @@ router = APIRouter(prefix="/dictionaries", tags=["Dictionaries"])
 @router.get("/", response_model=DictionaryCategoryListResponse, summary="List all dictionary categories")
 async def list_categories(db: AsyncSession = Depends(get_db)) -> DictionaryCategoryListResponse:
     return await reference_service.list_dictionary_categories(db)
+
+
+@router.get(
+    "/canvas-governance",
+    response_model=CanvasGovernanceResponse,
+    summary="List governed tools, overlays, and standard combinations for the design canvas",
+)
+async def get_canvas_governance(db: AsyncSession = Depends(get_db)) -> CanvasGovernanceResponse:
+    return await reference_service.get_canvas_governance(db)
 
 
 @router.get("/{category}", response_model=DictionaryOptionListResponse, summary="List options for a category")

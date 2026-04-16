@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,7 +18,11 @@ class PatternDefinitionCreate(BaseModel):
     category: str
     description: Optional[str] = None
     components: Optional[list[str]] = None
+    component_details: Optional[str] = None
+    when_to_use: Optional[str] = None
+    when_not_to_use: Optional[str] = None
     flow: Optional[str] = None
+    business_value: Optional[str] = None
 
 
 class PatternDefinitionUpdate(BaseModel):
@@ -30,7 +34,36 @@ class PatternDefinitionUpdate(BaseModel):
     category: Optional[str] = None
     description: Optional[str] = None
     components: Optional[list[str]] = None
+    component_details: Optional[str] = None
+    when_to_use: Optional[str] = None
+    when_not_to_use: Optional[str] = None
     flow: Optional[str] = None
+    business_value: Optional[str] = None
+
+
+class PatternSupportDimensionsResponse(BaseModel):
+    """Per-surface pattern support matrix for parity transparency."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    capture_selection: bool
+    qa_validation: bool
+    volumetry: bool
+    dashboard: bool
+    narratives: bool
+    exports: bool
+
+
+class PatternSupportResponse(BaseModel):
+    """Serialized support boundary for one pattern."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    level: Literal["full", "partial", "reference"]
+    badge_label: str
+    summary: str
+    parity_ready: bool
+    dimensions: PatternSupportDimensionsResponse
 
 
 class PatternDefinitionResponse(BaseModel):
@@ -44,10 +77,15 @@ class PatternDefinitionResponse(BaseModel):
     category: str
     description: Optional[str]
     components: Optional[list[str]]
+    component_details: Optional[str]
+    when_to_use: Optional[str]
+    when_not_to_use: Optional[str]
     flow: Optional[str]
+    business_value: Optional[str]
     is_system: bool
     is_active: bool
     version: str
+    support: PatternSupportResponse
     created_at: datetime
     updated_at: datetime
 
@@ -72,8 +110,11 @@ class DictionaryOptionResponse(BaseModel):
     value: str
     description: Optional[str]
     executions_per_day: Optional[float]
+    is_volumetric: Optional[bool]
     sort_order: int
     is_active: bool
+    version: str
+    updated_at: datetime
 
 
 class DictionaryCategorySummary(BaseModel):
@@ -100,6 +141,33 @@ class DictionaryOptionListResponse(BaseModel):
 
     category: str
     options: list[DictionaryOptionResponse]
+
+
+class CanvasCombinationResponse(BaseModel):
+    """Governed canvas combination metadata."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    code: str
+    name: str
+    capture_standard: str
+    supported_tool_keys: list[str]
+    compatible_pattern_ids: list[str]
+    activates_metrics: list[str]
+    activates_volumetric_metrics: bool
+    recommended_overlays: list[str]
+    guidance: str
+    status: str
+
+
+class CanvasGovernanceResponse(BaseModel):
+    """Reference payload used by the integration design canvas."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    tools: list[DictionaryOptionResponse]
+    overlays: list[DictionaryOptionResponse]
+    combinations: list[CanvasCombinationResponse]
 
 
 class DictionaryOptionCreate(BaseModel):

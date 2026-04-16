@@ -8,7 +8,7 @@ import { VolumetryCard } from "@/components/volumetry-card";
 import { api } from "@/lib/api";
 import { formatCompactNumber, formatNumber } from "@/lib/format";
 import { parityBenchmark } from "@/lib/parity";
-import type { DashboardSnapshot } from "@/lib/types";
+import type { DashboardCoverageMetric, DashboardSnapshot } from "@/lib/types";
 
 type ProjectDashboardPageProps = {
   params: {
@@ -50,6 +50,15 @@ export default async function ProjectDashboardPage({
   const latestDashboard: DashboardSnapshot | null = dashboardSnapshots.snapshots[0]
     ? await api.getDashboardSnapshot(projectId, dashboardSnapshots.snapshots[0].snapshot_id)
     : null;
+  const coverageMetrics: Array<[string, DashboardCoverageMetric]> = latestDashboard
+    ? [
+        ["Payload Coverage", latestDashboard.charts.coverage.payload],
+        ["Pattern Coverage", latestDashboard.charts.coverage.pattern],
+        ["Trigger Coverage", latestDashboard.charts.coverage.trigger],
+        ["Formal ID Coverage", latestDashboard.charts.coverage.formal_id],
+        ["Fan-out Coverage", latestDashboard.charts.coverage.fan_out],
+      ]
+    : [];
 
   const qaBreakdown = catalogPage.integrations.reduce(
     (accumulator: Record<string, number>, integration) => {
@@ -170,7 +179,42 @@ export default async function ProjectDashboardPage({
       </section>
 
       {latestDashboard ? (
-        <section className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
+        <section className="space-y-6">
+          {latestDashboard.charts.forecast_confidence.level !== "high" ? (
+            <article
+              className={[
+                "rounded-[1.5rem] border p-5",
+                latestDashboard.charts.forecast_confidence.level === "low"
+                  ? "border-amber-300 bg-amber-50 text-amber-900"
+                  : "border-sky-300 bg-sky-50 text-sky-900",
+              ].join(" ")}
+            >
+              <p className="text-xs uppercase tracking-[0.25em]">
+                {latestDashboard.charts.forecast_confidence.level === "low" ? "Forecast Warning" : "Forecast Notice"}
+              </p>
+              <h2 className="mt-2 text-xl font-semibold">{latestDashboard.charts.forecast_confidence.title}</h2>
+              <p className="mt-2 text-sm leading-6">{latestDashboard.charts.forecast_confidence.message}</p>
+            </article>
+          ) : null}
+
+          <div className="grid gap-4 xl:grid-cols-5 md:grid-cols-2">
+            {coverageMetrics.map(([label, metric]) => (
+              <article key={label} className="app-card-muted p-5">
+                <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">{label}</p>
+                <p className="mt-3 text-3xl font-semibold text-[var(--color-text-primary)]">
+                  {formatNumber(metric.complete, 0)}
+                  <span className="ml-1 text-lg text-[var(--color-text-secondary)]">
+                    / {formatNumber(metric.total, 0)}
+                  </span>
+                </p>
+                <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+                  {formatNumber(metric.ratio * 100, 1)}% complete
+                </p>
+              </article>
+            ))}
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
           <article className="app-card p-6">
             <p className="app-label">Pattern Mix</p>
             <div className="mt-4 space-y-3">
@@ -265,6 +309,7 @@ export default async function ProjectDashboardPage({
               ))}
             </div>
           </article>
+          </div>
         </section>
       ) : null}
     </div>

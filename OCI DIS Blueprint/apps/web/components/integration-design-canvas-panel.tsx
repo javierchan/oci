@@ -7,7 +7,7 @@ import { startTransition, useMemo, useState } from "react";
 
 import { IntegrationCanvas } from "@/components/integration-canvas";
 import { api } from "@/lib/api";
-import type { DictionaryOption, Integration, PatternDefinition } from "@/lib/types";
+import type { CanvasCombination, DictionaryOption, Integration, PatternDefinition } from "@/lib/types";
 
 type PatternCategory = "SÍNCRONO" | "ASÍNCRONO" | "SÍNCRONO + ASÍNCRONO";
 
@@ -16,6 +16,8 @@ type IntegrationDesignCanvasPanelProps = {
   integration: Integration;
   patterns: PatternDefinition[];
   toolOptions: DictionaryOption[];
+  overlayOptions: DictionaryOption[];
+  combinations: CanvasCombination[];
 };
 
 function parseCoreTools(value: string | null): string[] {
@@ -40,6 +42,8 @@ export function IntegrationDesignCanvasPanel({
   integration,
   patterns,
   toolOptions,
+  overlayOptions,
+  combinations,
 }: IntegrationDesignCanvasPanelProps): JSX.Element | null {
   const router = useRouter();
   const [canvasState, setCanvasState] = useState<string>(integration.additional_tools_overlays ?? "");
@@ -47,6 +51,7 @@ export function IntegrationDesignCanvasPanel({
   const [saving, setSaving] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [hasConnectedRoute, setHasConnectedRoute] = useState<boolean>(true);
 
   const patternMap = useMemo(
     () =>
@@ -64,6 +69,12 @@ export function IntegrationDesignCanvasPanel({
   }
 
   async function handleSaveCanvas(): Promise<void> {
+    if (!hasConnectedRoute) {
+      setError("Connect the source and destination through the designed pipeline before saving.");
+      setStatusMessage("");
+      return;
+    }
+
     setSaving(true);
     setStatusMessage("");
     setError("");
@@ -101,7 +112,7 @@ export function IntegrationDesignCanvasPanel({
           onClick={() => {
             void handleSaveCanvas();
           }}
-          disabled={saving}
+          disabled={saving || !hasConnectedRoute}
           className="app-button-primary"
         >
           {saving ? "Saving canvas…" : "Save canvas"}
@@ -109,19 +120,24 @@ export function IntegrationDesignCanvasPanel({
       </div>
 
       <IntegrationCanvas
+        projectId={integration.project_id}
         sourceSystem={integration.source_system}
         sourceTechnology={integration.source_technology}
         destinationSystem={integration.destination_system}
         destinationTechnology={integration.destination_technology_1}
         selectedPattern={integration.selected_pattern}
         coreTools={parseCoreTools(integration.core_tools)}
-        availableTools={toolOptions.map((option: DictionaryOption) => option.value)}
+        toolOptions={toolOptions}
+        overlayOptions={overlayOptions}
+        combinations={combinations}
+        patterns={patterns}
         payloadKb={integration.payload_per_execution_kb}
         frequency={integration.frequency}
         patternCategory={normalizePatternCategory(patternMap.get(integration.selected_pattern ?? "")?.category)}
         value={canvasState || null}
         onChange={setCanvasState}
         onToolsChange={setToolKeys}
+        onConnectionValidityChange={setHasConnectedRoute}
       />
 
       <div className="flex flex-wrap items-center gap-4 text-sm">

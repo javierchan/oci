@@ -206,10 +206,28 @@ export interface PatternDefinition {
   category: string;
   description: string | null;
   components: string[] | null;
+  component_details: string | null;
+  when_to_use: string | null;
+  when_not_to_use: string | null;
   flow: string | null;
+  business_value: string | null;
   is_system: boolean;
   is_active: boolean;
   version: string;
+  support: {
+    level: "full" | "partial" | "reference";
+    badge_label: string;
+    summary: string;
+    parity_ready: boolean;
+    dimensions: {
+      capture_selection: boolean;
+      qa_validation: boolean;
+      volumetry: boolean;
+      dashboard: boolean;
+      narratives: boolean;
+      exports: boolean;
+    };
+  };
   created_at: string;
   updated_at: string;
 }
@@ -222,10 +240,14 @@ export interface PatternList {
 export interface PatternDefinitionCreate {
   pattern_id: string;
   name: string;
-  category: "SÍNCRONO" | "ASÍNCRONO" | "SÍNCRONO + ASÍNCRONO";
+  category: string;
   description?: string;
   components?: string[];
+  component_details?: string;
+  when_to_use?: string;
+  when_not_to_use?: string;
   flow?: string;
+  business_value?: string;
 }
 
 export interface DictionaryOption {
@@ -235,14 +257,35 @@ export interface DictionaryOption {
   value: string;
   description: string | null;
   executions_per_day: number | null;
+  is_volumetric: boolean | null;
   sort_order: number;
   is_active: boolean;
+  version: string;
   updated_at?: string;
 }
 
 export interface DictionaryOptionList {
   category: string;
   options: DictionaryOption[];
+}
+
+export interface CanvasCombination {
+  code: string;
+  name: string;
+  capture_standard: string;
+  supported_tool_keys: string[];
+  compatible_pattern_ids: string[];
+  activates_metrics: string[];
+  activates_volumetric_metrics: boolean;
+  recommended_overlays: string[];
+  guidance: string;
+  status: string;
+}
+
+export interface CanvasGovernance {
+  tools: DictionaryOption[];
+  overlays: DictionaryOption[];
+  combinations: CanvasCombination[];
 }
 
 export interface DictionaryCategorySummary {
@@ -259,6 +302,10 @@ export interface DictOptionCreate {
   value: string;
   description?: string;
   executions_per_day?: number | null;
+  is_volumetric?: boolean | null;
+  sort_order?: number;
+  is_active?: boolean;
+  version?: string;
 }
 
 export interface DictOption {
@@ -268,6 +315,10 @@ export interface DictOption {
   value: string;
   description?: string | null;
   executions_per_day?: number | null;
+  is_volumetric?: boolean | null;
+  sort_order?: number;
+  is_active?: boolean;
+  version?: string;
   updated_at?: string;
 }
 
@@ -304,15 +355,29 @@ export interface AssumptionSetCreate {
   version: string;
   oic_billing_threshold_kb: number;
   oic_pack_size_msgs_per_hour: number;
+  oic_byol_pack_size_msgs_per_hour: number;
   month_days: number;
   oic_rest_max_payload_kb: number;
   oic_ftp_max_payload_kb: number;
   oic_kafka_max_payload_kb: number;
   oic_timeout_s: number;
   streaming_partition_throughput_mb_s: number;
+  streaming_read_throughput_mb_s: number;
+  streaming_max_message_size_mb: number;
+  streaming_retention_days: number;
+  streaming_default_partitions: number;
   functions_default_duration_ms: number;
   functions_default_memory_mb: number;
   functions_default_concurrency: number;
+  functions_max_timeout_s: number;
+  functions_batch_size_records: number;
+  queue_billing_unit_kb: number;
+  queue_max_message_kb: number;
+  queue_retention_days: number;
+  queue_throughput_soft_limit_msgs_per_second: number;
+  data_integration_workspaces_per_region: number;
+  data_integration_deleted_workspace_retention_days: number;
+  raw_assumptions?: Record<string, unknown>;
 }
 
 export interface AssumptionSet extends AssumptionSetCreate {
@@ -480,13 +545,20 @@ export interface DashboardKPIStrip {
   functions_execution_units_gb_s: number;
 }
 
+export interface DashboardCoverageMetric {
+  complete: number;
+  total: number;
+  ratio: number;
+}
+
 export interface DashboardCoverage {
   total_integrations: number;
-  with_interface_id: number;
-  without_interface_id: number;
-  pattern_assigned: number;
-  payload_informed: number;
-  source_destination_informed: number;
+  formal_id: DashboardCoverageMetric;
+  pattern: DashboardCoverageMetric;
+  payload: DashboardCoverageMetric;
+  trigger: DashboardCoverageMetric;
+  source_destination: DashboardCoverageMetric;
+  fan_out: DashboardCoverageMetric;
 }
 
 export interface DashboardCompleteness {
@@ -510,11 +582,19 @@ export interface DashboardPayloadDistributionBucket {
   count: number;
 }
 
+export interface DashboardForecastConfidence {
+  level: string;
+  title: string;
+  message: string;
+  payload_coverage_ratio: number;
+}
+
 export interface DashboardCharts {
   coverage: DashboardCoverage;
   completeness: DashboardCompleteness;
   pattern_mix: DashboardPatternMixEntry[];
   payload_distribution: DashboardPayloadDistributionBucket[];
+  forecast_confidence: DashboardForecastConfidence;
 }
 
 export interface DashboardRisk {

@@ -5,6 +5,7 @@ import type {
   AssumptionSet,
   AssumptionSetCreate,
   AuditPage,
+  CanvasGovernance,
   CatalogIntegrationDetail,
   CatalogIntegrationDeleteResponse,
   CatalogPage,
@@ -115,7 +116,7 @@ type RawAssumptionSet = {
   version: string;
   label: string;
   is_default: boolean;
-  assumptions: Record<string, number>;
+  assumptions: Record<string, unknown>;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -125,6 +126,11 @@ type RawAssumptionList = {
   assumption_sets: RawAssumptionSet[];
 };
 
+function readAssumptionNumber(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function normalizeAssumption(raw: RawAssumptionSet): AssumptionSet {
   return {
     id: raw.id,
@@ -132,19 +138,52 @@ function normalizeAssumption(raw: RawAssumptionSet): AssumptionSet {
     is_default: raw.is_default,
     created_at: raw.created_at,
     updated_at: raw.updated_at,
-    oic_billing_threshold_kb: Number(raw.assumptions.oic_billing_threshold_kb ?? 50),
-    oic_pack_size_msgs_per_hour: Number(raw.assumptions.oic_pack_size_msgs_per_hour ?? 5000),
-    month_days: Number(raw.assumptions.month_days ?? 30),
-    oic_rest_max_payload_kb: Number(raw.assumptions.oic_rest_max_payload_kb ?? 50000),
-    oic_ftp_max_payload_kb: Number(raw.assumptions.oic_ftp_max_payload_kb ?? 50000),
-    oic_kafka_max_payload_kb: Number(raw.assumptions.oic_kafka_max_payload_kb ?? 10000),
-    oic_timeout_s: Number(raw.assumptions.oic_timeout_s ?? 300),
-    streaming_partition_throughput_mb_s: Number(
-      raw.assumptions.streaming_partition_throughput_mb_s ?? 1,
+    oic_billing_threshold_kb: readAssumptionNumber(raw.assumptions.oic_billing_threshold_kb, 50),
+    oic_pack_size_msgs_per_hour: readAssumptionNumber(raw.assumptions.oic_pack_size_msgs_per_hour, 5000),
+    oic_byol_pack_size_msgs_per_hour: readAssumptionNumber(
+      raw.assumptions.oic_byol_pack_size_msgs_per_hour,
+      20000,
     ),
-    functions_default_duration_ms: Number(raw.assumptions.functions_default_duration_ms ?? 200),
-    functions_default_memory_mb: Number(raw.assumptions.functions_default_memory_mb ?? 256),
-    functions_default_concurrency: Number(raw.assumptions.functions_default_concurrency ?? 1),
+    month_days: readAssumptionNumber(raw.assumptions.month_days, 31),
+    oic_rest_max_payload_kb: readAssumptionNumber(raw.assumptions.oic_rest_max_payload_kb, 51200),
+    oic_ftp_max_payload_kb: readAssumptionNumber(raw.assumptions.oic_ftp_max_payload_kb, 51200),
+    oic_kafka_max_payload_kb: readAssumptionNumber(raw.assumptions.oic_kafka_max_payload_kb, 10240),
+    oic_timeout_s: readAssumptionNumber(raw.assumptions.oic_timeout_s, 300),
+    streaming_partition_throughput_mb_s: readAssumptionNumber(
+      raw.assumptions.streaming_partition_throughput_mb_s,
+      1,
+    ),
+    streaming_read_throughput_mb_s: readAssumptionNumber(
+      raw.assumptions.streaming_read_throughput_mb_s,
+      2,
+    ),
+    streaming_max_message_size_mb: readAssumptionNumber(
+      raw.assumptions.streaming_max_message_size_mb,
+      1,
+    ),
+    streaming_retention_days: readAssumptionNumber(raw.assumptions.streaming_retention_days, 7),
+    streaming_default_partitions: readAssumptionNumber(raw.assumptions.streaming_default_partitions, 200),
+    functions_default_duration_ms: readAssumptionNumber(raw.assumptions.functions_default_duration_ms, 2000),
+    functions_default_memory_mb: readAssumptionNumber(raw.assumptions.functions_default_memory_mb, 256),
+    functions_default_concurrency: readAssumptionNumber(raw.assumptions.functions_default_concurrency, 1),
+    functions_max_timeout_s: readAssumptionNumber(raw.assumptions.functions_max_timeout_s, 300),
+    functions_batch_size_records: readAssumptionNumber(raw.assumptions.functions_batch_size_records, 500),
+    queue_billing_unit_kb: readAssumptionNumber(raw.assumptions.queue_billing_unit_kb, 64),
+    queue_max_message_kb: readAssumptionNumber(raw.assumptions.queue_max_message_kb, 256),
+    queue_retention_days: readAssumptionNumber(raw.assumptions.queue_retention_days, 7),
+    queue_throughput_soft_limit_msgs_per_second: readAssumptionNumber(
+      raw.assumptions.queue_throughput_soft_limit_msgs_per_second,
+      10,
+    ),
+    data_integration_workspaces_per_region: readAssumptionNumber(
+      raw.assumptions.data_integration_workspaces_per_region,
+      5,
+    ),
+    data_integration_deleted_workspace_retention_days: readAssumptionNumber(
+      raw.assumptions.data_integration_deleted_workspace_retention_days,
+      15,
+    ),
+    raw_assumptions: raw.assumptions,
   };
 }
 
@@ -168,11 +207,15 @@ function serializeAssumption(
     ...(version ? { version } : {}),
     ...(options.label ? { label: options.label } : {}),
     assumptions: {
+      ...(body.raw_assumptions ?? {}),
       ...(body.oic_billing_threshold_kb !== undefined
         ? { oic_billing_threshold_kb: body.oic_billing_threshold_kb }
         : {}),
       ...(body.oic_pack_size_msgs_per_hour !== undefined
         ? { oic_pack_size_msgs_per_hour: body.oic_pack_size_msgs_per_hour }
+        : {}),
+      ...(body.oic_byol_pack_size_msgs_per_hour !== undefined
+        ? { oic_byol_pack_size_msgs_per_hour: body.oic_byol_pack_size_msgs_per_hour }
         : {}),
       ...(body.month_days !== undefined ? { month_days: body.month_days } : {}),
       ...(body.oic_rest_max_payload_kb !== undefined
@@ -188,6 +231,18 @@ function serializeAssumption(
       ...(body.streaming_partition_throughput_mb_s !== undefined
         ? { streaming_partition_throughput_mb_s: body.streaming_partition_throughput_mb_s }
         : {}),
+      ...(body.streaming_read_throughput_mb_s !== undefined
+        ? { streaming_read_throughput_mb_s: body.streaming_read_throughput_mb_s }
+        : {}),
+      ...(body.streaming_max_message_size_mb !== undefined
+        ? { streaming_max_message_size_mb: body.streaming_max_message_size_mb }
+        : {}),
+      ...(body.streaming_retention_days !== undefined
+        ? { streaming_retention_days: body.streaming_retention_days }
+        : {}),
+      ...(body.streaming_default_partitions !== undefined
+        ? { streaming_default_partitions: body.streaming_default_partitions }
+        : {}),
       ...(body.functions_default_duration_ms !== undefined
         ? { functions_default_duration_ms: body.functions_default_duration_ms }
         : {}),
@@ -196,6 +251,36 @@ function serializeAssumption(
         : {}),
       ...(body.functions_default_concurrency !== undefined
         ? { functions_default_concurrency: body.functions_default_concurrency }
+        : {}),
+      ...(body.functions_max_timeout_s !== undefined
+        ? { functions_max_timeout_s: body.functions_max_timeout_s }
+        : {}),
+      ...(body.functions_batch_size_records !== undefined
+        ? { functions_batch_size_records: body.functions_batch_size_records }
+        : {}),
+      ...(body.queue_billing_unit_kb !== undefined
+        ? { queue_billing_unit_kb: body.queue_billing_unit_kb }
+        : {}),
+      ...(body.queue_max_message_kb !== undefined
+        ? { queue_max_message_kb: body.queue_max_message_kb }
+        : {}),
+      ...(body.queue_retention_days !== undefined
+        ? { queue_retention_days: body.queue_retention_days }
+        : {}),
+      ...(body.queue_throughput_soft_limit_msgs_per_second !== undefined
+        ? {
+            queue_throughput_soft_limit_msgs_per_second:
+              body.queue_throughput_soft_limit_msgs_per_second,
+          }
+        : {}),
+      ...(body.data_integration_workspaces_per_region !== undefined
+        ? { data_integration_workspaces_per_region: body.data_integration_workspaces_per_region }
+        : {}),
+      ...(body.data_integration_deleted_workspace_retention_days !== undefined
+        ? {
+            data_integration_deleted_workspace_retention_days:
+              body.data_integration_deleted_workspace_retention_days,
+          }
         : {}),
     },
   });
@@ -332,6 +417,9 @@ export const api = {
 
   listDictionaryOptions: (category: string): Promise<DictionaryOptionList> =>
     apiFetch<DictionaryOptionList>(`/api/v1/dictionaries/${category}`),
+
+  getCanvasGovernance: (): Promise<CanvasGovernance> =>
+    apiFetch<CanvasGovernance>("/api/v1/dictionaries/canvas-governance"),
 
   createDictOption: (category: string, body: DictOptionCreate): Promise<DictOption> =>
     apiFetch<DictOption>(`/api/v1/dictionaries/${category}`, {

@@ -15,7 +15,7 @@ Design rules:
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal, Optional
 import math
 
 
@@ -23,20 +23,68 @@ import math
 # Types
 # ---------------------------------------------------------------------------
 
+PayloadUnit = Literal["KB", "MB"]
+
+
 @dataclass(frozen=True)
 class Assumptions:
     """Matches AssumptionSet.assumptions JSON structure (TPL - Supuestos)."""
     oic_billing_threshold_kb: float = 50.0
     oic_pack_size_msgs_per_hour: int = 5000
-    month_days: int = 30
+    oic_byol_pack_size_msgs_per_hour: int = 20000
+    month_days: int = 31
     streaming_partition_throughput_mb_s: float = 1.0
-    functions_default_duration_ms: int = 200
+    streaming_read_throughput_mb_s: float = 2.0
+    streaming_max_message_size_mb: float = 1.0
+    streaming_retention_days: int = 7
+    streaming_default_partitions: int = 200
+    functions_default_duration_ms: int = 2000
     functions_default_memory_mb: int = 256
     functions_default_concurrency: int = 1
+    functions_max_timeout_s: int = 300
+    functions_batch_size_records: int = 500
+    queue_billing_unit_kb: int = 64
+    queue_max_message_kb: int = 256
+    queue_retention_days: int = 7
+    queue_throughput_soft_limit_msgs_per_second: int = 10
+    data_integration_workspaces_per_region: int = 5
+    data_integration_deleted_workspace_retention_days: int = 15
     # OIC service limits
-    oic_rest_max_payload_kb: float = 50_000.0   # 50 MB
-    oic_ftp_max_payload_kb: float = 50_000.0
-    oic_kafka_max_payload_kb: float = 10_000.0
+    oic_rest_max_payload_kb: float = 51_200.0
+    oic_ftp_max_payload_kb: float = 51_200.0
+    oic_kafka_max_payload_kb: float = 10_240.0
+    oic_rest_raw_max_payload_kb: float = 1_048_576.0
+    oic_rest_attachment_max_payload_kb: float = 1_048_576.0
+    oic_rest_json_schema_max_payload_kb: float = 102_400.0
+    oic_soap_max_payload_kb: float = 51_200.0
+    oic_soap_attachment_max_payload_kb: float = 1_048_576.0
+    oic_ftp_stage_file_max_payload_kb: float = 10_485_760.0
+    oic_db_stored_proc_timeout_s: int = 240
+    oic_db_polling_max_payload_kb: float = 10_240.0
+    oic_outbound_read_timeout_s: int = 300
+    oic_outbound_connection_timeout_s: int = 300
+    oic_agent_connection_timeout_s: int = 240
+    oic_project_max_integrations: int = 100
+    oic_project_max_deployments: int = 50
+    oic_project_max_connections: int = 20
+    oic_timeout_s: int = 300
+
+
+def normalize_payload_to_kb(payload_value: float, unit: PayloadUnit) -> CalcResult:
+    """Normalize a payload measurement into the canonical KB unit used by formulas."""
+
+    normalized_unit = unit.upper()
+    if normalized_unit == "KB":
+        value = payload_value
+    else:
+        value = payload_value * 1024.0
+    return CalcResult(
+        value=value,
+        unit="KB",
+        formula="payload_value if unit == 'KB' else payload_value * 1024",
+        inputs={"payload_value": payload_value, "unit": normalized_unit},
+        reason=None,
+    )
 
 
 @dataclass(frozen=True)
@@ -72,32 +120,39 @@ class IntegrationInput:
 # Frequency / execution helpers
 # ---------------------------------------------------------------------------
 
-FREQUENCY_MAP: dict[str, float] = {
-    # Code: executions/day — from TPL - Diccionario
-    "Una vez al día": 1.0,
-    "2 veces al día": 2.0,
-    "4 veces al día": 4.0,
-    "Cada hora": 24.0,
-    "Cada 30 minutos": 48.0,
-    "Cada 15 minutos": 96.0,
-    "Cada 5 minutos": 288.0,
-    "Cada minuto": 1440.0,
-    "Tiempo real": 1440.0,   # treated as per-minute for sizing
-    "Semanal": 1.0 / 7,
-    "Mensual": 1.0 / 30,
-    "Bajo demanda": 1.0,     # conservative default
-    "TBD": None,
+FREQUENCY_MAP: dict[str, float | None] = {
+    "cada 5 minutos": 288.0,
+    "cada 15 minutos": 96.0,
+    "cada 20 minutos": 72.0,
+    "cada 30 minutos": 48.0,
+    "cada 1 hora": 24.0,
+    "cada hora": 24.0,
+    "cada 2 horas": 12.0,
+    "cada 4 horas": 6.0,
+    "cada 6 horas": 4.0,
+    "cada 8 horas": 3.0,
+    "cada 12 horas": 2.0,
+    "una vez al dia": 1.0,
+    "2 veces al dia": 2.0,
+    "4 veces al dia": 4.0,
+    "semanal": 1.0 / 7,
+    "quincenal": 1.0 / 15,
+    "mensual": 1.0 / 30,
+    "tiempo real": 24.0,
+    "bajo demanda": 1.0,
+    "tbd": None,
 }
 
 
 def executions_per_day(frequency_label: str) -> CalcResult:
     """Derive executions/day from a governed frequency label (PRD-028)."""
-    value = FREQUENCY_MAP.get(frequency_label)
+    normalized_label = frequency_label.strip().lower().replace("í", "i").replace("á", "a")
+    value = FREQUENCY_MAP.get(normalized_label)
     return CalcResult(
         value=value,
         unit="executions/day",
-        formula=f"FREQUENCY_MAP['{frequency_label}']",
-        inputs={"frequency_label": frequency_label},
+        formula=f"FREQUENCY_MAP['{normalized_label}']",
+        inputs={"frequency_label": frequency_label, "normalized_frequency_label": normalized_label},
         reason=None if value is not None else f"Frequency '{frequency_label}' not in governed map",
     )
 
@@ -150,7 +205,7 @@ def oic_billing_messages_per_execution(
     return CalcResult(
         value=float(total),
         unit="billing messages/execution",
-        formula="ceil(payload_kb / 50) + ceil(response_kb / 50)",
+        formula="ceil(payload_kb / governed_threshold_kb) + ceil(response_kb / governed_threshold_kb)",
         inputs={"payload_kb": payload_kb, "response_kb": response_kb},
         assumption_keys=["oic_billing_threshold_kb"],
     )
@@ -180,15 +235,25 @@ def oic_billing_messages_per_month(
 def oic_peak_packs_per_hour(
     peak_msgs_per_hour: float,
     assumptions: Assumptions,
+    *,
+    byol: bool = False,
 ) -> CalcResult:
-    """Round up to 5K-message packs/hour for OIC standard licensing (PRD-031)."""
-    packs = math.ceil(peak_msgs_per_hour / assumptions.oic_pack_size_msgs_per_hour)
+    """Round up to the governed OIC pack size for the chosen licensing model."""
+
+    pack_size = (
+        assumptions.oic_byol_pack_size_msgs_per_hour
+        if byol
+        else assumptions.oic_pack_size_msgs_per_hour
+    )
+    packs = math.ceil(peak_msgs_per_hour / pack_size)
     return CalcResult(
         value=float(packs),
-        unit="packs/hour (5K msgs each)",
-        formula="ceil(peak_msgs_per_hour / 5000)",
+        unit=f"packs/hour ({pack_size} msgs each)",
+        formula="ceil(peak_msgs_per_hour / governed_pack_size_msgs_per_hour)",
         inputs={"peak_msgs_per_hour": peak_msgs_per_hour},
-        assumption_keys=["oic_pack_size_msgs_per_hour"],
+        assumption_keys=[
+            "oic_byol_pack_size_msgs_per_hour" if byol else "oic_pack_size_msgs_per_hour"
+        ],
     )
 
 

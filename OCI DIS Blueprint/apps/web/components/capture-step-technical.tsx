@@ -3,6 +3,7 @@
 /* Step 4 of guided capture: technical sizing, patterning, live OIC estimate, and QA preview. */
 
 import { OicEstimatePreview } from "@/components/oic-estimate-preview";
+import { PatternSupportBadge } from "@/components/pattern-support-badge";
 import { QaPreview } from "@/components/qa-preview";
 import type { CaptureStepProps } from "@/components/capture-wizard";
 
@@ -17,6 +18,7 @@ export function CaptureStepTechnical({
   projectId,
 }: CaptureStepProps): JSX.Element {
   const selectedTools = form.core_tools ?? [];
+  const selectedPatternDefinition = patterns.find((pattern) => pattern.pattern_id === form.selected_pattern) ?? null;
 
   function toggleTool(tool: string): void {
     const nextTools = selectedTools.includes(tool)
@@ -126,6 +128,25 @@ export function CaptureStepTechnical({
         </label>
       </div>
 
+      {selectedPatternDefinition ? (
+        <div
+          className={[
+            "rounded-2xl border p-4 text-sm",
+            selectedPatternDefinition.support.parity_ready
+              ? "border-emerald-200 bg-emerald-50/80 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200"
+              : "border-amber-200 bg-amber-50/90 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200",
+          ].join(" ")}
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <PatternSupportBadge support={selectedPatternDefinition.support} />
+            <p className="font-medium text-[var(--color-text-primary)]">
+              {selectedPatternDefinition.pattern_id} {selectedPatternDefinition.name}
+            </p>
+          </div>
+          <p className="mt-3 leading-6">{selectedPatternDefinition.support.summary}</p>
+        </div>
+      ) : null}
+
       <fieldset className="space-y-3">
         <legend className="text-xs uppercase tracking-[0.25em] text-slate-500">Core Tools</legend>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -160,7 +181,7 @@ export function CaptureStepTechnical({
           frequency={form.frequency}
           payloadPerExecutionKb={form.payload_per_execution_kb}
         />
-        <QaPreview form={form} />
+        <QaPreview form={form} patterns={patterns} />
       </div>
     </div>
   );

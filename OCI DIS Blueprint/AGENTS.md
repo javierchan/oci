@@ -89,89 +89,209 @@ docker-compose.yml      Local dev stack
 Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 
 ### M1 — Schema + Migrations
-- [ ] Define all SQLAlchemy models (already scaffolded in `app/models/`)
-- [ ] Write Alembic migrations for all tables
-- [ ] Seed `PatternDefinition` (17 patterns from workbook `TPL - Patrones`)
-- [ ] Seed `DictionaryOption` (frequency, trigger types, tools from `TPL - Diccionario`)
-- [ ] Seed `AssumptionSet` v1 (from `TPL - Supuestos`)
-- [ ] **Exit criteria**: `docker compose run api alembic upgrade head` succeeds; seed data queryable via API
+- [x] Define all SQLAlchemy models (already scaffolded in `app/models/`)
+- [x] Write Alembic migrations for all tables
+- [x] Seed `PatternDefinition` (17 patterns from workbook `TPL - Patrones`)
+- [x] Seed `DictionaryOption` (frequency, trigger types, tools from `TPL - Diccionario`)
+- [x] Seed `AssumptionSet` v1 (from `TPL - Supuestos`)
+- [x] **Exit criteria**: `docker compose run api alembic upgrade head` succeeds; seed data queryable via API
 
 ### M2 — Import Engine
-- [ ] Implement `app/services/import_service.py` using `packages/calc-engine/src/engine/importer.py`
-- [ ] Wire `POST /api/v1/imports/{project_id}` to Celery worker
-- [ ] Persist `ImportBatch`, `SourceIntegrationRow`, and `CatalogIntegration` (from included rows)
-- [ ] Apply frequency normalization + audit events per row
-- [ ] **Exit criteria**: `test_importer.py` passes; benchmark: 157 TBQ=Y rows → 13 excluded → 144 loaded in order
+- [x] Implement `app/services/import_service.py` using `packages/calc-engine/src/engine/importer.py`
+- [x] Wire `POST /api/v1/imports/{project_id}` to Celery worker
+- [x] Persist `ImportBatch`, `SourceIntegrationRow`, and `CatalogIntegration` (from included rows)
+- [x] Apply frequency normalization + audit events per row
+- [x] **Exit criteria**: `test_importer.py` passes; benchmark: 157 TBQ=Y rows → 13 excluded → 144 loaded in order
 
 ### M3 — Catalog Grid API
-- [ ] Implement `GET /api/v1/catalog/{project_id}` with pagination, filter, search
-- [ ] Implement `PATCH /api/v1/catalog/{project_id}/{id}` for architect fields + audit
-- [ ] Implement `POST /api/v1/catalog/{project_id}/bulk-patch`
-- [ ] Implement `GET /api/v1/catalog/{project_id}/{id}/lineage`
-- [ ] Compute QA status using `packages/calc-engine/src/engine/qa.py`
-- [ ] **Exit criteria**: API returns 144 rows with correct QA status; lineage traces to source row
+- [x] Implement `GET /api/v1/catalog/{project_id}` with pagination, filter, search
+- [x] Implement `PATCH /api/v1/catalog/{project_id}/{id}` for architect fields + audit
+- [x] Implement `POST /api/v1/catalog/{project_id}/bulk-patch`
+- [x] Implement `GET /api/v1/catalog/{project_id}/{id}/lineage`
+- [x] Compute QA status using `packages/calc-engine/src/engine/qa.py`
+- [x] **Exit criteria**: API returns 144 rows with correct QA status; lineage traces to source row
 
 ### M4 — Calculation Engine
-- [ ] Implement Celery recalculation task calling `packages/calc-engine/src/engine/volumetry.py`
-- [ ] Persist `VolumetrySnapshot` with row-level and consolidated results
-- [ ] Wire `POST /api/v1/recalculate/{project_id}`
-- [ ] Compute derived fields `executions_per_day` and `payload_per_hour_kb` on every catalog write
-- [ ] **Exit criteria**: `test_volumetry.py` passes; OIC msgs, DI workspace, Functions units match workbook output
+- [x] Implement Celery recalculation task calling `packages/calc-engine/src/engine/volumetry.py`
+- [x] Persist `VolumetrySnapshot` with row-level and consolidated results
+- [x] Wire `POST /api/v1/recalculate/{project_id}`
+- [x] Compute derived fields `executions_per_day` and `payload_per_hour_kb` on every catalog write
+- [x] **Exit criteria**: `test_volumetry.py` passes; OIC msgs, DI workspace, Functions units match workbook output
 
 ### M5 — Dashboard API
-- [ ] Implement `GET /api/v1/dashboard/{project_id}/snapshots/{id}`
-- [ ] Default mode: technical only — no cost data (PRD-036)
-- [ ] KPI strip: OIC msgs/month, peak packs/hr, DI active, DI GB, Functions GB-s
-- [ ] Chart data: coverage, completeness, pattern mix, payload distribution, risks
-- [ ] **Exit criteria**: Dashboard values match workbook `TPL - Dashboard` for benchmark project
+- [x] Implement `GET /api/v1/dashboard/{project_id}/snapshots/{id}`
+- [x] Default mode: technical only — no cost data (PRD-036)
+- [x] KPI strip: OIC msgs/month, peak packs/hr, DI active, DI GB, Functions GB-s
+- [x] Chart data: coverage, completeness, pattern mix, payload distribution, risks
+- [x] **Exit criteria**: Dashboard values match workbook `TPL - Dashboard` for benchmark project
 
 ### M6 — Justification Narratives
-- [ ] Implement deterministic narrative assembly (no AI in phase 1)
-- [ ] Wire approve/override endpoints
-- [ ] **Exit criteria**: Methodology blocks render; approve emits AuditEvent
+- [x] Implement deterministic narrative assembly (no AI in phase 1)
+- [x] Wire approve/override endpoints
+- [x] **Exit criteria**: Methodology blocks render; approve emits AuditEvent
 
 ### M7 — Exports
-- [ ] XLSX export (catalog + volumetry)
-- [ ] JSON snapshot export
-- [ ] PDF dashboard export (phase 1 basic)
-- [ ] **Exit criteria**: Exported XLSX matches benchmark workbook row count and column structure
+- [x] XLSX export (catalog + volumetry)
+- [x] JSON snapshot export
+- [x] PDF dashboard export (phase 1 basic)
+- [x] **Exit criteria**: Exported XLSX matches benchmark workbook row count and column structure
 
 ### M8 — Admin + Governance
-- [ ] Dictionary CRUD (admin role only)
-- [ ] Assumption set versioning
-- [ ] Prompt versioning (for M6 narrative templates)
-- [ ] **Exit criteria**: Admin can update frequency map; recalculation picks up new values
+- [x] Dictionary CRUD (admin role only)
+- [x] Assumption set versioning
+- [x] Prompt versioning (for M6 narrative templates)
+- [x] **Exit criteria**: Admin can update frequency map; recalculation picks up new values
+
+### M9 — Integration Capture Wizard
+- [x] Add the guided five-step capture flow for manual catalog entry
+- [x] Validate required source, destination, and technical fields before submit
+- [x] Support duplicate checks, review, and submission into the governed catalog flow
+- [x] **Exit criteria**: architects can create a new integration through the wizard without bypassing catalog governance
+
+### M10 — System Dependency Map
+- [x] Add the project graph view for source-to-destination system topology
+- [x] Render node and edge metadata from the catalog graph payload
+- [x] Support detail drill-through from graph selections into catalog context
+- [x] **Exit criteria**: the dependency map loads project topology correctly and supports investigation workflows
+
+### M11 — Navigation + Theme
+- [x] Add persistent navigation context with reusable breadcrumbs across project and admin surfaces
+- [x] Implement light, dark, and system themes with no-flash initialization and durable storage
+- [x] Apply semantic theme tokens to shared UI surfaces, badges, and tables
+- [x] **Exit criteria**: theme selection persists across navigation and shared surfaces stay readable in both modes
+
+### M12 — Source Lineage + Template
+- [x] Expose human-readable source-lineage labels and import batch context on integration detail pages
+- [x] Add the downloadable workbook template for offline capture with governed headers and validations
+- [x] Improve import UX so users can retrieve the template directly from the import workflow
+- [x] **Exit criteria**: integration detail shows readable lineage and import users can download the governed template
+
+### M13 — Integration Design Canvas
+- [x] Add the interactive integration design surface for source, tools, and destination flow modeling
+- [x] Surface tool selection and route context directly in the integration-detail workflow
+- [x] Show immediate technical context such as payload and OIC estimate hints without waiting for a full save cycle
+- [x] **Exit criteria**: architects can design and review the intended integration route from the detail page
+
+### M14 — Map Pan + Visual Improvements
+- [x] Improve graph navigation with pan, zoom, and keyboard shortcuts
+- [x] Add richer graph labeling, hover states, legend context, and visual emphasis for analysis
+- [x] Preserve reachability and usability of the graph route under the improved interaction model
+- [x] **Exit criteria**: the map is navigable and visually readable for real project analysis
 
 ### M15 — UX Overhaul P0: Core Workflow Fixes
-- [ ] Integration Design Canvas rebuilt as SVG flow diagram with draggable nodes,
+- [x] Integration Design Canvas rebuilt as SVG flow diagram with draggable nodes,
       connectable edges (with arrowheads), pan, and zoom
-- [ ] Multiple instances of same tool type allowed (instance-based node model)
-- [ ] Catalog table paginated at 20 rows/page with Prev/Next and rows-per-page selector
-- [ ] Invalid project ID renders graceful not-found page (no Next.js dev error overlay)
-- [ ] **Exit criteria**: Canvas renders a working flow; catalog paginates; 404 shows
+- [x] Multiple instances of same tool type allowed (instance-based node model)
+- [x] Catalog table paginated at 20 rows/page with Prev/Next and rows-per-page selector
+- [x] Invalid project ID renders graceful not-found page (no Next.js dev error overlay)
+- [x] **Exit criteria**: Canvas renders a working flow; catalog paginates; 404 shows
       a user-friendly message; all 5 quality gates green
 
 ### M16 — UX Overhaul P1: Data Accuracy + Surface Completeness
-- [ ] Interface Name shows descriptive name from source workbook (not Interface ID)
-- [ ] QA Reasons rendered as human-readable cards with title + actionable hint
-- [ ] Dashboard renders pattern mix, payload distribution, risks, and maturity
+- [x] Interface Name shows descriptive name from source workbook (not Interface ID)
+- [x] QA Reasons rendered as human-readable cards with title + actionable hint
+- [x] Dashboard renders pattern mix, payload distribution, risks, and maturity
       from the full backend payload (not just KPI strip)
-- [ ] Graph auto-fits all nodes on load with no nodes cut off below viewport
-- [ ] Graph edges have directional arrowheads (source → destination)
-- [ ] "View in Catalog" from graph node panel pre-filters catalog by system name
-- [ ] **Exit criteria**: No integration detail shows ID as name; dashboard uses
+- [x] Graph auto-fits all nodes on load with no nodes cut off below viewport
+- [x] Graph edges have directional arrowheads (source → destination)
+- [x] "View in Catalog" from graph node panel pre-filters catalog by system name
+- [x] **Exit criteria**: No integration detail shows ID as name; dashboard uses
       full backend payload; graph fits viewport; all quality gates green
 
 ### M17 — UX Overhaul P2: Layout + Polish
-- [ ] Architect Patch Save button visible without scrolling (sticky panel or top placement)
-- [ ] Audit Trail entries show field names instead of array index notation
-- [ ] Capture wizard step pills numbered (1–5) with progress line and completed state
-- [ ] Import page required columns list shows all columns without truncation
-- [ ] Projects list has text filter and archived-projects toggle
-- [ ] Graph has "filter by system" dropdown to highlight a system and its neighbors
-- [ ] Admin hub shows "Last modified" date per governance category
-- [ ] **Exit criteria**: All checklist items visually confirmed; no regressions;
+- [x] Architect Patch Save button visible without scrolling (sticky panel or top placement)
+- [x] Audit Trail entries show field names instead of array index notation
+- [x] Capture wizard step pills numbered (1–5) with progress line and completed state
+- [x] Import page required columns list shows all columns without truncation
+- [x] Projects list has text filter and archived-projects toggle
+- [x] Graph has "filter by system" dropdown to highlight a system and its neighbors
+- [x] Admin hub shows "Last modified" date per governance category
+- [x] **Exit criteria**: All checklist items visually confirmed; no regressions;
       all quality gates green
+
+### M18 — Workbook Import Fidelity: Header Semantics + Source Traceability
+- [x] Resolve source columns by workbook header name first, not fallback position,
+      for both `Catálogo de Integraciones` and `TPL - Catálogo`
+- [x] Map workbook headers such as `Interfaz` → `interface_name` and
+      `Alcance Inicial` → `initial_scope` even when the source header row starts
+      at row 5 with leading blank columns
+- [x] Preserve real workbook header labels in lineage and raw-column rendering so
+      named fields do not degrade into `Column N` unless the workbook header is blank
+- [x] Align import normalization with the workbook operating rules documented in
+      `TPL - Prompts`: preserve source order, include `Duplicado 1`, exclude only
+      `Duplicado 2`, and retain `TBD`, uncertainty, and payload `0`
+- [x] Normalize split destination technologies and trigger capture semantics
+      conservatively from workbook evidence without inventing missing values
+- [x] **Exit criteria**: ADN workbook imports with descriptive Interface Name and
+      Initial Scope, raw column tables show workbook headers, and importer tests
+      cover workbook alias/header policy cases
+
+### M19 — Governed Reference Data 2.0: Patterns, Frequencies, and Tool Taxonomy
+- [x] Seed all 17 patterns with full workbook metadata: description/tagline,
+      OCI components, when-to-use, anti-pattern, technical flow, and business value
+- [x] Expand the frequency dictionary to workbook codes `FQ01`–`FQ16` with exact
+      executions/day semantics and alias normalization
+- [x] Correct `Tiempo Real` semantics to the workbook proxy (`24` exec/day) where
+      the workbook explicitly models it as batch-equivalent rather than per-minute
+- [x] Expand the tool dictionary with tool IDs, direct/proxy volumetric flags,
+      descriptions, and the allowed Architectural Overlay (`AO`) catalog
+- [x] Expose enriched pattern, frequency, and tool metadata through API and admin
+      surfaces without breaking existing governance CRUD
+- [x] **Exit criteria**: reference endpoints return workbook-grade metadata, admin
+      can review/edit it, and calc + UI helpers consume the same governed frequency rules
+
+### M20 — Canvas Intelligence: Standard Combinations + Overlay Governance
+- [x] Seed workbook combinations `G01`–`G18` with supported flow, compatible
+      patterns, activated metrics, recommended overlays, and usage guidance
+- [x] Separate volumetric core tools (`AN`) from architectural overlays (`AO`) in
+      the saved canvas semantics and patch payloads
+- [x] Teach the canvas to suggest compatible combinations and pattern candidates
+      based on the tools actually placed in the flow
+- [x] Validate that the designed pipeline connects source to destination while
+      preventing unsupported shortcut edges from acting as the effective design
+- [x] Reflect real pipeline composition in the processing summary and future
+      volumetry hints instead of implying fixed OIC-only processing
+- [x] **Exit criteria**: the canvas can explain supported tool stacks, recommend
+      matching patterns/groups, and persist core tools vs overlays distinctly
+
+### M21 — Volumetry Assumption Parity: Service Limits + Unit Governance
+- [x] Compare `AssumptionSet v1.0.0` against `TPL - Supuestos` and add the missing
+      technical service constraints for OIC, Streaming, Queue, Functions,
+      Data Integration, and Data Integrator proxy usage
+- [x] Align OIC billing rules with workbook guidance for inbound triggers,
+      scheduling, thresholding, and BYOL vs non-BYOL pack sizes
+- [x] Enforce explicit KB/MB normalization so workbook values captured in MB cannot
+      silently distort KB-based formulas or previews
+- [x] Centralize remaining hardcoded technical limits across calc, dashboard,
+      export, and preview paths behind versioned assumptions
+- [x] Preserve pricing and service references as governed assumption metadata
+      without forcing the default dashboard into commercial mode
+- [x] **Exit criteria**: assumptions are workbook-complete, technical previews use
+      shared governed limits, and unit handling is explicit and test-covered
+
+### M22 — QA Coverage + Confidence Signals
+- [x] Decouple QA activation from formal ID presence so every active source row is
+      evaluated even when the formal integration ID is blank
+- [x] Align trigger vocabulary and QA checks with workbook capture semantics such
+      as `Scheduled`, `REST Trigger`, `SOAP Trigger`, and `Event Trigger`
+- [x] Add completeness indicators for payload, pattern, ID, trigger, and fan-out
+      coverage so QA and dashboard surfaces communicate confidence, not just status
+- [x] Add low-confidence forecast messaging when billing is extrapolated from sparse
+      payload coverage or other weak source inputs
+- [x] Preserve workbook uncertainty instead of overwriting it merely to turn QA green
+- [x] **Exit criteria**: QA no longer hides active rows behind missing formal IDs,
+      and forecast surfaces clearly communicate uncertainty when coverage is weak
+
+### M23 — Pattern Coverage 03–17: End-to-End Operationalization
+- [x] Decide and document whether patterns `#03`–`#17` are fully supported in phase
+      parity or explicitly out of scope beyond reference-library status
+- [x] For every supported pattern, implement sizing inputs, QA hints, narrative
+      branches, dashboard grouping, and export behavior
+- [x] Ensure unsupported patterns are clearly marked in UI/admin instead of acting
+      like generic placeholders with misleading confidence
+- [x] Use workbook anti-pattern guidance to improve QA hints and pattern selection support
+- [x] **Exit criteria**: supported patterns have end-to-end app behavior, and any
+      unsupported patterns are explicitly documented and surfaced as such
 
 ---
 

@@ -11,6 +11,7 @@ Implements PRD-015 through PRD-019:
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
+from unicodedata import normalize
 
 
 # ---------------------------------------------------------------------------
@@ -55,35 +56,102 @@ HEADER_ALIASES: dict[str, list[str]] = {
     "interface_id": ["id de interfaz", "interface id", "id interfaz"],
     "brand": ["marca", "brand"],
     "business_process": ["proceso de negocio", "proceso", "process"],
-    "interface_name": ["interfaz", "interface", "nombre interfaz"],
+    "interface_name": ["interfaz", "interface", "interface name", "nombre interfaz"],
     "description": ["descripción", "descripcion", "description"],
     "type": ["tipo", "type"],
-    "interface_status": ["estado interfaz", "estado", "status"],
+    "base": ["base"],
+    "interface_status": ["estado interfaz", "interface status"],
     "complexity": ["complejidad", "complexity"],
     "initial_scope": ["alcance inicial", "alcance", "scope"],
-    "status": ["estado", "estado de interfaz"],
+    "status": ["estado", "status"],
     "mapping_status": ["estado de mapeo", "mapping status"],
     "source_system": ["sistema de origen", "source system"],
     "source_technology": ["tecnología de origen", "source technology"],
     "source_api_reference": ["api reference", "api ref origen"],
     "source_owner": ["propietario de origen", "source owner"],
     "destination_system": ["sistema de destino", "destination system"],
-    "destination_technology": ["tecnología de destino", "destination technology"],
+    "destination_technology_1": [
+        "tecnología de destino #1",
+        "tecnologia de destino #1",
+        "tecnología de destino",
+        "tecnologia de destino",
+        "destination technology #1",
+        "destination technology",
+    ],
+    "destination_technology_2": [
+        "tecnología de destino #2",
+        "tecnologia de destino #2",
+        "destination technology #2",
+    ],
     "destination_owner": ["propietario de destino", "destination owner"],
     "frequency": ["frecuencia", "frequency"],
-    "payload_per_execution_kb": ["tamaño kb", "payload por ejecución", "payload (kb)"],
+    "is_real_time": ["tiempo real (si/no)", "tiempo real", "real time (yes/no)", "real time"],
+    "trigger_type": ["tipo trigger oic", "trigger type", "tipo de trigger"],
+    "response_size_kb": ["response size (kb)", "response size", "tamaño respuesta kb"],
+    "payload_per_execution_kb": [
+        "payload por ejecución (kb)",
+        "payload por ejecucion (kb)",
+        "payload por ejecución",
+        "payload por ejecucion",
+        "payload (kb)",
+        "tamaño kb",
+    ],
+    "is_fan_out": ["fan-out (si/no)", "fan-out", "fan out"],
+    "fan_out_targets": ["# destinos", "fan-out targets", "fan out targets"],
+    "calendarization": ["calendarización", "calendarizacion", "calendarization"],
+    "selected_pattern": [
+        "patrón seleccionado (manual)",
+        "patron seleccionado (manual)",
+        "patrón seleccionado",
+        "patron seleccionado",
+        "patrones",
+        "pattern selected",
+        "selected pattern",
+    ],
+    "pattern_rationale": [
+        "racional del patrón (manual)",
+        "racional del patron (manual)",
+        "racional del patrón",
+        "racional del patron",
+        "pattern rationale",
+    ],
+    "comments": [
+        "comentarios / observaciones",
+        "comentarios/observaciones",
+        "comentarios",
+        "observaciones",
+        "comments",
+    ],
+    "retry_policy": ["retry policy"],
+    "core_tools": [
+        "herramientas core cuantificables / volumétricas",
+        "herramientas core cuantificables / volumetricas",
+        "herramientas core",
+        "core tools",
+        "posibles tools y componentes identificados",
+    ],
+    "additional_tools_overlays": [
+        "herramientas adicionales / overlays (complemento manual)",
+        "herramientas adicionales",
+        "additional tools",
+        "overlays",
+    ],
     "tbq": ["tbq"],
-    "patterns": ["patrones", "patrón", "pattern"],
     "uncertainty": ["incertidumbre", "uncertainty"],
     "owner": ["owner", "dueño"],
     "identified_in": ["identificada en:", "identified in"],
-    "business_process_dd": ["proceso de negocio duediligence", "dd process"],
+    "business_process_dd": [
+        "proceso de negocio duedilligence",
+        "proceso de negocio duediligence",
+        "dd process",
+    ],
     "slide": ["slide"],
 }
 
 
 def _normalize_header(raw: str) -> str:
-    return raw.strip().lower().replace("\n", " ")
+    collapsed = " ".join(raw.strip().lower().replace("\n", " ").split())
+    return normalize("NFKD", collapsed).encode("ascii", "ignore").decode("ascii")
 
 
 def _header_matches(alias: str, header: str) -> bool:
@@ -171,14 +239,32 @@ FREQUENCY_ALIASES: dict[str, str] = {
     "diario": "Una vez al día",
     "1 vez al dia": "Una vez al día",
     "once a day": "Una vez al día",
-    "hourly": "Cada hora",
-    "cada 1 hora": "Cada hora",
-    "real time": "Tiempo real",
-    "tiempo real": "Tiempo real",
+    "hourly": "Cada 1 hora",
+    "cada hora": "Cada 1 hora",
+    "cada 1 hora": "Cada 1 hora",
+    "every 2 hours": "Cada 2 horas",
+    "cada 2 horas": "Cada 2 horas",
+    "every 4 hours": "Cada 4 horas",
+    "cada 4 horas": "Cada 4 horas",
+    "every 6 hours": "Cada 6 horas",
+    "cada 6 horas": "Cada 6 horas",
+    "every 8 hours": "Cada 8 horas",
+    "cada 8 horas": "Cada 8 horas",
+    "every 12 hours": "Cada 12 horas",
+    "cada 12 horas": "Cada 12 horas",
+    "2 veces al dia": "Cada 12 horas",
+    "dos veces al dia": "Cada 12 horas",
+    "4 veces al dia": "Cada 6 horas",
+    "real time": "Tiempo Real",
+    "tiempo real": "Tiempo Real",
     "weekly": "Semanal",
     "monthly": "Mensual",
     "mensual": "Mensual",
     "semanal": "Semanal",
+    "biweekly": "Quincenal",
+    "quincenal": "Quincenal",
+    "on demand": "Bajo demanda",
+    "bajo demanda": "Bajo demanda",
 }
 
 

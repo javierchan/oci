@@ -9,89 +9,73 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_sync_database_url
 from app.models import AssumptionSet, AuditEvent, DictionaryOption, PatternDefinition, PromptTemplateVersion
-
-PATTERNS: list[dict[str, str]] = [
-    {"pattern_id": "#01", "name": "Request-Reply", "category": "SÍNCRONO"},
-    {"pattern_id": "#02", "name": "Scheduled Batch Transfer", "category": "ASÍNCRONO"},
-    {"pattern_id": "#03", "name": "Event-Driven Push", "category": "ASÍNCRONO"},
-    {"pattern_id": "#04", "name": "Polling Sync", "category": "ASÍNCRONO"},
-    {"pattern_id": "#05", "name": "Data Replication", "category": "ASÍNCRONO"},
-    {"pattern_id": "#06", "name": "Saga / Compensation", "category": "SÍNCRONO + ASÍNCRONO"},
-    {"pattern_id": "#07", "name": "Fanout Broadcast", "category": "ASÍNCRONO"},
-    {"pattern_id": "#08", "name": "Aggregation & Enrichment", "category": "SÍNCRONO"},
-    {"pattern_id": "#09", "name": "File Transfer (FTP/SFTP)", "category": "ASÍNCRONO"},
-    {"pattern_id": "#10", "name": "DB Integration (ORDS/JDBC)", "category": "SÍNCRONO"},
-    {"pattern_id": "#11", "name": "ERP Adapter Integration", "category": "ASÍNCRONO"},
-    {"pattern_id": "#12", "name": "Message Queue Relay", "category": "ASÍNCRONO"},
-    {"pattern_id": "#13", "name": "API-Led Connectivity", "category": "SÍNCRONO"},
-    {"pattern_id": "#14", "name": "Streaming Ingest", "category": "ASÍNCRONO"},
-    {"pattern_id": "#15", "name": "Hybrid Orchestration", "category": "SÍNCRONO + ASÍNCRONO"},
-    {"pattern_id": "#16", "name": "B2B/EDI Gateway", "category": "ASÍNCRONO"},
-    {"pattern_id": "#17", "name": "AI-Augmented Integration", "category": "ASÍNCRONO"},
-]
+from app.migrations.reference_seed_data import DICTIONARY_OPTIONS, PATTERNS
 
 ASSUMPTION_SET = {
     "version": "1.0.0",
     "label": "Workbook TPL - Supuestos v1",
     "is_default": True,
     "assumptions": {
-        "oic_rest_max_payload_kb": 50000,
-        "oic_ftp_max_payload_kb": 50000,
-        "oic_kafka_max_payload_kb": 10000,
+        "oic_rest_max_payload_kb": 51200,
+        "oic_ftp_max_payload_kb": 51200,
+        "oic_kafka_max_payload_kb": 10240,
+        "oic_rest_raw_max_payload_kb": 1048576,
+        "oic_rest_attachment_max_payload_kb": 1048576,
+        "oic_rest_json_schema_max_payload_kb": 102400,
+        "oic_soap_max_payload_kb": 51200,
+        "oic_soap_attachment_max_payload_kb": 1048576,
+        "oic_ftp_stage_file_max_payload_kb": 10485760,
         "oic_timeout_s": 300,
+        "oic_db_stored_proc_timeout_s": 240,
+        "oic_db_polling_max_payload_kb": 10240,
+        "oic_outbound_read_timeout_s": 300,
+        "oic_outbound_connection_timeout_s": 300,
+        "oic_agent_connection_timeout_s": 240,
         "oic_billing_threshold_kb": 50,
         "oic_pack_size_msgs_per_hour": 5000,
-        "month_days": 30,
+        "oic_byol_pack_size_msgs_per_hour": 20000,
+        "oic_project_max_integrations": 100,
+        "oic_project_max_deployments": 50,
+        "oic_project_max_connections": 20,
+        "month_days": 31,
         "streaming_partition_throughput_mb_s": 1.0,
-        "functions_default_duration_ms": 200,
+        "streaming_read_throughput_mb_s": 2.0,
+        "streaming_max_message_size_mb": 1.0,
+        "streaming_retention_days": 7,
+        "streaming_default_partitions": 200,
+        "functions_default_duration_ms": 2000,
         "functions_default_memory_mb": 256,
         "functions_default_concurrency": 1,
+        "functions_max_timeout_s": 300,
+        "functions_batch_size_records": 500,
+        "queue_billing_unit_kb": 64,
+        "queue_max_message_kb": 256,
+        "queue_retention_days": 7,
+        "queue_throughput_soft_limit_msgs_per_second": 10,
+        "data_integration_workspaces_per_region": 5,
+        "data_integration_deleted_workspace_retention_days": 15,
+        "source_references": {
+            "oic_limits": "TPL - Supuestos: OCI Gen3 official service limits",
+            "oic_billing": "TPL - Supuestos: OIC billing message and pack guidance",
+            "streaming_limits": "TPL - Supuestos: OCI Streaming service limits",
+            "functions_limits": "TPL - Supuestos: OCI Functions operational limits",
+            "queue_limits": "TPL - Supuestos: OCI Queue limits and pricing unit",
+            "data_integration_limits": "TPL - Supuestos: OCI Data Integration regional limits",
+            "data_integrator_proxy_usage": "TPL - Supuestos: Data Integrator uses jobs/month proxy guidance",
+        },
+        "service_metadata": {
+            "data_integrator_usage_model": "Jobs/month (proxy)",
+            "data_integration_compute_isolated": True,
+            "functions_cold_start_typical": "10-20 sec",
+            "functions_ram_default_per_ad": 60,
+            "salesforce_batch_limit_millions": 8,
+            "file_server_concurrent_connections": 50,
+            "default_record_size_bytes": 250,
+            "hours_per_month": 744,
+        },
     },
     "notes": "Seeded from workbook TPL - Supuestos.",
 }
-
-DICTIONARY_OPTIONS: list[dict[str, object]] = [
-    {"category": "FREQUENCY", "code": "FREQ-01", "value": "Una vez al día", "executions_per_day": 1.0, "sort_order": 1},
-    {"category": "FREQUENCY", "code": "FREQ-02", "value": "2 veces al día", "executions_per_day": 2.0, "sort_order": 2},
-    {"category": "FREQUENCY", "code": "FREQ-03", "value": "4 veces al día", "executions_per_day": 4.0, "sort_order": 3},
-    {"category": "FREQUENCY", "code": "FREQ-04", "value": "Cada hora", "executions_per_day": 24.0, "sort_order": 4},
-    {"category": "FREQUENCY", "code": "FREQ-05", "value": "Cada 30 minutos", "executions_per_day": 48.0, "sort_order": 5},
-    {"category": "FREQUENCY", "code": "FREQ-06", "value": "Cada 15 minutos", "executions_per_day": 96.0, "sort_order": 6},
-    {"category": "FREQUENCY", "code": "FREQ-07", "value": "Cada 5 minutos", "executions_per_day": 288.0, "sort_order": 7},
-    {"category": "FREQUENCY", "code": "FREQ-08", "value": "Cada minuto", "executions_per_day": 1440.0, "sort_order": 8},
-    {"category": "FREQUENCY", "code": "FREQ-09", "value": "Tiempo real", "executions_per_day": 1440.0, "sort_order": 9},
-    {"category": "FREQUENCY", "code": "FREQ-10", "value": "Semanal", "executions_per_day": 0.142857, "sort_order": 10},
-    {"category": "FREQUENCY", "code": "FREQ-11", "value": "Mensual", "executions_per_day": 0.033333, "sort_order": 11},
-    {"category": "FREQUENCY", "code": "FREQ-12", "value": "Bajo demanda", "executions_per_day": 1.0, "sort_order": 12},
-    {"category": "FREQUENCY", "code": "FREQ-13", "value": "TBD", "executions_per_day": None, "sort_order": 13},
-    {"category": "TRIGGER_TYPE", "code": None, "value": "Scheduled", "sort_order": 1},
-    {"category": "TRIGGER_TYPE", "code": None, "value": "REST", "sort_order": 2},
-    {"category": "TRIGGER_TYPE", "code": None, "value": "Event", "sort_order": 3},
-    {"category": "TRIGGER_TYPE", "code": None, "value": "FTP/SFTP", "sort_order": 4},
-    {"category": "TRIGGER_TYPE", "code": None, "value": "DB Polling", "sort_order": 5},
-    {"category": "TRIGGER_TYPE", "code": None, "value": "JMS", "sort_order": 6},
-    {"category": "TRIGGER_TYPE", "code": None, "value": "Kafka", "sort_order": 7},
-    {"category": "TRIGGER_TYPE", "code": None, "value": "Webhook", "sort_order": 8},
-    {"category": "TRIGGER_TYPE", "code": None, "value": "SOAP", "sort_order": 9},
-    {"category": "COMPLEXITY", "code": None, "value": "Bajo", "sort_order": 1},
-    {"category": "COMPLEXITY", "code": None, "value": "Medio", "sort_order": 2},
-    {"category": "COMPLEXITY", "code": None, "value": "Alto", "sort_order": 3},
-    {"category": "QA_STATUS", "code": None, "value": "OK", "sort_order": 1},
-    {"category": "QA_STATUS", "code": None, "value": "REVISAR", "sort_order": 2},
-    {"category": "QA_STATUS", "code": None, "value": "PENDING", "sort_order": 3},
-    {"category": "TOOLS", "code": None, "value": "OIC Gen3", "sort_order": 1},
-    {"category": "TOOLS", "code": None, "value": "OCI API Gateway", "sort_order": 2},
-    {"category": "TOOLS", "code": None, "value": "OCI Streaming", "sort_order": 3},
-    {"category": "TOOLS", "code": None, "value": "OCI Queue", "sort_order": 4},
-    {"category": "TOOLS", "code": None, "value": "Oracle Functions", "sort_order": 5},
-    {"category": "TOOLS", "code": None, "value": "OCI Data Integration", "sort_order": 6},
-    {"category": "TOOLS", "code": None, "value": "Oracle ORDS", "sort_order": 7},
-    {"category": "TOOLS", "code": None, "value": "ATP", "sort_order": 8},
-    {"category": "TOOLS", "code": None, "value": "Oracle DB", "sort_order": 9},
-    {"category": "TOOLS", "code": None, "value": "SFTP", "sort_order": 10},
-    {"category": "TOOLS", "code": None, "value": "OCI Object Storage", "sort_order": 11},
-    {"category": "TOOLS", "code": None, "value": "OCI APM", "sort_order": 12},
-]
 
 PROMPT_TEMPLATE: dict[str, Any] = {
     "version": "1.0.0",
@@ -162,7 +146,22 @@ def seed_patterns(session: Session) -> int:
         else:
             existing.name = pattern_data["name"]
             existing.category = pattern_data["category"]
+            existing.description = cast(str | None, pattern_data.get("description"))
+            existing.oci_components = cast(str | None, pattern_data.get("oci_components"))
+            existing.when_to_use = cast(str | None, pattern_data.get("when_to_use"))
+            existing.when_not_to_use = cast(str | None, pattern_data.get("when_not_to_use"))
+            existing.technical_flow = cast(str | None, pattern_data.get("technical_flow"))
+            existing.business_value = cast(str | None, pattern_data.get("business_value"))
             existing.is_system = True
+            existing.version = "1.0.0"
+            continue
+        existing.description = cast(str | None, pattern_data.get("description"))
+        existing.oci_components = cast(str | None, pattern_data.get("oci_components"))
+        existing.when_to_use = cast(str | None, pattern_data.get("when_to_use"))
+        existing.when_not_to_use = cast(str | None, pattern_data.get("when_not_to_use"))
+        existing.technical_flow = cast(str | None, pattern_data.get("technical_flow"))
+        existing.business_value = cast(str | None, pattern_data.get("business_value"))
+        existing.version = "1.0.0"
     return count
 
 
@@ -180,8 +179,12 @@ def seed_dictionary_options(session: Session) -> int:
                 category=str(option_data["category"]),
                 code=cast(str | None, option_data.get("code")),
                 value=str(option_data["value"]),
+                description=cast(str | None, option_data.get("description")),
                 executions_per_day=cast(float | None, option_data.get("executions_per_day")),
+                is_volumetric=cast(bool | None, option_data.get("is_volumetric")),
                 sort_order=int(cast(int, option_data["sort_order"])),
+                is_active=bool(option_data.get("is_active", True)),
+                version=cast(str, option_data.get("version", "1.0.0")),
             )
             session.add(existing)
             session.flush()
@@ -189,8 +192,12 @@ def seed_dictionary_options(session: Session) -> int:
             count += 1
         else:
             existing.code = cast(str | None, option_data.get("code"))
+            existing.description = cast(str | None, option_data.get("description"))
             existing.executions_per_day = cast(float | None, option_data.get("executions_per_day"))
+            existing.is_volumetric = cast(bool | None, option_data.get("is_volumetric"))
             existing.sort_order = int(cast(int, option_data["sort_order"]))
+            existing.is_active = bool(option_data.get("is_active", True))
+            existing.version = cast(str, option_data.get("version", "1.0.0"))
     return count
 
 

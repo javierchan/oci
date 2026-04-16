@@ -16,10 +16,23 @@ type AdminPatternFormProps = {
   onCancel: () => void;
 };
 
-const CATEGORY_OPTIONS: PatternDefinitionCreate["category"][] = [
+const CATEGORY_SUGGESTIONS = [
   "SÍNCRONO",
   "ASÍNCRONO",
   "SÍNCRONO + ASÍNCRONO",
+  "SEGURIDAD / PERFORMANCE",
+  "RESILIENCIA",
+  "DATOS",
+  "MIGRACIÓN",
+  "DATOS / GARANTÍAS",
+  "DATOS / AVANZADO",
+  "API DESIGN",
+  "ARQUITECTURA / DATOS",
+  "SEGURIDAD",
+  "API DESIGN / ASÍNCRONO",
+  "IA / INTELIGENCIA ARTIFICIAL",
+  "ARQUITECTURA",
+  "ASÍNCRONO / API",
 ];
 
 function defaultPatternValue(): PatternDefinitionCreate {
@@ -29,7 +42,11 @@ function defaultPatternValue(): PatternDefinitionCreate {
     category: "SÍNCRONO",
     description: "",
     components: [],
+    component_details: "",
+    when_to_use: "",
+    when_not_to_use: "",
     flow: "",
+    business_value: "",
   };
 }
 
@@ -53,10 +70,14 @@ export function AdminPatternForm({
     setForm({
       pattern_id: initialValue.pattern_id,
       name: initialValue.name,
-      category: initialValue.category as PatternDefinitionCreate["category"],
+      category: initialValue.category,
       description: initialValue.description ?? "",
       components: initialValue.components ?? [],
+      component_details: initialValue.component_details ?? "",
+      when_to_use: initialValue.when_to_use ?? "",
+      when_not_to_use: initialValue.when_not_to_use ?? "",
       flow: initialValue.flow ?? "",
+      business_value: initialValue.business_value ?? "",
     });
   }, [initialValue]);
 
@@ -86,7 +107,11 @@ export function AdminPatternForm({
       name: form.name.trim(),
       description: form.description?.trim() || undefined,
       components: form.components?.length ? form.components : undefined,
+      component_details: form.component_details?.trim() || undefined,
+      when_to_use: form.when_to_use?.trim() || undefined,
+      when_not_to_use: form.when_not_to_use?.trim() || undefined,
       flow: form.flow?.trim() || undefined,
+      business_value: form.business_value?.trim() || undefined,
     });
   }
 
@@ -122,22 +147,22 @@ export function AdminPatternForm({
 
         <label className="block">
           <span className="app-label mb-2 block">Category</span>
-          <select
+          <input
             value={form.category}
             onChange={(event) =>
               setForm((current) => ({
                 ...current,
-                category: event.target.value as PatternDefinitionCreate["category"],
+                category: event.target.value,
               }))
             }
+            list="pattern-category-suggestions"
             className="app-input"
-          >
-            {CATEGORY_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
+          />
+          <datalist id="pattern-category-suggestions">
+            {CATEGORY_SUGGESTIONS.map((option) => (
+              <option key={option} value={option} />
             ))}
-          </select>
+          </datalist>
         </label>
 
         <label className="block md:col-span-2">
@@ -190,10 +215,50 @@ export function AdminPatternForm({
       </fieldset>
 
       <label className="mt-4 block">
+        <span className="app-label mb-2 block">Component Details</span>
+        <textarea
+          value={form.component_details}
+          onChange={(event) => setForm((current) => ({ ...current, component_details: event.target.value }))}
+          rows={5}
+          className="app-input"
+        />
+      </label>
+
+      <label className="mt-4 block">
+        <span className="app-label mb-2 block">When to Use</span>
+        <textarea
+          value={form.when_to_use}
+          onChange={(event) => setForm((current) => ({ ...current, when_to_use: event.target.value }))}
+          rows={4}
+          className="app-input"
+        />
+      </label>
+
+      <label className="mt-4 block">
+        <span className="app-label mb-2 block">When Not to Use / Anti-Pattern</span>
+        <textarea
+          value={form.when_not_to_use}
+          onChange={(event) => setForm((current) => ({ ...current, when_not_to_use: event.target.value }))}
+          rows={5}
+          className="app-input"
+        />
+      </label>
+
+      <label className="mt-4 block">
         <span className="app-label mb-2 block">Flow Description</span>
         <textarea
           value={form.flow}
           onChange={(event) => setForm((current) => ({ ...current, flow: event.target.value }))}
+          rows={4}
+          className="app-input"
+        />
+      </label>
+
+      <label className="mt-4 block">
+        <span className="app-label mb-2 block">Business Value</span>
+        <textarea
+          value={form.business_value}
+          onChange={(event) => setForm((current) => ({ ...current, business_value: event.target.value }))}
           rows={4}
           className="app-input"
         />

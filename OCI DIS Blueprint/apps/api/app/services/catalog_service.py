@@ -42,6 +42,7 @@ from app.schemas.catalog import (
 )
 from app.services import audit_service, import_service, recalc_service
 from app.services.justification_service import serialize_justification_record
+from app.services.pattern_support import support_reason_code
 from app.services.serializers import parse_float, parse_int, parse_text, sanitize_for_json, split_csv
 
 PATCHABLE_FIELDS = {
@@ -354,9 +355,14 @@ def _recompute_qa(row: CatalogIntegration) -> None:
         is_fan_out=row.is_fan_out,
         fan_out_targets=row.fan_out_targets,
         uncertainty=row.uncertainty,
+        is_active_row=True,
     )
-    row.qa_status = qa_result.status
-    row.qa_reasons = qa_result.reasons
+    reasons = list(qa_result.reasons)
+    support_reason = support_reason_code(row.selected_pattern)
+    if support_reason and support_reason not in reasons:
+        reasons.append(support_reason)
+    row.qa_status = "OK" if not reasons else "REVISAR"
+    row.qa_reasons = reasons
 
 
 async def _load_default_assumptions(db: AsyncSession) -> Assumptions:
@@ -503,6 +509,7 @@ async def manual_create_integration(
         is_fan_out=None,
         fan_out_targets=None,
         uncertainty=data.uncertainty,
+        is_active_row=True,
     )
 
     row = CatalogIntegration(

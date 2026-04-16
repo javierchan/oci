@@ -7,9 +7,10 @@ import { IntegrationDesignCanvasPanel } from "@/components/integration-design-ca
 import { IntegrationPatchForm } from "@/components/integration-patch-form";
 import { QaBadge } from "@/components/qa-badge";
 import { RawColumnValuesTable } from "@/components/raw-column-values-table";
+import { PatternSupportBadge } from "@/components/pattern-support-badge";
 import { api } from "@/lib/api";
 import { formatDate, formatNumber } from "@/lib/format";
-import type { AuditEvent } from "@/lib/types";
+import type { AuditEvent, Integration } from "@/lib/types";
 
 type IntegrationDetailPageProps = {
   params: {
@@ -47,6 +48,10 @@ const AUDIT_LABELS: Record<string, string> = {
 };
 
 const QA_REASON_LABELS: Record<string, { title: string; hint: string }> = {
+  MISSING_ID_FORMAL: {
+    title: "Formal ID coverage gap",
+    hint: "This is now treated as a governance coverage signal rather than the primary QA gate. Recalculate to refresh older snapshots.",
+  },
   INVALID_TRIGGER_TYPE: {
     title: "Trigger type not recognized",
     hint: "The trigger type value does not match any known OIC trigger. Check the Trigger Type field.",
@@ -62,6 +67,22 @@ const QA_REASON_LABELS: Record<string, { title: string; hint: string }> = {
   MISSING_CORE_TOOLS: {
     title: "No tools selected in canvas",
     hint: "Use the Integration Design Canvas to add at least one tool to this integration.",
+  },
+  PATTERN_REFERENCE_ONLY: {
+    title: "Pattern is reference-only in phase parity",
+    hint: "This workbook pattern is documented and selectable, but the current release does not yet provide pattern-specific sizing parity. Treat estimates as directional and keep the row in architect review.",
+  },
+  MISSING_PAYLOAD: {
+    title: "Payload evidence missing",
+    hint: "Forecast metrics stay low confidence until Payload KB is captured from the source workbook or architect review.",
+  },
+  MISSING_FAN_OUT_TARGETS: {
+    title: "Fan-out targets missing",
+    hint: "This integration is marked as fan-out, but the downstream target count is still missing or incomplete.",
+  },
+  TBD_UNCERTAINTY: {
+    title: "Source uncertainty still open",
+    hint: "The workbook still marks this row as TBD. Keep the uncertainty visible until source evidence is resolved.",
   },
 };
 
@@ -141,14 +162,41 @@ function summarizeAuditEvent(event: AuditEvent): { title: string; changes: Array
   };
 }
 
+function buildCoverageSignals(integration: Integration): Array<{ title: string; detail: string }> {
+  const signals: Array<{ title: string; detail: string }> = [];
+
+  if (!integration.interface_id || integration.interface_id.trim() === "") {
+    signals.push({
+      title: "Formal ID coverage gap",
+      detail: "The integration is still evaluated by QA, but governance coverage remains incomplete until a formal Interface ID is assigned.",
+    });
+  }
+
+  if (integration.payload_per_execution_kb === null || integration.payload_per_execution_kb === undefined) {
+    signals.push({
+      title: "Low-confidence forecast",
+      detail: "Payload evidence is missing, so billing and throughput forecasts for this integration remain directional rather than precise.",
+    });
+  }
+
+  if (integration.uncertainty && integration.uncertainty.toUpperCase().includes("TBD")) {
+    signals.push({
+      title: "Workbook uncertainty preserved",
+      detail: "The source workbook still flags uncertainty as TBD. This signal should stay visible until the source team resolves it.",
+    });
+  }
+
+  return signals;
+}
+
 export default async function IntegrationDetailPage({
   params,
 }: IntegrationDetailPageProps): Promise<JSX.Element> {
-  const [project, detail, patterns, tools, integrationAudit, sourceRowAudit] = await Promise.all([
+  const [project, detail, patterns, canvasGovernance, integrationAudit, sourceRowAudit] = await Promise.all([
     api.getProject(params.projectId),
     api.getIntegration(params.projectId, params.integrationId),
     api.listPatterns(),
-    api.listDictionaryOptions("TOOLS"),
+    api.getCanvasGovernance(),
     api.listAudit(params.projectId, {
       entity_type: "catalog_integration",
       entity_id: params.integrationId,
@@ -184,6 +232,11 @@ export default async function IntegrationDetailPage({
   const auditEvents = [...integrationAudit.events, ...sourceAuditEvents].sort(
     (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
   );
+  const coverageSignals = buildCoverageSignals(integration);
+  const patternMap = new Map(patterns.patterns.map((pattern) => [pattern.pattern_id, pattern]));
+  const selectedPatternDefinition = integration.selected_pattern
+    ? patternMap.get(integration.selected_pattern) ?? null
+    : null;
 
   return (
     <div className="space-y-8">
@@ -192,7 +245,7 @@ export default async function IntegrationDetailPage({
           <div>
             <p className="app-kicker">Integration Detail</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
-              {integration.interface_id ?? integration.interface_name ?? integration.id}
+              {integration.interface_name ?? integration.interface_id ?? integration.id}
             </h1>
             <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
               Review immutable source lineage on the left and apply architect-owned patterning decisions on the right.
@@ -277,6 +330,14 @@ export default async function IntegrationDetailPage({
                 <dt className="app-label">Status</dt>
                 <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.status ?? "—"}</dd>
               </div>
+              <div>
+                <dt className="app-label">Initial Scope</dt>
+                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.initial_scope ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="app-label">Uncertainty</dt>
+                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.uncertainty ?? "—"}</dd>
+              </div>
             </dl>
           </article>
 
@@ -329,7 +390,8 @@ export default async function IntegrationDetailPage({
             projectId={params.projectId}
             integration={integration}
             patterns={patterns.patterns}
-            toolOptions={tools.options}
+            toolOptions={canvasGovernance.tools}
+            overlayOptions={canvasGovernance.overlays}
           />
 
           {integration.qa_reasons.length > 0 ? (
@@ -352,6 +414,43 @@ export default async function IntegrationDetailPage({
                     </article>
                   );
                 })}
+              </div>
+            </section>
+          ) : null}
+
+          {coverageSignals.length > 0 ? (
+            <section className="app-card p-6">
+              <p className="app-label">Coverage Signals</p>
+              <div className="mt-4 space-y-3">
+                {coverageSignals.map((signal) => (
+                  <article
+                    key={signal.title}
+                    className="rounded-2xl border border-sky-200 border-l-4 bg-sky-50 p-4"
+                  >
+                    <p className="font-semibold text-sky-950">{signal.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-sky-900">{signal.detail}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {selectedPatternDefinition ? (
+            <section className="app-card p-6">
+              <p className="app-label">Pattern Support</p>
+              <div className="mt-4 space-y-3">
+                <PatternSupportBadge support={selectedPatternDefinition.support} />
+                <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
+                  {selectedPatternDefinition.support.summary}
+                </p>
+                {selectedPatternDefinition.when_not_to_use ? (
+                  <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                    <p className="font-semibold text-[var(--color-text-primary)]">Anti-pattern guidance</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                      {selectedPatternDefinition.when_not_to_use}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </section>
           ) : null}
@@ -416,7 +515,9 @@ export default async function IntegrationDetailPage({
         projectId={params.projectId}
         integration={integration}
         patterns={patterns.patterns}
-        toolOptions={tools.options}
+        toolOptions={canvasGovernance.tools}
+        overlayOptions={canvasGovernance.overlays}
+        combinations={canvasGovernance.combinations}
       />
     </div>
   );

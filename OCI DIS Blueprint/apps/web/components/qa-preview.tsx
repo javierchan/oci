@@ -4,10 +4,11 @@
 
 import { CheckCircle2, CircleX } from "lucide-react";
 
-import type { ManualIntegrationCreate } from "@/lib/types";
+import type { ManualIntegrationCreate, PatternDefinition } from "@/lib/types";
 
 type QaPreviewProps = {
   form: ManualIntegrationCreate;
+  patterns: PatternDefinition[];
 };
 
 type QaRule = {
@@ -16,11 +17,52 @@ type QaRule = {
   pass: boolean;
 };
 
-function buildRules(form: ManualIntegrationCreate): QaRule[] {
+type CoverageSignal = {
+  title: string;
+  detail: string;
+};
+
+const VALID_TRIGGER_TYPES = new Set([
+  "scheduled",
+  "rest",
+  "rest trigger",
+  "event",
+  "event trigger",
+  "ftp/sftp",
+  "db polling",
+  "jms",
+  "kafka",
+  "webhook",
+  "soap",
+  "soap trigger",
+]);
+
+function normalizeTriggerType(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  return value.trim().toLowerCase().replace(/-/g, " ").split(/\s+/).join(" ");
+}
+
+function buildRules(form: ManualIntegrationCreate, patterns: PatternDefinition[]): QaRule[] {
+  const normalizedTrigger = normalizeTriggerType(form.type);
+  const selectedPattern = patterns.find((pattern) => pattern.pattern_id === form.selected_pattern) ?? null;
   return [
-    { code: "MISSING_ID_FORMAL", label: "Interface ID assigned", pass: Boolean(form.interface_id) },
-    { code: "INVALID_TRIGGER_TYPE", label: "Trigger type set", pass: Boolean(form.type) },
-    { code: "INVALID_PATTERN", label: "OIC Pattern assigned", pass: Boolean(form.selected_pattern) },
+    {
+      code: "INVALID_TRIGGER_TYPE",
+      label: "Trigger type recognized",
+      pass: normalizedTrigger !== null && VALID_TRIGGER_TYPES.has(normalizedTrigger),
+    },
+    {
+      code: "INVALID_PATTERN",
+      label: "OIC Pattern assigned",
+      pass: Boolean(form.selected_pattern),
+    },
+    {
+      code: "PATTERN_REFERENCE_ONLY",
+      label: "Pattern is parity-ready",
+      pass: !selectedPattern || selectedPattern.support.parity_ready,
+    },
     {
       code: "MISSING_RATIONALE",
       label: "Pattern rationale provided",
@@ -44,8 +86,44 @@ function buildRules(form: ManualIntegrationCreate): QaRule[] {
   ];
 }
 
-export function QaPreview({ form }: QaPreviewProps): JSX.Element {
-  const rules = buildRules(form);
+function buildCoverageSignals(form: ManualIntegrationCreate, patterns: PatternDefinition[]): CoverageSignal[] {
+  const signals: CoverageSignal[] = [];
+  const selectedPattern = patterns.find((pattern) => pattern.pattern_id === form.selected_pattern) ?? null;
+
+  if (!form.interface_id) {
+    signals.push({
+      title: "Formal ID coverage gap",
+      detail: "QA still runs, but governance coverage remains incomplete until an Interface ID is assigned.",
+    });
+  }
+
+  if (form.payload_per_execution_kb === undefined) {
+    signals.push({
+      title: "Low-confidence forecast",
+      detail: "Payload evidence is still missing, so billing estimates will remain directional after submit.",
+    });
+  }
+
+  if (form.uncertainty && form.uncertainty.toUpperCase().includes("TBD")) {
+    signals.push({
+      title: "Workbook uncertainty preserved",
+      detail: "Keep the source uncertainty visible until the owning team resolves the TBD evidence.",
+    });
+  }
+
+  if (selectedPattern && !selectedPattern.support.parity_ready) {
+    signals.push({
+      title: "Reference-only pattern",
+      detail: "This pattern stays in architect review because the current release does not yet provide pattern-specific parity sizing.",
+    });
+  }
+
+  return signals;
+}
+
+export function QaPreview({ form, patterns }: QaPreviewProps): JSX.Element {
+  const rules = buildRules(form, patterns);
+  const coverageSignals = buildCoverageSignals(form, patterns);
   const qaStatus = rules.every((rule) => rule.pass) ? "OK" : "REVISAR";
 
   return (
@@ -80,6 +158,20 @@ export function QaPreview({ form }: QaPreviewProps): JSX.Element {
           </li>
         ))}
       </ul>
+
+      {coverageSignals.length > 0 ? (
+        <div className="mt-4 space-y-3">
+          {coverageSignals.map((signal) => (
+            <article
+              key={signal.title}
+              className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3"
+            >
+              <p className="text-sm font-semibold text-sky-950">{signal.title}</p>
+              <p className="mt-1 text-sm text-sky-900">{signal.detail}</p>
+            </article>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

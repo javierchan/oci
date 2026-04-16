@@ -15,10 +15,24 @@ class QAResult:
     reasons: list[str]   # structured reason codes for REVISAR
 
 
-# Governed trigger types from TPL - Diccionario
+def _normalize_trigger_key(value: str) -> str:
+    return " ".join(value.strip().lower().replace("-", " ").split())
+
+
+# Governed trigger types from TPL - Diccionario / workbook capture vocabulary.
 VALID_TRIGGER_TYPES = {
-    "Scheduled", "REST", "Event", "FTP/SFTP", "DB Polling",
-    "JMS", "Kafka", "Webhook", "SOAP",
+    "scheduled": "Scheduled",
+    "rest": "REST",
+    "rest trigger": "REST Trigger",
+    "event": "Event",
+    "event trigger": "Event Trigger",
+    "ftp/sftp": "FTP/SFTP",
+    "db polling": "DB Polling",
+    "jms": "JMS",
+    "kafka": "Kafka",
+    "webhook": "Webhook",
+    "soap": "SOAP",
+    "soap trigger": "SOAP Trigger",
 }
 
 # Governed pattern IDs from TPL - Patrones
@@ -26,6 +40,13 @@ VALID_PATTERN_IDS = {
     "#01", "#02", "#03", "#04", "#05", "#06", "#07", "#08",
     "#09", "#10", "#11", "#12", "#13", "#14", "#15", "#16", "#17",
 }
+
+
+def normalize_trigger_type(trigger_type: Optional[str]) -> Optional[str]:
+    if not trigger_type or trigger_type.strip() == "":
+        return None
+    normalized = VALID_TRIGGER_TYPES.get(_normalize_trigger_key(trigger_type))
+    return normalized
 
 
 def evaluate_qa(
@@ -38,15 +59,16 @@ def evaluate_qa(
     is_fan_out: Optional[bool],
     fan_out_targets: Optional[int],
     uncertainty: Optional[str],
+    is_active_row: bool = True,
 ) -> QAResult:
-    reasons: list[str] = []
+    if not is_active_row:
+        return QAResult(status="PENDING", reasons=[])
 
-    # Missing formal ID
-    if not interface_id or interface_id.strip() == "":
-        reasons.append("MISSING_ID_FORMAL")
+    reasons: list[str] = []
+    resolved_trigger_type = normalize_trigger_type(trigger_type)
 
     # Invalid or missing trigger type
-    if not trigger_type or trigger_type not in VALID_TRIGGER_TYPES:
+    if resolved_trigger_type is None:
         reasons.append("INVALID_TRIGGER_TYPE")
 
     # Missing or invalid pattern

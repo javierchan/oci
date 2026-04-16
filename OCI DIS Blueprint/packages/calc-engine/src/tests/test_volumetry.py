@@ -11,6 +11,7 @@ from ..engine.volumetry import (
     Assumptions,
     IntegrationInput,
     executions_per_day,
+    normalize_payload_to_kb,
     payload_per_hour_kb,
     oic_billing_messages_per_execution,
     oic_billing_messages_per_month,
@@ -34,6 +35,16 @@ def test_frequency_diario():
 
 def test_frequency_hourly():
     r = executions_per_day("Cada hora")
+    assert r.value == 24.0
+
+
+def test_frequency_workbook_hourly():
+    r = executions_per_day("Cada 1 hora")
+    assert r.value == 24.0
+
+
+def test_frequency_tiempo_real_uses_workbook_proxy():
+    r = executions_per_day("Tiempo Real")
     assert r.value == 24.0
 
 
@@ -66,11 +77,11 @@ def test_oic_msgs_per_exec_exact_boundary():
 
 
 def test_oic_msgs_per_month_daily():
-    # 100 KB payload, 0 response, 1 exec/day, 30 days
+    # 100 KB payload, 0 response, 1 exec/day, 31 days
     # msgs/exec = ceil(100/50) + 0 = 2
-    # msgs/month = 2 * 1 * 30 = 60
+    # msgs/month = 2 * 1 * 31 = 62
     r = oic_billing_messages_per_month(100.0, 0.0, 1.0, DEFAULTS)
-    assert r.value == 60.0
+    assert r.value == 62.0
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +105,11 @@ def test_oic_peak_packs_below_one_pack():
     assert r.value == 1.0
 
 
+def test_oic_peak_packs_byol_uses_governed_pack_size():
+    r = oic_peak_packs_per_hour(20001.0, DEFAULTS, byol=True)
+    assert r.value == 2.0
+
+
 # ---------------------------------------------------------------------------
 # Payload per hour
 # ---------------------------------------------------------------------------
@@ -102,6 +118,16 @@ def test_payload_per_hour():
     # 100 KB/exec, 24 execs/day → 100 KB/hour
     r = payload_per_hour_kb(100.0, 24.0)
     assert r.value == pytest.approx(100.0)
+
+
+def test_normalize_payload_to_kb_keeps_kb_values():
+    r = normalize_payload_to_kb(256.0, "KB")
+    assert r.value == pytest.approx(256.0)
+
+
+def test_normalize_payload_to_kb_converts_mb_once():
+    r = normalize_payload_to_kb(1.5, "MB")
+    assert r.value == pytest.approx(1536.0)
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +147,7 @@ def test_functions_invocations_from_frequency():
         fan_out_targets=None,
     )
     r = functions_invocations_per_month(row, DEFAULTS)
-    assert r.value == pytest.approx(4.0 * 30)
+    assert r.value == pytest.approx(4.0 * DEFAULTS.month_days)
 
 
 def test_functions_invocations_override():

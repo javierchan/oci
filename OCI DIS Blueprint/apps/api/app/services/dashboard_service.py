@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 from collections import Counter
+from typing import Any, cast
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.calc_engine import normalize_trigger_type
 from app.models import CatalogIntegration, DashboardSnapshot, PatternDefinition, Project, VolumetrySnapshot
 from app.schemas.dashboard import (
     CompletenessChart,
+    CoverageMetric,
     CoverageChart,
     DashboardCharts,
+    DashboardForecastConfidence,
     DashboardKPIStrip,
     DashboardMaturity,
     DashboardRisk,
@@ -26,6 +30,74 @@ from app.schemas.dashboard import (
 
 def _has_text(value: str | None) -> bool:
     return value is not None and value.strip() != ""
+
+
+def _coverage_metric(complete: int, total: int) -> CoverageMetric:
+    ratio = (complete / total) if total else 0.0
+    return CoverageMetric(complete=complete, total=total, ratio=ratio)
+
+
+def _int_value(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(float(value))
+        except ValueError:
+            return 0
+    return 0
+
+
+def _dict_value(value: object) -> dict[str, object]:
+    return cast(dict[str, object], value) if isinstance(value, dict) else {}
+
+
+def _dict_list(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    return [cast(dict[str, object], item) for item in value if isinstance(item, dict)]
+
+
+def _forecast_confidence(payload_metric: CoverageMetric) -> DashboardForecastConfidence:
+    ratio = payload_metric.ratio
+    if payload_metric.total == 0:
+        return DashboardForecastConfidence(
+            level="low",
+            title="No forecast evidence yet",
+            message="Technical forecasts are blocked because the project has no active catalog rows yet.",
+            payload_coverage_ratio=0.0,
+        )
+    if ratio <= 0.25:
+        return DashboardForecastConfidence(
+            level="low",
+            title="Low forecast confidence",
+            message=(
+                f"Only {payload_metric.complete} of {payload_metric.total} integrations include payload evidence. "
+                "Monthly technical totals remain visible, but treat them as directional until payload coverage improves."
+            ),
+            payload_coverage_ratio=ratio,
+        )
+    if ratio < 0.6:
+        return DashboardForecastConfidence(
+            level="medium",
+            title="Medium forecast confidence",
+            message=(
+                f"{payload_metric.complete} of {payload_metric.total} integrations include payload evidence. "
+                "The forecast is usable for planning, but still contains material estimation risk."
+            ),
+            payload_coverage_ratio=ratio,
+        )
+    return DashboardForecastConfidence(
+        level="high",
+        title="High forecast confidence",
+        message=(
+            f"{payload_metric.complete} of {payload_metric.total} integrations include payload evidence. "
+            "Technical forecast quality is strong relative to current workbook coverage."
+        ),
+        payload_coverage_ratio=ratio,
+    )
 
 
 def _to_risk_label(code: str) -> str:
@@ -53,6 +125,41 @@ def _serialize_summary(snapshot: DashboardSnapshot) -> DashboardSnapshotSummary:
     )
 
 
+def _normalize_coverage_chart(raw_coverage: dict[str, object]) -> CoverageChart:
+    total = _int_value(raw_coverage.get("total_integrations", 0))
+    if "payload" in raw_coverage:
+        return CoverageChart(**cast(dict[str, Any], raw_coverage))
+    return CoverageChart(
+        total_integrations=total,
+        formal_id=_coverage_metric(_int_value(raw_coverage.get("with_interface_id", 0)), total),
+        pattern=_coverage_metric(_int_value(raw_coverage.get("pattern_assigned", 0)), total),
+        payload=_coverage_metric(_int_value(raw_coverage.get("payload_informed", 0)), total),
+        trigger=_coverage_metric(0, total),
+        source_destination=_coverage_metric(_int_value(raw_coverage.get("source_destination_informed", 0)), total),
+        fan_out=_coverage_metric(0, total),
+    )
+
+
+def _normalize_dashboard_charts(raw_charts: dict[str, object]) -> DashboardCharts:
+    coverage = _normalize_coverage_chart(_dict_value(raw_charts.get("coverage", {})))
+    completeness = CompletenessChart(**cast(dict[str, Any], _dict_value(raw_charts.get("completeness", {}))))
+    pattern_mix = _dict_list(raw_charts.get("pattern_mix", []))
+    payload_distribution = _dict_list(raw_charts.get("payload_distribution", []))
+    forecast_confidence = raw_charts.get("forecast_confidence")
+    normalized_confidence = (
+        DashboardForecastConfidence(**cast(dict[str, Any], forecast_confidence))
+        if isinstance(forecast_confidence, dict)
+        else _forecast_confidence(coverage.payload)
+    )
+    return DashboardCharts(
+        coverage=coverage,
+        completeness=completeness,
+        pattern_mix=[PatternMixEntry(**cast(dict[str, Any], entry)) for entry in pattern_mix],
+        payload_distribution=[PayloadDistributionBucket(**cast(dict[str, Any], entry)) for entry in payload_distribution],
+        forecast_confidence=normalized_confidence,
+    )
+
+
 def serialize_snapshot(snapshot: DashboardSnapshot) -> DashboardSnapshotResponse:
     """Convert a dashboard snapshot model into its response schema."""
 
@@ -62,7 +169,7 @@ def serialize_snapshot(snapshot: DashboardSnapshot) -> DashboardSnapshotResponse
         volumetry_snapshot_id=snapshot.volumetry_snapshot_id,
         mode=snapshot.mode,
         kpi_strip=DashboardKPIStrip(**snapshot.kpi_strip),
-        charts=DashboardCharts(**snapshot.charts),
+        charts=_normalize_dashboard_charts(snapshot.charts),
         risks=[DashboardRisk(**risk) for risk in (snapshot.risks or [])],
         maturity=DashboardMaturity(**(snapshot.maturity or {})),
         created_at=snapshot.created_at,
@@ -109,20 +216,27 @@ def _build_kpi_strip(volumetry_snapshot: VolumetrySnapshot) -> dict[str, object]
 
 def _build_charts(rows: list[CatalogIntegration], pattern_names: dict[str, str]) -> dict[str, object]:
     total = len(rows)
-    with_interface_id = sum(1 for row in rows if _has_text(row.interface_id))
-    pattern_assigned = sum(1 for row in rows if _has_text(row.selected_pattern))
-    payload_informed = sum(1 for row in rows if row.payload_per_execution_kb is not None)
-    source_destination_informed = sum(
+    formal_id_complete = sum(1 for row in rows if _has_text(row.interface_id))
+    pattern_complete = sum(1 for row in rows if _has_text(row.selected_pattern))
+    payload_complete = sum(1 for row in rows if row.payload_per_execution_kb is not None)
+    trigger_complete = sum(1 for row in rows if normalize_trigger_type(row.trigger_type) is not None)
+    source_destination_complete = sum(
         1 for row in rows if _has_text(row.source_system) and _has_text(row.destination_system)
+    )
+    fan_out_complete = sum(
+        1
+        for row in rows
+        if row.is_fan_out is False or (row.is_fan_out is True and row.fan_out_targets is not None and row.fan_out_targets >= 2)
     )
 
     coverage = CoverageChart(
         total_integrations=total,
-        with_interface_id=with_interface_id,
-        without_interface_id=max(total - with_interface_id, 0),
-        pattern_assigned=pattern_assigned,
-        payload_informed=payload_informed,
-        source_destination_informed=source_destination_informed,
+        formal_id=_coverage_metric(formal_id_complete, total),
+        pattern=_coverage_metric(pattern_complete, total),
+        payload=_coverage_metric(payload_complete, total),
+        trigger=_coverage_metric(trigger_complete, total),
+        source_destination=_coverage_metric(source_destination_complete, total),
+        fan_out=_coverage_metric(fan_out_complete, total),
     )
 
     completeness = CompletenessChart(
@@ -160,6 +274,7 @@ def _build_charts(rows: list[CatalogIntegration], pattern_names: dict[str, str])
         completeness=completeness,
         pattern_mix=pattern_mix,
         payload_distribution=payload_distribution,
+        forecast_confidence=_forecast_confidence(coverage.payload),
     )
     return charts.model_dump()
 
