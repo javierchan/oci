@@ -2,10 +2,11 @@
 
 /* React + SVG renderer for the system dependency graph using D3 force layout only for positioning. */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import * as d3 from "d3";
 
+import { formatQaStatus } from "@/lib/format";
 import type { GraphEdge, GraphNode, GraphResponse } from "@/lib/types";
 
 type GraphMode = "select" | "pan";
@@ -20,6 +21,7 @@ type IntegrationGraphProps = {
   svgRef: RefObject<SVGSVGElement>;
   mode: GraphMode;
   viewport: { x: number; y: number; scale: number };
+  onDefaultViewportChange: (_viewport: { x: number; y: number; scale: number }) => void;
   onViewportChange: (
     _updater:
       | { x: number; y: number; scale: number }
@@ -33,11 +35,21 @@ type Position = {
   y: number;
 };
 
+type Viewport = {
+  x: number;
+  y: number;
+  scale: number;
+};
+
 type SimNode = d3.SimulationNodeDatum & GraphNode;
 type SimEdge = d3.SimulationLinkDatum<SimNode> & GraphEdge;
 
-const WIDTH = 1200;
-const HEIGHT = 760;
+const DEFAULT_WIDTH = 1200;
+const GRAPH_HEIGHT = 760;
+const GRAPH_PADDING = 32;
+const FIT_PADDING = 96;
+const MIN_VIEWPORT_SCALE = 0.65;
+const MAX_VIEWPORT_SCALE = 2.5;
 const EDGE_COLORS: Record<string, string> = {
   OK: "#86efac",
   REVISAR: "#fde047",
@@ -87,6 +99,61 @@ function nodeColor(node: GraphNode, graph: GraphResponse, mode: "qa" | "bp"): st
   return "#eab308";
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function calculateFitViewport(
+  graph: GraphResponse,
+  positions: Record<string, Position>,
+  maxNodeCount: number,
+  width: number,
+  height: number,
+): Viewport {
+  if (graph.nodes.length === 0 || Object.keys(positions).length === 0) {
+    return { x: 0, y: 0, scale: 1 };
+  }
+
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  graph.nodes.forEach((node) => {
+    const position = positions[node.id];
+    if (!position) {
+      return;
+    }
+
+    const radius = nodeRadius(node.integration_count, maxNodeCount);
+    const labelHalfWidth = Math.max(radius, Math.min(node.label.length * 4, 120));
+
+    minX = Math.min(minX, position.x - labelHalfWidth);
+    maxX = Math.max(maxX, position.x + labelHalfWidth);
+    minY = Math.min(minY, position.y - radius);
+    maxY = Math.max(maxY, position.y + radius + 40);
+  });
+
+  if (![minX, maxX, minY, maxY].every(Number.isFinite)) {
+    return { x: 0, y: 0, scale: 1 };
+  }
+
+  minX -= FIT_PADDING;
+  maxX += FIT_PADDING;
+  minY -= FIT_PADDING;
+  maxY += FIT_PADDING;
+
+  const contentWidth = Math.max(maxX - minX, 160);
+  const contentHeight = Math.max(maxY - minY, 160);
+  const scale = clamp(Math.min(width / contentWidth, height / contentHeight), MIN_VIEWPORT_SCALE, MAX_VIEWPORT_SCALE);
+
+  return {
+    scale,
+    x: width / 2 - ((minX + maxX) / 2) * scale,
+    y: height / 2 - ((minY + maxY) / 2) * scale,
+  };
+}
+
 export function IntegrationGraph({
   graph,
   selectedNodeId,
@@ -98,12 +165,16 @@ export function IntegrationGraph({
   mode,
   viewport,
   onViewportChange,
+  onDefaultViewportChange,
 }: IntegrationGraphProps): JSX.Element {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const didPanRef = useRef<boolean>(false);
   const [positions, setPositions] = useState<Record<string, Position>>({});
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [canvasWidth, setCanvasWidth] = useState<number>(DEFAULT_WIDTH);
 
   const maxNodeCount = useMemo(
     () => Math.max(1, ...graph.nodes.map((node) => node.integration_count)),
@@ -113,6 +184,26 @@ export function IntegrationGraph({
     () => Math.max(1, ...graph.edges.map((edge) => edge.integration_count)),
     [graph.edges],
   );
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) {
+        return;
+      }
+
+      const nextWidth = Math.max(320, Math.floor(entry.contentRect.width - GRAPH_PADDING));
+      setCanvasWidth((current) => (current === nextWidth ? current : nextWidth));
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const nodes: SimNode[] = graph.nodes.map((node) => ({ ...node }));
@@ -128,7 +219,7 @@ export function IntegrationGraph({
           .distance(120),
       )
       .force("charge", d3.forceManyBody().strength(-400))
-      .force("center", d3.forceCenter(WIDTH / 2, HEIGHT / 2))
+      .force("center", d3.forceCenter(canvasWidth / 2, GRAPH_HEIGHT / 2))
       .force(
         "collision",
         d3.forceCollide<SimNode>().radius((datum) => nodeRadius(datum.integration_count, maxNodeCount) + 20),
@@ -143,13 +234,23 @@ export function IntegrationGraph({
           node.id,
           {
             id: node.id,
-            x: node.x ?? WIDTH / 2,
-            y: node.y ?? HEIGHT / 2,
+            x: node.x ?? canvasWidth / 2,
+            y: node.y ?? GRAPH_HEIGHT / 2,
           },
         ]),
       ),
     );
-  }, [graph, maxNodeCount]);
+  }, [canvasWidth, graph, maxNodeCount]);
+
+  const fittedViewport = useMemo(
+    () => calculateFitViewport(graph, positions, maxNodeCount, canvasWidth, GRAPH_HEIGHT),
+    [canvasWidth, graph, maxNodeCount, positions],
+  );
+
+  useEffect(() => {
+    onDefaultViewportChange(fittedViewport);
+    onViewportChange(fittedViewport);
+  }, [fittedViewport, onDefaultViewportChange, onViewportChange]);
 
   const hoveredEdge = hoveredEdgeId
     ? graph.edges.find((edge) => edge.id === hoveredEdgeId) ?? null
@@ -171,6 +272,7 @@ export function IntegrationGraph({
     if (mode !== "pan") {
       return;
     }
+    didPanRef.current = false;
     setIsDragging(true);
     setDragStart({ x: event.clientX, y: event.clientY });
   }
@@ -181,6 +283,9 @@ export function IntegrationGraph({
     }
     const dx = event.clientX - dragStart.x;
     const dy = event.clientY - dragStart.y;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+      didPanRef.current = true;
+    }
     setDragStart({ x: event.clientX, y: event.clientY });
     onViewportChange((current) => ({
       ...current,
@@ -190,8 +295,14 @@ export function IntegrationGraph({
   }
 
   function handleMouseUp(): void {
+    const resetPanGuard = didPanRef.current;
     setIsDragging(false);
     setDragStart(null);
+    if (resetPanGuard) {
+      window.setTimeout(() => {
+        didPanRef.current = false;
+      }, 0);
+    }
   }
 
   function handleWheel(event: React.WheelEvent<HTMLDivElement>): void {
@@ -216,16 +327,17 @@ export function IntegrationGraph({
 
   return (
     <div
+      ref={containerRef}
       className={[
-        "relative overflow-hidden rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4 shadow-sm",
+        "relative w-full overflow-hidden rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4 shadow-sm",
         mode === "pan" ? (isDragging ? "cursor-grabbing" : "cursor-grab") : "cursor-default",
       ].join(" ")}
       onWheel={handleWheel}
     >
       <svg
         ref={svgRef}
-        width={WIDTH}
-        height={HEIGHT}
+        width={canvasWidth}
+        height={GRAPH_HEIGHT}
         className="block"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -255,9 +367,11 @@ export function IntegrationGraph({
               <g
                 key={edge.id}
                 onClick={() => {
-                  if (mode === "select") {
-                    onEdgeClick(edge);
+                  if (didPanRef.current) {
+                    didPanRef.current = false;
+                    return;
                   }
+                  onEdgeClick(edge);
                 }}
                 onMouseEnter={() => setHoveredEdgeId(edge.id)}
                 onMouseLeave={() => setHoveredEdgeId(null)}
@@ -292,9 +406,11 @@ export function IntegrationGraph({
                 key={node.id}
                 transform={`translate(${position.x}, ${position.y})`}
                 onClick={() => {
-                  if (mode === "select") {
-                    onNodeClick(node);
+                  if (didPanRef.current) {
+                    didPanRef.current = false;
+                    return;
                   }
+                  onNodeClick(node);
                 }}
                 onMouseEnter={() => setHoveredNodeId(node.id)}
                 onMouseLeave={() => setHoveredNodeId(null)}
@@ -386,7 +502,7 @@ export function IntegrationGraph({
         </div>
         <div className="mt-1 flex items-center gap-2">
           <span className="h-3 w-3 rounded-full bg-[#f97316]" />
-          All REVISAR
+          All {formatQaStatus("REVISAR")}
         </div>
         <div className="mt-1 flex items-center gap-2">
           <span className="h-3 w-3 rounded-full bg-[#eab308]" />

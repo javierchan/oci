@@ -9,6 +9,7 @@ import { Breadcrumb } from "@/components/breadcrumb";
 import { AdminConfirmDelete } from "@/components/admin-confirm-delete";
 import { AdminDictionaryForm } from "@/components/admin-dictionary-form";
 import { api } from "@/lib/api";
+import { formatComplexity, formatFrequency, formatQaStatus } from "@/lib/format";
 import type { DictOption, DictOptionCreate } from "@/lib/types";
 
 type AdminDictionaryCategoryPageProps = {
@@ -55,6 +56,19 @@ export default function AdminDictionaryCategoryPage({
   useEffect(() => {
     void load();
   }, [load]);
+
+  function formatOptionValue(value: string): string {
+    if (category === "FREQUENCY") {
+      return formatFrequency(value);
+    }
+    if (category === "COMPLEXITY") {
+      return formatComplexity(value);
+    }
+    if (category === "QA_STATUS") {
+      return formatQaStatus(value);
+    }
+    return value;
+  }
 
   async function handleCreate(value: DictOptionCreate): Promise<void> {
     setSaving(true);
@@ -189,7 +203,7 @@ export default function AdminDictionaryCategoryPage({
               options.map((option) => (
                 <tr key={option.id} className="app-table-row">
                   <td className="px-6 py-4 font-medium text-[var(--color-text-primary)]">{option.code || "—"}</td>
-                  <td className="px-6 py-4 text-[var(--color-text-primary)]">{option.value}</td>
+                  <td className="px-6 py-4 text-[var(--color-text-primary)]">{formatOptionValue(option.value)}</td>
                   <td className="px-6 py-4 text-[var(--color-text-secondary)]">{option.description || "—"}</td>
                   <td className="px-6 py-4 text-[var(--color-text-secondary)]">
                     {category === "FREQUENCY" ? option.executions_per_day ?? "—" : "—"}

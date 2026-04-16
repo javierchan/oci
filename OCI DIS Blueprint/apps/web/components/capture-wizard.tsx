@@ -2,6 +2,7 @@
 
 /* Five-step guided manual capture flow with validation, duplicate checks, and submit handling. */
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startTransition, useEffect, useMemo, useState } from "react";
@@ -358,33 +359,72 @@ export function CaptureWizard({
   return (
     <div className="space-y-6">
       <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Step {currentStep + 1} of 5</p>
             <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{stepTitle}</h2>
           </div>
-          <div className="grid w-full gap-3 md:grid-cols-5 lg:max-w-3xl">
-            {STEP_LABELS.map((label, index) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => {
-                  if (index <= currentStep) {
-                    setCurrentStep(index);
-                  }
-                }}
-                className={[
-                  "rounded-2xl border px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] transition",
-                  index === currentStep
-                    ? "border-sky-400 bg-sky-50 text-sky-700"
-                    : index < currentStep
-                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                      : "border-slate-200 bg-slate-50 text-slate-500",
-                ].join(" ")}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="w-full overflow-x-auto pb-1 xl:max-w-[58rem]">
+            <div className="flex min-w-max items-center gap-3 px-1 lg:gap-4">
+              {STEP_LABELS.map((label, index) => {
+                const isCurrent = index === currentStep;
+                const isCompleted = index < currentStep;
+
+                return (
+                  <Fragment key={label}>
+                    <button
+                      type="button"
+                      aria-current={isCurrent ? "step" : undefined}
+                      onClick={() => {
+                        if (index <= currentStep) {
+                          setCurrentStep(index);
+                        }
+                      }}
+                      className={[
+                        "group min-w-[11.5rem] rounded-[1.9rem] border px-5 py-5 text-left transition",
+                        isCurrent
+                          ? "border-sky-400 bg-sky-50 text-sky-800 shadow-[0_16px_40px_-28px_rgba(14,165,233,0.6)]"
+                          : isCompleted
+                            ? "border-emerald-200 bg-emerald-50/70 text-emerald-800 hover:border-emerald-300"
+                            : "border-slate-200 bg-slate-50/80 text-slate-500 hover:border-slate-300 hover:bg-white",
+                      ].join(" ")}
+                    >
+                      <span className="flex items-center gap-4">
+                        <span
+                          className={[
+                            "inline-flex h-11 w-11 items-center justify-center rounded-full text-lg font-semibold",
+                            isCurrent
+                              ? "bg-sky-100 text-sky-700"
+                              : isCompleted
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-slate-200 text-slate-500",
+                          ].join(" ")}
+                        >
+                          {index + 1}
+                        </span>
+                        <span className="space-y-1">
+                          <span className="block text-[0.72rem] font-semibold uppercase tracking-[0.32em]">
+                            {label}
+                          </span>
+                          <span className="block text-[11px] font-medium normal-case tracking-normal opacity-80">
+                            {isCurrent ? "Current step" : isCompleted ? "Completed" : "Upcoming"}
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                    {index < STEP_LABELS.length - 1 ? (
+                      <span
+                        aria-hidden="true"
+                        className={[
+                          "hidden h-px w-8 rounded-full lg:block",
+                          index < currentStep ? "bg-emerald-300" : "bg-slate-200",
+                        ].join(" ")}
+                      />
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </div>
           </div>
         </div>
       </section>

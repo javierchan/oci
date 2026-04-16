@@ -28,7 +28,7 @@ from app.services.catalog_service import serialize_catalog_integration
 from app.services.justification_service import serialize_justification_record
 from app.services.serializers import parse_bool, parse_float, parse_int, parse_text, sanitize_for_json
 
-SOURCE_SHEET_NAME = "Catálogo de Integraciones"
+SOURCE_SHEET_NAMES = ("Integration Catalog", "Catálogo de Integraciones")
 FALLBACK_COLUMN_INDEXES: dict[str, int] = {
     "seq_number": 0,
     "interface_id": 1,
@@ -235,12 +235,13 @@ async def process_import(batch_id: str, file_path: str, db: AsyncSession) -> Imp
     await db.flush()
 
     workbook = load_workbook(filename=file_path, data_only=True)
-    if SOURCE_SHEET_NAME not in workbook.sheetnames:
+    sheet_name = next((name for name in SOURCE_SHEET_NAMES if name in workbook.sheetnames), None)
+    if sheet_name is None:
         raise _bad_request(
-            f"Required sheet '{SOURCE_SHEET_NAME}' not found in workbook.",
+            f"Required sheet not found. Expected one of: {', '.join(SOURCE_SHEET_NAMES)}.",
             "IMPORT_SHEET_NOT_FOUND",
         )
-    sheet = workbook[SOURCE_SHEET_NAME]
+    sheet = workbook[sheet_name]
     all_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
     import_result = parse_rows(all_rows)
     correlation_id = str(uuid.uuid4())

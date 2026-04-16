@@ -1,13 +1,18 @@
 /* Complexity pill used in the catalog grid and detail views. */
 
+import { formatComplexity } from "@/lib/format";
+
 type ComplexityBadgeProps = {
   value: string | null;
 };
 
 const COMPLEXITY_STYLES: Record<string, string> = {
   Alto: "bg-[var(--color-complexity-alto-bg)] text-[var(--color-complexity-alto-text)]",
+  High: "bg-[var(--color-complexity-alto-bg)] text-[var(--color-complexity-alto-text)]",
   Medio: "bg-[var(--color-complexity-medio-bg)] text-[var(--color-complexity-medio-text)]",
+  Medium: "bg-[var(--color-complexity-medio-bg)] text-[var(--color-complexity-medio-text)]",
   Bajo: "bg-[var(--color-complexity-bajo-bg)] text-[var(--color-complexity-bajo-text)]",
+  Low: "bg-[var(--color-complexity-bajo-bg)] text-[var(--color-complexity-bajo-text)]",
 };
 
 export function ComplexityBadge({ value }: ComplexityBadgeProps): JSX.Element {
@@ -23,7 +28,7 @@ export function ComplexityBadge({ value }: ComplexityBadgeProps): JSX.Element {
     <span
       className={`inline-flex rounded-full border border-transparent px-3 py-1 text-xs font-medium ${COMPLEXITY_STYLES[value] ?? "bg-[var(--color-surface-3)] text-[var(--color-text-secondary)]"}`}
     >
-      {value}
+      {formatComplexity(value)}
     </span>
   );
 }

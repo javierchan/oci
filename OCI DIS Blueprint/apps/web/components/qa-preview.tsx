@@ -4,6 +4,7 @@
 
 import { CheckCircle2, CircleX } from "lucide-react";
 
+import { formatQaStatus } from "@/lib/format";
 import type { ManualIntegrationCreate } from "@/lib/types";
 
 type QaPreviewProps = {
@@ -63,7 +64,7 @@ export function QaPreview({ form }: QaPreviewProps): JSX.Element {
               : "border-amber-300 bg-amber-50 text-amber-700",
           ].join(" ")}
         >
-          {qaStatus}
+          {formatQaStatus(qaStatus)}
         </span>
       </div>
 

@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 
+import { formatPatternCategory } from "@/lib/format";
 import type { PatternDefinition, PatternDefinitionCreate } from "@/lib/types";
 
 type AdminPatternFormProps = {
@@ -17,16 +18,23 @@ type AdminPatternFormProps = {
 };
 
 const CATEGORY_OPTIONS: PatternDefinitionCreate["category"][] = [
-  "SÍNCRONO",
-  "ASÍNCRONO",
-  "SÍNCRONO + ASÍNCRONO",
+  "Synchronous",
+  "Asynchronous",
+  "Synchronous + Asynchronous",
 ];
+
+function normalizeCategory(value: string | null | undefined): string {
+  if (!value) {
+    return "Synchronous";
+  }
+  return formatPatternCategory(value);
+}
 
 function defaultPatternValue(): PatternDefinitionCreate {
   return {
     pattern_id: "",
     name: "",
-    category: "SÍNCRONO",
+    category: "Synchronous",
     description: "",
     components: [],
     flow: "",
@@ -53,7 +61,7 @@ export function AdminPatternForm({
     setForm({
       pattern_id: initialValue.pattern_id,
       name: initialValue.name,
-      category: initialValue.category as PatternDefinitionCreate["category"],
+      category: normalizeCategory(initialValue.category),
       description: initialValue.description ?? "",
       components: initialValue.components ?? [],
       flow: initialValue.flow ?? "",
@@ -134,7 +142,7 @@ export function AdminPatternForm({
           >
             {CATEGORY_OPTIONS.map((option) => (
               <option key={option} value={option}>
-                {option}
+                {formatPatternCategory(option)}
               </option>
             ))}
           </select>

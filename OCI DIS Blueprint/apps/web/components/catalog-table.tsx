@@ -9,7 +9,7 @@ import { ComplexityBadge } from "@/components/complexity-badge";
 import { PatternBadge } from "@/components/pattern-badge";
 import { QaBadge } from "@/components/qa-badge";
 import { api } from "@/lib/api";
-import { formatNumber } from "@/lib/format";
+import { formatFrequency, formatNumber, formatQaStatus } from "@/lib/format";
 import type { CatalogPage, Integration, PatternDefinition } from "@/lib/types";
 
 type CatalogTableProps = {
@@ -151,9 +151,9 @@ export function CatalogTable({
               className="app-input"
             >
               <option value="">All</option>
-              <option value="OK">OK</option>
-              <option value="REVISAR">REVISAR</option>
-              <option value="PENDING">PENDING</option>
+              <option value="OK">{formatQaStatus("OK")}</option>
+              <option value="REVISAR">{formatQaStatus("REVISAR")}</option>
+              <option value="PENDING">{formatQaStatus("PENDING")}</option>
             </select>
           </label>
           <label className="min-w-[14rem]">
@@ -262,7 +262,7 @@ export function CatalogTable({
                         category={patternDefinition?.category ?? null}
                       />
                     </td>
-                    <td className="px-6 py-4 text-[var(--color-text-secondary)]">{integration.frequency ?? "—"}</td>
+                    <td className="px-6 py-4 text-[var(--color-text-secondary)]">{formatFrequency(integration.frequency)}</td>
                     <td className="px-6 py-4">
                       <ComplexityBadge value={integration.complexity} />
                     </td>

@@ -7,10 +7,10 @@ type PatternBadgeProps = {
 };
 
 function patternColor(category: string | null | undefined): string {
-  if (category === "SÍNCRONO") {
+  if (category === "SÍNCRONO" || category === "Synchronous") {
     return "bg-[var(--color-pat-sync-bg)] text-[var(--color-pat-sync-text)]";
   }
-  if (category === "ASÍNCRONO") {
+  if (category === "ASÍNCRONO" || category === "Asynchronous") {
     return "bg-[var(--color-pat-async-bg)] text-[var(--color-pat-async-text)]";
   }
   return "bg-[var(--color-pat-both-bg)] text-[var(--color-pat-both-text)]";

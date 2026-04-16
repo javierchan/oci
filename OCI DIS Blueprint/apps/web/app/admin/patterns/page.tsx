@@ -10,6 +10,7 @@ import { Breadcrumb } from "@/components/breadcrumb";
 import { AdminConfirmDelete } from "@/components/admin-confirm-delete";
 import { AdminPatternForm } from "@/components/admin-pattern-form";
 import { api } from "@/lib/api";
+import { formatPatternCategory } from "@/lib/format";
 import type { PatternDefinition, PatternDefinitionCreate } from "@/lib/types";
 
 export default function AdminPatternsPage(): JSX.Element {
@@ -204,7 +205,7 @@ export default function AdminPatternsPage(): JSX.Element {
                       ) : null}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{pattern.category}</td>
+                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{formatPatternCategory(pattern.category)}</td>
                   <td className="px-6 py-4 text-[var(--color-text-secondary)]">{pattern.components?.join(", ") || "—"}</td>
                   <td className="px-6 py-4">
                     {pattern.is_system ? (

@@ -26,33 +26,33 @@ from app.services.serializers import sanitize_for_json
 EXPORT_ROOT = Path("uploads/exports")
 FILES_DIR = EXPORT_ROOT / "files"
 JOBS_DIR = EXPORT_ROOT / "jobs"
-TEMPLATE_SHEET_NAME = "Catálogo de Integraciones"
+TEMPLATE_SHEET_NAME = "Integration Catalog"
 
 TEMPLATE_HEADERS = [
     "#",
-    "ID de Interfaz",
-    "Marca",
-    "Proceso de Negocio",
-    "Interfaz",
-    "Descripción",
-    "Tipo",
-    "Estado Interfaz",
-    "Complejidad",
-    "Alcance Inicial",
-    "Estado",
-    "Estado de Mapeo",
-    "Sistema de Origen",
-    "Tecnología de Origen",
+    "Interface ID",
+    "Brand",
+    "Business Process",
+    "Interface",
+    "Description",
+    "Type",
+    "Interface Status",
+    "Complexity",
+    "Initial Scope",
+    "Lifecycle Status",
+    "Mapping Status",
+    "Source System",
+    "Source Technology",
     "API Reference",
-    "Propietario de Origen",
-    "Sistema de Destino",
-    "Tecnología de Destino",
-    "Propietario de Destino",
-    "Frecuencia",
-    "Tamaño KB",
+    "Source Owner",
+    "Destination System",
+    "Destination Technology",
+    "Destination Owner",
+    "Frequency",
+    "Payload (KB)",
     "TBQ",
-    "Patrones",
-    "Incertidumbre",
+    "Patterns",
+    "Uncertainty",
     "Owner",
 ]
 
@@ -64,11 +64,11 @@ TEMPLATE_EXAMPLE_ROW = [
     "GL Journal Entry Sync",
     "Nightly GL sync from SAP to Oracle ATP",
     "Scheduled",
-    "En Progreso",
-    "Medio",
-    "Si",
-    "En Progreso",
-    "Pendiente",
+    "In Progress",
+    "Medium",
+    "Yes",
+    "In Progress",
+    "Pending",
     "SAP ECC",
     "REST",
     "/api/v1/gl",
@@ -76,7 +76,7 @@ TEMPLATE_EXAMPLE_ROW = [
     "Oracle ATP",
     "REST",
     "ATP Team",
-    "Una vez al día",
+    "Once Daily",
     150,
     "Y",
     "#02",
@@ -93,6 +93,24 @@ GRAY_FILL = PatternFill(fill_type="solid", fgColor="808080")
 WHITE_FONT = Font(color="FFFFFF", bold=True)
 BLACK_FONT = Font(color="000000", bold=True)
 EXAMPLE_FONT = Font(color="6B7280", italic=True)
+
+TEMPLATE_VALUE_LABELS = {
+    "Una vez al día": "Once Daily",
+    "2 veces al día": "Twice Daily",
+    "4 veces al día": "4 Times Daily",
+    "Cada hora": "Hourly",
+    "Cada 30 minutos": "Every 30 Minutes",
+    "Cada 15 minutos": "Every 15 Minutes",
+    "Cada 5 minutos": "Every 5 Minutes",
+    "Cada minuto": "Every Minute",
+    "Tiempo real": "Real Time",
+    "Semanal": "Weekly",
+    "Mensual": "Monthly",
+    "Bajo demanda": "On Demand",
+    "Bajo": "Low",
+    "Medio": "Medium",
+    "Alto": "High",
+}
 
 
 def _ensure_export_dirs() -> None:
@@ -118,6 +136,10 @@ async def _dictionary_values(category: str, db: AsyncSession) -> list[str]:
         .order_by(DictionaryOption.sort_order, DictionaryOption.value)
     )
     return [value for value in result.all() if value]
+
+
+def _template_display_values(values: list[str]) -> list[str]:
+    return [TEMPLATE_VALUE_LABELS.get(value, value) for value in values]
 
 
 def _header_fill(index: int) -> PatternFill:
@@ -280,9 +302,9 @@ async def generate_capture_template(db: AsyncSession) -> bytes:
 
 
 async def _load_template_validations(db: AsyncSession) -> tuple[list[str], list[str], list[str]]:
-    frequency_values = await _dictionary_values("FREQUENCY", db)
+    frequency_values = _template_display_values(await _dictionary_values("FREQUENCY", db))
     trigger_values = await _dictionary_values("TRIGGER_TYPE", db)
-    complexity_values = await _dictionary_values("COMPLEXITY", db)
+    complexity_values = _template_display_values(await _dictionary_values("COMPLEXITY", db))
     return frequency_values, trigger_values, complexity_values
 
 

@@ -42,6 +42,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
+  const [defaultViewport, setDefaultViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [colorMode, setColorMode] = useState<"qa" | "bp">("qa");
   const [mode, setMode] = useState<"select" | "pan">("select");
 
@@ -156,7 +157,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
         zoom={viewport.scale}
         onZoomIn={() => setViewport((current) => ({ ...current, scale: Math.min(current.scale * 1.2, 4) }))}
         onZoomOut={() => setViewport((current) => ({ ...current, scale: Math.max(current.scale / 1.2, 0.2) }))}
-        onZoomReset={() => setViewport({ x: 0, y: 0, scale: 1 })}
+        onZoomReset={() => setViewport(defaultViewport)}
         meta={graph.meta}
         svgRef={svgRef}
       />
@@ -215,6 +216,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
               svgRef={svgRef}
               mode={mode}
               viewport={viewport}
+              onDefaultViewportChange={setDefaultViewport}
               onViewportChange={setViewport}
             />
           )}

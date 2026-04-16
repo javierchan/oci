@@ -11,23 +11,23 @@ from app.core.db import get_sync_database_url
 from app.models import AssumptionSet, AuditEvent, DictionaryOption, PatternDefinition, PromptTemplateVersion
 
 PATTERNS: list[dict[str, str]] = [
-    {"pattern_id": "#01", "name": "Request-Reply", "category": "SÍNCRONO"},
-    {"pattern_id": "#02", "name": "Scheduled Batch Transfer", "category": "ASÍNCRONO"},
-    {"pattern_id": "#03", "name": "Event-Driven Push", "category": "ASÍNCRONO"},
-    {"pattern_id": "#04", "name": "Polling Sync", "category": "ASÍNCRONO"},
-    {"pattern_id": "#05", "name": "Data Replication", "category": "ASÍNCRONO"},
-    {"pattern_id": "#06", "name": "Saga / Compensation", "category": "SÍNCRONO + ASÍNCRONO"},
-    {"pattern_id": "#07", "name": "Fanout Broadcast", "category": "ASÍNCRONO"},
-    {"pattern_id": "#08", "name": "Aggregation & Enrichment", "category": "SÍNCRONO"},
-    {"pattern_id": "#09", "name": "File Transfer (FTP/SFTP)", "category": "ASÍNCRONO"},
-    {"pattern_id": "#10", "name": "DB Integration (ORDS/JDBC)", "category": "SÍNCRONO"},
-    {"pattern_id": "#11", "name": "ERP Adapter Integration", "category": "ASÍNCRONO"},
-    {"pattern_id": "#12", "name": "Message Queue Relay", "category": "ASÍNCRONO"},
-    {"pattern_id": "#13", "name": "API-Led Connectivity", "category": "SÍNCRONO"},
-    {"pattern_id": "#14", "name": "Streaming Ingest", "category": "ASÍNCRONO"},
-    {"pattern_id": "#15", "name": "Hybrid Orchestration", "category": "SÍNCRONO + ASÍNCRONO"},
-    {"pattern_id": "#16", "name": "B2B/EDI Gateway", "category": "ASÍNCRONO"},
-    {"pattern_id": "#17", "name": "AI-Augmented Integration", "category": "ASÍNCRONO"},
+    {"pattern_id": "#01", "name": "Request-Reply", "category": "Synchronous"},
+    {"pattern_id": "#02", "name": "Scheduled Batch Transfer", "category": "Asynchronous"},
+    {"pattern_id": "#03", "name": "Event-Driven Push", "category": "Asynchronous"},
+    {"pattern_id": "#04", "name": "Polling Sync", "category": "Asynchronous"},
+    {"pattern_id": "#05", "name": "Data Replication", "category": "Asynchronous"},
+    {"pattern_id": "#06", "name": "Saga / Compensation", "category": "Synchronous + Asynchronous"},
+    {"pattern_id": "#07", "name": "Fanout Broadcast", "category": "Asynchronous"},
+    {"pattern_id": "#08", "name": "Aggregation & Enrichment", "category": "Synchronous"},
+    {"pattern_id": "#09", "name": "File Transfer (FTP/SFTP)", "category": "Asynchronous"},
+    {"pattern_id": "#10", "name": "DB Integration (ORDS/JDBC)", "category": "Synchronous"},
+    {"pattern_id": "#11", "name": "ERP Adapter Integration", "category": "Asynchronous"},
+    {"pattern_id": "#12", "name": "Message Queue Relay", "category": "Asynchronous"},
+    {"pattern_id": "#13", "name": "API-Led Connectivity", "category": "Synchronous"},
+    {"pattern_id": "#14", "name": "Streaming Ingest", "category": "Asynchronous"},
+    {"pattern_id": "#15", "name": "Hybrid Orchestration", "category": "Synchronous + Asynchronous"},
+    {"pattern_id": "#16", "name": "B2B/EDI Gateway", "category": "Asynchronous"},
+    {"pattern_id": "#17", "name": "AI-Augmented Integration", "category": "Asynchronous"},
 ]
 
 ASSUMPTION_SET = {
@@ -51,18 +51,18 @@ ASSUMPTION_SET = {
 }
 
 DICTIONARY_OPTIONS: list[dict[str, object]] = [
-    {"category": "FREQUENCY", "code": "FREQ-01", "value": "Una vez al día", "executions_per_day": 1.0, "sort_order": 1},
-    {"category": "FREQUENCY", "code": "FREQ-02", "value": "2 veces al día", "executions_per_day": 2.0, "sort_order": 2},
-    {"category": "FREQUENCY", "code": "FREQ-03", "value": "4 veces al día", "executions_per_day": 4.0, "sort_order": 3},
-    {"category": "FREQUENCY", "code": "FREQ-04", "value": "Cada hora", "executions_per_day": 24.0, "sort_order": 4},
-    {"category": "FREQUENCY", "code": "FREQ-05", "value": "Cada 30 minutos", "executions_per_day": 48.0, "sort_order": 5},
-    {"category": "FREQUENCY", "code": "FREQ-06", "value": "Cada 15 minutos", "executions_per_day": 96.0, "sort_order": 6},
-    {"category": "FREQUENCY", "code": "FREQ-07", "value": "Cada 5 minutos", "executions_per_day": 288.0, "sort_order": 7},
-    {"category": "FREQUENCY", "code": "FREQ-08", "value": "Cada minuto", "executions_per_day": 1440.0, "sort_order": 8},
-    {"category": "FREQUENCY", "code": "FREQ-09", "value": "Tiempo real", "executions_per_day": 1440.0, "sort_order": 9},
-    {"category": "FREQUENCY", "code": "FREQ-10", "value": "Semanal", "executions_per_day": 0.142857, "sort_order": 10},
-    {"category": "FREQUENCY", "code": "FREQ-11", "value": "Mensual", "executions_per_day": 0.033333, "sort_order": 11},
-    {"category": "FREQUENCY", "code": "FREQ-12", "value": "Bajo demanda", "executions_per_day": 1.0, "sort_order": 12},
+    {"category": "FREQUENCY", "code": "FREQ-01", "value": "Once Daily", "executions_per_day": 1.0, "sort_order": 1},
+    {"category": "FREQUENCY", "code": "FREQ-02", "value": "Twice Daily", "executions_per_day": 2.0, "sort_order": 2},
+    {"category": "FREQUENCY", "code": "FREQ-03", "value": "4 Times Daily", "executions_per_day": 4.0, "sort_order": 3},
+    {"category": "FREQUENCY", "code": "FREQ-04", "value": "Hourly", "executions_per_day": 24.0, "sort_order": 4},
+    {"category": "FREQUENCY", "code": "FREQ-05", "value": "Every 30 Minutes", "executions_per_day": 48.0, "sort_order": 5},
+    {"category": "FREQUENCY", "code": "FREQ-06", "value": "Every 15 Minutes", "executions_per_day": 96.0, "sort_order": 6},
+    {"category": "FREQUENCY", "code": "FREQ-07", "value": "Every 5 Minutes", "executions_per_day": 288.0, "sort_order": 7},
+    {"category": "FREQUENCY", "code": "FREQ-08", "value": "Every Minute", "executions_per_day": 1440.0, "sort_order": 8},
+    {"category": "FREQUENCY", "code": "FREQ-09", "value": "Real Time", "executions_per_day": 1440.0, "sort_order": 9},
+    {"category": "FREQUENCY", "code": "FREQ-10", "value": "Weekly", "executions_per_day": 0.142857, "sort_order": 10},
+    {"category": "FREQUENCY", "code": "FREQ-11", "value": "Monthly", "executions_per_day": 0.033333, "sort_order": 11},
+    {"category": "FREQUENCY", "code": "FREQ-12", "value": "On Demand", "executions_per_day": 1.0, "sort_order": 12},
     {"category": "FREQUENCY", "code": "FREQ-13", "value": "TBD", "executions_per_day": None, "sort_order": 13},
     {"category": "TRIGGER_TYPE", "code": None, "value": "Scheduled", "sort_order": 1},
     {"category": "TRIGGER_TYPE", "code": None, "value": "REST", "sort_order": 2},
@@ -73,9 +73,9 @@ DICTIONARY_OPTIONS: list[dict[str, object]] = [
     {"category": "TRIGGER_TYPE", "code": None, "value": "Kafka", "sort_order": 7},
     {"category": "TRIGGER_TYPE", "code": None, "value": "Webhook", "sort_order": 8},
     {"category": "TRIGGER_TYPE", "code": None, "value": "SOAP", "sort_order": 9},
-    {"category": "COMPLEXITY", "code": None, "value": "Bajo", "sort_order": 1},
-    {"category": "COMPLEXITY", "code": None, "value": "Medio", "sort_order": 2},
-    {"category": "COMPLEXITY", "code": None, "value": "Alto", "sort_order": 3},
+    {"category": "COMPLEXITY", "code": None, "value": "Low", "sort_order": 1},
+    {"category": "COMPLEXITY", "code": None, "value": "Medium", "sort_order": 2},
+    {"category": "COMPLEXITY", "code": None, "value": "High", "sort_order": 3},
     {"category": "QA_STATUS", "code": None, "value": "OK", "sort_order": 1},
     {"category": "QA_STATUS", "code": None, "value": "REVISAR", "sort_order": 2},
     {"category": "QA_STATUS", "code": None, "value": "PENDING", "sort_order": 3},
@@ -99,33 +99,33 @@ PROMPT_TEMPLATE: dict[str, Any] = {
     "is_default": True,
     "template_config": {
         "summary": (
-            "La integracion {interface_name} conecta {source_system} con {destination_system} "
-            "y actualmente mantiene estado QA {qa_status}."
+            "Integration {interface_name} connects {source_system} to {destination_system} "
+            "and currently carries QA status {qa_status}."
         ),
         "blocks": [
             {
-                "title": "Contexto",
+                "title": "Context",
                 "body": (
-                    "Interfaz {interface_id} para la marca {brand} dentro del proceso {business_process}. "
-                    "Opera con frecuencia {frequency} y {payload_text}."
+                    "Interface {interface_id} for brand {brand} within business process {business_process}. "
+                    "It runs with frequency {frequency} and {payload_text}."
                 ),
             },
             {
-                "title": "Patron",
+                "title": "Pattern",
                 "body": (
-                    "Se documenta {pattern_label}. Racional: {pattern_rationale}."
+                    "Documented pattern: {pattern_label}. Rationale: {pattern_rationale}."
                 ),
             },
             {
-                "title": "Implementacion",
+                "title": "Implementation",
                 "body": (
-                    "Tipo {type}, trigger {trigger_type} y herramientas base {core_tools}. "
-                    "Politica de reintento: {retry_policy}."
+                    "Type {type}, trigger {trigger_type}, and core tools {core_tools}. "
+                    "Retry policy: {retry_policy}."
                 ),
             },
             {
-                "title": "Gobierno QA",
-                "body": "Estado QA {qa_status}. Observaciones: {qa_reasons}.",
+                "title": "QA Governance",
+                "body": "QA status {qa_status}. Notes: {qa_reasons}.",
             },
         ],
     },

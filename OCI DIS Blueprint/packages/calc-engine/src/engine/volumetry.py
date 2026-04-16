@@ -73,6 +73,18 @@ class IntegrationInput:
 
 FREQUENCY_MAP: dict[str, float] = {
     # Code: executions/day — from TPL - Diccionario
+    "Once Daily": 1.0,
+    "Twice Daily": 2.0,
+    "4 Times Daily": 4.0,
+    "Hourly": 24.0,
+    "Every 30 Minutes": 48.0,
+    "Every 15 Minutes": 96.0,
+    "Every 5 Minutes": 288.0,
+    "Every Minute": 1440.0,
+    "Real Time": 1440.0,   # treated as per-minute for sizing
+    "Weekly": 1.0 / 7,
+    "Monthly": 1.0 / 30,
+    "On Demand": 1.0,      # conservative default
     "Una vez al día": 1.0,
     "2 veces al día": 2.0,
     "4 veces al día": 4.0,

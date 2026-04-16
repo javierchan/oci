@@ -4,7 +4,7 @@ import { Breadcrumb } from "@/components/breadcrumb";
 import { RecalculateButton } from "@/components/recalculate-button";
 import { VolumetryCard } from "@/components/volumetry-card";
 import { api } from "@/lib/api";
-import { formatCompactNumber, formatNumber } from "@/lib/format";
+import { formatCompactNumber, formatNumber, formatQaStatus } from "@/lib/format";
 import { parityBenchmark } from "@/lib/parity";
 
 type ProjectDashboardPageProps = {
@@ -70,7 +70,7 @@ export default async function ProjectDashboardPage({
           unit="rows"
         />
         <VolumetryCard
-          label="Excluded (Duplicado 2)"
+          label="Excluded (Duplicate 2)"
           value={formatNumber(latestImport?.excluded_count ?? 0)}
           unit="rows"
         />
@@ -97,7 +97,7 @@ export default async function ProjectDashboardPage({
               </p>
             </div>
             <div className="rounded-[1.5rem] border border-[var(--color-qa-revisar-text)]/20 bg-[var(--color-qa-revisar-bg)] p-5 text-[var(--color-qa-revisar-text)]">
-              <p className="text-xs uppercase tracking-[0.25em]">REVISAR</p>
+              <p className="text-xs uppercase tracking-[0.25em]">{formatQaStatus("REVISAR")}</p>
               <p className="mt-3 text-3xl font-semibold">
                 {qaBreakdown.REVISAR ?? 0}
               </p>
@@ -139,7 +139,7 @@ export default async function ProjectDashboardPage({
               <dd className="font-semibold text-white">{parityBenchmark.tbqRows}</dd>
             </div>
             <div className="flex items-center justify-between gap-3">
-              <dt className="text-slate-400">Expected QA Revisar</dt>
+              <dt className="text-slate-400">Expected QA Review</dt>
               <dd className="font-semibold text-white">{parityBenchmark.qaRevisar}</dd>
             </div>
           </dl>

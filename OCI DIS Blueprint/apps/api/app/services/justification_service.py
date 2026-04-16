@@ -32,31 +32,31 @@ from app.services.serializers import sanitize_for_json, split_csv
 
 FALLBACK_TEMPLATE: dict[str, object] = {
     "summary": (
-        "La integracion {interface_name} conecta {source_system} con {destination_system} "
-        "y actualmente mantiene estado QA {qa_status}."
+        "Integration {interface_name} connects {source_system} to {destination_system} "
+        "and currently carries QA status {qa_status}."
     ),
     "blocks": [
         {
-            "title": "Contexto",
+            "title": "Context",
             "body": (
-                "Interfaz {interface_id} para la marca {brand} dentro del proceso {business_process}. "
-                "Opera con frecuencia {frequency} y {payload_text}."
+                "Interface {interface_id} for brand {brand} within business process {business_process}. "
+                "It runs with frequency {frequency} and {payload_text}."
             ),
         },
         {
-            "title": "Patron",
-            "body": "Se documenta {pattern_label}. Racional: {pattern_rationale}.",
+            "title": "Pattern",
+            "body": "Documented pattern: {pattern_label}. Rationale: {pattern_rationale}.",
         },
         {
-            "title": "Implementacion",
+            "title": "Implementation",
             "body": (
-                "Tipo {type}, trigger {trigger_type} y herramientas base {core_tools}. "
-                "Politica de reintento: {retry_policy}."
+                "Type {type}, trigger {trigger_type}, and core tools {core_tools}. "
+                "Retry policy: {retry_policy}."
             ),
         },
         {
-            "title": "Gobierno QA",
-            "body": "Estado QA {qa_status}. Observaciones: {qa_reasons}.",
+            "title": "QA Governance",
+            "body": "QA status {qa_status}. Notes: {qa_reasons}.",
         },
     ],
 }
@@ -64,10 +64,10 @@ FALLBACK_TEMPLATE: dict[str, object] = {
 
 class _SafeFormatDict(dict[str, str]):
     def __missing__(self, key: str) -> str:
-        return "No informado"
+        return "Not provided"
 
 
-def _text(value: Optional[str], fallback: str = "No informado") -> str:
+def _text(value: Optional[str], fallback: str = "Not provided") -> str:
     if value is None:
         return fallback
     text = value.strip()
@@ -76,13 +76,38 @@ def _text(value: Optional[str], fallback: str = "No informado") -> str:
 
 def _format_payload(payload_kb: Optional[float]) -> str:
     if payload_kb is None:
-        return "payload no informado"
-    return f"{payload_kb:g} KB por ejecucion"
+        return "payload not provided"
+    return f"{payload_kb:g} KB per execution"
+
+
+def _qa_status_label(value: Optional[str]) -> str:
+    if value == "REVISAR":
+        return "REVIEW"
+    return _text(value, "PENDING")
+
+
+def _frequency_label(value: Optional[str]) -> str:
+    labels = {
+        "Una vez al día": "Once Daily",
+        "2 veces al día": "Twice Daily",
+        "4 veces al día": "4 Times Daily",
+        "Cada hora": "Hourly",
+        "Cada 30 minutos": "Every 30 Minutes",
+        "Cada 15 minutos": "Every 15 Minutes",
+        "Cada 5 minutos": "Every 5 Minutes",
+        "Cada minuto": "Every Minute",
+        "Tiempo real": "Real Time",
+        "Semanal": "Weekly",
+        "Mensual": "Monthly",
+        "Bajo demanda": "On Demand",
+    }
+    text = _text(value)
+    return labels.get(text, text)
 
 
 def _pattern_label(pattern_id: Optional[str], pattern_names: dict[str, str]) -> str:
     if not pattern_id:
-        return "patron pendiente de seleccion"
+        return "pattern pending selection"
     name = pattern_names.get(pattern_id, pattern_id)
     return f"{pattern_id} {name}"
 
@@ -104,22 +129,22 @@ def serialize_prompt_template(template: PromptTemplateVersion) -> PromptTemplate
 
 def _template_context(row: CatalogIntegration, pattern_names: dict[str, str]) -> dict[str, str]:
     return {
-        "interface_name": _text(row.interface_name, "sin nombre"),
+        "interface_name": _text(row.interface_name, "unnamed"),
         "source_system": _text(row.source_system),
         "destination_system": _text(row.destination_system),
-        "qa_status": _text(row.qa_status, "PENDING"),
-        "interface_id": _text(row.interface_id, "sin ID formal"),
+        "qa_status": _qa_status_label(row.qa_status),
+        "interface_id": _text(row.interface_id, "without formal ID"),
         "brand": _text(row.brand),
         "business_process": _text(row.business_process),
-        "frequency": _text(row.frequency),
+        "frequency": _frequency_label(row.frequency),
         "payload_text": _format_payload(row.payload_per_execution_kb),
         "pattern_label": _pattern_label(row.selected_pattern, pattern_names),
-        "pattern_rationale": _text(row.pattern_rationale, "pendiente de documentar por arquitectura"),
+        "pattern_rationale": _text(row.pattern_rationale, "pending architecture rationale"),
         "type": _text(row.type),
         "trigger_type": _text(row.trigger_type),
-        "core_tools": ", ".join(split_csv(row.core_tools)) if row.core_tools else "pendientes de definir",
-        "retry_policy": _text(row.retry_policy, "pendiente"),
-        "qa_reasons": ", ".join(row.qa_reasons or ["sin observaciones adicionales"]),
+        "core_tools": ", ".join(split_csv(row.core_tools)) if row.core_tools else "pending definition",
+        "retry_policy": _text(row.retry_policy, "pending"),
+        "qa_reasons": ", ".join(row.qa_reasons or ["no additional notes"]),
     }
 
 
@@ -136,7 +161,7 @@ def _narrative_from_row(
 
     methodology_blocks = [
         MethodologyBlock(
-            title=str(block.get("title") or "Bloque"),
+            title=str(block.get("title") or "Block"),
             body=str(block.get("body") or "").format_map(context),
         )
         for block in blocks
@@ -144,10 +169,10 @@ def _narrative_from_row(
     ]
 
     evidence = [
-        f"interface_id={_text(row.interface_id, 'sin ID formal')}",
+        f"interface_id={_text(row.interface_id, 'without formal ID')}",
         f"source_system={_text(row.source_system)}",
         f"destination_system={_text(row.destination_system)}",
-        f"frequency={_text(row.frequency)}",
+        f"frequency={_frequency_label(row.frequency)}",
         f"payload_kb={row.payload_per_execution_kb if row.payload_per_execution_kb is not None else 'N/A'}",
         f"selected_pattern={row.selected_pattern or 'UNASSIGNED'}",
     ]
@@ -164,7 +189,7 @@ def _narrative_from_row(
         summary=summary_template.format_map(context),
         methodology_blocks=methodology_blocks,
         evidence=evidence,
-        qa_status=_text(row.qa_status, "PENDING"),
+        qa_status=_qa_status_label(row.qa_status),
         qa_reasons=row.qa_reasons or [],
         override_text=override_text,
     )

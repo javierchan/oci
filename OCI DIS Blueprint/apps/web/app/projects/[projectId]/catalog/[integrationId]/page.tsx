@@ -3,10 +3,11 @@
 import Link from "next/link";
 
 import { Breadcrumb } from "@/components/breadcrumb";
+import { IntegrationDesignCanvasPanel } from "@/components/integration-design-canvas-panel";
 import { IntegrationPatchForm } from "@/components/integration-patch-form";
 import { QaBadge } from "@/components/qa-badge";
 import { api } from "@/lib/api";
-import { formatDate, formatNumber } from "@/lib/format";
+import { formatComplexity, formatDate, formatFrequency, formatIntegrationStatus, formatNumber } from "@/lib/format";
 
 type IntegrationDetailPageProps = {
   params: {
@@ -137,7 +138,7 @@ export default async function IntegrationDetailPage({
               </div>
               <div>
                 <dt className="app-label">Frequency</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.frequency ?? "—"}</dd>
+                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{formatFrequency(integration.frequency)}</dd>
               </div>
               <div>
                 <dt className="app-label">Payload per Execution</dt>
@@ -151,11 +152,11 @@ export default async function IntegrationDetailPage({
               </div>
               <div>
                 <dt className="app-label">Complexity</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.complexity ?? "—"}</dd>
+                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{formatComplexity(integration.complexity)}</dd>
               </div>
               <div>
                 <dt className="app-label">Status</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.status ?? "—"}</dd>
+                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{formatIntegrationStatus(integration.status)}</dd>
               </div>
             </dl>
           </article>
@@ -250,6 +251,13 @@ export default async function IntegrationDetailPage({
           toolOptions={tools.options}
         />
       </div>
+
+      <IntegrationDesignCanvasPanel
+        projectId={params.projectId}
+        integration={integration}
+        patterns={patterns.patterns}
+        toolOptions={tools.options}
+      />
 
       <section id="audit" className="app-table-shell">
         <div className="border-b border-[var(--color-border)] px-6 py-5">

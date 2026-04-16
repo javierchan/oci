@@ -1,5 +1,7 @@
 /* QA status pill used across dashboard, grid, and detail views. */
 
+import { formatQaStatus } from "@/lib/format";
+
 type QaBadgeProps = {
   status: string | null;
 };
@@ -18,7 +20,7 @@ export function QaBadge({ status }: QaBadgeProps): JSX.Element {
 
   return (
     <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${style}`}>
-      {label}
+      {formatQaStatus(label)}
     </span>
   );
 }

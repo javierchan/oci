@@ -4,6 +4,7 @@
 
 import { OicEstimatePreview } from "@/components/oic-estimate-preview";
 import { QaPreview } from "@/components/qa-preview";
+import { formatComplexity, formatFrequency } from "@/lib/format";
 import type { CaptureStepProps } from "@/components/capture-wizard";
 
 export function CaptureStepTechnical({
@@ -53,7 +54,7 @@ export function CaptureStepTechnical({
             <option value="">Select frequency</option>
             {frequencyOptions.map((option) => (
               <option key={option.id} value={option.value}>
-                {option.value}
+                {formatFrequency(option.value)}
               </option>
             ))}
           </select>
@@ -85,7 +86,7 @@ export function CaptureStepTechnical({
             <option value="">Select complexity</option>
             {complexityOptions.map((option) => (
               <option key={option.id} value={option.value}>
-                {option.value}
+                {formatComplexity(option.value)}
               </option>
             ))}
           </select>

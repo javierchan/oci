@@ -16,7 +16,7 @@ export function CaptureStepIdentity({
           value={form.brand}
           onChange={(event) => updateField("brand", event.target.value)}
           className="app-input"
-          placeholder="Grupo / brand"
+          placeholder="Business unit or brand"
         />
       </label>
       <label className="block">

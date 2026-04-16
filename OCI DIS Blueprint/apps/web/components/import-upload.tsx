@@ -8,7 +8,7 @@ import { useRef, useState } from "react";
 import { Download } from "lucide-react";
 
 import { api } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatExclusionReason } from "@/lib/format";
 import type { ImportBatch, SourceRowList } from "@/lib/types";
 
 type ImportUploadProps = {
@@ -166,7 +166,7 @@ export function ImportUpload({
             className="hidden"
           />
           <p className="app-label">Workbook Import</p>
-          <h3 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">Upload `Catálogo de Integraciones`</h3>
+          <h3 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">Upload `Integration Catalog`</h3>
           <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
             Drag and drop the workbook here, or click to browse. The API will parse, normalize, and persist rows immediately.
           </p>
@@ -258,7 +258,7 @@ export function ImportUpload({
                       <td className="px-6 py-4 font-semibold">{row.source_row_number}</td>
                       <td className="px-6 py-4">{row.included ? "Yes" : "No"}</td>
                       <td className="px-6 py-4 text-[var(--color-text-secondary)]">
-                        {row.exclusion_reason ?? "—"}
+                        {formatExclusionReason(row.exclusion_reason)}
                       </td>
                       <td className="px-6 py-4 text-[var(--color-text-secondary)]">
                         {preview || "No preview data"}

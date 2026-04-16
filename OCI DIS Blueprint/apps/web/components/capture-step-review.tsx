@@ -4,6 +4,7 @@
 
 import type { Integration } from "@/lib/types";
 import type { CaptureStepProps } from "@/components/capture-wizard";
+import { formatComplexity, formatFrequency } from "@/lib/format";
 
 type CaptureStepReviewProps = CaptureStepProps & {
   duplicates: Integration[];
@@ -47,14 +48,14 @@ export function CaptureStepReview({
       title: "Technical",
       rows: [
         ["Trigger Type", form.type],
-        ["Frequency", form.frequency],
+        ["Frequency", form.frequency ? formatFrequency(form.frequency) : undefined],
         [
           "Payload per Execution",
           form.payload_per_execution_kb !== undefined
             ? `${form.payload_per_execution_kb} KB`
             : undefined,
         ],
-        ["Complexity", form.complexity],
+        ["Complexity", form.complexity ? formatComplexity(form.complexity) : undefined],
         ["Pattern", form.selected_pattern],
         ["Core Tools", stringifyValue(form.core_tools)],
       ] as Array<[string, string | undefined]>,

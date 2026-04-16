@@ -221,7 +221,7 @@ export interface PatternList {
 export interface PatternDefinitionCreate {
   pattern_id: string;
   name: string;
-  category: "SÍNCRONO" | "ASÍNCRONO" | "SÍNCRONO + ASÍNCRONO";
+  category: string;
   description?: string;
   components?: string[];
   flow?: string;
