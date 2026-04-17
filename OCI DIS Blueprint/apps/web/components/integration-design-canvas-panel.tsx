@@ -7,14 +7,22 @@ import { startTransition, useMemo, useState } from "react";
 
 import { IntegrationCanvas } from "@/components/integration-canvas";
 import { api } from "@/lib/api";
-import type { CanvasCombination, DictionaryOption, Integration, PatternDefinition } from "@/lib/types";
+import type {
+  CanvasCombination,
+  DictionaryOption,
+  Integration,
+  PatternDefinition,
+  ServiceCapabilityProfile,
+} from "@/lib/types";
 
-type PatternCategory = "SÍNCRONO" | "ASÍNCRONO" | "SÍNCRONO + ASÍNCRONO";
+type PatternCategory = string;
 
 type IntegrationDesignCanvasPanelProps = {
   projectId: string;
   integration: Integration;
   patterns: PatternDefinition[];
+  patternDetail: PatternDefinition | null;
+  serviceProfiles: ServiceCapabilityProfile[];
   toolOptions: DictionaryOption[];
   overlayOptions: DictionaryOption[];
   combinations: CanvasCombination[];
@@ -31,16 +39,15 @@ function parseCoreTools(value: string | null): string[] {
 }
 
 function normalizePatternCategory(value: string | null | undefined): PatternCategory | null {
-  if (value === "SÍNCRONO" || value === "ASÍNCRONO" || value === "SÍNCRONO + ASÍNCRONO") {
-    return value;
-  }
-  return null;
+  return value ?? null;
 }
 
 export function IntegrationDesignCanvasPanel({
   projectId,
   integration,
   patterns,
+  patternDetail,
+  serviceProfiles,
   toolOptions,
   overlayOptions,
   combinations,
@@ -126,6 +133,8 @@ export function IntegrationDesignCanvasPanel({
         destinationSystem={integration.destination_system}
         destinationTechnology={integration.destination_technology_1}
         selectedPattern={integration.selected_pattern}
+        patternDetail={patternDetail}
+        serviceProfiles={serviceProfiles}
         coreTools={parseCoreTools(integration.core_tools)}
         toolOptions={toolOptions}
         overlayOptions={overlayOptions}

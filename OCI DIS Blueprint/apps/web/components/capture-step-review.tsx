@@ -67,7 +67,7 @@ export function CaptureStepReview({
         <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Review</p>
         <h3 className="mt-2 text-xl font-semibold text-slate-950">Ready to capture</h3>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          The wizard will create an immutable synthetic source row, a governed catalog integration, and a manual capture audit event.
+          The wizard will create an immutable source row, a governed catalog integration, and a manual capture audit event.
         </p>
       </section>
 

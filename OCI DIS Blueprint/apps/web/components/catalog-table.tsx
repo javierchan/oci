@@ -136,6 +136,14 @@ export function CatalogTable({
     setPage(1);
   }
 
+  function openIntegration(integrationId: string, focusPatch?: boolean): void {
+    router.push(
+      focusPatch
+        ? `/projects/${projectId}/catalog/${integrationId}?focus=patch#patch-form`
+        : `/projects/${projectId}/catalog/${integrationId}`,
+    );
+  }
+
   return (
     <div className="space-y-6">
       <section className="app-card p-6">
@@ -223,7 +231,82 @@ export function CatalogTable({
       </section>
 
       <section className="app-table-shell">
-        <div className="overflow-x-auto">
+        <div className="border-b border-[var(--color-border)] px-6 py-4 md:hidden">
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            Mobile view prioritizes QA status, interface name, and quick actions so rows stay reviewable without horizontal scrolling.
+          </p>
+        </div>
+
+        <div className="space-y-4 p-4 md:hidden">
+          {data.integrations.map((integration: Integration) => {
+            const patternDefinition = integration.selected_pattern
+              ? patternMap.get(integration.selected_pattern)
+              : null;
+            return (
+              <article
+                key={integration.id}
+                className="rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">
+                      #{integration.seq_number} · {integration.brand ?? "Unassigned brand"}
+                    </p>
+                    <h3 className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">
+                      {integration.interface_name ?? "Untitled integration"}
+                    </h3>
+                    <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+                      {integration.interface_id ?? "No Interface ID"} ·{" "}
+                      {integration.source_row_id ? `Lineage ${integration.source_row_id.slice(0, 8)}` : "Manual capture"}
+                    </p>
+                  </div>
+                  <QaBadge status={integration.qa_status} />
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <PatternBadge
+                    patternId={integration.selected_pattern}
+                    name={patternDefinition?.name ?? null}
+                    category={patternDefinition?.category ?? null}
+                  />
+                  <ComplexityBadge value={integration.complexity} />
+                </div>
+
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-2xl bg-[var(--color-surface-2)] px-3 py-3">
+                    <dt className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">Frequency</dt>
+                    <dd className="mt-2 font-medium text-[var(--color-text-primary)]">{integration.frequency ?? "—"}</dd>
+                  </div>
+                  <div className="rounded-2xl bg-[var(--color-surface-2)] px-3 py-3">
+                    <dt className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">Payload KB</dt>
+                    <dd className="mt-2 font-medium text-[var(--color-text-primary)]">
+                      {formatNumber(integration.payload_per_execution_kb, 1)}
+                    </dd>
+                  </div>
+                </dl>
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => openIntegration(integration.id)}
+                    className="app-button-primary px-4 py-2"
+                  >
+                    View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openIntegration(integration.id, true)}
+                    className="app-button-secondary px-4 py-2"
+                  >
+                    Edit
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
             <thead className="app-table-header">
               <tr>
@@ -284,7 +367,7 @@ export function CatalogTable({
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            router.push(`/projects/${projectId}/catalog/${integration.id}`);
+                            openIntegration(integration.id);
                           }}
                           className="app-link"
                         >
@@ -294,7 +377,7 @@ export function CatalogTable({
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            router.push(`/projects/${projectId}/catalog/${integration.id}?focus=patch#patch-form`);
+                            openIntegration(integration.id, true);
                           }}
                           className="text-sm font-semibold text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)]"
                         >

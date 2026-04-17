@@ -17,11 +17,10 @@ class PatternDefinitionCreate(BaseModel):
     name: str
     category: str
     description: Optional[str] = None
-    components: Optional[list[str]] = None
-    component_details: Optional[str] = None
+    oci_components: Optional[str] = None
     when_to_use: Optional[str] = None
     when_not_to_use: Optional[str] = None
-    flow: Optional[str] = None
+    technical_flow: Optional[str] = None
     business_value: Optional[str] = None
 
 
@@ -33,11 +32,10 @@ class PatternDefinitionUpdate(BaseModel):
     name: Optional[str] = None
     category: Optional[str] = None
     description: Optional[str] = None
-    components: Optional[list[str]] = None
-    component_details: Optional[str] = None
+    oci_components: Optional[str] = None
     when_to_use: Optional[str] = None
     when_not_to_use: Optional[str] = None
-    flow: Optional[str] = None
+    technical_flow: Optional[str] = None
     business_value: Optional[str] = None
 
 
@@ -76,11 +74,10 @@ class PatternDefinitionResponse(BaseModel):
     name: str
     category: str
     description: Optional[str]
-    components: Optional[list[str]]
-    component_details: Optional[str]
+    oci_components: Optional[str]
     when_to_use: Optional[str]
     when_not_to_use: Optional[str]
-    flow: Optional[str]
+    technical_flow: Optional[str]
     business_value: Optional[str]
     is_system: bool
     is_active: bool

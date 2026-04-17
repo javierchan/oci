@@ -35,11 +35,13 @@ async def test_project_patch_emits_audit_event(api_client: AsyncClient) -> None:
     assert patched["name"] == "Integration Test Project Updated"
     assert patched["description"] == "Updated description"
     assert patched["owner_id"] == "integration-test"
+    assert patched["project_metadata"] is None
 
     get_response = await api_client.get(f"/api/v1/projects/{project_id}")
     assert get_response.status_code == 200
     fetched = get_response.json()
     assert fetched["name"] == "Integration Test Project Updated"
+    assert fetched["project_metadata"] is None
 
     audit_response = await api_client.get(f"/api/v1/audit/{project_id}")
     assert audit_response.status_code == 200

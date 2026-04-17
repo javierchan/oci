@@ -401,7 +401,7 @@ async def list_snapshots(project_id: str, db: AsyncSession) -> DashboardSnapshot
 
     snapshots = await _ensure_project_dashboard_snapshots(project_id, db)
     return DashboardSnapshotListResponse(
-        snapshots=[_serialize_summary(snapshot) for snapshot in snapshots],
+        snapshots=[serialize_snapshot(snapshot) for snapshot in snapshots],
         total=len(snapshots),
     )
 

@@ -293,6 +293,52 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 - [x] **Exit criteria**: supported patterns have end-to-end app behavior, and any
       unsupported patterns are explicitly documented and surfaced as such
 
+### M24 — Admin Synthetic Lab: Governed Test Project Generation
+- [x] Add a reusable synthetic-generation service layer in `apps/api/app/services/`
+      that can build deterministic enterprise-scale datasets without placing any
+      orchestration logic inside `packages/calc-engine/`
+- [x] Create an executable script at
+      `apps/api/scripts/seed_synthetic_enterprise_project.py` that uses the real
+      project/import/catalog/recalc/dashboard/justification/export flows to seed
+      one governed synthetic project from the current codebase state
+- [x] Generate a large, realistic synthetic enterprise project with governed
+      metadata and validation targets:
+      approximately 72 distinct systems, at least 480 catalog integrations,
+      a mixed import/manual capture profile, excluded import rows for traceability,
+      full use of patterns, core tools, overlays, canvas state, architect
+      rationale, retries, comments, justifications, snapshots, audit, and exports
+- [x] Ensure imported synthetic rows traverse the real workbook parser path:
+      create a workbook with supported headers, persist `ImportBatch` and
+      `SourceIntegrationRow`, preserve inclusion/exclusion evidence, and only then
+      materialize `CatalogIntegration`
+- [x] Ensure manual synthetic rows traverse the governed capture path:
+      use the manual catalog service, preserve lineage, and then apply follow-up
+      architect patches only through supported service-layer mutations
+- [x] Validate synthetic scale and truthfulness deterministically:
+      `catalog_count >= 480`, `distinct_systems >= 70`, and all 17 pattern IDs
+      covered in the final governed catalog
+- [x] Persist and validate downstream artifacts from supported product routes:
+      at least one volumetry snapshot, at least one dashboard snapshot,
+      persisted justifications, and generated XLSX/JSON/PDF exports
+- [x] Write machine-readable and human-readable run reports under
+      `apps/api/generated-reports/` summarizing the created project, counts,
+      pattern/tool coverage, snapshot IDs, export artifacts, and smoke-test URLs
+- [x] Document the productization path for the future Admin Synthetic Lab without
+      implementing the full admin module yet. The design doc must cover:
+      reusable service extraction, persisted `SyntheticGenerationJob`, Alembic
+      migration expectations, admin-only router, service-layer authorization,
+      Celery execution, governed presets and inputs, synthetic project metadata,
+      UI placement under `apps/web/app/admin/`, API/type updates, labeling,
+      validation rules, testing strategy, and operational runbooks
+- [x] Preserve the current architecture contract:
+      thin routers, service-owned business logic, async DB access in the API,
+      calc-engine purity, auditable writes, and conservative no-reset data handling
+- [x] **Exit criteria**: the repo contains the documented `M24` plan, the
+      synthetic generation service and script run successfully against the real
+      stack, one final synthetic project is queryable through the supported API/UI
+      routes, generated reports exist on disk, focused backend validation and
+      smoke tests pass, and all required quality gates are green
+
 ---
 
 ## Coding rules

@@ -119,8 +119,61 @@ def _integration_input_with_overrides(
     )
 
 
+def _format_kb_limit(value_kb: float | int) -> str:
+    if value_kb >= 1024 and value_kb % 1024 == 0:
+        return f"{int(value_kb / 1024)} MB"
+    if value_kb >= 1024:
+        return f"{value_kb / 1024:.1f} MB"
+    return f"{int(value_kb)} KB"
+
+
+def _parsed_tool_keys(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {item.strip() for item in value.split(",") if item.strip()}
+
+
+def _design_constraint_warnings(
+    row: CatalogIntegration,
+    assumptions: Assumptions,
+) -> list[str]:
+    payload_kb = row.payload_per_execution_kb
+    if payload_kb is None:
+        return []
+
+    tool_keys = _parsed_tool_keys(row.core_tools)
+    warnings: list[str] = []
+    if "OIC Gen3" in tool_keys and payload_kb > assumptions.oic_rest_max_payload_kb:
+        warnings.append(
+            f"[OIC Gen3] Payload {_format_kb_limit(payload_kb)} exceeds OIC message size limit of {_format_kb_limit(assumptions.oic_rest_max_payload_kb)}"
+        )
+    if (
+        "OCI Functions" in tool_keys or "Oracle Functions" in tool_keys
+    ) and payload_kb > assumptions.functions_max_invoke_body_kb:
+        warnings.append(
+            f"[OCI Functions] Payload {_format_kb_limit(payload_kb)} exceeds Functions invoke body limit of {_format_kb_limit(assumptions.functions_max_invoke_body_kb)}"
+        )
+    if "OCI API Gateway" in tool_keys and payload_kb > assumptions.api_gw_max_body_kb:
+        warnings.append(
+            f"[OCI API Gateway] Payload {_format_kb_limit(payload_kb)} exceeds API Gateway request body limit of {_format_kb_limit(assumptions.api_gw_max_body_kb)}"
+        )
+    if "OCI Queue" in tool_keys and payload_kb > assumptions.queue_max_message_kb:
+        warnings.append(
+            f"[OCI Queue] Payload {_format_kb_limit(payload_kb)} exceeds Queue message size limit of {_format_kb_limit(assumptions.queue_max_message_kb)}"
+        )
+    if "OCI Streaming" in tool_keys and payload_kb > assumptions.streaming_max_message_kb:
+        warnings.append(
+            f"[OCI Streaming] Payload {_format_kb_limit(payload_kb)} exceeds Streaming message size limit of {_format_kb_limit(assumptions.streaming_max_message_kb)}"
+        )
+    return warnings
+
+
 def _serialize_consolidated(consolidated: dict[str, object]) -> ConsolidatedMetrics:
-    oic = cast(dict[str, Any], consolidated.get("oic", {}))
+    oic = dict(cast(dict[str, Any], consolidated.get("oic", {})))
+    if "total_billing_msgs_per_month" not in oic and "total_billing_msgs_month" in oic:
+        oic["total_billing_msgs_per_month"] = oic["total_billing_msgs_month"]
+    if "total_billing_msgs_month" not in oic and "total_billing_msgs_per_month" in oic:
+        oic["total_billing_msgs_month"] = oic["total_billing_msgs_per_month"]
     data_integration = cast(dict[str, Any], consolidated.get("data_integration", {}))
     functions = cast(dict[str, Any], consolidated.get("functions", {}))
     streaming = cast(dict[str, Any], consolidated.get("streaming", {}))
@@ -241,6 +294,7 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
         if streaming_partitions:
             peak_streaming_partitions = max(peak_streaming_partitions, int(streaming_partitions))
 
+        design_constraint_warnings = _design_constraint_warnings(row, assumptions)
         row_results[row.id] = {
             "executions_per_day": executions_day,
             "payload_per_hour_kb": payload_hour,
@@ -250,6 +304,7 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
             "data_integration_gb_month": di_gb_month,
             "streaming_gb_month": streaming_gb_month,
             "streaming_partition_count": streaming_partitions,
+            "design_constraint_warnings": design_constraint_warnings,
         }
 
     consolidated["data_integration"]["data_processed_gb_month"] = di_total_gb

@@ -45,6 +45,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [colorMode, setColorMode] = useState<"qa" | "bp">("qa");
   const [mode, setMode] = useState<"select" | "pan">("select");
+  const compactTopology = graph.nodes.length > 0 && graph.nodes.length <= 8;
 
   useEffect(() => {
     let cancelled = false;
@@ -181,7 +182,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
 
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+      <div className={compactTopology ? "space-y-6" : "grid gap-6 xl:grid-cols-[1.45fr_0.55fr]"}>
         <div className="space-y-4">
           <section className="grid gap-4 md:grid-cols-3">
             <article className="app-card p-5">
@@ -224,14 +225,24 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
             />
           )}
         </div>
+        {compactTopology ? null : (
+          <GraphDetailPanel
+            projectId={params.projectId}
+            graph={graph}
+            selectedNode={selectedNode}
+            selectedEdge={selectedEdge}
+          />
+        )}
+      </div>
 
+      {compactTopology ? (
         <GraphDetailPanel
           projectId={params.projectId}
           graph={graph}
           selectedNode={selectedNode}
           selectedEdge={selectedEdge}
         />
-      </div>
+      ) : null}
     </div>
   );
 }

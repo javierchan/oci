@@ -33,7 +33,6 @@ from app.schemas.reference import (
 )
 from app.services import audit_service
 from app.services.pattern_support import get_pattern_support
-from app.services.serializers import split_csv
 
 PATTERN_ID_RE = re.compile(r"^#\d{2}$")
 
@@ -48,11 +47,10 @@ def serialize_pattern(pattern: PatternDefinition) -> PatternDefinitionResponse:
         name=pattern.name,
         category=pattern.category,
         description=pattern.description,
-        components=_extract_component_names(pattern.oci_components),
-        component_details=pattern.oci_components,
+        oci_components=pattern.oci_components,
         when_to_use=pattern.when_to_use,
         when_not_to_use=pattern.when_not_to_use,
-        flow=pattern.technical_flow,
+        technical_flow=pattern.technical_flow,
         business_value=pattern.business_value,
         is_system=pattern.is_system,
         is_active=pattern.is_active,
@@ -164,34 +162,6 @@ def _validate_pattern_id(pattern_id: str) -> str:
     return normalized
 
 
-def _extract_component_names(component_details: str | None) -> list[str] | None:
-    if not component_details:
-        return None
-    names: list[str] = []
-    for line in component_details.splitlines():
-        cleaned = line.strip()
-        if not cleaned:
-            continue
-        if "—" in cleaned:
-            cleaned = cleaned.split("—", 1)[0].strip()
-        elif " - " in cleaned:
-            cleaned = cleaned.split(" - ", 1)[0].strip()
-        names.append(cleaned)
-    if not names:
-        names = split_csv(component_details)
-    return names or None
-
-
-def _join_component_details(components: list[str] | None, component_details: str | None) -> str | None:
-    if component_details is not None:
-        normalized_detail = component_details.strip()
-        return normalized_detail or None
-    if components is None:
-        return None
-    normalized = [item.strip() for item in components if item.strip()]
-    return "\n".join(normalized) if normalized else None
-
-
 async def _load_pattern(pattern_id: str, db: AsyncSession) -> PatternDefinition:
     pattern = await db.scalar(select(PatternDefinition).where(PatternDefinition.pattern_id == pattern_id))
     if pattern is None:
@@ -222,10 +192,10 @@ async def create_pattern(
         name=data.name,
         category=data.category,
         description=data.description,
-        oci_components=_join_component_details(data.components, data.component_details),
+        oci_components=data.oci_components,
         when_to_use=data.when_to_use,
         when_not_to_use=data.when_not_to_use,
-        technical_flow=data.flow,
+        technical_flow=data.technical_flow,
         business_value=data.business_value,
         is_system=False,
     )
@@ -260,22 +230,6 @@ async def update_pattern(
         return serialize_pattern(pattern)
 
     old_value = serialize_pattern(pattern).model_dump()
-    if "components" in patch or "component_details" in patch:
-        pattern.oci_components = _join_component_details(data.components, data.component_details)
-        patch.pop("components", None)
-        patch.pop("component_details", None)
-    if "flow" in patch:
-        pattern.technical_flow = data.flow
-        patch.pop("flow", None)
-    if "when_to_use" in patch:
-        pattern.when_to_use = data.when_to_use
-        patch.pop("when_to_use", None)
-    if "when_not_to_use" in patch:
-        pattern.when_not_to_use = data.when_not_to_use
-        patch.pop("when_not_to_use", None)
-    if "business_value" in patch:
-        pattern.business_value = data.business_value
-        patch.pop("business_value", None)
     for field, value in patch.items():
         setattr(pattern, field, value)
     await db.flush()
@@ -529,6 +483,36 @@ async def _set_default_assumption(version: str, db: AsyncSession) -> None:
     await db.flush()
 
 
+async def _baseline_assumptions(db: AsyncSession) -> dict[str, object]:
+    default_set = await db.scalar(select(AssumptionSet).where(AssumptionSet.is_default.is_(True)))
+    if default_set is not None:
+        return dict(default_set.assumptions)
+
+    first_set = await db.scalar(select(AssumptionSet).order_by(AssumptionSet.created_at.asc()))
+    return dict(first_set.assumptions) if first_set is not None else {}
+
+
+def _merged_assumptions(
+    baseline: dict[str, object],
+    overrides: dict[str, object] | None,
+) -> dict[str, object]:
+    merged = dict(baseline)
+    if overrides:
+        merged.update(overrides)
+    for immutable_key in {
+        "oic_rest_max_payload_kb",
+        "oic_ftp_max_payload_kb",
+        "oic_kafka_max_payload_kb",
+        "oic_sync_max_duration_s",
+        "api_gw_max_body_kb",
+        "queue_max_message_kb",
+        "functions_max_invoke_body_kb",
+    }:
+        if immutable_key in baseline:
+            merged[immutable_key] = baseline[immutable_key]
+    return merged
+
+
 async def create_assumption_set(
     body: AssumptionSetCreate,
     actor_id: str,
@@ -543,7 +527,9 @@ async def create_assumption_set(
             detail={"detail": "Assumption set version already exists", "error_code": "ASSUMPTION_SET_EXISTS"},
         )
 
-    assumption_set = AssumptionSet(**body.model_dump())
+    payload = body.model_dump()
+    payload["assumptions"] = _merged_assumptions(await _baseline_assumptions(db), body.assumptions)
+    assumption_set = AssumptionSet(**payload)
     db.add(assumption_set)
     await db.flush()
     if body.is_default:
@@ -578,6 +564,9 @@ async def update_assumption_set(
 
     old_value = serialize_assumption_set(assumption_set).model_dump()
     make_default = patch.pop("is_default", None)
+    if "assumptions" in patch:
+        patch["assumptions"] = _merged_assumptions(dict(assumption_set.assumptions), patch["assumptions"])
+
     for field, value in patch.items():
         setattr(assumption_set, field, value)
     await db.flush()

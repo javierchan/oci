@@ -11,6 +11,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin, UUIDMixin
 
 
+def _enum_values(enum_cls: type[enum.Enum]) -> list[str]:
+    return [member.value for member in enum_cls]
+
+
 class ProjectStatus(str, enum.Enum):
     ACTIVE = "active"
     ARCHIVED = "archived"
@@ -45,10 +49,11 @@ class Project(Base, UUIDMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(2000))
     status: Mapped[ProjectStatus] = mapped_column(
-        SAEnum(ProjectStatus, native_enum=False), default=ProjectStatus.DRAFT
+        SAEnum(ProjectStatus, native_enum=False, values_callable=_enum_values),
+        default=ProjectStatus.DRAFT,
     )
     owner_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    project_metadata: Mapped[Optional[dict]] = mapped_column("metadata", JSON)
+    project_metadata: Mapped[Optional[dict]] = mapped_column(JSON)
 
     import_batches: Mapped[list["ImportBatch"]] = relationship(back_populates="project")
     catalog_integrations: Mapped[list["CatalogIntegration"]] = relationship(back_populates="project")
@@ -62,7 +67,8 @@ class ImportBatch(Base, UUIDMixin, TimestampMixin):
     parser_version: Mapped[str] = mapped_column(String(50), nullable=False)
     prompt_version: Mapped[Optional[str]] = mapped_column(String(50))
     status: Mapped[ImportStatus] = mapped_column(
-        SAEnum(ImportStatus, native_enum=False), default=ImportStatus.PENDING
+        SAEnum(ImportStatus, native_enum=False, values_callable=_enum_values),
+        default=ImportStatus.PENDING,
     )
     source_row_count: Mapped[Optional[int]] = mapped_column(Integer)
     tbq_y_count: Mapped[Optional[int]] = mapped_column(Integer)

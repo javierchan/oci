@@ -205,9 +205,9 @@ export default function AdminPatternsPage(): JSX.Element {
                       {pattern.description ? (
                         <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">{pattern.description}</p>
                       ) : null}
-                      {pattern.component_details ? (
+                      {pattern.oci_components ? (
                         <p className="mt-2 whitespace-pre-line text-xs leading-5 text-[var(--color-text-muted)]">
-                          {pattern.component_details}
+                          {pattern.oci_components}
                         </p>
                       ) : null}
                     </div>

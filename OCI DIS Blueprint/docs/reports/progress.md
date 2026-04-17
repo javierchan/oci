@@ -557,3 +557,97 @@ ESLint: 0 warnings / 0 errors
 None
 
 ---
+
+## Pattern Taxonomy: Full Content Update + Canvas Integration (2026-04-16)
+
+**Status:** ✅ Complete
+
+- All 17 PatternDefinition records re-seeded with complete English US content:
+  description (tagline), oci_components, when_to_use, when_not_to_use,
+  technical_flow, and business_value.
+- Patterns router (/patterns/) fully implemented — was a stub returning empty data.
+- seed_patterns() bug fixed: removed non-existent is_system attribute reference;
+  upsert branch now refreshes all rich fields on re-run.
+- PatternDefinition TypeScript interface aligned with actual DB column names
+  (oci_components, when_to_use, when_not_to_use, technical_flow, business_value).
+- Integration Design Canvas now renders a PatternDetailPanel when a pattern is
+  assigned: shows tagline, when-to-use checklist, anti-pattern warning block,
+  OCI component chips, 5-step technical flow, and business value.
+
+### Gaps / known limitations
+
+None
+
+---
+
+## OCI Service Capability Profiles (2026-04-16)
+
+**Status:** ✅ Complete
+
+- New ServiceCapabilityProfile model + Alembic migration 20260415_0004.
+- 11 OCI service profiles seeded with authoritative data from Oracle official sources
+  (March 2026 Pillar Document, product docs, pricing pages):
+  API_GATEWAY, OIC3, STREAMING, QUEUE, FUNCTIONS, CONNECTOR_HUB,
+  GOLDENGATE, ORDS, DATA_INTEGRATION, OBSERVABILITY, IAM.
+- Each profile: category, SLA %, pricing model, hard limits (JSON), architectural
+  fit, anti-patterns, interoperability notes, Oracle documentation URLs.
+- AssumptionSet corrected: oic_rest/ftp/kafka_max_payload_kb fixed to 10240 KB.
+  12 new limit keys added (OIC concurrency, API GW body limits, Streaming/Queue/
+  Functions hard limits).
+- New /api/v1/services/ endpoint (GET list + GET by service_id).
+- Integration Design Canvas: tool nodes show SLA + top constraint badge.
+  Functions 99.5% SLA highlighted in amber. Design violation banner when
+  payload exceeds service limits for tools in the integration.
+
+### Gaps / known limitations
+
+None
+
+---
+
+## M24 — Admin Synthetic Lab: Governed Test Project Generation (2026-04-16)
+
+**Status:** ✅ Complete
+
+- Added a reusable deterministic synthetic-generation service in
+  `apps/api/app/services/synthetic_service.py` that orchestrates real project,
+  import, catalog, recalculation, dashboard, justification, audit, and export
+  flows without moving orchestration logic into `packages/calc-engine/`.
+- Added the executable entrypoint
+  `apps/api/scripts/seed_synthetic_enterprise_project.py` so the governed
+  synthetic flow can be re-run from the current stack.
+- Generated and validated a large governed synthetic enterprise project with
+  deterministic coverage targets: `480` catalog integrations, `72` distinct
+  systems, `420` imported rows, `60` manual rows, `36` excluded import rows,
+  and all `17` pattern IDs represented.
+- Confirmed the import portion traverses the real workbook parser path:
+  synthetic workbook generation, persisted `ImportBatch`,
+  `SourceIntegrationRow`, inclusion/exclusion lineage, and only then governed
+  catalog materialization.
+- Confirmed the manual portion traverses the governed capture path through the
+  supported service layer before follow-up architect patches are applied.
+- Persisted downstream artifacts from supported product routes: volumetry
+  snapshots, dashboard snapshots, approved justifications, and XLSX/JSON/PDF
+  exports.
+- Wrote machine-readable and human-readable reports under
+  `apps/api/generated-reports/` for the generated project, including artifact
+  paths and smoke-test URLs.
+- Documented the future Admin Synthetic Lab productization path in
+  `docs/architecture/admin-synthetic-lab.md` without prematurely implementing
+  the full admin job module.
+- Exposed synthetic project metadata in the API/UI contract and surfaced
+  visible synthetic labeling in the projects list and project dashboard so the
+  generated project is discoverable in normal product surfaces.
+- Verified the current stack and quality gates around the delivered synthetic
+  feature remain green: `pytest`, `ruff`, `mypy`, `tsc`, and `eslint`, with
+  live `/health`, OpenAPI, catalog, graph, dashboard, volumetry, audit, and
+  services endpoint probes returning healthy payloads.
+
+### Gaps / known limitations
+
+- Full Admin Synthetic Lab job submission UI and persisted `SyntheticGenerationJob`
+  model remain intentionally future productization work and are already scoped in
+  `docs/architecture/admin-synthetic-lab.md`; they are not part of this completed
+  milestone slice.
+
+---

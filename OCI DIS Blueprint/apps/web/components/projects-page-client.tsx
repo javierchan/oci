@@ -20,6 +20,11 @@ type ProjectsPageClientProps = {
   initialProjects: ProjectRow[];
 };
 
+function isSyntheticProject(project: Project): boolean {
+  const metadata = project.project_metadata;
+  return metadata?.synthetic === true || metadata?.seed_type === "synthetic-enterprise";
+}
+
 export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps): JSX.Element {
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectRow[]>(
@@ -211,7 +216,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                 <th className="px-6 py-4">Project</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4">Created</th>
-                <th className="px-6 py-4">Rows</th>
+                <th className="px-6 py-4">Integrations</th>
                 <th className="px-6 py-4">Open</th>
                 <th className="px-6 py-4">Actions</th>
               </tr>
@@ -223,6 +228,9 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                     <div>
                       <div className="flex items-center gap-2">
                         <p className="font-semibold text-[var(--color-text-primary)]">{row.project.name}</p>
+                        {isSyntheticProject(row.project) ? (
+                          <span className="app-theme-chip">Synthetic</span>
+                        ) : null}
                         {nameCounts[row.project.name] > 1 ? (
                           <span className="text-xs font-mono text-[var(--color-text-muted)]">
                             #{row.project.id.slice(-8)}
@@ -232,6 +240,11 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                       <p className="mt-1 text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">
                         {row.project.owner_id}
                       </p>
+                      {isSyntheticProject(row.project) ? (
+                        <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+                          Governed synthetic reference project generated for end-to-end validation.
+                        </p>
+                      ) : null}
                     </div>
                   </td>
                   <td className="px-6 py-5">

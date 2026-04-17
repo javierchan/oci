@@ -38,12 +38,18 @@ import type {
   ProjectList,
   ProjectListResponse,
   RecalculationJobStatus,
+  ServiceCapabilityProfileList,
   SourceRowList,
   VolumetrySnapshotList,
 } from "@/lib/types";
 
-const PUBLIC_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const INTERNAL_BASE = process.env.INTERNAL_API_URL ?? PUBLIC_BASE;
+function normalizeBase(value: string): string {
+  return value.replace(/\/api\/v1\/?$/, "");
+}
+
+const PUBLIC_BASE = normalizeBase(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000");
+const INTERNAL_BASE = normalizeBase(process.env.INTERNAL_API_URL ?? PUBLIC_BASE);
+const DOCKER_INTERNAL_BASE = "http://api:8000";
 
 export class ApiError extends Error {
   status: number;
@@ -75,8 +81,16 @@ export function isApiErrorStatus(
   return pathPrefix ? error.path.startsWith(pathPrefix) : true;
 }
 
-function resolveBase(): string {
-  return typeof window === "undefined" ? INTERNAL_BASE : PUBLIC_BASE;
+function resolveBases(): string[] {
+  if (typeof window !== "undefined") {
+    return [PUBLIC_BASE];
+  }
+
+  const bases = new Set<string>([INTERNAL_BASE, PUBLIC_BASE]);
+  if (INTERNAL_BASE.includes("localhost") || INTERNAL_BASE.includes("127.0.0.1")) {
+    bases.add(DOCKER_INTERNAL_BASE);
+  }
+  return Array.from(bases);
 }
 
 function withQuery(params: CatalogParams | Record<string, string | number | undefined>): string {
@@ -104,11 +118,24 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${resolveBase()}${path}`, {
-    ...init,
-    cache: "no-store",
-    headers,
-  });
+  let response: Response | null = null;
+  let lastError: unknown = null;
+  for (const base of resolveBases()) {
+    try {
+      response = await fetch(`${base}${path}`, {
+        ...init,
+        cache: "no-store",
+        headers,
+      });
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (response === null) {
+    throw lastError instanceof Error ? lastError : new Error(`API request failed for ${path}`);
+  }
 
   if (!response.ok) {
     const body = await response.text();
@@ -175,8 +202,8 @@ function normalizeAssumption(raw: RawAssumptionSet): AssumptionSet {
       20000,
     ),
     month_days: readAssumptionNumber(raw.assumptions.month_days, 31),
-    oic_rest_max_payload_kb: readAssumptionNumber(raw.assumptions.oic_rest_max_payload_kb, 51200),
-    oic_ftp_max_payload_kb: readAssumptionNumber(raw.assumptions.oic_ftp_max_payload_kb, 51200),
+    oic_rest_max_payload_kb: readAssumptionNumber(raw.assumptions.oic_rest_max_payload_kb, 10240),
+    oic_ftp_max_payload_kb: readAssumptionNumber(raw.assumptions.oic_ftp_max_payload_kb, 10240),
     oic_kafka_max_payload_kb: readAssumptionNumber(raw.assumptions.oic_kafka_max_payload_kb, 10240),
     oic_timeout_s: readAssumptionNumber(raw.assumptions.oic_timeout_s, 300),
     streaming_partition_throughput_mb_s: readAssumptionNumber(
@@ -418,6 +445,9 @@ export const api = {
 
   listPatterns: (): Promise<PatternList> =>
     apiFetch<PatternList>("/api/v1/patterns/"),
+
+  listServices: (): Promise<ServiceCapabilityProfileList> =>
+    apiFetch<ServiceCapabilityProfileList>("/api/v1/services/"),
 
   createPattern: (body: PatternDefinitionCreate): Promise<PatternDefinition> =>
     apiFetch<PatternDefinition>("/api/v1/patterns/", {

@@ -14,6 +14,7 @@ class OICMetrics(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     total_billing_msgs_month: float = 0.0
+    total_billing_msgs_per_month: float = 0.0
     peak_billing_msgs_hour: float = 0.0
     peak_packs_hour: float = 0.0
     row_count: int = 0

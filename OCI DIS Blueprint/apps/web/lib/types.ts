@@ -6,6 +6,7 @@ export interface Project {
   owner_id: string;
   description: string | null;
   status: string;
+  project_metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -205,15 +206,14 @@ export interface PatternDefinition {
   name: string;
   category: string;
   description: string | null;
-  components: string[] | null;
-  component_details: string | null;
+  oci_components: string | null;
   when_to_use: string | null;
   when_not_to_use: string | null;
-  flow: string | null;
+  technical_flow: string | null;
   business_value: string | null;
-  is_system: boolean;
   is_active: boolean;
   version: string;
+  is_system: boolean;
   support: {
     level: "full" | "partial" | "reference";
     badge_label: string;
@@ -237,16 +237,50 @@ export interface PatternList {
   total: number;
 }
 
+export interface ServiceCapabilityProfile {
+  id: string;
+  service_id: string;
+  name: string;
+  category:
+    | "ORCHESTRATION"
+    | "API_INGRESS"
+    | "EVENT_BACKBONE"
+    | "WORK_QUEUE"
+    | "SERVERLESS_COMPUTE"
+    | "OCI_DATA_MOVER"
+    | "CDC_REPLICATION"
+    | "DATABASE_REST"
+    | "BATCH_ETL"
+    | "OBSERVABILITY"
+    | "IDENTITY_SECURITY"
+    | string;
+  sla_uptime_pct: number | null;
+  pricing_model: string | null;
+  limits: Record<string, unknown>;
+  architectural_fit: string | null;
+  anti_patterns: string | null;
+  interoperability_notes: string | null;
+  oracle_docs_urls: string | null;
+  is_active: boolean;
+  version: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceCapabilityProfileList {
+  services: ServiceCapabilityProfile[];
+  total: number;
+}
+
 export interface PatternDefinitionCreate {
   pattern_id: string;
   name: string;
   category: string;
   description?: string;
-  components?: string[];
-  component_details?: string;
+  oci_components?: string;
   when_to_use?: string;
   when_not_to_use?: string;
-  flow?: string;
+  technical_flow?: string;
   business_value?: string;
 }
 

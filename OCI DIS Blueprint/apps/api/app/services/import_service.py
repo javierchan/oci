@@ -34,8 +34,6 @@ from app.schemas.imports import (
     SourceRowResponse,
 )
 from app.services import audit_service, recalc_service
-from app.services.catalog_service import serialize_catalog_integration
-from app.services.justification_service import serialize_justification_record
 from app.services.pattern_support import support_reason_code
 from app.services.serializers import parse_bool, parse_float, parse_int, parse_text, sanitize_for_json
 
@@ -618,6 +616,9 @@ async def delete_import_batch(
     db: AsyncSession,
 ) -> ImportBatchDeleteResponse:
     """Remove one import batch and its governed descendants, then recalculate the project."""
+
+    from app.services.catalog_service import serialize_catalog_integration
+    from app.services.justification_service import serialize_justification_record
 
     batch = await db.scalar(
         select(ImportBatch)

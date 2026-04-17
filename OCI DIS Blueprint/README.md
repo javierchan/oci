@@ -125,6 +125,7 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M21 | Volumetry Assumption Parity — Service Limits + Unit Governance | ✅ Complete | 2026-04-15 |
 | M22 | QA Coverage + Confidence Signals | ✅ Complete | 2026-04-16 |
 | M23 | Pattern Coverage 03–17 — End-to-End Operationalization | ✅ Complete | 2026-04-16 |
+| M24 | Admin Synthetic Lab — Governed Test Project Generation | ✅ Complete | 2026-04-16 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -132,7 +133,8 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 Phase 1 parity has been validated in Docker against the benchmark workbook rules:
 
 - Import parity: `157` TBQ=`Y` rows, `13` excluded `Duplicado 2`, `144` loaded rows in source order
-- Reference seed data: `17` patterns, `1` default assumption set, `40` dictionary options
+- Reference seed data: `17` patterns, `1` default assumption set, `55` dictionary options, `11` service capability profiles
+- Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
 - Calc-engine parity: `26 passed`
 - Web and API stack: all six containers running and healthy in Docker Compose
 

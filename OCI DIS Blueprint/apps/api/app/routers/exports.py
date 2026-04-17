@@ -34,6 +34,21 @@ async def export_xlsx(
     return await export_service.create_xlsx_export(project_id, snapshot_id, db)
 
 
+@router.get("/{project_id}/xlsx", summary="Download catalog export as XLSX using the latest snapshot")
+async def download_xlsx(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    snapshot_id = await export_service.latest_snapshot_id(project_id, db)
+    job = await export_service.create_xlsx_export(project_id, snapshot_id, db)
+    file_path, _ = export_service.get_export_file(project_id, job.job_id)
+    return FileResponse(
+        path=file_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=job.filename,
+    )
+
+
 @router.post("/{project_id}/pdf", response_model=ExportJobResponse, summary="Export dashboard as PDF")
 async def export_pdf(
     project_id: str,
