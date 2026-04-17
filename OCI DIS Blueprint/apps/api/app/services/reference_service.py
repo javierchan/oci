@@ -483,6 +483,36 @@ async def _set_default_assumption(version: str, db: AsyncSession) -> None:
     await db.flush()
 
 
+async def _baseline_assumptions(db: AsyncSession) -> dict[str, object]:
+    default_set = await db.scalar(select(AssumptionSet).where(AssumptionSet.is_default.is_(True)))
+    if default_set is not None:
+        return dict(default_set.assumptions)
+
+    first_set = await db.scalar(select(AssumptionSet).order_by(AssumptionSet.created_at.asc()))
+    return dict(first_set.assumptions) if first_set is not None else {}
+
+
+def _merged_assumptions(
+    baseline: dict[str, object],
+    overrides: dict[str, object] | None,
+) -> dict[str, object]:
+    merged = dict(baseline)
+    if overrides:
+        merged.update(overrides)
+    for immutable_key in {
+        "oic_rest_max_payload_kb",
+        "oic_ftp_max_payload_kb",
+        "oic_kafka_max_payload_kb",
+        "oic_sync_max_duration_s",
+        "api_gw_max_body_kb",
+        "queue_max_message_kb",
+        "functions_max_invoke_body_kb",
+    }:
+        if immutable_key in baseline:
+            merged[immutable_key] = baseline[immutable_key]
+    return merged
+
+
 async def create_assumption_set(
     body: AssumptionSetCreate,
     actor_id: str,
@@ -497,7 +527,9 @@ async def create_assumption_set(
             detail={"detail": "Assumption set version already exists", "error_code": "ASSUMPTION_SET_EXISTS"},
         )
 
-    assumption_set = AssumptionSet(**body.model_dump())
+    payload = body.model_dump()
+    payload["assumptions"] = _merged_assumptions(await _baseline_assumptions(db), body.assumptions)
+    assumption_set = AssumptionSet(**payload)
     db.add(assumption_set)
     await db.flush()
     if body.is_default:
@@ -532,6 +564,9 @@ async def update_assumption_set(
 
     old_value = serialize_assumption_set(assumption_set).model_dump()
     make_default = patch.pop("is_default", None)
+    if "assumptions" in patch:
+        patch["assumptions"] = _merged_assumptions(dict(assumption_set.assumptions), patch["assumptions"])
+
     for field, value in patch.items():
         setattr(assumption_set, field, value)
     await db.flush()

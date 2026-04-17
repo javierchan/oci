@@ -111,9 +111,9 @@ export default async function ProjectDashboardPage({
 
       <section className="grid gap-4 xl:grid-cols-4 md:grid-cols-2">
         <VolumetryCard
-          label="Integrations Loaded"
-          value={formatNumber(latestImport?.loaded_count ?? 0)}
-          unit="rows"
+          label="Total Integrations"
+          value={formatNumber(catalogPage.total)}
+          unit="integrations"
         />
         <VolumetryCard
           label="Excluded (Duplicado 2)"

@@ -498,6 +498,8 @@ def _payload_value(
 ) -> float:
     low, high = pattern.payload_range_kb
     value = round(rng.uniform(low, high), 1)
+    if "OIC Gen3" in pattern.route_core_tools and index % 61 == 0:
+        return 12288.0
     if "OCI Queue" in pattern.route_core_tools and index % 37 == 0:
         return 320.0
     if "OCI Streaming" in pattern.route_core_tools and index % 53 == 0:
@@ -640,7 +642,7 @@ def generate_synthetic_dataset(spec: SyntheticProjectSpec) -> SyntheticDataset:
         if position in excluded_positions:
             tbq_value = "N" if len(excluded_rows) % 2 == 0 else "Y"
             status_value = "Duplicado 2" if tbq_value == "Y" else "TBD"
-            source = systems[(position * 3) % len(systems)]
+            source = systems[(position - 1) % len(systems)]
             destination = systems[(position * 7 + 9) % len(systems)]
             excluded_rows.append(
                 [
@@ -689,7 +691,7 @@ def generate_synthetic_dataset(spec: SyntheticProjectSpec) -> SyntheticDataset:
         pattern_id = pattern_ids[pattern_cursor]
         pattern_cursor += 1
         pattern = PATTERN_PLANS[pattern_id]
-        source = systems[(position * 5 + pattern_cursor) % len(systems)]
+        source = systems[(position - 1) % len(systems)]
         destination = systems[(position * 11 + pattern_cursor * 3 + 7) % len(systems)]
         if destination.name == source.name:
             destination = systems[(systems.index(destination) + 1) % len(systems)]
@@ -748,7 +750,7 @@ def generate_synthetic_dataset(spec: SyntheticProjectSpec) -> SyntheticDataset:
         pattern_id = pattern_ids[pattern_cursor]
         pattern_cursor += 1
         pattern = PATTERN_PLANS[pattern_id]
-        source = systems[(sequence_number * 13 + offset) % len(systems)]
+        source = systems[(sequence_number - 1) % len(systems)]
         destination = systems[(sequence_number * 17 + offset * 5 + 11) % len(systems)]
         if destination.name == source.name:
             destination = systems[(systems.index(destination) + 2) % len(systems)]
@@ -982,6 +984,8 @@ async def create_synthetic_enterprise_project(
             sanitize_for_json(
                 {
                     "synthetic": True,
+                    "seed_type": "synthetic-enterprise",
+                    "seed_actor": SYNTHETIC_ACTOR_ID,
                     "generator": "enterprise-v1",
                     "seed": spec.seed,
                     "import_included_count": spec.import_included_count,
@@ -1020,6 +1024,9 @@ async def create_synthetic_enterprise_project(
     approved_justifications = await _approve_all_justifications(project.id, db)
 
     final_rows = await _load_project_rows(project.id, db)
+    import_batch.loaded_count = len(final_rows)
+    import_batch.source_row_count = len(final_rows)
+    await db.flush()
     distinct_systems = len(
         {
             system_name

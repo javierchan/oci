@@ -171,6 +171,22 @@ async def _load_snapshot(project_id: str, snapshot_id: str, db: AsyncSession) ->
     return snapshot
 
 
+async def latest_snapshot_id(project_id: str, db: AsyncSession) -> str:
+    """Return the latest volumetry snapshot ID for one project."""
+
+    snapshot = await db.scalar(
+        select(VolumetrySnapshot)
+        .where(VolumetrySnapshot.project_id == project_id)
+        .order_by(VolumetrySnapshot.created_at.desc())
+    )
+    if snapshot is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Volumetry snapshot not found", "error_code": "VOLUMETRY_SNAPSHOT_NOT_FOUND"},
+        )
+    return snapshot.id
+
+
 def _job_file(job_id: str) -> Path:
     return JOBS_DIR / f"{job_id}.json"
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Optional, cast
 
 from fastapi import HTTPException
@@ -193,6 +194,10 @@ def _response_from_record(record: JustificationRecord) -> JustificationRecordRes
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
+
+
+def _serialized_narrative_text(narrative: JustificationNarrative) -> str:
+    return json.dumps(narrative.model_dump(), ensure_ascii=False, sort_keys=True)
 
 
 def serialize_justification_record(record: JustificationRecord) -> JustificationRecordResponse:
@@ -469,6 +474,7 @@ async def approve_justification(
             integration_id=integration_id,
             state="approved",
             deterministic_text=sanitize_for_json(narrative.model_dump()),
+            narrative_text=_serialized_narrative_text(narrative),
             approved_by=actor_id,
             override_notes=None,
         )
@@ -476,6 +482,7 @@ async def approve_justification(
     else:
         record.state = "approved"
         record.deterministic_text = cast(dict[str, object], sanitize_for_json(narrative.model_dump()))
+        record.narrative_text = _serialized_narrative_text(narrative)
         record.approved_by = actor_id
         record.override_notes = None
 
@@ -523,6 +530,7 @@ async def override_justification(
             integration_id=integration_id,
             state="overridden",
             deterministic_text=sanitize_for_json(narrative.model_dump()),
+            narrative_text=_serialized_narrative_text(narrative),
             approved_by=actor_id,
             override_notes=override_notes,
         )
@@ -530,6 +538,7 @@ async def override_justification(
     else:
         record.state = "overridden"
         record.deterministic_text = cast(dict[str, object], sanitize_for_json(narrative.model_dump()))
+        record.narrative_text = _serialized_narrative_text(narrative)
         record.approved_by = actor_id
         record.override_notes = override_notes
 

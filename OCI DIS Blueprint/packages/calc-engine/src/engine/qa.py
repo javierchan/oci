@@ -95,5 +95,48 @@ def evaluate_qa(
     if uncertainty and "TBD" in uncertainty.upper():
         reasons.append("TBD_UNCERTAINTY")
 
+    if selected_pattern and core_tools:
+        tools_lower = core_tools.lower()
+
+        if selected_pattern == "#07" and is_fan_out and fan_out_targets is not None and fan_out_targets > 5:
+            reasons.append("SCATTER_GATHER_EXCEEDS_OIC_PARALLEL_LIMIT")
+
+        if (
+            selected_pattern == "#04"
+            and resolved_trigger_type in {"REST", "SOAP", "REST Trigger", "SOAP Trigger"}
+            and payload_per_execution_kb is not None
+            and payload_per_execution_kb > 1000
+        ):
+            reasons.append("SAGA_SYNC_DURATION_RISK")
+
+        if (
+            selected_pattern in {"#02", "#05", "#09", "#14", "#17"}
+            and ("streaming" in tools_lower or "kafka" in tools_lower)
+            and payload_per_execution_kb is not None
+            and payload_per_execution_kb > 1024
+        ):
+            reasons.append("STREAMING_PAYLOAD_EXCEEDS_1MB_LIMIT")
+
+        if (
+            selected_pattern in {"#03", "#11", "#15"}
+            and "functions" in tools_lower
+            and payload_per_execution_kb is not None
+            and payload_per_execution_kb > 6144
+        ):
+            reasons.append("FUNCTIONS_PAYLOAD_EXCEEDS_6MB_LIMIT")
+
+        if (
+            selected_pattern in {"#04", "#08", "#09", "#17"}
+            and "queue" in tools_lower
+            and payload_per_execution_kb is not None
+            and payload_per_execution_kb > 256
+        ):
+            reasons.append("QUEUE_PAYLOAD_EXCEEDS_256KB_LIMIT")
+
+    if selected_pattern in {"#12", "#13", "#16"} and (
+        not pattern_rationale or len(pattern_rationale.strip()) < 30
+    ):
+        reasons.append("REFERENCE_PATTERN_NEEDS_EXPLICIT_RATIONALE")
+
     status = "OK" if not reasons else "REVISAR"
     return QAResult(status=status, reasons=reasons)

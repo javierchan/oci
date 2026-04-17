@@ -36,7 +36,7 @@ const MIN_CANVAS_WIDTH = 960;
 const CANVAS_HEIGHT = 560;
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 2;
-const TOOL_NODE_WIDTH = 188;
+const TOOL_NODE_WIDTH = 208;
 const TOOL_NODE_HEIGHT = 126;
 const SYSTEM_NODE_WIDTH = 260;
 const SYSTEM_NODE_HEIGHT = 110;
@@ -54,6 +54,8 @@ type ToolDefinition = {
   accent: string;
   surface: string;
 };
+
+type ToolKind = "oic" | "gateway" | "streaming" | "functions" | "storage" | "db";
 
 type IntegrationCanvasProps = {
   projectId: string;
@@ -92,6 +94,33 @@ const TOOL_TO_SERVICE_ID: Record<string, string> = {
   "Oracle GoldenGate": "GOLDENGATE",
   "OCI Connector Hub": "CONNECTOR_HUB",
   "OCI IAM": "IAM",
+};
+
+const TOOL_KINDS: Record<string, ToolKind> = {
+  "OIC Gen3": "oic",
+  "OCI API Gateway": "gateway",
+  "OCI Streaming": "streaming",
+  "OCI Queue": "streaming",
+  "OCI Functions": "functions",
+  "OCI Data Integration": "oic",
+  "Oracle Functions": "functions",
+  "Data Integrator": "oic",
+  "Oracle GoldenGate": "db",
+  "Oracle ORDS": "db",
+  ATP: "db",
+  "Oracle DB": "db",
+  SFTP: "storage",
+  "OCI Object Storage": "storage",
+  "OCI APM": "oic",
+};
+
+const TOOL_KIND_STYLES: Record<ToolKind, ToolDefinition> = {
+  oic: { abbreviation: "OIC", accent: "#2563eb", surface: "#dbeafe" },
+  gateway: { abbreviation: "API", accent: "#7c3aed", surface: "#ede9fe" },
+  streaming: { abbreviation: "STR", accent: "#ea580c", surface: "#ffedd5" },
+  functions: { abbreviation: "FN", accent: "#16a34a", surface: "#dcfce7" },
+  storage: { abbreviation: "STO", accent: "#0891b2", surface: "#cffafe" },
+  db: { abbreviation: "DB", accent: "#db2777", surface: "#fce7f3" },
 };
 
 function parsePatternBullets(value: string | null): string[] {
@@ -284,7 +313,7 @@ function PatternDetailPanel({ patternDetail }: { patternDetail: PatternDefinitio
           style={{ background: "#fef3c7", borderColor: "#f59e0b", color: "#78350f" }}
         >
           <p className="app-label" style={{ color: "#92400e" }}>
-            Anti-Pattern
+            Anti-Pattern Guidance
           </p>
           <p className="mt-3 text-sm leading-6">
             <span className="mr-2">⚠</span>
@@ -343,6 +372,11 @@ const EMPTY_ESTIMATE: OICEstimateResponse = {
 };
 
 function toolDefinition(toolKey: string): ToolDefinition {
+  const mappedKind = TOOL_KINDS[toolKey];
+  if (mappedKind) {
+    return TOOL_KIND_STYLES[mappedKind];
+  }
+
   const cleaned = toolKey
     .replace(/OCI/gi, "")
     .replace(/Oracle/gi, "")
@@ -511,16 +545,19 @@ function labelFontSize(node: FlowNode): number {
   if (node.fixed) {
     return node.label.length > 20 ? 13 : 14;
   }
-  return node.label.length > 18 ? 14 : 15;
+  if (node.label.length > 24) {
+    return 12.5;
+  }
+  return node.label.length > 18 ? 13.5 : 15;
 }
 
 function renderedLabel(node: FlowNode): string {
-  return truncateLabel(node.label, node.fixed ? 22 : 20);
+  return truncateLabel(node.label, node.fixed ? 22 : 24);
 }
 
 function renderedSubtitle(node: FlowNode): string {
   const value = node.fixed ? node.subtitle ?? "System endpoint" : node.toolKey;
-  return truncateLabel(value, node.fixed ? 26 : 24);
+  return truncateLabel(value, node.fixed ? 26 : 28);
 }
 
 function renderedPayload(node: FlowNode): string {
@@ -1093,14 +1130,14 @@ export function IntegrationCanvas({
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-3">{toolOptions.map((option) => renderPaletteButton(option, false))}</div>
+        <div className="flex gap-3 overflow-x-auto pb-1">{toolOptions.map((option) => renderPaletteButton(option, false))}</div>
 
         <div className="border-t border-[var(--color-border)] pt-3">
           <p className="app-label">Architectural Overlays</p>
           <p className="mt-2 text-xs text-[var(--color-text-muted)]">
             Overlays document edge protection and runtime context. They do not satisfy the core-tools QA gate by themselves.
           </p>
-          <div className="mt-3 flex flex-wrap gap-3">
+          <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
             {overlayOptions.map((option) => renderPaletteButton(option, true))}
           </div>
         </div>
@@ -1154,7 +1191,7 @@ export function IntegrationCanvas({
             Zoom {Math.round(viewport.scale * 100)}%
           </div>
           <div
-            className="rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+            className="overflow-x-auto rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
             onDragOver={(event) => event.preventDefault()}
             onDrop={handleCanvasDrop}
           >
@@ -1163,7 +1200,7 @@ export function IntegrationCanvas({
               width={canvasWidth}
               height={CANVAS_HEIGHT}
               viewBox={`0 0 ${canvasWidth} ${CANVAS_HEIGHT}`}
-              className="block w-full"
+              className="block min-w-[960px]"
               style={{ touchAction: "none", cursor: canvasCursor }}
               onMouseDown={handleCanvasMouseDown}
               onMouseMove={handleCanvasMouseMove}
@@ -1340,6 +1377,7 @@ export function IntegrationCanvas({
                         setSelectedElement({ kind: "node", id: node.instanceId });
                       }}
                     >
+                      <title>{node.label}</title>
                       <rect
                         width={width}
                         height={height}

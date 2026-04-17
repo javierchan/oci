@@ -51,7 +51,7 @@ export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
                 <div>
                   <p className="app-label">Phase 1 Parity</p>
                   <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">
-                    Frontend Control Surface
+                    Governed Integration Workspace
                   </h2>
                 </div>
                 <p className="max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">

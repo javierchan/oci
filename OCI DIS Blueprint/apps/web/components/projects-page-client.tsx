@@ -216,7 +216,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                 <th className="px-6 py-4">Project</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4">Created</th>
-                <th className="px-6 py-4">Rows</th>
+                <th className="px-6 py-4">Integrations</th>
                 <th className="px-6 py-4">Open</th>
                 <th className="px-6 py-4">Actions</th>
               </tr>

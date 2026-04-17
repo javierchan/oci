@@ -169,7 +169,11 @@ def _design_constraint_warnings(
 
 
 def _serialize_consolidated(consolidated: dict[str, object]) -> ConsolidatedMetrics:
-    oic = cast(dict[str, Any], consolidated.get("oic", {}))
+    oic = dict(cast(dict[str, Any], consolidated.get("oic", {})))
+    if "total_billing_msgs_per_month" not in oic and "total_billing_msgs_month" in oic:
+        oic["total_billing_msgs_per_month"] = oic["total_billing_msgs_month"]
+    if "total_billing_msgs_month" not in oic and "total_billing_msgs_per_month" in oic:
+        oic["total_billing_msgs_month"] = oic["total_billing_msgs_per_month"]
     data_integration = cast(dict[str, Any], consolidated.get("data_integration", {}))
     functions = cast(dict[str, Any], consolidated.get("functions", {}))
     streaming = cast(dict[str, Any], consolidated.get("streaming", {}))

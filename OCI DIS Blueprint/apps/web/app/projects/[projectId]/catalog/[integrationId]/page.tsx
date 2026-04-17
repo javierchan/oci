@@ -84,6 +84,30 @@ const QA_REASON_LABELS: Record<string, { title: string; hint: string }> = {
     title: "Source uncertainty still open",
     hint: "The workbook still marks this row as TBD. Keep the uncertainty visible until source evidence is resolved.",
   },
+  SCATTER_GATHER_EXCEEDS_OIC_PARALLEL_LIMIT: {
+    title: "Scatter-gather exceeds OIC parallel limit",
+    hint: "OIC Gen3 supports a maximum of 5 parallel branches. Split this flow into smaller fan-outs or redesign the aggregation path.",
+  },
+  SAGA_SYNC_DURATION_RISK: {
+    title: "Saga selected on synchronous long-running path",
+    hint: "This saga looks too heavy for a synchronous REST/SOAP flow. Move the transaction to an asynchronous orchestration path.",
+  },
+  STREAMING_PAYLOAD_EXCEEDS_1MB_LIMIT: {
+    title: "Streaming payload exceeds 1 MB",
+    hint: "OCI Streaming enforces a 1 MB message limit. Externalize the payload or change the tool stack.",
+  },
+  FUNCTIONS_PAYLOAD_EXCEEDS_6MB_LIMIT: {
+    title: "Functions payload exceeds 6 MB",
+    hint: "Oracle Functions cannot receive payloads above 6 MB. Route large payloads through OIC or object storage instead.",
+  },
+  QUEUE_PAYLOAD_EXCEEDS_256KB_LIMIT: {
+    title: "Queue payload exceeds 256 KB",
+    hint: "OCI Queue caps message size at 256 KB. Store the full payload elsewhere and queue a reference token.",
+  },
+  REFERENCE_PATTERN_NEEDS_EXPLICIT_RATIONALE: {
+    title: "Reference pattern needs explicit rationale",
+    hint: "Reference-only patterns require a substantive architect explanation before the row can be treated as governed.",
+  },
 };
 
 const SOURCE_ROW_FIELD_NAMES = [
@@ -254,7 +278,7 @@ export default async function IntegrationDetailPage({
           <div>
             <p className="app-kicker">Integration Detail</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
-              {integration.interface_name ?? integration.interface_id ?? integration.id}
+              {integration.interface_id ?? integration.interface_name ?? integration.id}
             </h1>
             <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
               Review immutable source lineage on the left and apply architect-owned patterning decisions on the right.
@@ -266,7 +290,7 @@ export default async function IntegrationDetailPage({
                   { label: "Projects", href: "/projects" },
                   { label: project.name, href: `/projects/${params.projectId}` },
                   { label: "Catalog", href: `/projects/${params.projectId}/catalog` },
-                  { label: integration.interface_name ?? integration.interface_id ?? "Integration" },
+                  { label: integration.interface_id ?? integration.interface_name ?? "Integration" },
                 ]}
               />
             </div>

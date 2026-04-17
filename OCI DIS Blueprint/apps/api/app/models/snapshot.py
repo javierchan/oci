@@ -1,7 +1,8 @@
 """Immutable calculation, dashboard, justification, and audit snapshots."""
 from __future__ import annotations
+
 from typing import Optional
-from sqlalchemy import String, JSON, ForeignKey
+from sqlalchemy import ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, UUIDMixin
@@ -34,12 +35,14 @@ class DashboardSnapshot(Base, UUIDMixin, TimestampMixin):
 
 class JustificationRecord(Base, UUIDMixin, TimestampMixin):
     """Deterministic narrative record per integration (PRD-040)."""
+
     __tablename__ = "justification_records"
 
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
     integration_id: Mapped[str] = mapped_column(ForeignKey("catalog_integrations.id"), nullable=False)
-    state: Mapped[str] = mapped_column(String(50), default="draft")  # draft | approved | overridden
+    state: Mapped[str] = mapped_column("status", String(50), default="draft")  # draft | approved | overridden
     deterministic_text: Mapped[dict] = mapped_column(JSON, nullable=False)  # assembled from structured fields
+    narrative_text: Mapped[Optional[str]] = mapped_column("narrative", Text)
     ai_suggestion: Mapped[Optional[dict]] = mapped_column(JSON)  # optional, never auto-applies
     approved_by: Mapped[Optional[str]] = mapped_column(String(36))
     override_notes: Mapped[Optional[str]] = mapped_column(String(4000))

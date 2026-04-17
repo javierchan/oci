@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { api } from "@/lib/api";
+import { TruncatedCell } from "@/components/truncated-cell";
 
 type RawColumnValuesTableProps = {
   projectId: string;
@@ -160,16 +161,19 @@ export function RawColumnValuesTable({
             className="w-full rounded-xl border border-[var(--color-border)] px-3 py-2 text-sm"
           />
         ) : (
-          <button
-            type="button"
-            onClick={() => beginEdit(fieldKey)}
-            className="flex w-full items-center justify-between gap-3 text-left"
-          >
-            <span className="truncate">{stringifyValue(value) || "—"}</span>
-            <span className="opacity-0 transition group-hover:opacity-100">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 break-words">
+              <TruncatedCell value={stringifyValue(value) || "—"} />
+            </div>
+            <button
+              type="button"
+              onClick={() => beginEdit(fieldKey)}
+              className="shrink-0 opacity-0 transition group-hover:opacity-100"
+              title="Edit source value"
+            >
               <Pencil className="h-4 w-4 text-[var(--color-text-muted)]" />
-            </span>
-          </button>
+            </button>
+          </div>
         )}
       </td>
     );
