@@ -77,17 +77,19 @@ export function OicEstimatePreview({
   }, [frequency, payloadPerExecutionKb, projectId]);
 
   return (
-    <section className="rounded-[1.5rem] border border-slate-200 bg-slate-950 p-5 text-white">
+    <section className="app-card border-[var(--color-accent)]/30 p-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.25em] text-sky-300">OIC Estimate</p>
-          <h3 className="mt-2 text-xl font-semibold">Live preview</h3>
+          <p className="app-kicker">OIC Estimate</p>
+          <h3 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Live preview</h3>
         </div>
-        {loading ? <span className="text-xs uppercase tracking-[0.2em] text-slate-400">Calculating…</span> : null}
+        {loading ? (
+          <span className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">Calculating…</span>
+        ) : null}
       </div>
 
       {showActivationHint && !loading ? (
-        <p className="py-4 text-center text-xs text-slate-300">
+        <p className="py-4 text-center text-xs text-[var(--color-text-secondary)]">
           Select a <strong>Frequency</strong> and enter a <strong>Payload KB</strong> above to preview OIC billing and
           pack pressure.
         </p>
@@ -116,10 +118,10 @@ export function OicEstimatePreview({
         ].map((metric) => (
           <article
             key={metric.label}
-            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4"
+            className="app-card-muted px-4 py-4"
           >
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{metric.label}</p>
-            <p className="mt-3 text-2xl font-semibold text-white">
+            <p className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">{metric.label}</p>
+            <p className="mt-3 text-2xl font-semibold text-[var(--color-text-primary)]">
               {showActivationHint && !loading ? "—" : loading ? "…" : metric.value}
             </p>
           </article>

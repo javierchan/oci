@@ -31,7 +31,7 @@ export function CaptureStepTechnical({
     <div className="space-y-6">
       <div className="grid gap-5 md:grid-cols-2">
         <label className="block">
-          <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Trigger Type</span>
+          <span className="app-label mb-2 block">Trigger Type</span>
           <select
             value={form.type ?? ""}
             onChange={(event) => updateField("type", event.target.value)}
@@ -46,7 +46,7 @@ export function CaptureStepTechnical({
           </select>
         </label>
         <label className="block">
-          <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Frequency</span>
+          <span className="app-label mb-2 block">Frequency</span>
           <select
             value={form.frequency ?? ""}
             onChange={(event) => updateField("frequency", event.target.value)}
@@ -61,7 +61,7 @@ export function CaptureStepTechnical({
           </select>
         </label>
         <label className="block">
-          <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Payload per Execution (KB)</span>
+          <span className="app-label mb-2 block">Payload per Execution (KB)</span>
           <input
             type="number"
             min="0"
@@ -78,7 +78,7 @@ export function CaptureStepTechnical({
           />
         </label>
         <label className="block">
-          <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Complexity</span>
+          <span className="app-label mb-2 block">Complexity</span>
           <select
             value={form.complexity ?? ""}
             onChange={(event) => updateField("complexity", event.target.value)}
@@ -93,7 +93,7 @@ export function CaptureStepTechnical({
           </select>
         </label>
         <label className="block">
-          <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Uncertainty</span>
+          <span className="app-label mb-2 block">Uncertainty</span>
           <input
             value={form.uncertainty ?? ""}
             onChange={(event) => updateField("uncertainty", event.target.value)}
@@ -102,7 +102,7 @@ export function CaptureStepTechnical({
           />
         </label>
         <label className="block">
-          <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Pattern</span>
+          <span className="app-label mb-2 block">Pattern</span>
           <select
             value={form.selected_pattern ?? ""}
             onChange={(event) => updateField("selected_pattern", event.target.value)}
@@ -117,7 +117,7 @@ export function CaptureStepTechnical({
           </select>
         </label>
         <label className="block md:col-span-2">
-          <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Pattern Rationale</span>
+          <span className="app-label mb-2 block">Pattern Rationale</span>
           <textarea
             value={form.pattern_rationale ?? ""}
             onChange={(event) => updateField("pattern_rationale", event.target.value)}
@@ -148,7 +148,7 @@ export function CaptureStepTechnical({
       ) : null}
 
       <fieldset className="space-y-3">
-        <legend className="text-xs uppercase tracking-[0.25em] text-slate-500">Core Tools</legend>
+        <legend className="app-label">Core Tools</legend>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {toolOptions.map((option) => {
             const checked = selectedTools.includes(option.value);
@@ -158,15 +158,15 @@ export function CaptureStepTechnical({
                 className={[
                   "flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition",
                   checked
-                    ? "border-sky-300 bg-sky-50 text-slate-950"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300",
+                    ? "border-[var(--color-accent)] bg-[var(--color-surface)] text-[var(--color-text-primary)] shadow-[0_0_0_1px_var(--color-accent)]"
+                    : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)]",
                 ].join(" ")}
               >
                 <input
                   type="checkbox"
                   checked={checked}
                   onChange={() => toggleTool(option.value)}
-                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  className="h-4 w-4 rounded border-[var(--color-border)] text-[var(--color-accent)]"
                 />
                 <span>{option.value}</span>
               </label>

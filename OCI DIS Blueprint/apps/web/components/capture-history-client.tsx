@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startTransition, useState } from "react";
 
+import { ConfirmModal } from "@/components/modal";
+import { emitToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { AuditEvent } from "@/lib/types";
@@ -37,29 +39,21 @@ export function CaptureHistoryClient({
   const router = useRouter();
   const [events, setEvents] = useState<AuditEvent[]>(initialEvents);
   const [deletingIntegrationId, setDeletingIntegrationId] = useState<string>("");
-  const [error, setError] = useState<string>("");
+  const [deleteTarget, setDeleteTarget] = useState<AuditEvent | null>(null);
 
   async function handleDelete(event: AuditEvent): Promise<void> {
-    const label = integrationLabel(event);
-    const confirmed = window.confirm(
-      `Remove captured integration "${label}" from this project?`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
     setDeletingIntegrationId(event.entity_id);
-    setError("");
     try {
       await api.deleteIntegration(projectId, event.entity_id);
       setEvents((current: AuditEvent[]) =>
         current.filter((entry: AuditEvent) => entry.entity_id !== event.entity_id),
       );
+      emitToast("success", "Captured integration removed.");
       startTransition(() => {
         router.refresh();
       });
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to remove capture.");
+      emitToast("error", caughtError instanceof Error ? caughtError.message : "Unable to remove capture.");
     } finally {
       setDeletingIntegrationId("");
     }
@@ -104,7 +98,7 @@ export function CaptureHistoryClient({
                   <button
                     type="button"
                     onClick={() => {
-                      void handleDelete(event);
+                      setDeleteTarget(event);
                     }}
                     disabled={deletingIntegrationId === event.entity_id}
                     className="text-sm font-medium text-rose-700 hover:text-rose-500 disabled:cursor-not-allowed disabled:text-slate-400"
@@ -117,7 +111,21 @@ export function CaptureHistoryClient({
           </tbody>
         </table>
       )}
-      {error ? <p className="border-t border-slate-200 px-6 py-4 text-sm text-rose-600">{error}</p> : null}
+      <ConfirmModal
+        open={deleteTarget !== null}
+        title="Remove captured integration"
+        description={`"${deleteTarget ? integrationLabel(deleteTarget) : "This integration"}" will be removed from the project.`}
+        confirmLabel="Remove integration"
+        cancelLabel="Keep it"
+        danger
+        onConfirm={() => {
+          if (deleteTarget) {
+            void handleDelete(deleteTarget);
+          }
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </section>
   );
 }

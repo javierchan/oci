@@ -25,6 +25,7 @@ export default function AdminPatternsPage(): JSX.Element {
   const [deletingPattern, setDeletingPattern] = useState<PatternDefinition | null>(null);
   const [catalogProjectId, setCatalogProjectId] = useState<string | null>(null);
   const [lastCreatedPatternId, setLastCreatedPatternId] = useState<string>("");
+  const formMode = showCreate ? "create" : editingPattern ? "edit" : null;
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -175,115 +176,134 @@ export default function AdminPatternsPage(): JSX.Element {
         </p>
       ) : null}
 
-      <section className="app-table-shell">
-        <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
-          <thead className="app-table-header">
-            <tr>
-              <th className="px-6 py-4 font-medium">Pattern ID</th>
-              <th className="px-6 py-4 font-medium">Name</th>
-              <th className="px-6 py-4 font-medium">Category</th>
-              <th className="px-6 py-4 font-medium">Support</th>
-              <th className="px-6 py-4 font-medium">Guidance</th>
-              <th className="px-6 py-4 font-medium">System</th>
-              <th className="px-6 py-4 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
-            {loading ? (
+      {formMode ? (
+        <section className="app-card p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="app-label">Directory Collapsed</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">
+                Pattern list hidden while you {formMode === "create" ? "create" : "edit"} a pattern
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
+                Keeping the reference table out of the way reduces scroll fatigue and keeps the active governance form visible.
+              </p>
+            </div>
+            <div className="app-card-muted px-4 py-3 text-sm text-[var(--color-text-secondary)]">
+              {patterns.length} patterns loaded
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="app-table-shell">
+          <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
+            <thead className="app-table-header">
               <tr>
-                <td className="px-6 py-8 text-[var(--color-text-secondary)]" colSpan={7}>
-                  Loading patterns…
-                </td>
+                <th className="px-6 py-4 font-medium">Pattern ID</th>
+                <th className="px-6 py-4 font-medium">Name</th>
+                <th className="px-6 py-4 font-medium">Category</th>
+                <th className="px-6 py-4 font-medium">Support</th>
+                <th className="px-6 py-4 font-medium">Guidance</th>
+                <th className="px-6 py-4 font-medium">System</th>
+                <th className="px-6 py-4 font-medium">Actions</th>
               </tr>
-            ) : (
-              patterns.map((pattern) => (
-                <tr key={pattern.pattern_id} className="app-table-row">
-                  <td className="px-6 py-4 font-semibold text-[var(--color-text-primary)]">{pattern.pattern_id}</td>
-                  <td className="px-6 py-4">
-                    <div>
-                      <p className="font-medium text-[var(--color-text-primary)]">{pattern.name}</p>
-                      {pattern.description ? (
-                        <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">{pattern.description}</p>
-                      ) : null}
-                      {pattern.oci_components ? (
-                        <p className="mt-2 whitespace-pre-line text-xs leading-5 text-[var(--color-text-muted)]">
-                          {pattern.oci_components}
+            </thead>
+            <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
+              {loading ? (
+                <tr>
+                  <td className="px-6 py-8 text-[var(--color-text-secondary)]" colSpan={7}>
+                    Loading patterns…
+                  </td>
+                </tr>
+              ) : (
+                patterns.map((pattern) => (
+                  <tr key={pattern.pattern_id} className="app-table-row">
+                    <td className="px-6 py-4 font-semibold text-[var(--color-text-primary)]">{pattern.pattern_id}</td>
+                    <td className="px-6 py-4">
+                      <div>
+                        <p className="font-medium text-[var(--color-text-primary)]">{pattern.name}</p>
+                        {pattern.description ? (
+                          <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">{pattern.description}</p>
+                        ) : null}
+                        {pattern.oci_components ? (
+                          <p className="mt-2 whitespace-pre-line text-xs leading-5 text-[var(--color-text-muted)]">
+                            {pattern.oci_components}
+                          </p>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-[var(--color-text-secondary)]">{pattern.category}</td>
+                    <td className="px-6 py-4">
+                      <div className="space-y-2">
+                        <PatternSupportBadge support={pattern.support} />
+                        <p className="max-w-xs text-xs leading-5 text-[var(--color-text-secondary)]">
+                          {pattern.support.summary}
                         </p>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{pattern.category}</td>
-                  <td className="px-6 py-4">
-                    <div className="space-y-2">
-                      <PatternSupportBadge support={pattern.support} />
-                      <p className="max-w-xs text-xs leading-5 text-[var(--color-text-secondary)]">
-                        {pattern.support.summary}
-                      </p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="space-y-2 text-xs leading-5 text-[var(--color-text-secondary)]">
-                      <p>
-                        <span className="font-semibold text-[var(--color-text-primary)]">Use:</span>{" "}
-                        {pattern.when_to_use ?? "—"}
-                      </p>
-                      <p>
-                        <span className="font-semibold text-[var(--color-text-primary)]">Avoid:</span>{" "}
-                        {pattern.when_not_to_use ?? "—"}
-                      </p>
-                      <p>
-                        <span className="font-semibold text-[var(--color-text-primary)]">Business value:</span>{" "}
-                        {pattern.business_value ?? "—"}
-                      </p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    {pattern.is_system ? (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-[var(--color-text-secondary)]">
-                        <Lock className="h-3.5 w-3.5" />
-                        System
-                      </span>
-                    ) : (
-                      <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-emerald-700">
-                        Custom
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowCreate(false);
-                          setEditingPattern(pattern);
-                          setError("");
-                        }}
-                        className="inline-flex items-center gap-2 text-sm font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
-                      >
-                        <Pencil className="h-4 w-4" />
-                        Edit
-                      </button>
-                      {!pattern.is_system ? (
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="space-y-2 text-xs leading-5 text-[var(--color-text-secondary)]">
+                        <p>
+                          <span className="font-semibold text-[var(--color-text-primary)]">Use:</span>{" "}
+                          {pattern.when_to_use ?? "—"}
+                        </p>
+                        <p>
+                          <span className="font-semibold text-[var(--color-text-primary)]">Avoid:</span>{" "}
+                          {pattern.when_not_to_use ?? "—"}
+                        </p>
+                        <p>
+                          <span className="font-semibold text-[var(--color-text-primary)]">Business value:</span>{" "}
+                          {pattern.business_value ?? "—"}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {pattern.is_system ? (
+                        <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-[var(--color-text-secondary)]">
+                          <Lock className="h-3.5 w-3.5" />
+                          System
+                        </span>
+                      ) : (
+                        <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+                          Custom
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap items-center gap-3">
                         <button
                           type="button"
                           onClick={() => {
-                            setDeletingPattern(pattern);
+                            setShowCreate(false);
+                            setEditingPattern(pattern);
                             setError("");
                           }}
-                          className="inline-flex items-center gap-2 text-sm font-medium text-rose-700 hover:text-rose-500"
+                          className="inline-flex items-center gap-2 text-sm font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
                         >
-                          <Trash2 className="h-4 w-4" />
-                          Delete
+                          <Pencil className="h-4 w-4" />
+                          Edit
                         </button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </section>
+                        {!pattern.is_system ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeletingPattern(pattern);
+                              setError("");
+                            }}
+                            className="inline-flex items-center gap-2 text-sm font-medium text-rose-700 hover:text-rose-500"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <AdminConfirmDelete
         open={deletingPattern !== null}

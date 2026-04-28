@@ -127,18 +127,18 @@ export function QaPreview({ form, patterns }: QaPreviewProps): JSX.Element {
   const qaStatus = rules.every((rule) => rule.pass) ? "OK" : "REVISAR";
 
   return (
-    <section className="rounded-[1.5rem] border border-slate-200 bg-white p-5">
+    <section className="app-card p-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.25em] text-slate-500">QA Preview</p>
-          <h3 className="mt-2 text-xl font-semibold text-slate-950">Readiness before submit</h3>
+          <p className="app-label">QA Preview</p>
+          <h3 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Readiness before submit</h3>
         </div>
         <span
           className={[
             "inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em]",
             qaStatus === "OK"
-              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-              : "border-amber-300 bg-amber-50 text-amber-700",
+              ? "border-[var(--color-qa-ok-border)] bg-[var(--color-qa-ok-bg)] text-[var(--color-qa-ok-text)]"
+              : "border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] text-[var(--color-qa-revisar-text)]",
           ].join(" ")}
         >
           {qaStatus}
@@ -149,9 +149,9 @@ export function QaPreview({ form, patterns }: QaPreviewProps): JSX.Element {
         {rules.map((rule) => (
           <li
             key={rule.code}
-            className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+            className="app-card-muted flex items-center justify-between px-4 py-3"
           >
-            <span className="text-sm text-slate-700">{rule.label}</span>
+            <span className="text-sm text-[var(--color-text-secondary)]">{rule.label}</span>
             <span className={rule.pass ? "text-emerald-600" : "text-rose-500"}>
               {rule.pass ? <CheckCircle2 className="h-5 w-5" /> : <CircleX className="h-5 w-5" />}
             </span>
@@ -164,10 +164,10 @@ export function QaPreview({ form, patterns }: QaPreviewProps): JSX.Element {
           {coverageSignals.map((signal) => (
             <article
               key={signal.title}
-              className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3"
+              className="rounded-2xl border border-[var(--color-accent)]/30 bg-[var(--color-surface)] px-4 py-3"
             >
-              <p className="text-sm font-semibold text-sky-950">{signal.title}</p>
-              <p className="mt-1 text-sm text-sky-900">{signal.detail}</p>
+              <p className="text-sm font-semibold text-[var(--color-text-primary)]">{signal.title}</p>
+              <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{signal.detail}</p>
             </article>
           ))}
         </div>

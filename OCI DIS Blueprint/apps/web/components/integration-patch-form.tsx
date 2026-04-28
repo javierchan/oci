@@ -5,9 +5,11 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 
+import { ConfirmModal } from "@/components/modal";
 import { PatternBadge } from "@/components/pattern-badge";
 import { PatternSupportBadge } from "@/components/pattern-support-badge";
 import { QaBadge } from "@/components/qa-badge";
+import { emitToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { deriveCanvasSemantics, parseCanvasState } from "@/lib/canvas-governance";
 import type { DictionaryOption, Integration, IntegrationPatch, PatternDefinition } from "@/lib/types";
@@ -46,8 +48,7 @@ export function IntegrationPatchForm({
   const [comments, setComments] = useState<string>(integration.comments ?? "");
   const [saving, setSaving] = useState<boolean>(false);
   const [deleting, setDeleting] = useState<boolean>(false);
-  const [statusMessage, setStatusMessage] = useState<string>("");
-  const [error, setError] = useState<string>("");
+  const [deleteOpen, setDeleteOpen] = useState<boolean>(false);
 
   const patternMap = new Map<string, PatternDefinition>(
     patterns.map((patternDefinition: PatternDefinition) => [
@@ -83,8 +84,6 @@ export function IntegrationPatchForm({
 
   async function handleSave(): Promise<void> {
     setSaving(true);
-    setError("");
-    setStatusMessage("");
 
     const payload: IntegrationPatch = {
       selected_pattern: selectedPattern || undefined,
@@ -95,37 +94,28 @@ export function IntegrationPatchForm({
     try {
       const updated = await api.patchIntegration(projectId, integration.id, payload);
       setCurrentIntegration(updated);
-      setStatusMessage("Saved to catalog and recalculated where required.");
+      emitToast("success", "Integration saved and recalculated.");
       startTransition(() => {
         router.refresh();
       });
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to save changes.");
+      emitToast("error", caughtError instanceof Error ? caughtError.message : "Unable to save.");
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(): Promise<void> {
-    const label = integration.interface_id ?? integration.interface_name ?? integration.id;
-    const confirmed = window.confirm(
-      `Remove integration "${label}" from this catalog and recalculate the project?`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
     setDeleting(true);
-    setError("");
-    setStatusMessage("");
     try {
       await api.deleteIntegration(projectId, integration.id);
+      emitToast("success", "Integration removed.");
       router.push(`/projects/${projectId}/catalog`);
       startTransition(() => {
         router.refresh();
       });
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to remove integration.");
+      emitToast("error", caughtError instanceof Error ? caughtError.message : "Unable to remove integration.");
       setDeleting(false);
     }
   }
@@ -154,15 +144,13 @@ export function IntegrationPatchForm({
         <button
           type="button"
           onClick={() => {
-            void handleDelete();
+            setDeleteOpen(true);
           }}
           disabled={saving || deleting}
           className="inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
         >
           {deleting ? "Removing…" : "Remove Integration"}
         </button>
-        {statusMessage ? <p className="text-sm text-emerald-600">{statusMessage}</p> : null}
-        {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       </div>
 
       <div className="app-card-muted p-4">
@@ -288,6 +276,19 @@ export function IntegrationPatchForm({
         </p>
       </div>
 
+      <ConfirmModal
+        open={deleteOpen}
+        title="Remove integration"
+        description={`"${integration.interface_id ?? integration.interface_name ?? integration.id}" will be removed from this catalog and the project will be recalculated.`}
+        confirmLabel="Remove integration"
+        cancelLabel="Keep it"
+        danger
+        onConfirm={() => {
+          setDeleteOpen(false);
+          void handleDelete();
+        }}
+        onCancel={() => setDeleteOpen(false)}
+      />
     </section>
   );
 }
