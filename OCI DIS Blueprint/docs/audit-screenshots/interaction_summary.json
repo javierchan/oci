@@ -1,0 +1,53 @@
+{
+  "wizard": {
+    "advanced": true,
+    "back_navigation_checked": true,
+    "back_navigation_enabled": false,
+    "source_system_value_after_back": null
+  },
+  "catalog_pagination": {
+    "next_disabled_on_initial_page": false,
+    "prev_disabled_on_initial_page": true,
+    "page_size_options": [
+      "All",
+      "OK",
+      "REVISAR",
+      "PENDING",
+      "All",
+      "#01 Request-Reply",
+      "#02 Event-Driven / Pub-Sub",
+      "#03 API Facade",
+      "#04 Saga / Compensation",
+      "#05 CDC \u2014 Change Data Capture",
+      "#06 Strangler Fig Runtime",
+      "#07 Scatter-Gather",
+      "#08 Circuit Breaker",
+      "#09 Transactional Outbox",
+      "#10 CQRS + Event Sourcing",
+      "#11 BFF \u2014 Backend for Frontend",
+      "#12 Data Mesh",
+      "#13 Zero-Trust Integration",
+      "#14 AsyncAPI + Event Catalog",
+      "#15 AI-Augmented Integration",
+      "#16 Integration Mesh",
+      "#17 Webhook Fanout",
+      "All",
+      "NOVA_CONSUMER",
+      "NOVA_CORE",
+      "NOVA_DIGITAL",
+      "NOVA_FOOD",
+      "NOVA_PREMIUM",
+      "25",
+      "50",
+      "100"
+    ]
+  },
+  "admin_pattern_edit": {
+    "opened": true
+  },
+  "project_archive": {
+    "archive_button_found": true,
+    "browser_dialogs": [],
+    "modal_count": 0
+  }
+}

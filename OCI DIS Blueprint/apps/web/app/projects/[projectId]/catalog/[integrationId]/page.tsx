@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { Breadcrumb } from "@/components/breadcrumb";
+import { ComplexityBadge } from "@/components/complexity-badge";
 import { IntegrationDesignCanvasPanel } from "@/components/integration-design-canvas-panel";
 import { IntegrationPatchForm } from "@/components/integration-patch-form";
 import { QaBadge } from "@/components/qa-badge";
@@ -278,8 +279,13 @@ export default async function IntegrationDetailPage({
           <div>
             <p className="app-kicker">Integration Detail</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
-              {integration.interface_id ?? integration.interface_name ?? integration.id}
+              {integration.interface_name ?? integration.interface_id ?? integration.id}
             </h1>
+            {integration.interface_id && integration.interface_name ? (
+              <p className="mt-1 font-mono text-sm text-[var(--color-text-muted)]">
+                {integration.interface_id}
+              </p>
+            ) : null}
             <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
               Review immutable source lineage on the left and apply architect-owned patterning decisions on the right.
             </p>
@@ -290,7 +296,7 @@ export default async function IntegrationDetailPage({
                   { label: "Projects", href: "/projects" },
                   { label: project.name, href: `/projects/${params.projectId}` },
                   { label: "Catalog", href: `/projects/${params.projectId}/catalog` },
-                  { label: integration.interface_id ?? integration.interface_name ?? "Integration" },
+                  { label: integration.interface_name ?? integration.interface_id ?? "Integration" },
                 ]}
               />
             </div>
@@ -314,62 +320,70 @@ export default async function IntegrationDetailPage({
         <section className="space-y-6">
           <article className="app-card p-6">
             <p className="app-label">Source Data</p>
-            <dl className="mt-5 grid gap-4 md:grid-cols-2">
-              <div>
-                <dt className="app-label">Interface ID</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.interface_id ?? "—"}</dd>
+            <dl className="mt-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <dt className="app-label">Interface ID</dt>
+                  <dd className="mt-2 font-mono text-sm font-medium text-[var(--color-text-primary)]">{integration.interface_id ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="app-label">Interface Name</dt>
+                  <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">
+                    {integration.interface_name ?? "—"}
+                  </dd>
+                </div>
               </div>
-              <div>
-                <dt className="app-label">Brand</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.brand ?? "—"}</dd>
+
+              <div className="mt-4 grid gap-4 border-t border-[var(--color-border)] pt-4 md:grid-cols-3">
+                <div>
+                  <dt className="app-label">Brand</dt>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.brand ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="app-label">Business Process</dt>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.business_process ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="app-label">Status</dt>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.status ?? "—"}</dd>
+                </div>
               </div>
-              <div>
-                <dt className="app-label">Interface Name</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">
-                  {integration.interface_name ?? "—"}
-                </dd>
-              </div>
-              <div>
-                <dt className="app-label">Business Process</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.business_process ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="app-label">Source System</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.source_system ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="app-label">Destination System</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.destination_system ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="app-label">Frequency</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.frequency ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="app-label">Payload per Execution</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">
-                  {formatNumber(integration.payload_per_execution_kb, 1)} KB
-                </dd>
-              </div>
-              <div>
-                <dt className="app-label">Type</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.type ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="app-label">Complexity</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.complexity ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="app-label">Status</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.status ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="app-label">Initial Scope</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.initial_scope ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="app-label">Uncertainty</dt>
-                <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.uncertainty ?? "—"}</dd>
+
+              <div className="mt-4 grid gap-4 border-t border-[var(--color-border)] pt-4 md:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <dt className="app-label">Source System</dt>
+                  <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.source_system ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="app-label">Destination System</dt>
+                  <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.destination_system ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="app-label">Frequency</dt>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.frequency ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="app-label">Payload / Execution</dt>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">
+                    {formatNumber(integration.payload_per_execution_kb, 1)} KB
+                  </dd>
+                </div>
+                <div>
+                  <dt className="app-label">Type</dt>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.type ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="app-label">Complexity</dt>
+                  <dd className="mt-2"><ComplexityBadge value={integration.complexity} /></dd>
+                </div>
+                <div>
+                  <dt className="app-label">Initial Scope</dt>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.initial_scope ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="app-label">Uncertainty</dt>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.uncertainty ?? "—"}</dd>
+                </div>
               </div>
             </dl>
           </article>

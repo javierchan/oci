@@ -3,6 +3,42 @@
 @tailwind utilities;
 
 :root {
+  --canvas-system-bg: #dbeafe;
+  --canvas-system-border: #3b82f6;
+  --canvas-oic-bg: #ede9fe;
+  --canvas-oic-border: #8b5cf6;
+  --canvas-stream-bg: #fef3c7;
+  --canvas-stream-border: #f59e0b;
+  --canvas-fn-bg: #dcfce7;
+  --canvas-fn-border: #22c55e;
+  --canvas-gw-bg: #e0f2fe;
+  --canvas-gw-border: #0ea5e9;
+  --canvas-storage-bg: #fce7f3;
+  --canvas-storage-border: #ec4899;
+  --canvas-db-bg: #fff7ed;
+  --canvas-db-border: #f97316;
+  --canvas-node-label: #0f172a;
+  --canvas-node-sub: #334155;
+  --color-status-active-bg: #dcfce7;
+  --color-status-active-text: #15803d;
+  --color-status-active-border: #86efac;
+  --color-status-archived-bg: #f1f5f9;
+  --color-status-archived-text: #64748b;
+  --color-status-archived-border: #cbd5e1;
+  --color-trend-up: #16a34a;
+  --color-trend-down: #dc2626;
+  --color-trend-neutral: #94a3b8;
+  --color-toast-success-bg: #f0fdf4;
+  --color-toast-success-border: #86efac;
+  --color-toast-success-text: #15803d;
+  --color-toast-error-bg: #fff1f2;
+  --color-toast-error-border: #fecdd3;
+  --color-toast-error-text: #be123c;
+  --color-toast-info-bg: #eff6ff;
+  --color-toast-info-border: #bfdbfe;
+  --color-toast-info-text: #1d4ed8;
+  --color-skeleton-base: #e2e8f0;
+  --color-skeleton-shine: #f8fafc;
   --color-qa-ok-bg: #dcfce7;
   --color-qa-ok-text: #15803d;
   --color-qa-ok-border: #86efac;
@@ -45,6 +81,42 @@
 }
 
 .dark {
+  --canvas-system-bg: #1e3a5f;
+  --canvas-system-border: #3b82f6;
+  --canvas-oic-bg: #2e1f5e;
+  --canvas-oic-border: #8b5cf6;
+  --canvas-stream-bg: #3d2f00;
+  --canvas-stream-border: #f59e0b;
+  --canvas-fn-bg: #052e16;
+  --canvas-fn-border: #22c55e;
+  --canvas-gw-bg: #082f49;
+  --canvas-gw-border: #0ea5e9;
+  --canvas-storage-bg: #3d0a2e;
+  --canvas-storage-border: #ec4899;
+  --canvas-db-bg: #3d1500;
+  --canvas-db-border: #f97316;
+  --canvas-node-label: #f1f5f9;
+  --canvas-node-sub: #94a3b8;
+  --color-status-active-bg: #052e16;
+  --color-status-active-text: #86efac;
+  --color-status-active-border: #166534;
+  --color-status-archived-bg: #1e293b;
+  --color-status-archived-text: #64748b;
+  --color-status-archived-border: #334155;
+  --color-trend-up: #4ade80;
+  --color-trend-down: #f87171;
+  --color-trend-neutral: #475569;
+  --color-toast-success-bg: #052e16;
+  --color-toast-success-border: #166534;
+  --color-toast-success-text: #86efac;
+  --color-toast-error-bg: #450a0a;
+  --color-toast-error-border: #991b1b;
+  --color-toast-error-text: #fca5a5;
+  --color-toast-info-bg: #0c1a3a;
+  --color-toast-info-border: #1d4ed8;
+  --color-toast-info-text: #93c5fd;
+  --color-skeleton-base: #1e293b;
+  --color-skeleton-shine: #334155;
   --color-qa-ok-bg: #052e16;
   --color-qa-ok-text: #86efac;
   --color-qa-ok-border: #166534;
@@ -236,6 +308,76 @@ html.dark {
     border-color: var(--color-border);
     background-color: var(--color-surface-3);
     color: var(--color-text-secondary);
+  }
+
+  .app-status-chip {
+    @apply inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em];
+  }
+
+  .app-status-chip.active {
+    background-color: var(--color-status-active-bg);
+    border-color: var(--color-status-active-border);
+    color: var(--color-status-active-text);
+  }
+
+  .app-status-chip.archived {
+    background-color: var(--color-status-archived-bg);
+    border-color: var(--color-status-archived-border);
+    color: var(--color-status-archived-text);
+  }
+
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--color-skeleton-base) 25%,
+      var(--color-skeleton-shine) 50%,
+      var(--color-skeleton-base) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+    @apply rounded-xl;
+  }
+
+  .toast-enter {
+    animation: toast-in 200ms ease forwards;
+  }
+
+  .toast-exit {
+    animation: toast-out 150ms ease forwards;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(1rem) scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(1rem) scale(0.95);
   }
 }
 

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Script from "next/script";
 
 import { Nav } from "@/components/nav";
+import { ToastStack } from "@/components/toast";
 
 import "./globals.css";
 
@@ -22,7 +23,7 @@ type RootLayoutProps = {
 
 export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <Script
           id="theme-init"
@@ -62,6 +63,7 @@ export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
             <main className="px-6 py-8 lg:px-10">{children}</main>
           </div>
         </div>
+        <ToastStack />
       </body>
     </html>
   );

@@ -6,7 +6,7 @@ import { Breadcrumb } from "@/components/breadcrumb";
 import { RecalculateButton } from "@/components/recalculate-button";
 import { VolumetryCard } from "@/components/volumetry-card";
 import { api } from "@/lib/api";
-import { formatCompactNumber, formatNumber } from "@/lib/format";
+import { formatCompactNumber, formatDate, formatNumber } from "@/lib/format";
 import { parityBenchmark } from "@/lib/parity";
 import type { DashboardCoverageMetric, DashboardSnapshot } from "@/lib/types";
 
@@ -50,6 +50,7 @@ export default async function ProjectDashboardPage({
 
   const latestImport = imports.batches[0];
   const latestSnapshot = snapshots.snapshots[0];
+  const prevSnapshot = snapshots.snapshots[1];
   const consolidated = latestSnapshot?.consolidated;
   const dashboardSnapshots = await api.listDashboardSnapshots(projectId);
   const latestDashboard: DashboardSnapshot | null = dashboardSnapshots.snapshots[0]
@@ -72,6 +73,23 @@ export default async function ProjectDashboardPage({
       return accumulator;
     },
     { OK: 0, REVISAR: 0, PENDING: 0 },
+  );
+  const qaTotal = (qaBreakdown.OK ?? 0) + (qaBreakdown.REVISAR ?? 0) + (qaBreakdown.PENDING ?? 0);
+
+  function pct(value: number): string {
+    return qaTotal > 0 ? `${Math.round((value / qaTotal) * 100)}% of total` : "—";
+  }
+
+  function trendDelta(curr: number | undefined, prev: number | undefined): number | null {
+    if (!curr || !prev || prev === 0) {
+      return null;
+    }
+    return Math.round(((curr - prev) / prev) * 100);
+  }
+
+  const oicTrend = trendDelta(
+    consolidated?.oic.total_billing_msgs_month,
+    prevSnapshot?.consolidated?.oic.total_billing_msgs_month,
   );
 
   return (
@@ -105,7 +123,14 @@ export default async function ProjectDashboardPage({
               />
             </div>
           </div>
-          <RecalculateButton projectId={projectId} />
+          <div className="flex flex-col items-start gap-2 lg:items-end">
+            <RecalculateButton projectId={projectId} />
+            {latestSnapshot ? (
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Last calculated {formatDate(latestSnapshot.created_at)}
+              </p>
+            ) : null}
+          </div>
         </div>
       </section>
 
@@ -114,6 +139,7 @@ export default async function ProjectDashboardPage({
           label="Total Integrations"
           value={formatNumber(catalogPage.total)}
           unit="integrations"
+          tooltip="Live count of catalog integrations in this project."
         />
         <VolumetryCard
           label="Excluded (Duplicado 2)"
@@ -129,6 +155,8 @@ export default async function ProjectDashboardPage({
           label="OIC Billing Msgs / Month"
           value={formatCompactNumber(consolidated?.oic.total_billing_msgs_month ?? 0)}
           unit="msgs"
+          trend={oicTrend !== null ? { delta: oicTrend, label: "vs last snapshot" } : null}
+          tooltip="OIC billing messages = ceil(payload_kb / 50) x executions/month. Used for license cost estimation."
         />
       </section>
 
@@ -141,18 +169,21 @@ export default async function ProjectDashboardPage({
               <p className="mt-3 text-3xl font-semibold">
                 {qaBreakdown.OK ?? 0}
               </p>
+              <p className="mt-1 text-xs">{pct(qaBreakdown.OK ?? 0)}</p>
             </div>
             <div className="rounded-[1.5rem] border border-[var(--color-qa-revisar-text)]/20 bg-[var(--color-qa-revisar-bg)] p-5 text-[var(--color-qa-revisar-text)]">
               <p className="text-xs uppercase tracking-[0.25em]">REVISAR</p>
               <p className="mt-3 text-3xl font-semibold">
                 {qaBreakdown.REVISAR ?? 0}
               </p>
+              <p className="mt-1 text-xs">{pct(qaBreakdown.REVISAR ?? 0)}</p>
             </div>
             <div className="rounded-[1.5rem] border border-[var(--color-qa-pending-text)]/20 bg-[var(--color-qa-pending-bg)] p-5 text-[var(--color-qa-pending-text)]">
               <p className="text-xs uppercase tracking-[0.25em]">PENDING</p>
               <p className="mt-3 text-3xl font-semibold">
                 {qaBreakdown.PENDING ?? 0}
               </p>
+              <p className="mt-1 text-xs">{pct(qaBreakdown.PENDING ?? 0)}</p>
             </div>
           </div>
 
@@ -169,7 +200,10 @@ export default async function ProjectDashboardPage({
         </article>
 
         <article className="app-card p-6">
-          <p className="app-label">Parity Benchmark</p>
+          <p className="text-xs uppercase tracking-[0.25em] text-slate-400">
+            Parity Benchmark
+            <span className="ml-2 font-normal normal-case tracking-normal opacity-60">(reference target)</span>
+          </p>
           <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">Workbook reference</h2>
           <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
             Keep the current project close to the known workbook benchmark while QA and volumetry coverage catch up.

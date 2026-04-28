@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { Download } from "lucide-react";
 
+import { ConfirmModal } from "@/components/modal";
+import { emitToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { APP_VERSION } from "@/lib/app-version";
 import { formatDate } from "@/lib/format";
@@ -81,6 +83,7 @@ export function ImportUpload({
   const [history, setHistory] = useState<ImportBatch[]>(initialBatches);
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [deletingBatchId, setDeletingBatchId] = useState<string>("");
+  const [deleteTarget, setDeleteTarget] = useState<ImportBatch | null>(null);
   const [rowFilter, setRowFilter] = useState<"all" | "included" | "excluded">("all");
   const [rowSearch, setRowSearch] = useState<string>("");
   const [rowPage, setRowPage] = useState<number>(1);
@@ -144,20 +147,15 @@ export function ImportUpload({
       setCurrentBatch(batch);
       setHistory((current: ImportBatch[]) => [batch, ...current]);
       setPhase(phaseFromBatchStatus(batch));
+      emitToast("success", `Workbook "${selectedFile.name}" queued.`);
     } catch (caughtError) {
       setPhase("failed");
       setError(caughtError instanceof Error ? caughtError.message : "Upload failed.");
+      emitToast("error", caughtError instanceof Error ? caughtError.message : "Upload failed.");
     }
   }
 
   async function handleDeleteImport(batch: ImportBatch): Promise<void> {
-    const confirmed = window.confirm(
-      `Remove import ${batch.id.slice(0, 8)} and all catalog rows created from it?`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
     setDeletingBatchId(batch.id);
     setError("");
     try {
@@ -167,9 +165,11 @@ export function ImportUpload({
       if (currentBatch?.id === batch.id) {
         setCurrentBatch(nextHistory[0] ?? null);
       }
+      emitToast("success", `Import ${batch.id.slice(0, 8)} removed.`);
       router.refresh();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Unable to remove import.");
+      emitToast("error", caughtError instanceof Error ? caughtError.message : "Unable to remove import.");
     } finally {
       setDeletingBatchId("");
     }
@@ -552,7 +552,7 @@ export function ImportUpload({
                       <button
                         type="button"
                         onClick={() => {
-                          void handleDeleteImport(batch);
+                          setDeleteTarget(batch);
                         }}
                         disabled={
                           deletingBatchId === batch.id ||
@@ -571,6 +571,21 @@ export function ImportUpload({
           </table>
         )}
       </section>
+      <ConfirmModal
+        open={deleteTarget !== null}
+        title="Remove import batch"
+        description={`Import ${deleteTarget?.id.slice(0, 8)} and all catalog rows created from it will be permanently removed.`}
+        confirmLabel="Remove import"
+        cancelLabel="Keep it"
+        danger
+        onConfirm={() => {
+          if (deleteTarget) {
+            void handleDeleteImport(deleteTarget);
+          }
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

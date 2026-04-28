@@ -20,7 +20,7 @@ export function CaptureStepSource({
         placeholder="SAP, Salesforce, Legacy ERP…"
       />
       <label className="block">
-        <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Source Technology</span>
+        <span className="app-label mb-2 block">Source Technology</span>
         <input
           value={form.source_technology ?? ""}
           onChange={(event) => updateField("source_technology", event.target.value)}
@@ -29,7 +29,7 @@ export function CaptureStepSource({
         />
       </label>
       <label className="block md:col-span-2">
-        <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Source API Reference</span>
+        <span className="app-label mb-2 block">Source API Reference</span>
         <input
           value={form.source_api_reference ?? ""}
           onChange={(event) => updateField("source_api_reference", event.target.value)}
@@ -38,7 +38,7 @@ export function CaptureStepSource({
         />
       </label>
       <label className="block">
-        <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Source Owner</span>
+        <span className="app-label mb-2 block">Source Owner</span>
         <input
           value={form.source_owner ?? ""}
           onChange={(event) => updateField("source_owner", event.target.value)}

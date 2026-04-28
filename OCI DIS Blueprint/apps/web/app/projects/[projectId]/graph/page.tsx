@@ -204,25 +204,37 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
               Building force layout…
             </div>
           ) : (
-            <IntegrationGraph
-              graph={graph}
-              selectedNodeId={selectedNode?.id ?? null}
-              selectedEdgeId={selectedEdge?.id ?? null}
-              onNodeClick={(node) => {
-                setSelectedNode(node);
-                setSelectedEdge(null);
-              }}
-              onEdgeClick={(edge) => {
-                setSelectedEdge(edge);
-                setSelectedNode(null);
-              }}
-              colorMode={colorMode}
-              focusedSystemId={selectedSystem}
-              svgRef={svgRef}
-              mode={mode}
-              viewport={viewport}
-              onViewportChange={setViewport}
-            />
+            <>
+              <div className="block sm:hidden app-card p-6 text-center">
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  The integration map is best viewed on a larger screen.
+                </p>
+                <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+                  {graph.nodes.length} systems · {graph.edges.length} connections
+                </p>
+              </div>
+              <div className="hidden sm:block">
+                <IntegrationGraph
+                  graph={graph}
+                  selectedNodeId={selectedNode?.id ?? null}
+                  selectedEdgeId={selectedEdge?.id ?? null}
+                  onNodeClick={(node) => {
+                    setSelectedNode(node);
+                    setSelectedEdge(null);
+                  }}
+                  onEdgeClick={(edge) => {
+                    setSelectedEdge(edge);
+                    setSelectedNode(null);
+                  }}
+                  colorMode={colorMode}
+                  focusedSystemId={selectedSystem}
+                  svgRef={svgRef}
+                  mode={mode}
+                  viewport={viewport}
+                  onViewportChange={setViewport}
+                />
+              </div>
+            </>
           )}
         </div>
         {compactTopology ? null : (

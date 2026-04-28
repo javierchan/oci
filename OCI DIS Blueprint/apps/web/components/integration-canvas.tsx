@@ -4,7 +4,20 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { Move, RotateCcw, Trash2, ZoomIn } from "lucide-react";
+import type { ReactNode } from "react";
+import {
+  ArrowLeftRight,
+  Building2,
+  Code2,
+  Database,
+  Move,
+  Package,
+  RotateCcw,
+  Settings2,
+  Trash2,
+  Zap,
+  ZoomIn,
+} from "lucide-react";
 
 import { PatternSupportBadge } from "@/components/pattern-support-badge";
 import { api } from "@/lib/api";
@@ -50,9 +63,9 @@ type FixedNodeMeta = {
 type FlowNode = CanvasNode & FixedNodeMeta;
 
 type ToolDefinition = {
-  abbreviation: string;
   accent: string;
   surface: string;
+  icon: ReactNode;
 };
 
 type ToolKind = "oic" | "gateway" | "streaming" | "functions" | "storage" | "db";
@@ -115,12 +128,36 @@ const TOOL_KINDS: Record<string, ToolKind> = {
 };
 
 const TOOL_KIND_STYLES: Record<ToolKind, ToolDefinition> = {
-  oic: { abbreviation: "OIC", accent: "#2563eb", surface: "#dbeafe" },
-  gateway: { abbreviation: "API", accent: "#7c3aed", surface: "#ede9fe" },
-  streaming: { abbreviation: "STR", accent: "#ea580c", surface: "#ffedd5" },
-  functions: { abbreviation: "FN", accent: "#16a34a", surface: "#dcfce7" },
-  storage: { abbreviation: "STO", accent: "#0891b2", surface: "#cffafe" },
-  db: { abbreviation: "DB", accent: "#db2777", surface: "#fce7f3" },
+  oic: {
+    accent: "var(--canvas-oic-border)",
+    surface: "var(--canvas-oic-bg)",
+    icon: <Settings2 className="h-4 w-4" />,
+  },
+  gateway: {
+    accent: "var(--canvas-gw-border)",
+    surface: "var(--canvas-gw-bg)",
+    icon: <ArrowLeftRight className="h-4 w-4" />,
+  },
+  streaming: {
+    accent: "var(--canvas-stream-border)",
+    surface: "var(--canvas-stream-bg)",
+    icon: <Zap className="h-4 w-4" />,
+  },
+  functions: {
+    accent: "var(--canvas-fn-border)",
+    surface: "var(--canvas-fn-bg)",
+    icon: <Code2 className="h-4 w-4" />,
+  },
+  storage: {
+    accent: "var(--canvas-storage-border)",
+    surface: "var(--canvas-storage-bg)",
+    icon: <Package className="h-4 w-4" />,
+  },
+  db: {
+    accent: "var(--canvas-db-border)",
+    surface: "var(--canvas-db-bg)",
+    icon: <Database className="h-4 w-4" />,
+  },
 };
 
 function parsePatternBullets(value: string | null): string[] {
@@ -308,11 +345,8 @@ function PatternDetailPanel({ patternDetail }: { patternDetail: PatternDefinitio
           )}
         </div>
 
-        <div
-          className="rounded-[1.75rem] border p-4"
-          style={{ background: "#fef3c7", borderColor: "#f59e0b", color: "#78350f" }}
-        >
-          <p className="app-label" style={{ color: "#92400e" }}>
+        <div className="rounded-[1.75rem] border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+          <p className="app-label text-amber-800 dark:text-amber-300">
             Anti-Pattern Guidance
           </p>
           <p className="mt-3 text-sm leading-6">
@@ -377,32 +411,20 @@ function toolDefinition(toolKey: string): ToolDefinition {
     return TOOL_KIND_STYLES[mappedKind];
   }
 
-  const cleaned = toolKey
-    .replace(/OCI/gi, "")
-    .replace(/Oracle/gi, "")
-    .trim();
-  const words = cleaned.split(/\s+/).filter(Boolean);
-  const abbreviation =
-    words
-      .slice(0, 2)
-      .map((word) => word[0]?.toUpperCase() ?? "")
-      .join("")
-      .slice(0, 2) || toolKey.slice(0, 2).toUpperCase();
-
   const palette = [
-    { accent: "#2563eb", surface: "#dbeafe" },
-    { accent: "#7c3aed", surface: "#ede9fe" },
-    { accent: "#ea580c", surface: "#ffedd5" },
-    { accent: "#16a34a", surface: "#dcfce7" },
-    { accent: "#0891b2", surface: "#cffafe" },
-    { accent: "#db2777", surface: "#fce7f3" },
+    { accent: "var(--canvas-system-border)", surface: "var(--canvas-system-bg)", icon: <Building2 className="h-4 w-4" /> },
+    { accent: "var(--canvas-oic-border)", surface: "var(--canvas-oic-bg)", icon: <Settings2 className="h-4 w-4" /> },
+    { accent: "var(--canvas-stream-border)", surface: "var(--canvas-stream-bg)", icon: <Zap className="h-4 w-4" /> },
+    { accent: "var(--canvas-fn-border)", surface: "var(--canvas-fn-bg)", icon: <Code2 className="h-4 w-4" /> },
+    { accent: "var(--canvas-gw-border)", surface: "var(--canvas-gw-bg)", icon: <ArrowLeftRight className="h-4 w-4" /> },
+    { accent: "var(--canvas-db-border)", surface: "var(--canvas-db-bg)", icon: <Database className="h-4 w-4" /> },
   ];
   const seed = toolKey.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
   const colors = palette[seed % palette.length];
   return {
-    abbreviation,
     accent: colors.accent,
     surface: colors.surface,
+    icon: colors.icon,
   };
 }
 
@@ -1100,10 +1122,10 @@ export function IntegrationCanvas({
         title={option.description ?? "Drag onto the canvas or click to add a node"}
       >
         <span
-          className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold text-white"
-          style={{ backgroundColor: definition.accent }}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-full"
+          style={{ backgroundColor: definition.accent, color: "white" }}
         >
-          {definition.abbreviation}
+          {definition.icon}
         </span>
         {option.value}
       </button>
@@ -1156,7 +1178,7 @@ export function IntegrationCanvas({
               : "Connect source to destination through at least one core tool"}
           </span>
           {semantics.disconnectedNodeIds.length > 0 ? (
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+            <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-[var(--color-text-secondary)]">
               {semantics.disconnectedNodeIds.length} disconnected node
               {semantics.disconnectedNodeIds.length === 1 ? "" : "s"}
             </span>
@@ -1165,10 +1187,7 @@ export function IntegrationCanvas({
       </div>
 
       {designViolations.length > 0 ? (
-        <section
-          className="rounded-[1.75rem] border p-4"
-          style={{ background: "#fef3c7", borderColor: "#f59e0b", color: "#92400e" }}
-        >
+        <section className="rounded-[1.75rem] border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
           <p className="font-semibold">⚠ Design Constraints Detected</p>
           <div className="mt-3 space-y-2 text-sm">
             {designViolations.map((violation) => (
@@ -1326,9 +1345,9 @@ export function IntegrationCanvas({
                 {Object.values(flowNodes).map((node) => {
                   const definition = node.fixed
                     ? {
-                        abbreviation: node.instanceId === SOURCE_NODE_ID ? "IN" : "OUT",
-                        accent: "#2563eb",
-                        surface: "#dbeafe",
+                        accent: "var(--canvas-system-border)",
+                        surface: "var(--canvas-system-bg)",
+                        icon: <Building2 className="h-4 w-4" />,
                       }
                     : toolDefinition(node.toolKey);
                   const serviceProfile = node.fixed
@@ -1387,10 +1406,14 @@ export function IntegrationCanvas({
                         strokeWidth={selected ? 3.5 : 2}
                         strokeDasharray={isOverlayNode ? "10 6" : undefined}
                       />
-                      <rect x={16} y={14} width={34} height={34} rx={17} fill={definition.accent} />
-                      <text x={33} y={36} textAnchor="middle" fontSize={12} fontWeight="700" fill="white">
-                        {definition.abbreviation}
-                      </text>
+                      <foreignObject x={16} y={14} width={34} height={34}>
+                        <div
+                          className="flex h-[34px] w-[34px] items-center justify-center rounded-full"
+                          style={{ backgroundColor: definition.accent, color: "white" }}
+                        >
+                          {definition.icon}
+                        </div>
+                      </foreignObject>
 
                       {editingNodeId === node.instanceId ? (
                         <foreignObject x={58} y={16} width={width - 72} height={30}>
@@ -1434,7 +1457,7 @@ export function IntegrationCanvas({
                           y={35}
                           fontSize={labelFontSize(node)}
                           fontWeight="700"
-                          fill="var(--color-text-primary)"
+                          fill="var(--canvas-node-label)"
                           onDoubleClick={(event) => {
                             event.stopPropagation();
                             if (!node.fixed) {
@@ -1446,7 +1469,7 @@ export function IntegrationCanvas({
                         </text>
                       )}
 
-                      <text x={58} y={58} fontSize={node.fixed ? 10.5 : 11} fill="var(--color-text-secondary)">
+                      <text x={58} y={58} fontSize={node.fixed ? 10.5 : 11} fill="var(--canvas-node-sub)">
                         {subtitleText}
                       </text>
 
@@ -1509,8 +1532,8 @@ export function IntegrationCanvas({
                               style={{
                                 color:
                                   (serviceProfile.sla_uptime_pct ?? 0) < 99.9
-                                    ? "#d97706"
-                                    : "var(--color-text-primary)",
+                                    ? "var(--canvas-stream-border)"
+                                    : "var(--canvas-node-label)",
                               }}
                             >
                               SLA{" "}

@@ -37,8 +37,8 @@ type Position = {
 type SimNode = d3.SimulationNodeDatum & GraphNode;
 type SimEdge = d3.SimulationLinkDatum<SimNode> & GraphEdge;
 
-const WIDTH = 1200;
-const HEIGHT = 760;
+const LOGICAL_WIDTH = 1200;
+const LOGICAL_HEIGHT = 760;
 const EDGE_COLORS: Record<string, string> = {
   OK: "#86efac",
   REVISAR: "#fde047",
@@ -69,10 +69,10 @@ function fitViewport(nodes: SimNode[], maxNodeCount: number): { x: number; y: nu
     (accumulator, node) => {
       const radius = nodeRadius(node.integration_count, maxNodeCount);
       return {
-        minX: Math.min(accumulator.minX, (node.x ?? WIDTH / 2) - radius),
-        maxX: Math.max(accumulator.maxX, (node.x ?? WIDTH / 2) + radius),
-        minY: Math.min(accumulator.minY, (node.y ?? HEIGHT / 2) - radius),
-        maxY: Math.max(accumulator.maxY, (node.y ?? HEIGHT / 2) + radius),
+        minX: Math.min(accumulator.minX, (node.x ?? LOGICAL_WIDTH / 2) - radius),
+        maxX: Math.max(accumulator.maxX, (node.x ?? LOGICAL_WIDTH / 2) + radius),
+        minY: Math.min(accumulator.minY, (node.y ?? LOGICAL_HEIGHT / 2) - radius),
+        maxY: Math.max(accumulator.maxY, (node.y ?? LOGICAL_HEIGHT / 2) + radius),
       };
     },
     {
@@ -85,11 +85,11 @@ function fitViewport(nodes: SimNode[], maxNodeCount: number): { x: number; y: nu
 
   const contentWidth = Math.max(bounds.maxX - bounds.minX, 1);
   const contentHeight = Math.max(bounds.maxY - bounds.minY, 1);
-  const scale = Math.min((WIDTH - padding * 2) / contentWidth, (HEIGHT - padding * 2) / contentHeight, 1);
+  const scale = Math.min((LOGICAL_WIDTH - padding * 2) / contentWidth, (LOGICAL_HEIGHT - padding * 2) / contentHeight, 1);
   return {
     scale,
-    x: padding - bounds.minX * scale + (WIDTH - padding * 2 - contentWidth * scale) / 2,
-    y: padding - bounds.minY * scale + (HEIGHT - padding * 2 - contentHeight * scale) / 2,
+    x: padding - bounds.minX * scale + (LOGICAL_WIDTH - padding * 2 - contentWidth * scale) / 2,
+    y: padding - bounds.minY * scale + (LOGICAL_HEIGHT - padding * 2 - contentHeight * scale) / 2,
   };
 }
 
@@ -207,7 +207,7 @@ export function IntegrationGraph({
           .distance(120),
       )
       .force("charge", d3.forceManyBody().strength(-400))
-      .force("center", d3.forceCenter(WIDTH / 2, HEIGHT / 2))
+      .force("center", d3.forceCenter(LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2))
       .force(
         "collision",
         d3.forceCollide<SimNode>().radius((datum) => nodeRadius(datum.integration_count, maxNodeCount) + 20),
@@ -223,8 +223,8 @@ export function IntegrationGraph({
           node.id,
           {
             id: node.id,
-            x: node.x ?? WIDTH / 2,
-            y: node.y ?? HEIGHT / 2,
+            x: node.x ?? LOGICAL_WIDTH / 2,
+            y: node.y ?? LOGICAL_HEIGHT / 2,
           },
         ]),
       ),
@@ -318,16 +318,16 @@ export function IntegrationGraph({
   return (
     <div
       className={[
-        "relative overflow-hidden rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4 shadow-sm",
+        "relative overflow-hidden rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] shadow-sm",
         mode === "pan" ? (isDragging ? "cursor-grabbing" : "cursor-grab") : "cursor-default",
       ].join(" ")}
+      style={{ height: "min(760px, calc(100vh - 14rem))" }}
     >
       <svg
         ref={svgRef}
-        width={WIDTH}
-        height={HEIGHT}
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        className="block h-auto w-full"
+        viewBox={`0 0 ${LOGICAL_WIDTH} ${LOGICAL_HEIGHT}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="block h-full w-full"
         style={{ touchAction: "none" }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}

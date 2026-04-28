@@ -339,25 +339,22 @@ export function CaptureWizard({
 
   if (createdIntegration) {
     return (
-      <section className="rounded-[2rem] border border-emerald-200 bg-white p-8 shadow-sm">
-        <p className="text-xs uppercase tracking-[0.25em] text-emerald-700">Capture Complete</p>
-        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+      <section className="app-card border-emerald-200 p-8 dark:border-emerald-900">
+        <p className="app-kicker text-emerald-700 dark:text-emerald-300">Capture Complete</p>
+        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">
           Integration captured — {createdIntegration.interface_name ?? createdIntegration.id}
         </h2>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
           The integration now exists in the catalog with an immutable lineage row and a manual capture audit event.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link
-            href={`/projects/${projectId}/catalog/${createdIntegration.id}`}
-            className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-          >
+          <Link href={`/projects/${projectId}/catalog/${createdIntegration.id}`} className="app-button-primary">
             View in Catalog
           </Link>
           <button
             type="button"
             onClick={resetWizard}
-            className="inline-flex items-center justify-center rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
+            className="app-button-secondary"
           >
             Capture Another
           </button>
@@ -368,11 +365,11 @@ export function CaptureWizard({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="app-card p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Step {currentStep + 1} of 5</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{stepTitle}</h2>
+            <p className="app-label">Step {currentStep + 1} of 5</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">{stepTitle}</h2>
           </div>
           <div className="grid w-full gap-3 md:grid-cols-5 lg:max-w-4xl">
             {STEP_LABELS.map((label, index) => {
@@ -400,10 +397,10 @@ export function CaptureWizard({
                     className={[
                       "flex flex-1 items-center gap-3 rounded-2xl border px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] transition",
                       isCurrent
-                        ? "border-sky-400 bg-sky-50 text-sky-700"
+                        ? "border-[var(--color-accent)] bg-[var(--color-surface)] text-[var(--color-accent)] shadow-[0_0_0_1px_var(--color-accent)]"
                         : isCompleted
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                          : "border-slate-200 bg-slate-50 text-slate-500 opacity-75",
+                          ? "border-[var(--color-status-active-border)] bg-[var(--color-status-active-bg)] text-[var(--color-status-active-text)]"
+                          : "border-[var(--color-border)] bg-[var(--color-surface-3)] text-[var(--color-text-muted)] opacity-75",
                       index > currentStep ? "cursor-not-allowed" : "",
                     ].join(" ")}
                   >
@@ -411,10 +408,10 @@ export function CaptureWizard({
                       className={[
                         "inline-flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold",
                         isCurrent
-                          ? "bg-sky-100 text-sky-700"
+                          ? "bg-[var(--color-accent)]/15 text-[var(--color-accent)]"
                           : isCompleted
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-200 text-slate-500",
+                            ? "bg-[var(--color-status-active-text)]/15 text-[var(--color-status-active-text)]"
+                            : "bg-[var(--color-surface)] text-[var(--color-text-muted)]",
                       ].join(" ")}
                     >
                       {isCompleted ? <Check className="h-4 w-4" /> : index + 1}
@@ -425,7 +422,7 @@ export function CaptureWizard({
                     <span
                       className={[
                         "hidden h-px flex-1 md:block",
-                        isCompleted ? "bg-emerald-300" : "bg-slate-200",
+                        isCompleted ? "bg-[var(--color-status-active-border)]" : "bg-[var(--color-border)]",
                       ].join(" ")}
                     />
                   ) : null}
@@ -441,9 +438,9 @@ export function CaptureWizard({
       </p>
 
       {navigationHint ? (
-        <section className="rounded-[1.5rem] border border-amber-300 bg-amber-50 p-5">
-          <p className="text-xs uppercase tracking-[0.25em] text-amber-700">Step Navigation</p>
-          <p className="mt-3 text-sm leading-6 text-amber-900">{navigationHint}</p>
+        <section className="rounded-[1.5rem] border border-amber-300 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
+          <p className="text-xs uppercase tracking-[0.25em] text-amber-700 dark:text-amber-300">Step Navigation</p>
+          <p className="mt-3 text-sm leading-6 text-amber-900 dark:text-amber-200">{navigationHint}</p>
         </section>
       ) : null}
 
@@ -459,15 +456,15 @@ export function CaptureWizard({
       ) : null}
 
       {duplicates.length > 0 && currentStep >= 3 ? (
-        <section className="rounded-[1.5rem] border border-amber-300 bg-amber-50 p-5">
-          <p className="text-xs uppercase tracking-[0.25em] text-amber-700">Duplicate Watch</p>
-          <p className="mt-3 text-sm leading-6 text-amber-900">
+        <section className="rounded-[1.5rem] border border-amber-300 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
+          <p className="text-xs uppercase tracking-[0.25em] text-amber-700 dark:text-amber-300">Duplicate Watch</p>
+          <p className="mt-3 text-sm leading-6 text-amber-900 dark:text-amber-200">
             {duplicates.length} potential duplicate{duplicates.length === 1 ? "" : "s"} matched this route. You can continue, but this should be intentional.
           </p>
         </section>
       ) : null}
 
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="app-card p-6">
         {stepContent}
       </section>
 
@@ -481,7 +478,7 @@ export function CaptureWizard({
             setCurrentStep((current) => Math.max(0, current - 1));
           }}
           disabled={currentStep === 0 || submitting}
-          className="inline-flex items-center justify-center rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+          className="app-button-secondary disabled:cursor-not-allowed disabled:opacity-40"
         >
           Back
         </button>
@@ -500,7 +497,7 @@ export function CaptureWizard({
                   );
                 }
               }}
-              className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+              className="app-button-primary"
             >
               Next
             </button>
@@ -519,7 +516,7 @@ export function CaptureWizard({
                 }
               }}
               disabled={submitting}
-              className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              className="app-button-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? "Creating…" : "Create Integration"}
             </button>
