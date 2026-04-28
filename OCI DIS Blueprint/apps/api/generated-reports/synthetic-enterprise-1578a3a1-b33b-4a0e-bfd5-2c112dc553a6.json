@@ -1,0 +1,69 @@
+{
+  "project_id": "1578a3a1-b33b-4a0e-bfd5-2c112dc553a6",
+  "project_name": "Synthetic Enterprise Reference Project 2026-04-17 02:54:23",
+  "seed": 20260416,
+  "catalog_count": 480,
+  "distinct_systems": 72,
+  "covered_pattern_ids": [
+    "#01",
+    "#02",
+    "#03",
+    "#04",
+    "#05",
+    "#06",
+    "#07",
+    "#08",
+    "#09",
+    "#10",
+    "#11",
+    "#12",
+    "#13",
+    "#14",
+    "#15",
+    "#16",
+    "#17"
+  ],
+  "import_batch_id": "854a6064-cb45-4598-8421-36d684bc1afb",
+  "import_included_count": 420,
+  "manual_count": 60,
+  "excluded_import_count": 36,
+  "design_warning_rows": 29,
+  "approved_justifications": 480,
+  "snapshot_ids": {
+    "imported": "e95169ce-b3f1-4bc8-8ac4-4fe3cf560c8e",
+    "final": "bd53be0b-a113-4ab9-9555-b80356463f71"
+  },
+  "dashboard_snapshot_ids": {
+    "imported": "12f6b0e1-780b-418c-80bb-80a09acab4a0",
+    "final": "8e8238a2-0099-4d30-bec9-b705fecee4f6"
+  },
+  "artifacts": {
+    "workbook_path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/apps/api/uploads/synthetic/synthetic-enterprise-reference-project-20260416.xlsx",
+    "xlsx_export": {
+      "job_id": "957c4056-3c7c-4d57-9c15-61956de82f44",
+      "filename": "1578a3a1-b33b-4a0e-bfd5-2c112dc553a6-bd53be0b-a113-4ab9-9555-b80356463f71.xlsx",
+      "download_url": "/api/v1/exports/1578a3a1-b33b-4a0e-bfd5-2c112dc553a6/jobs/957c4056-3c7c-4d57-9c15-61956de82f44/download",
+      "file_path": "uploads/exports/files/957c4056-3c7c-4d57-9c15-61956de82f44.xlsx"
+    },
+    "json_export": {
+      "job_id": "542a0002-3995-4599-b119-f002aae1e3cb",
+      "filename": "1578a3a1-b33b-4a0e-bfd5-2c112dc553a6-bd53be0b-a113-4ab9-9555-b80356463f71.json",
+      "download_url": "/api/v1/exports/1578a3a1-b33b-4a0e-bfd5-2c112dc553a6/jobs/542a0002-3995-4599-b119-f002aae1e3cb/download",
+      "file_path": "uploads/exports/files/542a0002-3995-4599-b119-f002aae1e3cb.json"
+    },
+    "pdf_export": {
+      "job_id": "4872e466-42ae-4720-9549-acb8d2d6eb0f",
+      "filename": "1578a3a1-b33b-4a0e-bfd5-2c112dc553a6-bd53be0b-a113-4ab9-9555-b80356463f71.pdf",
+      "download_url": "/api/v1/exports/1578a3a1-b33b-4a0e-bfd5-2c112dc553a6/jobs/4872e466-42ae-4720-9549-acb8d2d6eb0f/download",
+      "file_path": "uploads/exports/files/4872e466-42ae-4720-9549-acb8d2d6eb0f.pdf"
+    }
+  },
+  "smoke_routes": {
+    "project": "/api/v1/projects/1578a3a1-b33b-4a0e-bfd5-2c112dc553a6",
+    "catalog": "/api/v1/catalog/1578a3a1-b33b-4a0e-bfd5-2c112dc553a6",
+    "graph": "/api/v1/catalog/1578a3a1-b33b-4a0e-bfd5-2c112dc553a6/graph",
+    "dashboard_snapshots": "/api/v1/dashboard/1578a3a1-b33b-4a0e-bfd5-2c112dc553a6/snapshots",
+    "volumetry_snapshots": "/api/v1/volumetry/1578a3a1-b33b-4a0e-bfd5-2c112dc553a6/snapshots",
+    "audit": "/api/v1/audit/1578a3a1-b33b-4a0e-bfd5-2c112dc553a6"
+  }
+}
