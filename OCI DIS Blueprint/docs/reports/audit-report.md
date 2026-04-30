@@ -391,7 +391,7 @@ Deviation:
 ### Stack / Shape Detection
 
 ```text
-bash -lc 'shopt -s nullglob; ls pyproject.toml setup.py requirements*.txt apps/api/requirements*.txt 2>/dev/null; echo "---"; ls package.json apps/web/package.json tsconfig.json 2>/dev/null; echo "---"; ls docker-compose.yml docker-compose.yaml Dockerfile 2>/dev/null; echo "---"; ls -d apps/api/migrations apps/api/alembic.ini alembic.ini 2>/dev/null; echo "---"; ls -d packages/*/src/tests tests __tests__ cypress playwright 2>/dev/null; echo "---"; ls .github/workflows/*.yml .gitlab-ci.yml Jenkinsfile 2>/dev/null'
+bash -lc 'shopt -s nullglob; ls pyproject.toml setup.py requirements*.txt apps/api/requirements*.txt 2>/dev/null; echo "---"; ls package.json apps/web/package.json tsconfig.json 2>/dev/null; echo "---"; ls docker-compose.yml docker-compose.yaml Dockerfile 2>/dev/null; echo "---"; ls -d apps/api/migrations apps/api/alembic.ini alembic.ini 2>/dev/null; echo "---"; ls -d packages/*/src/tests tests __tests__ cypress playwright 2>/dev/null; echo "---"; test -d .github && find .github -maxdepth 2 -type f -print || true'
 apps/api/requirements.txt
 ---
 apps/web/package.json
@@ -404,6 +404,7 @@ apps/api/migrations
 ---
 packages/calc-engine/src/tests
 ---
+No active CI workflow files. Legacy backend validation workflow retired on 2026-04-30.
 ```
 
 ### Backend Verification
@@ -576,4 +577,3 @@ Observations:
 ## Dependency Drift
 
 Python drift is significant across the backend toolchain (`fastapi`, `pydantic`, `alembic`, `pytest`, `celery`, `asyncpg`). Frontend drift is also broad, with the largest potential migration surfaces around `next`, `react`, `eslint`, `typescript`, `tailwindcss`, and `zod`. None of these should be upgraded as part of a milestone audit, but they should be scheduled and scoped because future lint/build/tooling friction is likely to increase if they continue to lag.
-
