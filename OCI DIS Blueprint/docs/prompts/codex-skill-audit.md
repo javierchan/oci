@@ -54,7 +54,7 @@ ls -d apps/api/migrations apps/api/alembic.ini alembic.ini 2>/dev/null
 ls -d packages/*/src/tests tests/ __tests__/ cypress/ playwright/ 2>/dev/null
 
 # CI/CD
-ls .github/workflows/*.yml .gitlab-ci.yml Jenkinsfile 2>/dev/null
+test -d .github && find .github -maxdepth 2 -type f -print || true
 ```
 
 **Step 1.3 — Repository summary**
