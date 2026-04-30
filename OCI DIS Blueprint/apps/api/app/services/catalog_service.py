@@ -352,8 +352,8 @@ def _normalize_design_values(
         return normalize_canvas_design(
             core_tools=core_tools,
             additional_tools_overlays=additional_tools_overlays,
-            allowed_core_tools=allowed_core_tools,
-            allowed_overlay_tools=allowed_overlay_tools,
+            allowed_core_tools=sorted(allowed_core_tools),
+            allowed_overlay_tools=sorted(allowed_overlay_tools),
             assumptions=assumptions,
             payload_kb=payload_kb,
             trigger_type=trigger_type,

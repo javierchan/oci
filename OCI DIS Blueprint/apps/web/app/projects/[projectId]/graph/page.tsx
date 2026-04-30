@@ -32,6 +32,42 @@ const EMPTY_GRAPH: GraphResponse = {
   },
 };
 
+function normalizeGraphResponse(value: unknown): GraphResponse {
+  if (typeof value !== "object" || value === null) {
+    return EMPTY_GRAPH;
+  }
+
+  const candidate = value as Partial<GraphResponse>;
+  const nodes = Array.isArray(candidate.nodes) ? candidate.nodes : EMPTY_GRAPH.nodes;
+  const edges = Array.isArray(candidate.edges) ? candidate.edges : EMPTY_GRAPH.edges;
+  const meta = candidate.meta;
+  const integrationCount = edges.reduce(
+    (total, edge) => total + (typeof edge.integration_count === "number" ? edge.integration_count : 0),
+    0,
+  );
+
+  return {
+    nodes,
+    edges,
+    meta:
+      typeof meta === "object" && meta !== null
+        ? {
+            node_count: typeof meta.node_count === "number" ? meta.node_count : nodes.length,
+            edge_count: typeof meta.edge_count === "number" ? meta.edge_count : edges.length,
+            integration_count:
+              typeof meta.integration_count === "number" ? meta.integration_count : integrationCount,
+            business_processes: Array.isArray(meta.business_processes) ? meta.business_processes : [],
+            brands: Array.isArray(meta.brands) ? meta.brands : [],
+          }
+        : {
+            ...EMPTY_GRAPH.meta,
+            node_count: nodes.length,
+            edge_count: edges.length,
+            integration_count: integrationCount,
+          },
+  };
+}
+
 export default function GraphPage({ params }: GraphPageProps): JSX.Element {
   const { projectId } = use(params);
   const router = useRouter();
@@ -107,7 +143,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
       .getGraph(projectId, filters)
       .then((response) => {
         if (!cancelled) {
-          setGraph(response);
+          setGraph(normalizeGraphResponse(response));
           setSelectedNode(null);
           setSelectedEdge(null);
         }

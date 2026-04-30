@@ -35,6 +35,7 @@ from app.schemas.volumetry import (
     StreamingMetrics,
     VolumetrySnapshotListResponse,
     VolumetrySnapshotResponse,
+    VolumetrySnapshotRowResultsResponse,
 )
 from app.services import audit_service
 from app.services.canvas_interoperability import build_design_constraint_messages
@@ -62,7 +63,6 @@ def _integration_input(row: CatalogIntegration) -> IntegrationInput:
         response_size_kb=row.response_size_kb,
         is_fan_out=row.is_fan_out,
         fan_out_targets=row.fan_out_targets,
-        selected_pattern=row.selected_pattern,
     )
 
 
@@ -116,7 +116,6 @@ def _integration_input_with_overrides(
         response_size_kb=base.response_size_kb,
         is_fan_out=base.is_fan_out,
         fan_out_targets=base.fan_out_targets,
-        selected_pattern=base.selected_pattern,
     )
 
 
@@ -335,6 +334,42 @@ async def get_snapshot(project_id: str, snapshot_id: str, db: AsyncSession) -> V
             detail={"detail": "Volumetry snapshot not found", "error_code": "VOLUMETRY_SNAPSHOT_NOT_FOUND"},
         )
     return serialize_snapshot(snapshot)
+
+
+async def list_snapshot_rows(
+    project_id: str,
+    snapshot_id: str,
+    page: int,
+    page_size: int,
+    db: AsyncSession,
+) -> VolumetrySnapshotRowResultsResponse:
+    """Return a paginated view of row-level metrics for one snapshot."""
+
+    snapshot = await db.scalar(
+        select(VolumetrySnapshot).where(
+            VolumetrySnapshot.project_id == project_id,
+            VolumetrySnapshot.id == snapshot_id,
+        )
+    )
+    if snapshot is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Volumetry snapshot not found", "error_code": "VOLUMETRY_SNAPSHOT_NOT_FOUND"},
+        )
+
+    ordered_results = [
+        {"integration_id": integration_id, **metrics}
+        for integration_id, metrics in sorted(snapshot.row_results.items())
+        if isinstance(metrics, dict)
+    ]
+    total = len(ordered_results)
+    offset = (page - 1) * page_size
+    return VolumetrySnapshotRowResultsResponse(
+        rows=ordered_results[offset : offset + page_size],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 async def get_consolidated_metrics(project_id: str, snapshot_id: str, db: AsyncSession) -> ConsolidatedMetrics:
