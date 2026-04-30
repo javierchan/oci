@@ -1,6 +1,7 @@
 /* Integration detail page with source lineage, audit history, and architect patching. */
 
 import Link from "next/link";
+import { notFound } from "next/navigation";
 
 import { Breadcrumb } from "@/components/breadcrumb";
 import { ComplexityBadge } from "@/components/complexity-badge";
@@ -10,7 +11,8 @@ import { QaBadge } from "@/components/qa-badge";
 import { RawColumnValuesTable } from "@/components/raw-column-values-table";
 import { PatternSupportBadge } from "@/components/pattern-support-badge";
 import { api } from "@/lib/api";
-import { formatDate, formatNumber } from "@/lib/format";
+import { displayUiValue, formatDate, formatNumber } from "@/lib/format";
+import { isProjectNotFoundError } from "@/lib/project-errors";
 import type { AuditEvent, Integration } from "@/lib/types";
 
 type IntegrationDetailPageProps = {
@@ -24,7 +26,10 @@ function formatEventValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "—";
   }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (typeof value === "string") {
+    return displayUiValue(value);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
   }
   return JSON.stringify(value);
@@ -217,8 +222,16 @@ function buildCoverageSignals(integration: Integration): Array<{ title: string; 
 export default async function IntegrationDetailPage({
   params,
 }: IntegrationDetailPageProps): Promise<JSX.Element> {
-  const [project, detail, patterns, canvasGovernance, integrationAudit, sourceRowAudit, services] = await Promise.all([
-    api.getProject(params.projectId),
+  let project;
+  try {
+    project = await api.getProject(params.projectId);
+  } catch (error) {
+    if (isProjectNotFoundError(error)) {
+      notFound();
+    }
+    throw error;
+  }
+  const [detail, patterns, canvasGovernance, integrationAudit, sourceRowAudit, services] = await Promise.all([
     api.getIntegration(params.projectId, params.integrationId),
     api.listPatterns(),
     api.getCanvasGovernance(),
@@ -345,7 +358,7 @@ export default async function IntegrationDetailPage({
                 </div>
                 <div>
                   <dt className="app-label">Status</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.status ?? "—"}</dd>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.status)}</dd>
                 </div>
               </div>
 
@@ -360,7 +373,7 @@ export default async function IntegrationDetailPage({
                 </div>
                 <div>
                   <dt className="app-label">Frequency</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.frequency ?? "—"}</dd>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.frequency)}</dd>
                 </div>
                 <div>
                   <dt className="app-label">Payload / Execution</dt>
@@ -370,7 +383,7 @@ export default async function IntegrationDetailPage({
                 </div>
                 <div>
                   <dt className="app-label">Type</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.type ?? "—"}</dd>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.type)}</dd>
                 </div>
                 <div>
                   <dt className="app-label">Complexity</dt>
@@ -378,11 +391,11 @@ export default async function IntegrationDetailPage({
                 </div>
                 <div>
                   <dt className="app-label">Initial Scope</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.initial_scope ?? "—"}</dd>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.initial_scope)}</dd>
                 </div>
                 <div>
                   <dt className="app-label">Uncertainty</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.uncertainty ?? "—"}</dd>
+                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.uncertainty)}</dd>
                 </div>
               </div>
             </dl>

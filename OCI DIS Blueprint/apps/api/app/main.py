@@ -3,7 +3,7 @@
 API surface implements all route groups from PRD-043:
   /projects, /imports, /catalog, /dictionaries, /patterns,
   /assumptions, /services, /recalculate, /volumetry, /dashboard,
-  /justifications, /audit, /exports
+  /justifications, /audit, /exports, /admin/synthetic
 
 OpenAPI 3.1 spec auto-generated at /docs and /openapi.json.
 """
@@ -26,6 +26,7 @@ from app.routers import (
     audit_router,
     exports_router,
     services_router,
+    admin_synthetic_router,
 )
 
 settings = get_settings()
@@ -76,6 +77,7 @@ app.include_router(justifications_router, prefix=API_PREFIX)
 app.include_router(audit_router, prefix=API_PREFIX)
 app.include_router(exports_router, prefix=API_PREFIX)
 app.include_router(services_router, prefix=API_PREFIX)
+app.include_router(admin_synthetic_router, prefix=API_PREFIX)
 
 
 @app.get("/health", tags=["Health"])

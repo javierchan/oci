@@ -37,6 +37,7 @@ from app.schemas.volumetry import (
     VolumetrySnapshotResponse,
 )
 from app.services import audit_service
+from app.services.canvas_interoperability import build_design_constraint_messages
 from app.workers.celery_app import celery_app
 
 
@@ -119,53 +120,21 @@ def _integration_input_with_overrides(
     )
 
 
-def _format_kb_limit(value_kb: float | int) -> str:
-    if value_kb >= 1024 and value_kb % 1024 == 0:
-        return f"{int(value_kb / 1024)} MB"
-    if value_kb >= 1024:
-        return f"{value_kb / 1024:.1f} MB"
-    return f"{int(value_kb)} KB"
-
-
-def _parsed_tool_keys(value: str | None) -> set[str]:
-    if not value:
-        return set()
-    return {item.strip() for item in value.split(",") if item.strip()}
-
-
 def _design_constraint_warnings(
     row: CatalogIntegration,
     assumptions: Assumptions,
 ) -> list[str]:
-    payload_kb = row.payload_per_execution_kb
-    if payload_kb is None:
-        return []
-
-    tool_keys = _parsed_tool_keys(row.core_tools)
-    warnings: list[str] = []
-    if "OIC Gen3" in tool_keys and payload_kb > assumptions.oic_rest_max_payload_kb:
-        warnings.append(
-            f"[OIC Gen3] Payload {_format_kb_limit(payload_kb)} exceeds OIC message size limit of {_format_kb_limit(assumptions.oic_rest_max_payload_kb)}"
-        )
-    if (
-        "OCI Functions" in tool_keys or "Oracle Functions" in tool_keys
-    ) and payload_kb > assumptions.functions_max_invoke_body_kb:
-        warnings.append(
-            f"[OCI Functions] Payload {_format_kb_limit(payload_kb)} exceeds Functions invoke body limit of {_format_kb_limit(assumptions.functions_max_invoke_body_kb)}"
-        )
-    if "OCI API Gateway" in tool_keys and payload_kb > assumptions.api_gw_max_body_kb:
-        warnings.append(
-            f"[OCI API Gateway] Payload {_format_kb_limit(payload_kb)} exceeds API Gateway request body limit of {_format_kb_limit(assumptions.api_gw_max_body_kb)}"
-        )
-    if "OCI Queue" in tool_keys and payload_kb > assumptions.queue_max_message_kb:
-        warnings.append(
-            f"[OCI Queue] Payload {_format_kb_limit(payload_kb)} exceeds Queue message size limit of {_format_kb_limit(assumptions.queue_max_message_kb)}"
-        )
-    if "OCI Streaming" in tool_keys and payload_kb > assumptions.streaming_max_message_kb:
-        warnings.append(
-            f"[OCI Streaming] Payload {_format_kb_limit(payload_kb)} exceeds Streaming message size limit of {_format_kb_limit(assumptions.streaming_max_message_kb)}"
-        )
-    return warnings
+    return build_design_constraint_messages(
+        core_tools=row.core_tools,
+        additional_tools_overlays=row.additional_tools_overlays,
+        assumptions=assumptions,
+        payload_kb=row.payload_per_execution_kb,
+        trigger_type=row.trigger_type,
+        is_real_time=row.is_real_time,
+        source_technology=row.source_technology,
+        destination_technology=row.destination_technology_1,
+        integration_type=row.type,
+    )
 
 
 def _serialize_consolidated(consolidated: dict[str, object]) -> ConsolidatedMetrics:

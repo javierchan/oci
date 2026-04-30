@@ -72,6 +72,92 @@ docker compose run --rm web npm run type-check
 ./.venv/bin/python apps/api/scripts/export_openapi.py --check
 ```
 
+## Schema-Dependent Admin Smoke Check
+
+When the Admin Synthetic Lab schema, router, worker, or UI changes, run this
+against the live dev stack before calling the feature validated:
+
+```bash
+# Ensure the running API container has the latest DB schema.
+docker compose exec -T api alembic upgrade head
+
+# Confirm API health.
+curl -sf http://localhost:8000/health
+
+# Confirm the synthetic admin endpoints are readable with admin headers.
+curl -sf \
+  -H 'X-Actor-Id: web-admin' \
+  -H 'X-Actor-Role: Admin' \
+  http://localhost:8000/api/v1/admin/synthetic/presets
+
+curl -sf \
+  -H 'X-Actor-Id: web-admin' \
+  -H 'X-Actor-Role: Admin' \
+  'http://localhost:8000/api/v1/admin/synthetic/jobs?limit=20'
+```
+
+Then reload `http://localhost:3000/admin/synthetic` and confirm the page shows
+the preset form or empty-state jobs table, not `Failed to fetch`.
+
+If the synthetic worker flow or cleanup policy changed, prefer the automated
+bounded smoke script:
+
+```bash
+./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_lab.py
+```
+
+This validates health, preset discovery, job creation, polling, recent-job
+visibility, and the `cleaned_up` terminal contract for the
+`ephemeral-smoke` preset.
+
+To validate explicit cleanup on a retained small project instead of the
+ephemeral auto-clean path:
+
+```bash
+./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_lab.py --preset-code retained-smoke
+```
+
+That retained run must reach `completed`, invoke the cleanup route, and finish
+as `cleaned_up` in the same script execution.
+
+Manual fallback:
+
+```bash
+curl -sf \
+  -X POST \
+  -H 'X-Actor-Id: web-admin' \
+  -H 'X-Actor-Role: Admin' \
+  -H 'Content-Type: application/json' \
+  http://localhost:8000/api/v1/admin/synthetic/jobs \
+  -d '{"preset_code":"ephemeral-smoke"}'
+```
+
+The created job should terminate as `cleaned_up` with
+`cleanup_policy = ephemeral_auto_cleanup`, `project_id = null`, and populated
+`cleanup_removed_paths`.
+
+To validate retry end to end on a controlled failed job without inventing a
+new product preset:
+
+```bash
+./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_retry.py
+```
+
+That helper seeds a bounded failed source job through the service layer, calls
+the real retry API, waits for the retried job to finish, and then cleans up the
+seeded failed source job.
+
+To validate the admin synthetic pages through a repo-owned browser E2E path:
+
+```bash
+cd apps/web
+npm run test:e2e:install
+npm run test:e2e
+```
+
+The Playwright smoke suite covers the `/admin/synthetic` landing page and the
+create-to-detail flow for a bounded `ephemeral-smoke` run.
+
 ---
 
 ## Project Structure

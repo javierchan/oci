@@ -4,13 +4,14 @@
 
 import { useDeferredValue, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, SearchX, X } from "lucide-react";
+import { ChevronRight, Pencil, SearchX, X } from "lucide-react";
 
 import { ComplexityBadge } from "@/components/complexity-badge";
 import { PatternBadge } from "@/components/pattern-badge";
 import { QaBadge } from "@/components/qa-badge";
 import { SkeletonRow } from "@/components/skeleton";
 import { api } from "@/lib/api";
+import { displayQaStatus } from "@/lib/format";
 import type { CatalogPage, Integration, PatternDefinition } from "@/lib/types";
 
 type CatalogTableProps = {
@@ -170,8 +171,8 @@ export function CatalogTable({
             >
               <option value="">All</option>
               <option value="OK">OK</option>
-              <option value="REVISAR">REVISAR</option>
-              <option value="PENDING">PENDING</option>
+              <option value="REVISAR">{displayQaStatus("REVISAR")}</option>
+              <option value="PENDING">{displayQaStatus("PENDING")}</option>
             </select>
           </label>
           <label className="min-w-[14rem]">
@@ -226,7 +227,7 @@ export function CatalogTable({
                 onClick={() => resetPageAndSet(setQaStatus, "")}
                 className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-medium text-[var(--color-text-secondary)] transition hover:border-[var(--color-accent)]"
               >
-                QA: {qaStatus}
+                QA: {displayQaStatus(qaStatus)}
                 <X className="h-3 w-3" />
               </button>
             ) : null}
@@ -301,7 +302,7 @@ export function CatalogTable({
                 <article
                   key={integration.id}
                   onClick={() => openIntegration(integration.id)}
-                  className="cursor-pointer rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm transition hover:border-[var(--color-accent)]"
+                  className="cursor-pointer rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--color-accent)] hover:shadow-md"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -318,18 +319,10 @@ export function CatalogTable({
                         {integration.interface_id ?? ""}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openIntegration(integration.id, true);
-                      }}
-                      title="Edit pattern"
-                      aria-label={`Edit pattern for ${integration.interface_name ?? integration.interface_id ?? "integration"}`}
-                      className="rounded-full p-1.5 text-[var(--color-text-muted)] transition hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text-primary)]"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-secondary)]">
+                      Detail
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </span>
                   </div>
 
                   <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
@@ -352,6 +345,25 @@ export function CatalogTable({
                     <ComplexityBadge value={integration.complexity} />
                     <QaBadge status={integration.qa_status} />
                   </div>
+
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <span className="text-xs text-[var(--color-text-secondary)]">
+                      Tap the card for the full integration record.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openIntegration(integration.id, true);
+                      }}
+                      title="Jump to architect patch form"
+                      aria-label={`Jump to architect patch for ${integration.interface_name ?? integration.interface_id ?? "integration"}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-secondary)] transition hover:border-[var(--color-accent)] hover:bg-[var(--color-surface)] hover:text-[var(--color-text-primary)]"
+                    >
+                      Patch
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </article>
               );
             })
@@ -368,7 +380,7 @@ export function CatalogTable({
                 <th className="px-6 py-4">Pattern</th>
                 <th className="px-6 py-4">Complexity</th>
                 <th className="px-6 py-4">QA</th>
-                <th className="w-16 px-6 py-4 text-right">···</th>
+                <th className="w-[13rem] px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-table-border)]">
@@ -382,7 +394,7 @@ export function CatalogTable({
                       <tr
                         key={integration.id}
                         onClick={() => openIntegration(integration.id)}
-                        className="app-table-row cursor-pointer text-sm transition"
+                        className="app-table-row group cursor-pointer text-sm transition"
                       >
                         <td className="px-6 py-4 font-medium text-[var(--color-text-primary)]">
                           {integration.seq_number}
@@ -424,18 +436,25 @@ export function CatalogTable({
                           <QaBadge status={integration.qa_status} />
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openIntegration(integration.id, true);
-                            }}
-                            title="Edit pattern"
-                            aria-label={`Edit pattern for ${integration.interface_name ?? integration.interface_id ?? "integration"}`}
-                            className="rounded-full p-1.5 text-[var(--color-text-muted)] transition hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text-primary)]"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-transparent bg-[var(--color-surface-3)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-secondary)] transition group-hover:border-[var(--color-accent)] group-hover:bg-[var(--color-surface)] group-hover:text-[var(--color-text-primary)]">
+                              Detail
+                              <ChevronRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openIntegration(integration.id, true);
+                              }}
+                              title="Jump to architect patch form"
+                              aria-label={`Jump to architect patch for ${integration.interface_name ?? integration.interface_id ?? "integration"}`}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-secondary)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-text-primary)]"
+                            >
+                              Patch
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

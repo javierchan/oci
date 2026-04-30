@@ -10,6 +10,7 @@ from app.models.governance import (
 )
 from app.models.project import CatalogIntegration, ImportBatch, Project, SourceIntegrationRow
 from app.models.snapshot import AuditEvent, DashboardSnapshot, JustificationRecord, VolumetrySnapshot
+from app.models.synthetic import SyntheticGenerationJob
 
 __all__ = [
     "AssumptionSet",
@@ -24,6 +25,7 @@ __all__ = [
     "PromptTemplateVersion",
     "Project",
     "SourceIntegrationRow",
+    "SyntheticGenerationJob",
     "ServiceCapabilityProfile",
     "VolumetrySnapshot",
 ]

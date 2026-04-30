@@ -364,19 +364,19 @@ export function CaptureWizard({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <section className="app-card p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+        <div className="grid gap-5 xl:grid-cols-[minmax(14rem,0.32fr)_minmax(0,1fr)] xl:items-center">
+          <div className="min-w-0">
             <p className="app-label">Step {currentStep + 1} of 5</p>
             <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">{stepTitle}</h2>
           </div>
-          <div className="grid w-full gap-3 md:grid-cols-5 lg:max-w-4xl">
+          <div className="grid w-full gap-2 sm:grid-cols-5">
             {STEP_LABELS.map((label, index) => {
               const isCurrent = index === currentStep;
               const isCompleted = index < currentStep;
               return (
-                <div key={label} className="flex items-center gap-2">
+                <div key={label} className="relative min-w-0">
                   <button
                     type="button"
                     onClick={() => {
@@ -395,7 +395,7 @@ export function CaptureWizard({
                     }}
                     aria-disabled={index > currentStep}
                     className={[
-                      "flex flex-1 items-center gap-3 rounded-2xl border px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] transition",
+                      "flex h-full min-h-14 w-full min-w-0 items-center gap-2.5 rounded-2xl border px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] transition",
                       isCurrent
                         ? "border-[var(--color-accent)] bg-[var(--color-surface)] text-[var(--color-accent)] shadow-[0_0_0_1px_var(--color-accent)]"
                         : isCompleted
@@ -416,12 +416,12 @@ export function CaptureWizard({
                     >
                       {isCompleted ? <Check className="h-4 w-4" /> : index + 1}
                     </span>
-                    <span>{label}</span>
-                  </button>
-                  {index < STEP_LABELS.length - 1 ? (
+                    <span className="min-w-0 truncate leading-none">{label}</span>
+                    </button>
+                    {index < STEP_LABELS.length - 1 ? (
                     <span
                       className={[
-                        "hidden h-px flex-1 md:block",
+                        "pointer-events-none absolute left-full top-1/2 hidden h-px w-2 -translate-y-1/2 sm:block",
                         isCompleted ? "bg-[var(--color-status-active-border)]" : "bg-[var(--color-border)]",
                       ].join(" ")}
                     />

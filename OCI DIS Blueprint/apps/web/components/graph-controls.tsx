@@ -6,6 +6,7 @@ import { Hand, MousePointer } from "lucide-react";
 import type { RefObject } from "react";
 
 import { GraphExportButton } from "@/components/graph-export-button";
+import { displayQaStatus } from "@/lib/format";
 import type { GraphMeta, GraphParams } from "@/lib/types";
 
 type GraphMode = "select" | "pan";
@@ -91,8 +92,8 @@ export function GraphControls({
           >
             <option value="">All</option>
             <option value="OK">OK</option>
-            <option value="REVISAR">REVISAR</option>
-            <option value="PENDING">PENDING</option>
+            <option value="REVISAR">{displayQaStatus("REVISAR")}</option>
+            <option value="PENDING">{displayQaStatus("PENDING")}</option>
           </select>
         </label>
 

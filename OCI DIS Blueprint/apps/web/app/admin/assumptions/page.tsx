@@ -3,7 +3,7 @@
 /* Assumption version governance page with clone-and-create and default promotion flows. */
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { AdminAssumptionForm } from "@/components/admin-assumption-form";
@@ -22,7 +22,7 @@ function bumpVersion(version: string): string {
   return parts.join(".");
 }
 
-export default function AdminAssumptionsPage(): JSX.Element {
+function AdminAssumptionsClient(): JSX.Element {
   const searchParams = useSearchParams();
   const cloneVersion = searchParams.get("clone");
   const [assumptions, setAssumptions] = useState<AssumptionSet[]>([]);
@@ -186,7 +186,7 @@ export default function AdminAssumptionsPage(): JSX.Element {
                     <div className="flex flex-wrap items-center gap-3">
                       <Link
                         href={`/admin/assumptions/${assumption.version}`}
-                          className="text-sm font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
+                        className="text-sm font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
                       >
                         View
                       </Link>
@@ -211,5 +211,23 @@ export default function AdminAssumptionsPage(): JSX.Element {
         </table>
       </section>
     </div>
+  );
+}
+
+export default function AdminAssumptionsPage(): JSX.Element {
+  return (
+    <Suspense
+      fallback={
+        <section className="app-card p-6">
+          <p className="app-kicker">Admin Governance</p>
+          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
+            Assumptions
+          </h1>
+          <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Loading assumption governance…</p>
+        </section>
+      }
+    >
+      <AdminAssumptionsClient />
+    </Suspense>
   );
 }

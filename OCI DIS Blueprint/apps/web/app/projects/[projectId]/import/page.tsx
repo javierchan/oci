@@ -1,8 +1,11 @@
 /* Server-rendered import page with client upload flow. */
 
+import { notFound } from "next/navigation";
+
 import { Breadcrumb } from "@/components/breadcrumb";
 import { ImportUpload } from "@/components/import-upload";
 import { api } from "@/lib/api";
+import { isProjectNotFoundError } from "@/lib/project-errors";
 
 type ProjectImportPageProps = {
   params: {
@@ -18,8 +21,16 @@ export default async function ProjectImportPage({
   params,
   searchParams,
 }: ProjectImportPageProps): Promise<JSX.Element> {
-  const [project, imports, selectedRows] = await Promise.all([
-    api.getProject(params.projectId),
+  let project;
+  try {
+    project = await api.getProject(params.projectId);
+  } catch (error) {
+    if (isProjectNotFoundError(error)) {
+      notFound();
+    }
+    throw error;
+  }
+  const [imports, selectedRows] = await Promise.all([
     api.listImports(params.projectId),
     searchParams.batch_id
       ? api.listImportRows(params.projectId, searchParams.batch_id, { page: 1, page_size: 200 })

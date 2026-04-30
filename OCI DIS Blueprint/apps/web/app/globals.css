@@ -381,22 +381,10 @@ html.dark {
   }
 }
 
-@keyframes flow {
-  from {
-    stroke-dashoffset: 20;
-  }
-
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
 .graph-edge-animated {
-  stroke-dasharray: 6 4;
-  animation: flow 1.5s linear infinite;
+  transition: stroke-width 160ms ease, opacity 160ms ease, filter 160ms ease;
 }
 
 .graph-edge-animated:hover {
-  animation-play-state: paused;
-  stroke-width: 3;
+  filter: brightness(1.05);
 }

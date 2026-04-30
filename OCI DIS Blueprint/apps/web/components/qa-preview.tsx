@@ -4,6 +4,7 @@
 
 import { CheckCircle2, CircleX } from "lucide-react";
 
+import { displayQaStatus } from "@/lib/format";
 import type { ManualIntegrationCreate, PatternDefinition } from "@/lib/types";
 
 type QaPreviewProps = {
@@ -141,7 +142,7 @@ export function QaPreview({ form, patterns }: QaPreviewProps): JSX.Element {
               : "border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] text-[var(--color-qa-revisar-text)]",
           ].join(" ")}
         >
-          {qaStatus}
+          {displayQaStatus(qaStatus)}
         </span>
       </div>
 

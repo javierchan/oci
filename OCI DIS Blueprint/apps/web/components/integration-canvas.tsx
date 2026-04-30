@@ -21,6 +21,13 @@ import {
 
 import { PatternSupportBadge } from "@/components/pattern-support-badge";
 import { api } from "@/lib/api";
+import { displayUiValue } from "@/lib/format";
+import {
+  evaluateCanvasInteroperability,
+  resolveCanvasServiceId,
+  type CanvasFindingSeverity,
+  type CanvasInteroperabilityFinding,
+} from "@/lib/canvas-interoperability";
 import {
   DESTINATION_NODE_ID,
   SOURCE_NODE_ID,
@@ -49,6 +56,7 @@ const MIN_CANVAS_WIDTH = 960;
 const CANVAS_HEIGHT = 560;
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 2;
+const ROUTE_NODE_GAP = 52;
 const TOOL_NODE_WIDTH = 208;
 const TOOL_NODE_HEIGHT = 126;
 const SYSTEM_NODE_WIDTH = 260;
@@ -91,22 +99,10 @@ type IntegrationCanvasProps = {
   onChange: (_nextValue: string) => void;
   onToolsChange?: (_toolKeys: string[]) => void;
   onConnectionValidityChange?: (_isValid: boolean) => void;
-};
-
-const TOOL_TO_SERVICE_ID: Record<string, string> = {
-  "OIC Gen3": "OIC3",
-  "OCI API Gateway": "API_GATEWAY",
-  "OCI Streaming": "STREAMING",
-  "OCI Queue": "QUEUE",
-  "Oracle Functions": "FUNCTIONS",
-  "OCI Functions": "FUNCTIONS",
-  "OCI Data Integration": "DATA_INTEGRATION",
-  "Oracle ORDS": "ORDS",
-  "Oracle DB": "ORDS",
-  "OCI APM": "OBSERVABILITY",
-  "Oracle GoldenGate": "GOLDENGATE",
-  "OCI Connector Hub": "CONNECTOR_HUB",
-  "OCI IAM": "IAM",
+  onBlockingIssuesChange?: (_hasBlockingIssues: boolean) => void;
+  triggerType?: string | null;
+  isRealTime?: boolean | null;
+  integrationType?: string | null;
 };
 
 const TOOL_KINDS: Record<string, ToolKind> = {
@@ -192,34 +188,11 @@ function parsePatternComponents(value: string | null): string[] {
     .filter(Boolean);
 }
 
-function formatLimitLabel(valueKb: number): string {
-  if (valueKb >= 1024 && valueKb % 1024 === 0) {
-    return `${valueKb / 1024} MB`;
-  }
-  if (valueKb >= 1024) {
-    return `${(valueKb / 1024).toFixed(1)} MB`;
-  }
-  return `${valueKb} KB`;
-}
-
-function formatPayloadLabel(valueKb: number): string {
-  if (valueKb >= 1024) {
-    const valueMb = valueKb / 1024;
-    return Number.isInteger(valueMb) ? `${valueMb} MB` : `${valueMb.toFixed(1)} MB`;
-  }
-  return `${valueKb} KB`;
-}
-
-function serviceLimitNumber(limits: Record<string, unknown>, key: string): number | null {
-  const value = limits[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function resolveServiceProfile(
   toolKey: string,
   serviceProfilesById: Map<string, ServiceCapabilityProfile>,
 ): ServiceCapabilityProfile | null {
-  const serviceId = TOOL_TO_SERVICE_ID[toolKey];
+  const serviceId = resolveCanvasServiceId(toolKey);
   return serviceId ? serviceProfilesById.get(serviceId) ?? null : null;
 }
 
@@ -240,70 +213,75 @@ function topConstraintLabel(profile: ServiceCapabilityProfile): string {
   }
 }
 
-function designViolationsForTools(
-  payloadKb: number | null,
-  toolKeys: Set<string>,
-  serviceProfilesById: Map<string, ServiceCapabilityProfile>,
-): string[] {
-  if (payloadKb === null || payloadKb === undefined) {
-    return [];
+function findingCardClasses(severity: CanvasFindingSeverity): string {
+  switch (severity) {
+    case "blocker":
+      return "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200";
+    case "warning":
+      return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200";
+    case "advisory":
+      return "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-200";
+  }
+}
+
+function findingBadgeClasses(severity: CanvasFindingSeverity): string {
+  switch (severity) {
+    case "blocker":
+      return "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-200";
+    case "warning":
+      return "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-200";
+    case "advisory":
+      return "bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-200";
+  }
+}
+
+function severityLabel(severity: CanvasFindingSeverity): string {
+  switch (severity) {
+    case "blocker":
+      return "Blocker";
+    case "warning":
+      return "Warning";
+    case "advisory":
+      return "Advisory";
+  }
+}
+
+function ValidationFindingGroup({
+  title,
+  findings,
+  severity,
+}: {
+  title: string;
+  findings: CanvasInteroperabilityFinding[];
+  severity: CanvasFindingSeverity;
+}): JSX.Element | null {
+  if (findings.length === 0) {
+    return null;
   }
 
-  const violations: string[] = [];
-  const oicProfile = resolveServiceProfile("OIC Gen3", serviceProfilesById);
-  const functionsProfile =
-    resolveServiceProfile("OCI Functions", serviceProfilesById) ??
-    resolveServiceProfile("Oracle Functions", serviceProfilesById);
-  const apiGatewayProfile = resolveServiceProfile("OCI API Gateway", serviceProfilesById);
-  const queueProfile = resolveServiceProfile("OCI Queue", serviceProfilesById);
-  const streamingProfile = resolveServiceProfile("OCI Streaming", serviceProfilesById);
-
-  const oicLimit = oicProfile ? serviceLimitNumber(oicProfile.limits, "max_message_size_kb") : null;
-  if (toolKeys.has("OIC Gen3") && oicLimit !== null && payloadKb > oicLimit) {
-    violations.push(
-      `[OIC Gen3] Payload ${formatPayloadLabel(payloadKb)} exceeds OIC message size limit of ${formatLimitLabel(oicLimit)}`,
-    );
-  }
-
-  const functionsLimit = functionsProfile
-    ? serviceLimitNumber(functionsProfile.limits, "max_invoke_body_kb")
-    : null;
-  if (
-    (toolKeys.has("OCI Functions") || toolKeys.has("Oracle Functions")) &&
-    functionsLimit !== null &&
-    payloadKb > functionsLimit
-  ) {
-    violations.push(
-      `[Oracle Functions] Payload ${formatPayloadLabel(payloadKb)} exceeds Functions invoke body limit of ${formatLimitLabel(functionsLimit)}`,
-    );
-  }
-
-  const apiGatewayLimit = apiGatewayProfile
-    ? serviceLimitNumber(apiGatewayProfile.limits, "max_request_body_kb")
-    : null;
-  if (toolKeys.has("OCI API Gateway") && apiGatewayLimit !== null && payloadKb > apiGatewayLimit) {
-    violations.push(
-      `[OCI API Gateway] Payload ${formatPayloadLabel(payloadKb)} exceeds API Gateway request body limit of ${formatLimitLabel(apiGatewayLimit)}`,
-    );
-  }
-
-  const queueLimit = queueProfile ? serviceLimitNumber(queueProfile.limits, "max_message_size_kb") : null;
-  if (toolKeys.has("OCI Queue") && queueLimit !== null && payloadKb > queueLimit) {
-    violations.push(
-      `[OCI Queue] Payload ${formatPayloadLabel(payloadKb)} exceeds Queue message size limit of ${formatLimitLabel(queueLimit)}`,
-    );
-  }
-
-  const streamingLimit = streamingProfile
-    ? serviceLimitNumber(streamingProfile.limits, "max_message_size_kb")
-    : null;
-  if (toolKeys.has("OCI Streaming") && streamingLimit !== null && payloadKb > streamingLimit) {
-    violations.push(
-      `[OCI Streaming] Payload ${formatPayloadLabel(payloadKb)} exceeds Streaming message size limit of ${formatLimitLabel(streamingLimit)}`,
-    );
-  }
-
-  return violations;
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
+        {title}
+      </p>
+      {findings.map((finding) => (
+        <article
+          key={finding.id}
+          className={`rounded-2xl border p-3 text-xs leading-5 ${findingCardClasses(severity)}`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <p className="font-semibold">{finding.title}</p>
+            <span
+              className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${findingBadgeClasses(severity)}`}
+            >
+              {severityLabel(severity)}
+            </span>
+          </div>
+          <p className="mt-2">{finding.detail}</p>
+        </article>
+      ))}
+    </div>
+  );
 }
 
 function PatternDetailPanel({ patternDetail }: { patternDetail: PatternDefinition }): JSX.Element {
@@ -439,6 +417,127 @@ function createNode(toolKey: string, index: number, x?: number, y?: number): Can
     x: x ?? 240 + column * 220,
     y: y ?? 72 + row * 170,
   };
+}
+
+function minimumCanvasWidthForNodeCount(nodeCount: number): number {
+  if (nodeCount === 0) {
+    return MIN_CANVAS_WIDTH;
+  }
+  return Math.max(
+    MIN_CANVAS_WIDTH,
+    SYSTEM_NODE_WIDTH * 2 + TOOL_NODE_WIDTH * nodeCount + ROUTE_NODE_GAP * (nodeCount + 3) + 80,
+  );
+}
+
+function primaryRouteNodeIds(nodes: CanvasNode[], edges: CanvasEdge[]): string[] {
+  const nodeIds = new Set(nodes.map((node) => node.instanceId));
+  const ordered: string[] = [];
+  const visited = new Set<string>([SOURCE_NODE_ID]);
+  let currentId = SOURCE_NODE_ID;
+
+  while (currentId !== DESTINATION_NODE_ID) {
+    const nextEdge = edges.find(
+      (edge) =>
+        edge.sourceInstanceId === currentId &&
+        !visited.has(edge.targetInstanceId) &&
+        (edge.targetInstanceId === DESTINATION_NODE_ID || nodeIds.has(edge.targetInstanceId)),
+    );
+    if (!nextEdge) {
+      break;
+    }
+    currentId = nextEdge.targetInstanceId;
+    visited.add(currentId);
+    if (currentId !== DESTINATION_NODE_ID) {
+      ordered.push(currentId);
+    }
+  }
+
+  return ordered;
+}
+
+function arrangeCanvasNodes(nodes: CanvasNode[], edges: CanvasEdge[], canvasWidth: number): CanvasNode[] {
+  const routeIds = primaryRouteNodeIds(nodes, edges);
+  const routeIdSet = new Set(routeIds);
+  const orderedIds = [
+    ...routeIds,
+    ...nodes
+      .filter((node) => !routeIdSet.has(node.instanceId))
+      .sort((left, right) => left.x - right.x || left.y - right.y)
+      .map((node) => node.instanceId),
+  ];
+  const positions = new Map<string, { x: number; y: number }>();
+  const routeCount = Math.max(routeIds.length, 1);
+  const routeStartX = SYSTEM_NODE_WIDTH + 40 + ROUTE_NODE_GAP;
+  const routeEndX = canvasWidth - SYSTEM_NODE_WIDTH - 40 - TOOL_NODE_WIDTH - ROUTE_NODE_GAP;
+  const routeStep = routeCount > 1 ? Math.max(TOOL_NODE_WIDTH + ROUTE_NODE_GAP, (routeEndX - routeStartX) / (routeCount - 1)) : 0;
+  const routeY = CANVAS_HEIGHT / 2 - TOOL_NODE_HEIGHT / 2;
+
+  routeIds.forEach((instanceId, index) => {
+    positions.set(instanceId, {
+      x: routeStartX + index * routeStep,
+      y: routeY,
+    });
+  });
+
+  const sideNodes = orderedIds.filter((instanceId) => !routeIdSet.has(instanceId));
+  sideNodes.forEach((instanceId, index) => {
+    const column = index % Math.max(1, Math.floor((canvasWidth - 120) / (TOOL_NODE_WIDTH + ROUTE_NODE_GAP)));
+    const row = Math.floor(index / Math.max(1, Math.floor((canvasWidth - 120) / (TOOL_NODE_WIDTH + ROUTE_NODE_GAP))));
+    positions.set(instanceId, {
+      x: 60 + column * (TOOL_NODE_WIDTH + ROUTE_NODE_GAP),
+      y: 28 + row * (TOOL_NODE_HEIGHT + 44),
+    });
+  });
+
+  return nodes.map((node) => {
+    const position = positions.get(node.instanceId);
+    if (!position) {
+      return node;
+    }
+    return {
+      ...node,
+      x: clamp(position.x, 20, canvasWidth - TOOL_NODE_WIDTH - 20),
+      y: clamp(position.y, 20, CANVAS_HEIGHT - TOOL_NODE_HEIGHT - 20),
+    };
+  });
+}
+
+function hasCongestedLayout(nodes: CanvasNode[], edges: CanvasEdge[], canvasWidth: number): boolean {
+  if (nodes.length === 0) {
+    return false;
+  }
+  const routeIds = primaryRouteNodeIds(nodes, edges);
+  if (routeIds.length === 0) {
+    return false;
+  }
+  const routeIdSet = new Set(routeIds);
+  const boxes = [
+    { id: SOURCE_NODE_ID, x: 40, y: CANVAS_HEIGHT / 2 - SYSTEM_NODE_HEIGHT / 2, width: SYSTEM_NODE_WIDTH, height: SYSTEM_NODE_HEIGHT },
+    {
+      id: DESTINATION_NODE_ID,
+      x: canvasWidth - SYSTEM_NODE_WIDTH - 40,
+      y: CANVAS_HEIGHT / 2 - SYSTEM_NODE_HEIGHT / 2,
+      width: SYSTEM_NODE_WIDTH,
+      height: SYSTEM_NODE_HEIGHT,
+    },
+    ...nodes
+      .filter((node) => routeIdSet.has(node.instanceId))
+      .map((node) => ({
+        id: node.instanceId,
+        x: node.x,
+        y: node.y,
+        width: TOOL_NODE_WIDTH,
+        height: TOOL_NODE_HEIGHT + 38,
+      })),
+  ];
+
+  return boxes.some((left, leftIndex) =>
+    boxes.slice(leftIndex + 1).some((right) => {
+      const horizontalGap = Math.max(left.x, right.x) - Math.min(left.x + left.width, right.x + right.width);
+      const verticalGap = Math.max(left.y, right.y) - Math.min(left.y + left.height, right.y + right.height);
+      return horizontalGap < 24 && verticalGap < 18;
+    }),
+  );
 }
 
 function fixedNodes(
@@ -669,6 +768,10 @@ export function IntegrationCanvas({
   onChange,
   onToolsChange,
   onConnectionValidityChange,
+  onBlockingIssuesChange,
+  triggerType = null,
+  isRealTime = null,
+  integrationType = null,
 }: IntegrationCanvasProps): JSX.Element {
   const overlayToolKeys = useMemo(
     () => overlayOptions.map((option) => option.value),
@@ -711,6 +814,7 @@ export function IntegrationCanvas({
   const [draftValue, setDraftValue] = useState<string>("");
   const [draggingNode, setDraggingNode] = useState<{ id: string; dx: number; dy: number } | null>(null);
   const [panning, setPanning] = useState<{ x: number; y: number; viewportX: number; viewportY: number } | null>(null);
+  const autoLayoutSignatureRef = useRef<string | null>(null);
   const [connecting, setConnecting] = useState<{
     sourceInstanceId: string;
     startHandle: HandlePosition;
@@ -742,6 +846,11 @@ export function IntegrationCanvas({
     observer.observe(shell);
     return () => observer.disconnect();
   }, []);
+
+  const renderCanvasWidth = useMemo(
+    () => Math.max(canvasWidth, minimumCanvasWidthForNodeCount(nodes.length)),
+    [canvasWidth, nodes.length],
+  );
 
   useEffect(() => {
     if ((value ?? "") === lastSerializedRef.current) {
@@ -804,8 +913,45 @@ export function IntegrationCanvas({
       }),
     [combinations, edges, nodes, overlayToolKeys, selectedPattern],
   );
+  const interoperabilityReport = useMemo(
+    () =>
+      evaluateCanvasInteroperability({
+        nodes,
+        edges,
+        overlayToolKeys,
+        serviceProfilesById,
+        payloadKb,
+        triggerType,
+        isRealTime,
+        sourceTechnology,
+        destinationTechnology,
+        integrationType,
+      }),
+    [
+      destinationTechnology,
+      edges,
+      integrationType,
+      isRealTime,
+      nodes,
+      overlayToolKeys,
+      payloadKb,
+      serviceProfilesById,
+      sourceTechnology,
+      triggerType,
+    ],
+  );
 
   useEffect(() => {
+    const layoutSignature = `${renderCanvasWidth}:${nodes.map((node) => `${node.instanceId}:${Math.round(node.x)}:${Math.round(node.y)}`).join("|")}:${edges.map((edge) => `${edge.sourceInstanceId}>${edge.targetInstanceId}`).join("|")}`;
+    if (
+      autoLayoutSignatureRef.current !== layoutSignature &&
+      hasCongestedLayout(nodes, edges, renderCanvasWidth)
+    ) {
+      autoLayoutSignatureRef.current = layoutSignature;
+      setNodes((current) => arrangeCanvasNodes(current, edges, renderCanvasWidth));
+      return;
+    }
+
     const nextSerialized = serializeCanvasState(nodes, edges, semantics);
     lastSerializedRef.current = nextSerialized;
     if (nextSerialized !== (value ?? "")) {
@@ -813,7 +959,19 @@ export function IntegrationCanvas({
     }
     onToolsChange?.(semantics.coreToolKeys);
     onConnectionValidityChange?.(semantics.hasConnectedRoute);
-  }, [edges, nodes, onChange, onConnectionValidityChange, onToolsChange, semantics, value]);
+    onBlockingIssuesChange?.(interoperabilityReport.blockers.length > 0);
+  }, [
+    edges,
+    interoperabilityReport.blockers.length,
+    nodes,
+    onBlockingIssuesChange,
+    onChange,
+    onConnectionValidityChange,
+    onToolsChange,
+    renderCanvasWidth,
+    semantics,
+    value,
+  ]);
 
   useEffect(() => {
     const validNodeIds = new Set<string>([
@@ -855,11 +1013,11 @@ export function IntegrationCanvas({
     setNodes((current) =>
       current.map((node) => ({
         ...node,
-        x: clamp(node.x, 20, canvasWidth - TOOL_NODE_WIDTH - 20),
+        x: clamp(node.x, 20, renderCanvasWidth - TOOL_NODE_WIDTH - 20),
         y: clamp(node.y, 20, CANVAS_HEIGHT - TOOL_NODE_HEIGHT - 20),
       })),
     );
-  }, [canvasWidth]);
+  }, [renderCanvasWidth]);
 
   useEffect(() => {
     const element = svgRef.current;
@@ -926,19 +1084,15 @@ export function IntegrationCanvas({
         sourceTechnology,
         destinationSystem,
         destinationTechnology,
-        canvasWidth,
+        renderCanvasWidth,
         nodes,
       ),
-    [canvasWidth, destinationSystem, destinationTechnology, nodes, sourceSystem, sourceTechnology],
+    [destinationSystem, destinationTechnology, nodes, renderCanvasWidth, sourceSystem, sourceTechnology],
   );
   const connectingSource = connecting ? flowNodes[connecting.sourceInstanceId] : null;
   const monthlyBilling = oicEstimate.billing_msgs_per_month;
   const canvasCursor = panning ? "grabbing" : "grab";
   const processingToolKeys = semantics.coreToolKeys;
-  const presentToolKeys = useMemo(
-    () => new Set(nodes.map((node) => node.toolKey)),
-    [nodes],
-  );
   const activeOverlayKeys = semantics.overlayKeys;
   const includesOicGen3 = processingToolKeys.some((toolKey) => toolKey.toLowerCase() === "oic gen3");
   const suggestedPatterns = semantics.suggestedPatternIds
@@ -950,17 +1104,84 @@ export function IntegrationCanvas({
     Boolean(selectedPatternDefinition) &&
     semantics.matchedCombinations.length > 0 &&
     !semantics.suggestedPatternIds.includes(selectedPattern ?? "");
-  const designViolations = useMemo(
-    () => designViolationsForTools(payloadKb, presentToolKeys, serviceProfilesById),
-    [payloadKb, presentToolKeys, serviceProfilesById],
-  );
+  const compatibilitySignal = useMemo(() => {
+    if (!semantics.hasDirectedRoute) {
+      return {
+        tone: "neutral",
+        title: "Route validation pending",
+        detail: "Connect source, core tools, and destination before compatibility checks can fully validate the design.",
+      };
+    }
+    if (!semantics.hasConnectedRoute) {
+      return {
+        tone: "neutral",
+        title: "Complete the governed route",
+        detail: "The canvas has a path, but it still needs at least one connected core tool before Oracle-backed interoperability checks can approve the route.",
+      };
+    }
+    if (interoperabilityReport.blockers.length > 0) {
+      return {
+        tone: "danger",
+        title: "Oracle-backed blockers detected",
+        detail: "Resolve the blocker findings before saving. The current route conflicts with documented OCI service limits or supported handoff patterns.",
+      };
+    }
+    if (interoperabilityReport.warnings.length > 0 && semantics.matchedCombinations.length > 0) {
+      return {
+        tone: "warning",
+        title: "Supported stack with review notes",
+        detail: "The governed combination is recognized, but Oracle-backed operational caveats still need architect review before you treat this design as production-ready.",
+      };
+    }
+    if (semantics.matchedCombinations.length > 0) {
+      return {
+        tone: "success",
+        title: "Governed combination matched",
+        detail: `The active route aligns with ${semantics.matchedCombinations.map((match) => match.combination.code).join(", ")} and no Oracle-backed blockers are currently open on the active path.`,
+      };
+    }
+    if (interoperabilityReport.warnings.length > 0) {
+      return {
+        tone: "warning",
+        title: "Route connected, but review is still required",
+        detail: "The route is technically connected, but the current stack still carries operational caveats that are not fully covered by the governed combination catalog.",
+      };
+    }
+    if (interoperabilityReport.advisories.length > 0) {
+      return {
+        tone: "neutral",
+        title: "Oracle-backed advisories available",
+        detail: "No hard blockers were found, but the canvas has design advisories worth considering before you finalize the architecture.",
+      };
+    }
+    if (processingToolKeys.length > 0) {
+      return {
+        tone: "neutral",
+        title: "Compatibility not verified yet",
+        detail: "Oracle-backed limit checks passed, but the active route does not yet match a governed OCI combination. Keep reviewing the stack before treating it as a governed standard.",
+      };
+    }
+    return {
+      tone: "neutral",
+      title: "Add governed tools",
+      detail: "Add core tools to start validating service limits, governed combinations, and OCI compatibility guidance.",
+    };
+  }, [
+    interoperabilityReport.advisories.length,
+    interoperabilityReport.blockers.length,
+    interoperabilityReport.warnings.length,
+    processingToolKeys.length,
+    semantics.hasConnectedRoute,
+    semantics.hasDirectedRoute,
+    semantics.matchedCombinations,
+  ]);
 
   function addNode(toolKey: string, point?: { x: number; y: number }): void {
     const nextNode = createNode(toolKey, nodes.length);
     setNodes((current) => {
       const nextPoint = point
         ? {
-            x: clamp(point.x - TOOL_NODE_WIDTH / 2, 20, canvasWidth - TOOL_NODE_WIDTH - 20),
+            x: clamp(point.x - TOOL_NODE_WIDTH / 2, 20, renderCanvasWidth - TOOL_NODE_WIDTH - 20),
             y: clamp(point.y - TOOL_NODE_HEIGHT / 2, 20, CANVAS_HEIGHT - TOOL_NODE_HEIGHT - 20),
           }
         : undefined;
@@ -1075,7 +1296,7 @@ export function IntegrationCanvas({
           node.instanceId === draggingNode.id
             ? {
                 ...node,
-                x: clamp(worldPoint.x - draggingNode.dx, 20, canvasWidth - TOOL_NODE_WIDTH - 20),
+                x: clamp(worldPoint.x - draggingNode.dx, 20, renderCanvasWidth - TOOL_NODE_WIDTH - 20),
                 y: clamp(worldPoint.y - draggingNode.dy, 20, CANVAS_HEIGHT - TOOL_NODE_HEIGHT - 20),
               }
             : node,
@@ -1186,14 +1407,13 @@ export function IntegrationCanvas({
         </div>
       </div>
 
-      {designViolations.length > 0 ? (
-        <section className="rounded-[1.75rem] border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-          <p className="font-semibold">⚠ Design Constraints Detected</p>
-          <div className="mt-3 space-y-2 text-sm">
-            {designViolations.map((violation) => (
-              <p key={violation}>• {violation}</p>
-            ))}
-          </div>
+      {interoperabilityReport.blockers.length > 0 ? (
+        <section className="rounded-[1.75rem] border border-rose-300 bg-rose-50 p-4 text-rose-900 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
+          <p className="font-semibold">Resolve Oracle-backed blockers before saving</p>
+          <p className="mt-2 text-sm">
+            The active route conflicts with documented OCI service limits or supported handoff rules.
+            Adjust the path until the blocker list is empty.
+          </p>
         </section>
       ) : null}
 
@@ -1216,9 +1436,9 @@ export function IntegrationCanvas({
           >
             <svg
               ref={svgRef}
-              width={canvasWidth}
+              width={renderCanvasWidth}
               height={CANVAS_HEIGHT}
-              viewBox={`0 0 ${canvasWidth} ${CANVAS_HEIGHT}`}
+              viewBox={`0 0 ${renderCanvasWidth} ${CANVAS_HEIGHT}`}
               className="block min-w-[960px]"
               style={{ touchAction: "none", cursor: canvasCursor }}
               onMouseDown={handleCanvasMouseDown}
@@ -1237,8 +1457,13 @@ export function IntegrationCanvas({
                     opacity="0.55"
                   />
                 </pattern>
-                <marker id="canvas-arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                  <path d="M0,0 L0,8 L8,4 z" fill="var(--color-accent)" />
+                <marker id="canvas-arrowhead" markerWidth="16" markerHeight="16" refX="13.5" refY="8" orient="auto">
+                  <path
+                    d="M0,0 L0,16 L16,8 z"
+                    fill="var(--color-accent)"
+                    stroke="var(--color-surface)"
+                    strokeWidth="1.2"
+                  />
                 </marker>
               </defs>
 
@@ -1246,7 +1471,7 @@ export function IntegrationCanvas({
                 data-role="canvas-background"
                 x={0}
                 y={0}
-                width={canvasWidth}
+                width={renderCanvasWidth}
                 height={CANVAS_HEIGHT}
                 fill="url(#canvas-grid)"
                 rx={24}
@@ -1268,9 +1493,18 @@ export function IntegrationCanvas({
                       <path
                         d={geometry.path}
                         fill="none"
+                        stroke="var(--color-text-primary)"
+                        strokeOpacity={selected ? 0.34 : 0.24}
+                        strokeWidth={selected ? 9.5 : 8}
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d={geometry.path}
+                        fill="none"
                         stroke="var(--color-accent)"
-                        strokeWidth={selected ? 3.5 : 2.3}
+                        strokeWidth={selected ? 5 : 4}
                         markerEnd="url(#canvas-arrowhead)"
+                        strokeLinecap="round"
                         onClick={(event) => {
                           event.stopPropagation();
                           setSelectedElement({ kind: "edge", id: edge.edgeId });
@@ -1312,7 +1546,7 @@ export function IntegrationCanvas({
                             className="h-8 w-full rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs text-[var(--color-text-primary)]"
                           />
                         </foreignObject>
-                      ) : (
+                      ) : selected || edge.label ? (
                         <foreignObject x={geometry.midpoint.x - 74} y={geometry.midpoint.y - 14} width={148} height={34}>
                           <button
                             type="button"
@@ -1327,17 +1561,17 @@ export function IntegrationCanvas({
                             {edge.label || "Set edge label"}
                           </button>
                         </foreignObject>
-                      )}
+                      ) : null}
                     </g>
                   );
                 })}
 
                 {connecting && connectingSource ? (
-                  <path
+                <path
                     d={`M ${handleCoordinates(connectingSource, connecting.startHandle).x} ${handleCoordinates(connectingSource, connecting.startHandle).y} L ${connecting.currentPoint.x} ${connecting.currentPoint.y}`}
                     fill="none"
                     stroke="var(--color-accent)"
-                    strokeWidth={2}
+                    strokeWidth={3.6}
                     strokeDasharray="8 6"
                   />
                 ) : null}
@@ -1546,7 +1780,7 @@ export function IntegrationCanvas({
                         </foreignObject>
                       ) : null}
 
-                      {!node.fixed ? (
+                      {!node.fixed && (hovered || selected) ? (
                         <foreignObject x={16} y={130} width={width - 32} height={28}>
                           <div className="flex items-center gap-2">
                             <button
@@ -1648,8 +1882,41 @@ export function IntegrationCanvas({
           </section>
 
           <section className="app-card-muted p-4 text-sm">
-            <span className="font-medium text-[var(--color-text-primary)]">Combination suggestions</span>
+            <span className="font-medium text-[var(--color-text-primary)]">Compatibility & combination checks</span>
             <div className="mt-3 space-y-3">
+              <div
+                className={[
+                  "rounded-2xl border p-3 text-xs leading-5",
+                  compatibilitySignal.tone === "success"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200"
+                    : compatibilitySignal.tone === "danger"
+                      ? "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"
+                    : compatibilitySignal.tone === "warning"
+                      ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+                      : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)]",
+                ].join(" ")}
+              >
+                <p className="font-semibold">{compatibilitySignal.title}</p>
+                <p className="mt-2">{compatibilitySignal.detail}</p>
+              </div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
+                Oracle-backed route findings
+              </p>
+              <ValidationFindingGroup
+                title="Blockers"
+                findings={interoperabilityReport.blockers}
+                severity="blocker"
+              />
+              <ValidationFindingGroup
+                title="Warnings"
+                findings={interoperabilityReport.warnings}
+                severity="warning"
+              />
+              <ValidationFindingGroup
+                title="Advisories"
+                findings={interoperabilityReport.advisories}
+                severity="advisory"
+              />
               {semantics.matchedCombinations.length > 0 ? (
                 semantics.matchedCombinations.map((match) => (
                   <article
@@ -1679,7 +1946,7 @@ export function IntegrationCanvas({
                 ))
               ) : (
                 <p className="rounded-xl bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-text-muted)]">
-                  Add and connect governed tools to receive workbook-backed combination hints.
+                  Add and connect governed tools to receive workbook-backed and Oracle-backed compatibility hints.
                 </p>
               )}
             </div>
@@ -1734,7 +2001,9 @@ export function IntegrationCanvas({
         <div className="app-card-muted p-4 text-sm">
           <span className="font-medium text-[var(--color-text-primary)]">Payload ingress</span>
           <p className="mt-2 text-[var(--color-text-secondary)]">{payloadKb ?? "?"} KB / execution</p>
-          <p className="text-[var(--color-text-secondary)]">{frequency ?? "unknown frequency"}</p>
+          <p className="text-[var(--color-text-secondary)]">
+            {frequency ? displayUiValue(frequency) : "unknown frequency"}
+          </p>
         </div>
         <div className="app-card-muted p-4 text-sm">
           <span className="font-medium text-[var(--color-text-primary)]">Processing</span>

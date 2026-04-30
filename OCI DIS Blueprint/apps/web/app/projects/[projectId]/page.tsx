@@ -6,8 +6,9 @@ import { Breadcrumb } from "@/components/breadcrumb";
 import { RecalculateButton } from "@/components/recalculate-button";
 import { VolumetryCard } from "@/components/volumetry-card";
 import { api } from "@/lib/api";
-import { formatCompactNumber, formatDate, formatNumber } from "@/lib/format";
+import { displayQaStatus, formatCompactNumber, formatDate, formatNumber } from "@/lib/format";
 import { parityBenchmark } from "@/lib/parity";
+import { isProjectNotFoundError } from "@/lib/project-errors";
 import type { DashboardCoverageMetric, DashboardSnapshot } from "@/lib/types";
 
 type ProjectDashboardPageProps = {
@@ -21,32 +22,24 @@ function isSyntheticProject(project: { project_metadata?: Record<string, unknown
   return metadata?.synthetic === true || metadata?.seed_type === "synthetic-enterprise";
 }
 
-function isProjectNotFound(error: unknown): boolean {
-  return error instanceof Error && error.message.includes("PROJECT_NOT_FOUND");
-}
-
 export default async function ProjectDashboardPage({
   params,
 }: ProjectDashboardPageProps): Promise<JSX.Element> {
   const projectId = params.projectId;
   let project;
-  let imports;
-  let catalogPage;
-  let snapshots;
-
   try {
-    [project, imports, catalogPage, snapshots] = await Promise.all([
-      api.getProject(projectId),
-      api.listImports(projectId),
-      api.listCatalog(projectId, { page: 1, page_size: 500 }),
-      api.listSnapshots(projectId),
-    ]);
+    project = await api.getProject(projectId);
   } catch (error) {
-    if (isProjectNotFound(error)) {
+    if (isProjectNotFoundError(error)) {
       notFound();
     }
     throw error;
   }
+  const [imports, catalogPage, snapshots] = await Promise.all([
+    api.listImports(projectId),
+    api.listCatalog(projectId, { page: 1, page_size: 500 }),
+    api.listSnapshots(projectId),
+  ]);
 
   const latestImport = imports.batches[0];
   const latestSnapshot = snapshots.snapshots[0];
@@ -91,6 +84,34 @@ export default async function ProjectDashboardPage({
     consolidated?.oic.total_billing_msgs_month,
     prevSnapshot?.consolidated?.oic.total_billing_msgs_month,
   );
+  const platformFootprint = [
+    {
+      label: "Functions Invocations / Month",
+      value: formatCompactNumber(consolidated?.functions.total_invocations_month ?? 0),
+      unit: "invocations",
+      tooltip: "Estimated Oracle Functions calls on the latest snapshot.",
+    },
+    {
+      label: "Streaming Throughput / Month",
+      value: formatNumber(consolidated?.streaming.total_gb_month ?? 0, 1),
+      unit: "GB",
+      tooltip: "Estimated OCI Streaming data volume for the current project footprint.",
+    },
+    {
+      label: "Queue-backed Routes",
+      value: formatNumber(consolidated?.queue.row_count ?? 0),
+      unit: "routes",
+      tooltip: "Integrations currently using OCI Queue in the governed route.",
+    },
+    {
+      label: "Data Integration / Month",
+      value: formatNumber(consolidated?.data_integration.data_processed_gb_month ?? 0, 1),
+      unit: "GB",
+      tooltip: consolidated?.data_integration.workspace_active
+        ? "The latest snapshot includes an active OCI Data Integration workspace."
+        : "No active OCI Data Integration workspace was detected in the latest snapshot.",
+    },
+  ];
 
   return (
     <div className="space-y-8">
@@ -142,7 +163,7 @@ export default async function ProjectDashboardPage({
           tooltip="Live count of catalog integrations in this project."
         />
         <VolumetryCard
-          label="Excluded (Duplicado 2)"
+          label="Excluded (Duplicate 2)"
           value={formatNumber(latestImport?.excluded_count ?? 0)}
           unit="rows"
         />
@@ -160,26 +181,51 @@ export default async function ProjectDashboardPage({
         />
       </section>
 
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="app-label">Platform Footprint</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">
+              Services active beyond OIC
+            </h2>
+          </div>
+          <span className="app-theme-chip">
+            DI workspace {consolidated?.data_integration.workspace_active ? "active" : "inactive"}
+          </span>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-4 md:grid-cols-2">
+          {platformFootprint.map((card) => (
+            <VolumetryCard
+              key={card.label}
+              label={card.label}
+              value={card.value}
+              unit={card.unit}
+              tooltip={card.tooltip}
+            />
+          ))}
+        </div>
+      </section>
+
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
         <article className="app-card p-6">
           <p className="text-xs uppercase tracking-[0.25em] text-slate-500">QA Breakdown</p>
           <div className="mt-5 grid gap-4 md:grid-cols-3">
             <div className="rounded-[1.5rem] border border-[var(--color-qa-ok-text)]/20 bg-[var(--color-qa-ok-bg)] p-5 text-[var(--color-qa-ok-text)]">
-              <p className="text-xs uppercase tracking-[0.25em]">OK</p>
+              <p className="text-xs uppercase tracking-[0.25em]">{displayQaStatus("OK")}</p>
               <p className="mt-3 text-3xl font-semibold">
                 {qaBreakdown.OK ?? 0}
               </p>
               <p className="mt-1 text-xs">{pct(qaBreakdown.OK ?? 0)}</p>
             </div>
             <div className="rounded-[1.5rem] border border-[var(--color-qa-revisar-text)]/20 bg-[var(--color-qa-revisar-bg)] p-5 text-[var(--color-qa-revisar-text)]">
-              <p className="text-xs uppercase tracking-[0.25em]">REVISAR</p>
+              <p className="text-xs uppercase tracking-[0.25em]">{displayQaStatus("REVISAR")}</p>
               <p className="mt-3 text-3xl font-semibold">
                 {qaBreakdown.REVISAR ?? 0}
               </p>
               <p className="mt-1 text-xs">{pct(qaBreakdown.REVISAR ?? 0)}</p>
             </div>
             <div className="rounded-[1.5rem] border border-[var(--color-qa-pending-text)]/20 bg-[var(--color-qa-pending-bg)] p-5 text-[var(--color-qa-pending-text)]">
-              <p className="text-xs uppercase tracking-[0.25em]">PENDING</p>
+              <p className="text-xs uppercase tracking-[0.25em]">{displayQaStatus("PENDING")}</p>
               <p className="mt-3 text-3xl font-semibold">
                 {qaBreakdown.PENDING ?? 0}
               </p>
@@ -222,7 +268,7 @@ export default async function ProjectDashboardPage({
               <dd className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{parityBenchmark.tbqRows}</dd>
             </div>
             <div className="rounded-[1.5rem] bg-[var(--color-surface-2)] p-4">
-              <dt className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-muted)]">Expected QA Revisar</dt>
+              <dt className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-muted)]">Expected QA Review</dt>
               <dd className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{parityBenchmark.qaRevisar}</dd>
             </div>
           </dl>

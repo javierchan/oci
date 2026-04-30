@@ -1,0 +1,1076 @@
+{
+  "generated_at": "2026-04-29T18:35:06.975Z",
+  "out_dir": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429",
+  "screenshots_dir": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens",
+  "base_url": "http://localhost:3000",
+  "api_url": "http://localhost:8000/api/v1",
+  "project": {
+    "id": "20a23466-dd52-4d5a-a3f5-1bc66f659c78",
+    "name": "OCI DIS Blueprint Demo Enterprise 2026 2026-04-29 18:27:18",
+    "owner_id": "synthetic-admin",
+    "description": "Deterministic enterprise-scale synthetic OCI integration portfolio used to validate catalog, graph, volumetry, dashboard, justifications, audit, and export flows end to end.",
+    "status": "active",
+    "project_metadata": {
+      "synthetic": true,
+      "seed_type": "synthetic-enterprise",
+      "seed_actor": "synthetic-generator",
+      "generator": "enterprise-v1",
+      "seed": 20260429,
+      "import_included_count": 420,
+      "manual_count": 60,
+      "excluded_import_count": 36
+    },
+    "created_at": "2026-04-29T18:27:18.849212Z",
+    "updated_at": "2026-04-29T18:27:18.849213Z"
+  },
+  "dynamic_ids": {
+    "project_id": "20a23466-dd52-4d5a-a3f5-1bc66f659c78",
+    "integration_id": "55d40a1b-bad5-4426-af01-606074e3b857",
+    "import_batch_id": "85c9fcb8-9185-451d-a0e3-23a1868618b2",
+    "assumption_default": "1.0.0",
+    "assumption_non_default": "1.0.1",
+    "dictionary_category": "FREQUENCY",
+    "synthetic_job_normal": "7e2ff2be-9b62-4fa7-8b9a-812f8501cdcf",
+    "synthetic_job_error": null
+  },
+  "captures": [
+    {
+      "name": "01_projects_baseline",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/01_projects_baseline.png",
+      "url": "http://localhost:3000/projects",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "nav",
+        "theme-toggle",
+        "projects-page-client"
+      ],
+      "notes": "Projects landing page baseline with project cards/table and persistent navigation.",
+      "console_errors": []
+    },
+    {
+      "name": "02_projects_search_active",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/02_projects_search_active.png",
+      "url": "http://localhost:3000/projects",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "projects-page-client"
+      ],
+      "notes": "Projects page with search filter active.",
+      "console_errors": []
+    },
+    {
+      "name": "03_projects_new_form",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/03_projects_new_form.png",
+      "url": "http://localhost:3000/projects",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "projects-page-client"
+      ],
+      "notes": "Projects page with create form expanded.",
+      "console_errors": []
+    },
+    {
+      "name": "04_projects_archive_modal",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/04_projects_archive_modal.png",
+      "url": "http://localhost:3000/projects",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "projects-page-client",
+        "modal"
+      ],
+      "notes": "ConfirmModal opened from an Archive action on the projects surface.",
+      "console_errors": []
+    },
+    {
+      "name": "05_projects_toast_validation",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/05_projects_toast_validation.png",
+      "url": "http://localhost:3000/projects",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "projects-page-client",
+        "toast"
+      ],
+      "notes": "ToastStack validation error triggered without mutating data.",
+      "console_errors": []
+    },
+    {
+      "name": "06_projects_mobile",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/06_projects_mobile.png",
+      "url": "http://localhost:3000/projects",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "components": [
+        "nav",
+        "projects-page-client"
+      ],
+      "notes": "Projects page mobile layout.",
+      "console_errors": []
+    },
+    {
+      "name": "07_projects_dark",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/07_projects_dark.png",
+      "url": "http://localhost:3000/projects",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "dark",
+      "components": [
+        "nav",
+        "theme-toggle",
+        "projects-page-client"
+      ],
+      "notes": "Projects page dark theme.",
+      "console_errors": []
+    },
+    {
+      "name": "08_dashboard_baseline",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/08_dashboard_baseline.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "nav",
+        "breadcrumb",
+        "recalculate-button",
+        "volumetry-card"
+      ],
+      "notes": "Project dashboard baseline with KPI strip and action header.",
+      "console_errors": []
+    },
+    {
+      "name": "09_dashboard_dark",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/09_dashboard_dark.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "dark",
+      "components": [
+        "nav",
+        "breadcrumb",
+        "recalculate-button",
+        "volumetry-card"
+      ],
+      "notes": "Project dashboard in dark theme.",
+      "console_errors": []
+    },
+    {
+      "name": "10_import_baseline",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/10_import_baseline.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/import",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "nav",
+        "breadcrumb",
+        "import-upload"
+      ],
+      "notes": "Import surface baseline with template/download/upload/history affordances.",
+      "console_errors": []
+    },
+    {
+      "name": "11_import_batch_detail",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/11_import_batch_detail.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/import?batch_id=85c9fcb8-9185-451d-a0e3-23a1868618b2&row=1",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "import-upload"
+      ],
+      "notes": "Import page with source-row table loaded for a completed batch.",
+      "console_errors": []
+    },
+    {
+      "name": "17_capture_landing",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/17_capture_landing.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/capture",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "nav",
+        "breadcrumb",
+        "capture-history-client"
+      ],
+      "notes": "Capture landing with recent guided captures.",
+      "console_errors": []
+    },
+    {
+      "name": "18_capture_remove_modal",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/18_capture_remove_modal.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/capture",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "capture-history-client",
+        "modal"
+      ],
+      "notes": "Removal ConfirmModal opened from capture history.",
+      "console_errors": []
+    },
+    {
+      "name": "12_capture_wizard_step1",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/12_capture_wizard_step1.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/capture/new",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "nav",
+        "breadcrumb",
+        "capture-wizard",
+        "capture-step-identity"
+      ],
+      "notes": "Capture wizard step 1 with identity fields populated.",
+      "console_errors": []
+    },
+    {
+      "name": "13_capture_wizard_step2_autocomplete",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/13_capture_wizard_step2_autocomplete.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/capture/new",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "capture-wizard",
+        "capture-step-source",
+        "system-autocomplete"
+      ],
+      "notes": "Source-system autocomplete open with live suggestions.",
+      "console_errors": []
+    },
+    {
+      "name": "14_capture_wizard_step3_duplicates",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/14_capture_wizard_step3_duplicates.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/capture/new",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "capture-wizard",
+        "capture-step-destination",
+        "system-autocomplete"
+      ],
+      "notes": "Destination step with duplicate-check state exposed.",
+      "console_errors": []
+    },
+    {
+      "name": "15_capture_wizard_step4_previews",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/15_capture_wizard_step4_previews.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/capture/new",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "capture-wizard",
+        "capture-step-technical",
+        "oic-estimate-preview",
+        "qa-preview",
+        "pattern-support-badge"
+      ],
+      "notes": "Technical step with live OIC estimate and QA preview components populated.",
+      "console_errors": []
+    },
+    {
+      "name": "16_capture_wizard_step5_review",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/16_capture_wizard_step5_review.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/capture/new",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "capture-wizard",
+        "capture-step-review"
+      ],
+      "notes": "Capture wizard review step before submit.",
+      "console_errors": []
+    },
+    {
+      "name": "19_catalog_baseline",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/19_catalog_baseline.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "nav",
+        "breadcrumb",
+        "catalog-table",
+        "pattern-badge",
+        "complexity-badge",
+        "qa-badge"
+      ],
+      "notes": "Catalog baseline at desktop width.",
+      "console_errors": []
+    },
+    {
+      "name": "20_catalog_filtered",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/20_catalog_filtered.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog?search=SAP&qa_status=REVISAR",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "catalog-table",
+        "pattern-badge",
+        "complexity-badge",
+        "qa-badge"
+      ],
+      "notes": "Catalog with active text and QA filters.",
+      "console_errors": []
+    },
+    {
+      "name": "21_catalog_empty_state",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/21_catalog_empty_state.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog?search=ZZZZZZ_AUDIT_NO_MATCH",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "catalog-table"
+      ],
+      "notes": "Catalog empty state using an impossible search term.",
+      "console_errors": []
+    },
+    {
+      "name": "22_catalog_loading_skeleton",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/22_catalog_loading_skeleton.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "catalog-table",
+        "skeleton"
+      ],
+      "notes": "Catalog loading state with delayed client refresh to expose skeleton rows.",
+      "console_errors": []
+    },
+    {
+      "name": "23_catalog_mobile",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/23_catalog_mobile.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "components": [
+        "catalog-table",
+        "pattern-badge",
+        "complexity-badge",
+        "qa-badge"
+      ],
+      "notes": "Catalog mobile layout.",
+      "console_errors": []
+    },
+    {
+      "name": "24_catalog_dark",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/24_catalog_dark.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "dark",
+      "components": [
+        "catalog-table",
+        "pattern-badge",
+        "complexity-badge",
+        "qa-badge"
+      ],
+      "notes": "Catalog dark theme.",
+      "console_errors": []
+    },
+    {
+      "name": "25_catalog_row_edit_affordance",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/25_catalog_row_edit_affordance.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "catalog-table"
+      ],
+      "notes": "Catalog row action affordance visible before opening integration detail.",
+      "console_errors": []
+    },
+    {
+      "name": "26_integration_detail_top",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/26_integration_detail_top.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog/55d40a1b-bad5-4426-af01-606074e3b857",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "nav",
+        "breadcrumb",
+        "qa-badge",
+        "integration-patch-form"
+      ],
+      "notes": "Integration detail top section with source data and patch form visible.",
+      "console_errors": []
+    },
+    {
+      "name": "27_integration_patch_form",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/27_integration_patch_form.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog/55d40a1b-bad5-4426-af01-606074e3b857",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "integration-patch-form",
+        "pattern-badge",
+        "pattern-support-badge",
+        "qa-badge"
+      ],
+      "notes": "Patch form close-up including current pattern, support badge, and actions.",
+      "console_errors": []
+    },
+    {
+      "name": "28_integration_remove_modal",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/28_integration_remove_modal.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog/55d40a1b-bad5-4426-af01-606074e3b857",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "integration-patch-form",
+        "modal"
+      ],
+      "notes": "Integration removal ConfirmModal opened without confirming.",
+      "console_errors": []
+    },
+    {
+      "name": "29_integration_canvas_baseline",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/29_integration_canvas_baseline.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog/55d40a1b-bad5-4426-af01-606074e3b857",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "integration-design-canvas-panel",
+        "integration-canvas",
+        "pattern-support-badge"
+      ],
+      "notes": "Integration design canvas baseline with palette, route, and governance summary.",
+      "console_errors": []
+    },
+    {
+      "name": "30_integration_canvas_selected_node",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/30_integration_canvas_selected_node.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog/55d40a1b-bad5-4426-af01-606074e3b857",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "integration-design-canvas-panel",
+        "integration-canvas"
+      ],
+      "notes": "Canvas after selecting the first editable node to expose handles and inline actions.",
+      "console_errors": []
+    },
+    {
+      "name": "31_integration_lineage_raw_values",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/31_integration_lineage_raw_values.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog/55d40a1b-bad5-4426-af01-606074e3b857",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "raw-column-values-table",
+        "truncated-cell"
+      ],
+      "notes": "Lower detail surface with source lineage and raw-column-values table.",
+      "console_errors": []
+    },
+    {
+      "name": "32_integration_dark",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/32_integration_dark.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog/55d40a1b-bad5-4426-af01-606074e3b857",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "dark",
+      "components": [
+        "integration-patch-form",
+        "integration-design-canvas-panel",
+        "integration-canvas"
+      ],
+      "notes": "Integration detail in dark theme.",
+      "console_errors": []
+    },
+    {
+      "name": "33_integration_mobile",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/33_integration_mobile.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/catalog/55d40a1b-bad5-4426-af01-606074e3b857",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "components": [
+        "integration-patch-form",
+        "integration-design-canvas-panel"
+      ],
+      "notes": "Integration detail mobile layout.",
+      "console_errors": []
+    },
+    {
+      "name": "34_graph_baseline",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/34_graph_baseline.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/graph",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "nav",
+        "breadcrumb",
+        "graph-controls",
+        "graph-export-button",
+        "integration-graph",
+        "graph-detail-panel"
+      ],
+      "notes": "Graph baseline with controls, export affordance, and empty detail panel.",
+      "console_errors": []
+    },
+    {
+      "name": "35_graph_node_selected",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/35_graph_node_selected.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/graph",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "integration-graph",
+        "graph-detail-panel"
+      ],
+      "notes": "Graph after selecting the first node to expose system detail panel.",
+      "console_errors": []
+    },
+    {
+      "name": "36_graph_edge_selected",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/36_graph_edge_selected.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/graph",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "integration-graph",
+        "graph-detail-panel"
+      ],
+      "notes": "Graph after selecting the first edge to expose relationship detail panel.",
+      "console_errors": []
+    },
+    {
+      "name": "37_graph_system_filter",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/37_graph_system_filter.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/graph",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "graph-controls",
+        "integration-graph",
+        "graph-detail-panel"
+      ],
+      "notes": "Graph with system filter applied.",
+      "console_errors": []
+    },
+    {
+      "name": "38_graph_mobile_fallback",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/38_graph_mobile_fallback.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/graph",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "components": [
+        "graph-controls",
+        "graph-detail-panel"
+      ],
+      "notes": "Graph mobile fallback message on small screens.",
+      "console_errors": []
+    },
+    {
+      "name": "39_graph_dark",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/39_graph_dark.png",
+      "url": "http://localhost:3000/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78/graph",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "dark",
+      "components": [
+        "graph-controls",
+        "graph-export-button",
+        "integration-graph",
+        "graph-detail-panel"
+      ],
+      "notes": "Graph in dark theme.",
+      "console_errors": []
+    },
+    {
+      "name": "40_project_not_found",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/40_project_not_found.png",
+      "url": "http://localhost:3000/projects/missing?requested=00000000-0000-0000-0000-000000000000",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "nav",
+        "breadcrumb"
+      ],
+      "notes": "Graceful invalid-project not-found surface.",
+      "console_errors": []
+    },
+    {
+      "name": "41_admin_hub",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/41_admin_hub.png",
+      "url": "http://localhost:3000/admin",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "nav",
+        "breadcrumb"
+      ],
+      "notes": "Admin governance hub.",
+      "console_errors": []
+    },
+    {
+      "name": "42_admin_patterns_baseline",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/42_admin_patterns_baseline.png",
+      "url": "http://localhost:3000/admin/patterns",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "nav",
+        "breadcrumb",
+        "pattern-support-badge"
+      ],
+      "notes": "Admin patterns baseline table.",
+      "console_errors": []
+    },
+    {
+      "name": "43_admin_pattern_form",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/43_admin_pattern_form.png",
+      "url": "http://localhost:3000/admin/patterns",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "admin-pattern-form"
+      ],
+      "notes": "Pattern create form open.",
+      "console_errors": []
+    },
+    {
+      "name": "44_admin_pattern_delete_modal",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/44_admin_pattern_delete_modal.png",
+      "url": "http://localhost:3000/admin/patterns",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "admin-confirm-delete"
+      ],
+      "notes": "Admin delete confirmation modal from patterns.",
+      "console_errors": []
+    },
+    {
+      "name": "45_admin_assumptions_baseline",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/45_admin_assumptions_baseline.png",
+      "url": "http://localhost:3000/admin/assumptions",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "breadcrumb"
+      ],
+      "notes": "Assumptions overview table baseline.",
+      "console_errors": []
+    },
+    {
+      "name": "46_admin_assumption_form",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/46_admin_assumption_form.png",
+      "url": "http://localhost:3000/admin/assumptions",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "admin-assumption-form"
+      ],
+      "notes": "Assumption create/clone form open.",
+      "console_errors": []
+    },
+    {
+      "name": "47_admin_assumption_detail_default",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/47_admin_assumption_detail_default.png",
+      "url": "http://localhost:3000/admin/assumptions/1.0.0",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "breadcrumb"
+      ],
+      "notes": "Default assumption version detail page.",
+      "console_errors": []
+    },
+    {
+      "name": "48_admin_assumption_detail_nondefault",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/48_admin_assumption_detail_nondefault.png",
+      "url": "http://localhost:3000/admin/assumptions/1.0.1",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "breadcrumb"
+      ],
+      "notes": "Non-default assumption version detail page with alternate action state.",
+      "console_errors": []
+    },
+    {
+      "name": "49_admin_dictionaries_overview",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/49_admin_dictionaries_overview.png",
+      "url": "http://localhost:3000/admin/dictionaries",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "breadcrumb"
+      ],
+      "notes": "Dictionary categories overview.",
+      "console_errors": []
+    },
+    {
+      "name": "50_admin_dictionary_category_baseline",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/50_admin_dictionary_category_baseline.png",
+      "url": "http://localhost:3000/admin/dictionaries/FREQUENCY",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "breadcrumb"
+      ],
+      "notes": "Dictionary category baseline table.",
+      "console_errors": []
+    },
+    {
+      "name": "51_admin_dictionary_form_create",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/51_admin_dictionary_form_create.png",
+      "url": "http://localhost:3000/admin/dictionaries/FREQUENCY",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "admin-dictionary-form"
+      ],
+      "notes": "Dictionary create form open.",
+      "console_errors": []
+    },
+    {
+      "name": "52_admin_dictionary_form_edit",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/52_admin_dictionary_form_edit.png",
+      "url": "http://localhost:3000/admin/dictionaries/FREQUENCY",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "admin-dictionary-form"
+      ],
+      "notes": "Dictionary edit form open.",
+      "console_errors": []
+    },
+    {
+      "name": "53_admin_dictionary_delete_modal",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/53_admin_dictionary_delete_modal.png",
+      "url": "http://localhost:3000/admin/dictionaries/FREQUENCY",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "admin-confirm-delete"
+      ],
+      "notes": "Admin delete confirmation modal from dictionary category.",
+      "console_errors": []
+    },
+    {
+      "name": "54_admin_synthetic_lab",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/54_admin_synthetic_lab.png",
+      "url": "http://localhost:3000/admin/synthetic",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "breadcrumb"
+      ],
+      "notes": "Synthetic Lab baseline with job submission form and recent jobs.",
+      "console_errors": []
+    },
+    {
+      "name": "55_admin_synthetic_job_normal",
+      "path": "/Users/javierchan/.codex/worktrees/b840/oci/OCI DIS Blueprint/output/playwright/oci-dis-full-audit-20260429/screens/55_admin_synthetic_job_normal.png",
+      "url": "http://localhost:3000/admin/synthetic/7e2ff2be-9b62-4fa7-8b9a-812f8501cdcf",
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      },
+      "theme": "light",
+      "components": [
+        "breadcrumb"
+      ],
+      "notes": "Synthetic job detail page in normal cleaned-up state.",
+      "console_errors": []
+    }
+  ],
+  "coverage": {
+    "inventory": [
+      "admin-assumption-form",
+      "admin-confirm-delete",
+      "admin-dictionary-form",
+      "admin-pattern-form",
+      "breadcrumb",
+      "capture-history-client",
+      "capture-step-destination",
+      "capture-step-identity",
+      "capture-step-review",
+      "capture-step-source",
+      "capture-step-technical",
+      "capture-wizard",
+      "catalog-table",
+      "complexity-badge",
+      "graph-controls",
+      "graph-detail-panel",
+      "graph-export-button",
+      "import-upload",
+      "integration-canvas",
+      "integration-design-canvas-panel",
+      "integration-graph",
+      "integration-patch-form",
+      "modal",
+      "nav",
+      "oic-estimate-preview",
+      "pattern-badge",
+      "pattern-support-badge",
+      "projects-page-client",
+      "qa-badge",
+      "qa-preview",
+      "raw-column-values-table",
+      "recalculate-button",
+      "skeleton",
+      "system-autocomplete",
+      "theme-toggle",
+      "toast",
+      "truncated-cell",
+      "volumetry-card"
+    ],
+    "covered": [
+      "admin-assumption-form",
+      "admin-confirm-delete",
+      "admin-dictionary-form",
+      "admin-pattern-form",
+      "breadcrumb",
+      "capture-history-client",
+      "capture-step-destination",
+      "capture-step-identity",
+      "capture-step-review",
+      "capture-step-source",
+      "capture-step-technical",
+      "capture-wizard",
+      "catalog-table",
+      "complexity-badge",
+      "graph-controls",
+      "graph-detail-panel",
+      "graph-export-button",
+      "import-upload",
+      "integration-canvas",
+      "integration-design-canvas-panel",
+      "integration-graph",
+      "integration-patch-form",
+      "modal",
+      "nav",
+      "oic-estimate-preview",
+      "pattern-badge",
+      "pattern-support-badge",
+      "projects-page-client",
+      "qa-badge",
+      "qa-preview",
+      "raw-column-values-table",
+      "recalculate-button",
+      "skeleton",
+      "system-autocomplete",
+      "theme-toggle",
+      "toast",
+      "truncated-cell",
+      "volumetry-card"
+    ],
+    "missing": []
+  },
+  "console_errors": {
+    "01_projects_baseline": [],
+    "02_projects_search_active": [],
+    "03_projects_new_form": [],
+    "04_projects_archive_modal": [],
+    "05_projects_toast_validation": [],
+    "06_projects_mobile": [],
+    "07_projects_dark": [],
+    "08_dashboard_baseline": [],
+    "09_dashboard_dark": [],
+    "10_import_baseline": [],
+    "11_import_batch_detail": [],
+    "17_capture_landing": [],
+    "18_capture_remove_modal": [],
+    "12_capture_wizard_step1": [],
+    "19_catalog_baseline": [],
+    "20_catalog_filtered": [],
+    "21_catalog_empty_state": [],
+    "22_catalog_loading_skeleton": [],
+    "23_catalog_mobile": [],
+    "24_catalog_dark": [],
+    "25_catalog_row_edit_affordance": [],
+    "26_integration_detail_top": [],
+    "27_integration_patch_form": [],
+    "28_integration_remove_modal": [],
+    "29_integration_canvas_baseline": [],
+    "30_integration_canvas_selected_node": [],
+    "31_integration_lineage_raw_values": [],
+    "32_integration_dark": [],
+    "33_integration_mobile": [],
+    "34_graph_baseline": [],
+    "35_graph_node_selected": [],
+    "36_graph_edge_selected": [],
+    "37_graph_system_filter": [],
+    "38_graph_mobile_fallback": [],
+    "39_graph_dark": [],
+    "40_project_not_found": [],
+    "41_admin_hub": [],
+    "42_admin_patterns_baseline": [],
+    "43_admin_pattern_form": [],
+    "44_admin_pattern_delete_modal": [],
+    "45_admin_assumptions_baseline": [],
+    "46_admin_assumption_form": [],
+    "47_admin_assumption_detail_default": [],
+    "48_admin_assumption_detail_nondefault": [],
+    "49_admin_dictionaries_overview": [],
+    "50_admin_dictionary_category_baseline": [],
+    "51_admin_dictionary_form_create": [],
+    "52_admin_dictionary_form_edit": [],
+    "53_admin_dictionary_delete_modal": [],
+    "54_admin_synthetic_lab": [],
+    "55_admin_synthetic_job_normal": []
+  },
+  "failures": []
+}

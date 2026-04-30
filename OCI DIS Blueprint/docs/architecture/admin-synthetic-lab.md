@@ -19,7 +19,7 @@ The current product already has the right primitives:
 - `app/services/` already owns import, catalog mutation, recalculation,
   dashboard, export, and justification behavior.
 - `apps/web/app/admin/` already exists as the governance surface and is the
-  correct home for a future admin-only synthetic lab.
+  correct home for the admin-only synthetic lab.
 
 Because those primitives already exist, the synthetic capability should be
 implemented as a governed orchestration layer on top of existing services, not
@@ -37,17 +37,20 @@ Current delivery slice:
 - reusable backend generation service
 - executable script for deterministic seeding
 - generated reports for validation and traceability
-
-Future productized slice:
-
 - admin-only API
 - persisted job tracking
 - async worker execution
 - full admin UI
 
+Later extension slice:
+
+- additional governed presets beyond the default enterprise reference template
+- richer preset management and policy authoring
+- expanded operational runbooks and scheduled synthetic refresh workflows
+
 ## Frontend Placement Real
 
-Recommended home in the current Next.js app:
+Implemented home in the current Next.js app:
 
 - `apps/web/app/admin/page.tsx`
   Add a clear entry point card for Synthetic Lab.
@@ -62,7 +65,7 @@ duplicating catalog or dashboard rendering inside the admin page.
 
 ## Backend Placement Real
 
-Recommended backend layout:
+Implemented backend layout:
 
 - `apps/api/app/services/synthetic_service.py`
   Source of truth for deterministic dataset construction and orchestration.
@@ -80,7 +83,7 @@ placing orchestration inside the calc engine.
 
 ## Recommended Route Set
 
-Future admin-only API surface:
+Implemented admin-only API surface:
 
 - `POST /api/v1/admin/synthetic/jobs`
   Submit a governed generation request.
@@ -245,13 +248,167 @@ Smoke tests against the running stack:
 - volumetry snapshots
 - audit
 
-Frontend tests for the future admin UI:
+Frontend tests for the admin UI:
 
 - preset selection and validation
 - job submission
 - progress polling
 - artifact access
 - synthetic labeling visibility
+
+## Schema-Dependent Runtime Validation Contract
+
+The Admin Synthetic Lab depends on the persisted
+`synthetic_generation_jobs` table introduced by Alembic migration
+`20260428_0007`. Code-level quality gates are not enough on their own for this
+feature. The running stack must also be schema-aligned before `/admin/synthetic`
+or `/api/v1/admin/synthetic/jobs` are treated as validated.
+
+Use this closeout sequence whenever the synthetic job model, router, or worker
+changes:
+
+```bash
+# 1. Apply the latest API schema to the running dev stack.
+docker compose exec -T api alembic upgrade head
+
+# 2. Confirm the running API is healthy.
+curl -sf http://localhost:8000/health
+
+# 3. Smoke the read-only admin synthetic endpoints with admin headers.
+curl -sf \
+  -H 'X-Actor-Id: web-admin' \
+  -H 'X-Actor-Role: Admin' \
+  http://localhost:8000/api/v1/admin/synthetic/presets
+
+curl -sf \
+  -H 'X-Actor-Id: web-admin' \
+  -H 'X-Actor-Role: Admin' \
+  'http://localhost:8000/api/v1/admin/synthetic/jobs?limit=20'
+```
+
+Then reload the live browser page at `http://localhost:3000/admin/synthetic`
+and confirm all of the following:
+
+- the page does not show `Failed to fetch`
+- the preset selector renders
+- the `Project Name` field renders
+- the `Create Synthetic Job` button renders in an enabled state
+- the recent jobs table renders either real jobs or the empty-state message
+
+When the worker, preset normalization, or cleanup behavior changes, the
+read-only smoke above is necessary but not sufficient. Run the governed live
+smoke path as well:
+
+Preferred automated path:
+
+```bash
+./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_lab.py
+```
+
+That script verifies the full bounded contract for the `ephemeral-smoke`
+preset:
+
+- API health
+- preset catalog exposure
+- admin job creation
+- polling to a terminal state
+- recent jobs list visibility
+- `cleaned_up` terminal payload with populated `cleanup_removed_paths`
+- bounded validation targets and full `#01` through `#17` pattern coverage
+
+The same script also supports the retained bounded preset:
+
+```bash
+./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_lab.py --preset-code retained-smoke
+```
+
+For `retained-smoke`, the expected runtime sequence is:
+
+- job reaches `completed`
+- generated project remains present long enough to exercise the cleanup route
+- cleanup endpoint is invoked by the script
+- final job status becomes `cleaned_up`
+- `cleanup_removed_paths` is populated in the final payload
+
+Preferred retry-runtime path:
+
+```bash
+./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_retry.py
+```
+
+That script intentionally seeds a bounded failed source job through the real
+service layer, calls `POST /api/v1/admin/synthetic/jobs/{job_id}/retry`, waits
+for the retried job to settle, validates the bounded counts and pattern
+coverage, and finally cleans up the seeded failed source job so the stack is
+not left with a dangling failed runtime artifact.
+
+Preferred browser E2E path:
+
+```bash
+cd apps/web
+npm run test:e2e:install
+npm run test:e2e
+```
+
+The Playwright smoke suite validates:
+
+- the `/admin/synthetic` landing page renders governed presets
+- the browser can submit a bounded `ephemeral-smoke` job from the UI
+- the recent-jobs table renders the created job
+- the matching `/admin/synthetic/{job_id}` detail page loads successfully
+
+Operational note for local agent environments:
+
+- on sandboxed macOS agent shells, Playwright browser launch may require an
+  unsandboxed execution path because the browser runtime can fail with Mach-port
+  permission errors before page navigation begins
+
+Manual fallback:
+
+```bash
+# 4. If the synthetic worker code changed, restart the worker and confirm the
+#    synthetic task is registered before submitting a live job.
+docker compose restart worker
+docker compose logs --tail=120 worker
+
+# 5. Submit the bounded smoke preset.
+curl -sf \
+  -X POST \
+  -H 'X-Actor-Id: web-admin' \
+  -H 'X-Actor-Role: Admin' \
+  -H 'Content-Type: application/json' \
+  http://localhost:8000/api/v1/admin/synthetic/jobs \
+  -d '{"preset_code":"ephemeral-smoke"}'
+
+# 6. Poll the created job until it reaches a terminal status.
+curl -sf \
+  -H 'X-Actor-Id: web-admin' \
+  -H 'X-Actor-Role: Admin' \
+  http://localhost:8000/api/v1/admin/synthetic/jobs/<job_id>
+```
+
+Closeout expectations for the bounded smoke preset:
+
+- job status reaches `cleaned_up`
+- `normalized_payload.cleanup_policy = "ephemeral_auto_cleanup"`
+- top-level `project_id = null` after cleanup
+- `result_summary.cleanup_removed_paths` is populated
+- validation meets the bounded targets:
+  `catalog_count = 18`, `import_included_count = 12`, `manual_count = 6`,
+  `excluded_import_count = 2`, `distinct_systems >= 12`
+- the recent jobs table renders the cleaned-up run
+- the job detail page renders normalized inputs, validation results, and
+  cleanup metadata without browser console errors
+
+If the DB schema is behind, the admin synthetic routes must now return a
+structured `503` response with:
+
+- `error_code: SYNTHETIC_SCHEMA_NOT_READY`
+- `expected_migration: 20260428_0007`
+- `recovery_hint: Run 'alembic upgrade head' for the API service and retry.`
+
+That failure mode is intentional. It is preferable to an opaque browser-side
+network error because it makes the migration dependency explicit and actionable.
 
 ## Delivery Slices
 

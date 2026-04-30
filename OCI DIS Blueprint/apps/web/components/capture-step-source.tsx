@@ -11,7 +11,7 @@ export function CaptureStepSource({
   updateField,
 }: CaptureStepProps): JSX.Element {
   return (
-    <div className="grid gap-5 md:grid-cols-2">
+    <div className="grid gap-4 md:grid-cols-2">
       <SystemAutocomplete
         projectId={projectId}
         label="Source System"
