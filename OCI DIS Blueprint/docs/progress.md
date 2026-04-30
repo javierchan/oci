@@ -376,7 +376,7 @@ None
 
 - `apps/api/app/schemas/project.py`, `apps/api/app/services/project_service.py`, and `apps/api/app/routers/projects.py` — replaced the stubbed project patch route with a typed, service-backed implementation that emits `project_updated` audit events
 - `apps/api/app/tests/` — added the backend API integration test harness with isolated async SQLite fixtures and route-level coverage for project patch/audit, manual catalog capture/lineage, and the capture-template export endpoint
-- `.github/workflows/api-validation.yml` — added a reproducible backend validation gate that runs Ruff, mypy, the API integration suite, calc-engine parity tests, and the OpenAPI sync check
+- `.github/workflows/api-validation.yml` — added a reproducible backend validation gate at the time of this remediation; retired on 2026-04-30 because the repository now follows Docker-first local validation and no longer keeps active GitHub Actions workflows in `.github/workflows/`
 - `apps/api/scripts/export_openapi.py` and `docs/api/openapi.yaml` — restored the source-controlled OpenAPI artifact and added a `--check` mode for drift detection
 - `README.md` — documented the refresh and verification commands for the committed OpenAPI artifact
 
@@ -390,8 +390,7 @@ calc-engine parity: 26 passed
 TypeScript: 0 errors
 OpenAPI sync: up to date
 Workflow sanity:
-- name: API Validation
-- job: backend-quality
+- retired on 2026-04-30; no active `.github/workflows/` files remain
 ```
 
 ### Gaps / known limitations

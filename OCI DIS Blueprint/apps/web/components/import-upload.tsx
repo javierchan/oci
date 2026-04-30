@@ -11,7 +11,7 @@ import { ConfirmModal } from "@/components/modal";
 import { emitToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { APP_VERSION } from "@/lib/app-version";
-import { formatDate } from "@/lib/format";
+import { displaySourceFieldLabel, formatDate } from "@/lib/format";
 import type { ImportBatch, SourceRowList } from "@/lib/types";
 
 type ImportUploadProps = {
@@ -246,7 +246,7 @@ export function ImportUpload({
                 >
                   <p className="text-sm font-medium text-[var(--color-text-primary)]">{column.label}</p>
                   <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                    Workbook header: {column.workbookHeader}
+                    Accepted header: {displaySourceFieldLabel(column.workbookHeader)}
                   </p>
                 </div>
               ))}
@@ -305,7 +305,7 @@ export function ImportUpload({
               Upload governed workbook
             </h3>
             <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
-              Drag and drop the `.xlsx` file here, or click to browse. The governed template maps to the workbook header set from `Catálogo de Integraciones`, and the API will queue, parse, normalize, and persist rows in the background.
+              Drag and drop the `.xlsx` file here, or click to browse. The governed template maps to the Integration Catalog header set, and the API will queue, parse, normalize, and persist rows in the background.
             </p>
             {selectedFile ? (
               <div className="mt-5 inline-flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4 text-left">

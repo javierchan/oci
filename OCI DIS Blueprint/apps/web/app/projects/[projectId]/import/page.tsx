@@ -8,22 +8,24 @@ import { api } from "@/lib/api";
 import { isProjectNotFoundError } from "@/lib/project-errors";
 
 type ProjectImportPageProps = {
-  params: {
+  params: Promise<{
     projectId: string;
-  };
-  searchParams: {
+  }>;
+  searchParams: Promise<{
     batch_id?: string;
     row?: string;
-  };
+  }>;
 };
 
 export default async function ProjectImportPage({
   params,
   searchParams,
 }: ProjectImportPageProps): Promise<JSX.Element> {
+  const { projectId } = await params;
+  const resolvedSearchParams = await searchParams;
   let project;
   try {
-    project = await api.getProject(params.projectId);
+    project = await api.getProject(projectId);
   } catch (error) {
     if (isProjectNotFoundError(error)) {
       notFound();
@@ -31,9 +33,9 @@ export default async function ProjectImportPage({
     throw error;
   }
   const [imports, selectedRows] = await Promise.all([
-    api.listImports(params.projectId),
-    searchParams.batch_id
-      ? api.listImportRows(params.projectId, searchParams.batch_id, { page: 1, page_size: 200 })
+    api.listImports(projectId),
+    resolvedSearchParams.batch_id
+      ? api.listImportRows(projectId, resolvedSearchParams.batch_id, { page: 1, page_size: 200 })
       : Promise.resolve(null),
   ]);
 
@@ -52,7 +54,7 @@ export default async function ProjectImportPage({
             items={[
               { label: "Home", href: "/projects" },
               { label: "Projects", href: "/projects" },
-              { label: project.name, href: `/projects/${params.projectId}` },
+              { label: project.name, href: `/projects/${projectId}` },
               { label: "Import" },
             ]}
           />
@@ -60,12 +62,12 @@ export default async function ProjectImportPage({
       </section>
 
       <ImportUpload
-        projectId={params.projectId}
+        projectId={projectId}
         projectName={project.name}
         initialBatches={imports.batches}
         initialRows={selectedRows}
-        initialSelectedBatchId={searchParams.batch_id ?? null}
-        highlightedRowNumber={searchParams.row ? Number(searchParams.row) : null}
+        initialSelectedBatchId={resolvedSearchParams.batch_id ?? null}
+        highlightedRowNumber={resolvedSearchParams.row ? Number(resolvedSearchParams.row) : null}
       />
     </div>
   );

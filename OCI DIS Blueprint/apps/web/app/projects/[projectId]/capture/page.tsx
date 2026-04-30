@@ -10,22 +10,23 @@ import { formatDate } from "@/lib/format";
 import { isProjectNotFoundError } from "@/lib/project-errors";
 
 type CapturePageProps = {
-  params: {
+  params: Promise<{
     projectId: string;
-  };
+  }>;
 };
 
 export default async function CapturePage({ params }: CapturePageProps): Promise<JSX.Element> {
+  const { projectId } = await params;
   let project;
   try {
-    project = await api.getProject(params.projectId);
+    project = await api.getProject(projectId);
   } catch (error) {
     if (isProjectNotFoundError(error)) {
       notFound();
     }
     throw error;
   }
-  const audit = await api.listAudit(params.projectId);
+  const audit = await api.listAudit(projectId);
 
   const manualEvents = audit.events.filter((event) => event.event_type === "manual_capture");
   const hasCaptures = manualEvents.length > 0;
@@ -46,14 +47,14 @@ export default async function CapturePage({ params }: CapturePageProps): Promise
               items={[
                 { label: "Home", href: "/projects" },
                 { label: "Projects", href: "/projects" },
-                { label: project.name, href: `/projects/${params.projectId}` },
+                { label: project.name, href: `/projects/${projectId}` },
                 { label: "Capture" },
               ]}
             />
           </div>
         </div>
         <Link
-          href={`/projects/${params.projectId}/capture/new`}
+          href={`/projects/${projectId}/capture/new`}
           className="app-button-primary"
         >
           New Integration
@@ -86,7 +87,7 @@ export default async function CapturePage({ params }: CapturePageProps): Promise
         </article>
       </section>
 
-      <CaptureHistoryClient projectId={params.projectId} initialEvents={manualEvents} />
+      <CaptureHistoryClient projectId={projectId} initialEvents={manualEvents} />
     </div>
   );
 }

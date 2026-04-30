@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { api } from "@/lib/api";
-import { displayUiValue } from "@/lib/format";
+import { displaySourceFieldLabel, displayUiValue } from "@/lib/format";
 import { TruncatedCell } from "@/components/truncated-cell";
 
 type RawColumnValuesTableProps = {
@@ -69,7 +69,7 @@ function compareLineageKeys(left: string, right: string): number {
 }
 
 function displayFieldLabel(fieldKey: string, columnNames: Record<string, string>): string {
-  return columnNames[fieldKey] ?? fieldKey;
+  return displaySourceFieldLabel(columnNames[fieldKey] ?? fieldKey);
 }
 
 function isUnnamedColumn(label: string): boolean {
@@ -137,7 +137,13 @@ export function RawColumnValuesTable({
 
   function renderFieldCell(fieldKey: string): JSX.Element {
     const label = displayFieldLabel(fieldKey, columnNames);
+    const sourceLabel = columnNames[fieldKey] ?? fieldKey;
     const unnamed = isUnnamedColumn(label);
+    const title = unnamed
+      ? "Header not recognized — rename in source file"
+      : label !== sourceLabel
+        ? `Original source column: ${sourceLabel}`
+        : undefined;
     return (
       <td
         className={[
@@ -146,7 +152,7 @@ export function RawColumnValuesTable({
             ? "italic text-[var(--color-text-muted)]"
             : "text-[var(--color-text-primary)]",
         ].join(" ")}
-        title={unnamed ? "Header not recognized — rename in source file" : undefined}
+        title={title}
       >
         {label}
       </td>
@@ -180,13 +186,11 @@ export function RawColumnValuesTable({
           />
         ) : (
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1 break-words">
+            <div
+              className="min-w-0 flex-1 break-words"
+              title={formattedValue.source ? `Original source value: ${formattedValue.source}` : undefined}
+            >
               <TruncatedCell value={formattedValue.primary} />
-              {formattedValue.source ? (
-                <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                  Source: {formattedValue.source}
-                </p>
-              ) : null}
             </div>
             <button
               type="button"

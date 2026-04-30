@@ -8,17 +8,18 @@ import { api } from "@/lib/api";
 import { isProjectNotFoundError } from "@/lib/project-errors";
 
 type CaptureNewPageProps = {
-  params: {
+  params: Promise<{
     projectId: string;
-  };
+  }>;
 };
 
 export default async function CaptureNewPage({
   params,
 }: CaptureNewPageProps): Promise<JSX.Element> {
+  const { projectId } = await params;
   let project;
   try {
-    project = await api.getProject(params.projectId);
+    project = await api.getProject(projectId);
   } catch (error) {
     if (isProjectNotFoundError(error)) {
       notFound();
@@ -48,8 +49,8 @@ export default async function CaptureNewPage({
             items={[
               { label: "Home", href: "/projects" },
               { label: "Projects", href: "/projects" },
-              { label: project.name, href: `/projects/${params.projectId}` },
-              { label: "Capture", href: `/projects/${params.projectId}/capture` },
+              { label: project.name, href: `/projects/${projectId}` },
+              { label: "Capture", href: `/projects/${projectId}/capture` },
               { label: "New" },
             ]}
           />
@@ -57,7 +58,7 @@ export default async function CaptureNewPage({
       </section>
 
       <CaptureWizard
-        projectId={params.projectId}
+        projectId={projectId}
         patterns={patterns.patterns}
         toolOptions={tools.options}
         frequencyOptions={frequencies.options}

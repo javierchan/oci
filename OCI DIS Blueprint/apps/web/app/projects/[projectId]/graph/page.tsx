@@ -2,7 +2,7 @@
 
 /* Interactive system dependency map page backed by the catalog graph endpoint. */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Breadcrumb } from "@/components/breadcrumb";
@@ -15,9 +15,9 @@ import type { GraphEdge, GraphNode, GraphParams, GraphResponse } from "@/lib/typ
 import type { Project } from "@/lib/types";
 
 type GraphPageProps = {
-  params: {
+  params: Promise<{
     projectId: string;
-  };
+  }>;
 };
 
 const EMPTY_GRAPH: GraphResponse = {
@@ -33,6 +33,7 @@ const EMPTY_GRAPH: GraphResponse = {
 };
 
 export default function GraphPage({ params }: GraphPageProps): JSX.Element {
+  const { projectId } = use(params);
   const router = useRouter();
   const svgRef = useRef<SVGSVGElement>(null);
   const [graph, setGraph] = useState<GraphResponse>(EMPTY_GRAPH);
@@ -70,12 +71,13 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
 
   const recommendedSystems = rankedSystems.slice(0, 4).map((entry) => entry.label);
   const largeTopology = graph.meta.node_count > 50;
-  const missingProjectHref = projectRootHref(params.projectId);
+  const stackDetailPanel = compactTopology || largeTopology;
+  const missingProjectHref = projectRootHref(projectId);
 
   useEffect(() => {
     let cancelled = false;
     void api
-      .getProject(params.projectId)
+      .getProject(projectId)
       .then((response) => {
         if (!cancelled) {
           setProject(response);
@@ -94,7 +96,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [missingProjectHref, params.projectId, router]);
+  }, [missingProjectHref, projectId, router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +104,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
     setError("");
 
     void api
-      .getGraph(params.projectId, filters)
+      .getGraph(projectId, filters)
       .then((response) => {
         if (!cancelled) {
           setGraph(response);
@@ -129,7 +131,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [filters, missingProjectHref, params.projectId, router]);
+  }, [filters, missingProjectHref, projectId, router]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -158,7 +160,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
   useEffect(() => {
     const suggestedSystem = recommendedSystems[0] ?? "";
     const hasGlobalFilter = Boolean(filters.brand || filters.business_process || filters.qa_status);
-    const signature = `${params.projectId}:${graph.meta.node_count}:${graph.meta.edge_count}:${suggestedSystem}`;
+    const signature = `${projectId}:${graph.meta.node_count}:${graph.meta.edge_count}:${suggestedSystem}`;
 
     if (!largeTopology || !suggestedSystem || hasGlobalFilter) {
       if (!largeTopology) {
@@ -179,7 +181,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
     graph.meta.edge_count,
     graph.meta.node_count,
     largeTopology,
-    params.projectId,
+    projectId,
     recommendedSystems,
     selectedSystem,
   ]);
@@ -206,7 +208,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
             items={[
               { label: "Home", href: "/projects" },
               { label: "Projects", href: "/projects" },
-              { label: project?.name ?? "Project", href: `/projects/${params.projectId}` },
+              { label: project?.name ?? "Project", href: `/projects/${projectId}` },
               { label: "Map" },
             ]}
           />
@@ -214,7 +216,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
       </section>
 
       <GraphControls
-        projectId={params.projectId}
+        projectId={projectId}
         filters={filters}
         onFilterChange={handleFilterChange}
         selectedSystem={selectedSystem}
@@ -243,7 +245,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
                   : `${graph.meta.node_count} systems detected. Use a focus system or a governance filter to simplify the map.`}
               </p>
               <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                The full graph is still loaded. Reset or change the focus system any time.
+                The full graph remains available, but background systems stay intentionally quiet so the dependency story is readable.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -268,7 +270,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
                   onClick={() => setSelectedSystem("")}
                   className="rounded-full border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:border-amber-500 dark:border-amber-800 dark:text-amber-100"
                 >
-                  Show all labels
+                  Clear focus
                 </button>
               ) : null}
             </div>
@@ -286,7 +288,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
 
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
-      <div className={compactTopology ? "space-y-6" : "grid gap-6 xl:grid-cols-[1.45fr_0.55fr]"}>
+      <div className={stackDetailPanel ? "space-y-6" : "grid gap-6 xl:grid-cols-[1.45fr_0.55fr]"}>
         <div className="space-y-4">
           <section className="grid gap-4 md:grid-cols-3">
             <article className="app-card p-5">
@@ -342,9 +344,9 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
             </>
           )}
         </div>
-        {compactTopology ? null : (
+        {stackDetailPanel ? null : (
           <GraphDetailPanel
-            projectId={params.projectId}
+            projectId={projectId}
             graph={graph}
             selectedNode={selectedNode}
             selectedEdge={selectedEdge}
@@ -352,9 +354,9 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
         )}
       </div>
 
-      {compactTopology ? (
+      {stackDetailPanel ? (
         <GraphDetailPanel
-          projectId={params.projectId}
+          projectId={projectId}
           graph={graph}
           selectedNode={selectedNode}
           selectedEdge={selectedEdge}

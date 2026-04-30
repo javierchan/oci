@@ -1,31 +1,34 @@
-# Next.js — Docker Desktop (macOS) — all stages containerized
+# Next.js — Docker Desktop (macOS) — all stages containerized.
+# Build from the monorepo root so Docker uses the shared workspace lockfile and
+# security overrides instead of resolving app dependencies independently.
 FROM node:20-alpine AS base
-WORKDIR /app
+WORKDIR /workspace
 
 # ---------- deps ----------
 FROM base AS deps
-COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+COPY package.json package-lock.json ./
+COPY apps/web/package.json ./apps/web/package.json
+RUN npm ci
 
 # ---------- development ----------
 FROM deps AS development
-ENV NODE_ENV=development
-COPY . .
+COPY apps/web ./apps/web
+WORKDIR /workspace/apps/web
 EXPOSE 3000
 CMD ["npm", "run", "dev"]
 
 # ---------- builder ----------
 FROM deps AS builder
-COPY . .
+COPY apps/web ./apps/web
+WORKDIR /workspace/apps/web
 RUN npm run build
 
 # ---------- production ----------
 FROM base AS production
 ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /workspace/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /workspace/apps/web/.next/static ./apps/web/.next/static
 USER nextjs
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["node", "apps/web/server.js"]

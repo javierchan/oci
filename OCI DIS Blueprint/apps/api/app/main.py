@@ -81,5 +81,6 @@ app.include_router(admin_synthetic_router, prefix=API_PREFIX)
 
 
 @app.get("/health", tags=["Health"])
+@app.get(f"{API_PREFIX}/health", tags=["Health"], include_in_schema=False)
 async def health():
     return {"status": "ok", "version": settings.APP_VERSION}
