@@ -1,5 +1,7 @@
 /* Complexity pill used in the catalog grid and detail views. */
 
+import { displayComplexity } from "@/lib/format";
+
 type ComplexityBadgeProps = {
   value: string | null;
 };
@@ -23,7 +25,7 @@ export function ComplexityBadge({ value }: ComplexityBadgeProps): JSX.Element {
     <span
       className={`inline-flex rounded-full border border-transparent px-3 py-1 text-xs font-medium ${COMPLEXITY_STYLES[value] ?? "bg-[var(--color-surface-3)] text-[var(--color-text-secondary)]"}`}
     >
-      {value}
+      {displayComplexity(value)}
     </span>
   );
 }

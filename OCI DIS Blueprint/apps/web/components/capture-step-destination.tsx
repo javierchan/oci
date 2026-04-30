@@ -20,7 +20,7 @@ export function CaptureStepDestination({
 }: CaptureStepDestinationProps): JSX.Element {
   return (
     <div className="space-y-5">
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         <SystemAutocomplete
           projectId={projectId}
           label="Destination System"

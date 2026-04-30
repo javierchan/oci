@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { startTransition, useState } from "react";
-import { User } from "lucide-react";
+import { Trash2, User } from "lucide-react";
 
 import { ConfirmModal } from "@/components/modal";
 import { emitToast } from "@/hooks/use-toast";
@@ -49,6 +49,8 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
     const matchesArchive = showArchived || row.project.status !== "archived";
     return matchesSearch && matchesArchive;
   });
+  const activeCount = projects.filter((row) => row.project.status === "active").length;
+  const archivedCount = projects.length - activeCount;
   const nameCounts = visibleProjects.reduce((accumulator: Record<string, number>, row: ProjectRow) => {
     accumulator[row.project.name] = (accumulator[row.project.name] ?? 0) + 1;
     return accumulator;
@@ -130,7 +132,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
 
   function renderActions(row: ProjectRow): JSX.Element {
     return (
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         {row.project.status !== "archived" ? (
           <>
             <button
@@ -139,16 +141,20 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                 setArchiveTarget({ id: row.project.id, name: row.project.name });
               }}
               disabled={activeProjectId === row.project.id}
-              className="text-sm font-medium text-amber-700 transition hover:text-amber-500 disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
+              className="app-button-secondary px-4 py-2 text-xs text-amber-700 hover:text-amber-600 disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
             >
               {activeProjectId === row.project.id ? "Working…" : "Archive"}
             </button>
-            <span
-              className="text-xs text-[var(--color-text-muted)]"
-              title="Archive first to enable deletion"
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              title="Archive this workspace first to unlock permanent deletion."
+              className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-xs font-semibold text-[var(--color-text-muted)] opacity-80"
             >
-              Archive to delete
-            </span>
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </button>
           </>
         ) : null}
         {row.project.status === "archived" ? (
@@ -158,7 +164,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
               setDeleteTarget({ id: row.project.id, name: row.project.name });
             }}
             disabled={activeProjectId === row.project.id}
-            className="text-sm font-medium text-rose-700 transition hover:text-rose-500 disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
+            className="app-button-secondary px-4 py-2 text-xs text-rose-700 hover:text-rose-500 disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
           >
             {activeProjectId === row.project.id ? "Deleting…" : "Delete"}
           </button>
@@ -168,26 +174,33 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
   }
 
   return (
-    <div className="space-y-8">
-      <section className="app-card flex flex-col gap-4 p-6 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="app-kicker">Project Actions</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">Manage workspaces</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
-            Open an existing project or create a new workspace to continue the parity workflow.
-          </p>
+    <div className="space-y-6">
+      <section className="app-card p-4 md:p-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <p className="app-kicker">Project Actions</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">Manage workspaces</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
+              Open an existing project or create a new workspace to continue the parity workflow.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="app-theme-chip">{visibleProjects.length} visible</span>
+              <span className="app-status-chip active">● {activeCount} active</span>
+              {archivedCount > 0 ? (
+                <span className="app-status-chip archived">◌ {archivedCount} archived</span>
+              ) : null}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowForm((current: boolean) => !current)}
+            className="app-button-primary"
+          >
+            {showForm ? "Hide Form" : "New Project"}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowForm((current: boolean) => !current)}
-          className="app-button-primary"
-        >
-          {showForm ? "Hide Form" : "New Project"}
-        </button>
-      </section>
 
-      <section className="app-card p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <label className="flex-1">
             <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">
               Search Projects
@@ -196,10 +209,10 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Filter by project name..."
-              className="app-input"
+              className="app-input py-2.5"
             />
           </label>
-          <label className="flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-text-secondary)]">
+          <label className="flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-2.5 text-sm text-[var(--color-text-secondary)]">
             <input
               type="checkbox"
               checked={showArchived}
@@ -212,7 +225,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
       </section>
 
       {showForm ? (
-        <section className="app-card p-6">
+        <section className="app-card p-5">
           <form
             onSubmit={(event) => {
               void handleCreateProject(event);
@@ -228,7 +241,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Phase 1 parity assessment"
-                className="app-input"
+                className="app-input py-2.5"
               />
             </label>
             <button

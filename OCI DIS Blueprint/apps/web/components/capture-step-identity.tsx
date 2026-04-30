@@ -9,14 +9,14 @@ export function CaptureStepIdentity({
   updateField,
 }: CaptureStepProps): JSX.Element {
   return (
-    <div className="grid gap-5 md:grid-cols-2">
+    <div className="grid gap-4 md:grid-cols-2">
       <label className="block">
         <span className="app-label mb-2 block">Brand</span>
         <input
           value={form.brand}
           onChange={(event) => updateField("brand", event.target.value)}
           className="app-input"
-          placeholder="Grupo / brand"
+          placeholder="Brand or group"
         />
       </label>
       <label className="block">

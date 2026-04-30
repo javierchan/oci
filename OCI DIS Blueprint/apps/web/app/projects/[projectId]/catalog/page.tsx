@@ -1,8 +1,11 @@
 /* Catalog page bootstrapping pattern data and the interactive grid. */
 
+import { notFound } from "next/navigation";
+
 import { Breadcrumb } from "@/components/breadcrumb";
 import { CatalogTable } from "@/components/catalog-table";
 import { api } from "@/lib/api";
+import { isProjectNotFoundError } from "@/lib/project-errors";
 
 type ProjectCatalogPageProps = {
   params: {
@@ -32,8 +35,16 @@ export default async function ProjectCatalogPage({
     source_system: searchParams.source_system ?? "",
     destination_system: searchParams.destination_system ?? "",
   };
-  const [project, allRows, patterns] = await Promise.all([
-    api.getProject(params.projectId),
+  let project;
+  try {
+    project = await api.getProject(params.projectId);
+  } catch (error) {
+    if (isProjectNotFoundError(error)) {
+      notFound();
+    }
+    throw error;
+  }
+  const [allRows, patterns] = await Promise.all([
     api.listCatalog(params.projectId, {
       page: 1,
       page_size: 500,

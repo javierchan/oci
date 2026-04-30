@@ -41,6 +41,90 @@ None
 
 ---
 
+## Admin Synthetic Runtime Automation Hardening (2026-04-28)
+
+**Status:** ✅ Complete
+
+- Added the bounded live smoke script
+  `apps/api/scripts/smoke_admin_synthetic_lab.py` so the real Admin Synthetic
+  Lab flow can be exercised repeatably against the running stack without
+  leaving durable synthetic residue behind.
+- Added a second governed small preset, `retained-smoke`, so explicit cleanup
+  can be automated safely against a retained smoke-sized project instead of the
+  enterprise-scale preset.
+- The smoke script now validates the governed `ephemeral-smoke` preset end to
+  end: API health, preset discovery, job submission, polling, terminal-state
+  validation, and recent-jobs visibility.
+- The smoke script now also validates the governed `retained-smoke` preset end
+  to end: create, wait for `completed`, invoke the cleanup route, and verify
+  the final `cleaned_up` state plus removed-artifact evidence.
+- Extracted shared admin synthetic UI-state helpers into
+  `apps/web/lib/admin-synthetic-ui.ts` so preset-selection, cleanup-policy, job
+  action visibility, and target-split rules are covered by reusable code
+  instead of duplicated page-local logic.
+- Added focused Vitest coverage in
+  `apps/web/lib/admin-synthetic-ui.test.ts` for smoke-preset defaults, target
+  mismatch detection, cleaned-up job policy handling, and retry/cleanup action
+  visibility.
+- Added the bounded retry smoke script
+  `apps/api/scripts/smoke_admin_synthetic_retry.py` so a controlled failed
+  source job can be seeded through the service layer, retried through the real
+  admin API/worker path, and cleaned up without inventing a new failure preset.
+- Added repo-owned Playwright coverage under `apps/web/e2e/` plus
+  `apps/web/playwright.config.ts` and `apps/web/vitest.config.ts` so browser
+  E2E coverage is separated cleanly from the Vitest unit suite.
+- Verified the new automation path live against the running stack:
+  smoke job `6d414d1c-2010-4d03-bedf-b6ff721691a6` reached `cleaned_up` with
+  `catalog_count = 18`, `distinct_systems = 32`,
+  `import_included_count = 12`, `manual_count = 6`,
+  `excluded_import_count = 2`, and populated `cleanup_removed_paths`.
+- Verified the retained explicit-cleanup automation path live against the
+  running stack:
+  smoke job `b5cf81b0-9f46-46db-9a77-a9acc445adf1` reached `completed`,
+  cleanup was exercised explicitly, and the final job state became
+  `cleaned_up` with populated `cleanup_removed_paths`.
+- Verified the retry runtime path live against the running stack:
+  seeded failed source job `2670e093-8a8e-48f9-ab60-7093293bf2d5` retried into
+  job `e30fb7b5-87aa-46af-9307-067736583463`, the retried job reached
+  `cleaned_up`, and the seeded failed source job was also cleaned up at the end
+  of the script.
+- Verified the admin synthetic browser flow through the repo-owned Playwright
+  suite:
+  the landing page rendered governed presets and the browser created a bounded
+  `ephemeral-smoke` job before opening the matching detail route successfully.
+
+### Verification results
+
+```text
+apps/web npm test: 9 passed
+apps/web npm run type-check: 0 errors
+apps/web eslint --max-warnings 0: 0 errors / 0 warnings
+apps/web npm run test:e2e:install: Chromium installed locally via PLAYWRIGHT_BROWSERS_PATH=0
+apps/web npm run test:e2e: 2 passed
+apps/api focused pytest: 10 passed
+apps/api full pytest: 33 passed
+apps/api ruff check .: All checks passed!
+live smoke script:
+  ./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_lab.py
+  -> ok=true, status=cleaned_up, preset_count=3
+retained smoke script:
+  ./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_lab.py --preset-code retained-smoke
+  -> ok=true, initial_terminal_status=completed, status=cleaned_up, cleanup_mode=explicit, preset_count=3
+retry smoke script:
+  ./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_retry.py
+  -> ok=true, source_job_initial_status=failed, source_job_final_status=cleaned_up, retried_job_status=cleaned_up
+browser E2E:
+  npm run test:e2e
+  -> landing page preset coverage passed
+  -> ephemeral create-to-detail flow passed
+```
+
+### Gaps / known limitations
+
+None
+
+---
+
 ## M15 — UX Overhaul P0: Core Workflow Fixes (2026-04-15)
 
 **Status:** ✅ Complete
@@ -632,9 +716,13 @@ None
 - Wrote machine-readable and human-readable reports under
   `apps/api/generated-reports/` for the generated project, including artifact
   paths and smoke-test URLs.
-- Documented the future Admin Synthetic Lab productization path in
-  `docs/architecture/admin-synthetic-lab.md` without prematurely implementing
-  the full admin job module.
+- Productized the Admin Synthetic Lab flow with a persisted
+  `SyntheticGenerationJob` model, Alembic migration, admin-only API routes,
+  Celery worker orchestration, and dedicated admin pages under
+  `apps/web/app/admin/synthetic/` for job submission, polling, retry, detail,
+  and cleanup flows.
+- Updated `docs/architecture/admin-synthetic-lab.md` to reflect the now-live
+  productized admin surface and its remaining maintenance follow-up.
 - Exposed synthetic project metadata in the API/UI contract and surfaced
   visible synthetic labeling in the projects list and project dashboard so the
   generated project is discoverable in normal product surfaces.
@@ -645,9 +733,6 @@ None
 
 ### Gaps / known limitations
 
-- Full Admin Synthetic Lab job submission UI and persisted `SyntheticGenerationJob`
-  model remain intentionally future productization work and are already scoped in
-  `docs/architecture/admin-synthetic-lab.md`; they are not part of this completed
-  milestone slice.
+None
 
 ---

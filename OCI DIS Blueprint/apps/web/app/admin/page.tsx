@@ -7,10 +7,11 @@ import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 
 export default async function AdminHubPage(): Promise<JSX.Element> {
-  const [patterns, categories, assumptions] = await Promise.all([
+  const [patterns, categories, assumptions, syntheticJobs] = await Promise.all([
     api.listPatterns(),
     api.listDictionaryCategories(),
     api.listAssumptions(),
+    api.listSyntheticJobs({ limit: 1 }).catch(() => ({ jobs: [], total: 0 })),
   ]);
   const dictionaries = await Promise.all(
     categories.categories.map((category) => api.listDictionaryOptions(category.category)),
@@ -29,6 +30,7 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
     .map((assumption) => assumption.updated_at ?? assumption.created_at)
     .sort()
     .at(-1);
+  const latestSyntheticUpdate = syntheticJobs.jobs[0]?.updated_at;
 
   return (
     <div className="space-y-8">
@@ -95,23 +97,24 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
 
       <section className="app-card p-6">
         <p className="app-label">Synthetic Lab</p>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">
-          Current Delivery Status
-        </h2>
+        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">Governed Generation Control</h2>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-          Synthetic enterprise generation is available today through the backend service and seed script used for
-          validation runs. The full admin UI for job submission, presets, and cleanup is documented for M24 but is
-          not productized in this screen yet.
+          Submit deterministic synthetic-generation jobs, monitor progress, inspect validation artifacts, and clean up
+          synthetic projects from the dedicated admin surface.
         </p>
         <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
-          Generated synthetic projects appear in the standard Projects workspace after execution, alongside the
-          generated reports under <code>apps/api/generated-reports/</code>.
+          Latest activity: {latestSyntheticUpdate ? formatDate(latestSyntheticUpdate) : "No synthetic jobs yet."}
         </p>
-        <div className="mt-5 flex flex-wrap gap-3">
-          <Link href="/projects" className="app-button-primary">
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <Link href="/admin/synthetic" className="app-button-primary">
+            Open Synthetic Lab
+          </Link>
+          <Link href="/projects" className="app-button-secondary">
             Open Projects
           </Link>
-          <span className="app-theme-chip">Script + Service Available</span>
+          <span className="app-theme-chip inline-flex min-h-12 items-center justify-center px-4 text-center leading-none">
+            {syntheticJobs.total} tracked job{syntheticJobs.total === 1 ? "" : "s"}
+          </span>
         </div>
       </section>
     </div>

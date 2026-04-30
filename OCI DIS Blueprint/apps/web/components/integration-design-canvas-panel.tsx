@@ -3,10 +3,16 @@
 /* Full-width integration design canvas panel with dedicated persistence for flow editing. */
 
 import { useRouter } from "next/navigation";
-import { startTransition, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 
 import { IntegrationCanvas } from "@/components/integration-canvas";
 import { api } from "@/lib/api";
+import { evaluateCanvasInteroperability } from "@/lib/canvas-interoperability";
+import {
+  deriveCanvasSemantics,
+  parseCanvasState,
+  serializeCanvasState,
+} from "@/lib/canvas-governance";
 import type {
   CanvasCombination,
   DictionaryOption,
@@ -42,6 +48,57 @@ function normalizePatternCategory(value: string | null | undefined): PatternCate
   return value ?? null;
 }
 
+function buildCanvasSeed(
+  additionalToolsOverlays: string | null,
+  coreTools: string | null,
+  selectedPattern: string | null,
+  serviceProfiles: ServiceCapabilityProfile[],
+  overlayOptions: DictionaryOption[],
+  combinations: CanvasCombination[],
+  payloadKb: number | null,
+  triggerType: string | null,
+  isRealTime: boolean | null,
+  sourceTechnology: string | null,
+  destinationTechnology: string | null,
+  integrationType: string | null,
+): {
+  serializedValue: string;
+  coreToolKeys: string[];
+  hasConnectedRoute: boolean;
+  hasBlockingIssues: boolean;
+} {
+  const parsed = parseCanvasState(
+    additionalToolsOverlays,
+    parseCoreTools(coreTools),
+  );
+  const semantics = deriveCanvasSemantics({
+    nodes: parsed.nodes,
+    edges: parsed.edges,
+    overlayToolKeys: overlayOptions.map((option) => option.value),
+    combinations,
+    selectedPattern,
+  });
+  const interoperabilityReport = evaluateCanvasInteroperability({
+    nodes: parsed.nodes,
+    edges: parsed.edges,
+    overlayToolKeys: overlayOptions.map((option) => option.value),
+    serviceProfilesById: new Map(serviceProfiles.map((profile) => [profile.service_id, profile])),
+    payloadKb,
+    triggerType,
+    isRealTime,
+    sourceTechnology,
+    destinationTechnology,
+    integrationType,
+  });
+
+  return {
+    serializedValue: serializeCanvasState(parsed.nodes, parsed.edges, semantics),
+    coreToolKeys: parsed.coreToolKeys,
+    hasConnectedRoute: semantics.hasConnectedRoute,
+    hasBlockingIssues: interoperabilityReport.blockers.length > 0,
+  };
+}
+
 export function IntegrationDesignCanvasPanel({
   projectId,
   integration,
@@ -53,13 +110,6 @@ export function IntegrationDesignCanvasPanel({
   combinations,
 }: IntegrationDesignCanvasPanelProps): JSX.Element | null {
   const router = useRouter();
-  const [canvasState, setCanvasState] = useState<string>(integration.additional_tools_overlays ?? "");
-  const [toolKeys, setToolKeys] = useState<string[]>(parseCoreTools(integration.core_tools));
-  const [saving, setSaving] = useState<boolean>(false);
-  const [statusMessage, setStatusMessage] = useState<string>("");
-  const [error, setError] = useState<string>("");
-  const [hasConnectedRoute, setHasConnectedRoute] = useState<boolean>(true);
-
   const patternMap = useMemo(
     () =>
       new Map<string, PatternDefinition>(
@@ -70,6 +120,54 @@ export function IntegrationDesignCanvasPanel({
       ),
     [patterns],
   );
+  const normalizedCanvasSeed = useMemo(
+    () =>
+      buildCanvasSeed(
+        integration.additional_tools_overlays,
+        integration.core_tools,
+        integration.selected_pattern,
+        serviceProfiles,
+        overlayOptions,
+        combinations,
+        integration.payload_per_execution_kb,
+        integration.trigger_type,
+        integration.is_real_time,
+        integration.source_technology,
+        integration.destination_technology_1,
+        integration.type,
+      ),
+    [
+      combinations,
+      integration.additional_tools_overlays,
+      integration.core_tools,
+      integration.destination_technology_1,
+      integration.is_real_time,
+      integration.payload_per_execution_kb,
+      integration.selected_pattern,
+      integration.source_technology,
+      integration.trigger_type,
+      integration.type,
+      overlayOptions,
+      serviceProfiles,
+    ],
+  );
+
+  const [canvasState, setCanvasState] = useState<string>(normalizedCanvasSeed.serializedValue);
+  const [toolKeys, setToolKeys] = useState<string[]>(normalizedCanvasSeed.coreToolKeys);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [statusMessage, setStatusMessage] = useState<string>("");
+  const [error, setError] = useState<string>("");
+  const [hasConnectedRoute, setHasConnectedRoute] = useState<boolean>(normalizedCanvasSeed.hasConnectedRoute);
+  const [hasBlockingIssues, setHasBlockingIssues] = useState<boolean>(normalizedCanvasSeed.hasBlockingIssues);
+
+  useEffect(() => {
+    setCanvasState(normalizedCanvasSeed.serializedValue);
+    setToolKeys(normalizedCanvasSeed.coreToolKeys);
+    setHasConnectedRoute(normalizedCanvasSeed.hasConnectedRoute);
+    setHasBlockingIssues(normalizedCanvasSeed.hasBlockingIssues);
+    setStatusMessage("");
+    setError("");
+  }, [normalizedCanvasSeed]);
 
   if (!integration.source_system) {
     return null;
@@ -78,6 +176,11 @@ export function IntegrationDesignCanvasPanel({
   async function handleSaveCanvas(): Promise<void> {
     if (!hasConnectedRoute) {
       setError("Connect the source and destination through the designed pipeline before saving.");
+      setStatusMessage("");
+      return;
+    }
+    if (hasBlockingIssues) {
+      setError("Resolve the Oracle-backed canvas blockers before saving.");
       setStatusMessage("");
       return;
     }
@@ -119,15 +222,15 @@ export function IntegrationDesignCanvasPanel({
           onClick={() => {
             void handleSaveCanvas();
           }}
-          disabled={saving || !hasConnectedRoute}
+          disabled={saving || !hasConnectedRoute || hasBlockingIssues}
           className="app-button-primary"
         >
-          {saving ? "Saving canvas…" : "Save canvas"}
+          {saving ? "Saving canvas…" : hasBlockingIssues ? "Resolve blockers to save" : "Save canvas"}
         </button>
       </div>
 
       <IntegrationCanvas
-        projectId={integration.project_id}
+        projectId={projectId}
         sourceSystem={integration.source_system}
         sourceTechnology={integration.source_technology}
         destinationSystem={integration.destination_system}
@@ -135,7 +238,7 @@ export function IntegrationDesignCanvasPanel({
         selectedPattern={integration.selected_pattern}
         patternDetail={patternDetail}
         serviceProfiles={serviceProfiles}
-        coreTools={parseCoreTools(integration.core_tools)}
+        coreTools={toolKeys}
         toolOptions={toolOptions}
         overlayOptions={overlayOptions}
         combinations={combinations}
@@ -143,10 +246,14 @@ export function IntegrationDesignCanvasPanel({
         payloadKb={integration.payload_per_execution_kb}
         frequency={integration.frequency}
         patternCategory={normalizePatternCategory(patternMap.get(integration.selected_pattern ?? "")?.category)}
-        value={canvasState || null}
+        triggerType={integration.trigger_type}
+        isRealTime={integration.is_real_time}
+        integrationType={integration.type}
+        value={canvasState}
         onChange={setCanvasState}
         onToolsChange={setToolKeys}
         onConnectionValidityChange={setHasConnectedRoute}
+        onBlockingIssuesChange={setHasBlockingIssues}
       />
 
       <div className="flex flex-wrap items-center gap-4 text-sm">

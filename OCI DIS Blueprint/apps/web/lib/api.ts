@@ -40,6 +40,10 @@ import type {
   RecalculationJobStatus,
   ServiceCapabilityProfileList,
   SourceRowList,
+  SyntheticGenerationJob,
+  SyntheticGenerationJobList,
+  SyntheticGenerationJobRequest,
+  SyntheticGenerationPresetList,
   VolumetrySnapshotList,
 } from "@/lib/types";
 
@@ -50,36 +54,6 @@ function normalizeBase(value: string): string {
 const PUBLIC_BASE = normalizeBase(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000");
 const INTERNAL_BASE = normalizeBase(process.env.INTERNAL_API_URL ?? PUBLIC_BASE);
 const DOCKER_INTERNAL_BASE = "http://api:8000";
-
-export class ApiError extends Error {
-  status: number;
-  path: string;
-  body: string;
-
-  constructor(status: number, path: string, body: string) {
-    super(`API ${status} ${path}: ${body}`);
-    this.name = "ApiError";
-    this.status = status;
-    this.path = path;
-    this.body = body;
-  }
-}
-
-export function isApiErrorStatus(
-  error: unknown,
-  status: number,
-  pathPrefix?: string,
-): error is ApiError {
-  if (!(error instanceof ApiError)) {
-    return false;
-  }
-
-  if (error.status !== status) {
-    return false;
-  }
-
-  return pathPrefix ? error.path.startsWith(pathPrefix) : true;
-}
 
 function resolveBases(): string[] {
   if (typeof window !== "undefined") {
@@ -111,6 +85,130 @@ function adminHeaders(): HeadersInit {
   };
 }
 
+type ApiErrorPayload = {
+  detail?: string | { detail?: string; [key: string]: unknown } | Array<{ msg?: string; [key: string]: unknown }>;
+  error_code?: string;
+};
+
+type ParsedApiError = {
+  message: string;
+  errorCode?: string;
+  detail?: unknown;
+};
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly path: string;
+  readonly errorCode?: string;
+  readonly detail?: unknown;
+
+  constructor({
+    status,
+    path,
+    message,
+    errorCode,
+    detail,
+  }: {
+    status: number;
+    path: string;
+    message: string;
+    errorCode?: string;
+    detail?: unknown;
+  }) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.path = path;
+    this.errorCode = errorCode;
+    this.detail = detail;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  if (error instanceof ApiError) {
+    return true;
+  }
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    typeof (error as { message?: unknown }).message === "string" &&
+    ("status" in error || "path" in error || "errorCode" in error || "detail" in error)
+  );
+}
+
+export function isApiErrorCode(error: unknown, errorCode: string): boolean {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "errorCode" in error &&
+    typeof (error as { errorCode?: unknown }).errorCode === "string"
+  ) {
+    return (error as { errorCode: string }).errorCode === errorCode;
+  }
+
+  if (errorCode === "PROJECT_NOT_FOUND" && error instanceof Error) {
+    return error.message.trim() === "Project not found";
+  }
+
+  return false;
+}
+
+export function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function parseApiError(status: number, path: string, body: string): ParsedApiError {
+  if (!body.trim()) {
+    return {
+      message: `API ${status} ${path}`,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(body) as ApiErrorPayload;
+    const errorCode = typeof parsed.error_code === "string" ? parsed.error_code : undefined;
+    if (typeof parsed.detail === "string") {
+      return {
+        message: parsed.detail,
+        errorCode,
+        detail: parsed.detail,
+      };
+    }
+    if (parsed.detail && typeof parsed.detail === "object" && !Array.isArray(parsed.detail)) {
+      if (typeof parsed.detail.detail === "string") {
+        return {
+          message: parsed.detail.detail,
+          errorCode,
+          detail: parsed.detail,
+        };
+      }
+      return {
+        message: JSON.stringify(parsed.detail),
+        errorCode,
+        detail: parsed.detail,
+      };
+    }
+    if (Array.isArray(parsed.detail) && parsed.detail.length > 0) {
+      const messages = parsed.detail
+        .map((entry) => entry.msg)
+        .filter((message): message is string => Boolean(message));
+      if (messages.length > 0) {
+        return {
+          message: messages.join("; "),
+          errorCode,
+          detail: parsed.detail,
+        };
+      }
+    }
+  } catch {}
+
+  return {
+    message: `API ${status} ${path}: ${body}`,
+    detail: body,
+  };
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   const hasFormDataBody = typeof FormData !== "undefined" && init?.body instanceof FormData;
@@ -139,7 +237,14 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = await response.text();
-    throw new ApiError(response.status, path, body);
+    const parsed = parseApiError(response.status, path, body);
+    throw new ApiError({
+      status: response.status,
+      path,
+      message: parsed.message,
+      errorCode: parsed.errorCode,
+      detail: parsed.detail,
+    });
   }
 
   if (response.status === 204) {
@@ -559,4 +664,38 @@ export const api = {
     params: Record<string, string | number | undefined> = {},
   ): Promise<AuditPage> =>
     apiFetch<AuditPage>(`/api/v1/audit/${projectId}${withQuery(params)}`),
+
+  listSyntheticPresets: (): Promise<SyntheticGenerationPresetList> =>
+    apiFetch<SyntheticGenerationPresetList>("/api/v1/admin/synthetic/presets", {
+      headers: adminHeaders(),
+    }),
+
+  listSyntheticJobs: (params: { limit?: number } = {}): Promise<SyntheticGenerationJobList> =>
+    apiFetch<SyntheticGenerationJobList>(`/api/v1/admin/synthetic/jobs${withQuery(params)}`, {
+      headers: adminHeaders(),
+    }),
+
+  createSyntheticJob: (body: SyntheticGenerationJobRequest): Promise<SyntheticGenerationJob> =>
+    apiFetch<SyntheticGenerationJob>("/api/v1/admin/synthetic/jobs", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify(body),
+    }),
+
+  getSyntheticJob: (jobId: string): Promise<SyntheticGenerationJob> =>
+    apiFetch<SyntheticGenerationJob>(`/api/v1/admin/synthetic/jobs/${jobId}`, {
+      headers: adminHeaders(),
+    }),
+
+  retrySyntheticJob: (jobId: string): Promise<SyntheticGenerationJob> =>
+    apiFetch<SyntheticGenerationJob>(`/api/v1/admin/synthetic/jobs/${jobId}/retry`, {
+      method: "POST",
+      headers: adminHeaders(),
+    }),
+
+  cleanupSyntheticJob: (jobId: string): Promise<SyntheticGenerationJob> =>
+    apiFetch<SyntheticGenerationJob>(`/api/v1/admin/synthetic/jobs/${jobId}/cleanup`, {
+      method: "POST",
+      headers: adminHeaders(),
+    }),
 };

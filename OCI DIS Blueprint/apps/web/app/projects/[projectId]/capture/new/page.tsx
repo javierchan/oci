@@ -1,8 +1,11 @@
 /* Guided manual capture page that bootstraps the five-step wizard. */
 
+import { notFound } from "next/navigation";
+
 import { Breadcrumb } from "@/components/breadcrumb";
 import { CaptureWizard } from "@/components/capture-wizard";
 import { api } from "@/lib/api";
+import { isProjectNotFoundError } from "@/lib/project-errors";
 
 type CaptureNewPageProps = {
   params: {
@@ -13,8 +16,16 @@ type CaptureNewPageProps = {
 export default async function CaptureNewPage({
   params,
 }: CaptureNewPageProps): Promise<JSX.Element> {
-  const [project, patterns, tools, frequencies, triggerTypes, complexities] = await Promise.all([
-    api.getProject(params.projectId),
+  let project;
+  try {
+    project = await api.getProject(params.projectId);
+  } catch (error) {
+    if (isProjectNotFoundError(error)) {
+      notFound();
+    }
+    throw error;
+  }
+  const [patterns, tools, frequencies, triggerTypes, complexities] = await Promise.all([
     api.listPatterns(),
     api.listDictionaryOptions("TOOLS"),
     api.listDictionaryOptions("FREQUENCY"),

@@ -2,6 +2,7 @@
 
 /* Step 5 of guided capture: final review summary before persistence. */
 
+import { displayUiValue } from "@/lib/format";
 import type { Integration } from "@/lib/types";
 import type { CaptureStepProps } from "@/components/capture-wizard";
 
@@ -16,7 +17,7 @@ function stringifyValue(value: string | number | string[] | undefined): string {
   if (value === undefined || value === "") {
     return "—";
   }
-  return String(value);
+  return typeof value === "string" ? displayUiValue(value) : String(value);
 }
 
 export function CaptureStepReview({
@@ -62,7 +63,7 @@ export function CaptureStepReview({
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <section className="app-card p-5">
         <p className="app-label">Review</p>
         <h3 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Ready to capture</h3>
@@ -71,7 +72,7 @@ export function CaptureStepReview({
         </p>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-3">
         {sections.map((section) => (
           <section key={section.title} className="app-card p-5">
             <p className="app-label">{section.title}</p>

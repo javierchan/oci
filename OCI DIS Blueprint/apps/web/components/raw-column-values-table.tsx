@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { api } from "@/lib/api";
+import { displayUiValue } from "@/lib/format";
 import { TruncatedCell } from "@/components/truncated-cell";
 
 type RawColumnValuesTableProps = {
@@ -24,6 +25,22 @@ function stringifyValue(value: unknown): string {
     return String(value);
   }
   return JSON.stringify(value);
+}
+
+function displayValue(value: unknown): { primary: string; source: string | null } {
+  const source = stringifyValue(value);
+  if (typeof value !== "string") {
+    return {
+      primary: source || "—",
+      source: null,
+    };
+  }
+
+  const translated = displayUiValue(value);
+  return {
+    primary: translated || "—",
+    source: translated !== value ? value : null,
+  };
 }
 
 function hasVisibleValue(value: unknown): boolean {
@@ -138,6 +155,7 @@ export function RawColumnValuesTable({
 
   function renderValueCell(fieldKey: string, value: unknown): JSX.Element {
     const isEditing = editingKey === fieldKey;
+    const formattedValue = displayValue(value);
     return (
       <td className="group px-4 py-3 text-[var(--color-text-secondary)]">
         {isEditing ? (
@@ -163,7 +181,12 @@ export function RawColumnValuesTable({
         ) : (
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 break-words">
-              <TruncatedCell value={stringifyValue(value) || "—"} />
+              <TruncatedCell value={formattedValue.primary} />
+              {formattedValue.source ? (
+                <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                  Source: {formattedValue.source}
+                </p>
+              ) : null}
             </div>
             <button
               type="button"

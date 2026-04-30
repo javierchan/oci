@@ -5,6 +5,7 @@
 import { OicEstimatePreview } from "@/components/oic-estimate-preview";
 import { PatternSupportBadge } from "@/components/pattern-support-badge";
 import { QaPreview } from "@/components/qa-preview";
+import { displayComplexity, displayUiValue } from "@/lib/format";
 import type { CaptureStepProps } from "@/components/capture-wizard";
 
 export function CaptureStepTechnical({
@@ -28,8 +29,8 @@ export function CaptureStepTechnical({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-5 md:grid-cols-2">
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-2">
         <label className="block">
           <span className="app-label mb-2 block">Trigger Type</span>
           <select
@@ -55,7 +56,7 @@ export function CaptureStepTechnical({
             <option value="">Select frequency</option>
             {frequencyOptions.map((option) => (
               <option key={option.id} value={option.value}>
-                {option.value}
+                {displayUiValue(option.value)}
               </option>
             ))}
           </select>
@@ -87,7 +88,7 @@ export function CaptureStepTechnical({
             <option value="">Select complexity</option>
             {complexityOptions.map((option) => (
               <option key={option.id} value={option.value}>
-                {option.value}
+                {displayComplexity(option.value)}
               </option>
             ))}
           </select>
@@ -149,7 +150,7 @@ export function CaptureStepTechnical({
 
       <fieldset className="space-y-3">
         <legend className="app-label">Core Tools</legend>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {toolOptions.map((option) => {
             const checked = selectedTools.includes(option.value);
             return (
@@ -175,7 +176,7 @@ export function CaptureStepTechnical({
         </div>
       </fieldset>
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <OicEstimatePreview
           projectId={projectId}
           frequency={form.frequency}

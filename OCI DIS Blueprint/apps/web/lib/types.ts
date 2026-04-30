@@ -37,6 +37,86 @@ export interface ProjectDeleteResponse {
   deleted_audit_events: number;
 }
 
+export interface SyntheticGenerationPreset {
+  code: string;
+  label: string;
+  description: string;
+  project_name: string;
+  seed_value: number;
+  target_catalog_size: number;
+  min_distinct_systems: number;
+  import_target: number;
+  manual_target: number;
+  excluded_import_target: number;
+  include_justifications: boolean;
+  include_exports: boolean;
+  include_design_warnings: boolean;
+  cleanup_policy: "manual" | "ephemeral_auto_cleanup";
+}
+
+export interface SyntheticGenerationPresetList {
+  presets: SyntheticGenerationPreset[];
+}
+
+export interface SyntheticGenerationJobRequest {
+  project_name?: string;
+  preset_code?: string;
+  target_catalog_size?: number;
+  min_distinct_systems?: number;
+  import_target?: number;
+  manual_target?: number;
+  excluded_import_target?: number;
+  include_justifications?: boolean;
+  include_exports?: boolean;
+  include_design_warnings?: boolean;
+  cleanup_policy?: "manual" | "ephemeral_auto_cleanup";
+  seed_value?: number;
+}
+
+export interface SyntheticArtifactExportJob {
+  job_id: string;
+  filename: string;
+  download_url: string;
+  file_path: string;
+  job_file_path?: string | null;
+}
+
+export interface SyntheticArtifactManifest {
+  workbook_path: string;
+  report_json_path: string;
+  report_markdown_path: string;
+  export_jobs: Record<string, SyntheticArtifactExportJob>;
+}
+
+export interface SyntheticGenerationJob {
+  id: string;
+  requested_by: string;
+  status: string;
+  preset_code: string;
+  input_payload: Record<string, unknown>;
+  normalized_payload: Record<string, unknown>;
+  project_id: string | null;
+  project_name: string | null;
+  seed_value: number;
+  catalog_target: number;
+  manual_target: number;
+  import_target: number;
+  excluded_import_target: number;
+  result_summary: Record<string, unknown> | null;
+  validation_results: Record<string, unknown> | null;
+  artifact_manifest: SyntheticArtifactManifest | null;
+  error_details: Record<string, unknown> | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SyntheticGenerationJobList {
+  jobs: SyntheticGenerationJob[];
+  total: number;
+}
+
 export interface ImportBatch {
   id: string;
   project_id: string;

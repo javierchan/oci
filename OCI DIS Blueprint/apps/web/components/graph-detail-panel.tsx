@@ -5,6 +5,7 @@
 import Link from "next/link";
 
 import { QaBadge } from "@/components/qa-badge";
+import { displayQaStatus } from "@/lib/format";
 import type { GraphEdge, GraphNode, GraphResponse } from "@/lib/types";
 
 type GraphDetailPanelProps = {
@@ -106,7 +107,7 @@ export function GraphDetailPanel({
                 key={status}
                 className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700"
               >
-                {count} {status}
+                {count} {displayQaStatus(status)}
               </span>
             ))}
           </div>

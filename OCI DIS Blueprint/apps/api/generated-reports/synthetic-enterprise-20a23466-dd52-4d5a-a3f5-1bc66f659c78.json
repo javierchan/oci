@@ -1,0 +1,72 @@
+{
+  "project_id": "20a23466-dd52-4d5a-a3f5-1bc66f659c78",
+  "project_name": "OCI DIS Blueprint Demo Enterprise 2026 2026-04-29 18:27:18",
+  "seed": 20260429,
+  "catalog_count": 480,
+  "distinct_systems": 72,
+  "covered_pattern_ids": [
+    "#01",
+    "#02",
+    "#03",
+    "#04",
+    "#05",
+    "#06",
+    "#07",
+    "#08",
+    "#09",
+    "#10",
+    "#11",
+    "#12",
+    "#13",
+    "#14",
+    "#15",
+    "#16",
+    "#17"
+  ],
+  "import_batch_id": "688346bb-fca9-49f5-be56-a1642d56a16c",
+  "import_included_count": 420,
+  "manual_count": 60,
+  "excluded_import_count": 36,
+  "design_warning_rows": 32,
+  "approved_justifications": 480,
+  "snapshot_ids": {
+    "imported": "6fe29781-716a-44ed-b481-1c430095da0b",
+    "final": "7605c9d2-f30e-4c78-9f80-36e343404fc6"
+  },
+  "dashboard_snapshot_ids": {
+    "imported": "c1ff17fe-a094-4600-b9ba-1a9aa5305f88",
+    "final": "1719a753-58aa-4d03-8cc3-347674f581ab"
+  },
+  "artifacts": {
+    "workbook_path": "/app/uploads/synthetic/oci-dis-blueprint-demo-enterprise-2026-20260429.xlsx",
+    "xlsx_export": {
+      "job_id": "bef22a5f-b001-4ab9-9807-ac6deea119e9",
+      "filename": "20a23466-dd52-4d5a-a3f5-1bc66f659c78-7605c9d2-f30e-4c78-9f80-36e343404fc6.xlsx",
+      "download_url": "/api/v1/exports/20a23466-dd52-4d5a-a3f5-1bc66f659c78/jobs/bef22a5f-b001-4ab9-9807-ac6deea119e9/download",
+      "file_path": "uploads/exports/files/bef22a5f-b001-4ab9-9807-ac6deea119e9.xlsx",
+      "job_file_path": "uploads/exports/jobs/bef22a5f-b001-4ab9-9807-ac6deea119e9.json"
+    },
+    "json_export": {
+      "job_id": "cbe3d276-5de9-4601-8881-c80473733d15",
+      "filename": "20a23466-dd52-4d5a-a3f5-1bc66f659c78-7605c9d2-f30e-4c78-9f80-36e343404fc6.json",
+      "download_url": "/api/v1/exports/20a23466-dd52-4d5a-a3f5-1bc66f659c78/jobs/cbe3d276-5de9-4601-8881-c80473733d15/download",
+      "file_path": "uploads/exports/files/cbe3d276-5de9-4601-8881-c80473733d15.json",
+      "job_file_path": "uploads/exports/jobs/cbe3d276-5de9-4601-8881-c80473733d15.json"
+    },
+    "pdf_export": {
+      "job_id": "2604dd7f-dd07-494f-9d09-09a48aef2284",
+      "filename": "20a23466-dd52-4d5a-a3f5-1bc66f659c78-7605c9d2-f30e-4c78-9f80-36e343404fc6.pdf",
+      "download_url": "/api/v1/exports/20a23466-dd52-4d5a-a3f5-1bc66f659c78/jobs/2604dd7f-dd07-494f-9d09-09a48aef2284/download",
+      "file_path": "uploads/exports/files/2604dd7f-dd07-494f-9d09-09a48aef2284.pdf",
+      "job_file_path": "uploads/exports/jobs/2604dd7f-dd07-494f-9d09-09a48aef2284.json"
+    }
+  },
+  "smoke_routes": {
+    "project": "/api/v1/projects/20a23466-dd52-4d5a-a3f5-1bc66f659c78",
+    "catalog": "/api/v1/catalog/20a23466-dd52-4d5a-a3f5-1bc66f659c78",
+    "graph": "/api/v1/catalog/20a23466-dd52-4d5a-a3f5-1bc66f659c78/graph",
+    "dashboard_snapshots": "/api/v1/dashboard/20a23466-dd52-4d5a-a3f5-1bc66f659c78/snapshots",
+    "volumetry_snapshots": "/api/v1/volumetry/20a23466-dd52-4d5a-a3f5-1bc66f659c78/snapshots",
+    "audit": "/api/v1/audit/20a23466-dd52-4d5a-a3f5-1bc66f659c78"
+  }
+}

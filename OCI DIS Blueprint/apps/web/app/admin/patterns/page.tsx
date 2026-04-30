@@ -37,7 +37,11 @@ export default function AdminPatternsPage(): JSX.Element {
         api.listProjects(),
       ]);
       setPatterns(patternList.patterns);
-      setToolOptions([...toolList.options, ...overlayList.options].map((option) => option.value));
+      setToolOptions(
+        Array.from(
+          new Set([...toolList.options, ...overlayList.options].map((option) => option.value)),
+        ),
+      );
       setCatalogProjectId(projects.projects[0]?.id ?? null);
       setError("");
     } catch (caughtError) {

@@ -8,20 +8,31 @@ router/worker slice without moving orchestration into the calc engine.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from fastapi import HTTPException
 import json
 from pathlib import Path
 import random
 from typing import Literal, cast
 
 from openpyxl import Workbook
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import CatalogIntegration, PatternDefinition, Project
+from app.models import CatalogIntegration, PatternDefinition, Project, SyntheticGenerationJob
 from app.models.project import ProjectStatus
 from app.schemas.catalog import CatalogIntegrationPatch, ManualIntegrationCreate
 from app.schemas.export import ExportJobResponse
+from app.schemas.synthetic import (
+    SyntheticArtifactExportJobResponse,
+    SyntheticArtifactManifestResponse,
+    SyntheticGenerationJobCreateRequest,
+    SyntheticGenerationJobListResponse,
+    SyntheticGenerationJobResponse,
+    SyntheticGenerationPresetListResponse,
+    SyntheticGenerationPresetResponse,
+)
 from app.services import (
     audit_service,
     catalog_service,
@@ -29,6 +40,7 @@ from app.services import (
     export_service,
     import_service,
     justification_service,
+    project_service,
     recalc_service,
 )
 from app.services.serializers import sanitize_for_json
@@ -36,8 +48,16 @@ from app.services.serializers import sanitize_for_json
 API_ROOT = Path(__file__).resolve().parents[2]
 REPORT_ROOT = API_ROOT / "generated-reports"
 UPLOAD_ROOT = API_ROOT / "uploads" / "synthetic"
+EXPORT_ROOT = API_ROOT / "uploads" / "exports"
 SOURCE_SHEET_NAME = "Catálogo de Integraciones"
 SYNTHETIC_ACTOR_ID = "synthetic-generator"
+DEFAULT_PRESET_CODE = "enterprise-default"
+SMOKE_PRESET_CODE = "ephemeral-smoke"
+RETAINED_SMOKE_PRESET_CODE = "retained-smoke"
+MINIMUM_SUPPORTED_CATALOG_SIZE = 480
+MINIMUM_SUPPORTED_DISTINCT_SYSTEMS = 70
+SYNTHETIC_JOBS_TABLE_NAME = "synthetic_generation_jobs"
+SYNTHETIC_JOBS_REQUIRED_MIGRATION = "20260428_0007"
 
 IMPORT_HEADER_ROW: list[str] = [
     "#",
@@ -238,6 +258,9 @@ PATTERN_WEIGHTS: dict[str, int] = {
     "#16": 10,
     "#17": 10,
 }
+SUPPORTED_PATTERN_COUNT = len(PATTERN_WEIGHTS)
+SMOKE_MINIMUM_SUPPORTED_CATALOG_SIZE = 18
+SMOKE_MINIMUM_SUPPORTED_DISTINCT_SYSTEMS = 12
 
 
 @dataclass(frozen=True)
@@ -249,15 +272,48 @@ class SyntheticProjectSpec:
         "to validate catalog, graph, volumetry, dashboard, justifications, audit, "
         "and export flows end to end."
     )
+    seed_type: str = "synthetic-enterprise"
+    generator_version: str = "enterprise-v1"
     seed: int = 20260416
     import_included_count: int = 420
     manual_count: int = 60
     excluded_import_count: int = 36
     minimum_distinct_systems: int = 70
     minimum_catalog_count: int = 480
+    include_justifications: bool = True
+    include_exports: bool = True
+    include_design_warnings: bool = True
 
 
 DEFAULT_SYNTHETIC_SPEC = SyntheticProjectSpec()
+SMOKE_SYNTHETIC_SPEC = SyntheticProjectSpec(
+    project_name="Synthetic Smoke Validation Project",
+    description=(
+        "Ephemeral synthetic smoke project used to validate the real admin "
+        "synthetic job flow without leaving durable artifacts behind."
+    ),
+    seed_type="synthetic-smoke",
+    generator_version="smoke-v1",
+    seed=20260428,
+    import_included_count=12,
+    manual_count=6,
+    excluded_import_count=2,
+    minimum_distinct_systems=SMOKE_MINIMUM_SUPPORTED_DISTINCT_SYSTEMS,
+    minimum_catalog_count=SMOKE_MINIMUM_SUPPORTED_CATALOG_SIZE,
+    include_justifications=False,
+    include_exports=False,
+    include_design_warnings=False,
+)
+RETAINED_SMOKE_SYNTHETIC_SPEC = replace(
+    SMOKE_SYNTHETIC_SPEC,
+    project_name="Retained Smoke Validation Project",
+    description=(
+        "Retained synthetic smoke project used to validate the real admin "
+        "synthetic cleanup flow before operators explicitly remove it."
+    ),
+    seed_type="synthetic-smoke-retained",
+    generator_version="smoke-retained-v1",
+)
 
 
 @dataclass(frozen=True)
@@ -482,12 +538,30 @@ def _pattern_name(pattern_id: str) -> str:
 
 
 def _pattern_sequence(total: int, seed: int) -> list[str]:
-    pattern_ids: list[str] = []
+    weighted_pattern_ids: list[str] = []
     for pattern_id, weight in PATTERN_WEIGHTS.items():
-        pattern_ids.extend([pattern_id] * weight)
-    if len(pattern_ids) != total:
-        raise ValueError(f"Expected weighted pattern sequence of {total}, found {len(pattern_ids)}")
-    random.Random(seed).shuffle(pattern_ids)
+        weighted_pattern_ids.extend([pattern_id] * weight)
+
+    if total == len(weighted_pattern_ids):
+        pattern_ids = list(weighted_pattern_ids)
+        random.Random(seed).shuffle(pattern_ids)
+        return pattern_ids
+
+    if total < SUPPORTED_PATTERN_COUNT:
+        raise ValueError(
+            f"Synthetic dataset needs at least {SUPPORTED_PATTERN_COUNT} included rows for full pattern coverage."
+        )
+
+    rng = random.Random(seed)
+    extra_needed = total - SUPPORTED_PATTERN_COUNT
+    extra_pattern_ids: list[str] = []
+    while len(extra_pattern_ids) < extra_needed:
+        batch = list(weighted_pattern_ids)
+        rng.shuffle(batch)
+        extra_pattern_ids.extend(batch)
+
+    pattern_ids = [*PATTERN_WEIGHTS.keys(), *extra_pattern_ids[:extra_needed]]
+    rng.shuffle(pattern_ids)
     return pattern_ids
 
 
@@ -581,6 +655,9 @@ def build_canvas_state(core_tools: tuple[str, ...], overlay_keys: tuple[str, ...
     nodes: list[dict[str, object]] = []
     edges: list[dict[str, object]] = []
     previous_id = "source-system"
+    route_start_x = 340
+    route_gap_x = 260
+    route_y = 220
     for index, tool_key in enumerate(route_nodes, start=1):
         instance_id = f"n{index}"
         label = SHORT_TOOL_LABELS.get(tool_key, tool_key)
@@ -591,8 +668,8 @@ def build_canvas_state(core_tools: tuple[str, ...], overlay_keys: tuple[str, ...
                 "toolKey": tool_key,
                 "label": label,
                 "payloadNote": payload_note,
-                "x": 200 + (index - 1) * 180,
-                "y": 120 if index % 2 else 260,
+                "x": route_start_x + (index - 1) * route_gap_x,
+                "y": route_y,
             }
         )
         edges.append(
@@ -945,6 +1022,7 @@ async def _export_job_payload(
         "filename": job.filename,
         "download_url": job.download_url,
         "file_path": str(file_path),
+        "job_file_path": str(export_service.JOBS_DIR / f"{job.job_id}.json"),
     }
 
 
@@ -960,8 +1038,8 @@ async def create_synthetic_enterprise_project(
         raise ValueError("Synthetic dataset does not meet minimum catalog size.")
     if validation.distinct_systems < spec.minimum_distinct_systems:
         raise ValueError("Synthetic dataset does not meet minimum distinct-system coverage.")
-    if len(validation.covered_pattern_ids) != 17:
-        raise ValueError("Synthetic dataset does not cover all 17 patterns.")
+    if len(validation.covered_pattern_ids) != SUPPORTED_PATTERN_COUNT:
+        raise ValueError(f"Synthetic dataset does not cover all {SUPPORTED_PATTERN_COUNT} patterns.")
     if validation.max_canvas_state_length >= 1000:
         raise ValueError("Synthetic dataset exceeded the current canvas column budget.")
 
@@ -975,7 +1053,7 @@ async def create_synthetic_enterprise_project(
     write_synthetic_workbook(dataset, workbook_path)
 
     project = Project(
-        name=f"{spec.project_name} {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')}",
+        name=spec.project_name,
         description=spec.description,
         owner_id=spec.owner_id,
         status=ProjectStatus.ACTIVE,
@@ -984,9 +1062,9 @@ async def create_synthetic_enterprise_project(
             sanitize_for_json(
                 {
                     "synthetic": True,
-                    "seed_type": "synthetic-enterprise",
+                    "seed_type": spec.seed_type,
                     "seed_actor": SYNTHETIC_ACTOR_ID,
-                    "generator": "enterprise-v1",
+                    "generator": spec.generator_version,
                     "seed": spec.seed,
                     "import_included_count": spec.import_included_count,
                     "manual_count": spec.manual_count,
@@ -1021,7 +1099,9 @@ async def create_synthetic_enterprise_project(
     final_snapshot = await recalc_service.recalculate_project(project.id, SYNTHETIC_ACTOR_ID, db)
     final_dashboard = await dashboard_service.get_snapshot(project.id, final_snapshot.id, db)
 
-    approved_justifications = await _approve_all_justifications(project.id, db)
+    approved_justifications = 0
+    if spec.include_justifications:
+        approved_justifications = await _approve_all_justifications(project.id, db)
 
     final_rows = await _load_project_rows(project.id, db)
     import_batch.loaded_count = len(final_rows)
@@ -1036,11 +1116,13 @@ async def create_synthetic_enterprise_project(
         }
     )
     covered_pattern_ids = sorted({row.selected_pattern for row in final_rows if row.selected_pattern})
-    design_warning_rows = sum(
-        1
-        for row_metrics in final_snapshot.row_results.values()
-        if cast(list[object], row_metrics.get("design_constraint_warnings", []))
-    )
+    design_warning_rows = 0
+    if spec.include_design_warnings:
+        design_warning_rows = sum(
+            1
+            for row_metrics in final_snapshot.row_results.values()
+            if cast(list[object], row_metrics.get("design_constraint_warnings", []))
+        )
 
     await audit_service.emit(
         event_type="synthetic_project_seed_complete",
@@ -1057,9 +1139,16 @@ async def create_synthetic_enterprise_project(
         db=db,
     )
 
-    xlsx_job = await export_service.create_xlsx_export(project.id, final_snapshot.id, db)
-    json_job = await export_service.create_json_export(project.id, final_snapshot.id, db)
-    pdf_job = await export_service.create_pdf_export(project.id, final_snapshot.id, db)
+    export_jobs_payload: dict[str, dict[str, str]] = {}
+    if spec.include_exports:
+        xlsx_job = await export_service.create_xlsx_export(project.id, final_snapshot.id, db)
+        json_job = await export_service.create_json_export(project.id, final_snapshot.id, db)
+        pdf_job = await export_service.create_pdf_export(project.id, final_snapshot.id, db)
+        export_jobs_payload = {
+            "xlsx": await _export_job_payload(xlsx_job),
+            "json": await _export_job_payload(json_job),
+            "pdf": await _export_job_payload(pdf_job),
+        }
 
     report_payload = cast(
         dict[str, object],
@@ -1087,9 +1176,9 @@ async def create_synthetic_enterprise_project(
                 },
                 "artifacts": {
                     "workbook_path": str(workbook_path),
-                    "xlsx_export": await _export_job_payload(xlsx_job),
-                    "json_export": await _export_job_payload(json_job),
-                    "pdf_export": await _export_job_payload(pdf_job),
+                    "xlsx_export": export_jobs_payload.get("xlsx"),
+                    "json_export": export_jobs_payload.get("json"),
+                    "pdf_export": export_jobs_payload.get("pdf"),
                 },
                 "smoke_routes": {
                     "project": f"/api/v1/projects/{project.id}",
@@ -1128,11 +1217,7 @@ async def create_synthetic_enterprise_project(
             workbook_path=str(workbook_path),
             report_json_path=str(report_json_path),
             report_markdown_path=str(report_markdown_path),
-            export_jobs={
-                "xlsx": await _export_job_payload(xlsx_job),
-                "json": await _export_job_payload(json_job),
-                "pdf": await _export_job_payload(pdf_job),
-            },
+            export_jobs=export_jobs_payload,
         ),
     )
 
@@ -1159,13 +1244,691 @@ def _report_markdown(payload: dict[str, object]) -> str:
         "## Artifacts",
         "",
         f"- Workbook: `{artifacts['workbook_path']}`",
-        f"- XLSX Export: `{cast(dict[str, str], artifacts['xlsx_export'])['file_path']}`",
-        f"- JSON Export: `{cast(dict[str, str], artifacts['json_export'])['file_path']}`",
-        f"- PDF Export: `{cast(dict[str, str], artifacts['pdf_export'])['file_path']}`",
-        "",
-        "## Smoke Routes",
-        "",
     ]
+    if artifacts.get("xlsx_export"):
+        lines.append(f"- XLSX Export: `{cast(dict[str, str], artifacts['xlsx_export'])['file_path']}`")
+    if artifacts.get("json_export"):
+        lines.append(f"- JSON Export: `{cast(dict[str, str], artifacts['json_export'])['file_path']}`")
+    if artifacts.get("pdf_export"):
+        lines.append(f"- PDF Export: `{cast(dict[str, str], artifacts['pdf_export'])['file_path']}`")
+    lines.extend(
+        [
+            "",
+            "## Smoke Routes",
+            "",
+        ]
+    )
     lines.extend(f"- `{label}`: `{path}`" for label, path in smoke_routes.items())
     lines.append("")
     return "\n".join(lines)
+
+
+def _enterprise_preset_response() -> SyntheticGenerationPresetResponse:
+    spec = DEFAULT_SYNTHETIC_SPEC
+    return SyntheticGenerationPresetResponse(
+        code=DEFAULT_PRESET_CODE,
+        label="Enterprise Reference",
+        description=(
+            "Deterministic enterprise-scale governed dataset that exercises import, "
+            "manual capture, snapshots, justifications, audit, graph, and exports."
+        ),
+        project_name=spec.project_name,
+        seed_value=spec.seed,
+        target_catalog_size=spec.minimum_catalog_count,
+        min_distinct_systems=spec.minimum_distinct_systems,
+        import_target=spec.import_included_count,
+        manual_target=spec.manual_count,
+        excluded_import_target=spec.excluded_import_count,
+        include_justifications=spec.include_justifications,
+        include_exports=spec.include_exports,
+        include_design_warnings=spec.include_design_warnings,
+        cleanup_policy="manual",
+    )
+
+
+def _smoke_preset_response() -> SyntheticGenerationPresetResponse:
+    spec = SMOKE_SYNTHETIC_SPEC
+    return SyntheticGenerationPresetResponse(
+        code=SMOKE_PRESET_CODE,
+        label="Ephemeral Smoke Validation",
+        description=(
+            "Small synthetic smoke run that exercises the real import, manual capture, "
+            "snapshot, worker, and cleanup flow, then automatically removes its project and artifacts."
+        ),
+        project_name=spec.project_name,
+        seed_value=spec.seed,
+        target_catalog_size=spec.minimum_catalog_count,
+        min_distinct_systems=spec.minimum_distinct_systems,
+        import_target=spec.import_included_count,
+        manual_target=spec.manual_count,
+        excluded_import_target=spec.excluded_import_count,
+        include_justifications=spec.include_justifications,
+        include_exports=spec.include_exports,
+        include_design_warnings=spec.include_design_warnings,
+        cleanup_policy="ephemeral_auto_cleanup",
+    )
+
+
+def _retained_smoke_preset_response() -> SyntheticGenerationPresetResponse:
+    spec = RETAINED_SMOKE_SYNTHETIC_SPEC
+    return SyntheticGenerationPresetResponse(
+        code=RETAINED_SMOKE_PRESET_CODE,
+        label="Retained Smoke Validation",
+        description=(
+            "Small retained smoke run that exercises the real import, manual capture, "
+            "snapshot, worker, and explicit cleanup flow without using the enterprise-scale preset."
+        ),
+        project_name=spec.project_name,
+        seed_value=spec.seed,
+        target_catalog_size=spec.minimum_catalog_count,
+        min_distinct_systems=spec.minimum_distinct_systems,
+        import_target=spec.import_included_count,
+        manual_target=spec.manual_count,
+        excluded_import_target=spec.excluded_import_count,
+        include_justifications=spec.include_justifications,
+        include_exports=spec.include_exports,
+        include_design_warnings=spec.include_design_warnings,
+        cleanup_policy="manual",
+    )
+
+
+def _preset_catalog() -> dict[str, SyntheticGenerationPresetResponse]:
+    presets = (
+        _enterprise_preset_response(),
+        _smoke_preset_response(),
+        _retained_smoke_preset_response(),
+    )
+    return {preset.code: preset for preset in presets}
+
+
+def _preset_spec(preset_code: str) -> SyntheticProjectSpec:
+    if preset_code == SMOKE_PRESET_CODE:
+        return SMOKE_SYNTHETIC_SPEC
+    if preset_code == RETAINED_SMOKE_PRESET_CODE:
+        return RETAINED_SMOKE_SYNTHETIC_SPEC
+    return DEFAULT_SYNTHETIC_SPEC
+
+
+def list_synthetic_presets() -> SyntheticGenerationPresetListResponse:
+    """Return the currently supported governed synthetic preset catalog."""
+
+    return SyntheticGenerationPresetListResponse(presets=list(_preset_catalog().values()))
+
+
+def _not_found(job_id: str) -> HTTPException:
+    return HTTPException(
+        status_code=404,
+        detail={
+            "detail": f"Synthetic generation job {job_id} not found.",
+            "error_code": "SYNTHETIC_JOB_NOT_FOUND",
+        },
+    )
+
+
+def _synthetic_schema_not_ready() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={
+            "detail": (
+                "Admin Synthetic Lab requires database migration "
+                f"{SYNTHETIC_JOBS_REQUIRED_MIGRATION} before synthetic jobs can be queried or created."
+            ),
+            "error_code": "SYNTHETIC_SCHEMA_NOT_READY",
+            "table": SYNTHETIC_JOBS_TABLE_NAME,
+            "expected_migration": SYNTHETIC_JOBS_REQUIRED_MIGRATION,
+            "recovery_hint": "Run 'alembic upgrade head' for the API service and retry.",
+        },
+    )
+
+
+def is_synthetic_schema_not_ready_error(exc: ProgrammingError | OperationalError) -> bool:
+    """Return true when the admin synthetic jobs table is missing from the DB schema."""
+
+    combined_message = " ".join(
+        part
+        for part in (
+            str(exc),
+            str(getattr(exc, "orig", "")),
+            str(getattr(getattr(exc, "orig", None), "args", "")),
+        )
+        if part
+    ).lower()
+    return SYNTHETIC_JOBS_TABLE_NAME in combined_message and (
+        "does not exist" in combined_message or "no such table" in combined_message
+    )
+
+
+def raise_if_synthetic_schema_not_ready(exc: ProgrammingError | OperationalError) -> None:
+    """Translate the known missing-table failure into a structured API response."""
+
+    if is_synthetic_schema_not_ready_error(exc):
+        raise _synthetic_schema_not_ready() from exc
+
+
+def _serialize_artifact_manifest(
+    manifest: dict[str, object] | None,
+) -> SyntheticArtifactManifestResponse | None:
+    if not manifest:
+        return None
+
+    export_jobs_raw = cast(dict[str, dict[str, object]], manifest.get("export_jobs", {}))
+    return SyntheticArtifactManifestResponse(
+        workbook_path=str(manifest.get("workbook_path", "")),
+        report_json_path=str(manifest.get("report_json_path", "")),
+        report_markdown_path=str(manifest.get("report_markdown_path", "")),
+        export_jobs={
+            key: SyntheticArtifactExportJobResponse(
+                job_id=str(value["job_id"]),
+                filename=str(value["filename"]),
+                download_url=str(value["download_url"]),
+                file_path=str(value["file_path"]),
+                job_file_path=str(value["job_file_path"]) if value.get("job_file_path") else None,
+            )
+            for key, value in export_jobs_raw.items()
+        },
+    )
+
+
+def serialize_synthetic_job(job: SyntheticGenerationJob) -> SyntheticGenerationJobResponse:
+    """Convert a persisted synthetic-generation job into an API response."""
+
+    return SyntheticGenerationJobResponse(
+        id=job.id,
+        requested_by=job.requested_by,
+        status=job.status.value,
+        preset_code=job.preset_code,
+        input_payload=cast(dict[str, object], sanitize_for_json(job.input_payload)),
+        normalized_payload=cast(dict[str, object], sanitize_for_json(job.normalized_payload)),
+        project_id=job.project_id,
+        project_name=job.project_name,
+        seed_value=job.seed_value,
+        catalog_target=job.catalog_target,
+        manual_target=job.manual_target,
+        import_target=job.import_target,
+        excluded_import_target=job.excluded_import_target,
+        result_summary=cast(dict[str, object] | None, sanitize_for_json(job.result_summary)),
+        validation_results=cast(dict[str, object] | None, sanitize_for_json(job.validation_results)),
+        artifact_manifest=_serialize_artifact_manifest(
+            cast(dict[str, object] | None, sanitize_for_json(job.artifact_manifest))
+        ),
+        error_details=cast(dict[str, object] | None, sanitize_for_json(job.error_details)),
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
+
+
+def should_auto_cleanup_payload(payload: dict[str, object] | None) -> bool:
+    """Return true when the normalized payload requests ephemeral auto-cleanup."""
+
+    if not payload:
+        return False
+    return str(payload.get("cleanup_policy", "manual")) == "ephemeral_auto_cleanup"
+
+
+async def _load_job(job_id: str, db: AsyncSession) -> SyntheticGenerationJob:
+    job = await db.get(SyntheticGenerationJob, job_id)
+    if job is None:
+        raise _not_found(job_id)
+    return job
+
+
+def _normalized_request_payload(body: SyntheticGenerationJobCreateRequest) -> dict[str, object]:
+    presets = _preset_catalog()
+    preset_code = body.preset_code.strip()
+    preset = presets.get(preset_code)
+    if preset is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Synthetic preset not found.", "error_code": "SYNTHETIC_PRESET_NOT_FOUND"},
+        )
+
+    target_catalog_size = body.target_catalog_size or preset.target_catalog_size
+    import_target = body.import_target or preset.import_target
+    manual_target = body.manual_target if body.manual_target is not None else preset.manual_target
+    excluded_import_target = (
+        body.excluded_import_target
+        if body.excluded_import_target is not None
+        else preset.excluded_import_target
+    )
+    min_distinct_systems = body.min_distinct_systems or preset.min_distinct_systems
+    seed_value = body.seed_value or preset.seed_value
+    project_name = (body.project_name or preset.project_name).strip()
+    include_justifications = (
+        preset.include_justifications if body.include_justifications is None else body.include_justifications
+    )
+    include_exports = preset.include_exports if body.include_exports is None else body.include_exports
+    include_design_warnings = (
+        preset.include_design_warnings if body.include_design_warnings is None else body.include_design_warnings
+    )
+    cleanup_policy = body.cleanup_policy or preset.cleanup_policy
+
+    if import_target + manual_target != target_catalog_size:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "detail": "Import target plus manual target must equal the catalog target.",
+                "error_code": "SYNTHETIC_TARGET_MISMATCH",
+            },
+        )
+    if target_catalog_size < preset.target_catalog_size:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "detail": f"Catalog target is below the minimum supported size for preset {preset_code}.",
+                "error_code": "SYNTHETIC_CATALOG_TARGET_TOO_SMALL",
+            },
+        )
+    if min_distinct_systems < preset.min_distinct_systems:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "detail": f"Distinct-system target is below the supported governance minimum for preset {preset_code}.",
+                "error_code": "SYNTHETIC_SYSTEM_TARGET_TOO_SMALL",
+            },
+        )
+    if not project_name:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "detail": "Project name is required.",
+                "error_code": "SYNTHETIC_PROJECT_NAME_REQUIRED",
+            },
+        )
+    if cleanup_policy != preset.cleanup_policy:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "detail": f"Cleanup policy {cleanup_policy} is not supported for preset {preset_code}.",
+                "error_code": "SYNTHETIC_CLEANUP_POLICY_INVALID",
+            },
+        )
+
+    return cast(
+        dict[str, object],
+        sanitize_for_json(
+            {
+                "preset_code": preset_code,
+                "project_name": project_name,
+                "target_catalog_size": target_catalog_size,
+                "min_distinct_systems": min_distinct_systems,
+                "import_target": import_target,
+                "manual_target": manual_target,
+                "excluded_import_target": excluded_import_target,
+                "include_justifications": include_justifications,
+                "include_exports": include_exports,
+                "include_design_warnings": include_design_warnings,
+                "cleanup_policy": cleanup_policy,
+                "seed_value": seed_value,
+            }
+        ),
+    )
+
+
+def _spec_from_payload(payload: dict[str, object]) -> SyntheticProjectSpec:
+    template = _preset_spec(str(payload["preset_code"]))
+    return replace(
+        template,
+        project_name=str(payload["project_name"]),
+        seed=int(payload["seed_value"]),
+        import_included_count=int(payload["import_target"]),
+        manual_count=int(payload["manual_target"]),
+        excluded_import_count=int(payload["excluded_import_target"]),
+        minimum_distinct_systems=int(payload["min_distinct_systems"]),
+        minimum_catalog_count=int(payload["target_catalog_size"]),
+        include_justifications=bool(payload["include_justifications"]),
+        include_exports=bool(payload["include_exports"]),
+        include_design_warnings=bool(payload["include_design_warnings"]),
+    )
+
+
+async def list_synthetic_jobs(
+    db: AsyncSession,
+    limit: int = 20,
+) -> SyntheticGenerationJobListResponse:
+    """List recent persisted synthetic-generation jobs."""
+
+    total = int(
+        await db.scalar(select(func.count()).select_from(SyntheticGenerationJob))
+        or 0
+    )
+    result = await db.scalars(
+        select(SyntheticGenerationJob)
+        .order_by(SyntheticGenerationJob.created_at.desc())
+        .limit(limit)
+    )
+    jobs = [serialize_synthetic_job(job) for job in result.all()]
+    return SyntheticGenerationJobListResponse(jobs=jobs, total=total)
+
+
+async def get_synthetic_job(job_id: str, db: AsyncSession) -> SyntheticGenerationJobResponse:
+    """Return one persisted synthetic-generation job."""
+
+    return serialize_synthetic_job(await _load_job(job_id, db))
+
+
+async def create_synthetic_job(
+    body: SyntheticGenerationJobCreateRequest,
+    actor_id: str,
+    db: AsyncSession,
+) -> SyntheticGenerationJobResponse:
+    """Persist a new synthetic-generation job request."""
+
+    normalized_payload = _normalized_request_payload(body)
+    job = SyntheticGenerationJob(
+        requested_by=actor_id,
+        preset_code=str(normalized_payload["preset_code"]),
+        input_payload=cast(dict[str, object], sanitize_for_json(body.model_dump(exclude_none=True))),
+        normalized_payload=normalized_payload,
+        project_name=str(normalized_payload["project_name"]),
+        seed_value=int(normalized_payload["seed_value"]),
+        catalog_target=int(normalized_payload["target_catalog_size"]),
+        manual_target=int(normalized_payload["manual_target"]),
+        import_target=int(normalized_payload["import_target"]),
+        excluded_import_target=int(normalized_payload["excluded_import_target"]),
+    )
+    db.add(job)
+    await db.flush()
+    await db.refresh(job)
+    await audit_service.emit(
+        event_type="synthetic_job_created",
+        entity_type="synthetic_generation_job",
+        entity_id=job.id,
+        actor_id=actor_id,
+        old_value=None,
+        new_value=serialize_synthetic_job(job).model_dump(mode="json"),
+        project_id=None,
+        db=db,
+    )
+    return serialize_synthetic_job(job)
+
+
+async def retry_synthetic_job(
+    job_id: str,
+    actor_id: str,
+    db: AsyncSession,
+) -> SyntheticGenerationJobResponse:
+    """Clone a failed job into a new pending job with the same governed inputs."""
+
+    source_job = await _load_job(job_id, db)
+    if source_job.status.value != "failed":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Only failed synthetic jobs can be retried.",
+                "error_code": "SYNTHETIC_JOB_RETRY_FORBIDDEN",
+            },
+        )
+
+    new_job = SyntheticGenerationJob(
+        requested_by=actor_id,
+        preset_code=source_job.preset_code,
+        input_payload=cast(dict[str, object], sanitize_for_json(source_job.input_payload)),
+        normalized_payload=cast(dict[str, object], sanitize_for_json(source_job.normalized_payload)),
+        project_name=source_job.project_name,
+        seed_value=source_job.seed_value,
+        catalog_target=source_job.catalog_target,
+        manual_target=source_job.manual_target,
+        import_target=source_job.import_target,
+        excluded_import_target=source_job.excluded_import_target,
+    )
+    db.add(new_job)
+    await db.flush()
+    await db.refresh(new_job)
+    await audit_service.emit(
+        event_type="synthetic_job_retried",
+        entity_type="synthetic_generation_job",
+        entity_id=new_job.id,
+        actor_id=actor_id,
+        old_value={"retry_source_job_id": source_job.id},
+        new_value=serialize_synthetic_job(new_job).model_dump(mode="json"),
+        project_id=None,
+        db=db,
+    )
+    return serialize_synthetic_job(new_job)
+
+
+async def mark_synthetic_job_running(job_id: str, db: AsyncSession) -> SyntheticGenerationJobResponse:
+    """Mark a queued synthetic-generation job as running."""
+
+    job = await _load_job(job_id, db)
+    if job.status.value == "cleaned_up":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Cleaned-up synthetic jobs cannot run again.",
+                "error_code": "SYNTHETIC_JOB_ALREADY_CLEANED",
+            },
+        )
+    old_value = {"status": job.status.value}
+    job.status = type(job.status).RUNNING
+    job.started_at = datetime.now(UTC)
+    job.finished_at = None
+    job.error_details = None
+    await db.flush()
+    await db.refresh(job)
+    await audit_service.emit(
+        event_type="synthetic_job_started",
+        entity_type="synthetic_generation_job",
+        entity_id=job.id,
+        actor_id=job.requested_by,
+        old_value=old_value,
+        new_value={"status": job.status.value, "started_at": job.started_at.isoformat()},
+        project_id=None,
+        db=db,
+    )
+    return serialize_synthetic_job(job)
+
+
+async def mark_synthetic_job_failed(
+    job_id: str,
+    error_details: dict[str, object],
+    db: AsyncSession,
+) -> SyntheticGenerationJobResponse:
+    """Persist a failed terminal state for a synthetic-generation job."""
+
+    job = await _load_job(job_id, db)
+    old_value = {"status": job.status.value, "error_details": job.error_details}
+    job.status = type(job.status).FAILED
+    job.finished_at = datetime.now(UTC)
+    job.error_details = cast(dict[str, object], sanitize_for_json(error_details))
+    await db.flush()
+    await db.refresh(job)
+    await audit_service.emit(
+        event_type="synthetic_job_failed",
+        entity_type="synthetic_generation_job",
+        entity_id=job.id,
+        actor_id=job.requested_by,
+        old_value=old_value,
+        new_value={"status": job.status.value, "error_details": job.error_details},
+        project_id=None,
+        db=db,
+    )
+    return serialize_synthetic_job(job)
+
+
+async def run_synthetic_generation_job(
+    job_id: str,
+    db: AsyncSession,
+) -> SyntheticGenerationJobResponse:
+    """Execute one persisted synthetic-generation job through the real service flows."""
+
+    job = await _load_job(job_id, db)
+    normalized_payload = cast(dict[str, object], job.normalized_payload)
+    result = await create_synthetic_enterprise_project(db, _spec_from_payload(normalized_payload))
+    old_value = {"status": job.status.value}
+    artifact_manifest = cast(
+        dict[str, object],
+        sanitize_for_json(
+            {
+                "workbook_path": result.artifacts.workbook_path,
+                "report_json_path": result.artifacts.report_json_path,
+                "report_markdown_path": result.artifacts.report_markdown_path,
+                "export_jobs": result.artifacts.export_jobs,
+            }
+        ),
+    )
+    validation_results = cast(
+        dict[str, object],
+        sanitize_for_json(
+            {
+                "catalog_count": result.catalog_count,
+                "catalog_target": job.catalog_target,
+                "distinct_systems": result.distinct_systems,
+                "min_distinct_systems": normalized_payload["min_distinct_systems"],
+                "covered_pattern_ids": result.covered_pattern_ids,
+                "design_warning_rows": result.design_warning_rows,
+                "approved_justifications": result.approved_justifications,
+                "import_included_count": result.import_included_count,
+                "manual_count": result.manual_count,
+                "excluded_import_count": result.excluded_import_count,
+                "meets_catalog_target": result.catalog_count >= job.catalog_target,
+                "meets_distinct_system_target": result.distinct_systems
+                >= int(normalized_payload["min_distinct_systems"]),
+            }
+        ),
+    )
+    result_summary = cast(
+        dict[str, object],
+        sanitize_for_json(
+            {
+                "project_id": result.project_id,
+                "project_name": result.project_name,
+                "import_batch_id": result.import_batch_id,
+                "imported_snapshot_id": result.imported_snapshot_id,
+                "final_snapshot_id": result.final_snapshot_id,
+                "imported_dashboard_snapshot_id": result.imported_dashboard_snapshot_id,
+                "final_dashboard_snapshot_id": result.final_dashboard_snapshot_id,
+            }
+        ),
+    )
+    job.status = type(job.status).COMPLETED
+    job.project_id = result.project_id
+    job.project_name = result.project_name
+    job.finished_at = datetime.now(UTC)
+    job.result_summary = result_summary
+    job.validation_results = validation_results
+    job.artifact_manifest = artifact_manifest
+    job.error_details = None
+    await db.flush()
+    await db.refresh(job)
+    await audit_service.emit(
+        event_type="synthetic_job_completed",
+        entity_type="synthetic_generation_job",
+        entity_id=job.id,
+        actor_id=job.requested_by,
+        old_value=old_value,
+        new_value=serialize_synthetic_job(job).model_dump(mode="json"),
+        project_id=job.project_id,
+        db=db,
+    )
+    return serialize_synthetic_job(job)
+
+
+def _resolve_artifact_path(path_value: str) -> Path:
+    path = Path(path_value)
+    return path.resolve() if path.is_absolute() else (API_ROOT / path).resolve()
+
+
+def _artifact_roots() -> tuple[Path, ...]:
+    return (
+        REPORT_ROOT.resolve(),
+        UPLOAD_ROOT.resolve(),
+        EXPORT_ROOT.resolve(),
+    )
+
+
+def _remove_artifact_file(path_value: str, removed_paths: list[str]) -> None:
+    resolved_path = _resolve_artifact_path(path_value)
+    if not any(root == resolved_path or root in resolved_path.parents for root in _artifact_roots()):
+        return
+    if resolved_path.exists():
+        resolved_path.unlink()
+        removed_paths.append(str(resolved_path))
+
+
+def _cleanup_artifact_manifest(manifest: dict[str, object] | None) -> list[str]:
+    removed_paths: list[str] = []
+    if not manifest:
+        return removed_paths
+
+    for key in ("workbook_path", "report_json_path", "report_markdown_path"):
+        value = manifest.get(key)
+        if isinstance(value, str) and value:
+            _remove_artifact_file(value, removed_paths)
+
+    export_jobs = cast(dict[str, dict[str, object]], manifest.get("export_jobs", {}))
+    for payload in export_jobs.values():
+        file_path = payload.get("file_path")
+        job_file_path = payload.get("job_file_path")
+        if isinstance(file_path, str) and file_path:
+            _remove_artifact_file(file_path, removed_paths)
+        if isinstance(job_file_path, str) and job_file_path:
+            _remove_artifact_file(job_file_path, removed_paths)
+    return removed_paths
+
+
+async def cleanup_synthetic_job(
+    job_id: str,
+    actor_id: str,
+    db: AsyncSession,
+) -> SyntheticGenerationJobResponse:
+    """Archive/delete a synthetic project and remove generated artifacts."""
+
+    job = await _load_job(job_id, db)
+    if job.status.value in {"pending", "running"}:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Running synthetic jobs cannot be cleaned up.",
+                "error_code": "SYNTHETIC_JOB_CLEANUP_FORBIDDEN",
+            },
+        )
+    if job.status.value == "cleaned_up":
+        return serialize_synthetic_job(job)
+
+    old_value = serialize_synthetic_job(job).model_dump(mode="json")
+    if job.project_id:
+        project = await db.get(Project, job.project_id)
+        if project is not None:
+            project_metadata = cast(dict[str, object] | None, project.project_metadata)
+            if not bool((project_metadata or {}).get("synthetic")):
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "detail": "Only synthetic projects can be cleaned up by this route.",
+                        "error_code": "SYNTHETIC_PROJECT_METADATA_REQUIRED",
+                    },
+                )
+            job.project_id = None
+            if project.status != ProjectStatus.ARCHIVED:
+                await project_service.archive_project(project.id, actor_id, db)
+            await project_service.delete_project(project.id, actor_id, db)
+
+    removed_paths = _cleanup_artifact_manifest(cast(dict[str, object] | None, job.artifact_manifest))
+    job.status = type(job.status).CLEANED_UP
+    job.finished_at = datetime.now(UTC)
+    job.result_summary = cast(
+        dict[str, object],
+        sanitize_for_json(
+            {
+                **cast(dict[str, object], job.result_summary or {}),
+                "cleanup_removed_paths": removed_paths,
+                "cleaned_up_at": job.finished_at.isoformat(),
+            }
+        ),
+    )
+    await db.flush()
+    await db.refresh(job)
+    await audit_service.emit(
+        event_type="synthetic_job_cleaned_up",
+        entity_type="synthetic_generation_job",
+        entity_id=job.id,
+        actor_id=actor_id,
+        old_value=old_value,
+        new_value=serialize_synthetic_job(job).model_dump(mode="json"),
+        project_id=None,
+        db=db,
+    )
+    return serialize_synthetic_job(job)

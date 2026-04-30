@@ -2,16 +2,17 @@
 
 /* Interactive system dependency map page backed by the catalog graph endpoint. */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { Breadcrumb } from "@/components/breadcrumb";
 import { GraphControls } from "@/components/graph-controls";
 import { GraphDetailPanel } from "@/components/graph-detail-panel";
 import { IntegrationGraph } from "@/components/integration-graph";
-import { api, isApiErrorStatus } from "@/lib/api";
+import { api, getErrorMessage } from "@/lib/api";
+import { isProjectNotFoundError, projectRootHref } from "@/lib/project-errors";
 import type { GraphEdge, GraphNode, GraphParams, GraphResponse } from "@/lib/types";
 import type { Project } from "@/lib/types";
-import { useRouter } from "next/navigation";
 
 type GraphPageProps = {
   params: {
@@ -43,9 +44,33 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const [selectedSystem, setSelectedSystem] = useState<string>("");
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
+  const [homeViewport, setHomeViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [colorMode, setColorMode] = useState<"qa" | "bp">("qa");
   const [mode, setMode] = useState<"select" | "pan">("select");
   const compactTopology = graph.nodes.length > 0 && graph.nodes.length <= 8;
+  const [autoFocusSignature, setAutoFocusSignature] = useState<string>("");
+
+  const rankedSystems = useMemo(() => {
+    const connectionCounts = new Map<string, number>();
+    graph.edges.forEach((edge) => {
+      connectionCounts.set(edge.source, (connectionCounts.get(edge.source) ?? 0) + edge.integration_count);
+      connectionCounts.set(edge.target, (connectionCounts.get(edge.target) ?? 0) + edge.integration_count);
+    });
+
+    return [...graph.nodes]
+      .map((node) => ({
+        label: node.label,
+        score:
+          (connectionCounts.get(node.id) ?? 0) +
+          node.integration_count * 4 +
+          node.business_processes.length * 2,
+      }))
+      .sort((left, right) => right.score - left.score || left.label.localeCompare(right.label));
+  }, [graph.edges, graph.nodes]);
+
+  const recommendedSystems = rankedSystems.slice(0, 4).map((entry) => entry.label);
+  const largeTopology = graph.meta.node_count > 50;
+  const missingProjectHref = projectRootHref(params.projectId);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,22 +81,20 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
           setProject(response);
         }
       })
-      .catch((error: unknown) => {
+      .catch((caughtError: unknown) => {
         if (cancelled) {
           return;
         }
-
-        if (isApiErrorStatus(error, 404, "/api/v1/projects/")) {
-          router.replace("/projects");
+        if (isProjectNotFoundError(caughtError)) {
+          router.replace(missingProjectHref);
           return;
         }
-
-        setError(error instanceof Error ? error.message : "Unable to load project.");
+        setError(getErrorMessage(caughtError, "Unable to load project."));
       });
     return () => {
       cancelled = true;
     };
-  }, [params.projectId, router]);
+  }, [missingProjectHref, params.projectId, router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,7 +112,11 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
       })
       .catch((caughtError: unknown) => {
         if (!cancelled) {
-          setError(caughtError instanceof Error ? caughtError.message : "Unable to load dependency graph.");
+          if (isProjectNotFoundError(caughtError)) {
+            router.replace(missingProjectHref);
+            return;
+          }
+          setError(getErrorMessage(caughtError, "Unable to load dependency graph."));
           setGraph(EMPTY_GRAPH);
         }
       })
@@ -102,7 +129,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [filters, params.projectId]);
+  }, [filters, missingProjectHref, params.projectId, router]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -117,6 +144,45 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!selectedSystem) {
+      return;
+    }
+    if (graph.nodes.some((node) => node.label === selectedSystem)) {
+      return;
+    }
+    setSelectedSystem("");
+  }, [graph.nodes, selectedSystem]);
+
+  useEffect(() => {
+    const suggestedSystem = recommendedSystems[0] ?? "";
+    const hasGlobalFilter = Boolean(filters.brand || filters.business_process || filters.qa_status);
+    const signature = `${params.projectId}:${graph.meta.node_count}:${graph.meta.edge_count}:${suggestedSystem}`;
+
+    if (!largeTopology || !suggestedSystem || hasGlobalFilter) {
+      if (!largeTopology) {
+        setAutoFocusSignature("");
+      }
+      return;
+    }
+    if (selectedSystem || autoFocusSignature === signature) {
+      return;
+    }
+    setAutoFocusSignature(signature);
+    setSelectedSystem(suggestedSystem);
+  }, [
+    autoFocusSignature,
+    filters.brand,
+    filters.business_process,
+    filters.qa_status,
+    graph.meta.edge_count,
+    graph.meta.node_count,
+    largeTopology,
+    params.projectId,
+    recommendedSystems,
+    selectedSystem,
+  ]);
 
   function handleFilterChange(field: keyof GraphParams, value: string): void {
     setFilters((current) => ({
@@ -161,15 +227,53 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
         zoom={viewport.scale}
         onZoomIn={() => setViewport((current) => ({ ...current, scale: Math.min(current.scale * 1.2, 4) }))}
         onZoomOut={() => setViewport((current) => ({ ...current, scale: Math.max(current.scale / 1.2, 0.2) }))}
-        onZoomReset={() => setViewport({ x: 0, y: 0, scale: 1 })}
+        onZoomReset={() => setViewport(homeViewport)}
         meta={graph.meta}
         svgRef={svgRef}
       />
 
-      {graph.meta.node_count > 50 ? (
-        <div className="rounded-2xl bg-yellow-900 p-3 text-sm text-yellow-200">
-          ⚠ {graph.meta.node_count} systems detected. Apply a filter to improve readability.
-        </div>
+      {largeTopology ? (
+        <section className="rounded-[1.75rem] border border-amber-200 bg-amber-50/90 p-4 dark:border-amber-900 dark:bg-amber-950/30">
+          <p className="app-label text-amber-700 dark:text-amber-300">Large Topology Mode</p>
+          <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <p className="text-sm font-medium text-amber-950 dark:text-amber-100">
+                {selectedSystem
+                  ? `Starting on ${selectedSystem} and its closest dependency cluster so the first view stays readable.`
+                  : `${graph.meta.node_count} systems detected. Use a focus system or a governance filter to simplify the map.`}
+              </p>
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                The full graph is still loaded. Reset or change the focus system any time.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {recommendedSystems.map((system) => (
+                <button
+                  key={system}
+                  type="button"
+                  onClick={() => setSelectedSystem(system)}
+                  className={[
+                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                    selectedSystem === system
+                      ? "border-amber-500 bg-amber-500 text-white"
+                      : "border-amber-300 bg-white/70 text-amber-900 hover:border-amber-500 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100",
+                  ].join(" ")}
+                >
+                  {system}
+                </button>
+              ))}
+              {selectedSystem ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedSystem("")}
+                  className="rounded-full border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:border-amber-500 dark:border-amber-800 dark:text-amber-100"
+                >
+                  Show all labels
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </section>
       ) : null}
 
       {graph.nodes.length < 3 ? (
@@ -231,6 +335,7 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
                   svgRef={svgRef}
                   mode={mode}
                   viewport={viewport}
+                  onHomeViewportChange={setHomeViewport}
                   onViewportChange={setViewport}
                 />
               </div>

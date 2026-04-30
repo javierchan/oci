@@ -41,6 +41,11 @@ from app.schemas.catalog import (
     OICEstimateResponse,
 )
 from app.services import audit_service, import_service, recalc_service
+from app.services.canvas_interoperability import (
+    CanvasDesignValidationError,
+    is_canvas_json_state,
+    normalize_canvas_design,
+)
 from app.services.justification_service import serialize_justification_record
 from app.services.pattern_support import support_reason_code
 from app.services.serializers import parse_float, parse_int, parse_text, sanitize_for_json, split_csv
@@ -302,6 +307,67 @@ async def _validate_pattern(pattern_id: Optional[str], db: AsyncSession) -> None
         )
 
 
+async def _load_canvas_validation_context(
+    db: AsyncSession,
+) -> tuple[set[str], set[str], Assumptions]:
+    options = (
+        await db.scalars(
+            select(DictionaryOption).where(
+                DictionaryOption.category.in_(("TOOLS", "OVERLAYS")),
+                DictionaryOption.is_active.is_(True),
+            )
+        )
+    ).all()
+    allowed_core_tools = {
+        option.value for option in options if option.category == "TOOLS" and option.value
+    }
+    allowed_overlay_tools = {
+        option.value for option in options if option.category == "OVERLAYS" and option.value
+    }
+    assumptions = await _load_default_assumptions(db)
+    return allowed_core_tools, allowed_overlay_tools, assumptions
+
+
+def _raise_canvas_validation_error(exc: CanvasDesignValidationError) -> None:
+    raise HTTPException(status_code=400, detail=exc.as_http_detail()) from exc
+
+
+def _normalize_design_values(
+    *,
+    core_tools: str | None,
+    additional_tools_overlays: str | None,
+    allowed_core_tools: set[str],
+    allowed_overlay_tools: set[str],
+    assumptions: Assumptions,
+    payload_kb: float | None,
+    trigger_type: str | None,
+    is_real_time: bool | None,
+    source_technology: str | None,
+    destination_technology: str | None,
+    integration_type: str | None,
+    enforce_canvas_route: bool,
+    enforce_blockers: bool,
+):
+    try:
+        return normalize_canvas_design(
+            core_tools=core_tools,
+            additional_tools_overlays=additional_tools_overlays,
+            allowed_core_tools=allowed_core_tools,
+            allowed_overlay_tools=allowed_overlay_tools,
+            assumptions=assumptions,
+            payload_kb=payload_kb,
+            trigger_type=trigger_type,
+            is_real_time=is_real_time,
+            source_technology=source_technology,
+            destination_technology=destination_technology,
+            integration_type=integration_type,
+            enforce_canvas_route=enforce_canvas_route,
+            enforce_blockers=enforce_blockers,
+        )
+    except CanvasDesignValidationError as exc:
+        _raise_canvas_validation_error(exc)
+
+
 async def _validate_core_tools(core_tools: Optional[str], db: AsyncSession) -> None:
     if not core_tools:
         return
@@ -474,7 +540,24 @@ async def manual_create_integration(
 
     core_tools_value = _normalize_core_tools(data.core_tools)
     await _validate_pattern(data.selected_pattern, db)
-    await _validate_core_tools(core_tools_value, db)
+    if core_tools_value:
+        allowed_core_tools, allowed_overlay_tools, assumptions = await _load_canvas_validation_context(db)
+        normalized_design = _normalize_design_values(
+            core_tools=core_tools_value,
+            additional_tools_overlays=None,
+            allowed_core_tools=allowed_core_tools,
+            allowed_overlay_tools=allowed_overlay_tools,
+            assumptions=assumptions,
+            payload_kb=data.payload_per_execution_kb,
+            trigger_type=data.type,
+            is_real_time=None,
+            source_technology=data.source_technology,
+            destination_technology=data.destination_technology,
+            integration_type=data.type,
+            enforce_canvas_route=False,
+            enforce_blockers=True,
+        )
+        core_tools_value = normalized_design.core_tools_csv
 
     source_row_number = await _next_source_row_number(project_id, db)
     seq_number = await _next_seq_number(project_id, db)
@@ -696,7 +779,6 @@ async def update_integration(
         return serialize_catalog_integration(row)
 
     await _validate_pattern(patch_data.get("selected_pattern"), db)
-    await _validate_core_tools(patch_data.get("core_tools"), db)
 
     old_value = serialize_catalog_integration(row).model_dump()
     recalc_required = raw_column_values is not None
@@ -734,6 +816,47 @@ async def update_integration(
             _copy_source_managed_fields(row, rebuilt)
         else:
             _apply_manual_source_row_updates(row, cast(dict[str, object], source_row.raw_data))
+
+    if "core_tools" in patch_data or "additional_tools_overlays" in patch_data:
+        if (
+            "core_tools" in patch_data
+            and "additional_tools_overlays" not in patch_data
+            and is_canvas_json_state(row.additional_tools_overlays)
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "detail": "Patch core_tools together with additional_tools_overlays so the persisted canvas stays consistent.",
+                    "error_code": "CANVAS_PATCH_INCOMPLETE",
+                },
+            )
+
+        allowed_core_tools, allowed_overlay_tools, assumptions = await _load_canvas_validation_context(db)
+        incoming_canvas = (
+            cast(str | None, patch_data.get("additional_tools_overlays"))
+            if "additional_tools_overlays" in patch_data
+            else row.additional_tools_overlays
+        )
+        normalized_design = _normalize_design_values(
+            core_tools=cast(str | None, patch_data.get("core_tools", row.core_tools)),
+            additional_tools_overlays=incoming_canvas,
+            allowed_core_tools=allowed_core_tools,
+            allowed_overlay_tools=allowed_overlay_tools,
+            assumptions=assumptions,
+            payload_kb=row.payload_per_execution_kb,
+            trigger_type=row.trigger_type,
+            is_real_time=row.is_real_time,
+            source_technology=row.source_technology,
+            destination_technology=row.destination_technology_1,
+            integration_type=row.type,
+            enforce_canvas_route=bool(incoming_canvas and is_canvas_json_state(incoming_canvas)),
+            enforce_blockers=True,
+        )
+        if "core_tools" in patch_data or "additional_tools_overlays" in patch_data:
+            patch_data["core_tools"] = normalized_design.core_tools_csv
+        if "additional_tools_overlays" in patch_data:
+            patch_data["additional_tools_overlays"] = normalized_design.additional_tools_value
+        recalc_required = True
 
     for field, value in patch_data.items():
         setattr(row, field, value)
@@ -774,14 +897,55 @@ async def bulk_patch(
     errors: list[str] = []
     patch_data = patch.model_dump(exclude_none=True)
     await _validate_pattern(patch_data.get("selected_pattern"), db)
-    await _validate_core_tools(patch_data.get("core_tools"), db)
+    allowed_core_tools: set[str] | None = None
+    allowed_overlay_tools: set[str] | None = None
+    assumptions: Assumptions | None = None
 
     recalc_required = False
     for integration_id in integration_ids:
         try:
             row = await _load_catalog_row(project_id, integration_id, db)
+            row_patch_data = dict(patch_data)
+            if "core_tools" in row_patch_data or "additional_tools_overlays" in row_patch_data:
+                if (
+                    "core_tools" in row_patch_data
+                    and "additional_tools_overlays" not in row_patch_data
+                    and is_canvas_json_state(row.additional_tools_overlays)
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "detail": "Patch core_tools together with additional_tools_overlays so the persisted canvas stays consistent.",
+                            "error_code": "CANVAS_PATCH_INCOMPLETE",
+                        },
+                    )
+                if allowed_core_tools is None or allowed_overlay_tools is None or assumptions is None:
+                    allowed_core_tools, allowed_overlay_tools, assumptions = await _load_canvas_validation_context(db)
+                incoming_canvas = (
+                    cast(str | None, row_patch_data.get("additional_tools_overlays"))
+                    if "additional_tools_overlays" in row_patch_data
+                    else row.additional_tools_overlays
+                )
+                normalized_design = _normalize_design_values(
+                    core_tools=cast(str | None, row_patch_data.get("core_tools", row.core_tools)),
+                    additional_tools_overlays=incoming_canvas,
+                    allowed_core_tools=allowed_core_tools,
+                    allowed_overlay_tools=allowed_overlay_tools,
+                    assumptions=assumptions,
+                    payload_kb=row.payload_per_execution_kb,
+                    trigger_type=row.trigger_type,
+                    is_real_time=row.is_real_time,
+                    source_technology=row.source_technology,
+                    destination_technology=row.destination_technology_1,
+                    integration_type=row.type,
+                    enforce_canvas_route=bool(incoming_canvas and is_canvas_json_state(incoming_canvas)),
+                    enforce_blockers=True,
+                )
+                row_patch_data["core_tools"] = normalized_design.core_tools_csv
+                if "additional_tools_overlays" in row_patch_data:
+                    row_patch_data["additional_tools_overlays"] = normalized_design.additional_tools_value
             old_value = serialize_catalog_integration(row).model_dump()
-            for field, value in patch_data.items():
+            for field, value in row_patch_data.items():
                 setattr(row, field, value)
                 if field in {"core_tools", "selected_pattern"}:
                     recalc_required = True
