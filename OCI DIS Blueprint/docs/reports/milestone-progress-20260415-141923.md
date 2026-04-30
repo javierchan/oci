@@ -97,7 +97,7 @@ The repository now contains a runnable backend API integration test harness inst
 
 - Added `apps/api/app/tests/test_catalog_api.py` to validate manual capture, catalog listing, and lineage retrieval.
 - Added `apps/api/app/tests/test_exports_api.py` to validate the capture-template export endpoint returns a readable workbook.
-- Added `.github/workflows/api-validation.yml` to run backend lint, mypy, the API integration suite, calc-engine parity tests, and the OpenAPI sync check on push and pull request events.
+- Added a legacy backend validation workflow at the time of this checkpoint to run backend lint, mypy, the API integration suite, calc-engine parity tests, and the OpenAPI sync check. This workflow was retired on 2026-04-30 when the repository moved to Docker-first local validation with no active GitHub Actions workflows.
 
 ### Validation
 
@@ -105,8 +105,8 @@ The repository now contains a runnable backend API integration test harness inst
 - `./.venv/bin/python -m pytest packages/calc-engine/src/tests -q` -> `26 passed`
 - `./.venv/bin/python -m ruff check apps/api/app apps/api/app/tests apps/api/scripts` -> pass
 - Workflow sanity:
-  - `workflow_name=API Validation`
-  - `workflow_jobs=backend-quality`
+  - Legacy backend validation workflow existed at checkpoint time
+  - Retired on 2026-04-30; no active GitHub Actions workflow files remain
 
 ### Outcome
 
@@ -146,7 +146,7 @@ The repository now contains the source-controlled OpenAPI artifact that earlier 
 
 - Added `./.venv/bin/python apps/api/scripts/export_openapi.py --check` as the contract-sync verification path.
 - Updated `README.md` with refresh and check commands for the OpenAPI artifact.
-- Added the OpenAPI sync check to `.github/workflows/api-validation.yml`.
+- Documented the OpenAPI sync check for the legacy backend validation workflow. That workflow was retired on 2026-04-30; OpenAPI sync remains available through the local validation command.
 
 ### Validation
 
