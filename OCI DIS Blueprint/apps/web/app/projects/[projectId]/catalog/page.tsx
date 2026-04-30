@@ -8,10 +8,10 @@ import { api } from "@/lib/api";
 import { isProjectNotFoundError } from "@/lib/project-errors";
 
 type ProjectCatalogPageProps = {
-  params: {
+  params: Promise<{
     projectId: string;
-  };
-  searchParams: {
+  }>;
+  searchParams: Promise<{
     search?: string;
     system?: string;
     qa_status?: string;
@@ -19,25 +19,27 @@ type ProjectCatalogPageProps = {
     brand?: string;
     source_system?: string;
     destination_system?: string;
-  };
+  }>;
 };
 
 export default async function ProjectCatalogPage({
   params,
   searchParams,
 }: ProjectCatalogPageProps): Promise<JSX.Element> {
+  const { projectId } = await params;
+  const resolvedSearchParams = await searchParams;
   const initialFilters = {
-    search: searchParams.search ?? "",
-    system: searchParams.system ?? "",
-    qa_status: searchParams.qa_status ?? "",
-    pattern: searchParams.pattern ?? "",
-    brand: searchParams.brand ?? "",
-    source_system: searchParams.source_system ?? "",
-    destination_system: searchParams.destination_system ?? "",
+    search: resolvedSearchParams.search ?? "",
+    system: resolvedSearchParams.system ?? "",
+    qa_status: resolvedSearchParams.qa_status ?? "",
+    pattern: resolvedSearchParams.pattern ?? "",
+    brand: resolvedSearchParams.brand ?? "",
+    source_system: resolvedSearchParams.source_system ?? "",
+    destination_system: resolvedSearchParams.destination_system ?? "",
   };
   let project;
   try {
-    project = await api.getProject(params.projectId);
+    project = await api.getProject(projectId);
   } catch (error) {
     if (isProjectNotFoundError(error)) {
       notFound();
@@ -45,7 +47,7 @@ export default async function ProjectCatalogPage({
     throw error;
   }
   const [allRows, patterns] = await Promise.all([
-    api.listCatalog(params.projectId, {
+    api.listCatalog(projectId, {
       page: 1,
       page_size: 500,
       search: initialFilters.search || undefined,
@@ -88,14 +90,14 @@ export default async function ProjectCatalogPage({
             items={[
               { label: "Home", href: "/projects" },
               { label: "Projects", href: "/projects" },
-              { label: project.name, href: `/projects/${params.projectId}` },
+              { label: project.name, href: `/projects/${projectId}` },
               { label: "Catalog" },
             ]}
           />
         </div>
       </section>
       <CatalogTable
-        projectId={params.projectId}
+        projectId={projectId}
         projectName={project.name}
         initialPage={initialPage}
         patterns={patterns.patterns}

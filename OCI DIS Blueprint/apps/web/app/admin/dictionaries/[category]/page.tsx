@@ -3,7 +3,7 @@
 /* Category-scoped dictionary governance page with create, edit, and deactivate actions. */
 
 import { Pencil, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 
 import { Breadcrumb } from "@/components/breadcrumb";
 import { AdminConfirmDelete } from "@/components/admin-confirm-delete";
@@ -12,15 +12,16 @@ import { api } from "@/lib/api";
 import type { DictOption, DictOptionCreate } from "@/lib/types";
 
 type AdminDictionaryCategoryPageProps = {
-  params: {
+  params: Promise<{
     category: string;
-  };
+  }>;
 };
 
 export default function AdminDictionaryCategoryPage({
   params,
 }: AdminDictionaryCategoryPageProps): JSX.Element {
-  const category = params.category.toUpperCase();
+  const { category: rawCategory } = use(params);
+  const category = rawCategory.toUpperCase();
   const [options, setOptions] = useState<DictOption[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);

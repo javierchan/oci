@@ -12,9 +12,9 @@ import { isProjectNotFoundError } from "@/lib/project-errors";
 import type { DashboardCoverageMetric, DashboardSnapshot } from "@/lib/types";
 
 type ProjectDashboardPageProps = {
-  params: {
+  params: Promise<{
     projectId: string;
-  };
+  }>;
 };
 
 function isSyntheticProject(project: { project_metadata?: Record<string, unknown> | null }): boolean {
@@ -25,7 +25,7 @@ function isSyntheticProject(project: { project_metadata?: Record<string, unknown
 export default async function ProjectDashboardPage({
   params,
 }: ProjectDashboardPageProps): Promise<JSX.Element> {
-  const projectId = params.projectId;
+  const { projectId } = await params;
   let project;
   try {
     project = await api.getProject(projectId);

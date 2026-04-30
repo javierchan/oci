@@ -3,7 +3,7 @@
 /* Assumption version detail page with current usage context and default promotion. */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 
 import { Breadcrumb } from "@/components/breadcrumb";
 import { api } from "@/lib/api";
@@ -11,9 +11,9 @@ import { formatDate } from "@/lib/format";
 import type { AssumptionSet, Project, VolumetrySnapshot } from "@/lib/types";
 
 type AdminAssumptionDetailPageProps = {
-  params: {
+  params: Promise<{
     version: string;
-  };
+  }>;
 };
 
 type ProjectUsage = {
@@ -55,6 +55,7 @@ function readMetadataRecord(
 export default function AdminAssumptionDetailPage({
   params,
 }: AdminAssumptionDetailPageProps): JSX.Element {
+  const { version } = use(params);
   const [assumption, setAssumption] = useState<AssumptionSet | null>(null);
   const [usages, setUsages] = useState<ProjectUsage[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -68,7 +69,7 @@ export default function AdminAssumptionDetailPage({
       setLoading(true);
       try {
         const [assumptionResponse, projects] = await Promise.all([
-          api.getAssumption(params.version),
+          api.getAssumption(version),
           api.listProjects(),
         ]);
         const snapshotPairs = await Promise.all(
@@ -104,7 +105,7 @@ export default function AdminAssumptionDetailPage({
     return () => {
       cancelled = true;
     };
-  }, [params.version]);
+  }, [version]);
 
   async function handleSetDefault(): Promise<void> {
     if (!assumption) {

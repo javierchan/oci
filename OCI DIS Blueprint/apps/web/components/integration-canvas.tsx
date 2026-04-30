@@ -10,6 +10,7 @@ import {
   Building2,
   Code2,
   Database,
+  Maximize2,
   Move,
   Package,
   RotateCcw,
@@ -34,6 +35,8 @@ import {
   deriveCanvasSemantics,
   parseCanvasState,
   serializeCanvasState,
+  type CanvasEndpointId,
+  type CanvasEndpointPositions,
   type CanvasEdge,
   type CanvasNode,
 } from "@/lib/canvas-governance";
@@ -52,20 +55,33 @@ type SelectedElement =
   | { kind: "edge"; id: string }
   | null;
 
-const MIN_CANVAS_WIDTH = 960;
+const MIN_CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 560;
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 2;
-const ROUTE_NODE_GAP = 52;
-const TOOL_NODE_WIDTH = 208;
-const TOOL_NODE_HEIGHT = 126;
-const SYSTEM_NODE_WIDTH = 260;
-const SYSTEM_NODE_HEIGHT = 110;
-const HANDLE_RADIUS = 7;
+const ROUTE_NODE_GAP = 58;
+const TOOL_NODE_WIDTH = 190;
+const TOOL_NODE_HEIGHT = 142;
+const SYSTEM_NODE_WIDTH = 236;
+const SYSTEM_NODE_HEIGHT = 104;
+const HANDLE_RADIUS = 6;
 
 type FixedNodeMeta = {
   subtitle: string | null;
   fixed: boolean;
+};
+
+type CanvasViewport = {
+  x: number;
+  y: number;
+  scale: number;
+};
+
+type CanvasBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 type FlowNode = CanvasNode & FixedNodeMeta;
@@ -127,32 +143,32 @@ const TOOL_KIND_STYLES: Record<ToolKind, ToolDefinition> = {
   oic: {
     accent: "var(--canvas-oic-border)",
     surface: "var(--canvas-oic-bg)",
-    icon: <Settings2 className="h-4 w-4" />,
+    icon: <Settings2 className="h-5 w-5" />,
   },
   gateway: {
     accent: "var(--canvas-gw-border)",
     surface: "var(--canvas-gw-bg)",
-    icon: <ArrowLeftRight className="h-4 w-4" />,
+    icon: <ArrowLeftRight className="h-5 w-5" />,
   },
   streaming: {
     accent: "var(--canvas-stream-border)",
     surface: "var(--canvas-stream-bg)",
-    icon: <Zap className="h-4 w-4" />,
+    icon: <Zap className="h-5 w-5" />,
   },
   functions: {
     accent: "var(--canvas-fn-border)",
     surface: "var(--canvas-fn-bg)",
-    icon: <Code2 className="h-4 w-4" />,
+    icon: <Code2 className="h-5 w-5" />,
   },
   storage: {
     accent: "var(--canvas-storage-border)",
     surface: "var(--canvas-storage-bg)",
-    icon: <Package className="h-4 w-4" />,
+    icon: <Package className="h-5 w-5" />,
   },
   db: {
     accent: "var(--canvas-db-border)",
     surface: "var(--canvas-db-bg)",
-    icon: <Database className="h-4 w-4" />,
+    icon: <Database className="h-5 w-5" />,
   },
 };
 
@@ -414,8 +430,8 @@ function createNode(toolKey: string, index: number, x?: number, y?: number): Can
     toolKey,
     label: toolKey,
     payloadNote: "",
-    x: x ?? 240 + column * 220,
-    y: y ?? 72 + row * 170,
+    x: x ?? 240 + column * (TOOL_NODE_WIDTH + ROUTE_NODE_GAP),
+    y: y ?? 72 + row * (TOOL_NODE_HEIGHT + 52),
   };
 }
 
@@ -502,7 +518,25 @@ function arrangeCanvasNodes(nodes: CanvasNode[], edges: CanvasEdge[], canvasWidt
   });
 }
 
-function hasCongestedLayout(nodes: CanvasNode[], edges: CanvasEdge[], canvasWidth: number): boolean {
+function defaultEndpointPositions(canvasWidth: number): CanvasEndpointPositions {
+  return {
+    [SOURCE_NODE_ID]: {
+      x: 40,
+      y: CANVAS_HEIGHT / 2 - SYSTEM_NODE_HEIGHT / 2,
+    },
+    [DESTINATION_NODE_ID]: {
+      x: canvasWidth - SYSTEM_NODE_WIDTH - 40,
+      y: CANVAS_HEIGHT / 2 - SYSTEM_NODE_HEIGHT / 2,
+    },
+  };
+}
+
+function hasCongestedLayout(
+  nodes: CanvasNode[],
+  edges: CanvasEdge[],
+  canvasWidth: number,
+  endpointPositions: CanvasEndpointPositions = {},
+): boolean {
   if (nodes.length === 0) {
     return false;
   }
@@ -511,12 +545,22 @@ function hasCongestedLayout(nodes: CanvasNode[], edges: CanvasEdge[], canvasWidt
     return false;
   }
   const routeIdSet = new Set(routeIds);
+  const positions = endpointPositions ?? {};
+  const defaultEndpoints = defaultEndpointPositions(canvasWidth);
+  const sourceEndpoint = positions[SOURCE_NODE_ID] ?? defaultEndpoints[SOURCE_NODE_ID];
+  const destinationEndpoint = positions[DESTINATION_NODE_ID] ?? defaultEndpoints[DESTINATION_NODE_ID];
   const boxes = [
-    { id: SOURCE_NODE_ID, x: 40, y: CANVAS_HEIGHT / 2 - SYSTEM_NODE_HEIGHT / 2, width: SYSTEM_NODE_WIDTH, height: SYSTEM_NODE_HEIGHT },
+    {
+      id: SOURCE_NODE_ID,
+      x: sourceEndpoint?.x ?? 40,
+      y: sourceEndpoint?.y ?? CANVAS_HEIGHT / 2 - SYSTEM_NODE_HEIGHT / 2,
+      width: SYSTEM_NODE_WIDTH,
+      height: SYSTEM_NODE_HEIGHT,
+    },
     {
       id: DESTINATION_NODE_ID,
-      x: canvasWidth - SYSTEM_NODE_WIDTH - 40,
-      y: CANVAS_HEIGHT / 2 - SYSTEM_NODE_HEIGHT / 2,
+      x: destinationEndpoint?.x ?? canvasWidth - SYSTEM_NODE_WIDTH - 40,
+      y: destinationEndpoint?.y ?? CANVAS_HEIGHT / 2 - SYSTEM_NODE_HEIGHT / 2,
       width: SYSTEM_NODE_WIDTH,
       height: SYSTEM_NODE_HEIGHT,
     },
@@ -546,15 +590,20 @@ function fixedNodes(
   destinationSystem: string | null,
   destinationTechnology: string | null,
   canvasWidth: number,
+  endpointPositions: CanvasEndpointPositions = {},
 ): Record<string, FlowNode> {
+  const positions = endpointPositions ?? {};
+  const defaultPositions = defaultEndpointPositions(canvasWidth);
+  const defaultSourcePosition = defaultPositions[SOURCE_NODE_ID];
+  const defaultDestinationPosition = defaultPositions[DESTINATION_NODE_ID];
   return {
     [SOURCE_NODE_ID]: {
       instanceId: SOURCE_NODE_ID,
       toolKey: SOURCE_NODE_ID,
       label: sourceSystem,
       payloadNote: "",
-      x: 40,
-      y: CANVAS_HEIGHT / 2 - SYSTEM_NODE_HEIGHT / 2,
+      x: positions[SOURCE_NODE_ID]?.x ?? defaultSourcePosition?.x ?? 40,
+      y: positions[SOURCE_NODE_ID]?.y ?? defaultSourcePosition?.y ?? CANVAS_HEIGHT / 2 - SYSTEM_NODE_HEIGHT / 2,
       subtitle: sourceTechnology,
       fixed: true,
     },
@@ -563,8 +612,8 @@ function fixedNodes(
       toolKey: DESTINATION_NODE_ID,
       label: destinationSystem ?? "Unknown Destination",
       payloadNote: "",
-      x: canvasWidth - SYSTEM_NODE_WIDTH - 40,
-      y: CANVAS_HEIGHT / 2 - SYSTEM_NODE_HEIGHT / 2,
+      x: positions[DESTINATION_NODE_ID]?.x ?? defaultDestinationPosition?.x ?? canvasWidth - SYSTEM_NODE_WIDTH - 40,
+      y: positions[DESTINATION_NODE_ID]?.y ?? defaultDestinationPosition?.y ?? CANVAS_HEIGHT / 2 - SYSTEM_NODE_HEIGHT / 2,
       subtitle: destinationTechnology,
       fixed: true,
     },
@@ -578,6 +627,7 @@ function mergedNodes(
   destinationTechnology: string | null,
   canvasWidth: number,
   nodes: CanvasNode[],
+  endpointPositions: CanvasEndpointPositions = {},
 ): Record<string, FlowNode> {
   return {
     ...fixedNodes(
@@ -586,6 +636,7 @@ function mergedNodes(
       destinationSystem,
       destinationTechnology,
       canvasWidth,
+      endpointPositions,
     ),
     ...Object.fromEntries(
       nodes.map((node) => [
@@ -644,6 +695,58 @@ function nodeCenter(node: FlowNode): { x: number; y: number } {
   return { x: node.x + nodeWidth(node) / 2, y: node.y + nodeHeight(node) / 2 };
 }
 
+function flowBounds(nodes: FlowNode[]): CanvasBounds | null {
+  if (nodes.length === 0) {
+    return null;
+  }
+
+  const left = Math.min(...nodes.map((node) => node.x));
+  const top = Math.min(...nodes.map((node) => node.y));
+  const right = Math.max(...nodes.map((node) => node.x + nodeWidth(node)));
+  const bottom = Math.max(...nodes.map((node) => node.y + nodeHeight(node)));
+  return {
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+function nodesForViewportFit(
+  flowNodes: Record<string, FlowNode>,
+  nodes: CanvasNode[],
+  edges: CanvasEdge[],
+): FlowNode[] {
+  const routeIds = primaryRouteNodeIds(nodes, edges);
+  const fitIds = new Set<string>([
+    SOURCE_NODE_ID,
+    DESTINATION_NODE_ID,
+    ...(routeIds.length > 0 ? routeIds : nodes.map((node) => node.instanceId)),
+  ]);
+  return Object.values(flowNodes).filter((node) => fitIds.has(node.instanceId));
+}
+
+function isEndpointNodeId(value: string): value is CanvasEndpointId {
+  return value === SOURCE_NODE_ID || value === DESTINATION_NODE_ID;
+}
+
+function fittedViewport(bounds: CanvasBounds, visibleWidth: number): CanvasViewport {
+  const horizontalPadding = 32;
+  const verticalPadding = 44;
+  const availableWidth = Math.max(320, visibleWidth - horizontalPadding * 2);
+  const availableHeight = Math.max(260, CANVAS_HEIGHT - verticalPadding * 2);
+  const scale = clamp(
+    Math.min(1, availableWidth / bounds.width, availableHeight / bounds.height),
+    MIN_SCALE,
+    1,
+  );
+  return {
+    x: Math.round((visibleWidth - bounds.width * scale) / 2 - bounds.x * scale),
+    y: Math.round((CANVAS_HEIGHT - bounds.height * scale) / 2 - bounds.y * scale),
+    scale,
+  };
+}
+
 function handleCoordinates(node: FlowNode, handle: HandlePosition): { x: number; y: number } {
   const center = nodeCenter(node);
   switch (handle) {
@@ -664,28 +767,67 @@ function truncateLabel(value: string, maxChars: number): string {
 
 function labelFontSize(node: FlowNode): number {
   if (node.fixed) {
-    return node.label.length > 20 ? 13 : 14;
+    return node.label.length > 34 ? 14.5 : 16;
   }
-  if (node.label.length > 24) {
-    return 12.5;
+  if (node.label.length > 34) {
+    return 14.25;
   }
-  return node.label.length > 18 ? 13.5 : 15;
+  return node.label.length > 22 ? 15 : 16.5;
 }
 
-function renderedLabel(node: FlowNode): string {
-  return truncateLabel(node.label, node.fixed ? 22 : 24);
+function wrappedTextLines(value: string, maxChars: number, maxLines = 2): string[] {
+  const normalizedValue = value.trim();
+  const words = normalizedValue.split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return ["—"];
+  }
+
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= maxChars) {
+      current = next;
+      continue;
+    }
+    if (current) {
+      lines.push(current);
+    }
+    current = word;
+    if (lines.length >= maxLines) {
+      break;
+    }
+  }
+  if (current && lines.length < maxLines) {
+    lines.push(current);
+  }
+
+  const renderedValue = lines.join(" ");
+  if (normalizedValue.length > renderedValue.length && lines.length > 0) {
+    const lastIndex = lines.length - 1;
+    const lastLine = lines[lastIndex];
+    lines[lastIndex] =
+      lastLine.length >= maxChars
+        ? `${lastLine.slice(0, Math.max(1, maxChars - 1))}…`
+        : `${lastLine}…`;
+  }
+  return lines;
+}
+
+function renderedLabelLines(node: FlowNode): string[] {
+  return wrappedTextLines(node.label, node.fixed ? 17 : 18, 2);
 }
 
 function renderedSubtitle(node: FlowNode): string {
   const value = node.fixed ? node.subtitle ?? "System endpoint" : node.toolKey;
-  return truncateLabel(value, node.fixed ? 26 : 28);
+  return truncateLabel(value, node.fixed ? 24 : 26);
 }
 
 function renderedPayload(node: FlowNode): string {
   if (node.fixed) {
     return "";
   }
-  return truncateLabel(node.payloadNote || "Double-click to add payload note", 30);
+  return truncateLabel(node.payloadNote || "No payload note", 42);
 }
 
 function dominantHandle(source: FlowNode, target: FlowNode, outgoing: boolean): HandlePosition {
@@ -802,9 +944,15 @@ export function IntegrationCanvas({
   });
   const [nodes, setNodes] = useState<CanvasNode[]>(() => initialStateRef.current.nodes);
   const [edges, setEdges] = useState<CanvasEdge[]>(() => initialStateRef.current.edges);
+  const [endpointPositions, setEndpointPositions] = useState<CanvasEndpointPositions>(
+    () => initialParsedState.endpointPositions ?? {},
+  );
   const [canvasWidth, setCanvasWidth] = useState<number>(MIN_CANVAS_WIDTH);
-  const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
+  const [canvasViewportWidth, setCanvasViewportWidth] = useState<number>(MIN_CANVAS_WIDTH);
+  const [viewport, setViewport] = useState<CanvasViewport>({ x: 0, y: 0, scale: 1 });
   const viewportRef = useRef(viewport);
+  const viewportUserAdjustedRef = useRef(false);
+  const autoFitSignatureRef = useRef<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedElement, setSelectedElement] = useState<SelectedElement>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
@@ -821,7 +969,12 @@ export function IntegrationCanvas({
     currentPoint: { x: number; y: number };
   } | null>(null);
   const lastSerializedRef = useRef<string>(
-    serializeCanvasState(initialStateRef.current.nodes, initialStateRef.current.edges, initialSemantics),
+    serializeCanvasState(
+      initialStateRef.current.nodes,
+      initialStateRef.current.edges,
+      initialSemantics,
+      initialParsedState.endpointPositions,
+    ),
   );
 
   useEffect(() => {
@@ -835,7 +988,9 @@ export function IntegrationCanvas({
     }
 
     const updateCanvasWidth = (): void => {
-      const nextWidth = Math.max(MIN_CANVAS_WIDTH, Math.floor(shell.clientWidth) - 24);
+      const measuredWidth = Math.max(320, Math.floor(shell.clientWidth) - 24);
+      const nextWidth = Math.max(MIN_CANVAS_WIDTH, measuredWidth);
+      setCanvasViewportWidth((current) => (current === measuredWidth ? current : measuredWidth));
       setCanvasWidth((current) => (current === nextWidth ? current : nextWidth));
     };
 
@@ -866,7 +1021,15 @@ export function IntegrationCanvas({
     });
     setNodes(parsed.nodes);
     setEdges(parsed.edges);
-    lastSerializedRef.current = serializeCanvasState(parsed.nodes, parsed.edges, nextSemantics);
+    setEndpointPositions(parsed.endpointPositions ?? {});
+    viewportUserAdjustedRef.current = false;
+    autoFitSignatureRef.current = null;
+    lastSerializedRef.current = serializeCanvasState(
+      parsed.nodes,
+      parsed.edges,
+      nextSemantics,
+      parsed.endpointPositions,
+    );
   }, [combinations, coreTools, overlayToolKeys, selectedPattern, value]);
 
   useEffect(() => {
@@ -945,14 +1108,15 @@ export function IntegrationCanvas({
     const layoutSignature = `${renderCanvasWidth}:${nodes.map((node) => `${node.instanceId}:${Math.round(node.x)}:${Math.round(node.y)}`).join("|")}:${edges.map((edge) => `${edge.sourceInstanceId}>${edge.targetInstanceId}`).join("|")}`;
     if (
       autoLayoutSignatureRef.current !== layoutSignature &&
-      hasCongestedLayout(nodes, edges, renderCanvasWidth)
+      hasCongestedLayout(nodes, edges, renderCanvasWidth, endpointPositions)
     ) {
       autoLayoutSignatureRef.current = layoutSignature;
       setNodes((current) => arrangeCanvasNodes(current, edges, renderCanvasWidth));
+      setEndpointPositions(defaultEndpointPositions(renderCanvasWidth));
       return;
     }
 
-    const nextSerialized = serializeCanvasState(nodes, edges, semantics);
+    const nextSerialized = serializeCanvasState(nodes, edges, semantics, endpointPositions);
     lastSerializedRef.current = nextSerialized;
     if (nextSerialized !== (value ?? "")) {
       onChange(nextSerialized);
@@ -962,6 +1126,7 @@ export function IntegrationCanvas({
     onBlockingIssuesChange?.(interoperabilityReport.blockers.length > 0);
   }, [
     edges,
+    endpointPositions,
     interoperabilityReport.blockers.length,
     nodes,
     onBlockingIssuesChange,
@@ -1017,6 +1182,16 @@ export function IntegrationCanvas({
         y: clamp(node.y, 20, CANVAS_HEIGHT - TOOL_NODE_HEIGHT - 20),
       })),
     );
+    setEndpointPositions((current = {}) => {
+      const nextEntries = Object.entries(current).map(([nodeId, position]) => [
+        nodeId,
+        {
+          x: clamp(position.x, 20, renderCanvasWidth - SYSTEM_NODE_WIDTH - 20),
+          y: clamp(position.y, 20, CANVAS_HEIGHT - SYSTEM_NODE_HEIGHT - 20),
+        },
+      ]);
+      return Object.fromEntries(nextEntries) as CanvasEndpointPositions;
+    });
   }, [renderCanvasWidth]);
 
   useEffect(() => {
@@ -1027,6 +1202,7 @@ export function IntegrationCanvas({
 
     function handleNativeWheel(event: WheelEvent): void {
       event.preventDefault();
+      viewportUserAdjustedRef.current = true;
       const currentViewport = viewportRef.current;
       const canvasPoint = eventCanvasPoint(event, element!);
       const worldBefore = screenToWorld(canvasPoint, currentViewport);
@@ -1086,9 +1262,40 @@ export function IntegrationCanvas({
         destinationTechnology,
         renderCanvasWidth,
         nodes,
+        endpointPositions,
       ),
-    [destinationSystem, destinationTechnology, nodes, renderCanvasWidth, sourceSystem, sourceTechnology],
+    [
+      destinationSystem,
+      destinationTechnology,
+      endpointPositions,
+      nodes,
+      renderCanvasWidth,
+      sourceSystem,
+      sourceTechnology,
+    ],
   );
+  const fitTargetNodes = useMemo(
+    () => nodesForViewportFit(flowNodes, nodes, edges),
+    [edges, flowNodes, nodes],
+  );
+
+  useEffect(() => {
+    const bounds = flowBounds(fitTargetNodes);
+    if (!bounds || viewportUserAdjustedRef.current) {
+      return;
+    }
+
+    const fitSignature = `${canvasViewportWidth}:${fitTargetNodes
+      .map((node) => `${node.instanceId}:${Math.round(node.x)}:${Math.round(node.y)}`)
+      .join("|")}`;
+    if (autoFitSignatureRef.current === fitSignature) {
+      return;
+    }
+
+    autoFitSignatureRef.current = fitSignature;
+    setViewport(fittedViewport(bounds, canvasViewportWidth));
+  }, [canvasViewportWidth, fitTargetNodes]);
+
   const connectingSource = connecting ? flowNodes[connecting.sourceInstanceId] : null;
   const monthlyBilling = oicEstimate.billing_msgs_per_month;
   const canvasCursor = panning ? "grabbing" : "grab";
@@ -1198,8 +1405,11 @@ export function IntegrationCanvas({
 
   function resetCanvas(): void {
     const defaults = parseCanvasState(null, coreTools);
+    viewportUserAdjustedRef.current = false;
+    autoFitSignatureRef.current = null;
     setNodes(defaults.nodes);
     setEdges(defaults.edges);
+    setEndpointPositions(defaults.endpointPositions);
     setSelectedElement(null);
     setEditingEdgeId(null);
     setEditingNodeId(null);
@@ -1250,6 +1460,24 @@ export function IntegrationCanvas({
     setDraftValue("");
   }
 
+  function fitRouteToView(): void {
+    const bounds = flowBounds(fitTargetNodes);
+    if (!bounds) {
+      return;
+    }
+    viewportUserAdjustedRef.current = false;
+    autoFitSignatureRef.current = null;
+    setViewport(fittedViewport(bounds, canvasViewportWidth));
+  }
+
+  function autoArrangeRoute(): void {
+    viewportUserAdjustedRef.current = false;
+    autoFitSignatureRef.current = null;
+    autoLayoutSignatureRef.current = null;
+    setEndpointPositions(defaultEndpointPositions(renderCanvasWidth));
+    setNodes((current) => arrangeCanvasNodes(current, edges, renderCanvasWidth));
+  }
+
   function handleCanvasDrop(event: React.DragEvent<HTMLDivElement>): void {
     event.preventDefault();
     const svg = svgRef.current;
@@ -1272,6 +1500,7 @@ export function IntegrationCanvas({
       return;
     }
     event.preventDefault();
+    viewportUserAdjustedRef.current = true;
     setSelectedElement(null);
     setPanning({
       x: event.clientX,
@@ -1291,17 +1520,30 @@ export function IntegrationCanvas({
     const worldPoint = screenToWorld(canvasPoint, viewport);
 
     if (draggingNode) {
-      setNodes((current) =>
-        current.map((node) =>
-          node.instanceId === draggingNode.id
-            ? {
-                ...node,
-                x: clamp(worldPoint.x - draggingNode.dx, 20, renderCanvasWidth - TOOL_NODE_WIDTH - 20),
-                y: clamp(worldPoint.y - draggingNode.dy, 20, CANVAS_HEIGHT - TOOL_NODE_HEIGHT - 20),
-              }
-            : node,
-        ),
-      );
+      const movingNode = flowNodes[draggingNode.id];
+      if (movingNode) {
+        const nextPosition = {
+          x: clamp(worldPoint.x - draggingNode.dx, 20, renderCanvasWidth - nodeWidth(movingNode) - 20),
+          y: clamp(worldPoint.y - draggingNode.dy, 20, CANVAS_HEIGHT - nodeHeight(movingNode) - 20),
+        };
+        if (movingNode.fixed && isEndpointNodeId(movingNode.instanceId)) {
+          setEndpointPositions((current) => ({
+            ...current,
+            [movingNode.instanceId]: nextPosition,
+          }));
+        } else {
+          setNodes((current) =>
+            current.map((node) =>
+              node.instanceId === draggingNode.id
+                ? {
+                    ...node,
+                    ...nextPosition,
+                  }
+                : node,
+            ),
+          );
+        }
+      }
     }
 
     if (connecting) {
@@ -1354,8 +1596,8 @@ export function IntegrationCanvas({
   }
 
   return (
-    <div className="space-y-5">
-      <div className="space-y-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+    <div className="min-w-0 space-y-5">
+      <div className="min-w-0 space-y-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="app-label">Core Tools</p>
@@ -1373,20 +1615,20 @@ export function IntegrationCanvas({
           </button>
         </div>
 
-        <div className="flex gap-3 overflow-x-auto pb-1">{toolOptions.map((option) => renderPaletteButton(option, false))}</div>
+        <div className="flex min-w-0 gap-3 overflow-x-auto pb-1">{toolOptions.map((option) => renderPaletteButton(option, false))}</div>
 
         <div className="border-t border-[var(--color-border)] pt-3">
           <p className="app-label">Architectural Overlays</p>
           <p className="mt-2 text-xs text-[var(--color-text-muted)]">
             Overlays document edge protection and runtime context. They do not satisfy the core-tools QA gate by themselves.
           </p>
-          <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
+          <div className="mt-3 flex min-w-0 gap-3 overflow-x-auto pb-1">
             {overlayOptions.map((option) => renderPaletteButton(option, true))}
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-muted)]">
-          <span>Drag or click to add a node. Drag from connection handles to create the flow.</span>
+          <span>Drag or click to add a node. Drag endpoints or tools to make room, then connect handles to create the flow.</span>
           <span
             className={`rounded-full px-3 py-1 font-semibold ${
               semantics.hasConnectedRoute
@@ -1417,20 +1659,38 @@ export function IntegrationCanvas({
         </section>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div ref={canvasShellRef} className="relative">
-          <div className="pointer-events-none absolute left-5 top-5 z-10 inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] shadow-sm backdrop-blur">
-            <Move className="h-3.5 w-3.5 text-[var(--color-accent)]" />
-            Drag empty canvas to pan
-            <span className="text-[var(--color-text-muted)]">•</span>
-            <ZoomIn className="h-3.5 w-3.5 text-[var(--color-accent)]" />
-            Wheel to zoom
+      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div ref={canvasShellRef} className="relative min-w-0">
+          <div className="absolute left-5 top-5 z-10 flex flex-wrap items-center gap-2">
+            <div className="pointer-events-none inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] shadow-sm backdrop-blur">
+              <Move className="h-3.5 w-3.5 text-[var(--color-accent)]" />
+              Drag empty canvas to pan
+              <span className="text-[var(--color-text-muted)]">•</span>
+              <ZoomIn className="h-3.5 w-3.5 text-[var(--color-accent)]" />
+              Wheel to zoom
+            </div>
+            <button
+              type="button"
+              onClick={fitRouteToView}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2 text-xs font-semibold text-[var(--color-text-primary)] shadow-sm backdrop-blur transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+              Fit route
+            </button>
+            <button
+              type="button"
+              onClick={autoArrangeRoute}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2 text-xs font-semibold text-[var(--color-text-primary)] shadow-sm backdrop-blur transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+              Auto arrange
+            </button>
           </div>
           <div className="pointer-events-none absolute right-5 top-5 z-10 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] shadow-sm backdrop-blur">
             Zoom {Math.round(viewport.scale * 100)}%
           </div>
           <div
-            className="overflow-x-auto rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+            className="max-w-full overflow-x-auto rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
             onDragOver={(event) => event.preventDefault()}
             onDrop={handleCanvasDrop}
           >
@@ -1457,12 +1717,12 @@ export function IntegrationCanvas({
                     opacity="0.55"
                   />
                 </pattern>
-                <marker id="canvas-arrowhead" markerWidth="16" markerHeight="16" refX="13.5" refY="8" orient="auto">
+                <marker id="canvas-arrowhead" markerWidth="12" markerHeight="12" refX="11" refY="6" orient="auto">
                   <path
-                    d="M0,0 L0,16 L16,8 z"
+                    d="M0,0 L0,12 L12,6 z"
                     fill="var(--color-accent)"
                     stroke="var(--color-surface)"
-                    strokeWidth="1.2"
+                    strokeWidth="0.8"
                   />
                 </marker>
               </defs>
@@ -1493,16 +1753,16 @@ export function IntegrationCanvas({
                       <path
                         d={geometry.path}
                         fill="none"
-                        stroke="var(--color-text-primary)"
-                        strokeOpacity={selected ? 0.34 : 0.24}
-                        strokeWidth={selected ? 9.5 : 8}
+                        stroke="var(--color-accent)"
+                        strokeOpacity={selected ? 0.28 : 0.18}
+                        strokeWidth={selected ? 8.5 : 7}
                         strokeLinecap="round"
                       />
                       <path
                         d={geometry.path}
                         fill="none"
                         stroke="var(--color-accent)"
-                        strokeWidth={selected ? 5 : 4}
+                        strokeWidth={selected ? 4.2 : 3.2}
                         markerEnd="url(#canvas-arrowhead)"
                         strokeLinecap="round"
                         onClick={(event) => {
@@ -1571,7 +1831,7 @@ export function IntegrationCanvas({
                     d={`M ${handleCoordinates(connectingSource, connecting.startHandle).x} ${handleCoordinates(connectingSource, connecting.startHandle).y} L ${connecting.currentPoint.x} ${connecting.currentPoint.y}`}
                     fill="none"
                     stroke="var(--color-accent)"
-                    strokeWidth={3.6}
+                    strokeWidth={3.2}
                     strokeDasharray="8 6"
                   />
                 ) : null}
@@ -1581,7 +1841,7 @@ export function IntegrationCanvas({
                     ? {
                         accent: "var(--canvas-system-border)",
                         surface: "var(--canvas-system-bg)",
-                        icon: <Building2 className="h-4 w-4" />,
+                        icon: <Building2 className="h-5 w-5" />,
                       }
                     : toolDefinition(node.toolKey);
                   const serviceProfile = node.fixed
@@ -1597,6 +1857,10 @@ export function IntegrationCanvas({
                     : isOverlayNode
                       ? `${renderedSubtitle(node)} · Overlay`
                       : renderedSubtitle(node);
+                  const labelLines = renderedLabelLines(node);
+                  const subtitleY = labelLines.length > 1 ? 66 : 60;
+                  const payloadY = labelLines.length > 1 ? 86 : 82;
+                  const profileY = labelLines.length > 1 ? 100 : 96;
 
                   return (
                     <g
@@ -1605,10 +1869,11 @@ export function IntegrationCanvas({
                       onMouseEnter={() => setHoveredNodeId(node.instanceId)}
                       onMouseLeave={() => setHoveredNodeId((current) => (current === node.instanceId ? null : current))}
                       onMouseDown={(event) => {
-                        if (node.fixed || event.button !== 0 || !svgRef.current) {
+                        if (event.button !== 0 || !svgRef.current) {
                           return;
                         }
                         event.stopPropagation();
+                        viewportUserAdjustedRef.current = true;
                         const canvasPoint = eventCanvasPoint(event, svgRef.current);
                         const worldPoint = screenToWorld(canvasPoint, viewport);
                         setDraggingNode({
@@ -1630,7 +1895,9 @@ export function IntegrationCanvas({
                         setSelectedElement({ kind: "node", id: node.instanceId });
                       }}
                     >
-                      <title>{node.label}</title>
+                      <title>
+                        {[node.label, subtitleText, node.payloadNote].filter(Boolean).join(" · ")}
+                      </title>
                       <rect
                         width={width}
                         height={height}
@@ -1640,9 +1907,9 @@ export function IntegrationCanvas({
                         strokeWidth={selected ? 3.5 : 2}
                         strokeDasharray={isOverlayNode ? "10 6" : undefined}
                       />
-                      <foreignObject x={16} y={14} width={34} height={34}>
+                      <foreignObject x={18} y={16} width={38} height={38}>
                         <div
-                          className="flex h-[34px] w-[34px] items-center justify-center rounded-full"
+                          className="flex h-[38px] w-[38px] items-center justify-center rounded-full shadow-sm"
                           style={{ backgroundColor: definition.accent, color: "white" }}
                         >
                           {definition.icon}
@@ -1650,7 +1917,7 @@ export function IntegrationCanvas({
                       </foreignObject>
 
                       {editingNodeId === node.instanceId ? (
-                        <foreignObject x={58} y={16} width={width - 72} height={30}>
+                        <foreignObject x={66} y={16} width={width - 82} height={34}>
                           <input
                             autoFocus
                             value={draftValue}
@@ -1682,16 +1949,17 @@ export function IntegrationCanvas({
                                 stopTextEdit();
                               }
                             }}
-                            className="h-7 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-primary)]"
+                            className="h-8 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-primary)]"
                           />
                         </foreignObject>
                       ) : (
                         <text
-                          x={58}
-                          y={35}
+                          x={66}
+                          y={labelLines.length > 1 ? 30 : 38}
                           fontSize={labelFontSize(node)}
                           fontWeight="700"
                           fill="var(--canvas-node-label)"
+                          letterSpacing="-0.01em"
                           onDoubleClick={(event) => {
                             event.stopPropagation();
                             if (!node.fixed) {
@@ -1699,16 +1967,26 @@ export function IntegrationCanvas({
                             }
                           }}
                         >
-                          {renderedLabel(node)}
+                          {labelLines.map((line, index) => (
+                            <tspan key={`${node.instanceId}-label-${index}`} x={66} dy={index === 0 ? 0 : 17}>
+                              {line}
+                            </tspan>
+                          ))}
                         </text>
                       )}
 
-                      <text x={58} y={58} fontSize={node.fixed ? 10.5 : 11} fill="var(--canvas-node-sub)">
+                      <text
+                        x={66}
+                        y={subtitleY}
+                        fontSize={node.fixed ? 12 : 12.5}
+                        fontWeight="600"
+                        fill="var(--canvas-node-sub)"
+                      >
                         {subtitleText}
                       </text>
 
                       {!node.fixed && editingPayloadId === node.instanceId ? (
-                        <foreignObject x={16} y={66} width={width - 32} height={26}>
+                        <foreignObject x={18} y={payloadY - 17} width={width - 36} height={30}>
                           <input
                             autoFocus
                             value={draftValue}
@@ -1740,15 +2018,16 @@ export function IntegrationCanvas({
                                 stopTextEdit();
                               }
                             }}
-                            className="h-6 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-xs text-[var(--color-text-primary)]"
+                            className="h-7 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-xs text-[var(--color-text-primary)]"
                           />
                         </foreignObject>
                       ) : !node.fixed ? (
                         <text
-                          x={16}
-                          y={78}
-                          fontSize={10.5}
-                          fill={node.payloadNote ? "var(--color-text-secondary)" : "var(--color-text-muted)"}
+                          x={18}
+                          y={payloadY}
+                          fontSize={12}
+                          fontWeight={node.payloadNote ? 600 : 500}
+                          fill={node.payloadNote ? "var(--canvas-node-sub)" : "var(--color-text-secondary)"}
                           onDoubleClick={(event) => {
                             event.stopPropagation();
                             beginTextEdit("payload", node.instanceId, node.payloadNote);
@@ -1759,8 +2038,8 @@ export function IntegrationCanvas({
                       ) : null}
 
                       {!node.fixed && serviceProfile ? (
-                        <foreignObject x={16} y={86} width={width - 32} height={32}>
-                          <div className="app-card-muted h-full rounded-xl px-2 py-1 text-xs text-[var(--color-text-secondary)]">
+                        <foreignObject x={18} y={profileY} width={width - 36} height={38}>
+                          <div className="h-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]/78 px-3 py-2 text-xs text-[var(--color-text-secondary)] shadow-sm">
                             <div
                               className="font-semibold"
                               style={{
@@ -1775,13 +2054,13 @@ export function IntegrationCanvas({
                                 ? `${serviceProfile.sla_uptime_pct.toFixed(1).replace(/\.0$/, "")}%`
                                 : "n/a"}
                             </div>
-                            <div className="truncate">{topConstraintLabel(serviceProfile)}</div>
+                            <div className="mt-0.5 truncate">{topConstraintLabel(serviceProfile)}</div>
                           </div>
                         </foreignObject>
                       ) : null}
 
                       {!node.fixed && (hovered || selected) ? (
-                        <foreignObject x={16} y={130} width={width - 32} height={28}>
+                        <foreignObject x={18} y={height + 10} width={width - 36} height={32}>
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -1858,7 +2137,7 @@ export function IntegrationCanvas({
           </div>
         </div>
 
-        <aside className="space-y-4">
+        <aside className="min-w-0 space-y-4">
           <section className="app-card-muted p-4 text-sm">
             <span className="font-medium text-[var(--color-text-primary)]">Governed route</span>
             <p className="mt-2 text-[var(--color-text-secondary)]">

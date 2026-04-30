@@ -6,6 +6,14 @@ import type { CanvasCombination } from "@/lib/types";
 
 export const SOURCE_NODE_ID = "source-system";
 export const DESTINATION_NODE_ID = "destination-system";
+export type CanvasEndpointId = typeof SOURCE_NODE_ID | typeof DESTINATION_NODE_ID;
+
+export type CanvasPoint = {
+  x: number;
+  y: number;
+};
+
+export type CanvasEndpointPositions = Partial<Record<CanvasEndpointId, CanvasPoint>>;
 
 export type CanvasNode = {
   instanceId: string;
@@ -31,6 +39,15 @@ type StoredCanvasStateV3 = {
   overlayKeys: string[];
 };
 
+type StoredCanvasStateV4 = {
+  v: 4;
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  coreToolKeys: string[];
+  overlayKeys: string[];
+  endpointPositions?: CanvasEndpointPositions;
+};
+
 type StoredCanvasStateV2 = {
   v: 2;
   nodes: CanvasNode[];
@@ -48,6 +65,7 @@ export type CanvasParsedState = {
   edges: CanvasEdge[];
   coreToolKeys: string[];
   overlayKeys: string[];
+  endpointPositions: CanvasEndpointPositions;
 };
 
 export type CanvasCombinationMatch = {
@@ -80,6 +98,20 @@ function isStoredCanvasStateV3(value: unknown): value is StoredCanvasStateV3 {
   const candidate = value as Partial<StoredCanvasStateV3>;
   return (
     candidate.v === 3 &&
+    Array.isArray(candidate.nodes) &&
+    Array.isArray(candidate.edges) &&
+    Array.isArray(candidate.coreToolKeys) &&
+    Array.isArray(candidate.overlayKeys)
+  );
+}
+
+function isStoredCanvasStateV4(value: unknown): value is StoredCanvasStateV4 {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<StoredCanvasStateV4>;
+  return (
+    candidate.v === 4 &&
     Array.isArray(candidate.nodes) &&
     Array.isArray(candidate.edges) &&
     Array.isArray(candidate.coreToolKeys) &&
@@ -228,6 +260,23 @@ function sanitizeCanvasState(nodes: CanvasNode[], edges: CanvasEdge[]): { nodes:
   };
 }
 
+function isEndpointId(value: string): value is CanvasEndpointId {
+  return value === SOURCE_NODE_ID || value === DESTINATION_NODE_ID;
+}
+
+function sanitizeEndpointPositions(value: unknown): CanvasEndpointPositions {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const candidate = value as Partial<Record<string, Partial<CanvasPoint>>>;
+  return Object.fromEntries(
+    Object.entries(candidate)
+      .filter(([key, point]) => isEndpointId(key) && Number.isFinite(point?.x) && Number.isFinite(point?.y))
+      .map(([key, point]) => [key, { x: Number(point?.x), y: Number(point?.y) }]),
+  ) as CanvasEndpointPositions;
+}
+
 export function parseCanvasState(value: string | null, coreToolKeys: string[]): CanvasParsedState {
   if (!value) {
     const nodes = buildDefaultNodes(coreToolKeys);
@@ -236,17 +285,29 @@ export function parseCanvasState(value: string | null, coreToolKeys: string[]): 
       edges: buildDefaultEdges(nodes),
       coreToolKeys: uniqueSorted(coreToolKeys),
       overlayKeys: [],
+      endpointPositions: {},
     };
   }
 
   try {
     const parsed: unknown = JSON.parse(value);
+    if (isStoredCanvasStateV4(parsed)) {
+      const sanitized = sanitizeCanvasState(parsed.nodes, parsed.edges);
+      return {
+        ...sanitized,
+        coreToolKeys: uniqueSorted(parsed.coreToolKeys),
+        overlayKeys: uniqueSorted(parsed.overlayKeys),
+        endpointPositions: sanitizeEndpointPositions(parsed.endpointPositions),
+      };
+    }
+
     if (isStoredCanvasStateV3(parsed)) {
       const sanitized = sanitizeCanvasState(parsed.nodes, parsed.edges);
       return {
         ...sanitized,
         coreToolKeys: uniqueSorted(parsed.coreToolKeys),
         overlayKeys: uniqueSorted(parsed.overlayKeys),
+        endpointPositions: {},
       };
     }
 
@@ -256,6 +317,7 @@ export function parseCanvasState(value: string | null, coreToolKeys: string[]): 
         ...sanitized,
         coreToolKeys: uniqueSorted(coreToolKeys),
         overlayKeys: [],
+        endpointPositions: {},
       };
     }
 
@@ -280,6 +342,7 @@ export function parseCanvasState(value: string | null, coreToolKeys: string[]): 
         ...sanitized,
         coreToolKeys: uniqueSorted(coreToolKeys),
         overlayKeys: [],
+        endpointPositions: {},
       };
     }
   } catch {}
@@ -290,6 +353,7 @@ export function parseCanvasState(value: string | null, coreToolKeys: string[]): 
     edges: buildDefaultEdges(nodes),
     coreToolKeys: uniqueSorted(coreToolKeys),
     overlayKeys: [],
+    endpointPositions: {},
   };
 }
 
@@ -297,14 +361,16 @@ export function serializeCanvasState(
   nodes: CanvasNode[],
   edges: CanvasEdge[],
   semantics: Pick<CanvasDerivedSemantics, "coreToolKeys" | "overlayKeys">,
+  endpointPositions: CanvasEndpointPositions = {},
 ): string {
   const sanitized = sanitizeCanvasState(nodes, edges);
-  const payload: StoredCanvasStateV3 = {
-    v: 3,
+  const payload: StoredCanvasStateV4 = {
+    v: 4,
     nodes: sanitized.nodes,
     edges: sanitized.edges,
     coreToolKeys: uniqueSorted(semantics.coreToolKeys),
     overlayKeys: uniqueSorted(semantics.overlayKeys),
+    endpointPositions: sanitizeEndpointPositions(endpointPositions),
   };
   return JSON.stringify(payload);
 }

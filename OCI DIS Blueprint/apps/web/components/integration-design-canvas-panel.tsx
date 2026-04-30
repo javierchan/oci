@@ -92,7 +92,12 @@ function buildCanvasSeed(
   });
 
   return {
-    serializedValue: serializeCanvasState(parsed.nodes, parsed.edges, semantics),
+    serializedValue: serializeCanvasState(
+      parsed.nodes,
+      parsed.edges,
+      semantics,
+      parsed.endpointPositions,
+    ),
     coreToolKeys: parsed.coreToolKeys,
     hasConnectedRoute: semantics.hasConnectedRoute,
     hasBlockingIssues: interoperabilityReport.blockers.length > 0,
@@ -206,7 +211,7 @@ export function IntegrationDesignCanvasPanel({
   }
 
   return (
-    <section className="app-card space-y-5 p-6">
+    <section className="app-card min-w-0 overflow-hidden space-y-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="app-label">Integration Design Canvas</p>

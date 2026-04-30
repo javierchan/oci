@@ -107,8 +107,8 @@ services:
   # ─────────────────────────────────────────
   web:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/web/Dockerfile
       target: development
     restart: unless-stopped
     environment:
@@ -116,9 +116,9 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./apps/web:/app                          # hot reload in dev
-      - /app/node_modules                        # preserve container node_modules
-      - /app/.next                               # preserve Next.js cache
+      - ./apps/web:/workspace/apps/web           # hot reload in dev
+      - /workspace/node_modules                  # preserve workspace node_modules
+      - /workspace/apps/web/.next                # preserve Next.js cache
     depends_on:
       api:
         condition: service_healthy

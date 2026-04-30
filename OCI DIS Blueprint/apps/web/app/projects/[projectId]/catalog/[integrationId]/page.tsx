@@ -16,10 +16,10 @@ import { isProjectNotFoundError } from "@/lib/project-errors";
 import type { AuditEvent, Integration } from "@/lib/types";
 
 type IntegrationDetailPageProps = {
-  params: {
+  params: Promise<{
     projectId: string;
     integrationId: string;
-  };
+  }>;
 };
 
 function formatEventValue(value: unknown): string {
@@ -222,9 +222,10 @@ function buildCoverageSignals(integration: Integration): Array<{ title: string; 
 export default async function IntegrationDetailPage({
   params,
 }: IntegrationDetailPageProps): Promise<JSX.Element> {
+  const { projectId, integrationId } = await params;
   let project;
   try {
-    project = await api.getProject(params.projectId);
+    project = await api.getProject(projectId);
   } catch (error) {
     if (isProjectNotFoundError(error)) {
       notFound();
@@ -232,16 +233,16 @@ export default async function IntegrationDetailPage({
     throw error;
   }
   const [detail, patterns, canvasGovernance, integrationAudit, sourceRowAudit, services] = await Promise.all([
-    api.getIntegration(params.projectId, params.integrationId),
+    api.getIntegration(projectId, integrationId),
     api.listPatterns(),
     api.getCanvasGovernance(),
-    api.listAudit(params.projectId, {
+    api.listAudit(projectId, {
       entity_type: "catalog_integration",
-      entity_id: params.integrationId,
+      entity_id: integrationId,
     }),
-    api.listAudit(params.projectId, {
+    api.listAudit(projectId, {
       entity_type: "source_integration_row",
-      entity_id: params.integrationId,
+      entity_id: integrationId,
     }).catch(() => ({
       events: [],
       total: 0,
@@ -256,11 +257,11 @@ export default async function IntegrationDetailPage({
 
   const integration = detail.integration;
   const lineage = detail.lineage;
-  const sourceRowHref = `/projects/${params.projectId}/import?batch_id=${lineage.import_batch_id}&row=${lineage.source_row_number}`;
+  const sourceRowHref = `/projects/${projectId}/import?batch_id=${lineage.import_batch_id}&row=${lineage.source_row_number}`;
   const sourceAuditEvents =
     lineage.source_row_id && sourceRowAudit.events.length === 0
       ? (
-          await api.listAudit(params.projectId, {
+          await api.listAudit(projectId, {
             entity_type: "source_integration_row",
             entity_id: lineage.source_row_id,
           }).catch(() => ({
@@ -307,14 +308,14 @@ export default async function IntegrationDetailPage({
                 items={[
                   { label: "Home", href: "/projects" },
                   { label: "Projects", href: "/projects" },
-                  { label: project.name, href: `/projects/${params.projectId}` },
-                  { label: "Catalog", href: `/projects/${params.projectId}/catalog` },
+                  { label: project.name, href: `/projects/${projectId}` },
+                  { label: "Catalog", href: `/projects/${projectId}/catalog` },
                   { label: integration.interface_name ?? integration.interface_id ?? "Integration" },
                 ]}
               />
             </div>
             <div className="mt-4 flex flex-wrap gap-4">
-              <Link href={`/projects/${params.projectId}/catalog`} className="app-link">
+              <Link href={`/projects/${projectId}/catalog`} className="app-link">
                 ← Back to Catalog
               </Link>
               <Link href={sourceRowHref} className="app-link">
@@ -417,8 +418,8 @@ export default async function IntegrationDetailPage({
             <div className="app-card-muted mt-6 p-4">
               <p className="app-label">Raw Column Values</p>
               <RawColumnValuesTable
-                projectId={params.projectId}
-                integrationId={params.integrationId}
+                projectId={projectId}
+                integrationId={integrationId}
                 initialValues={lineage.raw_data}
                 columnNames={lineage.column_names}
               />
@@ -447,7 +448,7 @@ export default async function IntegrationDetailPage({
 
         <aside className="space-y-8">
           <IntegrationPatchForm
-            projectId={params.projectId}
+            projectId={projectId}
             integration={integration}
             patterns={patterns.patterns}
             toolOptions={canvasGovernance.tools}
@@ -572,7 +573,7 @@ export default async function IntegrationDetailPage({
       </div>
 
       <IntegrationDesignCanvasPanel
-        projectId={params.projectId}
+        projectId={projectId}
         integration={integration}
         patterns={patterns.patterns}
         patternDetail={patternDetail}

@@ -114,23 +114,56 @@ describe("canvas-governance", () => {
     expect(semantics.disconnectedNodeIds).toEqual(["island"]);
   });
 
-  it("round-trips v3 canvas state with persisted overlay metadata", () => {
+  it("round-trips v4 canvas state with persisted overlay and endpoint metadata", () => {
     const nodes = [node("oic", "OIC Gen3", "OIC"), node("queue", "OCI Queue", "Queue")];
     const edges = [
       edge("1", SOURCE_NODE_ID, "oic"),
       edge("2", "oic", "queue"),
       edge("3", "queue", DESTINATION_NODE_ID),
     ];
-    const serialized = serializeCanvasState(nodes, edges, {
-      coreToolKeys: ["OIC Gen3", "OCI Queue"],
-      overlayKeys: ["OCI API Gateway"],
-    });
+    const serialized = serializeCanvasState(
+      nodes,
+      edges,
+      {
+        coreToolKeys: ["OIC Gen3", "OCI Queue"],
+        overlayKeys: ["OCI API Gateway"],
+      },
+      {
+        [SOURCE_NODE_ID]: { x: 60, y: 120 },
+        [DESTINATION_NODE_ID]: { x: 900, y: 260 },
+      },
+    );
 
     const parsed = parseCanvasState(serialized, []);
 
     expect(parsed.coreToolKeys).toEqual(["OCI Queue", "OIC Gen3"]);
     expect(parsed.overlayKeys).toEqual(["OCI API Gateway"]);
     expect(parsed.edges).toHaveLength(3);
+    expect(parsed.endpointPositions).toEqual({
+      [SOURCE_NODE_ID]: { x: 60, y: 120 },
+      [DESTINATION_NODE_ID]: { x: 900, y: 260 },
+    });
+  });
+
+  it("keeps v3 canvas state backward-compatible without endpoint metadata", () => {
+    const nodes = [node("oic", "OIC Gen3", "OIC")];
+    const edges = [
+      edge("1", SOURCE_NODE_ID, "oic"),
+      edge("2", "oic", DESTINATION_NODE_ID),
+    ];
+    const parsed = parseCanvasState(
+      JSON.stringify({
+        v: 3,
+        nodes,
+        edges,
+        coreToolKeys: ["OIC Gen3"],
+        overlayKeys: [],
+      }),
+      [],
+    );
+
+    expect(parsed.nodes).toHaveLength(1);
+    expect(parsed.endpointPositions).toEqual({});
   });
 
   it("surfaces governed combination suggestions from the active stack", () => {

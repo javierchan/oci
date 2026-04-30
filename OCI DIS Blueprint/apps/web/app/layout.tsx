@@ -48,8 +48,8 @@ export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
       <body className="antialiased">
         <div className="min-h-screen lg:flex">
           <Nav />
-          <div className="min-h-screen flex-1 bg-[var(--color-surface)]">
-            <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/90 px-4 py-4 backdrop-blur sm:px-6 lg:px-10 lg:py-5">
+          <div className="min-h-screen min-w-0 flex-1 bg-[var(--color-surface)]">
+            <header className="min-w-0 border-b border-[var(--color-border)] bg-[var(--color-surface)]/90 px-4 py-4 backdrop-blur sm:px-6 lg:px-10 lg:py-5">
               <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                   <p className="app-label">Phase 1 Parity</p>
@@ -62,7 +62,7 @@ export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
                 </p>
               </div>
             </header>
-            <main className="px-4 py-5 sm:px-6 lg:px-10 lg:py-8">{children}</main>
+            <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">{children}</main>
           </div>
         </div>
         <ToastStack />
