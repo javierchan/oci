@@ -1,19 +1,6 @@
 {
   "components": {
     "schemas": {
-      "ApproveJustificationRequest": {
-        "additionalProperties": false,
-        "description": "Approval request payload.",
-        "properties": {
-          "actor_id": {
-            "default": "api-user",
-            "title": "Actor Id",
-            "type": "string"
-          }
-        },
-        "title": "ApproveJustificationRequest",
-        "type": "object"
-      },
       "AssumptionSetCreate": {
         "additionalProperties": false,
         "description": "Admin payload to create a new versioned assumption set.",
@@ -373,6 +360,112 @@
         "title": "BulkPatchResult",
         "type": "object"
       },
+      "CanvasCombinationResponse": {
+        "additionalProperties": false,
+        "description": "Governed canvas combination metadata.",
+        "properties": {
+          "activates_metrics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Activates Metrics",
+            "type": "array"
+          },
+          "activates_volumetric_metrics": {
+            "title": "Activates Volumetric Metrics",
+            "type": "boolean"
+          },
+          "capture_standard": {
+            "title": "Capture Standard",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "compatible_pattern_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Compatible Pattern Ids",
+            "type": "array"
+          },
+          "guidance": {
+            "title": "Guidance",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "recommended_overlays": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recommended Overlays",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "supported_tool_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Tool Keys",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "capture_standard",
+          "supported_tool_keys",
+          "compatible_pattern_ids",
+          "activates_metrics",
+          "activates_volumetric_metrics",
+          "recommended_overlays",
+          "guidance",
+          "status"
+        ],
+        "title": "CanvasCombinationResponse",
+        "type": "object"
+      },
+      "CanvasGovernanceResponse": {
+        "additionalProperties": false,
+        "description": "Reference payload used by the integration design canvas.",
+        "properties": {
+          "combinations": {
+            "items": {
+              "$ref": "#/components/schemas/CanvasCombinationResponse"
+            },
+            "title": "Combinations",
+            "type": "array"
+          },
+          "overlays": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryOptionResponse"
+            },
+            "title": "Overlays",
+            "type": "array"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryOptionResponse"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tools",
+          "overlays",
+          "combinations"
+        ],
+        "title": "CanvasGovernanceResponse",
+        "type": "object"
+      },
       "CatalogIntegrationDeleteResponse": {
         "additionalProperties": false,
         "description": "Removal result for one catalog integration.",
@@ -507,6 +600,17 @@
               }
             ],
             "title": "Pattern Rationale"
+          },
+          "raw_column_values": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Column Values"
           },
           "retry_policy": {
             "anyOf": [
@@ -1168,38 +1272,54 @@
         "additionalProperties": false,
         "description": "Coverage metrics for populated catalog fields.",
         "properties": {
-          "pattern_assigned": {
-            "default": 0,
-            "title": "Pattern Assigned",
-            "type": "integer"
+          "fan_out": {
+            "$ref": "#/components/schemas/CoverageMetric"
           },
-          "payload_informed": {
-            "default": 0,
-            "title": "Payload Informed",
-            "type": "integer"
+          "formal_id": {
+            "$ref": "#/components/schemas/CoverageMetric"
           },
-          "source_destination_informed": {
-            "default": 0,
-            "title": "Source Destination Informed",
-            "type": "integer"
+          "pattern": {
+            "$ref": "#/components/schemas/CoverageMetric"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/CoverageMetric"
+          },
+          "source_destination": {
+            "$ref": "#/components/schemas/CoverageMetric"
           },
           "total_integrations": {
             "default": 0,
             "title": "Total Integrations",
             "type": "integer"
           },
-          "with_interface_id": {
-            "default": 0,
-            "title": "With Interface Id",
-            "type": "integer"
-          },
-          "without_interface_id": {
-            "default": 0,
-            "title": "Without Interface Id",
-            "type": "integer"
+          "trigger": {
+            "$ref": "#/components/schemas/CoverageMetric"
           }
         },
         "title": "CoverageChart",
+        "type": "object"
+      },
+      "CoverageMetric": {
+        "additionalProperties": false,
+        "description": "Coverage count plus completion ratio for one governed signal.",
+        "properties": {
+          "complete": {
+            "default": 0,
+            "title": "Complete",
+            "type": "integer"
+          },
+          "ratio": {
+            "default": 0.0,
+            "title": "Ratio",
+            "type": "number"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "CoverageMetric",
         "type": "object"
       },
       "DIMetrics": {
@@ -1235,6 +1355,9 @@
           "coverage": {
             "$ref": "#/components/schemas/CoverageChart"
           },
+          "forecast_confidence": {
+            "$ref": "#/components/schemas/DashboardForecastConfidence"
+          },
           "pattern_mix": {
             "items": {
               "$ref": "#/components/schemas/PatternMixEntry"
@@ -1255,6 +1378,34 @@
           "completeness"
         ],
         "title": "DashboardCharts",
+        "type": "object"
+      },
+      "DashboardForecastConfidence": {
+        "additionalProperties": false,
+        "description": "Truthfulness signal for forecast-like technical metrics.",
+        "properties": {
+          "level": {
+            "default": "low",
+            "title": "Level",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "payload_coverage_ratio": {
+            "default": 0.0,
+            "title": "Payload Coverage Ratio",
+            "type": "number"
+          },
+          "title": {
+            "default": "Low confidence",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "title": "DashboardForecastConfidence",
         "type": "object"
       },
       "DashboardKPIStrip": {
@@ -1356,7 +1507,7 @@
         "properties": {
           "snapshots": {
             "items": {
-              "$ref": "#/components/schemas/DashboardSnapshotSummary"
+              "$ref": "#/components/schemas/DashboardSnapshotResponse"
             },
             "title": "Snapshots",
             "type": "array"
@@ -1423,37 +1574,6 @@
           "created_at"
         ],
         "title": "DashboardSnapshotResponse",
-        "type": "object"
-      },
-      "DashboardSnapshotSummary": {
-        "additionalProperties": false,
-        "description": "List view for persisted dashboard snapshots.",
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "mode": {
-            "title": "Mode",
-            "type": "string"
-          },
-          "snapshot_id": {
-            "title": "Snapshot Id",
-            "type": "string"
-          },
-          "volumetry_snapshot_id": {
-            "title": "Volumetry Snapshot Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "snapshot_id",
-          "volumetry_snapshot_id",
-          "mode",
-          "created_at"
-        ],
-        "title": "DashboardSnapshotSummary",
         "type": "object"
       },
       "DictionaryCategoryListResponse": {
@@ -1640,12 +1760,32 @@
             "title": "Is Active",
             "type": "boolean"
           },
+          "is_volumetric": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Volumetric"
+          },
           "sort_order": {
             "title": "Sort Order",
             "type": "integer"
           },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
           "value": {
             "title": "Value",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
             "type": "string"
           }
         },
@@ -1656,8 +1796,11 @@
           "value",
           "description",
           "executions_per_day",
+          "is_volumetric",
           "sort_order",
-          "is_active"
+          "is_active",
+          "version",
+          "updated_at"
         ],
         "title": "DictionaryOptionResponse",
         "type": "object"
@@ -2231,164 +2374,6 @@
         "title": "ImportBatchResponse",
         "type": "object"
       },
-      "JustificationListResponse": {
-        "additionalProperties": false,
-        "description": "Project-level collection of justification narratives.",
-        "properties": {
-          "records": {
-            "items": {
-              "$ref": "#/components/schemas/JustificationRecordResponse"
-            },
-            "title": "Records",
-            "type": "array"
-          },
-          "total": {
-            "default": 0,
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "title": "JustificationListResponse",
-        "type": "object"
-      },
-      "JustificationNarrative": {
-        "additionalProperties": false,
-        "description": "Structured deterministic narrative content.",
-        "properties": {
-          "evidence": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Evidence",
-            "type": "array"
-          },
-          "methodology_blocks": {
-            "items": {
-              "$ref": "#/components/schemas/MethodologyBlock"
-            },
-            "title": "Methodology Blocks",
-            "type": "array"
-          },
-          "override_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Override Text"
-          },
-          "qa_reasons": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Qa Reasons",
-            "type": "array"
-          },
-          "qa_status": {
-            "title": "Qa Status",
-            "type": "string"
-          },
-          "summary": {
-            "title": "Summary",
-            "type": "string"
-          }
-        },
-        "required": [
-          "summary",
-          "qa_status"
-        ],
-        "title": "JustificationNarrative",
-        "type": "object"
-      },
-      "JustificationRecordResponse": {
-        "additionalProperties": false,
-        "description": "Serialized justification record or generated draft narrative.",
-        "properties": {
-          "approved_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Approved By"
-          },
-          "created_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created At"
-          },
-          "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Id"
-          },
-          "integration_id": {
-            "title": "Integration Id",
-            "type": "string"
-          },
-          "narrative": {
-            "$ref": "#/components/schemas/JustificationNarrative"
-          },
-          "override_notes": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Override Notes"
-          },
-          "project_id": {
-            "title": "Project Id",
-            "type": "string"
-          },
-          "state": {
-            "title": "State",
-            "type": "string"
-          },
-          "updated_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At"
-          }
-        },
-        "required": [
-          "project_id",
-          "integration_id",
-          "state",
-          "narrative"
-        ],
-        "title": "JustificationRecordResponse",
-        "type": "object"
-      },
       "LineageDetail": {
         "additionalProperties": false,
         "description": "Source lineage for a catalog row.",
@@ -2690,26 +2675,6 @@
         "title": "ManualIntegrationCreate",
         "type": "object"
       },
-      "MethodologyBlock": {
-        "additionalProperties": false,
-        "description": "One deterministic narrative section.",
-        "properties": {
-          "body": {
-            "title": "Body",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title",
-          "body"
-        ],
-        "title": "MethodologyBlock",
-        "type": "object"
-      },
       "NormalizationEventResponse": {
         "additionalProperties": false,
         "description": "Serialized normalization event.",
@@ -2853,21 +2818,21 @@
             "default": 0.0,
             "title": "Total Billing Msgs Month",
             "type": "number"
+          },
+          "total_billing_msgs_per_month": {
+            "default": 0.0,
+            "title": "Total Billing Msgs Per Month",
+            "type": "number"
           }
         },
         "title": "OICMetrics",
         "type": "object"
       },
-      "OverrideJustificationRequest": {
+      "PatternDefinitionCreate": {
         "additionalProperties": false,
-        "description": "Override request payload.",
+        "description": "Admin payload to create a custom pattern definition.",
         "properties": {
-          "actor_id": {
-            "default": "api-user",
-            "title": "Actor Id",
-            "type": "string"
-          },
-          "override_notes": {
+          "business_value": {
             "anyOf": [
               {
                 "type": "string"
@@ -2876,40 +2841,11 @@
                 "type": "null"
               }
             ],
-            "title": "Override Notes"
+            "title": "Business Value"
           },
-          "override_text": {
-            "title": "Override Text",
-            "type": "string"
-          }
-        },
-        "required": [
-          "override_text"
-        ],
-        "title": "OverrideJustificationRequest",
-        "type": "object"
-      },
-      "PatternDefinitionCreate": {
-        "additionalProperties": false,
-        "description": "Admin payload to create a custom pattern definition.",
-        "properties": {
           "category": {
             "title": "Category",
             "type": "string"
-          },
-          "components": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Components"
           },
           "description": {
             "anyOf": [
@@ -2922,7 +2858,11 @@
             ],
             "title": "Description"
           },
-          "flow": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "oci_components": {
             "anyOf": [
               {
                 "type": "string"
@@ -2931,15 +2871,44 @@
                 "type": "null"
               }
             ],
-            "title": "Flow"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
+            "title": "Oci Components"
           },
           "pattern_id": {
             "title": "Pattern Id",
             "type": "string"
+          },
+          "technical_flow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Technical Flow"
+          },
+          "when_not_to_use": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "When Not To Use"
+          },
+          "when_to_use": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "When To Use"
           }
         },
         "required": [
@@ -2954,23 +2923,20 @@
         "additionalProperties": false,
         "description": "Serialized pattern definition.",
         "properties": {
-          "category": {
-            "title": "Category",
-            "type": "string"
-          },
-          "components": {
+          "business_value": {
             "anyOf": [
               {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Components"
+            "title": "Business Value"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
           },
           "created_at": {
             "format": "date-time",
@@ -2988,17 +2954,6 @@
             ],
             "title": "Description"
           },
-          "flow": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Flow"
-          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -3015,9 +2970,34 @@
             "title": "Name",
             "type": "string"
           },
+          "oci_components": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oci Components"
+          },
           "pattern_id": {
             "title": "Pattern Id",
             "type": "string"
+          },
+          "support": {
+            "$ref": "#/components/schemas/PatternSupportResponse"
+          },
+          "technical_flow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Technical Flow"
           },
           "updated_at": {
             "format": "date-time",
@@ -3027,6 +3007,28 @@
           "version": {
             "title": "Version",
             "type": "string"
+          },
+          "when_not_to_use": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "When Not To Use"
+          },
+          "when_to_use": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "When To Use"
           }
         },
         "required": [
@@ -3035,11 +3037,15 @@
           "name",
           "category",
           "description",
-          "components",
-          "flow",
+          "oci_components",
+          "when_to_use",
+          "when_not_to_use",
+          "technical_flow",
+          "business_value",
           "is_system",
           "is_active",
           "version",
+          "support",
           "created_at",
           "updated_at"
         ],
@@ -3050,6 +3056,17 @@
         "additionalProperties": false,
         "description": "Admin payload to update a custom or system pattern definition.",
         "properties": {
+          "business_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Value"
+          },
           "category": {
             "anyOf": [
               {
@@ -3060,20 +3077,6 @@
               }
             ],
             "title": "Category"
-          },
-          "components": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Components"
           },
           "description": {
             "anyOf": [
@@ -3086,17 +3089,6 @@
             ],
             "title": "Description"
           },
-          "flow": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Flow"
-          },
           "name": {
             "anyOf": [
               {
@@ -3107,29 +3099,53 @@
               }
             ],
             "title": "Name"
+          },
+          "oci_components": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oci Components"
+          },
+          "technical_flow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Technical Flow"
+          },
+          "when_not_to_use": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "When Not To Use"
+          },
+          "when_to_use": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "When To Use"
           }
         },
         "title": "PatternDefinitionUpdate",
-        "type": "object"
-      },
-      "PatternListResponse": {
-        "additionalProperties": false,
-        "description": "Pattern list response.",
-        "properties": {
-          "patterns": {
-            "items": {
-              "$ref": "#/components/schemas/PatternDefinitionResponse"
-            },
-            "title": "Patterns",
-            "type": "array"
-          },
-          "total": {
-            "default": 0,
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "title": "PatternListResponse",
         "type": "object"
       },
       "PatternMixEntry": {
@@ -3155,6 +3171,85 @@
           "count"
         ],
         "title": "PatternMixEntry",
+        "type": "object"
+      },
+      "PatternSupportDimensionsResponse": {
+        "additionalProperties": false,
+        "description": "Per-surface pattern support matrix for parity transparency.",
+        "properties": {
+          "capture_selection": {
+            "title": "Capture Selection",
+            "type": "boolean"
+          },
+          "dashboard": {
+            "title": "Dashboard",
+            "type": "boolean"
+          },
+          "exports": {
+            "title": "Exports",
+            "type": "boolean"
+          },
+          "narratives": {
+            "title": "Narratives",
+            "type": "boolean"
+          },
+          "qa_validation": {
+            "title": "Qa Validation",
+            "type": "boolean"
+          },
+          "volumetry": {
+            "title": "Volumetry",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "capture_selection",
+          "qa_validation",
+          "volumetry",
+          "dashboard",
+          "narratives",
+          "exports"
+        ],
+        "title": "PatternSupportDimensionsResponse",
+        "type": "object"
+      },
+      "PatternSupportResponse": {
+        "additionalProperties": false,
+        "description": "Serialized support boundary for one pattern.",
+        "properties": {
+          "badge_label": {
+            "title": "Badge Label",
+            "type": "string"
+          },
+          "dimensions": {
+            "$ref": "#/components/schemas/PatternSupportDimensionsResponse"
+          },
+          "level": {
+            "enum": [
+              "full",
+              "partial",
+              "reference"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "parity_ready": {
+            "title": "Parity Ready",
+            "type": "boolean"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "badge_label",
+          "summary",
+          "parity_ready",
+          "dimensions"
+        ],
+        "title": "PatternSupportResponse",
         "type": "object"
       },
       "PayloadDistributionBucket": {
@@ -3373,6 +3468,17 @@
             "title": "Owner Id",
             "type": "string"
           },
+          "project_metadata": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Metadata"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -3393,177 +3499,6 @@
           "updated_at"
         ],
         "title": "ProjectResponse",
-        "type": "object"
-      },
-      "PromptTemplateVersionCreate": {
-        "additionalProperties": false,
-        "description": "Admin payload to create a versioned narrative template.",
-        "properties": {
-          "is_default": {
-            "default": false,
-            "title": "Is Default",
-            "type": "boolean"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          },
-          "template_config": {
-            "title": "Template Config",
-            "type": "object"
-          },
-          "version": {
-            "title": "Version",
-            "type": "string"
-          }
-        },
-        "required": [
-          "version",
-          "name",
-          "template_config"
-        ],
-        "title": "PromptTemplateVersionCreate",
-        "type": "object"
-      },
-      "PromptTemplateVersionListResponse": {
-        "additionalProperties": false,
-        "description": "List of versioned narrative templates.",
-        "properties": {
-          "templates": {
-            "items": {
-              "$ref": "#/components/schemas/PromptTemplateVersionResponse"
-            },
-            "title": "Templates",
-            "type": "array"
-          },
-          "total": {
-            "default": 0,
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "title": "PromptTemplateVersionListResponse",
-        "type": "object"
-      },
-      "PromptTemplateVersionResponse": {
-        "additionalProperties": false,
-        "description": "Serialized narrative template version.",
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "is_default": {
-            "title": "Is Default",
-            "type": "boolean"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          },
-          "template_config": {
-            "title": "Template Config",
-            "type": "object"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "version",
-          "name",
-          "is_default",
-          "template_config",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "PromptTemplateVersionResponse",
-        "type": "object"
-      },
-      "PromptTemplateVersionUpdate": {
-        "additionalProperties": false,
-        "description": "Admin payload to update a versioned narrative template.",
-        "properties": {
-          "is_default": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Default"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          },
-          "template_config": {
-            "anyOf": [
-              {
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Template Config"
-          }
-        },
-        "title": "PromptTemplateVersionUpdate",
         "type": "object"
       },
       "QueueMetrics": {
@@ -3637,19 +3572,6 @@
           "status"
         ],
         "title": "RecalculationJobStatusResponse",
-        "type": "object"
-      },
-      "ResetJustificationRequest": {
-        "additionalProperties": false,
-        "description": "Reset request payload.",
-        "properties": {
-          "actor_id": {
-            "default": "api-user",
-            "title": "Actor Id",
-            "type": "string"
-          }
-        },
-        "title": "ResetJustificationRequest",
         "type": "object"
       },
       "ScopedRecalculationRequest": {
@@ -3776,6 +3698,514 @@
         "title": "StreamingMetrics",
         "type": "object"
       },
+      "SyntheticArtifactExportJobResponse": {
+        "additionalProperties": false,
+        "description": "One generated export artifact attached to a completed job.",
+        "properties": {
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "file_path": {
+            "title": "File Path",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "job_file_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job File Path"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "filename",
+          "download_url",
+          "file_path"
+        ],
+        "title": "SyntheticArtifactExportJobResponse",
+        "type": "object"
+      },
+      "SyntheticArtifactManifestResponse": {
+        "additionalProperties": false,
+        "description": "Filesystem artifact manifest for a completed or cleaned-up job.",
+        "properties": {
+          "export_jobs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SyntheticArtifactExportJobResponse"
+            },
+            "title": "Export Jobs",
+            "type": "object"
+          },
+          "report_json_path": {
+            "title": "Report Json Path",
+            "type": "string"
+          },
+          "report_markdown_path": {
+            "title": "Report Markdown Path",
+            "type": "string"
+          },
+          "workbook_path": {
+            "title": "Workbook Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workbook_path",
+          "report_json_path",
+          "report_markdown_path"
+        ],
+        "title": "SyntheticArtifactManifestResponse",
+        "type": "object"
+      },
+      "SyntheticGenerationJobCreateRequest": {
+        "additionalProperties": false,
+        "description": "Bounded admin request for a new synthetic-generation job.",
+        "properties": {
+          "cleanup_policy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "manual",
+                  "ephemeral_auto_cleanup"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cleanup Policy"
+          },
+          "excluded_import_target": {
+            "anyOf": [
+              {
+                "maximum": 500.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Import Target"
+          },
+          "import_target": {
+            "anyOf": [
+              {
+                "maximum": 2000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Import Target"
+          },
+          "include_design_warnings": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Design Warnings"
+          },
+          "include_exports": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Exports"
+          },
+          "include_justifications": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Justifications"
+          },
+          "manual_target": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Target"
+          },
+          "min_distinct_systems": {
+            "anyOf": [
+              {
+                "maximum": 500.0,
+                "minimum": 2.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Distinct Systems"
+          },
+          "preset_code": {
+            "default": "enterprise-default",
+            "title": "Preset Code",
+            "type": "string"
+          },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
+          "seed_value": {
+            "anyOf": [
+              {
+                "maximum": 99999999.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed Value"
+          },
+          "target_catalog_size": {
+            "anyOf": [
+              {
+                "maximum": 2000.0,
+                "minimum": 17.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Catalog Size"
+          }
+        },
+        "title": "SyntheticGenerationJobCreateRequest",
+        "type": "object"
+      },
+      "SyntheticGenerationJobListResponse": {
+        "additionalProperties": false,
+        "description": "Collection response for persisted synthetic-generation jobs.",
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/SyntheticGenerationJobResponse"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "SyntheticGenerationJobListResponse",
+        "type": "object"
+      },
+      "SyntheticGenerationJobResponse": {
+        "additionalProperties": false,
+        "description": "Serialized persisted synthetic-generation job.",
+        "properties": {
+          "artifact_manifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyntheticArtifactManifestResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "catalog_target": {
+            "title": "Catalog Target",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_details": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Details"
+          },
+          "excluded_import_target": {
+            "title": "Excluded Import Target",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "import_target": {
+            "title": "Import Target",
+            "type": "integer"
+          },
+          "input_payload": {
+            "title": "Input Payload",
+            "type": "object"
+          },
+          "manual_target": {
+            "title": "Manual Target",
+            "type": "integer"
+          },
+          "normalized_payload": {
+            "title": "Normalized Payload",
+            "type": "object"
+          },
+          "preset_code": {
+            "title": "Preset Code",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "result_summary": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Summary"
+          },
+          "seed_value": {
+            "title": "Seed Value",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "validation_results": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Results"
+          }
+        },
+        "required": [
+          "id",
+          "requested_by",
+          "status",
+          "preset_code",
+          "input_payload",
+          "normalized_payload",
+          "seed_value",
+          "catalog_target",
+          "manual_target",
+          "import_target",
+          "excluded_import_target",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SyntheticGenerationJobResponse",
+        "type": "object"
+      },
+      "SyntheticGenerationPresetListResponse": {
+        "additionalProperties": false,
+        "description": "Collection response for governed synthetic presets.",
+        "properties": {
+          "presets": {
+            "items": {
+              "$ref": "#/components/schemas/SyntheticGenerationPresetResponse"
+            },
+            "title": "Presets",
+            "type": "array"
+          }
+        },
+        "title": "SyntheticGenerationPresetListResponse",
+        "type": "object"
+      },
+      "SyntheticGenerationPresetResponse": {
+        "additionalProperties": false,
+        "description": "One governed preset surfaced by the admin synthetic lab.",
+        "properties": {
+          "cleanup_policy": {
+            "enum": [
+              "manual",
+              "ephemeral_auto_cleanup"
+            ],
+            "title": "Cleanup Policy",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "excluded_import_target": {
+            "title": "Excluded Import Target",
+            "type": "integer"
+          },
+          "import_target": {
+            "title": "Import Target",
+            "type": "integer"
+          },
+          "include_design_warnings": {
+            "title": "Include Design Warnings",
+            "type": "boolean"
+          },
+          "include_exports": {
+            "title": "Include Exports",
+            "type": "boolean"
+          },
+          "include_justifications": {
+            "title": "Include Justifications",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "manual_target": {
+            "title": "Manual Target",
+            "type": "integer"
+          },
+          "min_distinct_systems": {
+            "title": "Min Distinct Systems",
+            "type": "integer"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "seed_value": {
+            "title": "Seed Value",
+            "type": "integer"
+          },
+          "target_catalog_size": {
+            "title": "Target Catalog Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "description",
+          "project_name",
+          "seed_value",
+          "target_catalog_size",
+          "min_distinct_systems",
+          "import_target",
+          "manual_target",
+          "excluded_import_target",
+          "include_justifications",
+          "include_exports",
+          "include_design_warnings",
+          "cleanup_policy"
+        ],
+        "title": "SyntheticGenerationPresetResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -3882,6 +4312,38 @@
         ],
         "title": "VolumetrySnapshotResponse",
         "type": "object"
+      },
+      "VolumetrySnapshotRowResultsResponse": {
+        "additionalProperties": false,
+        "description": "Paginated row-level metrics for one volumetry snapshot.",
+        "properties": {
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "VolumetrySnapshotRowResultsResponse",
+        "type": "object"
       }
     }
   },
@@ -3892,8 +4354,338 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/synthetic/jobs": {
+      "get": {
+        "operationId": "list_jobs_api_v1_admin_synthetic_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyntheticGenerationJobListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List recent synthetic-generation jobs",
+        "tags": [
+          "Admin Synthetic"
+        ]
+      },
+      "post": {
+        "operationId": "create_job_api_v1_admin_synthetic_jobs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyntheticGenerationJobCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyntheticGenerationJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit a new synthetic-generation job",
+        "tags": [
+          "Admin Synthetic"
+        ]
+      }
+    },
+    "/api/v1/admin/synthetic/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_job_api_v1_admin_synthetic_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyntheticGenerationJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect one synthetic-generation job",
+        "tags": [
+          "Admin Synthetic"
+        ]
+      }
+    },
+    "/api/v1/admin/synthetic/jobs/{job_id}/cleanup": {
+      "post": {
+        "operationId": "cleanup_job_api_v1_admin_synthetic_jobs__job_id__cleanup_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyntheticGenerationJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive and remove a synthetic job's generated assets",
+        "tags": [
+          "Admin Synthetic"
+        ]
+      }
+    },
+    "/api/v1/admin/synthetic/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "retry_job_api_v1_admin_synthetic_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyntheticGenerationJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry a failed synthetic-generation job",
+        "tags": [
+          "Admin Synthetic"
+        ]
+      }
+    },
+    "/api/v1/admin/synthetic/presets": {
+      "get": {
+        "operationId": "list_presets_api_v1_admin_synthetic_presets_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyntheticGenerationPresetListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List governed synthetic-generation presets",
+        "tags": [
+          "Admin Synthetic"
+        ]
+      }
+    },
     "/api/v1/assumptions/": {
       "get": {
+        "description": "Return all governed assumption sets.",
         "operationId": "list_assumption_sets_api_v1_assumptions__get",
         "responses": {
           "200": {
@@ -3913,6 +4705,7 @@
         ]
       },
       "post": {
+        "description": "Create a versioned assumption set through the governance service.",
         "operationId": "create_assumption_set_api_v1_assumptions__post",
         "parameters": [
           {
@@ -3928,8 +4721,9 @@
           {
             "in": "header",
             "name": "X-Actor-Role",
-            "required": true,
+            "required": false,
             "schema": {
+              "default": "Admin",
               "title": "X-Actor-Role",
               "type": "string"
             }
@@ -3967,7 +4761,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create a versioned assumption set",
+        "summary": "Create a governed assumption set",
         "tags": [
           "Assumptions"
         ]
@@ -3975,6 +4769,7 @@
     },
     "/api/v1/assumptions/default": {
       "get": {
+        "description": "Return the default governed assumption set.",
         "operationId": "get_default_api_v1_assumptions_default_get",
         "responses": {
           "200": {
@@ -3996,6 +4791,7 @@
     },
     "/api/v1/assumptions/{version}": {
       "get": {
+        "description": "Return one governed assumption set by version.",
         "operationId": "get_assumption_set_api_v1_assumptions__version__get",
         "parameters": [
           {
@@ -4036,6 +4832,7 @@
         ]
       },
       "patch": {
+        "description": "Patch one versioned assumption set.",
         "operationId": "update_assumption_set_api_v1_assumptions__version__patch",
         "parameters": [
           {
@@ -4060,8 +4857,9 @@
           {
             "in": "header",
             "name": "X-Actor-Role",
-            "required": true,
+            "required": false,
             "schema": {
+              "default": "Admin",
               "title": "X-Actor-Role",
               "type": "string"
             }
@@ -4099,7 +4897,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Update an assumption set",
+        "summary": "Update a governed assumption set",
         "tags": [
           "Assumptions"
         ]
@@ -4107,6 +4905,7 @@
     },
     "/api/v1/assumptions/{version}/default": {
       "post": {
+        "description": "Mark one governed assumption set as the default version.",
         "operationId": "set_default_assumption_set_api_v1_assumptions__version__default_post",
         "parameters": [
           {
@@ -4131,8 +4930,9 @@
           {
             "in": "header",
             "name": "X-Actor-Role",
-            "required": true,
+            "required": false,
             "schema": {
+              "default": "Admin",
               "title": "X-Actor-Role",
               "type": "string"
             }
@@ -4168,6 +4968,7 @@
     },
     "/api/v1/audit/{project_id}": {
       "get": {
+        "description": "Queryable by project, import batch, row, user, and event type (PRD-014).\nCovers: imports, normalization, edits, recalculations, approvals, exports.",
         "operationId": "list_audit_events_api_v1_audit__project_id__get",
         "parameters": [
           {
@@ -4297,6 +5098,7 @@
     },
     "/api/v1/catalog/{project_id}": {
       "get": {
+        "description": "Return paginated catalog rows using the service-backed catalog query path.",
         "operationId": "list_integrations_api_v1_catalog__project_id__get",
         "parameters": [
           {
@@ -4456,6 +5258,7 @@
         ]
       },
       "post": {
+        "description": "Persist a governed manual-capture integration.",
         "operationId": "create_integration_api_v1_catalog__project_id__post",
         "parameters": [
           {
@@ -4518,6 +5321,7 @@
     },
     "/api/v1/catalog/{project_id}/bulk-patch": {
       "post": {
+        "description": "Apply the same architect patch to multiple catalog integrations.",
         "operationId": "bulk_patch_api_v1_catalog__project_id__bulk_patch_post",
         "parameters": [
           {
@@ -4570,6 +5374,7 @@
     },
     "/api/v1/catalog/{project_id}/duplicates": {
       "get": {
+        "description": "Return likely duplicates for the manual capture wizard.",
         "operationId": "find_duplicates_api_v1_catalog__project_id__duplicates_get",
         "parameters": [
           {
@@ -4643,6 +5448,7 @@
     },
     "/api/v1/catalog/{project_id}/estimate": {
       "post": {
+        "description": "Return a live OIC estimate without persisting draft capture inputs.",
         "operationId": "estimate_oic_api_v1_catalog__project_id__estimate_post",
         "parameters": [
           {
@@ -4695,6 +5501,7 @@
     },
     "/api/v1/catalog/{project_id}/graph": {
       "get": {
+        "description": "Return the directed system dependency graph before dynamic integration routes can match.",
         "operationId": "get_graph_api_v1_catalog__project_id__graph_get",
         "parameters": [
           {
@@ -4785,6 +5592,7 @@
     },
     "/api/v1/catalog/{project_id}/systems": {
       "get": {
+        "description": "Return source and destination system names for capture/autocomplete UI.",
         "operationId": "list_systems_api_v1_catalog__project_id__systems_get",
         "parameters": [
           {
@@ -4831,6 +5639,7 @@
     },
     "/api/v1/catalog/{project_id}/{integration_id}": {
       "delete": {
+        "description": "Delete a governed catalog integration through the service layer.",
         "operationId": "delete_integration_api_v1_catalog__project_id___integration_id__delete",
         "parameters": [
           {
@@ -4890,6 +5699,7 @@
         ]
       },
       "get": {
+        "description": "Return a catalog integration with source lineage and normalized source labels.",
         "operationId": "get_integration_api_v1_catalog__project_id___integration_id__get",
         "parameters": [
           {
@@ -4939,6 +5749,7 @@
         ]
       },
       "patch": {
+        "description": "Patch architect-owned fields through the auditable catalog service.",
         "operationId": "update_integration_api_v1_catalog__project_id___integration_id__patch",
         "parameters": [
           {
@@ -5010,6 +5821,7 @@
     },
     "/api/v1/catalog/{project_id}/{integration_id}/lineage": {
       "get": {
+        "description": "Return source row, import batch, raw values, and normalization events.",
         "operationId": "get_lineage_api_v1_catalog__project_id___integration_id__lineage_get",
         "parameters": [
           {
@@ -5061,6 +5873,7 @@
     },
     "/api/v1/dashboard/{project_id}/snapshots": {
       "get": {
+        "description": "Return persisted technical dashboard snapshots for a project.",
         "operationId": "list_dashboard_snapshots_api_v1_dashboard__project_id__snapshots_get",
         "parameters": [
           {
@@ -5103,6 +5916,7 @@
     },
     "/api/v1/dashboard/{project_id}/snapshots/{snapshot_id}": {
       "get": {
+        "description": "Returns technical-only dashboard by default (PRD-036):\n- KPI strip: OIC msgs/month, peak packs/hour, DI workspace, DI GB, Functions units\n- Coverage and completeness charts\n- Pattern mix breakdown\n- Payload distribution\n- Technical risks (drill-through to catalog rows)\n- Maturity indicators",
         "operationId": "get_dashboard_snapshot_api_v1_dashboard__project_id__snapshots__snapshot_id__get",
         "parameters": [
           {
@@ -5168,6 +5982,27 @@
           }
         },
         "summary": "List all dictionary categories",
+        "tags": [
+          "Dictionaries"
+        ]
+      }
+    },
+    "/api/v1/dictionaries/canvas-governance": {
+      "get": {
+        "operationId": "get_canvas_governance_api_v1_dictionaries_canvas_governance_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanvasGovernanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List governed tools, overlays, and standard combinations for the design canvas",
         "tags": [
           "Dictionaries"
         ]
@@ -5654,6 +6489,44 @@
       }
     },
     "/api/v1/exports/{project_id}/xlsx": {
+      "get": {
+        "operationId": "download_xlsx_api_v1_exports__project_id__xlsx_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download catalog export as XLSX using the latest snapshot",
+        "tags": [
+          "Exports"
+        ]
+      },
       "post": {
         "operationId": "export_xlsx_api_v1_exports__project_id__xlsx_post",
         "parameters": [
@@ -5977,259 +6850,6 @@
         ]
       }
     },
-    "/api/v1/justifications/templates": {
-      "get": {
-        "operationId": "list_prompt_templates_api_v1_justifications_templates_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PromptTemplateVersionListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List narrative templates",
-        "tags": [
-          "Justifications"
-        ]
-      },
-      "post": {
-        "operationId": "create_prompt_template_api_v1_justifications_templates_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-Actor-Id",
-            "required": false,
-            "schema": {
-              "default": "api-user",
-              "title": "X-Actor-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Actor-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Actor-Role",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PromptTemplateVersionCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PromptTemplateVersionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create a narrative template version",
-        "tags": [
-          "Justifications"
-        ]
-      }
-    },
-    "/api/v1/justifications/templates/{version}": {
-      "get": {
-        "operationId": "get_prompt_template_api_v1_justifications_templates__version__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "version",
-            "required": true,
-            "schema": {
-              "title": "Version",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PromptTemplateVersionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get one narrative template version",
-        "tags": [
-          "Justifications"
-        ]
-      },
-      "patch": {
-        "operationId": "update_prompt_template_api_v1_justifications_templates__version__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "version",
-            "required": true,
-            "schema": {
-              "title": "Version",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Actor-Id",
-            "required": false,
-            "schema": {
-              "default": "api-user",
-              "title": "X-Actor-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Actor-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Actor-Role",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PromptTemplateVersionUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PromptTemplateVersionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Update a narrative template version",
-        "tags": [
-          "Justifications"
-        ]
-      }
-    },
-    "/api/v1/justifications/templates/{version}/default": {
-      "post": {
-        "operationId": "set_default_prompt_template_api_v1_justifications_templates__version__default_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "version",
-            "required": true,
-            "schema": {
-              "title": "Version",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Actor-Id",
-            "required": false,
-            "schema": {
-              "default": "api-user",
-              "title": "X-Actor-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Actor-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Actor-Role",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PromptTemplateVersionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Promote a narrative template to default",
-        "tags": [
-          "Justifications"
-        ]
-      }
-    },
     "/api/v1/justifications/{project_id}": {
       "get": {
         "operationId": "list_justifications_api_v1_justifications__project_id__get",
@@ -6248,9 +6868,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JustificationListResponse"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -6273,65 +6891,6 @@
       }
     },
     "/api/v1/justifications/{project_id}/{integration_id}": {
-      "delete": {
-        "operationId": "reset_justification_api_v1_justifications__project_id___integration_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "title": "Project Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "integration_id",
-            "required": true,
-            "schema": {
-              "title": "Integration Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResetJustificationRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JustificationRecordResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Reset a persisted justification back to the deterministic draft",
-        "tags": [
-          "Justifications"
-        ]
-      },
       "get": {
         "operationId": "get_justification_api_v1_justifications__project_id___integration_id__get",
         "parameters": [
@@ -6358,9 +6917,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JustificationRecordResponse"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -6384,7 +6941,7 @@
     },
     "/api/v1/justifications/{project_id}/{integration_id}/approve": {
       "post": {
-        "description": "Sets state=approved, records approved_by, and emits an AuditEvent.",
+        "description": "Sets state=approved, records approved_by, emits AuditEvent (PRD-042).",
         "operationId": "approve_justification_api_v1_justifications__project_id___integration_id__approve_post",
         "parameters": [
           {
@@ -6406,23 +6963,11 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApproveJustificationRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JustificationRecordResponse"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -6471,7 +7016,8 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/OverrideJustificationRequest"
+                "title": "Body",
+                "type": "object"
               }
             }
           },
@@ -6481,9 +7027,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JustificationRecordResponse"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -6513,7 +7057,8 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PatternListResponse"
+                  "title": "Response List Patterns Api V1 Patterns  Get",
+                  "type": "object"
                 }
               }
             },
@@ -6659,7 +7204,8 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PatternDefinitionResponse"
+                  "title": "Response Get Pattern Api V1 Patterns  Pattern Id  Get",
+                  "type": "object"
                 }
               }
             },
@@ -6754,6 +7300,7 @@
     },
     "/api/v1/projects/": {
       "get": {
+        "description": "Return all projects ordered by creation date descending.",
         "operationId": "list_projects_api_v1_projects__get",
         "responses": {
           "200": {
@@ -6773,6 +7320,7 @@
         ]
       },
       "post": {
+        "description": "Create one project and return the serialized resource.",
         "operationId": "create_project_api_v1_projects__post",
         "requestBody": {
           "content": {
@@ -6814,6 +7362,7 @@
     },
     "/api/v1/projects/{project_id}": {
       "delete": {
+        "description": "Delete one archived project and all related project-scoped records.",
         "operationId": "delete_project_api_v1_projects__project_id__delete",
         "parameters": [
           {
@@ -6826,12 +7375,12 @@
             }
           },
           {
-            "in": "query",
-            "name": "actor_id",
+            "in": "header",
+            "name": "X-Actor-Id",
             "required": false,
             "schema": {
-              "default": "api-user",
-              "title": "Actor Id",
+              "default": "web-user",
+              "title": "X-Actor-Id",
               "type": "string"
             }
           }
@@ -6858,12 +7407,13 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete an archived project",
+        "summary": "Delete one archived project",
         "tags": [
           "Projects"
         ]
       },
       "get": {
+        "description": "Return one project or raise 404.",
         "operationId": "get_project_api_v1_projects__project_id__get",
         "parameters": [
           {
@@ -6904,6 +7454,7 @@
         ]
       },
       "patch": {
+        "description": "Update mutable project metadata and emit an audit event.",
         "operationId": "update_project_api_v1_projects__project_id__patch",
         "parameters": [
           {
@@ -6916,12 +7467,12 @@
             }
           },
           {
-            "in": "query",
-            "name": "actor_id",
+            "in": "header",
+            "name": "X-Actor-Id",
             "required": false,
             "schema": {
-              "default": "api-user",
-              "title": "Actor Id",
+              "default": "web-user",
+              "title": "X-Actor-Id",
               "type": "string"
             }
           }
@@ -6966,6 +7517,7 @@
     },
     "/api/v1/projects/{project_id}/archive": {
       "post": {
+        "description": "Archive one project and emit an audit event.",
         "operationId": "archive_project_api_v1_projects__project_id__archive_post",
         "parameters": [
           {
@@ -6978,12 +7530,12 @@
             }
           },
           {
-            "in": "query",
-            "name": "actor_id",
+            "in": "header",
+            "name": "X-Actor-Id",
             "required": false,
             "schema": {
-              "default": "api-user",
-              "title": "Actor Id",
+              "default": "web-user",
+              "title": "X-Actor-Id",
               "type": "string"
             }
           }
@@ -7010,7 +7562,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Archive a project",
+        "summary": "Archive one project",
         "tags": [
           "Projects"
         ]
@@ -7172,8 +7724,74 @@
         ]
       }
     },
+    "/api/v1/services/": {
+      "get": {
+        "operationId": "list_services_api_v1_services__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response List Services Api V1 Services  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List all OCI service capability profiles",
+        "tags": [
+          "Services"
+        ]
+      }
+    },
+    "/api/v1/services/{service_id}": {
+      "get": {
+        "operationId": "get_service_api_v1_services__service_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service_id",
+            "required": true,
+            "schema": {
+              "title": "Service Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Service Api V1 Services  Service Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get a service profile by service_id (e.g. OIC3)",
+        "tags": [
+          "Services"
+        ]
+      }
+    },
     "/api/v1/volumetry/{project_id}/snapshots": {
       "get": {
+        "description": "Return persisted volumetry snapshots for a project.",
         "operationId": "list_snapshots_api_v1_volumetry__project_id__snapshots_get",
         "parameters": [
           {
@@ -7216,6 +7834,7 @@
     },
     "/api/v1/volumetry/{project_id}/snapshots/{snapshot_id}": {
       "get": {
+        "description": "Returns row-level and consolidated metrics with assumption references.",
         "operationId": "get_snapshot_api_v1_volumetry__project_id__snapshots__snapshot_id__get",
         "parameters": [
           {
@@ -7267,6 +7886,7 @@
     },
     "/api/v1/volumetry/{project_id}/snapshots/{snapshot_id}/consolidated": {
       "get": {
+        "description": "Returns consolidated totals for:\n- OIC: messages/month, peak msgs/hour, peak packs/hour (PRD-030, PRD-031)\n- DI: workspace active, GB/month, pipeline hours (PRD-033)\n- Functions: invocations/month, execution units (PRD-034)\n- Streaming: volume, partition count (PRD-032)\n- Queue: request count (PRD-032)",
         "operationId": "get_consolidated_api_v1_volumetry__project_id__snapshots__snapshot_id__consolidated_get",
         "parameters": [
           {
@@ -7311,6 +7931,81 @@
           }
         },
         "summary": "Consolidated driver totals",
+        "tags": [
+          "Volumetry"
+        ]
+      }
+    },
+    "/api/v1/volumetry/{project_id}/snapshots/{snapshot_id}/rows": {
+      "get": {
+        "description": "Return paginated row-level volumetry metrics.",
+        "operationId": "get_snapshot_rows_api_v1_volumetry__project_id__snapshots__snapshot_id__rows_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumetrySnapshotRowResultsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Row-level volumetry results",
         "tags": [
           "Volumetry"
         ]

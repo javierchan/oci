@@ -93,6 +93,17 @@ class VolumetrySnapshotListResponse(BaseModel):
     snapshots: list[VolumetrySnapshotResponse] = Field(default_factory=list)
 
 
+class VolumetrySnapshotRowResultsResponse(BaseModel):
+    """Paginated row-level metrics for one volumetry snapshot."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    rows: list[dict[str, object]] = Field(default_factory=list)
+    total: int
+    page: int
+    page_size: int
+
+
 class ScopedRecalculationRequest(BaseModel):
     """Request body for a scoped recalculation trigger."""
 

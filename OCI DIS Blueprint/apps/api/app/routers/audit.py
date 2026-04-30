@@ -1,11 +1,17 @@
 """Audit router — /audit (PRD-045)."""
-from fastapi import APIRouter, Query
+
 from typing import Optional
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.db import get_db
+from app.schemas.audit import AuditEventListResponse
+from app.services import audit_service
 
 router = APIRouter(prefix="/audit", tags=["Audit"])
 
 
-@router.get("/{project_id}", summary="Query audit events")
+@router.get("/{project_id}", response_model=AuditEventListResponse, summary="Query audit events")
 async def list_audit_events(
     project_id: str,
     entity_type: Optional[str] = None,
@@ -14,9 +20,19 @@ async def list_audit_events(
     event_type: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-):
+    db: AsyncSession = Depends(get_db),
+) -> AuditEventListResponse:
     """
     Queryable by project, import batch, row, user, and event type (PRD-014).
     Covers: imports, normalization, edits, recalculations, approvals, exports.
     """
-    return {"events": [], "total": 0}
+    return await audit_service.list_events(
+        project_id=project_id,
+        db=db,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        actor_id=actor_id,
+        event_type=event_type,
+        page=page,
+        page_size=page_size,
+    )

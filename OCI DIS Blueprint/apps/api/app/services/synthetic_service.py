@@ -1566,17 +1566,26 @@ def _normalized_request_payload(body: SyntheticGenerationJobCreateRequest) -> di
     )
 
 
+def _payload_int(payload: dict[str, object], key: str) -> int:
+    value = payload[key]
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float, str)):
+        return int(value)
+    raise TypeError(f"Expected numeric synthetic payload value for {key}.")
+
+
 def _spec_from_payload(payload: dict[str, object]) -> SyntheticProjectSpec:
     template = _preset_spec(str(payload["preset_code"]))
     return replace(
         template,
         project_name=str(payload["project_name"]),
-        seed=int(payload["seed_value"]),
-        import_included_count=int(payload["import_target"]),
-        manual_count=int(payload["manual_target"]),
-        excluded_import_count=int(payload["excluded_import_target"]),
-        minimum_distinct_systems=int(payload["min_distinct_systems"]),
-        minimum_catalog_count=int(payload["target_catalog_size"]),
+        seed=_payload_int(payload, "seed_value"),
+        import_included_count=_payload_int(payload, "import_target"),
+        manual_count=_payload_int(payload, "manual_target"),
+        excluded_import_count=_payload_int(payload, "excluded_import_target"),
+        minimum_distinct_systems=_payload_int(payload, "min_distinct_systems"),
+        minimum_catalog_count=_payload_int(payload, "target_catalog_size"),
         include_justifications=bool(payload["include_justifications"]),
         include_exports=bool(payload["include_exports"]),
         include_design_warnings=bool(payload["include_design_warnings"]),
@@ -1622,11 +1631,11 @@ async def create_synthetic_job(
         input_payload=cast(dict[str, object], sanitize_for_json(body.model_dump(exclude_none=True))),
         normalized_payload=normalized_payload,
         project_name=str(normalized_payload["project_name"]),
-        seed_value=int(normalized_payload["seed_value"]),
-        catalog_target=int(normalized_payload["target_catalog_size"]),
-        manual_target=int(normalized_payload["manual_target"]),
-        import_target=int(normalized_payload["import_target"]),
-        excluded_import_target=int(normalized_payload["excluded_import_target"]),
+        seed_value=_payload_int(normalized_payload, "seed_value"),
+        catalog_target=_payload_int(normalized_payload, "target_catalog_size"),
+        manual_target=_payload_int(normalized_payload, "manual_target"),
+        import_target=_payload_int(normalized_payload, "import_target"),
+        excluded_import_target=_payload_int(normalized_payload, "excluded_import_target"),
     )
     db.add(job)
     await db.flush()
@@ -1701,7 +1710,7 @@ async def mark_synthetic_job_running(job_id: str, db: AsyncSession) -> Synthetic
                 "error_code": "SYNTHETIC_JOB_ALREADY_CLEANED",
             },
         )
-    old_value = {"status": job.status.value}
+    old_value: dict[str, object] = {"status": job.status.value}
     job.status = type(job.status).RUNNING
     job.started_at = datetime.now(UTC)
     job.finished_at = None
@@ -1729,7 +1738,7 @@ async def mark_synthetic_job_failed(
     """Persist a failed terminal state for a synthetic-generation job."""
 
     job = await _load_job(job_id, db)
-    old_value = {"status": job.status.value, "error_details": job.error_details}
+    old_value: dict[str, object] = {"status": job.status.value, "error_details": job.error_details}
     job.status = type(job.status).FAILED
     job.finished_at = datetime.now(UTC)
     job.error_details = cast(dict[str, object], sanitize_for_json(error_details))
@@ -1757,7 +1766,7 @@ async def run_synthetic_generation_job(
     job = await _load_job(job_id, db)
     normalized_payload = cast(dict[str, object], job.normalized_payload)
     result = await create_synthetic_enterprise_project(db, _spec_from_payload(normalized_payload))
-    old_value = {"status": job.status.value}
+    old_value: dict[str, object] = {"status": job.status.value}
     artifact_manifest = cast(
         dict[str, object],
         sanitize_for_json(
@@ -1785,7 +1794,7 @@ async def run_synthetic_generation_job(
                 "excluded_import_count": result.excluded_import_count,
                 "meets_catalog_target": result.catalog_count >= job.catalog_target,
                 "meets_distinct_system_target": result.distinct_systems
-                >= int(normalized_payload["min_distinct_systems"]),
+                >= _payload_int(normalized_payload, "min_distinct_systems"),
             }
         ),
     )
