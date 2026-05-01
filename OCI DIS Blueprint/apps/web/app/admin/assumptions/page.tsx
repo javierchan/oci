@@ -95,8 +95,8 @@ function AdminAssumptionsClient(): JSX.Element {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="app-card flex flex-col gap-4 p-6 lg:flex-row lg:items-end lg:justify-between">
+    <div className="console-page">
+      <section className="console-hero flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="app-kicker">Admin Governance</p>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">Assumptions</h1>
@@ -145,70 +145,69 @@ function AdminAssumptionsClient(): JSX.Element {
         </p>
       ) : null}
 
-      <section className="app-table-shell">
-        <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
-          <thead className="app-table-header">
-            <tr>
-              <th className="px-6 py-4 font-medium">Version</th>
-              <th className="px-6 py-4 font-medium">Created</th>
-              <th className="px-6 py-4 font-medium">Is Default</th>
-              <th className="px-6 py-4 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
-            {loading ? (
-              <tr>
-                <td className="px-6 py-8 text-[var(--color-text-secondary)]" colSpan={4}>
-                  Loading versions…
-                </td>
-              </tr>
-            ) : (
-              assumptions.map((assumption) => (
-                <tr
-                  key={assumption.id}
-                  className={[
-                    "app-table-row",
-                    assumption.is_default ? "bg-emerald-50/60 dark:bg-emerald-950/20" : "",
-                  ].join(" ")}
-                >
-                  <td className="px-6 py-4 font-semibold text-[var(--color-text-primary)]">{assumption.version}</td>
-                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{formatDate(assumption.created_at)}</td>
-                  <td className="px-6 py-4">
-                    {assumption.is_default ? (
-                      <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-emerald-700">
-                        Default
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Link
-                        href={`/admin/assumptions/${assumption.version}`}
-                        className="text-sm font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
-                      >
-                        View
-                      </Link>
-                      {!assumption.is_default ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void handleSetDefault(assumption.version);
-                          }}
-                          disabled={saving}
-                          className="text-sm font-medium text-emerald-700 hover:text-emerald-500 disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
-                        >
-                          Set as Default
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      <section className="space-y-4">
+        {loading ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <article key={index} className="app-card p-5">
+                <div className="skeleton h-5 w-28" />
+                <div className="mt-4 skeleton h-8 w-20" />
+                <div className="mt-4 skeleton h-16 w-full" />
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {assumptions.map((assumption) => (
+              <article
+                key={assumption.id}
+                className={[
+                  "app-card flex min-h-[13rem] flex-col p-5 transition hover:-translate-y-0.5 hover:border-[var(--color-accent)] hover:shadow-md",
+                  assumption.is_default ? "border-emerald-200 bg-emerald-50/35 dark:border-emerald-900 dark:bg-emerald-950/15" : "",
+                ].join(" ")}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="app-label">Assumption Set</p>
+                    <h2 className="mt-2 font-mono text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">
+                      {assumption.version}
+                    </h2>
+                  </div>
+                  {assumption.is_default ? (
+                    <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+                      Default
+                    </span>
+                  ) : (
+                    <span className="app-theme-chip">Versioned</span>
+                  )}
+                </div>
+                <p className="mt-4 text-sm leading-6 text-[var(--color-text-secondary)]">
+                  Created {formatDate(assumption.created_at)}. Clone or inspect this immutable set before changing shared volumetry behavior.
+                </p>
+                <div className="mt-auto flex flex-wrap items-center gap-3 pt-5">
+                  <Link
+                    href={`/admin/assumptions/${assumption.version}`}
+                    className="app-button-secondary px-4 py-2 text-sm"
+                  >
+                    View Details
+                  </Link>
+                  {!assumption.is_default ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleSetDefault(assumption.version);
+                      }}
+                      disabled={saving}
+                      className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
+                    >
+                      Set Default
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

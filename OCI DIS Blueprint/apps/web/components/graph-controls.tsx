@@ -49,7 +49,7 @@ export function GraphControls({
   svgRef,
 }: GraphControlsProps): JSX.Element {
   return (
-    <section className="app-card pointer-events-auto p-6">
+    <section className="console-toolbar pointer-events-auto">
       <div className="flex flex-col gap-4 xl:flex-row xl:flex-wrap xl:items-end">
         <label className="min-w-[14rem]">
           <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">Business Process</span>
@@ -98,7 +98,7 @@ export function GraphControls({
         </label>
 
         <label className="min-w-[14rem]">
-          <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">System</span>
+          <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">Focus System</span>
           <select
             value={selectedSystem}
             onChange={(event) => onSystemChange(event.target.value)}

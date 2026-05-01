@@ -50,6 +50,19 @@ const DISPLAY_VALUE_LABELS: Record<string, string> = {
   Válido: "Valid",
 };
 
+const DISPLAY_TEXT_LABELS: Record<string, string> = {
+  "Tipo: Programada. Usar para: Alta frecuencia explícita. Estatus: Válido.":
+    "Type: Scheduled. Use for: explicit high frequency. Status: Valid.",
+  "Tipo: Programada. Usar para: Frecuencia estándar. Estatus: Válido.":
+    "Type: Scheduled. Use for: standard frequency. Status: Valid.",
+  "Tipo: Programada. Usar para: Baja frecuencia. Estatus: Válido.":
+    "Type: Scheduled. Use for: low frequency. Status: Valid.",
+  "Tipo: Evento / continuo. Usar para: Proxy batch equivalente; validar diseño final. Estatus: Válido con cautela.":
+    "Type: Event / continuous. Use for: equivalent batch proxy; validate final design. Status: Valid with caution.",
+  "Tipo: Eventual. Usar para: Proxy inicial; confirmar luego. Estatus: Válido con cautela.":
+    "Type: Occasional. Use for: initial proxy; confirm later. Status: Valid with caution.",
+};
+
 const SOURCE_FIELD_LABELS: Record<string, string> = {
   "#": "#",
   "ID de Interfaz": "Interface ID",
@@ -141,6 +154,10 @@ const NORMALIZED_DISPLAY_VALUE_LABELS: Record<string, string> = Object.fromEntri
   Object.entries(DISPLAY_VALUE_LABELS).map(([key, label]) => [normalizeDisplayKey(key), label]),
 );
 
+const NORMALIZED_DISPLAY_TEXT_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(DISPLAY_TEXT_LABELS).map(([key, label]) => [normalizeDisplayKey(key), label]),
+);
+
 const NORMALIZED_SOURCE_FIELD_LABELS: Record<string, string> = Object.fromEntries(
   Object.entries(SOURCE_FIELD_LABELS).map(([key, label]) => [normalizeDisplayKey(key), label]),
 );
@@ -200,6 +217,17 @@ export function displayUiValue(value: string | null | undefined): string {
     return "—";
   }
   return DISPLAY_VALUE_LABELS[value] ?? NORMALIZED_DISPLAY_VALUE_LABELS[normalizeDisplayKey(value)] ?? value;
+}
+
+export function displayGovernedText(value: string | null | undefined): string {
+  if (!value) {
+    return "—";
+  }
+  return (
+    DISPLAY_TEXT_LABELS[value] ??
+    NORMALIZED_DISPLAY_TEXT_LABELS[normalizeDisplayKey(value)] ??
+    displayUiValue(value)
+  );
 }
 
 export function displaySourceFieldLabel(value: string | null | undefined): string {

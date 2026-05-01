@@ -36,6 +36,7 @@ from app.schemas.volumetry import (
     VolumetrySnapshotListResponse,
     VolumetrySnapshotResponse,
     VolumetrySnapshotRowResultsResponse,
+    VolumetrySnapshotSummary,
 )
 from app.services import audit_service
 from app.services.canvas_interoperability import build_design_constraint_messages
@@ -166,6 +167,21 @@ def serialize_snapshot(snapshot: VolumetrySnapshot) -> VolumetrySnapshotResponse
         row_results=snapshot.row_results,
         consolidated=_serialize_consolidated(snapshot.consolidated),
         metadata=snapshot.snapshot_metadata,
+        created_at=snapshot.created_at,
+    )
+
+
+def serialize_snapshot_summary(snapshot: VolumetrySnapshot) -> VolumetrySnapshotSummary:
+    """Convert a snapshot model into a lightweight list response."""
+
+    return VolumetrySnapshotSummary(
+        snapshot_id=snapshot.id,
+        project_id=snapshot.project_id,
+        assumption_set_version=snapshot.assumption_set_version,
+        triggered_by=snapshot.triggered_by,
+        consolidated=_serialize_consolidated(snapshot.consolidated),
+        metadata=snapshot.snapshot_metadata,
+        row_result_count=len(snapshot.row_results or {}),
         created_at=snapshot.created_at,
     )
 
@@ -315,7 +331,7 @@ async def list_snapshots(project_id: str, db: AsyncSession) -> VolumetrySnapshot
         .order_by(VolumetrySnapshot.created_at.desc())
     )
     return VolumetrySnapshotListResponse(
-        snapshots=[serialize_snapshot(snapshot) for snapshot in result.all()]
+        snapshots=[serialize_snapshot_summary(snapshot) for snapshot in result.all()]
     )
 
 

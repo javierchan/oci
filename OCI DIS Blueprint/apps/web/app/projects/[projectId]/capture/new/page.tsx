@@ -35,9 +35,9 @@ export default async function CaptureNewPage({
   ]);
 
   return (
-    <div className="space-y-8">
-      <section className="app-card p-6">
-        <p className="app-kicker">Capture Wizard</p>
+    <div className="console-page">
+      <section className="console-hero">
+        <p className="app-kicker">Manual Capture · Five-step workflow</p>
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
           New Integration for {project.name}
         </h1>

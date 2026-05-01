@@ -40,14 +40,14 @@ export default async function ProjectImportPage({
   ]);
 
   return (
-    <div className="space-y-6">
-      <section className="app-card p-6">
-        <p className="app-kicker">Workbook Import</p>
+    <div className="console-page">
+      <section className="console-hero">
+        <p className="app-kicker">Capture & Import · Workbook ingest</p>
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
           Import for {project.name}
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-          Upload governed workbooks, review imported source rows, and trace integrations back to their original line items.
+          Upload governed workbooks, review parse output and source rows, then trace integrations back to their original line items before merging decisions into the catalog.
         </p>
         <div className="mt-4">
           <Breadcrumb

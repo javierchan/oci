@@ -113,7 +113,7 @@ export function AdminDictionaryForm({
           <input
             value={form.value}
             onChange={(event) => setForm((current) => ({ ...current, value: event.target.value }))}
-            placeholder="Cada 2 horas"
+            placeholder="Every 2 hours"
             className="app-input"
           />
         </label>

@@ -121,6 +121,15 @@ async def seed_canvas_validation_reference_data(test_engine: AsyncEngine) -> Non
                     sort_order=1,
                     version="1.0.0",
                 ),
+                DictionaryOption(
+                    category="TOOLS",
+                    code=None,
+                    value="Oracle ORDS",
+                    description=None,
+                    is_volumetric=True,
+                    sort_order=99,
+                    version="1.0.0",
+                ),
             ]
         )
         await session.commit()
@@ -282,6 +291,58 @@ async def test_patch_rejects_disconnected_canvas_route(
     assert patch_response.status_code == 400
     payload = patch_response.json()
     assert payload["detail"]["error_code"] == "CANVAS_ROUTE_INCOMPLETE"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_uncoded_dictionary_tools(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Uncoded admin/system endpoint records must not satisfy core-tool validation."""
+
+    await seed_canvas_validation_reference_data(test_engine)
+
+    create_project_response = await api_client.post(
+        "/api/v1/projects/",
+        json={
+            "name": "Uncoded Tool Project",
+            "owner_id": "integration-test",
+            "description": "Canvas taxonomy validation",
+        },
+    )
+    project_id = create_project_response.json()["id"]
+
+    create_integration_response = await api_client.post(
+        f"/api/v1/catalog/{project_id}",
+        params={"actor_id": "integration-test"},
+        json={
+            "interface_id": "INT-UNCODED-001",
+            "brand": "Oracle",
+            "business_process": "Finance",
+            "interface_name": "Uncoded Tool Route",
+            "description": "Uncoded tools should not be accepted as core tools",
+            "source_system": "SAP ECC",
+            "destination_system": "Oracle ATP",
+            "frequency": "Cada 1 hora",
+            "payload_per_execution_kb": 64,
+            "tbq": "Y",
+        },
+    )
+    assert create_integration_response.status_code == 201
+    integration_id = create_integration_response.json()["id"]
+
+    patch_response = await api_client.patch(
+        f"/api/v1/catalog/{project_id}/{integration_id}",
+        params={"actor_id": "integration-test"},
+        json={
+            "core_tools": "Oracle ORDS",
+            "additional_tools_overlays": build_linear_canvas("Oracle ORDS"),
+        },
+    )
+
+    assert patch_response.status_code == 400
+    payload = patch_response.json()
+    assert payload["detail"]["error_code"] == "INVALID_CORE_TOOLS"
 
 
 @pytest.mark.asyncio

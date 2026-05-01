@@ -71,6 +71,16 @@ async def test_dictionary_api_returns_volumetric_metadata(
                     sort_order=1,
                     version="1.0.0",
                 ),
+                DictionaryOption(
+                    category="TOOLS",
+                    code="T99",
+                    value="Deprecated Tool",
+                    description="Inactive legacy option",
+                    is_volumetric=True,
+                    sort_order=99,
+                    is_active=False,
+                    version="1.0.0",
+                ),
             ]
         )
         await session.commit()
@@ -81,6 +91,11 @@ async def test_dictionary_api_returns_volumetric_metadata(
     assert tools_payload["options"][0]["code"] == "T01"
     assert tools_payload["options"][0]["is_volumetric"] is True
     assert tools_payload["options"][0]["version"] == "1.0.0"
+    assert "Deprecated Tool" not in [option["value"] for option in tools_payload["options"]]
+
+    all_tools_response = await api_client.get("/api/v1/dictionaries/TOOLS?include_inactive=true")
+    assert all_tools_response.status_code == 200
+    assert "Deprecated Tool" in [option["value"] for option in all_tools_response.json()["options"]]
 
     frequency_response = await api_client.get("/api/v1/dictionaries/FREQUENCY")
     assert frequency_response.status_code == 200
@@ -108,6 +123,15 @@ async def test_canvas_governance_api_returns_combinations(
                     version="1.0.0",
                 ),
                 DictionaryOption(
+                    category="TOOLS",
+                    code=None,
+                    value="OCI API Gateway",
+                    description=None,
+                    is_volumetric=True,
+                    sort_order=2,
+                    version="1.0.0",
+                ),
+                DictionaryOption(
                     category="OVERLAYS",
                     code="AO01",
                     value="OCI API Gateway",
@@ -123,7 +147,7 @@ async def test_canvas_governance_api_returns_combinations(
     response = await api_client.get("/api/v1/dictionaries/canvas-governance")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["tools"][0]["value"] == "OIC Gen3"
+    assert [option["value"] for option in payload["tools"]] == ["OIC Gen3"]
     assert payload["overlays"][0]["value"] == "OCI API Gateway"
 
     combination = next(
@@ -135,6 +159,36 @@ async def test_canvas_governance_api_returns_combinations(
         "OCI Functions",
     ]
     assert combination["compatible_pattern_ids"] == ["#02", "#08", "#17"]
+
+
+@pytest.mark.asyncio
+async def test_dictionary_tool_alias_returns_canonical_tools_category(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Support stale singular dictionary links without rendering an empty category."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        session.add(
+            DictionaryOption(
+                category="TOOLS",
+                code="T01",
+                value="OIC Gen3",
+                description="Core orchestration",
+                is_volumetric=True,
+                sort_order=1,
+                version="1.0.0",
+            )
+        )
+        await session.commit()
+
+    response = await api_client.get("/api/v1/dictionaries/TOOL")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["category"] == "TOOLS"
+    assert payload["options"][0]["value"] == "OIC Gen3"
 
 
 @pytest.mark.asyncio

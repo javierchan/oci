@@ -62,6 +62,15 @@ services:
       DATABASE_URL: postgresql+asyncpg://dis:dis@db:5432/oci_dis
       REDIS_URL: redis://redis:6379/0
       ENVIRONMENT: development
+      CORS_ALLOWED_ORIGINS: '["http://localhost:3000"]'
+      OCA_API_KEY: ${OCA_API_KEY:-}
+      OCA_BASE_URL: ${OCA_BASE_URL:-https://code-internal.aiservice.us-chicago-1.oci.oraclecloud.com/20250206/app/litellm}
+      OCA_MODEL: ${OCA_MODEL:-oca/gpt-5.5}
+      OCA_WIRE_API: ${OCA_WIRE_API:-responses}
+      OCA_CONFIG_PATH: ${OCA_CONFIG_PATH:-/codex/config.toml}
+      OCA_AUTH_JSON_PATH: ${OCA_AUTH_JSON_PATH:-/codex/auth.json}
+      OCA_CLIENT_NAME: ${OCA_CLIENT_NAME:-codex-cli}
+      OCA_CLIENT_VERSION: ${OCA_CLIENT_VERSION:-0}
     ports:
       - "8000:8000"
     volumes:
@@ -103,22 +112,22 @@ services:
         condition: service_healthy
 
   # ─────────────────────────────────────────
-  # Next.js — Web app
+  # Next.js — Web app (production-mode local runtime)
   # ─────────────────────────────────────────
   web:
+    image: ocidisblueprint-web
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      target: development
+      target: production
+    init: true
     restart: unless-stopped
     environment:
+      NODE_ENV: production
       NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+      INTERNAL_API_URL: http://api:8000/api/v1
     ports:
       - "3000:3000"
-    volumes:
-      - ./apps/web:/workspace/apps/web           # hot reload in dev
-      - /workspace/node_modules                  # preserve workspace node_modules
-      - /workspace/apps/web/.next                # preserve Next.js cache
     depends_on:
       api:
         condition: service_healthy

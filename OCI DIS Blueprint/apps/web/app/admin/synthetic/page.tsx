@@ -137,8 +137,8 @@ export default function AdminSyntheticPage(): JSX.Element {
   const targetMismatch = isSyntheticTargetMismatch(formState);
 
   return (
-    <div className="space-y-6">
-      <section className="app-card flex flex-col gap-4 p-6 lg:flex-row lg:items-end lg:justify-between">
+    <div className="console-page">
+      <section className="console-hero flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="app-kicker">Admin Governance</p>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">Synthetic Lab</h1>
@@ -508,7 +508,11 @@ export default function AdminSyntheticPage(): JSX.Element {
               jobs.map((job) => (
                 <tr key={job.id} className="app-table-row">
                   <td className="px-6 py-4">
-                    <Link href={`/admin/synthetic/${job.id}`} className="font-semibold text-[var(--color-accent)] hover:underline">
+                    <Link
+                      href={`/admin/synthetic/${job.id}`}
+                      title={job.id}
+                      className="block max-w-[12rem] truncate font-mono text-xs font-semibold text-[var(--color-accent)] hover:underline"
+                    >
                       {job.id}
                     </Link>
                     <p className="mt-1 text-xs text-[var(--color-text-muted)]">{job.requested_by}</p>

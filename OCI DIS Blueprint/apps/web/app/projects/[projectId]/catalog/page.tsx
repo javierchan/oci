@@ -46,10 +46,10 @@ export default async function ProjectCatalogPage({
     }
     throw error;
   }
-  const [allRows, patterns] = await Promise.all([
+  const [initialPage, patterns, facets] = await Promise.all([
     api.listCatalog(projectId, {
       page: 1,
-      page_size: 500,
+      page_size: 25,
       search: initialFilters.search || undefined,
       qa_status: initialFilters.qa_status || undefined,
       pattern: initialFilters.pattern || undefined,
@@ -58,32 +58,18 @@ export default async function ProjectCatalogPage({
       destination_system: initialFilters.destination_system || undefined,
     }),
     api.listPatterns(),
+    api.getCatalogFacets(projectId),
   ]);
 
-  const brands = Array.from(
-    new Set(
-      allRows.integrations
-        .map((integration) => integration.brand)
-        .filter((brandName): brandName is string => Boolean(brandName)),
-    ),
-  ).sort((left, right) => left.localeCompare(right));
-
-  const initialPage = {
-    integrations: allRows.integrations.slice(0, 20),
-    total: allRows.total,
-    page: 1,
-    page_size: 20,
-  };
-
   return (
-    <div className="space-y-6">
-      <section className="app-card p-6">
-        <p className="app-kicker">Catalog Grid</p>
+    <div className="console-page">
+      <section className="console-hero">
+        <p className="app-kicker">Catalog · Drill-down spine</p>
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
           Integration Catalog
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
-          Review imported rows in source order, filter by QA status or assigned pattern, and open a row to patch governed fields.
+          Review imported rows in source order, filter by QA status or assigned pattern, and select a row to inspect it in the side drawer without losing catalog context.
         </p>
         <div className="mt-4">
           <Breadcrumb
@@ -101,7 +87,7 @@ export default async function ProjectCatalogPage({
         projectName={project.name}
         initialPage={initialPage}
         patterns={patterns.patterns}
-        brands={brands}
+        brands={facets.brands}
         initialFilters={initialFilters}
       />
     </div>

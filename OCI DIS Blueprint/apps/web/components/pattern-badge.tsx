@@ -26,7 +26,7 @@ export function PatternBadge({
 }: PatternBadgeProps): JSX.Element {
   if (!patternId) {
     return (
-      <span className="inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-medium text-[var(--color-text-muted)]">
+      <span className="inline-flex whitespace-nowrap rounded-md border border-[var(--color-border)] bg-[var(--color-surface-3)] px-2.5 py-1 text-xs font-medium text-[var(--color-text-muted)]">
         Unassigned
       </span>
     );
@@ -36,14 +36,14 @@ export function PatternBadge({
 
   return (
     <span
-      className={`inline-flex rounded-full border border-transparent px-3 py-1 text-xs font-medium ${patternColor(category)}`}
+      className={`inline-flex items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1 text-xs font-medium ${compact ? "max-w-[10rem]" : ""} ${patternColor(category)}`}
       title={name ? `${patternId} ${name}` : patternId}
     >
-      <span className="font-mono font-bold">{patternId}</span>
+      <span className="shrink-0 font-mono font-bold">{patternId}</span>
       {displayName ? (
         <>
-          <span className="opacity-40">·</span>
-          <span>{displayName}</span>
+          <span className="shrink-0 opacity-40">·</span>
+          <span className={compact ? "truncate" : ""}>{displayName}</span>
         </>
       ) : null}
     </span>

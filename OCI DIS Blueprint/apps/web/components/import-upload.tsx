@@ -66,6 +66,61 @@ function formatBytes(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function ImportStepper({
+  phase,
+  hasHistory,
+}: {
+  phase: UploadPhase;
+  hasHistory: boolean;
+}): JSX.Element {
+  const activeIndex = hasHistory ? 3 : phase === "processing" ? 2 : phase === "pending" ? 1 : 0;
+  const steps = [
+    { label: "Template", description: "Governed headers" },
+    { label: "Upload", description: "Queue workbook" },
+    { label: "Parse", description: "Normalize rows" },
+    { label: "Review", description: "Trace lineage" },
+  ];
+
+  return (
+    <section className="app-card overflow-hidden">
+      <div className="grid divide-y divide-[var(--color-border)] md:grid-cols-4 md:divide-x md:divide-y-0">
+        {steps.map((step, index) => {
+          const complete = index < activeIndex;
+          const active = index === activeIndex;
+          return (
+            <div
+              key={step.label}
+              className={[
+                "p-4",
+                active ? "bg-[var(--color-surface-2)]" : "bg-[var(--color-surface)]",
+              ].join(" ")}
+            >
+              <div className="flex items-center gap-3">
+                <span
+                  className={[
+                    "flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold",
+                    complete
+                      ? "bg-[var(--color-qa-ok-text)] text-white"
+                      : active
+                        ? "bg-[var(--color-accent)] text-white"
+                        : "bg-[var(--color-surface-3)] text-[var(--color-text-muted)]",
+                  ].join(" ")}
+                >
+                  {complete ? "✓" : index + 1}
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">{step.label}</p>
+                  <p className="text-xs text-[var(--color-text-muted)]">{step.description}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function ImportUpload({
   projectId,
   projectName,
@@ -88,6 +143,8 @@ export function ImportUpload({
   const [rowSearch, setRowSearch] = useState<string>("");
   const [rowPage, setRowPage] = useState<number>(1);
   const [rowPageSize, setRowPageSize] = useState<number>(25);
+  const [historyPage, setHistoryPage] = useState<number>(1);
+  const [historyPageSize, setHistoryPageSize] = useState<number>(12);
 
   const filteredRows = useMemo(() => {
     if (!initialRows) {
@@ -126,6 +183,12 @@ export function ImportUpload({
   const latestBatch = currentBatch ?? history[0] ?? null;
   const stepOneTitle = hasHistory ? "Need the latest template?" : "Download the import template";
   const stepTwoTitle = hasHistory ? "Queue another workbook" : "Upload your completed file";
+  const historyTotalPages = Math.max(1, Math.ceil(history.length / historyPageSize));
+  const safeHistoryPage = Math.min(historyPage, historyTotalPages);
+  const historyStartIndex = (safeHistoryPage - 1) * historyPageSize;
+  const visibleHistory = history.slice(historyStartIndex, historyStartIndex + historyPageSize);
+  const historyLoadedTotal = history.reduce((sum, batch) => sum + (batch.loaded_count ?? 0), 0);
+  const historyExcludedTotal = history.reduce((sum, batch) => sum + (batch.excluded_count ?? 0), 0);
 
   function updateSelectedFile(file: File | null): void {
     setSelectedFile(file);
@@ -213,6 +276,8 @@ export function ImportUpload({
           </div>
         </section>
       ) : null}
+
+      <ImportStepper phase={phase} hasHistory={hasHistory} />
 
       <section className={`grid gap-4 ${hasHistory ? "xl:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)]" : "xl:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]"}`}>
         <article className={`app-card ${hasHistory ? "p-4" : "p-5"}`}>
@@ -555,70 +620,146 @@ export function ImportUpload({
 
       <section id="import-history" className="app-table-shell">
         <div className="border-b border-[var(--color-border)] px-6 py-5">
-          <h2 className="text-xl font-semibold text-[var(--color-text-primary)]">Import History</h2>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="app-kicker">Import History</p>
+              <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
+                Batch ledger
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
+                Showing the governed import ledger in pages so the workflow stays scannable even when manual capture creates many batches.
+              </p>
+            </div>
+            {history.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[24rem]">
+                <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2">
+                  <p className="app-label">Batches</p>
+                  <p className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">{history.length}</p>
+                </div>
+                <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2">
+                  <p className="app-label">Loaded</p>
+                  <p className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">{historyLoadedTotal}</p>
+                </div>
+                <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2">
+                  <p className="app-label">Excluded</p>
+                  <p className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">{historyExcludedTotal}</p>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
         {history.length === 0 ? (
           <div className="px-6 py-10 text-sm text-[var(--color-text-secondary)]">No imports have been run for this project yet.</div>
         ) : (
-          <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
-            <thead className="app-table-header">
-              <tr>
-                <th className="px-6 py-4">Batch</th>
-                <th className="px-6 py-4">Created</th>
-                <th className="px-6 py-4">Loaded</th>
-                <th className="px-6 py-4">Excluded</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
-              {history.map((batch: ImportBatch) => (
-                <tr key={batch.id} className="app-table-row">
-                  <td className="px-6 py-4 font-mono text-xs text-[var(--color-text-secondary)]">
-                    {batch.filename ? (
-                      <span title={batch.id}>{batch.filename}</span>
-                    ) : (
-                      <span className="opacity-60" title={batch.id}>
-                        {batch.id.slice(0, 8)}…
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{formatDate(batch.created_at)}</td>
-                  <td className="px-6 py-4 font-medium text-[var(--color-text-primary)]">{batch.loaded_count ?? 0}</td>
-                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{batch.excluded_count ?? 0}</td>
-                  <td className="px-6 py-4">
-                    <span className="app-theme-chip">
-                      {batch.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Link
-                        href={`/projects/${projectId}/import?batch_id=${batch.id}`}
-                        className="app-link"
-                      >
-                        View rows
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeleteTarget(batch);
-                        }}
-                        disabled={
-                          deletingBatchId === batch.id ||
-                          batch.status === "pending" ||
-                          batch.status === "processing"
-                        }
-                        className="text-sm font-medium text-rose-700 hover:text-rose-500 disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
-                      >
-                        {deletingBatchId === batch.id ? "Removing…" : "Remove"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
+                <thead className="app-table-header">
+                  <tr>
+                    <th className="px-6 py-4">Batch</th>
+                    <th className="px-6 py-4">Created</th>
+                    <th className="px-6 py-4">Loaded</th>
+                    <th className="px-6 py-4">Excluded</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
+                  {visibleHistory.map((batch: ImportBatch) => (
+                    <tr key={batch.id} className="app-table-row">
+                      <td className="max-w-[26rem] px-6 py-3 font-mono text-xs text-[var(--color-text-secondary)]">
+                        {batch.filename ? (
+                          <span className="block truncate" title={`${batch.filename} · ${batch.id}`}>
+                            {batch.filename}
+                          </span>
+                        ) : (
+                          <span className="opacity-60" title={batch.id}>
+                            {batch.id.slice(0, 8)}…
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3 text-[var(--color-text-secondary)]">{formatDate(batch.created_at)}</td>
+                      <td className="px-6 py-3 font-medium text-[var(--color-text-primary)]">{batch.loaded_count ?? 0}</td>
+                      <td className="px-6 py-3 text-[var(--color-text-secondary)]">{batch.excluded_count ?? 0}</td>
+                      <td className="px-6 py-3">
+                        <span className="app-theme-chip">
+                          {batch.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3">
+                        <div className="flex flex-wrap items-center justify-end gap-3">
+                          <Link
+                            href={`/projects/${projectId}/import?batch_id=${batch.id}`}
+                            className="app-link"
+                          >
+                            View rows
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteTarget(batch);
+                            }}
+                            disabled={
+                              deletingBatchId === batch.id ||
+                              batch.status === "pending" ||
+                              batch.status === "processing"
+                            }
+                            className="text-sm font-medium text-rose-700 hover:text-rose-500 disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
+                          >
+                            {deletingBatchId === batch.id ? "Removing…" : "Remove"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-col gap-4 border-t border-[var(--color-border)] px-6 py-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-5">
+                <span className="text-sm text-[var(--color-text-secondary)]">
+                  Showing {historyStartIndex + 1}-{Math.min(historyStartIndex + historyPageSize, history.length)} of{" "}
+                  <strong className="text-[var(--color-text-primary)]">{history.length}</strong> batches
+                </span>
+                <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+                  Rows
+                  <select
+                    value={historyPageSize}
+                    onChange={(event) => {
+                      setHistoryPageSize(Number(event.target.value));
+                      setHistoryPage(1);
+                    }}
+                    className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+                  >
+                    <option value={8}>8</option>
+                    <option value={12}>12</option>
+                    <option value={24}>24</option>
+                  </select>
+                </label>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setHistoryPage((current) => Math.max(1, current - 1))}
+                  disabled={safeHistoryPage <= 1}
+                  className="app-button-secondary px-4 py-2"
+                >
+                  Prev
+                </button>
+                <span className="min-w-[4rem] text-center text-sm text-[var(--color-text-secondary)]">
+                  {safeHistoryPage} / {historyTotalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setHistoryPage((current) => Math.min(historyTotalPages, current + 1))}
+                  disabled={safeHistoryPage >= historyTotalPages}
+                  className="app-button-secondary px-4 py-2"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </section>
       <ConfirmModal

@@ -13,6 +13,7 @@ celery_app.conf.task_serializer = "json"
 celery_app.conf.accept_content = ["json"]
 celery_app.conf.result_serializer = "json"
 celery_app.conf.imports = (
+    "app.workers.ai_review_worker",
     "app.workers.import_worker",
     "app.workers.recalc_worker",
     "app.workers.synthetic_worker",
@@ -21,5 +22,6 @@ celery_app.conf.imports = (
 # Import worker modules after the Celery app is created so task decorators register
 # against this application in both API-side dispatch and worker-side startup flows.
 from app.workers import import_worker as _import_worker  # noqa: E402,F401
+from app.workers import ai_review_worker as _ai_review_worker  # noqa: E402,F401
 from app.workers import recalc_worker as _recalc_worker  # noqa: E402,F401
 from app.workers import synthetic_worker as _synthetic_worker  # noqa: E402,F401

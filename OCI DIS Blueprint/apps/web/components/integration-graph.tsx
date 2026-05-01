@@ -472,7 +472,7 @@ export function IntegrationGraph({
   return (
     <div
       className={[
-        "relative overflow-hidden rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] shadow-sm",
+        "console-grid-bg relative overflow-hidden rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] shadow-sm",
         mode === "pan" ? (isDragging ? "cursor-grabbing" : "cursor-grab") : "cursor-default",
       ].join(" ")}
       style={{ height: "min(760px, calc(100vh - 14rem))" }}

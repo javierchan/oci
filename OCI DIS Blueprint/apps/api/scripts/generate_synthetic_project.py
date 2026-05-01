@@ -1136,23 +1136,23 @@ def choose_core_tools(tool_names: dict[str, str], pattern_id: str) -> str:
     """Choose the governed core tool stack for the pattern."""
 
     stacks = {
-        "#01": [[tool_names["OIC Gen3"]], [tool_names["OIC Gen3"], tool_names["OCI API Gateway"]]],
-        "#02": [[tool_names["OCI Streaming"], tool_names["OIC Gen3"]], [tool_names["OCI Streaming"], tool_names["Oracle Functions"]]],
-        "#03": [[tool_names["OCI API Gateway"], tool_names["Oracle Functions"]]],
+        "#01": [[tool_names["OIC Gen3"]]],
+        "#02": [[tool_names["OCI Streaming"], tool_names["OIC Gen3"]], [tool_names["OCI Streaming"], tool_names["OCI Functions"]]],
+        "#03": [[tool_names["OCI Functions"]]],
         "#04": [[tool_names["OIC Gen3"], tool_names["OCI Queue"]]],
-        "#05": [[tool_names["OCI Data Integration"], tool_names["OCI Streaming"]]],
-        "#06": [[tool_names["OCI API Gateway"], tool_names["OIC Gen3"]]],
+        "#05": [[tool_names["OCI Data Integration"], tool_names["Oracle GoldenGate"]]],
+        "#06": [[tool_names["OIC Gen3"]]],
         "#07": [[tool_names["OIC Gen3"]]],
-        "#08": [[tool_names["OIC Gen3"], tool_names["OCI APM"]]],
-        "#09": [[tool_names["Oracle DB"], tool_names["OCI Streaming"]]],
-        "#10": [[tool_names["OCI Streaming"], tool_names["ATP"]]],
-        "#11": [[tool_names["OCI API Gateway"], tool_names["Oracle Functions"], tool_names["OIC Gen3"]]],
-        "#12": [[tool_names["OCI Data Integration"], tool_names["OCI Object Storage"]]],
-        "#13": [[tool_names["OCI API Gateway"], tool_names["OIC Gen3"]]],
+        "#08": [[tool_names["OIC Gen3"], tool_names["OCI Queue"]]],
+        "#09": [[tool_names["Oracle GoldenGate"], tool_names["OCI Streaming"]]],
+        "#10": [[tool_names["OCI Streaming"], tool_names["OIC Gen3"]]],
+        "#11": [[tool_names["OCI Functions"], tool_names["OIC Gen3"]]],
+        "#12": [[tool_names["OCI Data Integration"]]],
+        "#13": [[tool_names["OIC Gen3"]]],
         "#14": [[tool_names["OCI Streaming"], tool_names["OIC Gen3"]]],
-        "#15": [[tool_names["OIC Gen3"], tool_names["Oracle Functions"]]],
-        "#16": [[tool_names["OCI API Gateway"], tool_names["OIC Gen3"]]],
-        "#17": [[tool_names["OCI API Gateway"], tool_names["OIC Gen3"], tool_names["OCI Queue"]]],
+        "#15": [[tool_names["OIC Gen3"], tool_names["OCI Functions"]]],
+        "#16": [[tool_names["OIC Gen3"], tool_names["OCI Functions"]]],
+        "#17": [[tool_names["OIC Gen3"], tool_names["OCI Functions"], tool_names["OCI Queue"]]],
     }
     return ", ".join(stacks[pattern_id][0])
 
@@ -1257,7 +1257,7 @@ def choose_qa_reasons(
         return [
             "Pattern selection requires architecture board review",
             "Payload exceeds OCI Functions invoke body limit (6 MB)"
-            if "Oracle Functions" in core_tools
+            if "OCI Functions" in core_tools
             else "Frequency not aligned with stated business requirement",
         ]
 
@@ -1548,14 +1548,14 @@ def verify_integrations(
             for integration in integrations
             if integration.payload_per_execution_kb == 6500.0
             and integration.core_tools is not None
-            and "Oracle Functions" in integration.core_tools
+            and "OCI Functions" in integration.core_tools
         ),
-        "api_gw": sum(
+        "protected_route": sum(
             1
             for integration in integrations
             if integration.payload_per_execution_kb == 21000.0
             and integration.core_tools is not None
-            and "OCI API Gateway" in integration.core_tools
+            and "OIC Gen3" in integration.core_tools
         ),
         "streaming": sum(
             1
@@ -1633,7 +1633,7 @@ def format_summary(
             "",
             f"Limit-violation integrations:    {sum(violation_counts.values())}",
             f"  - Functions body >6 MB: {violation_counts['functions']}",
-            f"  - API GW body >20 MB: {violation_counts['api_gw']}",
+            f"  - Protected route body >20 MB: {violation_counts['protected_route']}",
             f"  - Streaming msg >1 MB: {violation_counts['streaming']}",
             f"  - Queue msg >256 KB: {violation_counts['queue']}",
             f"  - OIC msg >10 MB: {violation_counts['oic']}",
@@ -1755,22 +1755,19 @@ def main() -> None:
             raise SystemExit(
                 f"ABORT: only {len(frequency_options)} FREQUENCY options in DB — need ≥5"
             )
-        if len(tool_options) < 10:
-            raise SystemExit(f"ABORT: only {len(tool_options)} TOOLS options in DB — need ≥10")
+        if len(tool_options) < 7:
+            raise SystemExit(f"ABORT: only {len(tool_options)} TOOLS options in DB — need ≥7")
 
         frequency_execs = {row.value: row.executions_per_day for row in frequency_rows}
         resolved_frequencies = resolve_frequencies(frequency_options, frequency_execs)
         tool_names = {
             "OIC Gen3": require_option(tool_options, ["OIC Gen3"]),
-            "OCI API Gateway": require_option(tool_options, ["OCI API Gateway"]),
             "OCI Streaming": require_option(tool_options, ["OCI Streaming"]),
             "OCI Queue": require_option(tool_options, ["OCI Queue"]),
-            "Oracle Functions": require_option(tool_options, ["Oracle Functions"]),
+            "OCI Functions": require_option(tool_options, ["OCI Functions"]),
             "OCI Data Integration": require_option(tool_options, ["OCI Data Integration"]),
-            "ATP": require_option(tool_options, ["ATP"]),
-            "Oracle DB": require_option(tool_options, ["Oracle DB"]),
-            "OCI Object Storage": require_option(tool_options, ["OCI Object Storage"]),
-            "OCI APM": require_option(tool_options, ["OCI APM"]),
+            "Data Integrator": require_option(tool_options, ["Data Integrator"]),
+            "Oracle GoldenGate": require_option(tool_options, ["Oracle GoldenGate"]),
         }
 
         ctx = BuildContext(

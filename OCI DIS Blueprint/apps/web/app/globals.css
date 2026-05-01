@@ -3,6 +3,12 @@
 @tailwind utilities;
 
 :root {
+  --font-sans: "Inter Tight", "Aptos", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Mono", ui-monospace, monospace;
+  --color-page-bg: #fafaf7;
+  --color-hover: #f0eee7;
+  --shadow-card: 0 1px 0 rgba(22, 20, 15, 0.04), 0 1px 2px rgba(22, 20, 15, 0.04);
+  --shadow-panel: 0 2px 4px rgba(22, 20, 15, 0.04), 0 8px 24px -8px rgba(22, 20, 15, 0.1);
   --canvas-system-bg: #dbeafe;
   --canvas-system-border: #3b82f6;
   --canvas-oic-bg: #ede9fe;
@@ -39,24 +45,24 @@
   --color-toast-info-text: #1d4ed8;
   --color-skeleton-base: #e2e8f0;
   --color-skeleton-shine: #f8fafc;
-  --color-qa-ok-bg: #dcfce7;
-  --color-qa-ok-text: #15803d;
-  --color-qa-ok-border: #86efac;
+  --color-qa-ok-bg: #e2f1e9;
+  --color-qa-ok-text: #1f7a4d;
+  --color-qa-ok-border: #b8d8c6;
 
-  --color-qa-revisar-bg: #fef9c3;
-  --color-qa-revisar-text: #92400e;
-  --color-qa-revisar-border: #fde047;
+  --color-qa-revisar-bg: #fbecd5;
+  --color-qa-revisar-text: #a85d00;
+  --color-qa-revisar-border: #e9c58a;
 
-  --color-qa-pending-bg: #f1f5f9;
-  --color-qa-pending-text: #475569;
-  --color-qa-pending-border: #cbd5e1;
+  --color-qa-pending-bg: #f4f3ee;
+  --color-qa-pending-text: #4a463d;
+  --color-qa-pending-border: #d2cfc3;
 
-  --color-pat-sync-bg: #dbeafe;
-  --color-pat-sync-text: #1e40af;
-  --color-pat-async-bg: #ede9fe;
-  --color-pat-async-text: #5b21b6;
-  --color-pat-both-bg: #fae8ff;
-  --color-pat-both-text: #86198f;
+  --color-pat-sync-bg: #dde7f1;
+  --color-pat-sync-text: #244b6e;
+  --color-pat-async-bg: #e6dff1;
+  --color-pat-async-text: #5b3a86;
+  --color-pat-both-bg: #ecdfeb;
+  --color-pat-both-text: #6e3f6b;
 
   --color-complexity-alto-bg: #fee2e2;
   --color-complexity-alto-text: #991b1b;
@@ -65,22 +71,31 @@
   --color-complexity-bajo-bg: #f0fdf4;
   --color-complexity-bajo-text: #166534;
 
-  --color-table-header-bg: #f8fafc;
-  --color-table-row-hover: #f1f5f9;
-  --color-table-border: #e2e8f0;
+  --color-table-header-bg: #f4f3ee;
+  --color-table-row-hover: #f0eee7;
+  --color-table-border: #e3e0d6;
 
   --color-surface: #ffffff;
-  --color-surface-2: #f8fafc;
-  --color-surface-3: #f1f5f9;
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-muted: #94a3b8;
-  --color-border: #e2e8f0;
-  --color-accent: #3b82f6;
-  --color-accent-hover: #2563eb;
+  --color-surface-2: #f4f3ee;
+  --color-surface-3: #e9e7df;
+  --color-text-primary: #16140f;
+  --color-text-secondary: #4a463d;
+  --color-text-muted: #8a8678;
+  --color-border: #e3e0d6;
+  --color-accent: #c74634;
+  --color-accent-hover: #a6382a;
+  --color-accent-soft: #fce9e6;
+  --color-accent-border: #f3c9c2;
+  --color-line-strong: #d2cfc3;
+  --color-signal: #2c5f4a;
+  --color-signal-soft: #dceee7;
 }
 
 .dark {
+  --color-page-bg: #11100d;
+  --color-hover: #2b261f;
+  --shadow-card: 0 1px 0 rgba(0, 0, 0, 0.28), 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-panel: 0 2px 4px rgba(0, 0, 0, 0.32), 0 18px 36px -20px rgba(0, 0, 0, 0.8);
   --canvas-system-bg: #1e3a5f;
   --canvas-system-border: #3b82f6;
   --canvas-oic-bg: #2e1f5e;
@@ -143,15 +158,20 @@
   --color-complexity-bajo-bg: #052e16;
   --color-complexity-bajo-text: #86efac;
 
-  --color-surface: #0f172a;
-  --color-surface-2: #1e293b;
-  --color-surface-3: #334155;
-  --color-text-primary: #f8fafc;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #475569;
-  --color-border: #334155;
-  --color-accent: #60a5fa;
-  --color-accent-hover: #93c5fd;
+  --color-surface: #1c1914;
+  --color-surface-2: #242019;
+  --color-surface-3: #312c23;
+  --color-text-primary: #fafaf7;
+  --color-text-secondary: #d2cfc3;
+  --color-text-muted: #8a8678;
+  --color-border: #3a352d;
+  --color-accent: #ff806c;
+  --color-accent-hover: #ff9b8c;
+  --color-accent-soft: #3b1712;
+  --color-accent-border: #7f3127;
+  --color-line-strong: #544d42;
+  --color-signal: #86d5b6;
+  --color-signal-soft: #16392c;
 }
 
 input,
@@ -189,33 +209,99 @@ html.dark {
 
 @layer base {
   body {
-    background-color: var(--color-surface);
+    background-color: var(--color-page-bg);
     color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
   }
 }
 
 @layer components {
+  .console-page {
+    @apply mx-auto w-full max-w-[90rem] space-y-6;
+  }
+
+  .console-hero {
+    @apply rounded-2xl border p-5 md:p-6;
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--color-surface) 92%, transparent), color-mix(in srgb, var(--color-surface-2) 92%, transparent)),
+      radial-gradient(circle at top right, color-mix(in srgb, var(--color-accent-soft) 72%, transparent), transparent 34rem);
+    border-color: var(--color-border);
+    box-shadow: var(--shadow-card);
+  }
+
+  .console-toolbar {
+    @apply rounded-2xl border p-3 md:p-4;
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+    box-shadow: var(--shadow-card);
+  }
+
+  .console-stat {
+    @apply rounded-xl border p-4 transition;
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+    box-shadow: var(--shadow-card);
+  }
+
+  .console-stat:hover {
+    border-color: var(--color-line-strong);
+    box-shadow: var(--shadow-panel);
+  }
+
+  .console-pill {
+    @apply inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold;
+    background-color: var(--color-surface-2);
+    border-color: var(--color-border);
+    color: var(--color-text-secondary);
+  }
+
+  .console-kbd {
+    @apply inline-flex h-[18px] items-center rounded border px-1.5 font-mono text-[10px] font-semibold;
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+    border-bottom-color: var(--color-line-strong);
+    border-bottom-width: 2px;
+    color: var(--color-text-secondary);
+  }
+
+  .console-grid-bg {
+    background-image:
+      linear-gradient(var(--color-border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
+    background-size: 120px 120px;
+    background-position: -1px -1px;
+  }
+
   .app-card {
-    @apply rounded-[2rem] border shadow-sm;
+    @apply rounded-2xl border;
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+    box-shadow: var(--shadow-card);
+  }
+
+  .app-card-muted {
+    @apply rounded-xl border;
     background-color: var(--color-surface-2);
     border-color: var(--color-border);
     color: var(--color-text-primary);
   }
 
-  .app-card-muted {
-    @apply rounded-[1.75rem] border;
-    background-color: var(--color-surface-3);
-    border-color: var(--color-border);
-    color: var(--color-text-primary);
-  }
-
   .app-kicker {
-    @apply text-xs uppercase tracking-[0.25em];
+    @apply text-[11px] font-semibold uppercase tracking-[0.12em];
     color: var(--color-accent);
   }
 
   .app-label {
-    @apply text-xs uppercase tracking-[0.25em];
+    @apply text-[11px] font-semibold uppercase tracking-[0.12em];
     color: var(--color-text-secondary);
   }
 
@@ -237,7 +323,7 @@ html.dark {
   }
 
   .app-input {
-    @apply w-full rounded-2xl border px-4 py-3 text-sm outline-none transition;
+    @apply w-full rounded-lg border px-3 py-2 text-sm outline-none transition;
     background-color: var(--color-surface);
     border-color: var(--color-border);
     color: var(--color-text-primary);
@@ -252,7 +338,7 @@ html.dark {
   }
 
   .app-button-primary {
-    @apply inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-semibold text-white transition;
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition;
     background-color: var(--color-accent);
   }
 
@@ -265,14 +351,14 @@ html.dark {
   }
 
   .app-button-secondary {
-    @apply inline-flex items-center justify-center rounded-full border px-5 py-3 text-sm font-semibold transition;
+    @apply inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition;
     background-color: var(--color-surface);
     border-color: var(--color-border);
     color: var(--color-text-secondary);
   }
 
   .app-button-secondary:hover {
-    background-color: var(--color-surface-3);
+    background-color: var(--color-hover);
     color: var(--color-text-primary);
   }
 
@@ -281,9 +367,10 @@ html.dark {
   }
 
   .app-table-shell {
-    @apply overflow-hidden rounded-[2rem] border shadow-sm;
-    background-color: var(--color-surface-2);
+    @apply overflow-hidden rounded-2xl border;
+    background-color: var(--color-surface);
     border-color: var(--color-border);
+    box-shadow: var(--shadow-card);
   }
 
   .app-table-header {
@@ -304,14 +391,14 @@ html.dark {
   }
 
   .app-theme-chip {
-    @apply rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em];
+    @apply inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em];
     border-color: var(--color-border);
-    background-color: var(--color-surface-3);
+    background-color: var(--color-surface-2);
     color: var(--color-text-secondary);
   }
 
   .app-status-chip {
-    @apply inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em];
+    @apply inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em];
   }
 
   .app-status-chip.active {

@@ -1,7 +1,10 @@
 /* Project dashboard page with latest import, QA, and volumetry metrics. */
 
 import { notFound } from "next/navigation";
+import Link from "next/link";
+import { Download } from "lucide-react";
 
+import { AiReviewButton } from "@/components/ai-review-button";
 import { Breadcrumb } from "@/components/breadcrumb";
 import { RecalculateButton } from "@/components/recalculate-button";
 import { VolumetryCard } from "@/components/volumetry-card";
@@ -35,17 +38,15 @@ export default async function ProjectDashboardPage({
     }
     throw error;
   }
-  const [imports, catalogPage, snapshots] = await Promise.all([
-    api.listImports(projectId),
-    api.listCatalog(projectId, { page: 1, page_size: 500 }),
+  const [catalogPage, snapshots, dashboardSnapshots] = await Promise.all([
+    api.listCatalog(projectId, { page: 1, page_size: 1 }),
     api.listSnapshots(projectId),
+    api.listDashboardSnapshots(projectId),
   ]);
 
-  const latestImport = imports.batches[0];
   const latestSnapshot = snapshots.snapshots[0];
   const prevSnapshot = snapshots.snapshots[1];
   const consolidated = latestSnapshot?.consolidated;
-  const dashboardSnapshots = await api.listDashboardSnapshots(projectId);
   const latestDashboard: DashboardSnapshot | null = dashboardSnapshots.snapshots[0]
     ? await api.getDashboardSnapshot(projectId, dashboardSnapshots.snapshots[0].snapshot_id)
     : null;
@@ -59,15 +60,18 @@ export default async function ProjectDashboardPage({
       ]
     : [];
 
-  const qaBreakdown = catalogPage.integrations.reduce(
-    (accumulator: Record<string, number>, integration) => {
-      const key = integration.qa_status ?? "PENDING";
-      accumulator[key] = (accumulator[key] ?? 0) + 1;
-      return accumulator;
-    },
-    { OK: 0, REVISAR: 0, PENDING: 0 },
-  );
+  const qaBreakdown = latestDashboard
+    ? {
+        OK: latestDashboard.charts.completeness.qa_ok,
+        REVISAR: latestDashboard.charts.completeness.qa_revisar,
+        PENDING: latestDashboard.charts.completeness.qa_pending,
+      }
+    : { OK: 0, REVISAR: 0, PENDING: 0 };
   const qaTotal = (qaBreakdown.OK ?? 0) + (qaBreakdown.REVISAR ?? 0) + (qaBreakdown.PENDING ?? 0);
+  const qaOkPct = qaTotal > 0 ? Math.round(((qaBreakdown.OK ?? 0) / qaTotal) * 100) : 0;
+  const qaReviewPct = qaTotal > 0 ? Math.round(((qaBreakdown.REVISAR ?? 0) / qaTotal) * 100) : 0;
+  const qaPendingPct = qaTotal > 0 ? Math.max(0, 100 - qaOkPct - qaReviewPct) : 0;
+  const patternCount = latestDashboard?.charts.pattern_mix.filter((entry) => entry.count > 0).length ?? 0;
 
   function pct(value: number): string {
     return qaTotal > 0 ? `${Math.round((value / qaTotal) * 100)}% of total` : "—";
@@ -114,13 +118,12 @@ export default async function ProjectDashboardPage({
   ];
 
   return (
-    <div className="space-y-8">
-      <section className="app-card p-6">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+    <div className="console-page">
+      <section className="console-hero flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="app-kicker">Project Dashboard</p>
             <div className="mt-2 flex flex-wrap items-center gap-3">
-              <h1 className="text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
+              <h1 className="text-3xl font-semibold tracking-tight text-[var(--color-text-primary)] lg:text-4xl">
                 {project.name}
               </h1>
               {isSyntheticProject(project) ? <span className="app-theme-chip">Synthetic</span> : null}
@@ -144,18 +147,57 @@ export default async function ProjectDashboardPage({
               />
             </div>
           </div>
-          <div className="flex flex-col items-start gap-2 lg:items-end">
-            <RecalculateButton projectId={projectId} />
+          <div className="flex flex-col items-start gap-3 lg:items-end">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled
+                title="Dashboard brief export is planned; use the governed export endpoints from the API for now."
+                className="app-button-secondary cursor-not-allowed gap-2 px-4 py-2 text-sm opacity-70"
+              >
+                <Download className="h-4 w-4" />
+                Export brief
+              </button>
+              <Link href={`/projects/${projectId}/catalog`} className="app-button-secondary px-4 py-2 text-sm">
+                Open Catalog
+              </Link>
+              <Link href={`/projects/${projectId}/graph`} className="app-button-secondary px-4 py-2 text-sm">
+                Open Map
+              </Link>
+              <RecalculateButton projectId={projectId} />
+              <AiReviewButton projectId={projectId} />
+            </div>
             {latestSnapshot ? (
               <p className="text-xs text-[var(--color-text-muted)]">
                 Last calculated {formatDate(latestSnapshot.created_at)}
               </p>
             ) : null}
           </div>
-        </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-4 md:grid-cols-2">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_repeat(3,minmax(0,1fr))] md:grid-cols-2">
+        <article className="console-stat">
+          <p className="app-label">QA Status</p>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
+              {qaOkPct}
+              <span className="text-base text-[var(--color-text-muted)]">%</span>
+            </span>
+            <span className="text-sm text-[var(--color-text-secondary)]">
+              OK · {qaBreakdown.OK ?? 0} of {qaTotal || catalogPage.total}
+            </span>
+          </div>
+          <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-[var(--color-surface-3)]">
+            <span style={{ width: `${qaOkPct}%` }} className="bg-[var(--color-qa-ok-text)]" />
+            <span style={{ width: `${qaReviewPct}%` }} className="bg-[var(--color-qa-revisar-text)]" />
+            <span style={{ width: `${qaPendingPct}%` }} className="bg-[var(--color-qa-pending-text)]" />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-4 text-xs text-[var(--color-text-secondary)]">
+            <span>OK {qaBreakdown.OK ?? 0}</span>
+            <span>Review {qaBreakdown.REVISAR ?? 0}</span>
+            <span>Pending {qaBreakdown.PENDING ?? 0}</span>
+          </div>
+        </article>
         <VolumetryCard
           label="Total Integrations"
           value={formatNumber(catalogPage.total)}
@@ -163,21 +205,17 @@ export default async function ProjectDashboardPage({
           tooltip="Live count of catalog integrations in this project."
         />
         <VolumetryCard
-          label="Excluded (Duplicate 2)"
-          value={formatNumber(latestImport?.excluded_count ?? 0)}
-          unit="rows"
-        />
-        <VolumetryCard
-          label="OIC Peak Packs / Hour"
-          value={formatNumber(consolidated?.oic.peak_packs_hour ?? 0, 1)}
-          unit="packs"
-        />
-        <VolumetryCard
           label="OIC Billing Msgs / Month"
           value={formatCompactNumber(consolidated?.oic.total_billing_msgs_month ?? 0)}
           unit="msgs"
           trend={oicTrend !== null ? { delta: oicTrend, label: "vs last snapshot" } : null}
           tooltip="OIC billing messages = ceil(payload_kb / 50) x executions/month. Used for license cost estimation."
+        />
+        <VolumetryCard
+          label="Patterns in Use"
+          value={formatNumber(patternCount)}
+          unit="/ 17"
+          tooltip="Patterns with one or more catalog integrations in the latest dashboard snapshot."
         />
       </section>
 
@@ -250,9 +288,12 @@ export default async function ProjectDashboardPage({
             Parity Benchmark
             <span className="ml-2 font-normal normal-case tracking-normal opacity-60">(reference target)</span>
           </p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">Workbook reference</h2>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">
+            Phase 1 Workbook Benchmark
+          </h2>
           <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
-            Keep the current project close to the known workbook benchmark while QA and volumetry coverage catch up.
+            Reference values from the original parity workbook, not current project totals. Use this card to
+            compare the product implementation against the source workbook contract.
           </p>
           <dl className="mt-6 grid gap-3 sm:grid-cols-2">
             <div className="rounded-[1.5rem] bg-[var(--color-surface-2)] p-4">

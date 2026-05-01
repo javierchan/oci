@@ -176,6 +176,17 @@ def serialize_snapshot(snapshot: DashboardSnapshot) -> DashboardSnapshotResponse
     )
 
 
+def serialize_snapshot_summary(snapshot: DashboardSnapshot) -> DashboardSnapshotSummary:
+    """Convert a dashboard snapshot model into a lightweight list response."""
+
+    return DashboardSnapshotSummary(
+        snapshot_id=snapshot.id,
+        volumetry_snapshot_id=snapshot.volumetry_snapshot_id,
+        mode=snapshot.mode,
+        created_at=snapshot.created_at,
+    )
+
+
 async def _load_project(project_id: str, db: AsyncSession) -> Project:
     project = await db.get(Project, project_id)
     if project is None:
@@ -401,7 +412,7 @@ async def list_snapshots(project_id: str, db: AsyncSession) -> DashboardSnapshot
 
     snapshots = await _ensure_project_dashboard_snapshots(project_id, db)
     return DashboardSnapshotListResponse(
-        snapshots=[serialize_snapshot(snapshot) for snapshot in snapshots],
+        snapshots=[serialize_snapshot_summary(snapshot) for snapshot in snapshots],
         total=len(snapshots),
     )
 

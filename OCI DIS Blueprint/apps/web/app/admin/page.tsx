@@ -1,6 +1,7 @@
 /* Admin governance hub with entry points for patterns, dictionaries, and assumptions. */
 
 import Link from "next/link";
+import { BookOpen, Database, FlaskConical, Layers3 } from "lucide-react";
 
 import { Breadcrumb } from "@/components/breadcrumb";
 import { api } from "@/lib/api";
@@ -33,57 +34,71 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
   const latestSyntheticUpdate = syntheticJobs.jobs[0]?.updated_at;
 
   return (
-    <div className="space-y-8">
-      <section className="app-card border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] p-5">
+    <div className="console-page">
+      <section className="console-hero flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
         <p className="app-kicker">Admin Governance</p>
-        <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">Reference Data Control</h1>
+          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">Library</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-          Changes here affect all projects. System patterns seeded from the workbook cannot be deleted.
+            Source of truth for patterns, dictionaries, assumptions, and deterministic synthetic validation.
         </p>
-        <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-          <span className="mt-0.5">⚠️</span>
-          <span>
-            Changes here affect <strong>all projects</strong>. System patterns (seeded from the workbook) can be
-            edited but not deleted. Dictionary and assumption changes take effect on the next recalculation.
-          </span>
         </div>
-        <div className="mt-4">
+        <div className="flex flex-col items-start gap-3 lg:items-end">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="app-status-chip active">Published {defaultAssumption?.version ?? "v1.0.0"}</span>
+            <span className="app-theme-chip">Workbook governed</span>
+          </div>
           <Breadcrumb items={[{ label: "Home", href: "/projects" }, { label: "Admin" }]} />
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-4">
         <Link
           href="/admin/patterns"
           className="app-card p-6 transition hover:-translate-y-0.5 hover:shadow-md"
         >
-          <p className="app-label">OIC Patterns</p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="app-label">OIC Patterns</p>
+            <span className="rounded-lg bg-[var(--color-surface-2)] p-2 text-[var(--color-accent)]">
+              <Layers3 className="h-4 w-4" />
+            </span>
+          </div>
           <p className="mt-4 text-4xl font-semibold text-[var(--color-text-primary)]">{patterns.total}</p>
           <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Seeded and custom integration patterns.</p>
           <p className="mt-3 text-xs text-[var(--color-text-muted)]">
             Last modified: {latestPatternUpdate ? formatDate(latestPatternUpdate) : "—"}
           </p>
-          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage →</span>
+          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage</span>
         </Link>
 
         <Link
           href="/admin/dictionaries"
           className="app-card p-6 transition hover:-translate-y-0.5 hover:shadow-md"
         >
-          <p className="app-label">Dictionaries</p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="app-label">Dictionaries</p>
+            <span className="rounded-lg bg-[var(--color-surface-2)] p-2 text-[var(--color-accent)]">
+              <Database className="h-4 w-4" />
+            </span>
+          </div>
           <p className="mt-4 text-4xl font-semibold text-[var(--color-text-primary)]">{categories.categories.length}</p>
           <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Governed option sets used throughout the catalog.</p>
           <p className="mt-3 text-xs text-[var(--color-text-muted)]">
             Last modified: {latestDictionaryUpdate ? formatDate(latestDictionaryUpdate) : "—"}
           </p>
-          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage →</span>
+          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage</span>
         </Link>
 
         <Link
           href="/admin/assumptions"
           className="app-card p-6 transition hover:-translate-y-0.5 hover:shadow-md"
         >
-          <p className="app-label">Assumptions</p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="app-label">Assumptions</p>
+            <span className="rounded-lg bg-[var(--color-surface-2)] p-2 text-[var(--color-accent)]">
+              <BookOpen className="h-4 w-4" />
+            </span>
+          </div>
           <p className="mt-4 text-4xl font-semibold text-[var(--color-text-primary)]">{assumptions.assumption_sets.length}</p>
           <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
             Active default version: {defaultAssumption?.version ?? "None"}
@@ -91,31 +106,36 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
           <p className="mt-3 text-xs text-[var(--color-text-muted)]">
             Last modified: {latestAssumptionUpdate ? formatDate(latestAssumptionUpdate) : "—"}
           </p>
-          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage →</span>
+          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage</span>
+        </Link>
+
+        <Link
+          href="/admin/synthetic"
+          className="app-card p-6 transition hover:-translate-y-0.5 hover:shadow-md"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <p className="app-label">Synthetic Lab</p>
+            <span className="rounded-lg bg-[var(--color-surface-2)] p-2 text-[var(--color-accent)]">
+              <FlaskConical className="h-4 w-4" />
+            </span>
+          </div>
+          <p className="mt-4 text-4xl font-semibold text-[var(--color-text-primary)]">{syntheticJobs.total}</p>
+          <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Tracked deterministic generation jobs.</p>
+          <p className="mt-3 text-xs text-[var(--color-text-muted)]">
+            Latest activity: {latestSyntheticUpdate ? formatDate(latestSyntheticUpdate) : "No synthetic jobs yet."}
+          </p>
+          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">
+            Open Lab
+          </span>
         </Link>
       </section>
 
-      <section className="app-card p-6">
-        <p className="app-label">Synthetic Lab</p>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">Governed Generation Control</h2>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-          Submit deterministic synthetic-generation jobs, monitor progress, inspect validation artifacts, and clean up
-          synthetic projects from the dedicated admin surface.
+      <section className="app-card border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] p-5">
+        <p className="app-label text-[var(--color-qa-revisar-text)]">Governance impact</p>
+        <p className="mt-2 text-sm leading-6 text-[var(--color-qa-revisar-text)]">
+          Changes here affect all projects. System patterns seeded from the workbook can be edited but not deleted.
+          Dictionary and assumption changes take effect on the next recalculation.
         </p>
-        <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
-          Latest activity: {latestSyntheticUpdate ? formatDate(latestSyntheticUpdate) : "No synthetic jobs yet."}
-        </p>
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <Link href="/admin/synthetic" className="app-button-primary">
-            Open Synthetic Lab
-          </Link>
-          <Link href="/projects" className="app-button-secondary">
-            Open Projects
-          </Link>
-          <span className="app-theme-chip inline-flex min-h-12 items-center justify-center px-4 text-center leading-none">
-            {syntheticJobs.total} tracked job{syntheticJobs.total === 1 ? "" : "s"}
-          </span>
-        </div>
       </section>
     </div>
   );

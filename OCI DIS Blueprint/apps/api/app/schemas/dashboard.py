@@ -153,5 +153,5 @@ class DashboardSnapshotListResponse(BaseModel):
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    snapshots: list[DashboardSnapshotResponse] = Field(default_factory=list)
+    snapshots: list[DashboardSnapshotSummary] = Field(default_factory=list)
     total: int = 0

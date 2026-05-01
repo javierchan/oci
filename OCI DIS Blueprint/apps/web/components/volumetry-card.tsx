@@ -16,9 +16,9 @@ export function VolumetryCard({
   tooltip,
 }: VolumetryCardProps): JSX.Element {
   return (
-    <article className="app-card group relative rounded-3xl p-5" title={tooltip}>
-      <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">{label}</p>
-      <div className="mt-4 flex items-end gap-2">
+    <article className="app-card group relative p-5" title={tooltip}>
+      <p className="app-label">{label}</p>
+      <div className="mt-3 flex items-end gap-2">
         <span className="text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">{value}</span>
         {unit ? <span className="pb-1 text-sm text-[var(--color-text-muted)]">{unit}</span> : null}
       </div>

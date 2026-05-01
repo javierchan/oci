@@ -228,38 +228,62 @@ export function IntegrationDesignCanvasPanel({
             void handleSaveCanvas();
           }}
           disabled={saving || !hasConnectedRoute || hasBlockingIssues}
-          className="app-button-primary"
+          className="app-button-primary hidden sm:inline-flex"
         >
           {saving ? "Saving canvas…" : hasBlockingIssues ? "Resolve blockers to save" : "Save canvas"}
         </button>
       </div>
 
-      <IntegrationCanvas
-        projectId={projectId}
-        sourceSystem={integration.source_system}
-        sourceTechnology={integration.source_technology}
-        destinationSystem={integration.destination_system}
-        destinationTechnology={integration.destination_technology_1}
-        selectedPattern={integration.selected_pattern}
-        patternDetail={patternDetail}
-        serviceProfiles={serviceProfiles}
-        coreTools={toolKeys}
-        toolOptions={toolOptions}
-        overlayOptions={overlayOptions}
-        combinations={combinations}
-        patterns={patterns}
-        payloadKb={integration.payload_per_execution_kb}
-        frequency={integration.frequency}
-        patternCategory={normalizePatternCategory(patternMap.get(integration.selected_pattern ?? "")?.category)}
-        triggerType={integration.trigger_type}
-        isRealTime={integration.is_real_time}
-        integrationType={integration.type}
-        value={canvasState}
-        onChange={setCanvasState}
-        onToolsChange={setToolKeys}
-        onConnectionValidityChange={setHasConnectedRoute}
-        onBlockingIssuesChange={setHasBlockingIssues}
-      />
+      <div className="sm:hidden rounded-[1.75rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5 text-center">
+        <p className="text-base font-semibold text-[var(--color-text-primary)]">
+          Design canvas editing is optimized for tablet and desktop.
+        </p>
+        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+          This integration currently routes from {integration.source_system ?? "the source system"} to{" "}
+          {integration.destination_system ?? "the destination system"} using{" "}
+          {toolKeys.length > 0 ? toolKeys.join(", ") : "no governed core tools yet"}.
+        </p>
+        <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs">
+          <span className={hasConnectedRoute ? "app-status-chip active" : "app-status-chip archived"}>
+            {hasConnectedRoute ? "Connected Route" : "Route Pending"}
+          </span>
+          <span className={hasBlockingIssues ? "app-status-chip archived" : "app-status-chip active"}>
+            {hasBlockingIssues ? "Blockers Open" : "No Blockers"}
+          </span>
+        </div>
+        <p className="mt-4 text-xs text-[var(--color-text-muted)]">
+          Use a wider screen to drag nodes, connect handles, zoom, pan, and save route edits safely.
+        </p>
+      </div>
+
+      <div className="hidden sm:block">
+        <IntegrationCanvas
+          projectId={projectId}
+          sourceSystem={integration.source_system}
+          sourceTechnology={integration.source_technology}
+          destinationSystem={integration.destination_system}
+          destinationTechnology={integration.destination_technology_1}
+          selectedPattern={integration.selected_pattern}
+          patternDetail={patternDetail}
+          serviceProfiles={serviceProfiles}
+          coreTools={toolKeys}
+          toolOptions={toolOptions}
+          overlayOptions={overlayOptions}
+          combinations={combinations}
+          patterns={patterns}
+          payloadKb={integration.payload_per_execution_kb}
+          frequency={integration.frequency}
+          patternCategory={normalizePatternCategory(patternMap.get(integration.selected_pattern ?? "")?.category)}
+          triggerType={integration.trigger_type}
+          isRealTime={integration.is_real_time}
+          integrationType={integration.type}
+          value={canvasState}
+          onChange={setCanvasState}
+          onToolsChange={setToolKeys}
+          onConnectionValidityChange={setHasConnectedRoute}
+          onBlockingIssuesChange={setHasBlockingIssues}
+        />
+      </div>
 
       <div className="flex flex-wrap items-center gap-4 text-sm">
         {statusMessage ? <p className="text-emerald-600">{statusMessage}</p> : null}

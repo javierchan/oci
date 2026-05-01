@@ -58,8 +58,9 @@ type SelectedElement =
 const MIN_CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 560;
 const MIN_SCALE = 0.5;
+const MIN_READABLE_AUTO_SCALE = 0.68;
 const MAX_SCALE = 2;
-const ROUTE_NODE_GAP = 58;
+const ROUTE_NODE_GAP = 42;
 const TOOL_NODE_WIDTH = 190;
 const TOOL_NODE_HEIGHT = 142;
 const SYSTEM_NODE_WIDTH = 236;
@@ -441,7 +442,7 @@ function minimumCanvasWidthForNodeCount(nodeCount: number): number {
   }
   return Math.max(
     MIN_CANVAS_WIDTH,
-    SYSTEM_NODE_WIDTH * 2 + TOOL_NODE_WIDTH * nodeCount + ROUTE_NODE_GAP * (nodeCount + 3) + 80,
+    SYSTEM_NODE_WIDTH * 2 + TOOL_NODE_WIDTH * nodeCount + ROUTE_NODE_GAP * (nodeCount + 1) + 96,
   );
 }
 
@@ -482,10 +483,8 @@ function arrangeCanvasNodes(nodes: CanvasNode[], edges: CanvasEdge[], canvasWidt
       .map((node) => node.instanceId),
   ];
   const positions = new Map<string, { x: number; y: number }>();
-  const routeCount = Math.max(routeIds.length, 1);
   const routeStartX = SYSTEM_NODE_WIDTH + 40 + ROUTE_NODE_GAP;
-  const routeEndX = canvasWidth - SYSTEM_NODE_WIDTH - 40 - TOOL_NODE_WIDTH - ROUTE_NODE_GAP;
-  const routeStep = routeCount > 1 ? Math.max(TOOL_NODE_WIDTH + ROUTE_NODE_GAP, (routeEndX - routeStartX) / (routeCount - 1)) : 0;
+  const routeStep = TOOL_NODE_WIDTH + ROUTE_NODE_GAP;
   const routeY = CANVAS_HEIGHT / 2 - TOOL_NODE_HEIGHT / 2;
 
   routeIds.forEach((instanceId, index) => {
@@ -518,7 +517,25 @@ function arrangeCanvasNodes(nodes: CanvasNode[], edges: CanvasEdge[], canvasWidt
   });
 }
 
-function defaultEndpointPositions(canvasWidth: number): CanvasEndpointPositions {
+function defaultEndpointPositions(canvasWidth: number, routeNodes: CanvasNode[] = []): CanvasEndpointPositions {
+  if (routeNodes.length > 0) {
+    const routeLeft = Math.min(...routeNodes.map((node) => node.x));
+    const routeRight = Math.max(...routeNodes.map((node) => node.x + TOOL_NODE_WIDTH));
+    const routeCenterY =
+      routeNodes.reduce((sum, node) => sum + node.y + TOOL_NODE_HEIGHT / 2, 0) / routeNodes.length;
+    const endpointY = clamp(routeCenterY - SYSTEM_NODE_HEIGHT / 2, 20, CANVAS_HEIGHT - SYSTEM_NODE_HEIGHT - 20);
+    return {
+      [SOURCE_NODE_ID]: {
+        x: clamp(routeLeft - SYSTEM_NODE_WIDTH - ROUTE_NODE_GAP, 40, canvasWidth - SYSTEM_NODE_WIDTH - 40),
+        y: endpointY,
+      },
+      [DESTINATION_NODE_ID]: {
+        x: clamp(routeRight + ROUTE_NODE_GAP, 40, canvasWidth - SYSTEM_NODE_WIDTH - 40),
+        y: endpointY,
+      },
+    };
+  }
+
   return {
     [SOURCE_NODE_ID]: {
       x: 40,
@@ -545,8 +562,9 @@ function hasCongestedLayout(
     return false;
   }
   const routeIdSet = new Set(routeIds);
+  const routeNodes = nodes.filter((node) => routeIdSet.has(node.instanceId));
   const positions = endpointPositions ?? {};
-  const defaultEndpoints = defaultEndpointPositions(canvasWidth);
+  const defaultEndpoints = defaultEndpointPositions(canvasWidth, routeNodes);
   const sourceEndpoint = positions[SOURCE_NODE_ID] ?? defaultEndpoints[SOURCE_NODE_ID];
   const destinationEndpoint = positions[DESTINATION_NODE_ID] ?? defaultEndpoints[DESTINATION_NODE_ID];
   const boxes = [
@@ -590,10 +608,11 @@ function fixedNodes(
   destinationSystem: string | null,
   destinationTechnology: string | null,
   canvasWidth: number,
+  routeNodes: CanvasNode[] = [],
   endpointPositions: CanvasEndpointPositions = {},
 ): Record<string, FlowNode> {
   const positions = endpointPositions ?? {};
-  const defaultPositions = defaultEndpointPositions(canvasWidth);
+  const defaultPositions = defaultEndpointPositions(canvasWidth, routeNodes);
   const defaultSourcePosition = defaultPositions[SOURCE_NODE_ID];
   const defaultDestinationPosition = defaultPositions[DESTINATION_NODE_ID];
   return {
@@ -636,6 +655,7 @@ function mergedNodes(
       destinationSystem,
       destinationTechnology,
       canvasWidth,
+      nodes,
       endpointPositions,
     ),
     ...Object.fromEntries(
@@ -730,19 +750,34 @@ function isEndpointNodeId(value: string): value is CanvasEndpointId {
   return value === SOURCE_NODE_ID || value === DESTINATION_NODE_ID;
 }
 
-function fittedViewport(bounds: CanvasBounds, visibleWidth: number): CanvasViewport {
+function fittedViewport(
+  bounds: CanvasBounds,
+  visibleWidth: number,
+  options: { preferReadableScale?: boolean } = {},
+): CanvasViewport {
   const horizontalPadding = 32;
   const verticalPadding = 44;
   const availableWidth = Math.max(320, visibleWidth - horizontalPadding * 2);
   const availableHeight = Math.max(260, CANVAS_HEIGHT - verticalPadding * 2);
+  const fitScale = Math.min(1, availableWidth / bounds.width, availableHeight / bounds.height);
   const scale = clamp(
-    Math.min(1, availableWidth / bounds.width, availableHeight / bounds.height),
-    MIN_SCALE,
+    fitScale,
+    options.preferReadableScale ? MIN_READABLE_AUTO_SCALE : MIN_SCALE,
     1,
   );
+  const scaledWidth = bounds.width * scale;
+  const scaledHeight = bounds.height * scale;
   return {
-    x: Math.round((visibleWidth - bounds.width * scale) / 2 - bounds.x * scale),
-    y: Math.round((CANVAS_HEIGHT - bounds.height * scale) / 2 - bounds.y * scale),
+    x: Math.round(
+      scaledWidth > availableWidth
+        ? horizontalPadding - bounds.x * scale
+        : (visibleWidth - scaledWidth) / 2 - bounds.x * scale,
+    ),
+    y: Math.round(
+      scaledHeight > availableHeight
+        ? verticalPadding - bounds.y * scale
+        : (CANVAS_HEIGHT - scaledHeight) / 2 - bounds.y * scale,
+    ),
     scale,
   };
 }
@@ -1111,8 +1146,9 @@ export function IntegrationCanvas({
       hasCongestedLayout(nodes, edges, renderCanvasWidth, endpointPositions)
     ) {
       autoLayoutSignatureRef.current = layoutSignature;
-      setNodes((current) => arrangeCanvasNodes(current, edges, renderCanvasWidth));
-      setEndpointPositions(defaultEndpointPositions(renderCanvasWidth));
+      const arrangedNodes = arrangeCanvasNodes(nodes, edges, renderCanvasWidth);
+      setNodes(arrangedNodes);
+      setEndpointPositions(defaultEndpointPositions(renderCanvasWidth, arrangedNodes));
       return;
     }
 
@@ -1293,7 +1329,7 @@ export function IntegrationCanvas({
     }
 
     autoFitSignatureRef.current = fitSignature;
-    setViewport(fittedViewport(bounds, canvasViewportWidth));
+    setViewport(fittedViewport(bounds, canvasViewportWidth, { preferReadableScale: true }));
   }, [canvasViewportWidth, fitTargetNodes]);
 
   const connectingSource = connecting ? flowNodes[connecting.sourceInstanceId] : null;
@@ -1474,8 +1510,9 @@ export function IntegrationCanvas({
     viewportUserAdjustedRef.current = false;
     autoFitSignatureRef.current = null;
     autoLayoutSignatureRef.current = null;
-    setEndpointPositions(defaultEndpointPositions(renderCanvasWidth));
-    setNodes((current) => arrangeCanvasNodes(current, edges, renderCanvasWidth));
+    const arrangedNodes = arrangeCanvasNodes(nodes, edges, renderCanvasWidth);
+    setEndpointPositions(defaultEndpointPositions(renderCanvasWidth, arrangedNodes));
+    setNodes(arrangedNodes);
   }
 
   function handleCanvasDrop(event: React.DragEvent<HTMLDivElement>): void {
@@ -1628,7 +1665,7 @@ export function IntegrationCanvas({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-muted)]">
-          <span>Drag or click to add a node. Drag endpoints or tools to make room, then connect handles to create the flow.</span>
+          <span>Drag or click to add a node. Endpoints and tools are movable; connect handles to create the flow.</span>
           <span
             className={`rounded-full px-3 py-1 font-semibold ${
               semantics.hasConnectedRoute
@@ -1717,12 +1754,12 @@ export function IntegrationCanvas({
                     opacity="0.55"
                   />
                 </pattern>
-                <marker id="canvas-arrowhead" markerWidth="12" markerHeight="12" refX="11" refY="6" orient="auto">
+                <marker id="canvas-arrowhead" markerWidth="16" markerHeight="16" refX="15" refY="8" orient="auto">
                   <path
-                    d="M0,0 L0,12 L12,6 z"
+                    d="M0,0 L0,16 L16,8 z"
                     fill="var(--color-accent)"
                     stroke="var(--color-surface)"
-                    strokeWidth="0.8"
+                    strokeWidth="1"
                   />
                 </marker>
               </defs>
@@ -1754,15 +1791,15 @@ export function IntegrationCanvas({
                         d={geometry.path}
                         fill="none"
                         stroke="var(--color-accent)"
-                        strokeOpacity={selected ? 0.28 : 0.18}
-                        strokeWidth={selected ? 8.5 : 7}
+                        strokeOpacity={selected ? 0.34 : 0.26}
+                        strokeWidth={selected ? 10 : 8.5}
                         strokeLinecap="round"
                       />
                       <path
                         d={geometry.path}
                         fill="none"
                         stroke="var(--color-accent)"
-                        strokeWidth={selected ? 4.2 : 3.2}
+                        strokeWidth={selected ? 5.4 : 4.6}
                         markerEnd="url(#canvas-arrowhead)"
                         strokeLinecap="round"
                         onClick={(event) => {
