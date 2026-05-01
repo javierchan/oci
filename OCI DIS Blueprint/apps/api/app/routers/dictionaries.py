@@ -1,6 +1,6 @@
 """Dictionaries router — governed dropdown values and admin mutations."""
 
-from fastapi import APIRouter, Depends, Header, status
+from fastapi import APIRouter, Depends, Header, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
@@ -33,8 +33,12 @@ async def get_canvas_governance(db: AsyncSession = Depends(get_db)) -> CanvasGov
 
 
 @router.get("/{category}", response_model=DictionaryOptionListResponse, summary="List options for a category")
-async def list_options(category: str, db: AsyncSession = Depends(get_db)) -> DictionaryOptionListResponse:
-    return await reference_service.list_dictionary_options(category, db)
+async def list_options(
+    category: str,
+    include_inactive: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+) -> DictionaryOptionListResponse:
+    return await reference_service.list_dictionary_options(category, db, include_inactive=include_inactive)
 
 
 @router.post(

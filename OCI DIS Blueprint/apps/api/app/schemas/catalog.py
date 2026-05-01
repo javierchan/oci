@@ -138,6 +138,14 @@ class CatalogListResponse(BaseModel):
     page_size: int
 
 
+class CatalogFacetsResponse(BaseModel):
+    """Lightweight catalog filter metadata for list views."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    brands: list[str] = Field(default_factory=list)
+
+
 class LineageDetail(BaseModel):
     """Source lineage for a catalog row."""
 

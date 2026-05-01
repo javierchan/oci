@@ -306,15 +306,42 @@ async def list_dictionary_categories(db: AsyncSession) -> DictionaryCategoryList
     return DictionaryCategoryListResponse(categories=categories)
 
 
-async def list_dictionary_options(category: str, db: AsyncSession) -> DictionaryOptionListResponse:
+DICTIONARY_CATEGORY_ALIASES = {
+    "TOOL": "TOOLS",
+}
+
+
+def normalize_dictionary_category(category: str) -> str:
+    """Normalize user-entered dictionary category path segments."""
+
+    normalized = category.strip().upper()
+    return DICTIONARY_CATEGORY_ALIASES.get(normalized, normalized)
+
+
+def _governed_canvas_option_filter(category: str):
+    """Limit canvas palettes to coded, described, active governance records."""
+
+    return (
+        DictionaryOption.category == category,
+        DictionaryOption.is_active.is_(True),
+        DictionaryOption.code.is_not(None),
+        DictionaryOption.description.is_not(None),
+        DictionaryOption.is_volumetric.is_(True),
+    )
+
+
+async def list_dictionary_options(
+    category: str,
+    db: AsyncSession,
+    include_inactive: bool = False,
+) -> DictionaryOptionListResponse:
     """Return options for one dictionary category."""
 
-    normalized_category = category.upper()
-    result = await db.scalars(
-        select(DictionaryOption)
-        .where(DictionaryOption.category == normalized_category)
-        .order_by(DictionaryOption.sort_order, DictionaryOption.value)
-    )
+    normalized_category = normalize_dictionary_category(category)
+    query = select(DictionaryOption).where(DictionaryOption.category == normalized_category)
+    if not include_inactive:
+        query = query.where(DictionaryOption.is_active.is_(True))
+    result = await db.scalars(query.order_by(DictionaryOption.sort_order, DictionaryOption.value))
     return DictionaryOptionListResponse(
         category=normalized_category,
         options=[serialize_dictionary_option(option) for option in result.all()],
@@ -326,12 +353,12 @@ async def get_canvas_governance(db: AsyncSession) -> CanvasGovernanceResponse:
 
     tool_options = await db.scalars(
         select(DictionaryOption)
-        .where(DictionaryOption.category == "TOOLS", DictionaryOption.is_active.is_(True))
+        .where(*_governed_canvas_option_filter("TOOLS"))
         .order_by(DictionaryOption.sort_order, DictionaryOption.value)
     )
     overlay_options = await db.scalars(
         select(DictionaryOption)
-        .where(DictionaryOption.category == "OVERLAYS", DictionaryOption.is_active.is_(True))
+        .where(*_governed_canvas_option_filter("OVERLAYS"))
         .order_by(DictionaryOption.sort_order, DictionaryOption.value)
     )
     return CanvasGovernanceResponse(
@@ -345,7 +372,7 @@ async def _load_dictionary_option(category: str, option_id: str, db: AsyncSessio
     option = await db.scalar(
         select(DictionaryOption).where(
             DictionaryOption.id == option_id,
-            DictionaryOption.category == category.upper(),
+            DictionaryOption.category == normalize_dictionary_category(category),
         )
     )
     if option is None:
@@ -364,7 +391,7 @@ async def create_dictionary_option(
 ) -> DictionaryOptionResponse:
     """Create a new governed dictionary option and audit the insert."""
 
-    normalized_category = category.upper()
+    normalized_category = normalize_dictionary_category(category)
     option = DictionaryOption(category=normalized_category, **body.model_dump())
     db.add(option)
     await db.flush()

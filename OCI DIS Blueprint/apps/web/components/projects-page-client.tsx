@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { startTransition, useState } from "react";
-import { Trash2, User } from "lucide-react";
+import { ArrowRight, FolderOpen, Layers3, ShieldCheck, Trash2, User } from "lucide-react";
 
 import { ConfirmModal } from "@/components/modal";
 import { emitToast } from "@/hooks/use-toast";
@@ -49,8 +49,12 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
     const matchesArchive = showArchived || row.project.status !== "archived";
     return matchesSearch && matchesArchive;
   });
+  const visibleActiveProjects = visibleProjects.filter((row) => row.project.status !== "archived");
+  const visibleArchivedProjects = visibleProjects.filter((row) => row.project.status === "archived");
   const activeCount = projects.filter((row) => row.project.status === "active").length;
   const archivedCount = projects.length - activeCount;
+  const totalIntegrations = projects.reduce((total, row) => total + row.rowCount, 0);
+  const syntheticCount = projects.filter((row) => isSyntheticProject(row.project)).length;
   const nameCounts = visibleProjects.reduce((accumulator: Record<string, number>, row: ProjectRow) => {
     accumulator[row.project.name] = (accumulator[row.project.name] ?? 0) + 1;
     return accumulator;
@@ -174,17 +178,19 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
   }
 
   return (
-    <div className="space-y-6">
-      <section className="app-card p-4 md:p-5">
+    <div className="console-page">
+      <section className="console-hero">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="app-kicker">Project Actions</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">Manage workspaces</h2>
+            <p className="app-kicker">Workspace · OCI DIS Blueprint</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--color-text-primary)] md:text-4xl">
+              Projects
+            </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
-              Open an existing project or create a new workspace to continue the parity workflow.
+              Each project is an independent integration inventory with its own assumptions, dictionaries, QA rules, and topology map.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="app-theme-chip">{visibleProjects.length} visible</span>
+              <span className="console-pill">{visibleProjects.length} visible</span>
               <span className="app-status-chip active">● {activeCount} active</span>
               {archivedCount > 0 ? (
                 <span className="app-status-chip archived">◌ {archivedCount} archived</span>
@@ -196,7 +202,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
             onClick={() => setShowForm((current: boolean) => !current)}
             className="app-button-primary"
           >
-            {showForm ? "Hide Form" : "New Project"}
+            {showForm ? "Hide form" : "New project"}
           </button>
         </div>
 
@@ -255,6 +261,31 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
         </section>
       ) : null}
 
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "Active projects", value: activeCount, sub: "ready for assessment", icon: FolderOpen },
+          { label: "Integrations tracked", value: totalIntegrations, sub: "across visible workspaces", icon: Layers3 },
+          { label: "Synthetic demos", value: syntheticCount, sub: "governed validation data", icon: ShieldCheck },
+          { label: "Archived", value: archivedCount, sub: "read-only workspaces", icon: Trash2 },
+        ].map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <article key={stat.label} className="console-stat">
+              <div className="flex items-start justify-between gap-3">
+                <p className="app-label">{stat.label}</p>
+                <span className="rounded-lg bg-[var(--color-surface-2)] p-2 text-[var(--color-text-secondary)]">
+                  <Icon className="h-4 w-4" />
+                </span>
+              </div>
+              <p className="mt-3 text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">
+                {stat.value}
+              </p>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{stat.sub}</p>
+            </article>
+          );
+        })}
+      </section>
+
       {visibleProjects.length === 0 ? (
         <section className="app-card border-dashed p-10 text-center">
           <h2 className="text-2xl font-semibold text-[var(--color-text-primary)]">
@@ -267,9 +298,19 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
           </p>
         </section>
       ) : (
-        <section className="app-table-shell">
+        <section className="space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">Active</h2>
+              <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+                Open assessment workspaces, ordered by most recent activity.
+              </p>
+            </div>
+            <span className="console-pill">{visibleActiveProjects.length} workspaces</span>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <div className="space-y-4 p-4 md:hidden">
-            {visibleProjects.map((row: ProjectRow) => (
+            {visibleActiveProjects.map((row: ProjectRow) => (
               <article
                 key={row.project.id}
                 className="rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm"
@@ -331,72 +372,119 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
             ))}
           </div>
 
-          <div className="hidden overflow-x-auto md:block">
-            <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
-              <thead className="app-table-header">
-                <tr>
-                  <th className="px-6 py-4">Project</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Created</th>
-                  <th className="px-6 py-4">Integrations</th>
-                  <th className="px-6 py-4">Open</th>
-                  <th className="px-6 py-4">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--color-table-border)]">
-                {visibleProjects.map((row: ProjectRow) => (
-                  <tr key={row.project.id} className="app-table-row text-sm">
-                    <td className="px-6 py-5">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-semibold text-[var(--color-text-primary)]">{row.project.name}</p>
-                          {isSyntheticProject(row.project) ? (
-                            <span className="app-theme-chip">Synthetic</span>
-                          ) : null}
-                          {nameCounts[row.project.name] > 1 ? (
-                            <span className="text-xs font-mono text-[var(--color-text-muted)]">
-                              #{row.project.id.slice(-8)}
-                            </span>
-                          ) : null}
-                        </div>
-                        {isSyntheticProject(row.project) ? (
-                          <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
-                            Governed synthetic reference project generated for end-to-end validation.
-                          </p>
-                        ) : (
-                          <p className="mt-2 inline-flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
-                            <User className="h-3.5 w-3.5" />
-                            Workspace owner assigned
-                          </p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-5">
-                      <span className={`app-status-chip ${row.project.status === "active" ? "active" : "archived"}`}>
-                        {row.project.status === "active" ? "● Active" : "◌ Archived"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-5 text-[var(--color-text-secondary)]">{formatDate(row.project.created_at)}</td>
-                    <td className="px-6 py-5 font-medium text-[var(--color-text-primary)]">{row.rowCount}</td>
-                    <td className="px-6 py-5">
-                      <div className="flex flex-wrap gap-3">
-                        <Link href={`/projects/${row.project.id}`} className="app-link">
-                          Dashboard
-                        </Link>
-                        <Link
-                          href={`/projects/${row.project.id}/catalog`}
-                          className="text-sm font-medium text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)]"
-                        >
-                          Catalog
-                        </Link>
-                      </div>
-                    </td>
-                    <td className="px-6 py-5">{renderActions(row)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="hidden contents md:contents">
+            {visibleActiveProjects.map((row: ProjectRow) => (
+              <article
+                key={row.project.id}
+                className="app-card group flex min-h-[17rem] flex-col p-5 transition hover:-translate-y-0.5 hover:border-[var(--color-accent)] hover:shadow-[var(--shadow-panel)]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--color-surface-2)] text-[var(--color-accent)]">
+                      <FolderOpen className="h-4 w-4" />
+                    </span>
+                    <span className={`app-status-chip ${row.project.status === "active" ? "active" : "archived"}`}>
+                      {row.project.status === "active" ? "● Active" : "◌ Archived"}
+                    </span>
+                  </div>
+                  {isSyntheticProject(row.project) ? <span className="app-theme-chip">Synthetic</span> : null}
+                </div>
+
+                <div className="mt-5 min-w-0 flex-1">
+                  <Link
+                    href={`/projects/${row.project.id}`}
+                    className="block text-lg font-semibold leading-snug tracking-tight text-[var(--color-text-primary)] transition hover:text-[var(--color-accent)]"
+                  >
+                    {row.project.name}
+                  </Link>
+                  {nameCounts[row.project.name] > 1 ? (
+                    <p className="mt-1 font-mono text-xs text-[var(--color-text-muted)]">
+                      #{row.project.id.slice(-8)}
+                    </p>
+                  ) : null}
+                  <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
+                    {isSyntheticProject(row.project)
+                      ? "Governed synthetic reference project generated for end-to-end validation."
+                      : "Independent assessment workspace with governed catalog, assumptions, and QA flow."}
+                  </p>
+                </div>
+
+                <div className="mt-5 grid grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-4">
+                  <div>
+                    <p className="app-label">Integrations</p>
+                    <p className="mt-1 text-2xl font-semibold text-[var(--color-text-primary)]">{row.rowCount}</p>
+                  </div>
+                  <div>
+                    <p className="app-label">Created</p>
+                    <p className="mt-2 text-sm font-medium text-[var(--color-text-secondary)]">
+                      {formatDate(row.project.created_at)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Link href={`/projects/${row.project.id}`} className="app-link inline-flex items-center gap-1">
+                      Dashboard
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                    <Link
+                      href={`/projects/${row.project.id}/catalog`}
+                      className="text-sm font-medium text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)]"
+                    >
+                      Catalog
+                    </Link>
+                  </div>
+                  {renderActions(row)}
+                </div>
+              </article>
+            ))}
           </div>
+          </div>
+
+          {showArchived && visibleArchivedProjects.length > 0 ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <div>
+                  <h2 className="text-2xl font-semibold tracking-tight text-[var(--color-text-secondary)]">Archived</h2>
+                  <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+                    Read-only workspaces retained for governance traceability.
+                  </p>
+                </div>
+                <span className="console-pill">{visibleArchivedProjects.length} archived</span>
+              </div>
+              <div className="grid gap-4 opacity-80 lg:grid-cols-2 xl:grid-cols-3">
+                {visibleArchivedProjects.map((row: ProjectRow) => (
+                  <article
+                    key={row.project.id}
+                    className="app-card group flex min-h-[15rem] flex-col p-5 transition hover:border-[var(--color-line-strong)]"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--color-surface-2)] text-[var(--color-text-muted)]">
+                        <FolderOpen className="h-4 w-4" />
+                      </span>
+                      <span className="app-status-chip archived">◌ Archived</span>
+                    </div>
+                    <div className="mt-5 flex-1">
+                      <Link
+                        href={`/projects/${row.project.id}`}
+                        className="block text-lg font-semibold leading-snug tracking-tight text-[var(--color-text-primary)] transition hover:text-[var(--color-accent)]"
+                      >
+                        {row.project.name}
+                      </Link>
+                      <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
+                        Archived workspace retained for source lineage, audit, and read-only review.
+                      </p>
+                    </div>
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border)] pt-4">
+                      <span className="text-sm text-[var(--color-text-secondary)]">{row.rowCount} integrations</span>
+                      {renderActions(row)}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          ) : null}
         </section>
       )}
       <ConfirmModal

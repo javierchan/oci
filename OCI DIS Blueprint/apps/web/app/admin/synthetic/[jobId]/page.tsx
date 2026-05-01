@@ -26,12 +26,58 @@ function normalizeApiBase(value: string): string {
 
 const API_DOWNLOAD_BASE = normalizeApiBase(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000");
 
+const SYNTHETIC_FIELD_LABELS: Record<string, string> = {
+  approved_justifications: "Approved justifications",
+  catalog_count: "Catalog count",
+  catalog_target: "Catalog target",
+  cleanup_policy: "Cleanup policy",
+  covered_pattern_ids: "Covered pattern IDs",
+  design_warning_rows: "Design warning rows",
+  distinct_systems: "Distinct systems",
+  excluded_import_count: "Excluded import rows",
+  excluded_import_target: "Excluded import target",
+  final_dashboard_snapshot_id: "Final dashboard snapshot",
+  final_snapshot_id: "Final snapshot",
+  import_batch_id: "Import batch",
+  import_included_count: "Imported rows",
+  import_target: "Import target",
+  imported_dashboard_snapshot_id: "Imported dashboard snapshot",
+  imported_snapshot_id: "Imported snapshot",
+  include_design_warnings: "Track design warnings",
+  include_exports: "Include exports",
+  include_justifications: "Include justifications",
+  manual_count: "Manual rows",
+  manual_target: "Manual target",
+  meets_catalog_target: "Meets catalog target",
+  meets_distinct_system_target: "Meets distinct system target",
+  min_distinct_systems: "Minimum distinct systems",
+  preset_code: "Preset",
+  project_id: "Project ID",
+  project_name: "Project name",
+  seed_value: "Seed value",
+  target_catalog_size: "Target catalog size",
+};
+
+function formatSyntheticKey(key: string): string {
+  return (
+    SYNTHETIC_FIELD_LABELS[key] ??
+    key
+      .split("_")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ")
+  );
+}
+
 function renderScalar(value: unknown): string {
   if (value === null || value === undefined || value === "") {
     return "—";
   }
   if (Array.isArray(value)) {
     return value.join(", ");
+  }
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
   }
   if (typeof value === "object") {
     return JSON.stringify(value);
@@ -114,8 +160,8 @@ export default function AdminSyntheticJobPage(): JSX.Element {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="app-card flex flex-col gap-4 p-6 lg:flex-row lg:items-end lg:justify-between">
+    <div className="console-page">
+      <section className="console-hero flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="app-kicker">Admin Governance</p>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">Synthetic Job Detail</h1>
@@ -219,7 +265,9 @@ export default function AdminSyntheticJobPage(): JSX.Element {
               <dl className="mt-5 grid gap-4 md:grid-cols-2">
                 {Object.entries(job.normalized_payload).map(([key, value]) => (
                   <div key={key} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">{key}</dt>
+                    <dt className="text-xs uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                      {formatSyntheticKey(key)}
+                    </dt>
                     <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{renderScalar(value)}</dd>
                   </div>
                 ))}
@@ -233,7 +281,9 @@ export default function AdminSyntheticJobPage(): JSX.Element {
                 <dl className="mt-5 grid gap-4 md:grid-cols-2">
                   {Object.entries(job.validation_results).map(([key, value]) => (
                     <div key={key} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
-                      <dt className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">{key}</dt>
+                      <dt className="text-xs uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                        {formatSyntheticKey(key)}
+                      </dt>
                       <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{renderScalar(value)}</dd>
                     </div>
                   ))}
@@ -301,7 +351,9 @@ export default function AdminSyntheticJobPage(): JSX.Element {
                 <dl className="mt-5 grid gap-4 md:grid-cols-2">
                   {Object.entries(job.result_summary).map(([key, value]) => (
                     <div key={key} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
-                      <dt className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">{key}</dt>
+                      <dt className="text-xs uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                        {formatSyntheticKey(key)}
+                      </dt>
                       <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{renderScalar(value)}</dd>
                     </div>
                   ))}

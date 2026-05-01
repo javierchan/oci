@@ -9,6 +9,7 @@ from app.core.db import get_db
 from app.schemas.catalog import (
     BulkPatchRequest,
     BulkPatchResult,
+    CatalogFacetsResponse,
     CatalogIntegrationDeleteResponse,
     CatalogIntegrationDetail,
     CatalogIntegrationPatch,
@@ -79,6 +80,13 @@ async def list_systems(project_id: str, db: AsyncSession = Depends(get_db)) -> l
     """Return source and destination system names for capture/autocomplete UI."""
 
     return await catalog_service.list_systems(project_id, db)
+
+
+@router.get("/{project_id}/facets", response_model=CatalogFacetsResponse, summary="List catalog filter facets")
+async def list_facets(project_id: str, db: AsyncSession = Depends(get_db)) -> CatalogFacetsResponse:
+    """Return lightweight filter metadata without serializing catalog rows."""
+
+    return await catalog_service.list_facets(project_id, db)
 
 
 @router.get(

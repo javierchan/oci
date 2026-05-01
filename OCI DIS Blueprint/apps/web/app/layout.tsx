@@ -4,6 +4,7 @@ import Script from "next/script";
 
 import { Nav } from "@/components/nav";
 import { ToastStack } from "@/components/toast";
+import { WorkspaceTopBar } from "@/components/workspace-topbar";
 
 import "./globals.css";
 
@@ -48,21 +49,9 @@ export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
       <body className="antialiased">
         <div className="min-h-screen lg:flex">
           <Nav />
-          <div className="min-h-screen min-w-0 flex-1 bg-[var(--color-surface)]">
-            <header className="min-w-0 border-b border-[var(--color-border)] bg-[var(--color-surface)]/90 px-4 py-4 backdrop-blur sm:px-6 lg:px-10 lg:py-5">
-              <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <p className="app-label">Phase 1 Parity</p>
-                  <h2 className="mt-1 text-xl font-semibold tracking-tight text-[var(--color-text-primary)] sm:text-2xl">
-                    Governed Integration Workspace
-                  </h2>
-                </div>
-                <p className="max-w-2xl text-xs leading-5 text-[var(--color-text-secondary)] sm:text-sm sm:leading-6">
-                  Connected to the live FastAPI stack for project intake, import review, QA correction, and volumetry monitoring.
-                </p>
-              </div>
-            </header>
-            <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">{children}</main>
+          <div className="min-h-screen min-w-0 flex-1 bg-[var(--color-page-bg)]">
+            <WorkspaceTopBar />
+            <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-7 lg:py-6">{children}</main>
           </div>
         </div>
         <ToastStack />

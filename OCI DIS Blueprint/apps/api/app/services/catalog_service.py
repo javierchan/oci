@@ -30,6 +30,7 @@ from app.models import (
 )
 from app.schemas.catalog import (
     BulkPatchResult,
+    CatalogFacetsResponse,
     CatalogIntegrationDeleteResponse,
     CatalogIntegrationDetail,
     CatalogIntegrationPatch,
@@ -315,6 +316,9 @@ async def _load_canvas_validation_context(
             select(DictionaryOption).where(
                 DictionaryOption.category.in_(("TOOLS", "OVERLAYS")),
                 DictionaryOption.is_active.is_(True),
+                DictionaryOption.code.is_not(None),
+                DictionaryOption.description.is_not(None),
+                DictionaryOption.is_volumetric.is_(True),
             )
         )
     ).all()
@@ -375,7 +379,13 @@ async def _validate_core_tools(core_tools: Optional[str], db: AsyncSession) -> N
     allowed = set(
         (
             await db.scalars(
-                select(DictionaryOption.value).where(DictionaryOption.category == "TOOLS")
+                select(DictionaryOption.value).where(
+                    DictionaryOption.category == "TOOLS",
+                    DictionaryOption.is_active.is_(True),
+                    DictionaryOption.code.is_not(None),
+                    DictionaryOption.description.is_not(None),
+                    DictionaryOption.is_volumetric.is_(True),
+                )
             )
         ).all()
     )
@@ -528,6 +538,22 @@ async def list_integrations(
         page=page,
         page_size=page_size,
     )
+
+
+async def list_facets(project_id: str, db: AsyncSession) -> CatalogFacetsResponse:
+    """Return distinct catalog filter values without loading catalog rows."""
+
+    brands = await db.scalars(
+        select(CatalogIntegration.brand)
+        .where(
+            CatalogIntegration.project_id == project_id,
+            CatalogIntegration.brand.is_not(None),
+            CatalogIntegration.brand != "",
+        )
+        .distinct()
+        .order_by(CatalogIntegration.brand)
+    )
+    return CatalogFacetsResponse(brands=list(brands.all()))
 
 
 async def manual_create_integration(

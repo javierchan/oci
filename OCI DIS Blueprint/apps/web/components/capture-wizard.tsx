@@ -60,6 +60,13 @@ const STEP_LABELS = [
   "Technical",
   "Review",
 ] as const;
+const STEP_DESCRIPTIONS = [
+  "Name and owner",
+  "Source system",
+  "Destination route",
+  "Payload and tools",
+  "QA and publish",
+] as const;
 const SESSION_KEY_PREFIX = "capture-wizard-";
 
 const stepSchemas = [
@@ -308,6 +315,21 @@ export function CaptureWizard({
     return false;
   }
 
+  function navigateToStep(index: number): void {
+    if (index <= currentStep) {
+      setNavigationHint("");
+      setCurrentStep(index);
+      return;
+    }
+    const nextErrors = collectStepErrors(currentStep);
+    setErrors(nextErrors);
+    setNavigationHint(
+      Object.keys(nextErrors).length > 0
+        ? `Complete the current step first. ${Object.values(nextErrors)[0]}`
+        : "Use Next to validate the current step before moving forward.",
+    );
+  }
+
   async function handleSubmit(): Promise<void> {
     setSubmitting(true);
     setSubmitError("");
@@ -364,8 +386,61 @@ export function CaptureWizard({
   }
 
   return (
-    <div className="space-y-5">
-      <section className="app-card p-6">
+    <div className="grid gap-5 xl:grid-cols-[16rem_minmax(0,1fr)]">
+      <aside className="app-card hidden self-start p-4 xl:block">
+        <p className="app-label">Steps</p>
+        <div className="mt-4 space-y-1">
+          {STEP_LABELS.map((label, index) => {
+            const isCurrent = index === currentStep;
+            const isCompleted = index < currentStep;
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => navigateToStep(index)}
+                aria-disabled={index > currentStep}
+                className={[
+                  "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition",
+                  isCurrent
+                    ? "bg-[var(--color-accent)]/10 text-[var(--color-accent)]"
+                    : isCompleted
+                      ? "text-[var(--color-status-active-text)] hover:bg-[var(--color-surface-2)]"
+                      : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]",
+                  index > currentStep ? "cursor-not-allowed opacity-60" : "",
+                ].join(" ")}
+              >
+                <span
+                  className={[
+                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
+                    isCurrent
+                      ? "bg-[var(--color-accent)] text-white"
+                      : isCompleted
+                        ? "bg-[var(--color-status-active-text)] text-white"
+                        : "bg-[var(--color-surface-3)] text-[var(--color-text-muted)]",
+                  ].join(" ")}
+                >
+                  {isCompleted ? <Check className="h-3.5 w-3.5" /> : index + 1}
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">{label}</span>
+                  <span className="mt-0.5 block text-xs text-[var(--color-text-muted)]">
+                    {STEP_DESCRIPTIONS[index]}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+          <p className="text-xs font-semibold text-[var(--color-accent)]">Capture tip</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">
+            Complete source and destination first so duplicate checks and pattern suggestions stay meaningful.
+          </p>
+        </div>
+      </aside>
+
+      <div className="space-y-5">
+      <section className="app-card p-6 xl:hidden">
         <div className="grid gap-5 xl:grid-cols-[minmax(14rem,0.32fr)_minmax(0,1fr)] xl:items-center">
           <div className="min-w-0">
             <p className="app-label">Step {currentStep + 1} of 5</p>
@@ -379,20 +454,7 @@ export function CaptureWizard({
                 <div key={label} className="relative min-w-0">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (index <= currentStep) {
-                        setNavigationHint("");
-                        setCurrentStep(index);
-                        return;
-                      }
-                      const nextErrors = collectStepErrors(currentStep);
-                      setErrors(nextErrors);
-                      setNavigationHint(
-                        Object.keys(nextErrors).length > 0
-                          ? `Complete the current step first. ${Object.values(nextErrors)[0]}`
-                          : "Use Next to validate the current step before moving forward.",
-                      );
-                    }}
+                    onClick={() => navigateToStep(index)}
                     aria-disabled={index > currentStep}
                     className={[
                       "flex h-full min-h-14 w-full min-w-0 items-center gap-2.5 rounded-2xl border px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] transition",
@@ -522,6 +584,7 @@ export function CaptureWizard({
             </button>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

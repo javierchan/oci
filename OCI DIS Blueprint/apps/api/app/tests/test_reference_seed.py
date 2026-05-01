@@ -53,6 +53,18 @@ def test_reference_seed_is_idempotent_and_workbook_complete() -> None:
         )
         assert overlay is not None
         assert overlay.is_volumetric is True
+        spanish_metadata_terms = (
+            "Msgs/mes",
+            "particiones",
+            "Complemento",
+            "Invocaciones",
+            "GB procesados",
+            "Cambios/mes",
+            "Usar valor individual",
+        )
+        for option in session.scalars(select(DictionaryOption)).all():
+            description = option.description or ""
+            assert not any(term in description for term in spanish_metadata_terms)
         assert len(CANVAS_COMBINATIONS) == 18
         assert CANVAS_COMBINATIONS[3]["code"] == "G04"
         assert CANVAS_COMBINATIONS[3]["recommended_overlays"] == []

@@ -4,10 +4,15 @@ import type {
   AssumptionList,
   AssumptionSet,
   AssumptionSetCreate,
+  AiReviewJob,
+  AiReviewApplyPatchResponse,
+  AiReviewJobList,
+  AiReviewJobRequest,
   AuditPage,
   CanvasGovernance,
   CatalogIntegrationDetail,
   CatalogIntegrationDeleteResponse,
+  CatalogFacets,
   CatalogPage,
   CatalogParams,
   ConsolidatedMetrics,
@@ -459,6 +464,37 @@ export const api = {
   listProjects: (): Promise<ProjectList> =>
     apiFetch<ProjectListResponse>("/api/v1/projects/").then(normalizeProjects),
 
+  runAiReview: (projectId: string, body: AiReviewJobRequest = {}): Promise<AiReviewJob> =>
+    apiFetch<AiReviewJob>(`/api/v1/ai-reviews/projects/${projectId}`, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify(body),
+    }),
+
+  getAiReviewJob: (jobId: string): Promise<AiReviewJob> =>
+    apiFetch<AiReviewJob>(`/api/v1/ai-reviews/${jobId}`),
+
+  listAiReviewJobs: (projectId: string): Promise<AiReviewJobList> =>
+    apiFetch<AiReviewJobList>(`/api/v1/ai-reviews/projects/${projectId}/jobs`),
+
+  acceptAiReviewFinding: (jobId: string, findingId: string, note?: string): Promise<AiReviewJob> =>
+    apiFetch<AiReviewJob>(`/api/v1/ai-reviews/${jobId}/findings/${findingId}/accept`, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ note }),
+    }),
+
+  applyAiReviewFindingPatch: (
+    jobId: string,
+    findingId: string,
+    note?: string,
+  ): Promise<AiReviewApplyPatchResponse> =>
+    apiFetch<AiReviewApplyPatchResponse>(`/api/v1/ai-reviews/${jobId}/findings/${findingId}/apply-patch`, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ note }),
+    }),
+
   getProject: (projectId: string): Promise<Project> =>
     apiFetch<Project>(`/api/v1/projects/${projectId}`),
 
@@ -509,6 +545,9 @@ export const api = {
 
   listCatalog: (projectId: string, params: CatalogParams): Promise<CatalogPage> =>
     apiFetch<CatalogPage>(`/api/v1/catalog/${projectId}${withQuery(params)}`),
+
+  getCatalogFacets: (projectId: string): Promise<CatalogFacets> =>
+    apiFetch<CatalogFacets>(`/api/v1/catalog/${projectId}/facets`),
 
   getIntegration: (projectId: string, integrationId: string): Promise<CatalogIntegrationDetail> =>
     apiFetch<CatalogIntegrationDetail>(`/api/v1/catalog/${projectId}/${integrationId}`),
@@ -580,8 +619,10 @@ export const api = {
   listDictionaryCategories: (): Promise<DictionaryCategoryList> =>
     apiFetch<DictionaryCategoryList>("/api/v1/dictionaries/"),
 
-  listDictionaryOptions: (category: string): Promise<DictionaryOptionList> =>
-    apiFetch<DictionaryOptionList>(`/api/v1/dictionaries/${category}`),
+  listDictionaryOptions: (category: string, includeInactive = false): Promise<DictionaryOptionList> =>
+    apiFetch<DictionaryOptionList>(
+      `/api/v1/dictionaries/${category}${includeInactive ? "?include_inactive=true" : ""}`,
+    ),
 
   getCanvasGovernance: (): Promise<CanvasGovernance> =>
     apiFetch<CanvasGovernance>("/api/v1/dictionaries/canvas-governance"),

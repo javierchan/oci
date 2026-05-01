@@ -37,6 +37,158 @@ export interface ProjectDeleteResponse {
   deleted_audit_events: number;
 }
 
+export type AiReviewSeverity = "critical" | "high" | "medium" | "low" | "positive";
+export type AiReviewScope = "project" | "integration";
+export type AiReviewJobStatus = "pending" | "running" | "completed" | "failed";
+export type AiReviewGraphContext =
+  | { type: "node"; label: string; source?: never; target?: never }
+  | { type: "edge"; source: string; target: string; label?: never };
+export type AiReviewCategory =
+  | "critical_blockers"
+  | "high_confidence_fixes"
+  | "needs_architect_decision"
+  | "looks_production_ready";
+
+export interface AiReviewMetric {
+  label: string;
+  value: string;
+  detail: string;
+}
+
+export interface AiReviewEvidence {
+  id: string;
+  label: string;
+  detail: string;
+  source: string;
+  entity_type: string;
+  entity_id: string | null;
+  href: string | null;
+}
+
+export interface AiReviewFinding {
+  id: string;
+  severity: AiReviewSeverity;
+  category: AiReviewCategory;
+  review_area:
+    | "data_quality"
+    | "snapshot_freshness"
+    | "canvas_consistency"
+    | "oci_compatibility"
+    | "stress_review"
+    | "demo_readiness"
+    | "red_team"
+    | "governance";
+  title: string;
+  summary: string;
+  evidence_ids: string[];
+  evidence: string[];
+  current_state: string;
+  recommended_state: string;
+  recommendation: string;
+  action_label: string;
+  action_href: string | null;
+  integration_ids: string[];
+  suggested_patch: AiReviewSuggestedPatch | null;
+}
+
+export interface AiReviewGroup {
+  id: AiReviewCategory;
+  title: string;
+  description: string;
+  finding_ids: string[];
+  count: number;
+  worst_severity: AiReviewSeverity | null;
+}
+
+export interface AiReviewPersonaSummary {
+  persona: "architect" | "security" | "operations" | "executive";
+  title: string;
+  summary: string;
+  focus: string[];
+}
+
+export interface AiReviewFieldDiff {
+  field: string;
+  current: string | null;
+  recommended: string | null;
+}
+
+export interface AiReviewSuggestedPatch {
+  integration_id: string;
+  label: string;
+  description: string;
+  patch: Record<string, unknown>;
+  field_diffs: AiReviewFieldDiff[];
+  safe_to_apply: boolean;
+  safety_note: string;
+}
+
+export interface AiReviewResponse {
+  project_id: string;
+  project_name: string;
+  scope: AiReviewScope;
+  integration_id: string | null;
+  engine: string;
+  generated_at: string;
+  readiness_score: number;
+  readiness_label: string;
+  summary: string;
+  llm_status: "not_configured" | "completed" | "failed" | "skipped";
+  llm_model: string | null;
+  llm_summary: string | null;
+  graph_context: AiReviewGraphContext | null;
+  metrics: AiReviewMetric[];
+  findings: AiReviewFinding[];
+  groups: AiReviewGroup[];
+  evidence: AiReviewEvidence[];
+  evidence_pack: string[];
+  reviewer_personas: AiReviewPersonaSummary[];
+}
+
+export interface AiReviewJobRequest {
+  scope?: AiReviewScope;
+  integration_id?: string;
+  include_llm?: boolean;
+  graph_context?: AiReviewGraphContext;
+  reviewer_personas?: Array<"architect" | "security" | "operations" | "executive">;
+}
+
+export interface AiReviewRecommendationAcceptance {
+  finding_id: string;
+  accepted_by: string;
+  accepted_at: string;
+  note: string | null;
+  applied_patch: AiReviewSuggestedPatch | null;
+}
+
+export interface AiReviewJob {
+  id: string;
+  project_id: string;
+  requested_by: string;
+  status: AiReviewJobStatus;
+  scope: AiReviewScope;
+  integration_id: string | null;
+  input_payload: Record<string, unknown>;
+  result: AiReviewResponse | null;
+  accepted_recommendations: AiReviewRecommendationAcceptance[];
+  error_details: Record<string, unknown> | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AiReviewJobList {
+  jobs: AiReviewJob[];
+  total: number;
+}
+
+export interface AiReviewApplyPatchResponse {
+  job: AiReviewJob;
+  integration: Integration;
+  applied_patch: AiReviewSuggestedPatch;
+}
+
 export interface SyntheticGenerationPreset {
   code: string;
   label: string;
@@ -257,6 +409,10 @@ export interface CatalogPage {
   total: number;
   page: number;
   page_size: number;
+}
+
+export interface CatalogFacets {
+  brands: string[];
 }
 
 export interface CatalogIntegrationDeleteResponse {
@@ -525,8 +681,19 @@ export interface VolumetrySnapshot {
   created_at: string;
 }
 
+export interface VolumetrySnapshotSummary {
+  snapshot_id: string;
+  project_id: string;
+  assumption_set_version: string;
+  triggered_by: string;
+  consolidated: ConsolidatedMetrics;
+  metadata: Record<string, unknown> | null;
+  row_result_count: number;
+  created_at: string;
+}
+
 export interface VolumetrySnapshotList {
-  snapshots: VolumetrySnapshot[];
+  snapshots: VolumetrySnapshotSummary[];
 }
 
 export interface RecalculationJobStatus {

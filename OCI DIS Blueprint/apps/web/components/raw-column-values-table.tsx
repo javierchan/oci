@@ -89,10 +89,13 @@ export function RawColumnValuesTable({
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [toastVisible, setToastVisible] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
+  const [showAllPopulated, setShowAllPopulated] = useState<boolean>(false);
 
   const lineageEntries = Object.entries(values).sort(([left], [right]) => compareLineageKeys(left, right));
   const populatedEntries = lineageEntries.filter(([, value]) => hasVisibleValue(value));
   const hiddenEntries = lineageEntries.filter(([, value]) => !hasVisibleValue(value));
+  const visiblePopulatedEntries = showAllPopulated ? populatedEntries : populatedEntries.slice(0, 12);
+  const remainingPopulatedCount = Math.max(0, populatedEntries.length - visiblePopulatedEntries.length);
 
   function beginEdit(fieldKey: string): void {
     setEditingKey(fieldKey);
@@ -226,10 +229,20 @@ export function RawColumnValuesTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
-            {renderRows(populatedEntries)}
+            {renderRows(visiblePopulatedEntries)}
           </tbody>
         </table>
       </div>
+
+      {populatedEntries.length > 12 ? (
+        <button
+          type="button"
+          onClick={() => setShowAllPopulated((current) => !current)}
+          className="mt-3 inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-[var(--color-accent)] transition hover:border-[var(--color-accent)]"
+        >
+          {showAllPopulated ? "Show fewer populated columns" : `Show ${remainingPopulatedCount} more populated columns`}
+        </button>
+      ) : null}
 
       {hiddenEntries.length > 0 ? (
         <details className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">

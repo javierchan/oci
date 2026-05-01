@@ -85,12 +85,27 @@ class VolumetrySnapshotResponse(BaseModel):
     created_at: datetime
 
 
+class VolumetrySnapshotSummary(BaseModel):
+    """List-view snapshot metadata without row-level metrics."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    snapshot_id: str
+    project_id: str
+    assumption_set_version: str
+    triggered_by: str
+    consolidated: ConsolidatedMetrics
+    metadata: Optional[dict[str, object]] = None
+    row_result_count: int = 0
+    created_at: datetime
+
+
 class VolumetrySnapshotListResponse(BaseModel):
     """List of volumetry snapshots."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    snapshots: list[VolumetrySnapshotResponse] = Field(default_factory=list)
+    snapshots: list[VolumetrySnapshotSummary] = Field(default_factory=list)
 
 
 class VolumetrySnapshotRowResultsResponse(BaseModel):

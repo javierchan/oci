@@ -3,8 +3,8 @@
 /* Pattern governance page for create, edit, and delete flows. */
 
 import Link from "next/link";
-import { Lock, Pencil, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Eye, Lock, Pencil, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Breadcrumb } from "@/components/breadcrumb";
 import { AdminConfirmDelete } from "@/components/admin-confirm-delete";
@@ -23,9 +23,17 @@ export default function AdminPatternsPage(): JSX.Element {
   const [showCreate, setShowCreate] = useState<boolean>(false);
   const [editingPattern, setEditingPattern] = useState<PatternDefinition | null>(null);
   const [deletingPattern, setDeletingPattern] = useState<PatternDefinition | null>(null);
+  const [viewingPattern, setViewingPattern] = useState<PatternDefinition | null>(null);
   const [catalogProjectId, setCatalogProjectId] = useState<string | null>(null);
   const [lastCreatedPatternId, setLastCreatedPatternId] = useState<string>("");
   const formMode = showCreate ? "create" : editingPattern ? "edit" : null;
+  const sortedPatterns = useMemo(
+    () =>
+      [...patterns].sort((left, right) =>
+        left.pattern_id.localeCompare(right.pattern_id, undefined, { numeric: true }),
+      ),
+    [patterns],
+  );
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -102,8 +110,8 @@ export default function AdminPatternsPage(): JSX.Element {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="app-card flex flex-col gap-4 p-6 lg:flex-row lg:items-end lg:justify-between">
+    <div className="console-page">
+      <section className="console-hero flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="app-kicker">Admin Governance</p>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">Patterns</h1>
@@ -198,116 +206,206 @@ export default function AdminPatternsPage(): JSX.Element {
           </div>
         </section>
       ) : (
-        <section className="app-table-shell">
-          <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
-            <thead className="app-table-header">
-              <tr>
-                <th className="px-6 py-4 font-medium">Pattern ID</th>
-                <th className="px-6 py-4 font-medium">Name</th>
-                <th className="px-6 py-4 font-medium">Category</th>
-                <th className="px-6 py-4 font-medium">Support</th>
-                <th className="px-6 py-4 font-medium">Guidance</th>
-                <th className="px-6 py-4 font-medium">System</th>
-                <th className="px-6 py-4 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
-              {loading ? (
-                <tr>
-                  <td className="px-6 py-8 text-[var(--color-text-secondary)]" colSpan={7}>
-                    Loading patterns…
-                  </td>
-                </tr>
-              ) : (
-                patterns.map((pattern) => (
-                  <tr key={pattern.pattern_id} className="app-table-row">
-                    <td className="px-6 py-4 font-semibold text-[var(--color-text-primary)]">{pattern.pattern_id}</td>
-                    <td className="px-6 py-4">
+        <section className="space-y-6">
+          {loading ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <article key={index} className="app-card p-5">
+                  <div className="skeleton h-5 w-24" />
+                  <div className="mt-4 skeleton h-6 w-3/4" />
+                  <div className="mt-3 skeleton h-16 w-full" />
+                  <div className="mt-5 skeleton h-9 w-32" />
+                </article>
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="app-label">Pattern Library</p>
+                  <h2 className="mt-1 text-2xl font-semibold text-[var(--color-text-primary)]">
+                    Governed pattern cards
+                  </h2>
+                </div>
+                <span className="app-theme-chip">{sortedPatterns.length} patterns</span>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {sortedPatterns.map((pattern) => (
+                  <article
+                    key={pattern.pattern_id}
+                    className="app-card flex min-h-[18rem] flex-col p-5 transition hover:-translate-y-0.5 hover:border-[var(--color-accent)] hover:shadow-md"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-2 font-mono text-sm font-bold text-[var(--color-text-primary)]">
+                        {pattern.pattern_id}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-base font-semibold text-[var(--color-text-primary)]">
+                          {pattern.name}
+                        </h3>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="app-theme-chip">{pattern.category}</span>
+                          <PatternSupportBadge support={pattern.support} />
+                          {pattern.is_system ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--color-text-secondary)]">
+                              <Lock className="h-3 w-3" />
+                              System
+                            </span>
+                          ) : (
+                            <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+                              Custom
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="mt-4 line-clamp-3 text-sm leading-6 text-[var(--color-text-secondary)]">
+                      {pattern.description ?? pattern.support.summary}
+                    </p>
+
+                    {pattern.oci_components ? (
+                      <p className="mt-3 line-clamp-2 rounded-2xl bg-[var(--color-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--color-text-muted)]">
+                        {pattern.oci_components}
+                      </p>
+                    ) : null}
+
+                    <div className="mt-4 grid gap-3 text-xs md:grid-cols-2">
                       <div>
-                        <p className="font-medium text-[var(--color-text-primary)]">{pattern.name}</p>
-                        {pattern.description ? (
-                          <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">{pattern.description}</p>
-                        ) : null}
-                        {pattern.oci_components ? (
-                          <p className="mt-2 whitespace-pre-line text-xs leading-5 text-[var(--color-text-muted)]">
-                            {pattern.oci_components}
-                          </p>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-[var(--color-text-secondary)]">{pattern.category}</td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-2">
-                        <PatternSupportBadge support={pattern.support} />
-                        <p className="max-w-xs text-xs leading-5 text-[var(--color-text-secondary)]">
-                          {pattern.support.summary}
+                        <p className="app-label">When to use</p>
+                        <p className="mt-1 line-clamp-3 text-[var(--color-text-secondary)]">
+                          {pattern.when_to_use ?? "No usage guidance documented."}
                         </p>
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-2 text-xs leading-5 text-[var(--color-text-secondary)]">
-                        <p>
-                          <span className="font-semibold text-[var(--color-text-primary)]">Use:</span>{" "}
-                          {pattern.when_to_use ?? "—"}
-                        </p>
-                        <p>
-                          <span className="font-semibold text-[var(--color-text-primary)]">Avoid:</span>{" "}
-                          {pattern.when_not_to_use ?? "—"}
-                        </p>
-                        <p>
-                          <span className="font-semibold text-[var(--color-text-primary)]">Business value:</span>{" "}
-                          {pattern.business_value ?? "—"}
+                      <div>
+                        <p className="app-label">Avoid</p>
+                        <p className="mt-1 line-clamp-3 text-[var(--color-text-secondary)]">
+                          {pattern.when_not_to_use ?? "No anti-pattern guidance documented."}
                         </p>
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {pattern.is_system ? (
-                        <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-[var(--color-text-secondary)]">
-                          <Lock className="h-3.5 w-3.5" />
-                          System
-                        </span>
-                      ) : (
-                        <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
-                          Custom
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap items-center gap-3">
+                    </div>
+
+                    <div className="mt-auto flex flex-wrap items-center gap-3 pt-5">
+                      <button
+                        type="button"
+                        onClick={() => setViewingPattern(pattern)}
+                        className="app-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
+                      >
+                        <Eye className="h-4 w-4" />
+                        View details
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCreate(false);
+                          setEditingPattern(pattern);
+                          setError("");
+                        }}
+                        className="app-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Edit
+                      </button>
+                      {!pattern.is_system ? (
                         <button
                           type="button"
                           onClick={() => {
-                            setShowCreate(false);
-                            setEditingPattern(pattern);
+                            setDeletingPattern(pattern);
                             setError("");
                           }}
-                          className="inline-flex items-center gap-2 text-sm font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
+                          className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
                         >
-                          <Pencil className="h-4 w-4" />
-                          Edit
+                          <Trash2 className="h-4 w-4" />
+                          Delete
                         </button>
-                        {!pattern.is_system ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeletingPattern(pattern);
-                              setError("");
-                            }}
-                            className="inline-flex items-center gap-2 text-sm font-medium text-rose-700 hover:text-rose-500"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Delete
-                          </button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
         </section>
       )}
+
+      {viewingPattern ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pattern-detail-title"
+        >
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setViewingPattern(null)}
+          />
+          <article className="relative app-card max-h-[88vh] w-full max-w-4xl overflow-y-auto p-6 shadow-2xl">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="app-label">Pattern Detail</p>
+                <h2
+                  id="pattern-detail-title"
+                  className="mt-2 text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]"
+                >
+                  {viewingPattern.pattern_id} · {viewingPattern.name}
+                </h2>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="app-theme-chip">{viewingPattern.category}</span>
+                  <PatternSupportBadge support={viewingPattern.support} />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingPattern(null)}
+                className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)]"
+                aria-label="Close pattern details"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <section className="md:col-span-2 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                <p className="app-label">Description</p>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-text-secondary)]">
+                  {viewingPattern.description ?? viewingPattern.support.summary}
+                </p>
+              </section>
+              <section className="rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                <p className="app-label">When to Use</p>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-text-secondary)]">
+                  {viewingPattern.when_to_use ?? "No usage guidance documented."}
+                </p>
+              </section>
+              <section className="rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                <p className="app-label">Avoid</p>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-text-secondary)]">
+                  {viewingPattern.when_not_to_use ?? "No anti-pattern guidance documented."}
+                </p>
+              </section>
+              <section className="rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                <p className="app-label">OCI Components</p>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-text-secondary)]">
+                  {viewingPattern.oci_components ?? "No component guidance documented."}
+                </p>
+              </section>
+              <section className="rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                <p className="app-label">Technical Flow</p>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-text-secondary)]">
+                  {viewingPattern.technical_flow ?? "No technical flow documented."}
+                </p>
+              </section>
+              <section className="md:col-span-2 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                <p className="app-label">Business Value</p>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-text-secondary)]">
+                  {viewingPattern.business_value ?? "No business-value guidance documented."}
+                </p>
+              </section>
+            </div>
+          </article>
+        </div>
+      ) : null}
 
       <AdminConfirmDelete
         open={deletingPattern !== null}

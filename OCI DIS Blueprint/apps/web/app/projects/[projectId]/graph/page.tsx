@@ -230,9 +230,9 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="app-card p-6">
-        <p className="app-kicker">System Dependency Map</p>
+    <div className="console-page">
+      <section className="console-hero">
+        <p className="app-kicker">Topology Workspace · System Dependency Map</p>
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
           Integration Topology
         </h1>
@@ -272,19 +272,30 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
 
       {largeTopology ? (
         <section className="rounded-[1.75rem] border border-amber-200 bg-amber-50/90 p-4 dark:border-amber-900 dark:bg-amber-950/30">
-          <p className="app-label text-amber-700 dark:text-amber-300">Large Topology Mode</p>
+          <p className="app-label text-amber-700 dark:text-amber-300">
+            {selectedSystem ? `Focused View: ${selectedSystem}` : "Large Topology Mode"}
+          </p>
           <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-sm font-medium text-amber-950 dark:text-amber-100">
                 {selectedSystem
-                  ? `Starting on ${selectedSystem} and its closest dependency cluster so the first view stays readable.`
+                  ? `You are viewing ${selectedSystem} and its closest dependency cluster. The full topology is still available.`
                   : `${graph.meta.node_count} systems detected. Use a focus system or a governance filter to simplify the map.`}
               </p>
               <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                The full graph remains available, but background systems stay intentionally quiet so the dependency story is readable.
+                Background systems are intentionally quiet in focused mode so the dependency story remains readable.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              {selectedSystem ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedSystem("")}
+                  className="rounded-full border border-amber-600 bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-700"
+                >
+                  Show full topology
+                </button>
+              ) : null}
               {recommendedSystems.map((system) => (
                 <button
                   key={system}
@@ -300,15 +311,6 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
                   {system}
                 </button>
               ))}
-              {selectedSystem ? (
-                <button
-                  type="button"
-                  onClick={() => setSelectedSystem("")}
-                  className="rounded-full border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:border-amber-500 dark:border-amber-800 dark:text-amber-100"
-                >
-                  Clear focus
-                </button>
-              ) : null}
             </div>
           </div>
         </section>
@@ -327,15 +329,15 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
       <div className={stackDetailPanel ? "space-y-6" : "grid gap-6 xl:grid-cols-[1.45fr_0.55fr]"}>
         <div className="space-y-4">
           <section className="grid gap-4 md:grid-cols-3">
-            <article className="app-card p-5">
+            <article className="console-stat">
               <p className="app-label">Nodes</p>
               <p className="mt-3 text-3xl font-semibold text-[var(--color-text-primary)]">{graph.meta.node_count}</p>
             </article>
-            <article className="app-card p-5">
+            <article className="console-stat">
               <p className="app-label">Edges</p>
               <p className="mt-3 text-3xl font-semibold text-[var(--color-text-primary)]">{graph.meta.edge_count}</p>
             </article>
-            <article className="app-card p-5">
+            <article className="console-stat">
               <p className="app-label">Integrations</p>
               <p className="mt-3 text-3xl font-semibold text-[var(--color-text-primary)]">{graph.meta.integration_count}</p>
             </article>

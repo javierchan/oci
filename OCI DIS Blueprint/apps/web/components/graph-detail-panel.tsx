@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 
+import { AiReviewButton } from "@/components/ai-review-button";
 import { QaBadge } from "@/components/qa-badge";
 import { displayQaStatus } from "@/lib/format";
 import type { GraphEdge, GraphNode, GraphResponse } from "@/lib/types";
@@ -84,11 +85,24 @@ export function GraphDetailPanel({
             View in Catalog →
           </Link>
         </div>
+
+        <section className="mt-6 rounded-2xl border border-[var(--color-accent-border)] bg-[var(--color-accent-soft)] p-4">
+          <p className="app-label text-[var(--color-accent)]">Architecture Review Board</p>
+          <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+            Run a governed project review, then use the catalog filter above to inspect this system cluster with the
+            same evidence IDs, QA signals, service sizing, and reviewer personas.
+          </p>
+          <div className="mt-3">
+            <AiReviewButton projectId={projectId} graphContext={{ type: "node", label: selectedNode.label }} />
+          </div>
+        </section>
       </aside>
     );
   }
 
   if (selectedEdge) {
+    const reviewIntegrationId = selectedEdge.integration_ids.length === 1 ? selectedEdge.integration_ids[0] : undefined;
+
     return (
       <aside className="app-card p-6">
         <p className="app-label">Relationship</p>
@@ -167,6 +181,21 @@ export function GraphDetailPanel({
             View all in Catalog →
           </Link>
         </div>
+
+        <section className="mt-6 rounded-2xl border border-[var(--color-accent-border)] bg-[var(--color-accent-soft)] p-4">
+          <p className="app-label text-[var(--color-accent)]">Architecture Review Board</p>
+          <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+            Run a governed review for this dependency path. Single-integration edges open an integration-scoped board;
+            multi-integration edges use the project board and preserve the catalog drill-through above.
+          </p>
+          <div className="mt-3">
+            <AiReviewButton
+              projectId={projectId}
+              integrationId={reviewIntegrationId}
+              graphContext={{ type: "edge", source: selectedEdge.source, target: selectedEdge.target }}
+            />
+          </div>
+        </section>
       </aside>
     );
   }
@@ -178,6 +207,16 @@ export function GraphDetailPanel({
       <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
         Click a system or dependency line to inspect QA mix, connected systems, and drill back into the catalog with the relevant filters already applied.
       </p>
+      <section className="mt-6 rounded-2xl border border-[var(--color-accent-border)] bg-[var(--color-accent-soft)] p-4">
+        <p className="app-label text-[var(--color-accent)]">Architecture Review Board</p>
+        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+          Start the governed project review from here, or select a node or edge first to pair the review board with
+          catalog drill-through context.
+        </p>
+        <div className="mt-3">
+          <AiReviewButton projectId={projectId} />
+        </div>
+      </section>
     </aside>
   );
 }

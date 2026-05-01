@@ -10,6 +10,7 @@ OpenAPI 3.1 spec auto-generated at /docs and /openapi.json.
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.core.config import get_settings
 from app.routers import (
@@ -27,6 +28,7 @@ from app.routers import (
     exports_router,
     services_router,
     admin_synthetic_router,
+    ai_reviews_router,
 )
 
 settings = get_settings()
@@ -56,11 +58,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Next.js dev server
+    allow_origins=settings.CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Mount all route groups
 API_PREFIX = "/api/v1"
@@ -78,6 +81,7 @@ app.include_router(audit_router, prefix=API_PREFIX)
 app.include_router(exports_router, prefix=API_PREFIX)
 app.include_router(services_router, prefix=API_PREFIX)
 app.include_router(admin_synthetic_router, prefix=API_PREFIX)
+app.include_router(ai_reviews_router, prefix=API_PREFIX)
 
 
 @app.get("/health", tags=["Health"])

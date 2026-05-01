@@ -30,16 +30,16 @@ export function SkeletonText({
 export function SkeletonRow(): JSX.Element {
   return (
     <tr className="animate-pulse">
-      <td className="px-6 py-4"><Skeleton className="h-4 w-8" /></td>
-      <td className="px-6 py-4">
-        <Skeleton className="mb-2 h-4 w-48" />
+      <td className="px-3 py-3"><Skeleton className="h-4 w-5" /></td>
+      <td className="px-3 py-3">
+        <Skeleton className="mb-2 h-4 w-36" />
         <Skeleton className="h-3 w-32" />
       </td>
-      <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
-      <td className="px-6 py-4"><Skeleton className="h-6 w-28 rounded-full" /></td>
-      <td className="px-6 py-4"><Skeleton className="h-6 w-16 rounded-full" /></td>
-      <td className="px-6 py-4"><Skeleton className="h-6 w-16 rounded-full" /></td>
-      <td className="px-6 py-4"><Skeleton className="h-4 w-8" /></td>
+      <td className="px-3 py-3"><Skeleton className="h-4 w-40" /></td>
+      <td className="px-3 py-3"><Skeleton className="h-6 w-28 rounded-md" /></td>
+      <td className="px-3 py-3"><Skeleton className="h-6 w-16 rounded-md" /></td>
+      <td className="px-3 py-3"><Skeleton className="h-6 w-16 rounded-md" /></td>
+      <td className="px-3 py-3"><Skeleton className="ml-auto h-4 w-8" /></td>
     </tr>
   );
 }

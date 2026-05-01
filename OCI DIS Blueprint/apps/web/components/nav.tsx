@@ -3,17 +3,21 @@
 /* Responsive workspace navigation with a compact mobile header and drawer. */
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import {
   ChevronRight,
+  Database,
   FolderOpen,
   LayoutDashboard,
   List,
   Menu,
   Network,
+  Search,
   Settings,
+  ShieldCheck,
   Upload,
   Wand2,
   X,
@@ -53,6 +57,13 @@ const PROJECT_ICONS: Record<string, JSX.Element> = {
   Map: <Network className="h-4 w-4" />,
 };
 
+const ADMIN_ICONS: Record<string, JSX.Element> = {
+  Library: <Settings className="h-4 w-4" />,
+  Patterns: <List className="h-4 w-4" />,
+  Dictionaries: <Database className="h-4 w-4" />,
+  Assumptions: <ShieldCheck className="h-4 w-4" />,
+};
+
 const PROJECT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -66,10 +77,10 @@ function formatProjectLabel(projectId: string): string {
 
 function linkClasses(active: boolean): string {
   return [
-    "block rounded-2xl border px-4 py-3 text-sm font-medium transition",
+    "relative block rounded-lg px-3 py-2 text-sm font-medium transition",
     active
-      ? "border-[var(--color-accent)] bg-[var(--color-surface)] text-[var(--color-text-primary)] shadow-[0_0_0_1px_var(--color-accent)]"
-      : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-text-primary)]",
+      ? "bg-[var(--color-surface-2)] text-[var(--color-text-primary)] before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-[var(--color-accent)]"
+      : "text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)]",
   ].join(" ");
 }
 
@@ -127,8 +138,8 @@ function contextLabelFromPath(pathname: string): string {
 
 function NavSection({ title, children }: { title: string; children: ReactNode }): JSX.Element {
   return (
-    <div className="mt-6">
-      <p className="mb-3 text-xs uppercase tracking-[0.25em] text-[var(--color-text-muted)]">{title}</p>
+    <div className="mt-5">
+      <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{title}</p>
       {children}
     </div>
   );
@@ -149,17 +160,35 @@ function NavPanel({
 
   return (
     <div className={`flex h-full flex-col ${shellPadding} text-[var(--color-text-primary)]`}>
-      <div className={`rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] ${mobile ? "p-4" : "p-4 xl:p-5"}`}>
-        <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-accent)]">Oracle Cloud</p>
-        <p className={`mt-3 font-semibold tracking-tight text-[var(--color-text-primary)] ${mobile ? "text-2xl" : "text-[2rem]"}`}>
-          OCI DIS Blueprint
-        </p>
-        <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
-          Frontend workspace for import parity, QA governance, and volumetry review.
-        </p>
+      <div className="flex items-center gap-3 border-b border-[var(--color-border)] px-1 pb-4">
+        <Image
+          src="/oracle-brandmark.svg"
+          alt=""
+          aria-hidden="true"
+          width={40}
+          height={40}
+          className="h-10 w-10 shrink-0 rounded-xl shadow-sm"
+          priority
+        />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold leading-tight text-[var(--color-text-primary)]">OCI DIS</p>
+          <p className="text-[11px] font-medium text-[var(--color-text-muted)]">Blueprint Console</p>
+        </div>
       </div>
 
-      <NavSection title="Navigation">
+      {!mobile ? (
+        <button
+          type="button"
+          className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-left text-sm text-[var(--color-text-muted)] transition hover:bg-[var(--color-hover)]"
+          title="Use Command-K in the top bar to search or jump."
+        >
+          <Search className="h-4 w-4" />
+          <span className="min-w-0 flex-1 truncate">Search or jump...</span>
+          <span className="console-kbd">⌘K</span>
+        </button>
+      ) : null}
+
+      <NavSection title="Workspace">
         <nav className="space-y-2">
           {baseLinks.map((link) => (
             <Link
@@ -176,8 +205,8 @@ function NavPanel({
 
       {projectLinks.length > 0 ? (
         <NavSection title="Current Project">
-          <div className="mb-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
-            <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">
+          <div className="mb-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-3">
+            <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
               <FolderOpen className="h-3.5 w-3.5" />
               Current Project
             </p>
@@ -189,7 +218,7 @@ function NavPanel({
               {formatProjectLabel(projectContext.label)}
             </p>
           </div>
-          <nav className="space-y-2">
+          <nav className="space-y-1">
             {projectLinks.map((link) => (
               <Link
                 key={link.href}
@@ -208,7 +237,7 @@ function NavPanel({
       ) : null}
 
       <NavSection title="Governance">
-        <nav className="space-y-2">
+        <nav className="space-y-1">
           {adminLinks.map((link) => (
             <Link
               key={link.href}
@@ -217,7 +246,7 @@ function NavPanel({
               className={linkClasses(pathname === link.href || pathname.startsWith(`${link.href}/`))}
             >
               <span className="inline-flex items-center gap-2">
-                <Settings className="h-4 w-4" />
+                {ADMIN_ICONS[link.label] ?? <Settings className="h-4 w-4" />}
                 {link.label}
               </span>
             </Link>
@@ -225,10 +254,10 @@ function NavPanel({
         </nav>
       </NavSection>
 
-      <div className={`space-y-4 rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 ${mobile ? "mt-6" : "mt-auto"}`}>
+      <div className={`space-y-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4 ${mobile ? "mt-6" : "mt-auto"}`}>
         <ThemeToggle />
         <div>
-          <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-muted)]">Context</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">Context</p>
           <p className="mt-2 text-lg font-medium text-[var(--color-text-primary)]">
             {hasProjectContext ? sectionTitle : sectionTitle === "Project" ? "Project" : sectionTitle}
           </p>
@@ -310,7 +339,12 @@ export function Nav(): JSX.Element {
     projectId && !hasProjectContext ? "Project" : contextLabelFromPath(pathname);
 
   const baseLinks: NavLink[] = [{ href: "/projects", label: "Projects" }];
-  const adminLinks: NavLink[] = [{ href: "/admin", label: "Admin" }];
+  const adminLinks: NavLink[] = [
+    { href: "/admin", label: "Library" },
+    { href: "/admin/patterns", label: "Patterns" },
+    { href: "/admin/dictionaries", label: "Dictionaries" },
+    { href: "/admin/assumptions", label: "Assumptions" },
+  ];
   const projectLinks: NavLink[] = projectId && hasProjectContext
     ? [
         { href: `/projects/${projectId}`, label: "Dashboard" },
@@ -383,7 +417,7 @@ export function Nav(): JSX.Element {
         </div>
       ) : null}
 
-      <aside className="hidden border-r border-[var(--color-border)] bg-[var(--color-surface-2)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[17.5rem] lg:shrink-0 lg:overflow-y-auto xl:w-[18.75rem]">
+      <aside className="hidden border-r border-[var(--color-border)] bg-[var(--color-surface)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[14.5rem] lg:shrink-0 lg:overflow-y-auto xl:w-[15rem]">
         <NavPanel
           pathname={pathname}
           baseLinks={baseLinks}

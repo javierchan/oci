@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { displaySourceFieldLabel, displayUiValue } from "./format";
+import { displayGovernedText, displaySourceFieldLabel, displayUiValue } from "./format";
 
 describe("format display helpers", () => {
   it("renders source lineage field labels in English US", () => {
@@ -20,5 +20,11 @@ describe("format display helpers", () => {
     expect(displayUiValue("Medio")).toBe("Medium");
     expect(displayUiValue("En Revisión")).toBe("In Review");
     expect(displayUiValue("Tiempo Real")).toBe("Real Time");
+  });
+
+  it("renders governed dictionary descriptions in English US", () => {
+    expect(displayGovernedText("Tipo: Programada. Usar para: Frecuencia estándar. Estatus: Válido.")).toBe(
+      "Type: Scheduled. Use for: standard frequency. Status: Valid.",
+    );
   });
 });

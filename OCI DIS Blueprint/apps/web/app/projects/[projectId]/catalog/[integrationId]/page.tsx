@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AiReviewButton } from "@/components/ai-review-button";
 import { Breadcrumb } from "@/components/breadcrumb";
 import { ComplexityBadge } from "@/components/complexity-badge";
 import { IntegrationDesignCanvasPanel } from "@/components/integration-design-canvas-panel";
@@ -287,11 +288,11 @@ export default async function IntegrationDetailPage({
     ) ?? selectedPatternDefinition;
 
   return (
-    <div className="space-y-8">
-      <section className="app-card p-6">
+    <div className="console-page">
+      <section className="console-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="app-kicker">Integration Detail</p>
+            <p className="app-kicker">Catalog Drawer · Integration Detail</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
               {integration.interface_name ?? integration.interface_id ?? integration.id}
             </h1>
@@ -326,8 +327,64 @@ export default async function IntegrationDetailPage({
               </Link>
             </div>
           </div>
-          <QaBadge status={integration.qa_status} />
+          <div className="flex flex-wrap items-center gap-3">
+            <AiReviewButton projectId={projectId} integrationId={integrationId} defaultScope="integration" />
+            <QaBadge status={integration.qa_status} />
+          </div>
         </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <article className="app-card p-5">
+          <p className="app-label">Route</p>
+          <p className="mt-3 text-sm font-semibold text-[var(--color-text-primary)]">
+            {integration.source_system ?? "Unknown source"}
+          </p>
+          <p className="my-2 text-lg font-semibold text-[var(--color-accent)]">→</p>
+          <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+            {integration.destination_system ?? "Unknown destination"}
+          </p>
+          <p className="mt-3 text-xs text-[var(--color-text-muted)]">
+            {displayUiValue(integration.source_technology)} to{" "}
+            {displayUiValue(integration.destination_technology_1)}
+          </p>
+        </article>
+
+        <article className="app-card p-5">
+          <p className="app-label">Pattern</p>
+          <p className="mt-3 text-lg font-semibold text-[var(--color-text-primary)]">
+            {selectedPatternDefinition
+              ? `${selectedPatternDefinition.pattern_id} · ${selectedPatternDefinition.name}`
+              : integration.selected_pattern ?? "Unassigned"}
+          </p>
+          {selectedPatternDefinition ? (
+            <div className="mt-3">
+              <PatternSupportBadge support={selectedPatternDefinition.support} />
+            </div>
+          ) : null}
+        </article>
+
+        <article className="app-card p-5">
+          <p className="app-label">Volumetry</p>
+          <p className="mt-3 text-2xl font-semibold text-[var(--color-text-primary)]">
+            {formatNumber(integration.payload_per_execution_kb, 1)} KB
+          </p>
+          <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+            {displayUiValue(integration.frequency)} · {formatNumber(integration.executions_per_day, 1)} exec/day
+          </p>
+        </article>
+
+        <article className="app-card p-5">
+          <p className="app-label">Governance</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <QaBadge status={integration.qa_status} />
+            <ComplexityBadge value={integration.complexity} />
+          </div>
+          <p className="mt-3 text-xs text-[var(--color-text-muted)]">
+            {auditEvents.length} audit event{auditEvents.length === 1 ? "" : "s"} ·{" "}
+            {integration.qa_reasons.length} QA reason{integration.qa_reasons.length === 1 ? "" : "s"}
+          </p>
+        </article>
       </section>
 
       <div className="grid items-start gap-8 xl:grid-cols-[1.1fr_0.9fr]">
