@@ -25,10 +25,12 @@ AiReviewArea = Literal[
     "canvas_consistency",
     "oci_compatibility",
     "stress_review",
+    "planned_drift",
     "demo_readiness",
     "red_team",
     "governance",
 ]
+AiReviewDriftStatus = Literal["no_baseline", "no_drift", "minor_drift", "material_drift", "blocking_drift"]
 
 
 class AiReviewGraphContext(BaseModel):
@@ -56,6 +58,43 @@ class AiReviewCreateRequest(BaseModel):
     )
 
 
+class AiReviewBaselineCreateRequest(BaseModel):
+    """Request payload to approve the current governed state as a planned baseline."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    scope: AiReviewScope = "project"
+    integration_id: Optional[str] = None
+    label: Optional[str] = Field(default=None, max_length=255)
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+
+class AiReviewBaselineResponse(BaseModel):
+    """Serialized approved planned-state baseline metadata."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    project_id: str
+    scope: AiReviewScope
+    integration_id: Optional[str] = None
+    created_by: str
+    label: str
+    note: Optional[str] = None
+    row_count: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class AiReviewBaselineLookupResponse(BaseModel):
+    """Lookup response for the active planned baseline in one review scope."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    baseline: Optional[AiReviewBaselineResponse] = None
+
+
 class AiReviewMetric(BaseModel):
     """One compact metric surfaced in the AI review board."""
 
@@ -78,6 +117,36 @@ class AiReviewEvidence(BaseModel):
     entity_type: str
     entity_id: Optional[str] = None
     href: Optional[str] = None
+
+
+class AiReviewDriftItem(BaseModel):
+    """One planned-baseline versus actual-state drift item."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    severity: Literal["critical", "high", "medium", "low"]
+    entity_type: Literal["project", "integration"]
+    integration_id: Optional[str] = None
+    field: str
+    label: str
+    planned: Optional[str] = None
+    actual: Optional[str] = None
+    detail: str
+    action_href: Optional[str] = None
+
+
+class AiReviewDriftReport(BaseModel):
+    """Planned-baseline versus current-state comparison surfaced in the review board."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    status: AiReviewDriftStatus
+    baseline: Optional[AiReviewBaselineResponse] = None
+    item_count: int = 0
+    worst_severity: Optional[Literal["critical", "high", "medium", "low"]] = None
+    summary: str
+    items: list[AiReviewDriftItem] = Field(default_factory=list)
 
 
 class AiReviewFieldDiff(BaseModel):
@@ -202,6 +271,12 @@ class AiReviewResponse(BaseModel):
     evidence: list[AiReviewEvidence] = Field(default_factory=list)
     evidence_pack: list[str] = Field(default_factory=list)
     reviewer_personas: list[AiReviewPersonaSummary] = Field(default_factory=list)
+    drift: AiReviewDriftReport = Field(
+        default_factory=lambda: AiReviewDriftReport(
+            status="no_baseline",
+            summary="No planned baseline was available when this review was generated.",
+        )
+    )
 
 
 class AiReviewJobResponse(BaseModel):

@@ -75,6 +75,7 @@ export interface AiReviewFinding {
     | "canvas_consistency"
     | "oci_compatibility"
     | "stress_review"
+    | "planned_drift"
     | "demo_readiness"
     | "red_team"
     | "governance";
@@ -123,6 +124,60 @@ export interface AiReviewSuggestedPatch {
   safety_note: string;
 }
 
+export type AiReviewDriftStatus =
+  | "no_baseline"
+  | "no_drift"
+  | "minor_drift"
+  | "material_drift"
+  | "blocking_drift";
+
+export interface AiReviewBaseline {
+  id: string;
+  project_id: string;
+  scope: AiReviewScope;
+  integration_id: string | null;
+  created_by: string;
+  label: string;
+  note: string | null;
+  row_count: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AiReviewBaselineLookup {
+  baseline: AiReviewBaseline | null;
+}
+
+export interface AiReviewBaselineRequest {
+  scope?: AiReviewScope;
+  integration_id?: string;
+  label?: string;
+  note?: string;
+}
+
+export interface AiReviewDriftItem {
+  id: string;
+  severity: Exclude<AiReviewSeverity, "positive">;
+  entity_type: "project" | "integration";
+  integration_id: string | null;
+  field: string;
+  label: string;
+  planned: string | null;
+  actual: string | null;
+  detail: string;
+  action_href: string | null;
+}
+
+export interface AiReviewDriftReport {
+  status: AiReviewDriftStatus;
+  baseline: AiReviewBaseline | null;
+  item_count: number;
+  worst_severity: Exclude<AiReviewSeverity, "positive"> | null;
+  summary: string;
+  items: AiReviewDriftItem[];
+}
+
 export interface AiReviewResponse {
   project_id: string;
   project_name: string;
@@ -143,6 +198,7 @@ export interface AiReviewResponse {
   evidence: AiReviewEvidence[];
   evidence_pack: string[];
   reviewer_personas: AiReviewPersonaSummary[];
+  drift: AiReviewDriftReport;
 }
 
 export interface AiReviewJobRequest {

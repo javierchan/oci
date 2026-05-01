@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models import (
+    AiReviewBaseline,
     AiReviewJob,
     CatalogIntegration,
     DashboardSnapshot,
@@ -23,8 +24,13 @@ from app.schemas.ai_review import (
     AiReviewAcceptRecommendationRequest,
     AiReviewApplyPatchRequest,
     AiReviewApplyPatchResponse,
+    AiReviewBaselineCreateRequest,
+    AiReviewBaselineLookupResponse,
+    AiReviewBaselineResponse,
     AiReviewCategory,
     AiReviewCreateRequest,
+    AiReviewDriftItem,
+    AiReviewDriftReport,
     AiReviewEvidence,
     AiReviewFieldDiff,
     AiReviewFinding,
@@ -73,6 +79,24 @@ GROUP_META: dict[AiReviewCategory, tuple[str, str]] = {
         "Looks production-ready",
         "Signals that are currently clean or ready to present.",
     ),
+}
+
+DRIFT_FIELD_META: dict[str, tuple[str, Literal["critical", "high", "medium", "low"]]] = {
+    "source_system": ("Source system", "high"),
+    "destination_system": ("Destination system", "high"),
+    "selected_pattern": ("Selected pattern", "high"),
+    "core_tools": ("Core route tools", "high"),
+    "additional_tools_overlays": ("Architectural overlays", "medium"),
+    "trigger_type": ("Trigger type", "medium"),
+    "payload_per_execution_kb": ("Payload per execution", "medium"),
+    "qa_status": ("QA status", "medium"),
+}
+
+DRIFT_SEVERITY_RANK: dict[Literal["critical", "high", "medium", "low"], int] = {
+    "critical": 4,
+    "high": 3,
+    "medium": 2,
+    "low": 1,
 }
 
 
@@ -124,6 +148,203 @@ def _catalog_href_for_context(project_id: str, graph_context: AiReviewGraphConte
 
 def _integration_href(project_id: str, integration_id: str) -> str:
     return f"/projects/{project_id}/catalog/{integration_id}"
+
+
+def _scope_label(scope: str, integration_id: str | None) -> str:
+    return "Integration" if scope == "integration" and integration_id else "Project"
+
+
+def _format_baseline_label(scope: str, integration_id: str | None) -> str:
+    return f"{_scope_label(scope, integration_id)} planned baseline {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}"
+
+
+def _tools_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    return ", ".join(parts) if parts else None
+
+
+def _row_baseline_state(row: CatalogIntegration) -> dict[str, object | None]:
+    return {
+        "id": row.id,
+        "seq_number": row.seq_number,
+        "interface_id": row.interface_id,
+        "interface_name": row.interface_name,
+        "source_system": row.source_system,
+        "destination_system": row.destination_system,
+        "selected_pattern": row.selected_pattern,
+        "core_tools": _tools_value(row.core_tools),
+        "additional_tools_overlays": _tools_value(row.additional_tools_overlays),
+        "trigger_type": row.trigger_type,
+        "payload_per_execution_kb": row.payload_per_execution_kb,
+        "qa_status": row.qa_status,
+    }
+
+
+def _baseline_payload(
+    *,
+    project: Project,
+    rows: list[CatalogIntegration],
+    scope: Literal["project", "integration"],
+    integration_id: str | None,
+    latest_snapshot: VolumetrySnapshot | None,
+    latest_dashboard: DashboardSnapshot | None,
+) -> dict[str, object]:
+    qa_counts = Counter((row.qa_status or "PENDING").upper() for row in rows)
+    return cast(
+        dict[str, object],
+        sanitize_for_json(
+            {
+                "version": 1,
+                "project_id": project.id,
+                "project_name": project.name,
+                "scope": scope,
+                "integration_id": integration_id,
+                "captured_at": datetime.now(UTC).isoformat(),
+                "row_count": len(rows),
+                "latest_volumetry_snapshot_id": latest_snapshot.id if latest_snapshot else None,
+                "latest_dashboard_snapshot_id": latest_dashboard.id if latest_dashboard else None,
+                "qa_counts": dict(qa_counts),
+                "rows": [_row_baseline_state(row) for row in rows],
+            }
+        ),
+    )
+
+
+def _stringify_drift_value(value: object | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, float):
+        return f"{value:g}"
+    if isinstance(value, int):
+        return str(value)
+    return str(value)
+
+
+def _normalize_drift_value(field: str, value: object | None) -> str:
+    if value is None:
+        return ""
+    if field in {"core_tools", "additional_tools_overlays"}:
+        return "|".join(sorted(part.strip().lower() for part in str(value).split(",") if part.strip()))
+    if field == "payload_per_execution_kb":
+        try:
+            return f"{float(value):.3f}"
+        except (TypeError, ValueError):
+            return str(value).strip().lower()
+    return str(value).strip().lower()
+
+
+def _drift_status(items: list[AiReviewDriftItem]) -> tuple[
+    Literal["no_drift", "minor_drift", "material_drift", "blocking_drift"],
+    Literal["critical", "high", "medium", "low"] | None,
+]:
+    if not items:
+        return "no_drift", None
+    worst = max(items, key=lambda item: DRIFT_SEVERITY_RANK[item.severity]).severity
+    if worst == "critical":
+        return "blocking_drift", worst
+    if worst == "high":
+        return "material_drift", worst
+    return "minor_drift", worst
+
+
+def _baseline_rows(payload: dict[str, object]) -> list[dict[str, object]]:
+    rows = payload.get("rows")
+    if not isinstance(rows, list):
+        return []
+    return [cast(dict[str, object], row) for row in rows if isinstance(row, dict)]
+
+
+def _drift_report(
+    *,
+    baseline: AiReviewBaseline | None,
+    project_id: str,
+    rows: list[CatalogIntegration],
+) -> AiReviewDriftReport:
+    if baseline is None:
+        return AiReviewDriftReport(
+            status="no_baseline",
+            summary="No approved planned baseline exists for this review scope yet.",
+        )
+
+    baseline_payload = cast(dict[str, object], baseline.baseline_payload or {})
+    planned_rows = {str(row.get("id")): row for row in _baseline_rows(baseline_payload) if row.get("id")}
+    actual_rows = {row.id: _row_baseline_state(row) for row in rows}
+    items: list[AiReviewDriftItem] = []
+
+    for planned_id, planned in sorted(planned_rows.items()):
+        if planned_id not in actual_rows:
+            items.append(
+                AiReviewDriftItem(
+                    id=f"DRIFT-{len(items) + 1:03d}",
+                    severity="critical",
+                    entity_type="integration",
+                    integration_id=planned_id,
+                    field="integration",
+                    label=str(planned.get("interface_name") or planned.get("interface_id") or planned_id),
+                    planned="Present in planned baseline",
+                    actual="Missing from current catalog scope",
+                    detail="A planned integration is no longer present in the current review scope.",
+                    action_href=_catalog_href(project_id),
+                )
+            )
+            continue
+
+        actual = actual_rows[planned_id]
+        label = str(actual.get("interface_name") or actual.get("interface_id") or planned_id)
+        for field, (field_label, severity) in DRIFT_FIELD_META.items():
+            planned_value = planned.get(field)
+            actual_value = actual.get(field)
+            if _normalize_drift_value(field, planned_value) == _normalize_drift_value(field, actual_value):
+                continue
+            items.append(
+                AiReviewDriftItem(
+                    id=f"DRIFT-{len(items) + 1:03d}",
+                    severity=severity,
+                    entity_type="integration",
+                    integration_id=planned_id,
+                    field=field,
+                    label=f"{label} · {field_label}",
+                    planned=_stringify_drift_value(planned_value),
+                    actual=_stringify_drift_value(actual_value),
+                    detail=f"{field_label} differs from the approved planned baseline.",
+                    action_href=_integration_href(project_id, planned_id),
+                )
+            )
+
+    for actual_id, actual in sorted(actual_rows.items()):
+        if actual_id in planned_rows:
+            continue
+        items.append(
+            AiReviewDriftItem(
+                id=f"DRIFT-{len(items) + 1:03d}",
+                severity="medium",
+                entity_type="integration",
+                integration_id=actual_id,
+                field="integration",
+                label=str(actual.get("interface_name") or actual.get("interface_id") or actual_id),
+                planned="Not present in planned baseline",
+                actual="Present in current catalog scope",
+                detail="A current integration was added after the planned baseline was approved.",
+                action_href=_integration_href(project_id, actual_id),
+            )
+        )
+
+    status, worst = _drift_status(items)
+    if status == "no_drift":
+        summary = "Current governed state matches the active planned baseline."
+    else:
+        summary = f"{len(items)} planned-versus-actual drift item(s) require review."
+
+    return AiReviewDriftReport(
+        status=status,
+        baseline=serialize_ai_review_baseline(baseline),
+        item_count=len(items),
+        worst_severity=worst,
+        summary=summary,
+        items=items[:20],
+    )
 
 
 def _rows_for_graph_context(
@@ -246,6 +467,7 @@ def _finding(
         "canvas_consistency",
         "oci_compatibility",
         "stress_review",
+        "planned_drift",
         "demo_readiness",
         "red_team",
         "governance",
@@ -333,6 +555,29 @@ async def _latest_dashboard_snapshot(project_id: str, db: AsyncSession) -> Dashb
         .order_by(DashboardSnapshot.created_at.desc())
         .limit(1)
     )
+
+
+async def _active_baseline(
+    project_id: str,
+    scope: Literal["project", "integration"],
+    integration_id: str | None,
+    db: AsyncSession,
+) -> AiReviewBaseline | None:
+    query = (
+        select(AiReviewBaseline)
+        .where(
+            AiReviewBaseline.project_id == project_id,
+            AiReviewBaseline.scope == scope,
+            AiReviewBaseline.is_active.is_(True),
+        )
+        .order_by(AiReviewBaseline.created_at.desc())
+        .limit(1)
+    )
+    if scope == "integration":
+        query = query.where(AiReviewBaseline.integration_id == integration_id)
+    else:
+        query = query.where(AiReviewBaseline.integration_id.is_(None))
+    return await db.scalar(query)
 
 
 def _design_warning_map(
@@ -513,6 +758,14 @@ def _review_from_payload(payload: dict | None) -> AiReviewResponse | None:
     generated_at = normalized.get("generated_at")
     if isinstance(generated_at, str):
         normalized["generated_at"] = _parse_datetime(generated_at)
+    drift = normalized.get("drift")
+    if isinstance(drift, dict):
+        baseline = drift.get("baseline")
+        if isinstance(baseline, dict):
+            for key in ("created_at", "updated_at"):
+                value = baseline.get(key)
+                if isinstance(value, str):
+                    baseline[key] = _parse_datetime(value)
     return AiReviewResponse.model_validate(normalized)
 
 
@@ -534,6 +787,24 @@ def serialize_ai_review_job(job: AiReviewJob) -> AiReviewJobResponse:
         finished_at=job.finished_at,
         created_at=job.created_at,
         updated_at=job.updated_at,
+    )
+
+
+def serialize_ai_review_baseline(baseline: AiReviewBaseline) -> AiReviewBaselineResponse:
+    """Convert a persisted planned baseline into its API response."""
+
+    return AiReviewBaselineResponse(
+        id=baseline.id,
+        project_id=baseline.project_id,
+        scope=cast(Literal["project", "integration"], baseline.scope),
+        integration_id=baseline.integration_id,
+        created_by=baseline.created_by,
+        label=baseline.label,
+        note=baseline.note,
+        row_count=baseline.row_count,
+        is_active=baseline.is_active,
+        created_at=baseline.created_at,
+        updated_at=baseline.updated_at,
     )
 
 
@@ -565,6 +836,123 @@ async def get_ai_review_job(job_id: str, db: AsyncSession) -> AiReviewJobRespons
     """Return one persisted AI review job."""
 
     return serialize_ai_review_job(await _load_job(job_id, db))
+
+
+async def get_active_ai_review_baseline(
+    project_id: str,
+    scope: Literal["project", "integration"],
+    integration_id: str | None,
+    db: AsyncSession,
+) -> AiReviewBaselineLookupResponse:
+    """Return the active approved planned baseline for one review scope."""
+
+    await _load_project(project_id, db)
+    if scope == "integration" and integration_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "detail": "integration_id is required when scope is integration.",
+                "error_code": "AI_REVIEW_BASELINE_INTEGRATION_SCOPE_REQUIRES_ID",
+            },
+        )
+    if scope == "project" and integration_id is not None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "detail": "integration_id can only be provided for integration-scoped baselines.",
+                "error_code": "AI_REVIEW_BASELINE_PROJECT_SCOPE_REJECTS_INTEGRATION_ID",
+            },
+        )
+    if integration_id is not None:
+        await _load_integration(project_id, integration_id, db)
+    baseline = await _active_baseline(project_id, scope, integration_id, db)
+    return AiReviewBaselineLookupResponse(
+        baseline=serialize_ai_review_baseline(baseline) if baseline else None,
+    )
+
+
+async def create_ai_review_baseline(
+    project_id: str,
+    body: AiReviewBaselineCreateRequest,
+    actor_id: str,
+    db: AsyncSession,
+) -> AiReviewBaselineResponse:
+    """Approve the current governed state as the active planned baseline."""
+
+    project = await _load_project(project_id, db)
+    if body.scope == "integration":
+        if body.integration_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "detail": "integration_id is required when scope is integration.",
+                    "error_code": "AI_REVIEW_BASELINE_INTEGRATION_SCOPE_REQUIRES_ID",
+                },
+            )
+        await _load_integration(project_id, body.integration_id, db)
+    elif body.integration_id is not None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "detail": "integration_id can only be provided for integration-scoped baselines.",
+                "error_code": "AI_REVIEW_BASELINE_PROJECT_SCOPE_REJECTS_INTEGRATION_ID",
+            },
+        )
+
+    rows = await _load_rows(project_id, db, integration_id=body.integration_id if body.scope == "integration" else None)
+    latest_snapshot = await _latest_volumetry_snapshot(project_id, db)
+    latest_dashboard = await _latest_dashboard_snapshot(project_id, db)
+    payload = _baseline_payload(
+        project=project,
+        rows=rows,
+        scope=body.scope,
+        integration_id=body.integration_id,
+        latest_snapshot=latest_snapshot,
+        latest_dashboard=latest_dashboard,
+    )
+
+    existing = await db.scalars(
+        select(AiReviewBaseline).where(
+            AiReviewBaseline.project_id == project_id,
+            AiReviewBaseline.scope == body.scope,
+            AiReviewBaseline.is_active.is_(True),
+            (
+                AiReviewBaseline.integration_id == body.integration_id
+                if body.scope == "integration"
+                else AiReviewBaseline.integration_id.is_(None)
+            ),
+        )
+    )
+    for baseline in existing.all():
+        baseline.is_active = False
+
+    baseline = AiReviewBaseline(
+        project_id=project_id,
+        scope=body.scope,
+        integration_id=body.integration_id,
+        created_by=actor_id or AI_REVIEW_ACTOR_FALLBACK,
+        label=body.label or _format_baseline_label(body.scope, body.integration_id),
+        note=body.note,
+        baseline_payload=payload,
+        row_count=len(rows),
+        is_active=True,
+    )
+    db.add(baseline)
+    await db.flush()
+    await db.refresh(baseline)
+    response = serialize_ai_review_baseline(baseline)
+    await audit_service.emit(
+        event_type="ai_review_baseline_created",
+        entity_type="ai_review_baseline",
+        entity_id=baseline.id,
+        actor_id=baseline.created_by,
+        old_value=None,
+        new_value=response.model_dump(mode="json"),
+        project_id=project_id,
+        db=db,
+        correlation_id=baseline.id,
+    )
+    return response
 
 
 async def create_ai_review_job(
@@ -694,8 +1082,14 @@ async def build_review_result(
         rows = _rows_for_graph_context(rows, graph_context)
     latest_snapshot = await _latest_volumetry_snapshot(project_id, db)
     latest_dashboard = await _latest_dashboard_snapshot(project_id, db)
+    active_baseline = await _active_baseline(project_id, scope, integration_id if scope == "integration" else None, db)
     scoped_ids = {row.id for row in rows}
     warning_map = _design_warning_map(latest_snapshot, allowed_ids=scoped_ids if scope == "integration" else None)
+    drift = _drift_report(
+        baseline=active_baseline,
+        project_id=project_id,
+        rows=rows,
+    )
 
     total = len(rows)
     qa_counts = Counter((row.qa_status or "PENDING").upper() for row in rows)
@@ -760,6 +1154,19 @@ async def build_review_result(
         entity_id=project_id,
         href=_catalog_href_for_context(project_id, graph_context),
     )
+    ev_baseline = _evidence(
+        evidence,
+        label="Planned baseline",
+        detail=(
+            f"{drift.baseline.label} · {drift.item_count} drift item(s)."
+            if drift.baseline
+            else "No active approved planned baseline exists for this scope."
+        ),
+        source="ai_review_baselines",
+        entity_type="ai_review_baseline" if drift.baseline else "project",
+        entity_id=drift.baseline.id if drift.baseline else project_id,
+        href=f"/projects/{project_id}",
+    )
     ev_coverage = _evidence(
         evidence,
         label="Coverage metrics",
@@ -775,6 +1182,62 @@ async def build_review_result(
     )
 
     findings: list[AiReviewFinding] = []
+    if drift.status == "no_baseline":
+        ids = [ev_baseline.id]
+        findings.append(
+            _finding(
+                "planned-baseline-missing",
+                "low",
+                "planned_drift",
+                "No approved planned baseline exists",
+                "The review can recommend improvements, but it cannot detect planned-versus-actual drift yet.",
+                ids,
+                _evidence_lines(evidence, ids),
+                "planned_baseline=none",
+                "A reviewed project should have an explicit planned baseline before drift governance is expected.",
+                "Save the current approved state as the planned baseline, then re-run AI Review.",
+                "Save planned baseline",
+                f"/projects/{project_id}",
+            )
+        )
+    elif drift.item_count > 0:
+        ids = [ev_baseline.id]
+        severity: AiReviewSeverity = "critical" if drift.worst_severity == "critical" else "high"
+        findings.append(
+            _finding(
+                "planned-actual-drift",
+                severity,
+                "planned_drift",
+                "Current state has drifted from the approved plan",
+                drift.summary,
+                ids,
+                [*_evidence_lines(evidence, ids), *[item.detail for item in drift.items[:3]]],
+                f"drift_status={drift.status}, drift_items={drift.item_count}",
+                "Actual project state should match the active planned baseline or be re-approved as the new plan.",
+                "Review the drift items and either restore the planned design or save a new planned baseline.",
+                "Review drift",
+                f"/projects/{project_id}",
+                [item.integration_id for item in drift.items if item.integration_id][:MAX_LINKED_INTEGRATIONS],
+            )
+        )
+    else:
+        ids = [ev_baseline.id]
+        findings.append(
+            _finding(
+                "planned-actual-aligned",
+                "positive",
+                "planned_drift",
+                "Current state matches the approved plan",
+                "No planned-versus-actual drift was detected for this review scope.",
+                ids,
+                _evidence_lines(evidence, ids),
+                "drift_items=0",
+                "Actual project state should remain aligned with the active planned baseline.",
+                "Keep the baseline current whenever an architect approves material design changes.",
+                "Open dashboard",
+                f"/projects/{project_id}",
+            )
+        )
     if total == 0:
         ids = [ev_catalog.id]
         findings.append(
@@ -1124,6 +1587,11 @@ async def build_review_result(
             value=_format_percent(total - len(missing_design), total),
             detail=f"{len(missing_design)} row(s) still lack core route tools.",
         ),
+        AiReviewMetric(
+            label="Planned drift",
+            value="No baseline" if drift.status == "no_baseline" else str(drift.item_count),
+            detail=drift.summary,
+        ),
     ]
     evidence_pack = [
         f"project_id={project_id}",
@@ -1137,6 +1605,9 @@ async def build_review_result(
         f"latest_volumetry_snapshot={latest_snapshot.id if latest_snapshot else 'none'}",
         f"latest_dashboard_snapshot={latest_dashboard.id if latest_dashboard else 'none'}",
         f"design_warning_rows={len(warning_map)}",
+        f"planned_baseline={drift.baseline.id if drift.baseline else 'none'}",
+        f"planned_drift_status={drift.status}",
+        f"planned_drift_items={drift.item_count}",
         f"formal_evidence_ids={','.join(item.id for item in evidence)}",
     ]
     deterministic_summary = _summary(score, label, findings)
@@ -1180,6 +1651,7 @@ async def build_review_result(
             findings=findings,
             metrics=metrics,
         ),
+        drift=drift,
     )
 
 

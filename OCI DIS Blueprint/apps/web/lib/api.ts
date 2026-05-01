@@ -4,10 +4,14 @@ import type {
   AssumptionList,
   AssumptionSet,
   AssumptionSetCreate,
+  AiReviewBaseline,
+  AiReviewBaselineLookup,
+  AiReviewBaselineRequest,
   AiReviewJob,
   AiReviewApplyPatchResponse,
   AiReviewJobList,
   AiReviewJobRequest,
+  AiReviewScope,
   AuditPage,
   CanvasGovernance,
   CatalogIntegrationDetail,
@@ -466,6 +470,19 @@ export const api = {
 
   runAiReview: (projectId: string, body: AiReviewJobRequest = {}): Promise<AiReviewJob> =>
     apiFetch<AiReviewJob>(`/api/v1/ai-reviews/projects/${projectId}`, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify(body),
+    }),
+
+  getAiReviewBaseline: (
+    projectId: string,
+    params: { scope?: AiReviewScope; integration_id?: string } = {},
+  ): Promise<AiReviewBaselineLookup> =>
+    apiFetch<AiReviewBaselineLookup>(`/api/v1/ai-reviews/projects/${projectId}/baseline${withQuery(params)}`),
+
+  createAiReviewBaseline: (projectId: string, body: AiReviewBaselineRequest = {}): Promise<AiReviewBaseline> =>
+    apiFetch<AiReviewBaseline>(`/api/v1/ai-reviews/projects/${projectId}/baseline`, {
       method: "POST",
       headers: adminHeaders(),
       body: JSON.stringify(body),
