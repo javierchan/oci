@@ -115,6 +115,26 @@
         "title": "AiReviewBaselineCreateRequest",
         "type": "object"
       },
+      "AiReviewBaselineListResponse": {
+        "additionalProperties": false,
+        "description": "Historical planned baselines for one review scope, active first.",
+        "properties": {
+          "baselines": {
+            "items": {
+              "$ref": "#/components/schemas/AiReviewBaselineResponse"
+            },
+            "title": "Baselines",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "AiReviewBaselineListResponse",
+        "type": "object"
+      },
       "AiReviewBaselineLookupResponse": {
         "additionalProperties": false,
         "description": "Lookup response for the active planned baseline in one review scope.",
@@ -1220,6 +1240,19 @@
           "safety_note"
         ],
         "title": "AiReviewSuggestedPatch",
+        "type": "object"
+      },
+      "ApproveJustificationRequest": {
+        "additionalProperties": false,
+        "description": "Approval request payload.",
+        "properties": {
+          "actor_id": {
+            "default": "api-user",
+            "title": "Actor Id",
+            "type": "string"
+          }
+        },
+        "title": "ApproveJustificationRequest",
         "type": "object"
       },
       "AssumptionSetCreate": {
@@ -3641,6 +3674,164 @@
         "title": "ImportBatchResponse",
         "type": "object"
       },
+      "JustificationListResponse": {
+        "additionalProperties": false,
+        "description": "Project-level collection of justification narratives.",
+        "properties": {
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/JustificationRecordResponse"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "JustificationListResponse",
+        "type": "object"
+      },
+      "JustificationNarrative": {
+        "additionalProperties": false,
+        "description": "Structured deterministic narrative content.",
+        "properties": {
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "methodology_blocks": {
+            "items": {
+              "$ref": "#/components/schemas/MethodologyBlock"
+            },
+            "title": "Methodology Blocks",
+            "type": "array"
+          },
+          "override_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Text"
+          },
+          "qa_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Qa Reasons",
+            "type": "array"
+          },
+          "qa_status": {
+            "title": "Qa Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary",
+          "qa_status"
+        ],
+        "title": "JustificationNarrative",
+        "type": "object"
+      },
+      "JustificationRecordResponse": {
+        "additionalProperties": false,
+        "description": "Serialized justification record or generated draft narrative.",
+        "properties": {
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "narrative": {
+            "$ref": "#/components/schemas/JustificationNarrative"
+          },
+          "override_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Notes"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "project_id",
+          "integration_id",
+          "state",
+          "narrative"
+        ],
+        "title": "JustificationRecordResponse",
+        "type": "object"
+      },
       "LineageDetail": {
         "additionalProperties": false,
         "description": "Source lineage for a catalog row.",
@@ -3942,6 +4133,73 @@
         "title": "ManualIntegrationCreate",
         "type": "object"
       },
+      "MethodologyBlock": {
+        "additionalProperties": false,
+        "description": "One deterministic narrative section.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "body"
+        ],
+        "title": "MethodologyBlock",
+        "type": "object"
+      },
+      "MigrationReadinessResponse": {
+        "additionalProperties": false,
+        "description": "Current Alembic migration state compared with repository heads.",
+        "properties": {
+          "current_revisions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Current Revisions",
+            "type": "array"
+          },
+          "head_revisions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Head Revisions",
+            "type": "array"
+          },
+          "pending_revisions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pending Revisions",
+            "type": "array"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "recovery_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Hint"
+          }
+        },
+        "required": [
+          "ready"
+        ],
+        "title": "MigrationReadinessResponse",
+        "type": "object"
+      },
       "NormalizationEventResponse": {
         "additionalProperties": false,
         "description": "Serialized normalization event.",
@@ -4093,6 +4351,37 @@
           }
         },
         "title": "OICMetrics",
+        "type": "object"
+      },
+      "OverrideJustificationRequest": {
+        "additionalProperties": false,
+        "description": "Override request payload.",
+        "properties": {
+          "actor_id": {
+            "default": "api-user",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "override_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Notes"
+          },
+          "override_text": {
+            "title": "Override Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "override_text"
+        ],
+        "title": "OverrideJustificationRequest",
         "type": "object"
       },
       "PatternDefinitionCreate": {
@@ -4768,6 +5057,177 @@
         "title": "ProjectResponse",
         "type": "object"
       },
+      "PromptTemplateVersionCreate": {
+        "additionalProperties": false,
+        "description": "Admin payload to create a versioned narrative template.",
+        "properties": {
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "template_config": {
+            "title": "Template Config",
+            "type": "object"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "name",
+          "template_config"
+        ],
+        "title": "PromptTemplateVersionCreate",
+        "type": "object"
+      },
+      "PromptTemplateVersionListResponse": {
+        "additionalProperties": false,
+        "description": "List of versioned narrative templates.",
+        "properties": {
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/PromptTemplateVersionResponse"
+            },
+            "title": "Templates",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "PromptTemplateVersionListResponse",
+        "type": "object"
+      },
+      "PromptTemplateVersionResponse": {
+        "additionalProperties": false,
+        "description": "Serialized narrative template version.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "template_config": {
+            "title": "Template Config",
+            "type": "object"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "name",
+          "is_default",
+          "template_config",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PromptTemplateVersionResponse",
+        "type": "object"
+      },
+      "PromptTemplateVersionUpdate": {
+        "additionalProperties": false,
+        "description": "Admin payload to update a versioned narrative template.",
+        "properties": {
+          "is_default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Default"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "template_config": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Config"
+          }
+        },
+        "title": "PromptTemplateVersionUpdate",
+        "type": "object"
+      },
       "QueueMetrics": {
         "additionalProperties": false,
         "description": "OCI Queue consolidated metrics.",
@@ -4779,6 +5239,30 @@
           }
         },
         "title": "QueueMetrics",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "additionalProperties": false,
+        "description": "API readiness contract for operators and frontend diagnostics.",
+        "properties": {
+          "database_migrations": {
+            "$ref": "#/components/schemas/MigrationReadinessResponse"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version",
+          "database_migrations"
+        ],
+        "title": "ReadinessResponse",
         "type": "object"
       },
       "RecalculationJobStatusResponse": {
@@ -4839,6 +5323,19 @@
           "status"
         ],
         "title": "RecalculationJobStatusResponse",
+        "type": "object"
+      },
+      "ResetJustificationRequest": {
+        "additionalProperties": false,
+        "description": "Reset request payload.",
+        "properties": {
+          "actor_id": {
+            "default": "api-user",
+            "title": "Actor Id",
+            "type": "string"
+          }
+        },
+        "title": "ResetJustificationRequest",
         "type": "object"
       },
       "ScopedRecalculationRequest": {
@@ -6212,6 +6709,91 @@
           }
         },
         "summary": "Approve the current project or integration state as the planned baseline",
+        "tags": [
+          "AI Reviews"
+        ]
+      }
+    },
+    "/api/v1/ai-reviews/projects/{project_id}/baselines": {
+      "get": {
+        "description": "Return baseline history for governance comparison and audit review.",
+        "operationId": "list_project_ai_review_baselines_api_v1_ai_reviews_projects__project_id__baselines_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "project",
+              "enum": [
+                "project",
+                "integration"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "integration_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Integration Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiReviewBaselineListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List active and historical planned baselines for one AI review scope",
         "tags": [
           "AI Reviews"
         ]
@@ -8129,6 +8711,46 @@
         ]
       }
     },
+    "/api/v1/exports/{project_id}/brief": {
+      "get": {
+        "operationId": "download_project_brief_api_v1_exports__project_id__brief_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download executive project brief as Markdown",
+        "tags": [
+          "Exports"
+        ]
+      }
+    },
     "/api/v1/exports/{project_id}/jobs/{job_id}": {
       "get": {
         "operationId": "get_export_job_api_v1_exports__project_id__jobs__job_id__get",
@@ -8693,8 +9315,240 @@
         ]
       }
     },
+    "/api/v1/justifications/templates": {
+      "get": {
+        "description": "Return governed prompt/narrative template versions.",
+        "operationId": "list_prompt_templates_api_v1_justifications_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptTemplateVersionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List narrative templates",
+        "tags": [
+          "Justifications"
+        ]
+      },
+      "post": {
+        "description": "Create a governed deterministic narrative template version.",
+        "operationId": "create_prompt_template_api_v1_justifications_templates_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromptTemplateVersionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptTemplateVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create narrative template",
+        "tags": [
+          "Justifications"
+        ]
+      }
+    },
+    "/api/v1/justifications/templates/{version}": {
+      "get": {
+        "description": "Return one governed deterministic narrative template.",
+        "operationId": "get_prompt_template_api_v1_justifications_templates__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptTemplateVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get narrative template",
+        "tags": [
+          "Justifications"
+        ]
+      },
+      "patch": {
+        "description": "Patch one governed deterministic narrative template version.",
+        "operationId": "update_prompt_template_api_v1_justifications_templates__version__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromptTemplateVersionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptTemplateVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update narrative template",
+        "tags": [
+          "Justifications"
+        ]
+      }
+    },
+    "/api/v1/justifications/templates/{version}/default": {
+      "post": {
+        "description": "Promote one narrative template version to default.",
+        "operationId": "set_default_prompt_template_api_v1_justifications_templates__version__default_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptTemplateVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set default narrative template",
+        "tags": [
+          "Justifications"
+        ]
+      }
+    },
     "/api/v1/justifications/{project_id}": {
       "get": {
+        "description": "List deterministic justification narratives for one project.",
         "operationId": "list_justifications_api_v1_justifications__project_id__get",
         "parameters": [
           {
@@ -8711,7 +9565,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JustificationListResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -8734,7 +9590,85 @@
       }
     },
     "/api/v1/justifications/{project_id}/{integration_id}": {
+      "delete": {
+        "description": "Delete a governed record and return the regenerated deterministic draft.",
+        "operationId": "reset_justification_api_v1_justifications__project_id___integration_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ResetJustificationRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JustificationRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset justification narrative",
+        "tags": [
+          "Justifications"
+        ]
+      },
       "get": {
+        "description": "Return the governed or draft deterministic narrative for one integration.",
         "operationId": "get_justification_api_v1_justifications__project_id___integration_id__get",
         "parameters": [
           {
@@ -8760,7 +9694,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JustificationRecordResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -8784,7 +9720,7 @@
     },
     "/api/v1/justifications/{project_id}/{integration_id}/approve": {
       "post": {
-        "description": "Sets state=approved, records approved_by, emits AuditEvent (PRD-042).",
+        "description": "Persist the deterministic narrative and mark it approved.",
         "operationId": "approve_justification_api_v1_justifications__project_id___integration_id__approve_post",
         "parameters": [
           {
@@ -8804,13 +9740,42 @@
               "title": "Integration Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApproveJustificationRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JustificationRecordResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -8834,6 +9799,7 @@
     },
     "/api/v1/justifications/{project_id}/{integration_id}/override": {
       "post": {
+        "description": "Persist an architect override while retaining deterministic evidence.",
         "operationId": "override_justification_api_v1_justifications__project_id___integration_id__override_post",
         "parameters": [
           {
@@ -8853,14 +9819,23 @@
               "title": "Integration Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "title": "Body",
-                "type": "object"
+                "$ref": "#/components/schemas/OverrideJustificationRequest"
               }
             }
           },
@@ -8870,7 +9845,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JustificationRecordResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -9868,6 +10845,27 @@
           }
         },
         "summary": "Health",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/readiness": {
+      "get": {
+        "operationId": "readiness_readiness_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness",
         "tags": [
           "Health"
         ]

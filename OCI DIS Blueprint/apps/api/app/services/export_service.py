@@ -16,7 +16,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import DictionaryOption, Project, VolumetrySnapshot
+from app.models import AiReviewBaseline, AiReviewJob, AiReviewJobStatus, DictionaryOption, Project, VolumetrySnapshot
 from app.schemas.export import ExportJobResponse
 from app.services import dashboard_service, justification_service, recalc_service
 from app.services.catalog_service import list_integrations
@@ -549,6 +549,152 @@ async def create_pdf_export(
         snapshot_id=snapshot_id,
         export_format="pdf",
         filename=f"{project_id}-{snapshot_id}.pdf",
+        file_path=file_path,
+    )
+
+
+async def _latest_completed_ai_review(project_id: str, db: AsyncSession) -> AiReviewJob | None:
+    """Return the latest completed governed AI review job for brief context."""
+
+    return await db.scalar(
+        select(AiReviewJob)
+        .where(
+            AiReviewJob.project_id == project_id,
+            AiReviewJob.status == AiReviewJobStatus.COMPLETED,
+            AiReviewJob.result_payload.is_not(None),
+        )
+        .order_by(AiReviewJob.finished_at.desc().nullslast(), AiReviewJob.created_at.desc())
+    )
+
+
+async def _active_project_baseline(project_id: str, db: AsyncSession) -> AiReviewBaseline | None:
+    """Return the active project-level planned baseline when one has been approved."""
+
+    return await db.scalar(
+        select(AiReviewBaseline)
+        .where(
+            AiReviewBaseline.project_id == project_id,
+            AiReviewBaseline.scope == "project",
+            AiReviewBaseline.is_active.is_(True),
+        )
+        .order_by(AiReviewBaseline.created_at.desc())
+    )
+
+
+def _brief_text(value: object | None, fallback: str = "Not available") -> str:
+    if value is None:
+        return fallback
+    text = str(value).strip()
+    return text or fallback
+
+
+def _brief_findings(review_payload: dict[str, object] | None) -> list[dict[str, object]]:
+    if not review_payload:
+        return []
+    findings = review_payload.get("findings")
+    if not isinstance(findings, list):
+        return []
+    return [cast(dict[str, object], item) for item in findings if isinstance(item, dict)]
+
+
+async def create_brief_export(project_id: str, db: AsyncSession) -> ExportJobResponse:
+    """Generate an executive Markdown brief from dashboard, drift, and review evidence."""
+
+    project = await _load_project(project_id, db)
+    snapshot_id = await latest_snapshot_id(project_id, db)
+    dashboard_snapshot = await dashboard_service.get_snapshot(project_id, snapshot_id, db)
+    catalog_page = await list_integrations(project_id, page=1, page_size=10_000, filters={}, db=db)
+    latest_review = await _latest_completed_ai_review(project_id, db)
+    active_baseline = await _active_project_baseline(project_id, db)
+    review_payload = cast(dict[str, object] | None, latest_review.result_payload if latest_review else None)
+    drift = cast(dict[str, object], review_payload.get("drift", {})) if review_payload else {}
+    support_boundary = _pattern_support_payload(
+        [item.selected_pattern for item in catalog_page.integrations if item.selected_pattern]
+    )
+
+    lines = [
+        f"# OCI DIS Blueprint Executive Brief - {project.name}",
+        "",
+        f"- Generated: {_utc_now().isoformat()}",
+        f"- Project ID: `{project_id}`",
+        f"- Snapshot ID: `{snapshot_id}`",
+        f"- Catalog integrations: {catalog_page.total}",
+        f"- Planned baseline: {_brief_text(active_baseline.label if active_baseline else None, 'No approved baseline')}",
+        "",
+        "## Executive Summary",
+        "",
+        _brief_text(review_payload.get("summary") if review_payload else None, "No completed AI review is available yet."),
+        "",
+        "## Core KPIs",
+        "",
+        f"- OIC billing messages/month: {dashboard_snapshot.kpi_strip.oic_msgs_month:g}",
+        f"- OIC peak packs/hour: {dashboard_snapshot.kpi_strip.peak_packs_hour:g}",
+        f"- Data Integration workspace active: {'Yes' if dashboard_snapshot.kpi_strip.di_workspace_active else 'No'}",
+        f"- Data Integration GB/month: {dashboard_snapshot.kpi_strip.di_data_processed_gb_month:g}",
+        f"- Functions GB-s/month: {dashboard_snapshot.kpi_strip.functions_execution_units_gb_s:g}",
+        f"- QA OK: {dashboard_snapshot.charts.completeness.qa_ok}",
+        f"- QA Review: {dashboard_snapshot.charts.completeness.qa_revisar}",
+        f"- QA Pending: {dashboard_snapshot.charts.completeness.qa_pending}",
+        "",
+        "## Readiness and Drift",
+        "",
+        f"- Review readiness: {_brief_text(review_payload.get('readiness_label') if review_payload else None)}",
+        f"- Readiness score: {_brief_text(review_payload.get('readiness_score') if review_payload else None)}",
+        f"- Planned vs actual drift: {_brief_text(drift.get('status'), 'No drift result available')}",
+        f"- Drift summary: {_brief_text(drift.get('summary'), 'No drift summary available')}",
+        "",
+        "## Pattern Support Boundary",
+        "",
+        "- Parity-ready patterns in use: "
+        + ", ".join(cast(list[str], support_boundary["fully_supported_pattern_ids"]) or ["None"]),
+        "- Reference-only patterns in use: "
+        + ", ".join(cast(list[str], support_boundary["reference_only_pattern_ids"]) or ["None"]),
+        "",
+        "## Top Risks",
+        "",
+    ]
+    if dashboard_snapshot.risks:
+        for risk in dashboard_snapshot.risks[:8]:
+            lines.append(f"- {risk.label}: {risk.count}")
+    else:
+        lines.append("- No dashboard risks were detected in the latest snapshot.")
+
+    findings = [
+        finding
+        for finding in _brief_findings(review_payload)
+        if finding.get("severity") in {"critical", "high", "medium"}
+    ][:8]
+    lines.extend(["", "## Review Board Highlights", ""])
+    if findings:
+        for finding in findings:
+            lines.append(
+                "- "
+                + f"[{_brief_text(finding.get('severity')).upper()}] "
+                + f"{_brief_text(finding.get('title'))}: "
+                + _brief_text(finding.get("recommendation"))
+            )
+    else:
+        lines.append("- No critical, high, or medium AI review findings are available.")
+
+    lines.extend(
+        [
+            "",
+            "## Governance Notes",
+            "",
+            "- This brief is generated from governed dashboard, catalog, planned baseline, and AI Review evidence.",
+            "- It does not mutate catalog data or accept recommendations automatically.",
+        ]
+    )
+
+    _ensure_export_dirs()
+    job_id = str(uuid4())
+    file_path = _file_path(job_id, "md")
+    file_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return await _build_job(
+        project_id=project_id,
+        snapshot_id=snapshot_id,
+        export_format="md",
+        filename=f"{project_id}-{snapshot_id}-executive-brief.md",
         file_path=file_path,
     )
 

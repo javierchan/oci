@@ -11,6 +11,7 @@ from app.schemas.ai_review import (
     AiReviewApplyPatchRequest,
     AiReviewApplyPatchResponse,
     AiReviewBaselineCreateRequest,
+    AiReviewBaselineListResponse,
     AiReviewBaselineLookupResponse,
     AiReviewBaselineResponse,
     AiReviewCreateRequest,
@@ -38,6 +39,29 @@ async def get_project_ai_review_baseline(
     """Return the current approved planned-state baseline, if one exists."""
 
     return await ai_review_service.get_active_ai_review_baseline(project_id, scope, integration_id, db)
+
+
+@router.get(
+    "/projects/{project_id}/baselines",
+    response_model=AiReviewBaselineListResponse,
+    summary="List active and historical planned baselines for one AI review scope",
+)
+async def list_project_ai_review_baselines(
+    project_id: str,
+    scope: AiReviewScope = Query("project"),
+    integration_id: str | None = Query(None),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+) -> AiReviewBaselineListResponse:
+    """Return baseline history for governance comparison and audit review."""
+
+    return await ai_review_service.list_ai_review_baselines(
+        project_id,
+        scope,
+        integration_id,
+        db,
+        limit=limit,
+    )
 
 
 @router.post(

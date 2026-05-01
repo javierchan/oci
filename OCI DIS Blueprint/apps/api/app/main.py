@@ -8,11 +8,15 @@ API surface implements all route groups from PRD-043:
 OpenAPI 3.1 spec auto-generated at /docs and /openapi.json.
 """
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.db import get_db
+from app.core.readiness import check_migration_readiness
 from app.routers import (
     projects_router,
     imports_router,
@@ -30,6 +34,7 @@ from app.routers import (
     admin_synthetic_router,
     ai_reviews_router,
 )
+from app.schemas.readiness import ReadinessResponse
 
 settings = get_settings()
 
@@ -88,3 +93,20 @@ app.include_router(ai_reviews_router, prefix=API_PREFIX)
 @app.get(f"{API_PREFIX}/health", tags=["Health"], include_in_schema=False)
 async def health():
     return {"status": "ok", "version": settings.APP_VERSION}
+
+
+@app.get("/readiness", response_model=ReadinessResponse, tags=["Health"])
+@app.get(f"{API_PREFIX}/readiness", response_model=ReadinessResponse, tags=["Health"], include_in_schema=False)
+async def readiness(db: AsyncSession = Depends(get_db)) -> ReadinessResponse | JSONResponse:
+    migration_state = await check_migration_readiness(db)
+    payload = ReadinessResponse(
+        status="ready" if migration_state.ready else "not_ready",
+        version=settings.APP_VERSION,
+        database_migrations=migration_state,
+    )
+    if migration_state.ready:
+        return payload
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content=payload.model_dump(),
+    )

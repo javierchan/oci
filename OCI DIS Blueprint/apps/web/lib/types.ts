@@ -149,6 +149,11 @@ export interface AiReviewBaselineLookup {
   baseline: AiReviewBaseline | null;
 }
 
+export interface AiReviewBaselineList {
+  baselines: AiReviewBaseline[];
+  total: number;
+}
+
 export interface AiReviewBaselineRequest {
   scope?: AiReviewScope;
   integration_id?: string;

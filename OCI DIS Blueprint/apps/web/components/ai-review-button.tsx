@@ -6,6 +6,7 @@ import Link from "next/link";
 import { AlertTriangle, ClipboardCheck, Loader2, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { ConfirmModal } from "@/components/modal";
 import { api, getErrorMessage } from "@/lib/api";
 import type {
   AiReviewBaseline,
@@ -242,11 +243,16 @@ function AiReviewDialog({
   acceptingFindingId,
   applyingPatchFindingId,
   baseline,
+  baselineHistory,
   baselineLoading,
   baselineSaving,
+  baselineLabel,
+  baselineNote,
   error,
   onRun,
-  onSaveBaseline,
+  onRequestSaveBaseline,
+  onBaselineLabelChange,
+  onBaselineNoteChange,
   onAccept,
   onApplyPatch,
   history,
@@ -262,11 +268,16 @@ function AiReviewDialog({
   acceptingFindingId: string | null;
   applyingPatchFindingId: string | null;
   baseline: AiReviewBaseline | null;
+  baselineHistory: AiReviewBaseline[];
   baselineLoading: boolean;
   baselineSaving: boolean;
+  baselineLabel: string;
+  baselineNote: string;
   error: string | null;
   onRun: () => void;
-  onSaveBaseline: () => void;
+  onRequestSaveBaseline: () => void;
+  onBaselineLabelChange: (_value: string) => void;
+  onBaselineNoteChange: (_value: string) => void;
   onAccept: (_findingId: string) => void;
   onApplyPatch: (_findingId: string) => void;
   history: AiReviewJob[];
@@ -376,13 +387,80 @@ function AiReviewDialog({
                   </div>
                   <button
                     type="button"
-                    onClick={onSaveBaseline}
+                    onClick={onRequestSaveBaseline}
                     disabled={baselineSaving || baselineLoading || (selectedScope === "integration" && !canRunIntegrationScope)}
                     className="app-button-secondary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {baselineSaving ? "Saving…" : baseline ? "Replace baseline" : "Save planned baseline"}
                   </button>
                 </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
+                      Baseline label
+                    </span>
+                    <input
+                      value={baselineLabel}
+                      onChange={(event) => onBaselineLabelChange(event.target.value)}
+                      placeholder="Approved project baseline"
+                      className="mt-2 w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
+                      Approval notes
+                    </span>
+                    <textarea
+                      value={baselineNote}
+                      onChange={(event) => onBaselineNoteChange(event.target.value)}
+                      placeholder="What plan, meeting, or design decision does this baseline represent?"
+                      rows={2}
+                      className="mt-2 w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+                    />
+                  </label>
+                </div>
+                {baselineHistory.length > 0 ? (
+                  <div className="mt-5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                        Baseline history
+                      </p>
+                      {baselineHistory[1] ? (
+                        <span className="text-xs text-[var(--color-text-secondary)]">
+                          Active is {baselineHistory[0].row_count - baselineHistory[1].row_count >= 0 ? "+" : ""}
+                          {baselineHistory[0].row_count - baselineHistory[1].row_count} rows vs previous
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {baselineHistory.slice(0, 5).map((item) => (
+                        <article
+                          key={item.id}
+                          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-semibold text-[var(--color-text-primary)]">{item.label}</p>
+                            <span
+                              className={
+                                item.is_active
+                                  ? "app-status-chip active px-2 py-0.5 text-[10px]"
+                                  : "app-status-chip archived px-2 py-0.5 text-[10px]"
+                              }
+                            >
+                              {item.is_active ? "Active" : "Archived"}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[var(--color-text-muted)]">
+                            {item.row_count} row{item.row_count === 1 ? "" : "s"} · {formatJobTimestamp(item.created_at)}
+                          </p>
+                          {item.note ? (
+                            <p className="mt-1 leading-5 text-[var(--color-text-secondary)]">{item.note}</p>
+                          ) : null}
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <button type="button" onClick={onRun} className="app-button-primary mt-5 px-5 py-3">
                 Start governed review
@@ -664,8 +742,12 @@ export function AiReviewButton({
   const [acceptingFindingId, setAcceptingFindingId] = useState<string | null>(null);
   const [applyingPatchFindingId, setApplyingPatchFindingId] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<AiReviewBaseline | null>(null);
+  const [baselineHistory, setBaselineHistory] = useState<AiReviewBaseline[]>([]);
   const [baselineLoading, setBaselineLoading] = useState<boolean>(false);
   const [baselineSaving, setBaselineSaving] = useState<boolean>(false);
+  const [baselineLabel, setBaselineLabel] = useState<string>("Approved project baseline");
+  const [baselineNote, setBaselineNote] = useState<string>("");
+  const [confirmBaselineOpen, setConfirmBaselineOpen] = useState<boolean>(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -714,6 +796,13 @@ export function AiReviewButton({
       .then((response) => {
         if (!cancelled) {
           setBaseline(response.baseline);
+          if (response.baseline) {
+            setBaselineLabel(response.baseline.label);
+            setBaselineNote(response.baseline.note ?? "");
+          } else {
+            setBaselineLabel(selectedScope === "integration" ? "Approved integration baseline" : "Approved project baseline");
+            setBaselineNote("");
+          }
         }
       })
       .catch(() => {
@@ -724,6 +813,35 @@ export function AiReviewButton({
       .finally(() => {
         if (!cancelled) {
           setBaselineLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [integrationId, open, projectId, selectedScope]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!open || (selectedScope === "integration" && !integrationId)) {
+      setBaselineHistory([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void api
+      .listAiReviewBaselines(projectId, {
+        scope: selectedScope,
+        integration_id: selectedScope === "integration" ? integrationId : undefined,
+        limit: 10,
+      })
+      .then((response) => {
+        if (!cancelled) {
+          setBaselineHistory(response.baselines);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBaselineHistory([]);
         }
       });
     return () => {
@@ -777,12 +895,21 @@ export function AiReviewButton({
       const saved = await api.createAiReviewBaseline(projectId, {
         scope: selectedScope,
         integration_id: selectedScope === "integration" ? integrationId : undefined,
+        label: baselineLabel.trim() || undefined,
+        note: baselineNote.trim() || undefined,
       });
       setBaseline(saved);
+      const historyResponse = await api.listAiReviewBaselines(projectId, {
+        scope: selectedScope,
+        integration_id: selectedScope === "integration" ? integrationId : undefined,
+        limit: 10,
+      });
+      setBaselineHistory(historyResponse.baselines);
     } catch (caughtError) {
       setError(getErrorMessage(caughtError, "Unable to save planned baseline."));
     } finally {
       setBaselineSaving(false);
+      setConfirmBaselineOpen(false);
     }
   }
 
@@ -861,15 +988,24 @@ export function AiReviewButton({
           acceptingFindingId={acceptingFindingId}
           applyingPatchFindingId={applyingPatchFindingId}
           baseline={baseline}
+          baselineHistory={baselineHistory}
           baselineLoading={baselineLoading}
           baselineSaving={baselineSaving}
+          baselineLabel={baselineLabel}
+          baselineNote={baselineNote}
           error={error}
           onRun={() => {
             void runReview();
           }}
-          onSaveBaseline={() => {
-            void saveBaseline();
+          onRequestSaveBaseline={() => {
+            if (baseline) {
+              setConfirmBaselineOpen(true);
+            } else {
+              void saveBaseline();
+            }
           }}
+          onBaselineLabelChange={setBaselineLabel}
+          onBaselineNoteChange={setBaselineNote}
           onAccept={(findingId) => {
             void acceptFinding(findingId);
           }}
@@ -884,6 +1020,17 @@ export function AiReviewButton({
           onClose={() => setOpen(false)}
         />
       ) : null}
+      <ConfirmModal
+        open={confirmBaselineOpen}
+        title="Replace planned baseline"
+        description="The current active baseline will be archived and the current governed state will become the new planned baseline for drift detection."
+        confirmLabel="Replace baseline"
+        cancelLabel="Keep current"
+        onConfirm={() => {
+          void saveBaseline();
+        }}
+        onCancel={() => setConfirmBaselineOpen(false)}
+      />
     </>
   );
 }

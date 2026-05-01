@@ -336,6 +336,39 @@ async def test_integration_ai_review_baseline_requires_scope_and_detects_drift(
 
 
 @pytest.mark.asyncio
+async def test_ai_review_baseline_history_lists_active_then_archived(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Verify baseline governance keeps replacement history visible."""
+
+    project_id, _ = await _seed_review_fixture(test_engine)
+
+    first_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}/baseline",
+        headers=_admin_headers(),
+        json={"label": "Initial approved baseline", "note": "Architecture board approval."},
+    )
+    assert first_response.status_code == 201
+
+    second_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}/baseline",
+        headers=_admin_headers(),
+        json={"label": "Updated approved baseline", "note": "Replacement after design review."},
+    )
+    assert second_response.status_code == 201
+
+    list_response = await api_client.get(f"/api/v1/ai-reviews/projects/{project_id}/baselines")
+    assert list_response.status_code == 200
+    payload = list_response.json()
+    assert payload["total"] == 2
+    assert payload["baselines"][0]["label"] == "Updated approved baseline"
+    assert payload["baselines"][0]["is_active"] is True
+    assert payload["baselines"][1]["label"] == "Initial approved baseline"
+    assert payload["baselines"][1]["is_active"] is False
+
+
+@pytest.mark.asyncio
 async def test_graph_context_scopes_project_ai_review_evidence(
     test_engine: AsyncEngine,
 ) -> None:

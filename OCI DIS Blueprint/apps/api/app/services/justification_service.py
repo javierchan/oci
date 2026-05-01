@@ -34,31 +34,31 @@ from app.services.serializers import sanitize_for_json, split_csv
 
 FALLBACK_TEMPLATE: dict[str, object] = {
     "summary": (
-        "La integracion {interface_name} conecta {source_system} con {destination_system} "
-        "y actualmente mantiene estado QA {qa_status}."
+        "The integration {interface_name} connects {source_system} to {destination_system} "
+        "and currently has QA status {qa_status}."
     ),
     "blocks": [
         {
-            "title": "Contexto",
+            "title": "Context",
             "body": (
-                "Interfaz {interface_id} para la marca {brand} dentro del proceso {business_process}. "
-                "Opera con frecuencia {frequency} y {payload_text}."
+                "Interface {interface_id} supports brand {brand} within business process {business_process}. "
+                "It runs at frequency {frequency} with {payload_text}."
             ),
         },
         {
-            "title": "Patron",
-            "body": "Se documenta {pattern_label}. Racional: {pattern_rationale}.",
+            "title": "Pattern",
+            "body": "Documented pattern: {pattern_label}. Rationale: {pattern_rationale}.",
         },
         {
-            "title": "Implementacion",
+            "title": "Implementation",
             "body": (
-                "Tipo {type}, trigger {trigger_type} y herramientas base {core_tools}. "
-                "Politica de reintento: {retry_policy}."
+                "Type {type}, trigger {trigger_type}, and core tools {core_tools}. "
+                "Retry policy: {retry_policy}."
             ),
         },
         {
-            "title": "Gobierno QA",
-            "body": "Estado QA {qa_status}. Observaciones: {qa_reasons}.",
+            "title": "QA Governance",
+            "body": "QA status {qa_status}. Observations: {qa_reasons}.",
         },
     ],
 }
@@ -66,10 +66,10 @@ FALLBACK_TEMPLATE: dict[str, object] = {
 
 class _SafeFormatDict(dict[str, str]):
     def __missing__(self, key: str) -> str:
-        return "No informado"
+        return "Not provided"
 
 
-def _text(value: Optional[str], fallback: str = "No informado") -> str:
+def _text(value: Optional[str], fallback: str = "Not provided") -> str:
     if value is None:
         return fallback
     text = value.strip()
@@ -78,13 +78,13 @@ def _text(value: Optional[str], fallback: str = "No informado") -> str:
 
 def _format_payload(payload_kb: Optional[float]) -> str:
     if payload_kb is None:
-        return "payload no informado"
-    return f"{payload_kb:g} KB por ejecucion"
+        return "payload not provided"
+    return f"{payload_kb:g} KB per execution"
 
 
 def _pattern_label(pattern_id: Optional[str], pattern_names: dict[str, str]) -> str:
     if not pattern_id:
-        return "patron pendiente de seleccion"
+        return "pattern pending selection"
     name = pattern_names.get(pattern_id, pattern_id)
     return f"{pattern_id} {name}"
 
@@ -106,22 +106,22 @@ def serialize_prompt_template(template: PromptTemplateVersion) -> PromptTemplate
 
 def _template_context(row: CatalogIntegration, pattern_names: dict[str, str]) -> dict[str, str]:
     return {
-        "interface_name": _text(row.interface_name, "sin nombre"),
+        "interface_name": _text(row.interface_name, "unnamed integration"),
         "source_system": _text(row.source_system),
         "destination_system": _text(row.destination_system),
         "qa_status": _text(row.qa_status, "PENDING"),
-        "interface_id": _text(row.interface_id, "sin ID formal"),
+        "interface_id": _text(row.interface_id, "no formal ID"),
         "brand": _text(row.brand),
         "business_process": _text(row.business_process),
         "frequency": _text(row.frequency),
         "payload_text": _format_payload(row.payload_per_execution_kb),
         "pattern_label": _pattern_label(row.selected_pattern, pattern_names),
-        "pattern_rationale": _text(row.pattern_rationale, "pendiente de documentar por arquitectura"),
+        "pattern_rationale": _text(row.pattern_rationale, "pending architecture documentation"),
         "type": _text(row.type),
         "trigger_type": _text(row.trigger_type),
-        "core_tools": ", ".join(split_csv(row.core_tools)) if row.core_tools else "pendientes de definir",
-        "retry_policy": _text(row.retry_policy, "pendiente"),
-        "qa_reasons": ", ".join(row.qa_reasons or ["sin observaciones adicionales"]),
+        "core_tools": ", ".join(split_csv(row.core_tools)) if row.core_tools else "pending definition",
+        "retry_policy": _text(row.retry_policy, "pending"),
+        "qa_reasons": ", ".join(row.qa_reasons or ["no additional observations"]),
     }
 
 
@@ -139,7 +139,7 @@ def _narrative_from_row(
 
     methodology_blocks = [
         MethodologyBlock(
-            title=str(block.get("title") or "Bloque"),
+            title=str(block.get("title") or "Block"),
             body=str(block.get("body") or "").format_map(context),
         )
         for block in blocks
@@ -155,7 +155,7 @@ def _narrative_from_row(
     )
 
     evidence = [
-        f"interface_id={_text(row.interface_id, 'sin ID formal')}",
+        f"interface_id={_text(row.interface_id, 'no formal ID')}",
         f"source_system={_text(row.source_system)}",
         f"destination_system={_text(row.destination_system)}",
         f"frequency={_text(row.frequency)}",
@@ -191,6 +191,47 @@ def _response_from_record(record: JustificationRecord) -> JustificationRecordRes
         approved_by=record.approved_by,
         override_notes=record.override_notes,
         narrative=JustificationNarrative(**record.deterministic_text),
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+def _has_legacy_spanish_narrative(record: JustificationRecord) -> bool:
+    serialized = json.dumps(record.deterministic_text, ensure_ascii=False)
+    legacy_markers = (
+        "La integracion",
+        "Contexto",
+        "Implementacion",
+        "Gobierno QA",
+        "pendiente",
+    )
+    return any(marker in serialized for marker in legacy_markers)
+
+
+def _response_from_record_or_regenerated(
+    record: JustificationRecord,
+    row: CatalogIntegration,
+    pattern_names: dict[str, str],
+    template_config: dict[str, object],
+) -> JustificationRecordResponse:
+    if not _has_legacy_spanish_narrative(record):
+        return _response_from_record(record)
+
+    legacy_narrative = JustificationNarrative(**record.deterministic_text)
+    narrative = _narrative_from_row(
+        row,
+        pattern_names,
+        template_config,
+        override_text=legacy_narrative.override_text,
+    )
+    return JustificationRecordResponse(
+        id=record.id,
+        project_id=record.project_id,
+        integration_id=record.integration_id,
+        state=record.state,
+        approved_by=record.approved_by,
+        override_notes=record.override_notes,
+        narrative=narrative,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -420,7 +461,7 @@ async def list_justifications(project_id: str, db: AsyncSession) -> Justificatio
     for row in rows:
         record = record_map.get(row.id)
         if record is not None:
-            responses.append(_response_from_record(record))
+            responses.append(_response_from_record_or_regenerated(record, row, pattern_names, template_config))
         else:
             responses.append(
                 _transient_response(
@@ -442,7 +483,9 @@ async def get_justification(
     row = await _load_integration(project_id, integration_id, db)
     record = await _load_record(project_id, integration_id, db)
     if record is not None:
-        return _response_from_record(record)
+        pattern_names = await _pattern_name_map(db)
+        template_config = await _default_template_config(db)
+        return _response_from_record_or_regenerated(record, row, pattern_names, template_config)
 
     pattern_names = await _pattern_name_map(db)
     template_config = await _default_template_config(db)

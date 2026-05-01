@@ -95,6 +95,15 @@ class AiReviewBaselineLookupResponse(BaseModel):
     baseline: Optional[AiReviewBaselineResponse] = None
 
 
+class AiReviewBaselineListResponse(BaseModel):
+    """Historical planned baselines for one review scope, active first."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    baselines: list[AiReviewBaselineResponse] = Field(default_factory=list)
+    total: int = 0
+
+
 class AiReviewMetric(BaseModel):
     """One compact metric surfaced in the AI review board."""
 

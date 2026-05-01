@@ -25,6 +25,7 @@ from app.schemas.ai_review import (
     AiReviewApplyPatchRequest,
     AiReviewApplyPatchResponse,
     AiReviewBaselineCreateRequest,
+    AiReviewBaselineListResponse,
     AiReviewBaselineLookupResponse,
     AiReviewBaselineResponse,
     AiReviewCategory,
@@ -868,6 +869,53 @@ async def get_active_ai_review_baseline(
     baseline = await _active_baseline(project_id, scope, integration_id, db)
     return AiReviewBaselineLookupResponse(
         baseline=serialize_ai_review_baseline(baseline) if baseline else None,
+    )
+
+
+async def list_ai_review_baselines(
+    project_id: str,
+    scope: Literal["project", "integration"],
+    integration_id: str | None,
+    db: AsyncSession,
+    *,
+    limit: int = 10,
+) -> AiReviewBaselineListResponse:
+    """Return active and historical planned baselines for governance review."""
+
+    await _load_project(project_id, db)
+    if scope == "integration" and integration_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "detail": "integration_id is required when scope is integration.",
+                "error_code": "AI_REVIEW_BASELINE_INTEGRATION_SCOPE_REQUIRES_ID",
+            },
+        )
+    if scope == "project" and integration_id is not None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "detail": "integration_id can only be provided for integration-scoped baselines.",
+                "error_code": "AI_REVIEW_BASELINE_PROJECT_SCOPE_REJECTS_INTEGRATION_ID",
+            },
+        )
+    if integration_id is not None:
+        await _load_integration(project_id, integration_id, db)
+
+    result = await db.scalars(
+        select(AiReviewBaseline)
+        .where(
+            AiReviewBaseline.project_id == project_id,
+            AiReviewBaseline.scope == scope,
+            AiReviewBaseline.integration_id == integration_id,
+        )
+        .order_by(AiReviewBaseline.is_active.desc(), AiReviewBaseline.created_at.desc())
+        .limit(limit)
+    )
+    baselines = result.all()
+    return AiReviewBaselineListResponse(
+        baselines=[serialize_ai_review_baseline(baseline) for baseline in baselines],
+        total=len(baselines),
     )
 
 
