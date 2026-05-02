@@ -49,6 +49,20 @@ async def download_xlsx(
     )
 
 
+@router.get("/{project_id}/brief", summary="Download executive project brief as Markdown")
+async def download_project_brief(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    job = await export_service.create_brief_export(project_id, db)
+    file_path, _ = export_service.get_export_file(project_id, job.job_id)
+    return FileResponse(
+        path=file_path,
+        media_type="text/markdown; charset=utf-8",
+        filename=job.filename,
+    )
+
+
 @router.post("/{project_id}/pdf", response_model=ExportJobResponse, summary="Export dashboard as PDF")
 async def export_pdf(
     project_id: str,
@@ -79,6 +93,7 @@ async def download_export(project_id: str, job_id: str) -> FileResponse:
         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "json": "application/json",
         "pdf": "application/pdf",
+        "md": "text/markdown; charset=utf-8",
     }
     return FileResponse(
         path=file_path,

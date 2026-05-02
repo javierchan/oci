@@ -10,14 +10,77 @@ from app.schemas.ai_review import (
     AiReviewAcceptRecommendationRequest,
     AiReviewApplyPatchRequest,
     AiReviewApplyPatchResponse,
+    AiReviewBaselineCreateRequest,
+    AiReviewBaselineListResponse,
+    AiReviewBaselineLookupResponse,
+    AiReviewBaselineResponse,
     AiReviewCreateRequest,
     AiReviewJobListResponse,
     AiReviewJobResponse,
+    AiReviewScope,
 )
 from app.services import ai_review_service
 from app.workers.ai_review_worker import execute_ai_review_job_task
 
 router = APIRouter(prefix="/ai-reviews", tags=["AI Reviews"])
+
+
+@router.get(
+    "/projects/{project_id}/baseline",
+    response_model=AiReviewBaselineLookupResponse,
+    summary="Get the active planned baseline for one AI review scope",
+)
+async def get_project_ai_review_baseline(
+    project_id: str,
+    scope: AiReviewScope = Query("project"),
+    integration_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> AiReviewBaselineLookupResponse:
+    """Return the current approved planned-state baseline, if one exists."""
+
+    return await ai_review_service.get_active_ai_review_baseline(project_id, scope, integration_id, db)
+
+
+@router.get(
+    "/projects/{project_id}/baselines",
+    response_model=AiReviewBaselineListResponse,
+    summary="List active and historical planned baselines for one AI review scope",
+)
+async def list_project_ai_review_baselines(
+    project_id: str,
+    scope: AiReviewScope = Query("project"),
+    integration_id: str | None = Query(None),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+) -> AiReviewBaselineListResponse:
+    """Return baseline history for governance comparison and audit review."""
+
+    return await ai_review_service.list_ai_review_baselines(
+        project_id,
+        scope,
+        integration_id,
+        db,
+        limit=limit,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/baseline",
+    response_model=AiReviewBaselineResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Approve the current project or integration state as the planned baseline",
+)
+async def create_project_ai_review_baseline(
+    project_id: str,
+    body: AiReviewBaselineCreateRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+) -> AiReviewBaselineResponse:
+    """Persist the current governed state as the active planned baseline for drift detection."""
+
+    request = body or AiReviewBaselineCreateRequest()
+    async with db.begin():
+        return await ai_review_service.create_ai_review_baseline(project_id, request, actor_id, db)
 
 
 @router.post(

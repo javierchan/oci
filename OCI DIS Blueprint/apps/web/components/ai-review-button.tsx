@@ -6,9 +6,12 @@ import Link from "next/link";
 import { AlertTriangle, ClipboardCheck, Loader2, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { ConfirmModal } from "@/components/modal";
 import { api, getErrorMessage } from "@/lib/api";
 import type {
+  AiReviewBaseline,
   AiReviewCategory,
+  AiReviewDriftStatus,
   AiReviewFinding,
   AiReviewGraphContext,
   AiReviewJob,
@@ -51,6 +54,18 @@ function scoreTone(score: number): string {
   if (score < 75) return "text-orange-600 dark:text-orange-300";
   if (score < 90) return "text-amber-600 dark:text-amber-300";
   return "text-emerald-600 dark:text-emerald-300";
+}
+
+function driftTone(status: AiReviewDriftStatus): string {
+  if (status === "blocking_drift") return "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100";
+  if (status === "material_drift") return "border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-100";
+  if (status === "minor_drift") return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
+  if (status === "no_drift") return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100";
+  return "border-slate-300 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-100";
+}
+
+function driftLabel(status: AiReviewDriftStatus): string {
+  return status.replace(/_/g, " ");
 }
 
 function delay(ms: number): Promise<void> {
@@ -227,8 +242,17 @@ function AiReviewDialog({
   loading,
   acceptingFindingId,
   applyingPatchFindingId,
+  baseline,
+  baselineHistory,
+  baselineLoading,
+  baselineSaving,
+  baselineLabel,
+  baselineNote,
   error,
   onRun,
+  onRequestSaveBaseline,
+  onBaselineLabelChange,
+  onBaselineNoteChange,
   onAccept,
   onApplyPatch,
   history,
@@ -243,8 +267,17 @@ function AiReviewDialog({
   loading: boolean;
   acceptingFindingId: string | null;
   applyingPatchFindingId: string | null;
+  baseline: AiReviewBaseline | null;
+  baselineHistory: AiReviewBaseline[];
+  baselineLoading: boolean;
+  baselineSaving: boolean;
+  baselineLabel: string;
+  baselineNote: string;
   error: string | null;
   onRun: () => void;
+  onRequestSaveBaseline: () => void;
+  onBaselineLabelChange: (_value: string) => void;
+  onBaselineNoteChange: (_value: string) => void;
   onAccept: (_findingId: string) => void;
   onApplyPatch: (_findingId: string) => void;
   history: AiReviewJob[];
@@ -329,6 +362,105 @@ function AiReviewDialog({
                     Focused review for the current integration, canvas route, pattern, and service compatibility.
                   </span>
                 </button>
+              </div>
+              <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                      Planned baseline
+                    </p>
+                    {baselineLoading ? (
+                      <p className="mt-2 text-sm text-[var(--color-text-secondary)]">Checking active baseline…</p>
+                    ) : baseline ? (
+                      <>
+                        <p className="mt-2 text-sm font-semibold text-[var(--color-text-primary)]">{baseline.label}</p>
+                        <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                          {baseline.row_count} row{baseline.row_count === 1 ? "" : "s"} · saved by {baseline.created_by} ·{" "}
+                          {formatJobTimestamp(baseline.created_at)}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+                        No planned baseline exists for this scope. Save one after the project reflects the approved plan.
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onRequestSaveBaseline}
+                    disabled={baselineSaving || baselineLoading || (selectedScope === "integration" && !canRunIntegrationScope)}
+                    className="app-button-secondary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {baselineSaving ? "Saving…" : baseline ? "Replace baseline" : "Save planned baseline"}
+                  </button>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
+                      Baseline label
+                    </span>
+                    <input
+                      value={baselineLabel}
+                      onChange={(event) => onBaselineLabelChange(event.target.value)}
+                      placeholder="Approved project baseline"
+                      className="mt-2 w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
+                      Approval notes
+                    </span>
+                    <textarea
+                      value={baselineNote}
+                      onChange={(event) => onBaselineNoteChange(event.target.value)}
+                      placeholder="What plan, meeting, or design decision does this baseline represent?"
+                      rows={2}
+                      className="mt-2 w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+                    />
+                  </label>
+                </div>
+                {baselineHistory.length > 0 ? (
+                  <div className="mt-5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                        Baseline history
+                      </p>
+                      {baselineHistory[1] ? (
+                        <span className="text-xs text-[var(--color-text-secondary)]">
+                          Active is {baselineHistory[0].row_count - baselineHistory[1].row_count >= 0 ? "+" : ""}
+                          {baselineHistory[0].row_count - baselineHistory[1].row_count} rows vs previous
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {baselineHistory.slice(0, 5).map((item) => (
+                        <article
+                          key={item.id}
+                          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-semibold text-[var(--color-text-primary)]">{item.label}</p>
+                            <span
+                              className={
+                                item.is_active
+                                  ? "app-status-chip active px-2 py-0.5 text-[10px]"
+                                  : "app-status-chip archived px-2 py-0.5 text-[10px]"
+                              }
+                            >
+                              {item.is_active ? "Active" : "Archived"}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[var(--color-text-muted)]">
+                            {item.row_count} row{item.row_count === 1 ? "" : "s"} · {formatJobTimestamp(item.created_at)}
+                          </p>
+                          {item.note ? (
+                            <p className="mt-1 leading-5 text-[var(--color-text-secondary)]">{item.note}</p>
+                          ) : null}
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <button type="button" onClick={onRun} className="app-button-primary mt-5 px-5 py-3">
                 Start governed review
@@ -449,7 +581,62 @@ function AiReviewDialog({
                 </article>
               </section>
 
-              <section className="grid gap-3 md:grid-cols-5">
+              <section className={`rounded-3xl border p-5 ${driftTone(review.drift.status)}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
+                      Planned vs actual drift
+                    </p>
+                    <h4 className="mt-2 text-xl font-semibold capitalize">{driftLabel(review.drift.status)}</h4>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 opacity-85">{review.drift.summary}</p>
+                    {review.drift.baseline ? (
+                      <p className="mt-2 text-xs opacity-70">
+                        Baseline: {review.drift.baseline.label} · {review.drift.baseline.row_count} row
+                        {review.drift.baseline.row_count === 1 ? "" : "s"} · saved{" "}
+                        {formatJobTimestamp(review.drift.baseline.created_at)}
+                      </p>
+                    ) : null}
+                  </div>
+                  <span className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold">
+                    {review.drift.item_count} drift item{review.drift.item_count === 1 ? "" : "s"}
+                  </span>
+                </div>
+                {review.drift.items.length > 0 ? (
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    {review.drift.items.slice(0, 8).map((item) => (
+                      <article key={item.id} className="rounded-2xl border border-current/15 bg-white/45 p-3 text-xs dark:bg-black/15">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="font-mono font-semibold opacity-70">{item.id}</p>
+                            <h5 className="mt-1 text-sm font-semibold">{item.label}</h5>
+                          </div>
+                          <span className="rounded-full border border-current/20 px-2 py-0.5 font-semibold uppercase">
+                            {item.severity}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid gap-2 md:grid-cols-2">
+                          <p>
+                            <span className="font-semibold">Planned: </span>
+                            {item.planned || "—"}
+                          </p>
+                          <p>
+                            <span className="font-semibold">Actual: </span>
+                            {item.actual || "—"}
+                          </p>
+                        </div>
+                        <p className="mt-2 leading-5 opacity-80">{item.detail}</p>
+                        {item.action_href ? (
+                          <Link href={item.action_href} className="mt-2 inline-flex font-semibold underline underline-offset-4">
+                            Open affected item
+                          </Link>
+                        ) : null}
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+
+              <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
                 {review.metrics.map((metric) => (
                   <article key={metric.label} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
@@ -554,6 +741,13 @@ export function AiReviewButton({
   const [error, setError] = useState<string | null>(null);
   const [acceptingFindingId, setAcceptingFindingId] = useState<string | null>(null);
   const [applyingPatchFindingId, setApplyingPatchFindingId] = useState<string | null>(null);
+  const [baseline, setBaseline] = useState<AiReviewBaseline | null>(null);
+  const [baselineHistory, setBaselineHistory] = useState<AiReviewBaseline[]>([]);
+  const [baselineLoading, setBaselineLoading] = useState<boolean>(false);
+  const [baselineSaving, setBaselineSaving] = useState<boolean>(false);
+  const [baselineLabel, setBaselineLabel] = useState<string>("Approved project baseline");
+  const [baselineNote, setBaselineNote] = useState<string>("");
+  const [confirmBaselineOpen, setConfirmBaselineOpen] = useState<boolean>(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -584,6 +778,76 @@ export function AiReviewButton({
       cancelled = true;
     };
   }, [open, projectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!open || (selectedScope === "integration" && !integrationId)) {
+      setBaseline(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setBaselineLoading(true);
+    void api
+      .getAiReviewBaseline(projectId, {
+        scope: selectedScope,
+        integration_id: selectedScope === "integration" ? integrationId : undefined,
+      })
+      .then((response) => {
+        if (!cancelled) {
+          setBaseline(response.baseline);
+          if (response.baseline) {
+            setBaselineLabel(response.baseline.label);
+            setBaselineNote(response.baseline.note ?? "");
+          } else {
+            setBaselineLabel(selectedScope === "integration" ? "Approved integration baseline" : "Approved project baseline");
+            setBaselineNote("");
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBaseline(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setBaselineLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [integrationId, open, projectId, selectedScope]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!open || (selectedScope === "integration" && !integrationId)) {
+      setBaselineHistory([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void api
+      .listAiReviewBaselines(projectId, {
+        scope: selectedScope,
+        integration_id: selectedScope === "integration" ? integrationId : undefined,
+        limit: 10,
+      })
+      .then((response) => {
+        if (!cancelled) {
+          setBaselineHistory(response.baselines);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBaselineHistory([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [integrationId, open, projectId, selectedScope]);
 
   async function pollJob(jobId: string): Promise<AiReviewJob> {
     let current = await api.getAiReviewJob(jobId);
@@ -620,6 +884,32 @@ export function AiReviewButton({
       setError(getErrorMessage(caughtError, "Unable to run AI review."));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function saveBaseline(): Promise<void> {
+    if (selectedScope === "integration" && !integrationId) return;
+    setBaselineSaving(true);
+    setError(null);
+    try {
+      const saved = await api.createAiReviewBaseline(projectId, {
+        scope: selectedScope,
+        integration_id: selectedScope === "integration" ? integrationId : undefined,
+        label: baselineLabel.trim() || undefined,
+        note: baselineNote.trim() || undefined,
+      });
+      setBaseline(saved);
+      const historyResponse = await api.listAiReviewBaselines(projectId, {
+        scope: selectedScope,
+        integration_id: selectedScope === "integration" ? integrationId : undefined,
+        limit: 10,
+      });
+      setBaselineHistory(historyResponse.baselines);
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError, "Unable to save planned baseline."));
+    } finally {
+      setBaselineSaving(false);
+      setConfirmBaselineOpen(false);
     }
   }
 
@@ -697,10 +987,25 @@ export function AiReviewButton({
           loading={loading}
           acceptingFindingId={acceptingFindingId}
           applyingPatchFindingId={applyingPatchFindingId}
+          baseline={baseline}
+          baselineHistory={baselineHistory}
+          baselineLoading={baselineLoading}
+          baselineSaving={baselineSaving}
+          baselineLabel={baselineLabel}
+          baselineNote={baselineNote}
           error={error}
           onRun={() => {
             void runReview();
           }}
+          onRequestSaveBaseline={() => {
+            if (baseline) {
+              setConfirmBaselineOpen(true);
+            } else {
+              void saveBaseline();
+            }
+          }}
+          onBaselineLabelChange={setBaselineLabel}
+          onBaselineNoteChange={setBaselineNote}
           onAccept={(findingId) => {
             void acceptFinding(findingId);
           }}
@@ -715,6 +1020,17 @@ export function AiReviewButton({
           onClose={() => setOpen(false)}
         />
       ) : null}
+      <ConfirmModal
+        open={confirmBaselineOpen}
+        title="Replace planned baseline"
+        description="The current active baseline will be archived and the current governed state will become the new planned baseline for drift detection."
+        confirmLabel="Replace baseline"
+        cancelLabel="Keep current"
+        onConfirm={() => {
+          void saveBaseline();
+        }}
+        onCancel={() => setConfirmBaselineOpen(false)}
+      />
     </>
   );
 }

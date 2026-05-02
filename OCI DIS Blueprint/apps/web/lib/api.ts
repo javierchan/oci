@@ -4,10 +4,15 @@ import type {
   AssumptionList,
   AssumptionSet,
   AssumptionSetCreate,
+  AiReviewBaseline,
+  AiReviewBaselineList,
+  AiReviewBaselineLookup,
+  AiReviewBaselineRequest,
   AiReviewJob,
   AiReviewApplyPatchResponse,
   AiReviewJobList,
   AiReviewJobRequest,
+  AiReviewScope,
   AuditPage,
   CanvasGovernance,
   CatalogIntegrationDetail,
@@ -161,6 +166,10 @@ export function isApiErrorCode(error: unknown, errorCode: string): boolean {
 
 export function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+export function apiDownloadUrl(path: string): string {
+  return `${PUBLIC_BASE}${path}`;
 }
 
 function parseApiError(status: number, path: string, body: string): ParsedApiError {
@@ -466,6 +475,25 @@ export const api = {
 
   runAiReview: (projectId: string, body: AiReviewJobRequest = {}): Promise<AiReviewJob> =>
     apiFetch<AiReviewJob>(`/api/v1/ai-reviews/projects/${projectId}`, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify(body),
+    }),
+
+  getAiReviewBaseline: (
+    projectId: string,
+    params: { scope?: AiReviewScope; integration_id?: string } = {},
+  ): Promise<AiReviewBaselineLookup> =>
+    apiFetch<AiReviewBaselineLookup>(`/api/v1/ai-reviews/projects/${projectId}/baseline${withQuery(params)}`),
+
+  listAiReviewBaselines: (
+    projectId: string,
+    params: { scope?: AiReviewScope; integration_id?: string; limit?: number } = {},
+  ): Promise<AiReviewBaselineList> =>
+    apiFetch<AiReviewBaselineList>(`/api/v1/ai-reviews/projects/${projectId}/baselines${withQuery(params)}`),
+
+  createAiReviewBaseline: (projectId: string, body: AiReviewBaselineRequest = {}): Promise<AiReviewBaseline> =>
+    apiFetch<AiReviewBaseline>(`/api/v1/ai-reviews/projects/${projectId}/baseline`, {
       method: "POST",
       headers: adminHeaders(),
       body: JSON.stringify(body),

@@ -145,6 +145,8 @@ async def test_project_ai_review_job_create_run_get_and_accept(
     assert "design-constraints-open" in finding_ids
     assert "ten-x-stress-review" in finding_ids
     assert "red-team-qa-ok-with-design-warnings" in finding_ids
+    assert "planned-baseline-missing" in finding_ids
+    assert result.drift.status == "no_baseline"
     assert result.groups[0].id == "critical_blockers"
     assert all(finding.evidence_ids for finding in result.findings)
     assert result.evidence[0].id == "EV-001"
@@ -234,6 +236,136 @@ async def test_integration_scoped_ai_review_requires_and_uses_integration_id(
     assert applied["job"]["accepted_recommendations"][0]["finding_id"] == finding.id
     assert applied["job"]["accepted_recommendations"][0]["applied_patch"]["integration_id"] == integration_id
     assert "AI Review finding" in applied["integration"]["comments"]
+
+
+@pytest.mark.asyncio
+async def test_ai_review_baseline_detects_planned_actual_drift(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Verify an approved planned baseline produces drift findings when current state changes."""
+
+    project_id, integration_id = await _seed_review_fixture(test_engine)
+
+    create_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}/baseline",
+        headers=_admin_headers(),
+        json={"scope": "project", "label": "Approved demo plan"},
+    )
+    assert create_response.status_code == 201
+    baseline = create_response.json()
+    assert baseline["label"] == "Approved demo plan"
+    assert baseline["row_count"] == 2
+
+    get_response = await api_client.get(f"/api/v1/ai-reviews/projects/{project_id}/baseline?scope=project")
+    assert get_response.status_code == 200
+    assert get_response.json()["baseline"]["id"] == baseline["id"]
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            row = await session.get(CatalogIntegration, integration_id)
+            assert row is not None
+            row.selected_pattern = "#01"
+            row.core_tools = "OIC Gen3"
+        review = await ai_review_service.build_review_result(
+            project_id=project_id,
+            scope="project",
+            integration_id=None,
+            include_llm=False,
+            graph_context=None,
+            reviewer_personas=["architect"],
+            db=session,
+        )
+
+    assert review.drift.status == "material_drift"
+    assert review.drift.baseline is not None
+    assert review.drift.baseline.id == baseline["id"]
+    assert review.drift.item_count >= 2
+    assert any(item.field == "selected_pattern" for item in review.drift.items)
+    assert any(finding.id == "planned-actual-drift" for finding in review.findings)
+
+
+@pytest.mark.asyncio
+async def test_integration_ai_review_baseline_requires_scope_and_detects_drift(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Verify integration-level planned baselines are scoped to one catalog row."""
+
+    project_id, integration_id = await _seed_review_fixture(test_engine)
+
+    missing_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}/baseline",
+        headers=_admin_headers(),
+        json={"scope": "integration"},
+    )
+    assert missing_response.status_code == 422
+
+    create_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}/baseline",
+        headers=_admin_headers(),
+        json={"scope": "integration", "integration_id": integration_id, "label": "Approved integration plan"},
+    )
+    assert create_response.status_code == 201
+    baseline = create_response.json()
+    assert baseline["scope"] == "integration"
+    assert baseline["integration_id"] == integration_id
+    assert baseline["row_count"] == 1
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            row = await session.get(CatalogIntegration, integration_id)
+            assert row is not None
+            row.source_system = "CRM-CHANGED"
+        review = await ai_review_service.build_review_result(
+            project_id=project_id,
+            scope="integration",
+            integration_id=integration_id,
+            include_llm=False,
+            graph_context=None,
+            reviewer_personas=["architect"],
+            db=session,
+        )
+
+    assert review.drift.status == "material_drift"
+    assert review.drift.item_count == 1
+    assert review.drift.items[0].field == "source_system"
+    assert any(finding.id == "planned-actual-drift" for finding in review.findings)
+
+
+@pytest.mark.asyncio
+async def test_ai_review_baseline_history_lists_active_then_archived(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Verify baseline governance keeps replacement history visible."""
+
+    project_id, _ = await _seed_review_fixture(test_engine)
+
+    first_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}/baseline",
+        headers=_admin_headers(),
+        json={"label": "Initial approved baseline", "note": "Architecture board approval."},
+    )
+    assert first_response.status_code == 201
+
+    second_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}/baseline",
+        headers=_admin_headers(),
+        json={"label": "Updated approved baseline", "note": "Replacement after design review."},
+    )
+    assert second_response.status_code == 201
+
+    list_response = await api_client.get(f"/api/v1/ai-reviews/projects/{project_id}/baselines")
+    assert list_response.status_code == 200
+    payload = list_response.json()
+    assert payload["total"] == 2
+    assert payload["baselines"][0]["label"] == "Updated approved baseline"
+    assert payload["baselines"][0]["is_active"] is True
+    assert payload["baselines"][1]["label"] == "Initial approved baseline"
+    assert payload["baselines"][1]["is_active"] is False
 
 
 @pytest.mark.asyncio

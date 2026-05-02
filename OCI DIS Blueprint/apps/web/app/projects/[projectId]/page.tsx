@@ -8,7 +8,7 @@ import { AiReviewButton } from "@/components/ai-review-button";
 import { Breadcrumb } from "@/components/breadcrumb";
 import { RecalculateButton } from "@/components/recalculate-button";
 import { VolumetryCard } from "@/components/volumetry-card";
-import { api } from "@/lib/api";
+import { api, apiDownloadUrl } from "@/lib/api";
 import { displayQaStatus, formatCompactNumber, formatDate, formatNumber } from "@/lib/format";
 import { parityBenchmark } from "@/lib/parity";
 import { isProjectNotFoundError } from "@/lib/project-errors";
@@ -38,10 +38,11 @@ export default async function ProjectDashboardPage({
     }
     throw error;
   }
-  const [catalogPage, snapshots, dashboardSnapshots] = await Promise.all([
+  const [catalogPage, snapshots, dashboardSnapshots, baselineLookup] = await Promise.all([
     api.listCatalog(projectId, { page: 1, page_size: 1 }),
     api.listSnapshots(projectId),
     api.listDashboardSnapshots(projectId),
+    api.getAiReviewBaseline(projectId, { scope: "project" }).catch(() => ({ baseline: null })),
   ]);
 
   const latestSnapshot = snapshots.snapshots[0];
@@ -127,6 +128,13 @@ export default async function ProjectDashboardPage({
                 {project.name}
               </h1>
               {isSyntheticProject(project) ? <span className="app-theme-chip">Synthetic</span> : null}
+              {baselineLookup.baseline ? (
+                <span className="app-status-chip active" title={baselineLookup.baseline.label}>
+                  Planned baseline approved
+                </span>
+              ) : (
+                <span className="app-status-chip archived">No planned baseline</span>
+              )}
             </div>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
               Track the current import footprint, QA exposure, and latest technical sizing for this assessment workspace.
@@ -149,15 +157,14 @@ export default async function ProjectDashboardPage({
           </div>
           <div className="flex flex-col items-start gap-3 lg:items-end">
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled
-                title="Dashboard brief export is planned; use the governed export endpoints from the API for now."
-                className="app-button-secondary cursor-not-allowed gap-2 px-4 py-2 text-sm opacity-70"
+              <Link
+                href={apiDownloadUrl(`/api/v1/exports/${projectId}/brief`)}
+                className="app-button-secondary gap-2 px-4 py-2 text-sm"
+                title="Download an executive Markdown brief using dashboard, baseline, and AI review evidence."
               >
                 <Download className="h-4 w-4" />
                 Export brief
-              </button>
+              </Link>
               <Link href={`/projects/${projectId}/catalog`} className="app-button-secondary px-4 py-2 text-sm">
                 Open Catalog
               </Link>

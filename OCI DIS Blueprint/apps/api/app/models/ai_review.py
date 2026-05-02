@@ -6,7 +6,7 @@ import enum
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, JSON, String
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, UUIDMixin
@@ -49,3 +49,19 @@ class AiReviewJob(Base, UUIDMixin, TimestampMixin):
     error_details: Mapped[Optional[dict]] = mapped_column(JSON)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class AiReviewBaseline(Base, UUIDMixin, TimestampMixin):
+    """Approved planned-state baseline used to detect current-state drift."""
+
+    __tablename__ = "ai_review_baselines"
+
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False, default="project")
+    integration_id: Mapped[Optional[str]] = mapped_column(ForeignKey("catalog_integrations.id"))
+    created_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(String(2000))
+    baseline_payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

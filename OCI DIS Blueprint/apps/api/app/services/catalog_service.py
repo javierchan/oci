@@ -553,7 +553,7 @@ async def list_facets(project_id: str, db: AsyncSession) -> CatalogFacetsRespons
         .distinct()
         .order_by(CatalogIntegration.brand)
     )
-    return CatalogFacetsResponse(brands=list(brands.all()))
+    return CatalogFacetsResponse(brands=[brand for brand in brands.all() if brand])
 
 
 async def manual_create_integration(

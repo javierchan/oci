@@ -1,7 +1,7 @@
 """Model registry used by Alembic and application imports."""
 
 from app.models.base import Base
-from app.models.ai_review import AiReviewJob, AiReviewJobStatus
+from app.models.ai_review import AiReviewBaseline, AiReviewJob, AiReviewJobStatus
 from app.models.governance import (
     AssumptionSet,
     DictionaryOption,
@@ -15,6 +15,7 @@ from app.models.synthetic import SyntheticGenerationJob
 
 __all__ = [
     "AiReviewJob",
+    "AiReviewBaseline",
     "AiReviewJobStatus",
     "AssumptionSet",
     "AuditEvent",

@@ -1155,33 +1155,33 @@ PROMPT_TEMPLATE: dict[str, Any] = {
     "is_default": True,
     "template_config": {
         "summary": (
-            "La integracion {interface_name} conecta {source_system} con {destination_system} "
-            "y actualmente mantiene estado QA {qa_status}."
+            "The integration {interface_name} connects {source_system} to {destination_system} "
+            "and currently has QA status {qa_status}."
         ),
         "blocks": [
             {
-                "title": "Contexto",
+                "title": "Context",
                 "body": (
-                    "Interfaz {interface_id} para la marca {brand} dentro del proceso {business_process}. "
-                    "Opera con frecuencia {frequency} y {payload_text}."
+                    "Interface {interface_id} supports brand {brand} within business process {business_process}. "
+                    "It runs at frequency {frequency} with {payload_text}."
                 ),
             },
             {
-                "title": "Patron",
+                "title": "Pattern",
                 "body": (
-                    "Se documenta {pattern_label}. Racional: {pattern_rationale}."
+                    "Documented pattern: {pattern_label}. Rationale: {pattern_rationale}."
                 ),
             },
             {
-                "title": "Implementacion",
+                "title": "Implementation",
                 "body": (
-                    "Tipo {type}, trigger {trigger_type} y herramientas base {core_tools}. "
-                    "Politica de reintento: {retry_policy}."
+                    "Type {type}, trigger {trigger_type}, and core tools {core_tools}. "
+                    "Retry policy: {retry_policy}."
                 ),
             },
             {
-                "title": "Gobierno QA",
-                "body": "Estado QA {qa_status}. Observaciones: {qa_reasons}.",
+                "title": "QA Governance",
+                "body": "QA status {qa_status}. Observations: {qa_reasons}.",
             },
         ],
     },
