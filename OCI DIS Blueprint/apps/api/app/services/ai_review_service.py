@@ -230,7 +230,7 @@ def _normalize_drift_value(field: str, value: object | None) -> str:
         return "|".join(sorted(part.strip().lower() for part in str(value).split(",") if part.strip()))
     if field == "payload_per_execution_kb":
         try:
-            return f"{float(value):.3f}"
+            return f"{float(str(value)):.3f}"
         except (TypeError, ValueError):
             return str(value).strip().lower()
     return str(value).strip().lower()
@@ -1063,7 +1063,7 @@ async def mark_ai_review_job_running(job_id: str, db: AsyncSession) -> AiReviewJ
     """Mark a review job as running."""
 
     job = await _load_job(job_id, db)
-    old_value = {"status": _status_value(job)}
+    old_value: dict[str, object] = {"status": _status_value(job)}
     job.status = type(job.status).RUNNING
     job.started_at = datetime.now(UTC)
     job.finished_at = None
@@ -1092,7 +1092,7 @@ async def mark_ai_review_job_failed(
     """Persist a failed terminal state for a review job."""
 
     job = await _load_job(job_id, db)
-    old_value = {"status": _status_value(job), "error_details": job.error_details}
+    old_value: dict[str, object] = {"status": _status_value(job), "error_details": job.error_details}
     job.status = type(job.status).FAILED
     job.finished_at = datetime.now(UTC)
     job.error_details = cast(dict[str, object], sanitize_for_json(error_details))
@@ -1417,12 +1417,12 @@ async def build_review_result(
             )
         )
     if missing_payload and total:
-        severity: AiReviewSeverity = "high" if _pct(total - len(missing_payload), total) < 60 else "medium"
+        payload_severity: AiReviewSeverity = "high" if _pct(total - len(missing_payload), total) < 60 else "medium"
         ids = [ev_coverage.id]
         findings.append(
             _finding(
                 "payload-coverage-gap",
-                severity,
+                payload_severity,
                 "data_quality",
                 "Payload evidence is incomplete",
                 "Forecasts are less reliable when payload per execution is missing.",
@@ -1735,7 +1735,7 @@ async def run_ai_review_job(job_id: str, db: AsyncSession) -> AiReviewJobRespons
         reviewer_personas=[str(item) for item in cast(list[object], input_payload.get("reviewer_personas", []))],
         db=db,
     )
-    old_value = {"status": _status_value(job)}
+    old_value: dict[str, object] = {"status": _status_value(job)}
     job.status = type(job.status).COMPLETED
     job.finished_at = datetime.now(UTC)
     job.result_payload = cast(dict[str, object], sanitize_for_json(review.model_dump(mode="json")))
@@ -1803,7 +1803,7 @@ async def accept_ai_review_finding(
         accepted_at=datetime.now(UTC),
         note=body.note,
     )
-    old_value = {"accepted_recommendations": job.accepted_recommendations or []}
+    old_value: dict[str, object] = {"accepted_recommendations": job.accepted_recommendations or []}
     accepted.append(acceptance.model_dump(mode="json"))
     job.accepted_recommendations = accepted
     await db.flush()
@@ -1898,7 +1898,7 @@ async def apply_ai_review_finding_patch(
         note=body.note or "Applied deterministic suggested patch from the review board.",
         applied_patch=refreshed_patch.model_dump(mode="json"),
     )
-    old_value = {"accepted_recommendations": job.accepted_recommendations or []}
+    old_value: dict[str, object] = {"accepted_recommendations": job.accepted_recommendations or []}
     accepted.append(acceptance.model_dump(mode="json"))
     job.accepted_recommendations = accepted
     await db.flush()
