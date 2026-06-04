@@ -17,7 +17,7 @@ Replaces `Catalogo_Integracion.xlsx` with a governed platform enabling architect
 ## Stack
 
 - **API:** FastAPI (Python 3.12) — `apps/api/`
-- **Web:** Next.js 14 (TypeScript) — `apps/web/`
+- **Web:** Next.js 15 (TypeScript, Node.js 26.0.0) — `apps/web/`
 - **Database:** PostgreSQL 16
 - **Jobs:** Celery + Redis
 - **Storage:** MinIO (dev) / OCI Object Storage (prod)

@@ -1,7 +1,7 @@
 # Next.js — Docker Desktop (macOS) — all stages containerized.
 # Build from the monorepo root so Docker uses the shared workspace lockfile and
 # security overrides instead of resolving app dependencies independently.
-FROM node:20-alpine AS base
+FROM node:26.0.0-alpine AS base
 WORKDIR /workspace
 
 # ---------- deps ----------

@@ -21,7 +21,7 @@ Adopt the following monorepo stack:
 | Component | Decision | Rationale |
 |-----------|----------|-----------|
 | API | FastAPI (Python 3.12) | Native async, OpenAPI 3.1 auto-generation, strong typing via Pydantic, Python aligns with calc engine |
-| Web | Next.js 14 (TypeScript) | App Router for clean server/client separation, strong ecosystem, type-safe API client generation |
+| Web | Next.js 15 (TypeScript, Node.js 26.0.0) | App Router for clean server/client separation, strong ecosystem, type-safe API client generation |
 | Database | PostgreSQL 16 | ACID guarantees for audit trail, JSONB for raw payloads and snapshots, mature async driver (asyncpg) |
 | Job queue | Celery + Redis | Battle-tested for import and recalculation jobs; Redis doubles as result backend |
 | Object storage | MinIO (dev) / OCI Object Storage (prod) | S3-compatible API — swap endpoint, same code |

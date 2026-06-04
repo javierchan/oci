@@ -26,9 +26,13 @@
     "lint:web": "docker compose run --rm web npm run lint"
   },
   "overrides": {
-    "postcss": "8.5.12"
+    "postcss": "8.5.12",
+    "next": {
+      ".": "$next",
+      "postcss": "8.5.12"
+    }
   },
   "engines": {
-    "node": ">=20"
+    "node": "26.0.0"
   }
 }

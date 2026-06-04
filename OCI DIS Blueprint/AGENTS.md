@@ -19,7 +19,7 @@ Full requirements are in `TLP - PRD` tab of `Catalogo_Integracion.xlsx` (PRD-001
 
 | Layer | Technology | Notes |
 |-------|-----------|-------|
-| Web app | Next.js 14 + TypeScript | `apps/web/` |
+| Web app | Next.js 15 + TypeScript (Node.js 26.0.0) | `apps/web/` |
 | API | FastAPI (Python 3.12) | `apps/api/` |
 | Database | PostgreSQL 16 | via Docker |
 | Job queue | Celery + Redis | import and recalc jobs |
