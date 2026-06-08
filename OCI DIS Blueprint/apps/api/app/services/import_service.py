@@ -29,6 +29,9 @@ from app.schemas.imports import (
     ImportBatchDeleteResponse,
     ImportBatchListResponse,
     ImportBatchResponse,
+    ImportQualityAssistantResponse,
+    ImportQualityFinding,
+    ImportQualityMetric,
     NormalizationEventResponse,
     SourceRowListResponse,
     SourceRowResponse,
@@ -597,6 +600,159 @@ async def list_import_rows(
         total=total or 0,
         page=page,
         page_size=page_size,
+    )
+
+
+def _quality_metric(label: str, value: str, detail: str) -> ImportQualityMetric:
+    return ImportQualityMetric(label=label, value=value, detail=detail)
+
+
+def _quality_finding(
+    severity: str,
+    title: str,
+    summary: str,
+    action_label: str,
+    action_href: str,
+) -> ImportQualityFinding:
+    return ImportQualityFinding(
+        severity=severity,
+        title=title,
+        summary=summary,
+        action_label=action_label,
+        action_href=action_href,
+    )
+
+
+def _quality_pct(complete: int, total: int) -> str:
+    return f"{round((complete / total) * 100)}%" if total else "0%"
+
+
+def _source_row_has_value(row: SourceIntegrationRow, header_map: dict[str, str], field: str) -> bool:
+    value = _extract_raw_value(cast(dict[str, object], row.raw_data or {}), header_map, field)
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip() != ""
+    return True
+
+
+async def get_import_quality_assistant(
+    project_id: str,
+    batch_id: str,
+    db: AsyncSession,
+) -> ImportQualityAssistantResponse:
+    """Return deterministic data-quality guidance for one import batch."""
+
+    batch = await db.scalar(
+        select(ImportBatch)
+        .options(selectinload(ImportBatch.source_rows))
+        .where(
+            ImportBatch.project_id == project_id,
+            ImportBatch.id == batch_id,
+        )
+    )
+    if batch is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Import batch not found", "error_code": "IMPORT_BATCH_NOT_FOUND"},
+        )
+
+    source_rows = sorted(batch.source_rows, key=lambda row: row.source_row_number)
+    included_rows = [row for row in source_rows if row.included]
+    excluded_rows = [row for row in source_rows if not row.included]
+    header_map = cast(dict[str, str], batch.header_map or {})
+    normalization_event_count = sum(len(row.normalization_events or []) for row in source_rows)
+    included_total = len(included_rows)
+    coverage_fields = {
+        "Payload": "payload_per_execution_kb",
+        "Pattern": "selected_pattern",
+        "Trigger": "trigger_type",
+        "Source": "source_system",
+        "Destination": "destination_system",
+    }
+    coverage_counts = {
+        label: sum(1 for row in included_rows if _source_row_has_value(row, header_map, field))
+        for label, field in coverage_fields.items()
+    }
+    metrics = [
+        _quality_metric("Rows parsed", str(len(source_rows)), "Source rows persisted from this workbook batch."),
+        _quality_metric("Included rows", str(len(included_rows)), "Rows that entered the governed catalog flow."),
+        _quality_metric("Excluded rows", str(len(excluded_rows)), "Rows excluded by import rules or workbook evidence."),
+        _quality_metric(
+            "Normalizations",
+            str(normalization_event_count),
+            "Frequency, payload, or header normalization events captured during ingest.",
+        ),
+        *[
+            _quality_metric(label, _quality_pct(count, included_total), f"{count} of {included_total} included rows populated.")
+            for label, count in coverage_counts.items()
+        ],
+    ]
+    findings: list[ImportQualityFinding] = []
+    import_href = f"/projects/{project_id}/import?batch_id={batch_id}"
+    catalog_href = f"/projects/{project_id}/catalog"
+    if batch.status.value == "failed":
+        findings.append(
+            _quality_finding(
+                "critical",
+                "Import failed before catalog governance",
+                "The batch did not complete, so no downstream catalog quality can be trusted for this upload.",
+                "Review import error",
+                import_href,
+            )
+        )
+    if excluded_rows:
+        reasons = sorted({row.exclusion_reason or "No reason captured" for row in excluded_rows})
+        findings.append(
+            _quality_finding(
+                "medium",
+                "Source rows were excluded",
+                f"{len(excluded_rows)} row(s) were excluded. Top reason: {reasons[0]}.",
+                "Review excluded rows",
+                import_href,
+            )
+        )
+    for label, count in coverage_counts.items():
+        if included_total and count < included_total:
+            severity = "high" if label in {"Payload", "Pattern", "Trigger"} else "medium"
+            findings.append(
+                _quality_finding(
+                    severity,
+                    f"{label} coverage is incomplete",
+                    f"{included_total - count} included row(s) are missing {label.lower()} evidence.",
+                    "Open governed catalog",
+                    catalog_href,
+                )
+            )
+    if normalization_event_count:
+        findings.append(
+            _quality_finding(
+                "positive",
+                "Workbook normalization evidence captured",
+                f"{normalization_event_count} normalization event(s) preserve the ingest decision trail.",
+                "Review source rows",
+                import_href,
+            )
+        )
+
+    if any(finding.severity in {"critical", "high"} for finding in findings):
+        next_action = "Resolve high-priority import evidence gaps before using forecasts or AI Review for sign-off."
+    elif findings:
+        next_action = "Review excluded rows and normalization evidence, then continue catalog governance."
+    else:
+        next_action = "Import quality is clean; continue with catalog QA, canvas design, and recalculation."
+    return ImportQualityAssistantResponse(
+        project_id=project_id,
+        batch_id=batch_id,
+        status=batch.status.value,
+        filename=batch.filename,
+        row_count=len(source_rows),
+        included_count=len(included_rows),
+        excluded_count=len(excluded_rows),
+        normalization_event_count=normalization_event_count,
+        recommended_next_action=next_action,
+        metrics=metrics,
+        findings=findings,
     )
 
 

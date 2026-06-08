@@ -3,11 +3,11 @@
 /* Governed AI review launcher and result board for project and integration scopes. */
 
 import Link from "next/link";
-import { AlertTriangle, ClipboardCheck, Loader2, ShieldCheck, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ClipboardCheck, Download, ListChecks, Loader2, Route, ShieldCheck, Sparkles, TrendingUp, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ConfirmModal } from "@/components/modal";
-import { api, getErrorMessage } from "@/lib/api";
+import { api, apiDownloadUrl, getErrorMessage } from "@/lib/api";
 import type {
   AiReviewBaseline,
   AiReviewCategory,
@@ -15,6 +15,8 @@ import type {
   AiReviewFinding,
   AiReviewGraphContext,
   AiReviewJob,
+  AiReviewJobCompare,
+  AiReviewProviderStatus,
   AiReviewScope,
   AiReviewSeverity,
 } from "@/lib/types";
@@ -24,6 +26,7 @@ type AiReviewButtonProps = {
   integrationId?: string;
   graphContext?: AiReviewGraphContext;
   defaultScope?: AiReviewScope;
+  label?: string;
 };
 
 const SEVERITY_STYLES: Record<AiReviewSeverity, string> = {
@@ -56,6 +59,13 @@ function scoreTone(score: number): string {
   return "text-emerald-600 dark:text-emerald-300";
 }
 
+function signoffTone(status: string): string {
+  if (status === "blocked") return "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100";
+  if (status === "needs_review") return "border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-100";
+  if (status === "ready_with_caveats") return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
+  return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100";
+}
+
 function driftTone(status: AiReviewDriftStatus): string {
   if (status === "blocking_drift") return "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100";
   if (status === "material_drift") return "border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-100";
@@ -68,10 +78,47 @@ function driftLabel(status: AiReviewDriftStatus): string {
   return status.replace(/_/g, " ");
 }
 
+function providerModeTone(mode: AiReviewProviderStatus["mode"]): string {
+  if (mode === "llm_available") {
+    return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100";
+  }
+  if (mode === "misconfigured") {
+    return "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100";
+  }
+  return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function aiReviewJobMatchesScope(
+  job: AiReviewJob,
+  scope: AiReviewScope,
+  integrationId: string | undefined,
+): boolean {
+  if (job.scope !== scope) {
+    return false;
+  }
+  if (scope === "integration") {
+    return Boolean(integrationId) && job.integration_id === integrationId;
+  }
+  return true;
+}
+
+function completedAiReviewJobsForScope(
+  jobs: AiReviewJob[],
+  scope: AiReviewScope,
+  integrationId: string | undefined,
+): AiReviewJob[] {
+  return jobs.filter(
+    (item) =>
+      aiReviewJobMatchesScope(item, scope, integrationId) &&
+      item.status === "completed" &&
+      Boolean(item.result),
+  );
 }
 
 function FindingCard({
@@ -249,6 +296,8 @@ function AiReviewDialog({
   baselineLabel,
   baselineNote,
   error,
+  providerStatus,
+  historyCompare,
   onRun,
   onRequestSaveBaseline,
   onBaselineLabelChange,
@@ -274,6 +323,8 @@ function AiReviewDialog({
   baselineLabel: string;
   baselineNote: string;
   error: string | null;
+  providerStatus: AiReviewProviderStatus | null;
+  historyCompare: AiReviewJobCompare | null;
   onRun: () => void;
   onRequestSaveBaseline: () => void;
   onBaselineLabelChange: (_value: string) => void;
@@ -308,7 +359,7 @@ function AiReviewDialog({
               Architecture Review Board
             </h3>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-              Job-based review across QA, service sizing, canvas compatibility, 10x stress, red-team contradictions,
+              Job-based review across QA, service sizing, canvas compatibility, growth stress, red-team contradictions,
               and reviewer personas. Catalog data changes only when you explicitly apply a deterministic suggested patch.
             </p>
           </div>
@@ -323,6 +374,24 @@ function AiReviewDialog({
         </div>
 
         <div className="max-h-[calc(100vh-10rem)] overflow-y-auto px-6 py-5">
+          {providerStatus ? (
+            <section className={`mb-5 rounded-3xl border p-4 ${providerModeTone(providerStatus.mode)}`}>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">Provider status</p>
+                  <h4 className="mt-1 text-base font-semibold">{providerStatus.status_message}</h4>
+                  <p className="mt-2 text-xs leading-5 opacity-80">
+                    Model {providerStatus.model} · {providerStatus.wire_api} · {providerStatus.quota.remaining_jobs_today} of{" "}
+                    {providerStatus.quota.daily_job_limit} jobs remaining today
+                  </p>
+                </div>
+                <span className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
+                  {providerStatus.mode.replace(/_/g, " ")}
+                </span>
+              </div>
+            </section>
+          ) : null}
+
           {!job && !loading ? (
             <section className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-text-muted)]">
@@ -486,6 +555,36 @@ function AiReviewDialog({
                   </span>
                 ) : null}
               </div>
+              {historyCompare ? (
+                <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                    Evolution vs previous completed review
+                  </p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <div>
+                      <p className="text-2xl font-semibold text-[var(--color-text-primary)]">
+                        {historyCompare.readiness_score_delta >= 0 ? "+" : ""}
+                        {historyCompare.readiness_score_delta}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-muted)]">readiness score</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-semibold text-[var(--color-text-primary)]">
+                        {historyCompare.critical_high_delta >= 0 ? "+" : ""}
+                        {historyCompare.critical_high_delta}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-muted)]">critical/high findings</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-semibold text-[var(--color-text-primary)]">
+                        {historyCompare.resolved_findings.length}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-muted)]">resolved findings</p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">{historyCompare.summary}</p>
+                </div>
+              ) : null}
               <div className="mt-4 grid gap-2 md:grid-cols-2">
                 {history.slice(0, 4).map((historyJob) => (
                   <button
@@ -565,6 +664,16 @@ function AiReviewDialog({
                       </span>
                     ) : null}
                   </div>
+                  {job?.status === "completed" ? (
+                    <a
+                      href={apiDownloadUrl(`/api/v1/ai-reviews/${job.id}/export`)}
+                      download
+                      className="mt-4 inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] px-3 py-1.5 text-xs font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)]"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Export Markdown
+                    </a>
+                  ) : null}
                   <p className="mt-4 text-xs text-[var(--color-text-muted)]">
                     Engine: {review.engine} · LLM: {review.llm_status}
                     {review.llm_model ? ` (${review.llm_model})` : ""} · Generated {new Date(review.generated_at).toLocaleString()}
@@ -579,6 +688,48 @@ function AiReviewDialog({
                   </p>
                   <p className="mt-2 text-xs text-[var(--color-text-muted)]">out of 100</p>
                 </article>
+              </section>
+
+              <section className={`rounded-3xl border p-5 ${signoffTone(review.decision_brief.signoff_status)}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">Decision brief</p>
+                    <h4 className="mt-2 text-xl font-semibold">{review.decision_brief.headline}</h4>
+                    <p className="mt-2 text-sm leading-6 opacity-85">
+                      <span className="font-semibold">Primary risk: </span>
+                      {review.decision_brief.primary_risk}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 opacity-85">
+                      <span className="font-semibold">Next action: </span>
+                      {review.decision_brief.recommended_next_action}
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
+                    {review.decision_brief.signoff_status.replace(/_/g, " ")}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-current/15 bg-white/45 p-4 text-sm dark:bg-black/15">
+                    <p className="font-semibold uppercase tracking-[0.14em] opacity-60">Decision agenda</p>
+                    <ul className="mt-3 space-y-2 leading-6">
+                      {review.decision_brief.decision_points.slice(0, 4).map((item) => (
+                        <li key={item}>• {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="rounded-2xl border border-current/15 bg-white/45 p-4 text-sm dark:bg-black/15">
+                    <p className="font-semibold uppercase tracking-[0.14em] opacity-60">Sign-off blockers</p>
+                    {review.decision_brief.blockers.length > 0 ? (
+                      <ul className="mt-3 space-y-2 leading-6">
+                        {review.decision_brief.blockers.slice(0, 5).map((item) => (
+                          <li key={item}>• {item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-3 leading-6 opacity-80">No critical or high-priority blocker is visible.</p>
+                    )}
+                  </div>
+                </div>
               </section>
 
               <section className={`rounded-3xl border p-5 ${driftTone(review.drift.status)}`}>
@@ -667,6 +818,115 @@ function AiReviewDialog({
                 ))}
               </section>
 
+              <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <div className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                  <div className="flex items-center gap-2">
+                    <Route className="h-5 w-5 text-[var(--color-accent)]" />
+                    <h4 className="text-lg font-semibold text-[var(--color-text-primary)]">Topology intelligence</h4>
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {review.topology_insights.length > 0 ? (
+                      review.topology_insights.map((insight) => (
+                        <article key={insight.id} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                                {insight.id} · {insight.insight_type.replace(/_/g, " ")}
+                              </p>
+                              <h5 className="mt-1 font-semibold text-[var(--color-text-primary)]">{insight.title}</h5>
+                            </div>
+                            <span className="rounded-full border border-[var(--color-border)] px-2 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
+                              {insight.metric}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">{insight.summary}</p>
+                          {insight.action_href ? (
+                            <Link href={insight.action_href} className="mt-3 inline-flex text-sm font-semibold underline underline-offset-4">
+                              Open scoped catalog
+                            </Link>
+                          ) : null}
+                        </article>
+                      ))
+                    ) : (
+                      <p className="text-sm text-[var(--color-text-secondary)]">No topology insight was generated for this scope.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-[var(--color-accent)]" />
+                    <h4 className="text-lg font-semibold text-[var(--color-text-primary)]">Stress scenarios</h4>
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {review.stress_scenarios.length > 0 ? (
+                      review.stress_scenarios.map((scenario) => (
+                        <article key={scenario.id} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                                {scenario.id} · {scenario.multiplier}x · {scenario.confidence} confidence
+                              </p>
+                              <h5 className="mt-1 font-semibold text-[var(--color-text-primary)]">{scenario.name}</h5>
+                            </div>
+                            <span className="rounded-full border border-[var(--color-border)] px-2 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
+                              {scenario.projected_daily_payload_gb} GB/day
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">{scenario.summary}</p>
+                          {scenario.warnings.length > 0 ? (
+                            <div className="mt-3 space-y-1 text-xs leading-5 text-[var(--color-text-muted)]">
+                              {scenario.warnings.slice(0, 3).map((warning) => (
+                                <p key={warning}>• {warning}</p>
+                              ))}
+                            </div>
+                          ) : null}
+                        </article>
+                      ))
+                    ) : (
+                      <p className="text-sm text-[var(--color-text-secondary)]">No stress scenario was generated for this scope.</p>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                <div className="flex items-center gap-2">
+                  <ListChecks className="h-5 w-5 text-[var(--color-accent)]" />
+                  <h4 className="text-lg font-semibold text-[var(--color-text-primary)]">Remediation plan</h4>
+                </div>
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  {review.remediation_plan.length > 0 ? (
+                    review.remediation_plan.map((step) => (
+                      <article key={step.id} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                              {step.id} · Priority {step.priority}
+                            </p>
+                            <h5 className="mt-1 font-semibold text-[var(--color-text-primary)]">{step.title}</h5>
+                          </div>
+                          <span className="rounded-full border border-[var(--color-border)] px-2 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
+                            {step.owner}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">{step.action}</p>
+                        <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">{step.expected_impact}</p>
+                        {step.action_href ? (
+                          <Link href={step.action_href} className="mt-3 inline-flex text-sm font-semibold underline underline-offset-4">
+                            Open action target
+                          </Link>
+                        ) : null}
+                      </article>
+                    ))
+                  ) : (
+                    <p className="text-sm text-[var(--color-text-secondary)]">
+                      No remediation steps were generated because the review has no blocking findings.
+                    </p>
+                  )}
+                </div>
+              </section>
+
               <section className="space-y-4">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="h-5 w-5 text-[var(--color-accent)]" />
@@ -731,6 +991,7 @@ export function AiReviewButton({
   integrationId,
   graphContext,
   defaultScope = integrationId ? "integration" : "project",
+  label = "Run AI review",
 }: AiReviewButtonProps): JSX.Element {
   const [open, setOpen] = useState<boolean>(false);
   const [selectedScope, setSelectedScope] = useState<AiReviewScope>(defaultScope);
@@ -748,6 +1009,8 @@ export function AiReviewButton({
   const [baselineLabel, setBaselineLabel] = useState<string>("Approved project baseline");
   const [baselineNote, setBaselineNote] = useState<string>("");
   const [confirmBaselineOpen, setConfirmBaselineOpen] = useState<boolean>(false);
+  const [providerStatus, setProviderStatus] = useState<AiReviewProviderStatus | null>(null);
+  const [historyCompare, setHistoryCompare] = useState<AiReviewJobCompare | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -758,15 +1021,51 @@ export function AiReviewButton({
     }
     setHistoryLoading(true);
     void api
+      .getAiReviewProviderStatus()
+      .then((response) => {
+        if (!cancelled) {
+          setProviderStatus(response);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProviderStatus(null);
+        }
+      });
+    void api
       .listAiReviewJobs(projectId)
       .then((response) => {
         if (!cancelled) {
-          setHistory(response.jobs);
+          const scopedJobs = response.jobs.filter((item) =>
+            aiReviewJobMatchesScope(item, selectedScope, integrationId),
+          );
+          setHistory(scopedJobs);
+          const completedJobs = completedAiReviewJobsForScope(scopedJobs, selectedScope, integrationId);
+          if (completedJobs.length >= 2) {
+            void api
+              .compareAiReviewJobs(projectId, {
+                base_job_id: completedJobs[1].id,
+                target_job_id: completedJobs[0].id,
+              })
+              .then((comparison) => {
+                if (!cancelled) {
+                  setHistoryCompare(comparison);
+                }
+              })
+              .catch(() => {
+                if (!cancelled) {
+                  setHistoryCompare(null);
+                }
+              });
+          } else {
+            setHistoryCompare(null);
+          }
         }
       })
       .catch(() => {
         if (!cancelled) {
           setHistory([]);
+          setHistoryCompare(null);
         }
       })
       .finally(() => {
@@ -777,7 +1076,7 @@ export function AiReviewButton({
     return () => {
       cancelled = true;
     };
-  }, [open, projectId]);
+  }, [integrationId, open, projectId, selectedScope]);
 
   useEffect(() => {
     let cancelled = false;
@@ -878,7 +1177,20 @@ export function AiReviewButton({
       }
       try {
         const refreshed = await api.listAiReviewJobs(projectId);
-        setHistory(refreshed.jobs);
+        const scopedJobs = refreshed.jobs.filter((item) =>
+          aiReviewJobMatchesScope(item, selectedScope, integrationId),
+        );
+        setHistory(scopedJobs);
+        const completedJobs = completedAiReviewJobsForScope(scopedJobs, selectedScope, integrationId);
+        if (completedJobs.length >= 2) {
+          const comparison = await api.compareAiReviewJobs(projectId, {
+            base_job_id: completedJobs[1].id,
+            target_job_id: completedJobs[0].id,
+          });
+          setHistoryCompare(comparison);
+        } else {
+          setHistoryCompare(null);
+        }
       } catch {}
     } catch (caughtError) {
       setError(getErrorMessage(caughtError, "Unable to run AI review."));
@@ -976,7 +1288,7 @@ export function AiReviewButton({
         className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--color-text-primary)] px-4 py-2 text-sm font-semibold text-[var(--color-surface)] shadow-sm transition hover:translate-y-[-1px] hover:shadow-md"
       >
         <Sparkles className="h-4 w-4" />
-        Run AI review
+        {label}
       </button>
       {open ? (
         <AiReviewDialog
@@ -994,6 +1306,8 @@ export function AiReviewButton({
           baselineLabel={baselineLabel}
           baselineNote={baselineNote}
           error={error}
+          providerStatus={providerStatus}
+          historyCompare={historyCompare}
           onRun={() => {
             void runReview();
           }}

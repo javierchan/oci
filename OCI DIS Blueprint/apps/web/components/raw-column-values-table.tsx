@@ -150,7 +150,7 @@ export function RawColumnValuesTable({
     return (
       <td
         className={[
-          "px-4 py-3 font-medium",
+          "px-4 py-3 font-medium break-words",
           unnamed
             ? "italic text-[var(--color-text-muted)]"
             : "text-[var(--color-text-primary)]",
@@ -166,7 +166,7 @@ export function RawColumnValuesTable({
     const isEditing = editingKey === fieldKey;
     const formattedValue = displayValue(value);
     return (
-      <td className="group px-4 py-3 text-[var(--color-text-secondary)]">
+      <td className="group min-w-0 px-4 py-3 text-[var(--color-text-secondary)]">
         {isEditing ? (
           <input
             autoFocus
@@ -185,10 +185,10 @@ export function RawColumnValuesTable({
                 cancelEdit();
               }
             }}
-            className="w-full rounded-xl border border-[var(--color-border)] px-3 py-2 text-sm"
+            className="w-full min-w-0 rounded-xl border border-[var(--color-border)] px-3 py-2 text-sm"
           />
         ) : (
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start justify-between gap-3">
             <div
               className="min-w-0 flex-1 break-words"
               title={formattedValue.source ? `Original source value: ${formattedValue.source}` : undefined}
@@ -219,12 +219,12 @@ export function RawColumnValuesTable({
   }
 
   return (
-    <div className="relative">
-      <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-        <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
+    <div className="relative min-w-0">
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+        <table className="w-full table-fixed divide-y divide-[var(--color-table-border)] text-left">
           <thead className="app-table-header">
             <tr>
-              <th className="px-4 py-3">Field</th>
+              <th className="w-[40%] px-4 py-3">Field</th>
               <th className="px-4 py-3">Source Value</th>
             </tr>
           </thead>
@@ -249,8 +249,8 @@ export function RawColumnValuesTable({
           <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-[var(--color-accent)]">
             Show all columns ({hiddenEntries.length})
           </summary>
-          <div className="border-t border-[var(--color-border)]">
-            <table className="min-w-full divide-y divide-[var(--color-table-border)] text-left">
+          <div className="overflow-x-auto border-t border-[var(--color-border)]">
+            <table className="w-full table-fixed divide-y divide-[var(--color-table-border)] text-left">
               <tbody className="divide-y divide-[var(--color-table-border)] text-sm">
                 {renderRows(hiddenEntries)}
               </tbody>

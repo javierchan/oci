@@ -14,7 +14,13 @@ import { PatternSupportBadge } from "@/components/pattern-support-badge";
 import { api } from "@/lib/api";
 import { displayUiValue, formatDate, formatNumber } from "@/lib/format";
 import { isProjectNotFoundError } from "@/lib/project-errors";
-import type { AuditEvent, Integration } from "@/lib/types";
+import type {
+  AuditEvent,
+  CanvasServiceProfile,
+  Integration,
+  ServiceLimit,
+  ServiceProductDetail,
+} from "@/lib/types";
 
 type IntegrationDetailPageProps = {
   params: Promise<{
@@ -220,6 +226,45 @@ function buildCoverageSignals(integration: Integration): Array<{ title: string; 
   return signals;
 }
 
+function buildCanvasLimitMap(limits: ServiceLimit[]): Record<string, unknown> {
+  return Object.fromEntries(
+    limits
+      .filter((limit) => limit.is_active)
+      .map((limit) => [limit.limit_key, limit.value]),
+  );
+}
+
+function toCanvasServiceProfile(product: ServiceProductDetail): CanvasServiceProfile {
+  return {
+    id: product.id,
+    service_id: product.service_id,
+    name: product.name,
+    category: product.category,
+    sla_uptime_pct: product.sla_uptime_pct,
+    pricing_model: product.pricing_model,
+    limits: buildCanvasLimitMap(product.limits),
+    summary: product.summary,
+    architecture_role: product.architecture_role,
+  };
+}
+
+async function loadCanvasServiceProfiles(): Promise<CanvasServiceProfile[]> {
+  const productList = await api.listServiceProducts().catch(() => ({
+    products: [],
+    total: 0,
+    stale_evidence_count: 0,
+    open_findings_count: 0,
+  }));
+  const productDetails = await Promise.all(
+    productList.products.map((product) =>
+      api.getServiceProduct(product.service_id).catch(() => null),
+    ),
+  );
+  return productDetails
+    .filter((product): product is ServiceProductDetail => product !== null)
+    .map(toCanvasServiceProfile);
+}
+
 export default async function IntegrationDetailPage({
   params,
 }: IntegrationDetailPageProps): Promise<JSX.Element> {
@@ -233,7 +278,7 @@ export default async function IntegrationDetailPage({
     }
     throw error;
   }
-  const [detail, patterns, canvasGovernance, integrationAudit, sourceRowAudit, services] = await Promise.all([
+  const [detail, patterns, canvasGovernance, integrationAudit, sourceRowAudit, serviceProfiles] = await Promise.all([
     api.getIntegration(projectId, integrationId),
     api.listPatterns(),
     api.getCanvasGovernance(),
@@ -250,10 +295,7 @@ export default async function IntegrationDetailPage({
       page: 1,
       page_size: 50,
     })),
-    api.listServices().catch(() => ({
-      services: [],
-      total: 0,
-    })),
+    loadCanvasServiceProfiles(),
   ]);
 
   const integration = detail.integration;
@@ -293,7 +335,7 @@ export default async function IntegrationDetailPage({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="app-kicker">Catalog Drawer · Integration Detail</p>
-            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
+            <h1 className="mt-2 break-words text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
               {integration.interface_name ?? integration.interface_id ?? integration.id}
             </h1>
             {integration.interface_id && integration.interface_name ? (
@@ -334,14 +376,14 @@ export default async function IntegrationDetailPage({
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <article className="app-card p-5">
+      <section className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <article className="app-card min-w-0 p-5">
           <p className="app-label">Route</p>
-          <p className="mt-3 text-sm font-semibold text-[var(--color-text-primary)]">
+          <p className="mt-3 break-words text-sm font-semibold text-[var(--color-text-primary)]">
             {integration.source_system ?? "Unknown source"}
           </p>
           <p className="my-2 text-lg font-semibold text-[var(--color-accent)]">→</p>
-          <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+          <p className="break-words text-sm font-semibold text-[var(--color-text-primary)]">
             {integration.destination_system ?? "Unknown destination"}
           </p>
           <p className="mt-3 text-xs text-[var(--color-text-muted)]">
@@ -350,9 +392,9 @@ export default async function IntegrationDetailPage({
           </p>
         </article>
 
-        <article className="app-card p-5">
+        <article className="app-card min-w-0 p-5">
           <p className="app-label">Pattern</p>
-          <p className="mt-3 text-lg font-semibold text-[var(--color-text-primary)]">
+          <p className="mt-3 break-words text-lg font-semibold text-[var(--color-text-primary)]">
             {selectedPatternDefinition
               ? `${selectedPatternDefinition.pattern_id} · ${selectedPatternDefinition.name}`
               : integration.selected_pattern ?? "Unassigned"}
@@ -364,7 +406,7 @@ export default async function IntegrationDetailPage({
           ) : null}
         </article>
 
-        <article className="app-card p-5">
+        <article className="app-card min-w-0 p-5">
           <p className="app-label">Volumetry</p>
           <p className="mt-3 text-2xl font-semibold text-[var(--color-text-primary)]">
             {formatNumber(integration.payload_per_execution_kb, 1)} KB
@@ -374,7 +416,7 @@ export default async function IntegrationDetailPage({
           </p>
         </article>
 
-        <article className="app-card p-5">
+        <article className="app-card min-w-0 p-5">
           <p className="app-label">Governance</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <QaBadge status={integration.qa_status} />
@@ -387,92 +429,92 @@ export default async function IntegrationDetailPage({
         </article>
       </section>
 
-      <div className="grid items-start gap-8 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="space-y-6">
-          <article className="app-card p-6">
+      <div className="grid min-w-0 items-start gap-8 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <section className="min-w-0 space-y-6">
+          <article className="app-card min-w-0 overflow-hidden p-5 sm:p-6">
             <p className="app-label">Source Data</p>
             <dl className="mt-5">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
+              <div className="grid min-w-0 gap-4 md:grid-cols-2">
+                <div className="min-w-0">
                   <dt className="app-label">Interface ID</dt>
-                  <dd className="mt-2 font-mono text-sm font-medium text-[var(--color-text-primary)]">{integration.interface_id ?? "—"}</dd>
+                  <dd className="mt-2 break-words font-mono text-sm font-medium text-[var(--color-text-primary)]">{integration.interface_id ?? "—"}</dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="app-label">Interface Name</dt>
-                  <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">
+                  <dd className="mt-2 break-words text-sm font-medium text-[var(--color-text-primary)]">
                     {integration.interface_name ?? "—"}
                   </dd>
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-4 border-t border-[var(--color-border)] pt-4 md:grid-cols-3">
-                <div>
+              <div className="mt-4 grid min-w-0 gap-4 border-t border-[var(--color-border)] pt-4 md:grid-cols-3">
+                <div className="min-w-0">
                   <dt className="app-label">Brand</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.brand ?? "—"}</dd>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{integration.brand ?? "—"}</dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="app-label">Business Process</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{integration.business_process ?? "—"}</dd>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{integration.business_process ?? "—"}</dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="app-label">Status</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.status)}</dd>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.status)}</dd>
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-4 border-t border-[var(--color-border)] pt-4 md:grid-cols-2 lg:grid-cols-4">
-                <div>
+              <div className="mt-4 grid min-w-0 gap-4 border-t border-[var(--color-border)] pt-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="min-w-0">
                   <dt className="app-label">Source System</dt>
-                  <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.source_system ?? "—"}</dd>
+                  <dd className="mt-2 break-words text-sm font-medium text-[var(--color-text-primary)]">{integration.source_system ?? "—"}</dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="app-label">Destination System</dt>
-                  <dd className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{integration.destination_system ?? "—"}</dd>
+                  <dd className="mt-2 break-words text-sm font-medium text-[var(--color-text-primary)]">{integration.destination_system ?? "—"}</dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="app-label">Frequency</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.frequency)}</dd>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.frequency)}</dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="app-label">Payload / Execution</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">
                     {formatNumber(integration.payload_per_execution_kb, 1)} KB
                   </dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="app-label">Type</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.type)}</dd>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.type)}</dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="app-label">Complexity</dt>
                   <dd className="mt-2"><ComplexityBadge value={integration.complexity} /></dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="app-label">Initial Scope</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.initial_scope)}</dd>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.initial_scope)}</dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className="app-label">Uncertainty</dt>
-                  <dd className="mt-2 text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.uncertainty)}</dd>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.uncertainty)}</dd>
                 </div>
               </div>
             </dl>
           </article>
 
-          <article className="app-card p-6">
+          <article className="app-card min-w-0 overflow-hidden p-5 sm:p-6">
             <p className="app-label">Source Lineage</p>
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <div className="app-card-muted p-4">
+            <div className="mt-5 grid min-w-0 gap-4 md:grid-cols-2">
+              <div className="app-card-muted min-w-0 p-4">
                 <p className="app-label">Source Row Number</p>
                 <p className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{lineage.source_row_number}</p>
               </div>
-              <div className="app-card-muted p-4">
+              <div className="app-card-muted min-w-0 p-4">
                 <p className="app-label">Import Batch</p>
-                <p className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">{lineage.import_filename}</p>
+                <p className="mt-2 break-words text-sm font-medium text-[var(--color-text-primary)]">{lineage.import_filename}</p>
               </div>
             </div>
 
-            <div className="app-card-muted mt-6 p-4">
+            <div className="app-card-muted mt-6 min-w-0 overflow-hidden p-4">
               <p className="app-label">Raw Column Values</p>
               <RawColumnValuesTable
                 projectId={projectId}
@@ -482,7 +524,7 @@ export default async function IntegrationDetailPage({
               />
             </div>
 
-            <div className="app-card-muted mt-6 p-4">
+            <div className="app-card-muted mt-6 min-w-0 overflow-hidden p-4">
               <p className="app-label">Normalization Events</p>
               {lineage.normalization_events.length === 0 ? (
                 <p className="mt-3 text-sm text-[var(--color-text-secondary)]">No normalization events were recorded for this row.</p>
@@ -503,13 +545,14 @@ export default async function IntegrationDetailPage({
           </article>
         </section>
 
-        <aside className="space-y-8">
+        <aside className="min-w-0 space-y-8">
           <IntegrationPatchForm
             projectId={projectId}
             integration={integration}
             patterns={patterns.patterns}
             toolOptions={canvasGovernance.tools}
             overlayOptions={canvasGovernance.overlays}
+            combinations={canvasGovernance.combinations}
           />
 
           {integration.qa_reasons.length > 0 ? (
@@ -634,7 +677,7 @@ export default async function IntegrationDetailPage({
         integration={integration}
         patterns={patterns.patterns}
         patternDetail={patternDetail}
-        serviceProfiles={services.services}
+        serviceProfiles={serviceProfiles}
         toolOptions={canvasGovernance.tools}
         overlayOptions={canvasGovernance.overlays}
         combinations={canvasGovernance.combinations}

@@ -16,12 +16,22 @@ celery_app.conf.imports = (
     "app.workers.ai_review_worker",
     "app.workers.import_worker",
     "app.workers.recalc_worker",
+    "app.workers.service_verification_worker",
     "app.workers.synthetic_worker",
 )
+
+if settings.SERVICE_VERIFICATION_SCHEDULE_ENABLED:
+    celery_app.conf.beat_schedule = {
+        "service-verification-stale-scan": {
+            "task": "app.workers.service_verification_worker.execute_stale_service_verification_task",
+            "schedule": settings.SERVICE_VERIFICATION_SCHEDULE_SECONDS,
+        },
+    }
 
 # Import worker modules after the Celery app is created so task decorators register
 # against this application in both API-side dispatch and worker-side startup flows.
 from app.workers import import_worker as _import_worker  # noqa: E402,F401
 from app.workers import ai_review_worker as _ai_review_worker  # noqa: E402,F401
 from app.workers import recalc_worker as _recalc_worker  # noqa: E402,F401
+from app.workers import service_verification_worker as _service_verification_worker  # noqa: E402,F401
 from app.workers import synthetic_worker as _synthetic_worker  # noqa: E402,F401

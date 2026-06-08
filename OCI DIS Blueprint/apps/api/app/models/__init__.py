@@ -8,6 +8,12 @@ from app.models.governance import (
     PatternDefinition,
     PromptTemplateVersion,
     ServiceCapabilityProfile,
+    ServiceEvidenceSource,
+    ServiceInteroperabilityRule,
+    ServiceLimit,
+    ServiceProductVersion,
+    ServiceVerificationFinding,
+    ServiceVerificationJob,
 )
 from app.models.project import CatalogIntegration, ImportBatch, Project, SourceIntegrationRow
 from app.models.snapshot import AuditEvent, DashboardSnapshot, JustificationRecord, VolumetrySnapshot
@@ -28,6 +34,12 @@ __all__ = [
     "PatternDefinition",
     "PromptTemplateVersion",
     "Project",
+    "ServiceEvidenceSource",
+    "ServiceInteroperabilityRule",
+    "ServiceLimit",
+    "ServiceProductVersion",
+    "ServiceVerificationFinding",
+    "ServiceVerificationJob",
     "SourceIntegrationRow",
     "SyntheticGenerationJob",
     "ServiceCapabilityProfile",

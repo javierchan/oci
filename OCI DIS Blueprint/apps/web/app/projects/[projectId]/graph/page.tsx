@@ -5,14 +5,14 @@
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Breadcrumb } from "@/components/breadcrumb";
 import { GraphControls } from "@/components/graph-controls";
 import { GraphDetailPanel } from "@/components/graph-detail-panel";
 import { IntegrationGraph } from "@/components/integration-graph";
 import { api, getErrorMessage } from "@/lib/api";
 import { isProjectNotFoundError, projectRootHref } from "@/lib/project-errors";
+import { degradedSystemCount, qaTotalsForEdges } from "@/lib/topology";
+import type { TopologyLayoutMode } from "@/lib/topology";
 import type { GraphEdge, GraphNode, GraphParams, GraphResponse } from "@/lib/types";
-import type { Project } from "@/lib/types";
 
 type GraphPageProps = {
   params: Promise<{
@@ -73,7 +73,6 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
   const router = useRouter();
   const svgRef = useRef<SVGSVGElement>(null);
   const [graph, setGraph] = useState<GraphResponse>(EMPTY_GRAPH);
-  const [project, setProject] = useState<Project | null>(null);
   const [filters, setFilters] = useState<GraphParams>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
@@ -83,41 +82,20 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [homeViewport, setHomeViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [colorMode, setColorMode] = useState<"qa" | "bp">("qa");
+  const [layoutMode, setLayoutMode] = useState<TopologyLayoutMode>("cluster");
   const [mode, setMode] = useState<"select" | "pan">("select");
-  const compactTopology = graph.nodes.length > 0 && graph.nodes.length <= 8;
-  const [autoFocusSignature, setAutoFocusSignature] = useState<string>("");
-
-  const rankedSystems = useMemo(() => {
-    const connectionCounts = new Map<string, number>();
-    graph.edges.forEach((edge) => {
-      connectionCounts.set(edge.source, (connectionCounts.get(edge.source) ?? 0) + edge.integration_count);
-      connectionCounts.set(edge.target, (connectionCounts.get(edge.target) ?? 0) + edge.integration_count);
-    });
-
-    return [...graph.nodes]
-      .map((node) => ({
-        label: node.label,
-        score:
-          (connectionCounts.get(node.id) ?? 0) +
-          node.integration_count * 4 +
-          node.business_processes.length * 2,
-      }))
-      .sort((left, right) => right.score - left.score || left.label.localeCompare(right.label));
-  }, [graph.edges, graph.nodes]);
-
-  const recommendedSystems = rankedSystems.slice(0, 4).map((entry) => entry.label);
-  const largeTopology = graph.meta.node_count > 50;
-  const stackDetailPanel = compactTopology || largeTopology;
   const missingProjectHref = projectRootHref(projectId);
+  const qaTotals = useMemo(() => qaTotalsForEdges(graph.edges), [graph.edges]);
+  const degradedSystems = useMemo(() => degradedSystemCount(graph.nodes, graph.edges), [graph.edges, graph.nodes]);
+  const selectedPanelNode = selectedNode ?? (selectedSystem ? graph.nodes.find((node) => node.label === selectedSystem) ?? null : null);
+  const hasSelection = Boolean(selectedPanelNode || selectedEdge || selectedSystem);
 
   useEffect(() => {
     let cancelled = false;
     void api
       .getProject(projectId)
-      .then((response) => {
-        if (!cancelled) {
-          setProject(response);
-        }
+      .then(() => {
+        return undefined;
       })
       .catch((caughtError: unknown) => {
         if (cancelled) {
@@ -193,35 +171,6 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
     setSelectedSystem("");
   }, [graph.nodes, selectedSystem]);
 
-  useEffect(() => {
-    const suggestedSystem = recommendedSystems[0] ?? "";
-    const hasGlobalFilter = Boolean(filters.brand || filters.business_process || filters.qa_status);
-    const signature = `${projectId}:${graph.meta.node_count}:${graph.meta.edge_count}:${suggestedSystem}`;
-
-    if (!largeTopology || !suggestedSystem || hasGlobalFilter) {
-      if (!largeTopology) {
-        setAutoFocusSignature("");
-      }
-      return;
-    }
-    if (selectedSystem || autoFocusSignature === signature) {
-      return;
-    }
-    setAutoFocusSignature(signature);
-    setSelectedSystem(suggestedSystem);
-  }, [
-    autoFocusSignature,
-    filters.brand,
-    filters.business_process,
-    filters.qa_status,
-    graph.meta.edge_count,
-    graph.meta.node_count,
-    largeTopology,
-    projectId,
-    recommendedSystems,
-    selectedSystem,
-  ]);
-
   function handleFilterChange(field: keyof GraphParams, value: string): void {
     setFilters((current) => ({
       ...current,
@@ -229,176 +178,125 @@ export default function GraphPage({ params }: GraphPageProps): JSX.Element {
     }));
   }
 
+  function handleSystemChange(value: string): void {
+    setSelectedSystem(value);
+    setSelectedEdge(null);
+    setSelectedNode(value ? graph.nodes.find((node) => node.label === value) ?? null : null);
+  }
+
+  function clearSelection(): void {
+    setSelectedNode(null);
+    setSelectedEdge(null);
+    setSelectedSystem("");
+  }
+
   return (
-    <div className="console-page">
-      <section className="console-hero">
-        <p className="app-kicker">Topology Workspace · System Dependency Map</p>
-        <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">
-          Integration Topology
-        </h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-          Inspect the project as a directed graph of source and destination systems, filter by business process or QA status, and drill back into the catalog from a node or edge.
+    <div className="mx-auto w-full max-w-none">
+      <div className="block sm:hidden app-card p-6 text-center">
+        <p className="text-sm text-[var(--color-text-secondary)]">
+          The integration map is best viewed on a larger screen.
         </p>
-        <div className="mt-4">
-          <Breadcrumb
-            items={[
-              { label: "Home", href: "/projects" },
-              { label: "Projects", href: "/projects" },
-              { label: project?.name ?? "Project", href: `/projects/${projectId}` },
-              { label: "Map" },
-            ]}
-          />
+        <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+          {graph.nodes.length} systems · {graph.edges.length} connections
+        </p>
+      </div>
+
+      <section className="hidden h-[calc(100vh-7.25rem)] min-h-[46rem] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_16px_45px_rgba(15,23,42,0.12)] sm:block">
+        <div className="flex h-full min-h-0">
+          <div className="relative min-w-0 flex-1">
+            <GraphControls
+              projectId={projectId}
+              filters={filters}
+              onFilterChange={handleFilterChange}
+              selectedSystem={selectedSystem}
+              systemOptions={graph.nodes.map((node) => node.label).sort((left, right) => left.localeCompare(right))}
+              onSystemChange={handleSystemChange}
+              colorMode={colorMode}
+              onColorModeChange={setColorMode}
+              layoutMode={layoutMode}
+              onLayoutModeChange={setLayoutMode}
+              mode={mode}
+              onModeChange={setMode}
+              zoom={viewport.scale}
+              onZoomIn={() => setViewport((current) => ({ ...current, scale: Math.min(current.scale * 1.2, 3.8) }))}
+              onZoomOut={() => setViewport((current) => ({ ...current, scale: Math.max(current.scale / 1.2, 0.2) }))}
+              onZoomReset={() => setViewport(homeViewport)}
+              onClearSelection={clearSelection}
+              hasSelection={hasSelection}
+              meta={graph.meta}
+              qaTotals={qaTotals}
+              degradedSystemCount={degradedSystems}
+              svgRef={svgRef}
+            />
+
+            {loading ? (
+              <div className="flex h-full items-center justify-center text-sm font-medium text-[var(--color-text-secondary)]">
+                Building live topology...
+              </div>
+            ) : (
+              <IntegrationGraph
+                graph={graph}
+                selectedNodeId={selectedPanelNode?.id ?? null}
+                selectedEdgeId={selectedEdge?.id ?? null}
+                onNodeClick={(node) => {
+                  setSelectedNode(node);
+                  setSelectedEdge(null);
+                  setSelectedSystem(node.label);
+                }}
+                onEdgeClick={(edge) => {
+                  setSelectedEdge(edge);
+                  setSelectedNode(null);
+                  setSelectedSystem("");
+                }}
+                colorMode={colorMode}
+                focusedSystemId={selectedSystem}
+                layoutMode={layoutMode}
+                svgRef={svgRef}
+                mode={mode}
+                viewport={viewport}
+                onHomeViewportChange={setHomeViewport}
+                onViewportChange={setViewport}
+              />
+            )}
+
+            {graph.nodes.length > 0 && graph.nodes.length < 3 ? (
+              <div className="absolute bottom-5 left-5 max-w-xl rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 py-3 text-sm text-[var(--color-text-secondary)] shadow-sm backdrop-blur">
+                <span className="font-medium text-[var(--color-text-primary)]">Limited topology: </span>
+                This project&apos;s integrations share fewer than 3 distinct systems.
+              </div>
+            ) : null}
+
+            {error ? (
+              <p className="absolute bottom-5 left-5 max-w-xl rounded-xl border border-rose-200 bg-rose-50/95 px-4 py-3 text-sm font-semibold text-rose-800 shadow-sm dark:border-rose-900 dark:bg-rose-950/80 dark:text-rose-100">
+                {error}
+              </p>
+            ) : null}
+          </div>
+
+          {selectedPanelNode || selectedEdge ? (
+            <div className="hidden w-[26rem] shrink-0 border-l border-[var(--color-border)] xl:block">
+              <GraphDetailPanel
+                projectId={projectId}
+                graph={graph}
+                selectedNode={selectedPanelNode}
+                selectedEdge={selectedEdge}
+                onClose={clearSelection}
+              />
+            </div>
+          ) : null}
         </div>
       </section>
 
-      <GraphControls
-        projectId={projectId}
-        filters={filters}
-        onFilterChange={handleFilterChange}
-        selectedSystem={selectedSystem}
-        systemOptions={graph.nodes.map((node) => node.label).sort((left, right) => left.localeCompare(right))}
-        onSystemChange={setSelectedSystem}
-        colorMode={colorMode}
-        onColorModeChange={setColorMode}
-        mode={mode}
-        onModeChange={setMode}
-        zoom={viewport.scale}
-        onZoomIn={() => setViewport((current) => ({ ...current, scale: Math.min(current.scale * 1.2, 4) }))}
-        onZoomOut={() => setViewport((current) => ({ ...current, scale: Math.max(current.scale / 1.2, 0.2) }))}
-        onZoomReset={() => setViewport(homeViewport)}
-        meta={graph.meta}
-        svgRef={svgRef}
-      />
-
-      {largeTopology ? (
-        <section className="rounded-[1.75rem] border border-amber-200 bg-amber-50/90 p-4 dark:border-amber-900 dark:bg-amber-950/30">
-          <p className="app-label text-amber-700 dark:text-amber-300">
-            {selectedSystem ? `Focused View: ${selectedSystem}` : "Large Topology Mode"}
-          </p>
-          <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div>
-              <p className="text-sm font-medium text-amber-950 dark:text-amber-100">
-                {selectedSystem
-                  ? `You are viewing ${selectedSystem} and its closest dependency cluster. The full topology is still available.`
-                  : `${graph.meta.node_count} systems detected. Use a focus system or a governance filter to simplify the map.`}
-              </p>
-              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                Background systems are intentionally quiet in focused mode so the dependency story remains readable.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {selectedSystem ? (
-                <button
-                  type="button"
-                  onClick={() => setSelectedSystem("")}
-                  className="rounded-full border border-amber-600 bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-700"
-                >
-                  Show full topology
-                </button>
-              ) : null}
-              {recommendedSystems.map((system) => (
-                <button
-                  key={system}
-                  type="button"
-                  onClick={() => setSelectedSystem(system)}
-                  className={[
-                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                    selectedSystem === system
-                      ? "border-amber-500 bg-amber-500 text-white"
-                      : "border-amber-300 bg-white/70 text-amber-900 hover:border-amber-500 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100",
-                  ].join(" ")}
-                >
-                  {system}
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {graph.nodes.length < 3 ? (
-        <div className="mx-4 mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-text-secondary)]">
-          <span className="font-medium text-[var(--color-text-primary)]">Limited topology: </span>
-          This project&apos;s integrations share fewer than 3 distinct systems. Import a workbook with varied source and
-          destination system names to see the full dependency map.
-        </div>
-      ) : null}
-
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-
-      <div className={stackDetailPanel ? "space-y-6" : "grid gap-6 xl:grid-cols-[1.45fr_0.55fr]"}>
-        <div className="space-y-4">
-          <section className="grid gap-4 md:grid-cols-3">
-            <article className="console-stat">
-              <p className="app-label">Nodes</p>
-              <p className="mt-3 text-3xl font-semibold text-[var(--color-text-primary)]">{graph.meta.node_count}</p>
-            </article>
-            <article className="console-stat">
-              <p className="app-label">Edges</p>
-              <p className="mt-3 text-3xl font-semibold text-[var(--color-text-primary)]">{graph.meta.edge_count}</p>
-            </article>
-            <article className="console-stat">
-              <p className="app-label">Integrations</p>
-              <p className="mt-3 text-3xl font-semibold text-[var(--color-text-primary)]">{graph.meta.integration_count}</p>
-            </article>
-          </section>
-
-          {loading ? (
-            <div className="app-card p-10 text-sm text-[var(--color-text-secondary)]">
-              Building force layout…
-            </div>
-          ) : (
-            <>
-              <div className="block sm:hidden app-card p-6 text-center">
-                <p className="text-sm text-[var(--color-text-secondary)]">
-                  The integration map is best viewed on a larger screen.
-                </p>
-                <p className="mt-2 text-xs text-[var(--color-text-muted)]">
-                  {graph.nodes.length} systems · {graph.edges.length} connections
-                </p>
-              </div>
-              <div className="hidden sm:block">
-                <IntegrationGraph
-                  graph={graph}
-                  selectedNodeId={selectedNode?.id ?? null}
-                  selectedEdgeId={selectedEdge?.id ?? null}
-                  onNodeClick={(node) => {
-                    setSelectedNode(node);
-                    setSelectedEdge(null);
-                  }}
-                  onEdgeClick={(edge) => {
-                    setSelectedEdge(edge);
-                    setSelectedNode(null);
-                  }}
-                  colorMode={colorMode}
-                  focusedSystemId={selectedSystem}
-                  svgRef={svgRef}
-                  mode={mode}
-                  viewport={viewport}
-                  onHomeViewportChange={setHomeViewport}
-                  onViewportChange={setViewport}
-                />
-              </div>
-            </>
-          )}
-        </div>
-        {stackDetailPanel ? null : (
+      {selectedPanelNode || selectedEdge ? (
+        <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm xl:hidden">
           <GraphDetailPanel
             projectId={projectId}
             graph={graph}
-            selectedNode={selectedNode}
+            selectedNode={selectedPanelNode}
             selectedEdge={selectedEdge}
+            onClose={clearSelection}
           />
-        )}
-      </div>
-
-      {stackDetailPanel ? (
-        <GraphDetailPanel
-          projectId={projectId}
-          graph={graph}
-          selectedNode={selectedNode}
-          selectedEdge={selectedEdge}
-        />
+        </div>
       ) : null}
     </div>
   );

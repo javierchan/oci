@@ -33,7 +33,7 @@ async def create_assumption_set(
     body: AssumptionSetCreate,
     db: AsyncSession = Depends(get_db),
     actor_id: str = Header("api-user", alias="X-Actor-Id"),
-    actor_role: str = Header("Admin", alias="X-Actor-Role"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
 ) -> AssumptionSetResponse:
     """Create a versioned assumption set through the governance service."""
 
@@ -65,7 +65,7 @@ async def update_assumption_set(
     body: AssumptionSetUpdate,
     db: AsyncSession = Depends(get_db),
     actor_id: str = Header("api-user", alias="X-Actor-Id"),
-    actor_role: str = Header("Admin", alias="X-Actor-Role"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
 ) -> AssumptionSetResponse:
     """Patch one versioned assumption set."""
 
@@ -83,7 +83,7 @@ async def set_default_assumption_set(
     version: str,
     db: AsyncSession = Depends(get_db),
     actor_id: str = Header("api-user", alias="X-Actor-Id"),
-    actor_role: str = Header("Admin", alias="X-Actor-Role"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
 ) -> AssumptionSetResponse:
     """Mark one governed assumption set as the default version."""
 

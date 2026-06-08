@@ -5,6 +5,7 @@
 import { useRouter } from "next/navigation";
 import { startTransition, useEffect, useMemo, useState } from "react";
 
+import { AiReviewButton } from "@/components/ai-review-button";
 import { IntegrationCanvas } from "@/components/integration-canvas";
 import { api } from "@/lib/api";
 import { evaluateCanvasInteroperability } from "@/lib/canvas-interoperability";
@@ -15,10 +16,10 @@ import {
 } from "@/lib/canvas-governance";
 import type {
   CanvasCombination,
+  CanvasServiceProfile,
   DictionaryOption,
   Integration,
   PatternDefinition,
-  ServiceCapabilityProfile,
 } from "@/lib/types";
 
 type PatternCategory = string;
@@ -28,7 +29,7 @@ type IntegrationDesignCanvasPanelProps = {
   integration: Integration;
   patterns: PatternDefinition[];
   patternDetail: PatternDefinition | null;
-  serviceProfiles: ServiceCapabilityProfile[];
+  serviceProfiles: CanvasServiceProfile[];
   toolOptions: DictionaryOption[];
   overlayOptions: DictionaryOption[];
   combinations: CanvasCombination[];
@@ -52,7 +53,7 @@ function buildCanvasSeed(
   additionalToolsOverlays: string | null,
   coreTools: string | null,
   selectedPattern: string | null,
-  serviceProfiles: ServiceCapabilityProfile[],
+  serviceProfiles: CanvasServiceProfile[],
   overlayOptions: DictionaryOption[],
   combinations: CanvasCombination[],
   payloadKb: number | null,
@@ -222,16 +223,24 @@ export function IntegrationDesignCanvasPanel({
             Model how the payload enters, moves through OCI services, branches into additional delivery paths, and reaches the destination systems.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            void handleSaveCanvas();
-          }}
-          disabled={saving || !hasConnectedRoute || hasBlockingIssues}
-          className="app-button-primary hidden sm:inline-flex"
-        >
-          {saving ? "Saving canvas…" : hasBlockingIssues ? "Resolve blockers to save" : "Save canvas"}
-        </button>
+        <div className="hidden flex-wrap items-center gap-3 sm:flex">
+          <AiReviewButton
+            projectId={projectId}
+            integrationId={integration.id}
+            defaultScope="integration"
+            label="Review canvas with AI"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              void handleSaveCanvas();
+            }}
+            disabled={saving || !hasConnectedRoute || hasBlockingIssues}
+            className="app-button-primary"
+          >
+            {saving ? "Saving canvas…" : hasBlockingIssues ? "Resolve blockers to save" : "Save canvas"}
+          </button>
+        </div>
       </div>
 
       <div className="sm:hidden rounded-[1.75rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5 text-center">

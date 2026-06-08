@@ -71,6 +71,46 @@ class SourceRowListResponse(BaseModel):
     page_size: int
 
 
+class ImportQualityMetric(BaseModel):
+    """One metric used by the import data-quality assistant."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    label: str
+    value: str
+    detail: str
+
+
+class ImportQualityFinding(BaseModel):
+    """One deterministic import-quality finding with an action target."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    severity: str
+    title: str
+    summary: str
+    action_label: str
+    action_href: str
+
+
+class ImportQualityAssistantResponse(BaseModel):
+    """Data-quality assistant summary for one import batch."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    project_id: str
+    batch_id: str
+    status: str
+    filename: str
+    row_count: int
+    included_count: int
+    excluded_count: int
+    normalization_event_count: int
+    recommended_next_action: str
+    metrics: list[ImportQualityMetric] = Field(default_factory=list)
+    findings: list[ImportQualityFinding] = Field(default_factory=list)
+
+
 class ImportBatchDeleteResponse(BaseModel):
     """Removal result for one import batch."""
 

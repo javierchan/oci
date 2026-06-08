@@ -9,9 +9,11 @@ import type {
   AiReviewBaselineLookup,
   AiReviewBaselineRequest,
   AiReviewJob,
+  AiReviewJobCompare,
   AiReviewApplyPatchResponse,
   AiReviewJobList,
   AiReviewJobRequest,
+  AiReviewProviderStatus,
   AiReviewScope,
   AuditPage,
   CanvasGovernance,
@@ -34,6 +36,7 @@ import type {
   ImportBatchDeleteResponse,
   ImportBatchList,
   ImportBatchListResponse,
+  ImportQualityAssistant,
   Integration,
   IntegrationPatch,
   ManualIntegrationCreate,
@@ -48,7 +51,15 @@ import type {
   ProjectList,
   ProjectListResponse,
   RecalculationJobStatus,
-  ServiceCapabilityProfileList,
+  ServiceVerificationAlertList,
+  ServiceVerificationFinding,
+  ServiceVerificationFindingReviewRequest,
+  ServiceInteroperabilityMatrix,
+  ServiceProductDetail,
+  ServiceProductList,
+  ServiceVerificationJobList,
+  ServiceVerificationJob,
+  ServiceVerificationRunRequest,
   SourceRowList,
   SyntheticGenerationJob,
   SyntheticGenerationJobList,
@@ -473,6 +484,11 @@ export const api = {
   listProjects: (): Promise<ProjectList> =>
     apiFetch<ProjectListResponse>("/api/v1/projects/").then(normalizeProjects),
 
+  getAiReviewProviderStatus: (): Promise<AiReviewProviderStatus> =>
+    apiFetch<AiReviewProviderStatus>("/api/v1/ai-reviews/provider-status", {
+      headers: adminHeaders(),
+    }),
+
   runAiReview: (projectId: string, body: AiReviewJobRequest = {}): Promise<AiReviewJob> =>
     apiFetch<AiReviewJob>(`/api/v1/ai-reviews/projects/${projectId}`, {
       method: "POST",
@@ -503,7 +519,17 @@ export const api = {
     apiFetch<AiReviewJob>(`/api/v1/ai-reviews/${jobId}`),
 
   listAiReviewJobs: (projectId: string): Promise<AiReviewJobList> =>
-    apiFetch<AiReviewJobList>(`/api/v1/ai-reviews/projects/${projectId}/jobs`),
+    apiFetch<AiReviewJobList>(`/api/v1/ai-reviews/projects/${projectId}/jobs`, {
+      headers: adminHeaders(),
+    }),
+
+  compareAiReviewJobs: (
+    projectId: string,
+    params: { base_job_id: string; target_job_id: string },
+  ): Promise<AiReviewJobCompare> =>
+    apiFetch<AiReviewJobCompare>(`/api/v1/ai-reviews/projects/${projectId}/jobs/compare${withQuery(params)}`, {
+      headers: adminHeaders(),
+    }),
 
   acceptAiReviewFinding: (jobId: string, findingId: string, note?: string): Promise<AiReviewJob> =>
     apiFetch<AiReviewJob>(`/api/v1/ai-reviews/${jobId}/findings/${findingId}/accept`, {
@@ -556,6 +582,9 @@ export const api = {
 
   getImportBatch: (projectId: string, batchId: string): Promise<ImportBatch> =>
     apiFetch<ImportBatch>(`/api/v1/imports/${projectId}/${batchId}`),
+
+  getImportQualityAssistant: (projectId: string, batchId: string): Promise<ImportQualityAssistant> =>
+    apiFetch<ImportQualityAssistant>(`/api/v1/imports/${projectId}/${batchId}/quality-assistant`),
 
   listImportRows: (
     projectId: string,
@@ -618,8 +647,49 @@ export const api = {
   listPatterns: (): Promise<PatternList> =>
     apiFetch<PatternList>("/api/v1/patterns/"),
 
-  listServices: (): Promise<ServiceCapabilityProfileList> =>
-    apiFetch<ServiceCapabilityProfileList>("/api/v1/services/"),
+  listServiceProducts: (): Promise<ServiceProductList> =>
+    apiFetch<ServiceProductList>("/api/v1/service-products"),
+
+  getServiceProduct: (serviceId: string): Promise<ServiceProductDetail> =>
+    apiFetch<ServiceProductDetail>(`/api/v1/service-products/${encodeURIComponent(serviceId)}`),
+
+  getServiceInteroperabilityMatrix: (): Promise<ServiceInteroperabilityMatrix> =>
+    apiFetch<ServiceInteroperabilityMatrix>("/api/v1/service-products/matrix"),
+
+  listServiceVerificationJobs: (params: { limit?: number } = {}): Promise<ServiceVerificationJobList> =>
+    apiFetch<ServiceVerificationJobList>(`/api/v1/service-products/verification-jobs${withQuery(params)}`),
+
+  getServiceVerificationJob: (jobId: string): Promise<ServiceVerificationJob> =>
+    apiFetch<ServiceVerificationJob>(`/api/v1/service-products/verification-jobs/${encodeURIComponent(jobId)}`),
+
+  listServiceVerificationAlerts: (params: { limit?: number } = {}): Promise<ServiceVerificationAlertList> =>
+    apiFetch<ServiceVerificationAlertList>(`/api/v1/service-products/verification-alerts${withQuery(params)}`),
+
+  runServiceVerificationJob: (body: ServiceVerificationRunRequest = {}): Promise<ServiceVerificationJob> =>
+    apiFetch<ServiceVerificationJob>("/api/v1/service-products/verification-jobs", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify(body),
+    }),
+
+  listServiceVerificationFindings: (jobId: string): Promise<ServiceVerificationFinding[]> =>
+    apiFetch<ServiceVerificationFinding[]>(
+      `/api/v1/service-products/verification-jobs/${encodeURIComponent(jobId)}/findings`,
+    ),
+
+  reviewServiceVerificationFinding: (
+    jobId: string,
+    findingId: string,
+    body: ServiceVerificationFindingReviewRequest,
+  ): Promise<ServiceVerificationFinding> =>
+    apiFetch<ServiceVerificationFinding>(
+      `/api/v1/service-products/verification-jobs/${encodeURIComponent(jobId)}/findings/${encodeURIComponent(findingId)}/review`,
+      {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify(body),
+      },
+    ),
 
   createPattern: (body: PatternDefinitionCreate): Promise<PatternDefinition> =>
     apiFetch<PatternDefinition>("/api/v1/patterns/", {

@@ -278,7 +278,8 @@ Server Component. Three navigation cards:
 │  Admin Governance                                      │
 │  Manage reference data used across all projects        │
 ├─────────────────┬─────────────────┬───────────────────┤
-│  OIC Patterns   │  Dictionaries   │  Assumptions      │
+│  Integration    │  Dictionaries   │  Assumptions      │
+│  Patterns       │                 │                   │
 │  17 patterns    │  5 categories   │  1 active version │
 │  Manage →       │  Manage →       │  Manage →         │
 └─────────────────┴─────────────────┴───────────────────┘

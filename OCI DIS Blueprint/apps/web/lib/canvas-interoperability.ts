@@ -8,7 +8,7 @@ import {
   type CanvasEdge,
   type CanvasNode,
 } from "./canvas-governance";
-import type { ServiceCapabilityProfile } from "./types";
+import type { CanvasServiceProfile } from "./types";
 
 export type CanvasFindingSeverity = "blocker" | "warning" | "advisory";
 
@@ -37,7 +37,7 @@ export type CanvasInteroperabilityArgs = {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   overlayToolKeys: string[];
-  serviceProfilesById: Map<string, ServiceCapabilityProfile>;
+  serviceProfilesById: Map<string, CanvasServiceProfile>;
   payloadKb: number | null;
   triggerType: string | null;
   isRealTime: boolean | null;
@@ -167,7 +167,7 @@ function pushUniqueFinding(
 function collectPayloadBlockers(
   payloadKb: number | null,
   toolKeys: Set<string>,
-  serviceProfilesById: Map<string, ServiceCapabilityProfile>,
+  serviceProfilesById: Map<string, CanvasServiceProfile>,
 ): CanvasInteroperabilityFinding[] {
   if (payloadKb === null || payloadKb === undefined) {
     return [];

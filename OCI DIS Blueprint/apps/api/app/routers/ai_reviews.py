@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
@@ -15,14 +16,33 @@ from app.schemas.ai_review import (
     AiReviewBaselineLookupResponse,
     AiReviewBaselineResponse,
     AiReviewCreateRequest,
+    AiReviewJobCompareResponse,
     AiReviewJobListResponse,
     AiReviewJobResponse,
+    AiReviewProviderStatus,
     AiReviewScope,
 )
 from app.services import ai_review_service
+from app.services.authz import require_ai_review_mutation, require_ai_review_read, require_ai_review_run
 from app.workers.ai_review_worker import execute_ai_review_job_task
 
 router = APIRouter(prefix="/ai-reviews", tags=["AI Reviews"])
+
+
+@router.get(
+    "/provider-status",
+    response_model=AiReviewProviderStatus,
+    summary="Inspect configured AI review provider status and caller quota",
+)
+async def get_ai_review_provider_status(
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
+) -> AiReviewProviderStatus:
+    """Return non-secret provider and budget status for the current actor."""
+
+    require_ai_review_read(actor_role)
+    return await ai_review_service.get_ai_review_provider_status(actor_id, db)
 
 
 @router.get(
@@ -35,9 +55,11 @@ async def get_project_ai_review_baseline(
     scope: AiReviewScope = Query("project"),
     integration_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> AiReviewBaselineLookupResponse:
     """Return the current approved planned-state baseline, if one exists."""
 
+    require_ai_review_read(actor_role)
     return await ai_review_service.get_active_ai_review_baseline(project_id, scope, integration_id, db)
 
 
@@ -52,9 +74,11 @@ async def list_project_ai_review_baselines(
     integration_id: str | None = Query(None),
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> AiReviewBaselineListResponse:
     """Return baseline history for governance comparison and audit review."""
 
+    require_ai_review_read(actor_role)
     return await ai_review_service.list_ai_review_baselines(
         project_id,
         scope,
@@ -75,9 +99,11 @@ async def create_project_ai_review_baseline(
     body: AiReviewBaselineCreateRequest | None = None,
     db: AsyncSession = Depends(get_db),
     actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> AiReviewBaselineResponse:
     """Persist the current governed state as the active planned baseline for drift detection."""
 
+    require_ai_review_mutation(actor_role)
     request = body or AiReviewBaselineCreateRequest()
     async with db.begin():
         return await ai_review_service.create_ai_review_baseline(project_id, request, actor_id, db)
@@ -94,9 +120,11 @@ async def create_project_ai_review(
     body: AiReviewCreateRequest | None = None,
     db: AsyncSession = Depends(get_db),
     actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> AiReviewJobResponse:
     """Create a persisted review job and dispatch the async worker."""
 
+    require_ai_review_run(actor_role)
     request = body or AiReviewCreateRequest()
     async with db.begin():
         job = await ai_review_service.create_ai_review_job(project_id, request, actor_id, db)
@@ -128,10 +156,30 @@ async def list_project_ai_reviews(
     project_id: str,
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> AiReviewJobListResponse:
     """Return recent review history for the selected project."""
 
+    require_ai_review_read(actor_role)
     return await ai_review_service.list_ai_review_jobs(project_id, db, limit=limit)
+
+
+@router.get(
+    "/projects/{project_id}/jobs/compare",
+    response_model=AiReviewJobCompareResponse,
+    summary="Compare two completed AI review jobs for trend/evolution analysis",
+)
+async def compare_project_ai_review_jobs(
+    project_id: str,
+    base_job_id: str = Query(...),
+    target_job_id: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
+) -> AiReviewJobCompareResponse:
+    """Return readiness and finding deltas between two completed jobs."""
+
+    require_ai_review_read(actor_role)
+    return await ai_review_service.compare_ai_review_jobs(project_id, base_job_id, target_job_id, db)
 
 
 @router.get(
@@ -142,10 +190,34 @@ async def list_project_ai_reviews(
 async def get_ai_review_job(
     job_id: str,
     db: AsyncSession = Depends(get_db),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> AiReviewJobResponse:
     """Return one persisted review job and result payload when complete."""
 
+    require_ai_review_read(actor_role)
     return await ai_review_service.get_ai_review_job(job_id, db)
+
+
+@router.get(
+    "/{job_id}/export",
+    summary="Export one completed AI review job as Markdown",
+)
+async def export_ai_review_job(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
+) -> Response:
+    """Return a portable Markdown brief for one persisted AI review job."""
+
+    require_ai_review_read(actor_role)
+    async with db.begin():
+        content, filename, _project_id = await ai_review_service.export_ai_review_markdown(job_id, actor_id, db)
+    return Response(
+        content=content,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.post(
@@ -159,9 +231,11 @@ async def accept_ai_review_finding(
     body: AiReviewAcceptRecommendationRequest | None = None,
     db: AsyncSession = Depends(get_db),
     actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> AiReviewJobResponse:
     """Record a human approval/audit marker for one finding recommendation."""
 
+    require_ai_review_mutation(actor_role)
     request = body or AiReviewAcceptRecommendationRequest()
     async with db.begin():
         return await ai_review_service.accept_ai_review_finding(job_id, finding_id, request, actor_id, db)
@@ -178,9 +252,11 @@ async def apply_ai_review_finding_patch(
     body: AiReviewApplyPatchRequest | None = None,
     db: AsyncSession = Depends(get_db),
     actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> AiReviewApplyPatchResponse:
     """Apply a bounded architect-owned patch and audit the human approval."""
 
+    require_ai_review_mutation(actor_role)
     request = body or AiReviewApplyPatchRequest()
     async with db.begin():
         return await ai_review_service.apply_ai_review_finding_patch(job_id, finding_id, request, actor_id, db)

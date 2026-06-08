@@ -12,7 +12,7 @@ import {
   evaluateCanvasInteroperability,
   type CanvasInteroperabilityArgs,
 } from "./canvas-interoperability";
-import type { ServiceCapabilityProfile } from "./types";
+import type { CanvasServiceProfile } from "./types";
 
 function node(instanceId: string, toolKey: string, label = toolKey): CanvasNode {
   return {
@@ -37,7 +37,7 @@ function edge(edgeId: string, sourceInstanceId: string, targetInstanceId: string
 function profile(
   serviceId: string,
   limits: Record<string, unknown>,
-): ServiceCapabilityProfile {
+): CanvasServiceProfile {
   return {
     id: serviceId,
     service_id: serviceId,
@@ -46,14 +46,8 @@ function profile(
     sla_uptime_pct: null,
     pricing_model: null,
     limits,
-    architectural_fit: null,
-    anti_patterns: null,
-    interoperability_notes: null,
-    oracle_docs_urls: null,
-    is_active: true,
-    version: "1.0.0",
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
+    summary: null,
+    architecture_role: null,
   };
 }
 
@@ -70,7 +64,7 @@ function makeArgs(
     sourceTechnology: null,
     destinationTechnology: null,
     integrationType: null,
-    serviceProfilesById: new Map<string, ServiceCapabilityProfile>([
+    serviceProfilesById: new Map<string, CanvasServiceProfile>([
       ["OIC3", profile("OIC3", { max_message_size_kb: 10240 })],
       ["FUNCTIONS", profile("FUNCTIONS", { max_invoke_body_kb: 6144 })],
       ["API_GATEWAY", profile("API_GATEWAY", { max_request_body_kb: 20480 })],

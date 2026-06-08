@@ -32,10 +32,13 @@ export default async function ProjectImportPage({
     }
     throw error;
   }
-  const [imports, selectedRows] = await Promise.all([
+  const [imports, selectedRows, qualityAssistant] = await Promise.all([
     api.listImports(projectId),
     resolvedSearchParams.batch_id
       ? api.listImportRows(projectId, resolvedSearchParams.batch_id, { page: 1, page_size: 200 })
+      : Promise.resolve(null),
+    resolvedSearchParams.batch_id
+      ? api.getImportQualityAssistant(projectId, resolvedSearchParams.batch_id).catch(() => null)
       : Promise.resolve(null),
   ]);
 
@@ -66,6 +69,7 @@ export default async function ProjectImportPage({
         projectName={project.name}
         initialBatches={imports.batches}
         initialRows={selectedRows}
+        initialQualityAssistant={qualityAssistant}
         initialSelectedBatchId={resolvedSearchParams.batch_id ?? null}
         highlightedRowNumber={resolvedSearchParams.row ? Number(resolvedSearchParams.row) : null}
       />

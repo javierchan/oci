@@ -10,6 +10,7 @@ from app.schemas.imports import (
     ImportBatchDeleteResponse,
     ImportBatchListResponse,
     ImportBatchResponse,
+    ImportQualityAssistantResponse,
     SourceRowListResponse,
 )
 from app.services import import_service
@@ -83,6 +84,19 @@ async def get_import_rows(
     db: AsyncSession = Depends(get_db),
 ) -> SourceRowListResponse:
     return await import_service.list_import_rows(project_id, batch_id, db, page=page, page_size=page_size)
+
+
+@router.get(
+    "/{project_id}/{batch_id}/quality-assistant",
+    response_model=ImportQualityAssistantResponse,
+    summary="Get deterministic import data-quality assistant guidance",
+)
+async def get_import_quality_assistant(
+    project_id: str,
+    batch_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> ImportQualityAssistantResponse:
+    return await import_service.get_import_quality_assistant(project_id, batch_id, db)
 
 
 @router.delete(

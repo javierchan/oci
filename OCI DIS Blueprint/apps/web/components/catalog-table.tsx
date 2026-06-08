@@ -11,8 +11,12 @@ import { PatternBadge } from "@/components/pattern-badge";
 import { QaBadge } from "@/components/qa-badge";
 import { SkeletonRow } from "@/components/skeleton";
 import { api } from "@/lib/api";
-import { displayQaStatus, formatNumber } from "@/lib/format";
+import { displayQaStatus, displayUiValue, formatDate, formatNumber } from "@/lib/format";
 import type { CatalogPage, Integration, PatternDefinition } from "@/lib/types";
+
+type PreviewTab = "Overview" | "Canvas" | "Volumetry" | "QA" | "History";
+
+const PREVIEW_TABS: PreviewTab[] = ["Overview", "Canvas", "Volumetry", "QA", "History"];
 
 type CatalogTableProps = {
   projectId: string;
@@ -30,6 +34,37 @@ type CatalogTableProps = {
     destination_system: string;
   };
 };
+
+function parseListValue(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function parseCanvasList(value: string | null | undefined, key: "coreToolKeys" | "overlayKeys"): string[] {
+  if (!value?.trim().startsWith("{")) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object") {
+      return [];
+    }
+    const rawValue = (parsed as Record<string, unknown>)[key];
+    if (!Array.isArray(rawValue)) {
+      return [];
+    }
+    return rawValue
+      .filter((entry): entry is string => typeof entry === "string" && entry.trim() !== "")
+      .map((entry) => entry.trim());
+  } catch {
+    return [];
+  }
+}
 
 export function CatalogTable({
   projectId,
@@ -54,6 +89,7 @@ export function CatalogTable({
     initialPage.integrations[0]?.id ?? "",
   );
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
+  const [activePreviewTab, setActivePreviewTab] = useState<PreviewTab>("Overview");
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const skippedInitialLoad = useRef<boolean>(false);
@@ -153,6 +189,27 @@ export function CatalogTable({
       null,
     [data.integrations, selectedIntegrationId],
   );
+  const selectedIntegrationKey = selectedIntegration?.id ?? "";
+  const selectedCoreTools = useMemo(() => {
+    const explicitTools = parseListValue(selectedIntegration?.core_tools);
+    return explicitTools.length > 0
+      ? explicitTools
+      : parseCanvasList(selectedIntegration?.additional_tools_overlays, "coreToolKeys");
+  }, [selectedIntegration?.additional_tools_overlays, selectedIntegration?.core_tools]);
+  const selectedOverlayTools = useMemo(
+    () =>
+      selectedIntegration?.additional_tools_overlays?.trim().startsWith("{")
+        ? parseCanvasList(selectedIntegration.additional_tools_overlays, "overlayKeys")
+        : parseListValue(selectedIntegration?.additional_tools_overlays),
+    [selectedIntegration?.additional_tools_overlays],
+  );
+  const selectedPatternDefinition = selectedIntegration?.selected_pattern
+    ? patternMap.get(selectedIntegration.selected_pattern) ?? null
+    : null;
+
+  useEffect(() => {
+    setActivePreviewTab("Overview");
+  }, [selectedIntegrationKey]);
 
   useEffect(() => {
     if (data.integrations.length === 0) {
@@ -650,76 +707,201 @@ export function CatalogTable({
                   </div>
                 </div>
 
-                <div className="flex justify-between gap-1 border-b border-[var(--color-border)] px-3">
-                  {["Overview", "Canvas", "Volumetry", "QA", "History"].map((tabLabel, index) => (
-                    <span
+                <div className="flex justify-between gap-1 border-b border-[var(--color-border)] px-3" role="tablist" aria-label="Preview sections">
+                  {PREVIEW_TABS.map((tabLabel) => {
+                    const active = activePreviewTab === tabLabel;
+                    return (
+                    <button
                       key={tabLabel}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setActivePreviewTab(tabLabel)}
                       className={[
-                        "whitespace-nowrap border-b-2 px-1.5 py-3 text-[11px] font-semibold",
-                        index === 0
+                        "whitespace-nowrap border-b-2 px-1.5 py-3 text-[11px] font-semibold transition",
+                        active
                           ? "border-[var(--color-text-primary)] text-[var(--color-text-primary)]"
-                          : "border-transparent text-[var(--color-text-muted)]",
+                          : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]",
                       ].join(" ")}
                     >
                       {tabLabel}
-                    </span>
-                  ))}
+                    </button>
+                    );
+                  })}
                 </div>
 
                 <div className="space-y-5 px-5 py-4">
-                  <section>
-                    <p className="app-label">Endpoints</p>
-                    <div className="mt-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
-                      <p className="text-sm font-semibold text-[var(--color-text-primary)]">
-                        {selectedIntegration.source_system ?? "Unknown source"}
-                      </p>
-                      <p className="my-2 text-lg font-semibold text-[var(--color-accent)]">→</p>
-                      <p className="text-sm font-semibold text-[var(--color-text-primary)]">
-                        {selectedIntegration.destination_system ?? "Unknown destination"}
-                      </p>
-                      <p className="mt-3 text-xs text-[var(--color-text-muted)]">
-                        {selectedIntegration.trigger_type ?? "Trigger not set"}
-                      </p>
-                    </div>
-                  </section>
-
-                  <section>
-                    <p className="app-label">Volumetry</p>
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
-                        <p className="text-xs text-[var(--color-text-muted)]">Payload</p>
-                        <p className="mt-1 font-mono text-lg font-semibold text-[var(--color-text-primary)]">
-                          {formatNumber(selectedIntegration.payload_per_execution_kb, 1)} KB
+                  {activePreviewTab === "Overview" ? (
+                    <section>
+                      <p className="app-label">Endpoints</p>
+                      <div className="mt-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+                        <p className="break-words text-sm font-semibold text-[var(--color-text-primary)]">
+                          {selectedIntegration.source_system ?? "Unknown source"}
+                        </p>
+                        <p className="my-2 text-lg font-semibold text-[var(--color-accent)]">→</p>
+                        <p className="break-words text-sm font-semibold text-[var(--color-text-primary)]">
+                          {selectedIntegration.destination_system ?? "Unknown destination"}
+                        </p>
+                        <p className="mt-3 text-xs text-[var(--color-text-muted)]">
+                          {displayUiValue(selectedIntegration.trigger_type) || "Trigger not set"}
                         </p>
                       </div>
-                      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
-                        <p className="text-xs text-[var(--color-text-muted)]">Exec / day</p>
-                        <p className="mt-1 font-mono text-lg font-semibold text-[var(--color-text-primary)]">
-                          {formatNumber(selectedIntegration.executions_per_day, 1)}
-                        </p>
-                      </div>
-                    </div>
-                  </section>
+                      <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                          <dt className="app-label">Business</dt>
+                          <dd className="mt-2 break-words text-[var(--color-text-primary)]">
+                            {selectedIntegration.business_process ?? "—"}
+                          </dd>
+                        </div>
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                          <dt className="app-label">Frequency</dt>
+                          <dd className="mt-2 text-[var(--color-text-primary)]">
+                            {displayUiValue(selectedIntegration.frequency)}
+                          </dd>
+                        </div>
+                      </dl>
+                    </section>
+                  ) : null}
 
-                  <section>
-                    <p className="app-label">QA Findings</p>
-                    {selectedIntegration.qa_reasons.length > 0 ? (
-                      <div className="mt-3 space-y-2">
-                        {selectedIntegration.qa_reasons.slice(0, 4).map((reason) => (
-                          <div
-                            key={reason}
-                            className="rounded-xl border border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
-                          >
-                            {reason.replace(/_/g, " ")}
+                  {activePreviewTab === "Canvas" ? (
+                    <section>
+                      <p className="app-label">Canvas</p>
+                      <div className="mt-3 space-y-3">
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+                          <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                            {selectedPatternDefinition
+                              ? `${selectedPatternDefinition.pattern_id} · ${selectedPatternDefinition.name}`
+                              : selectedIntegration.selected_pattern ?? "Unassigned pattern"}
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                            {selectedIntegration.pattern_rationale ?? "No rationale captured."}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+                          <p className="app-label">Core tools</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {selectedCoreTools.length > 0 ? (
+                              selectedCoreTools.map((tool) => (
+                                <span key={tool} className="console-pill">
+                                  {tool}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-sm text-[var(--color-text-secondary)]">—</span>
+                            )}
                           </div>
-                        ))}
+                        </div>
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+                          <p className="app-label">Overlays</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {selectedOverlayTools.length > 0 ? (
+                              selectedOverlayTools.map((tool) => (
+                                <span key={tool} className="console-pill">
+                                  {tool}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-sm text-[var(--color-text-secondary)]">—</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    ) : (
-                      <p className="mt-3 rounded-xl border border-[var(--color-qa-ok-border)] bg-[var(--color-qa-ok-bg)] px-3 py-2 text-sm text-[var(--color-qa-ok-text)]">
-                        No QA findings on this row.
-                      </p>
-                    )}
-                  </section>
+                    </section>
+                  ) : null}
+
+                  {activePreviewTab === "Volumetry" ? (
+                    <section>
+                      <p className="app-label">Volumetry</p>
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                          <p className="text-xs text-[var(--color-text-muted)]">Payload</p>
+                          <p className="mt-1 font-mono text-lg font-semibold text-[var(--color-text-primary)]">
+                            {formatNumber(selectedIntegration.payload_per_execution_kb, 1)} KB
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                          <p className="text-xs text-[var(--color-text-muted)]">Exec / day</p>
+                          <p className="mt-1 font-mono text-lg font-semibold text-[var(--color-text-primary)]">
+                            {formatNumber(selectedIntegration.executions_per_day, 1)}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                          <p className="text-xs text-[var(--color-text-muted)]">Payload / hour</p>
+                          <p className="mt-1 font-mono text-lg font-semibold text-[var(--color-text-primary)]">
+                            {formatNumber(selectedIntegration.payload_per_hour_kb, 1)} KB
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                          <p className="text-xs text-[var(--color-text-muted)]">Response</p>
+                          <p className="mt-1 font-mono text-lg font-semibold text-[var(--color-text-primary)]">
+                            {formatNumber(selectedIntegration.response_size_kb, 1)} KB
+                          </p>
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activePreviewTab === "QA" ? (
+                    <section>
+                      <p className="app-label">QA Findings</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <QaBadge status={selectedIntegration.qa_status} />
+                        <ComplexityBadge value={selectedIntegration.complexity} />
+                      </div>
+                      {selectedIntegration.qa_reasons.length > 0 ? (
+                        <div className="mt-3 space-y-2">
+                          {selectedIntegration.qa_reasons.slice(0, 4).map((reason) => (
+                            <div
+                              key={reason}
+                              className="rounded-xl border border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+                            >
+                              {reason.replace(/_/g, " ")}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-3 rounded-xl border border-[var(--color-qa-ok-border)] bg-[var(--color-qa-ok-bg)] px-3 py-2 text-sm text-[var(--color-qa-ok-text)]">
+                          No QA findings on this row.
+                        </p>
+                      )}
+                    </section>
+                  ) : null}
+
+                  {activePreviewTab === "History" ? (
+                    <section>
+                      <p className="app-label">History</p>
+                      <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                          <dt className="app-label">Created</dt>
+                          <dd className="mt-2 text-[var(--color-text-primary)]">{formatDate(selectedIntegration.created_at)}</dd>
+                        </div>
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                          <dt className="app-label">Updated</dt>
+                          <dd className="mt-2 text-[var(--color-text-primary)]">{formatDate(selectedIntegration.updated_at)}</dd>
+                        </div>
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                          <dt className="app-label">Owner</dt>
+                          <dd className="mt-2 break-words text-[var(--color-text-primary)]">{selectedIntegration.owner ?? "—"}</dd>
+                        </div>
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                          <dt className="app-label">Status</dt>
+                          <dd className="mt-2 text-[var(--color-text-primary)]">{displayUiValue(selectedIntegration.status)}</dd>
+                        </div>
+                      </dl>
+                      <div className="mt-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+                        <p className="app-label">Retry Policy</p>
+                        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                          {selectedIntegration.retry_policy ?? "—"}
+                        </p>
+                      </div>
+                      <div className="mt-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+                        <p className="app-label">Comments</p>
+                        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                          {selectedIntegration.comments ?? "—"}
+                        </p>
+                      </div>
+                    </section>
+                  ) : null}
 
                   <div className="flex flex-wrap gap-2 border-t border-[var(--color-border)] pt-4">
                     <button

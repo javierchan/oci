@@ -15,6 +15,10 @@ from app.models import (
     PatternDefinition,
     PromptTemplateVersion,
     ServiceCapabilityProfile,
+    ServiceEvidenceSource,
+    ServiceInteroperabilityRule,
+    ServiceLimit,
+    ServiceProductVersion,
 )
 from app.migrations.reference_seed_data import DICTIONARY_OPTIONS
 
@@ -939,6 +943,46 @@ SERVICE_PROFILES: list[dict[str, object]] = [
         ),
     },
     {
+        "service_id": "OBJECT_STORAGE",
+        "name": "OCI Object Storage",
+        "category": "STORAGE",
+        "sla_uptime_pct": 99.9,
+        "pricing_model": "GB stored per month + request and data transfer charges by storage tier.",
+        "limits": {
+            "single_part_upload_max_gb": 50,
+            "multipart_upload_required_above_gb": 50,
+            "object_versioning_supported": True,
+            "pre_authenticated_requests_supported": True,
+            "lifecycle_policy_supported": True,
+            "label": "documented",
+            "note": (
+                "Use Object Storage as payload externalization for OIC, Streaming, Queue, "
+                "API Gateway, and Functions when messages exceed service payload limits."
+            ),
+        },
+        "architectural_fit": (
+            "Durable payload staging, file exchange, event archive, data lake landing zone, "
+            "and large-object externalization. Fits batch ingestion, CDC archive, "
+            "large-event pointer patterns, and export storage."
+        ),
+        "anti_patterns": (
+            "NOT an orchestration layer or message broker. "
+            "Do not pass large binary payloads inline through OIC/Streaming/Queue when an "
+            "Object Storage reference would preserve service limits and reduce retries."
+        ),
+        "interoperability_notes": (
+            "Used by Data Integration, Connector Hub, Functions, GoldenGate, Streaming reference "
+            "patterns, OIC file patterns, and export workflows. IAM policies and bucket lifecycle "
+            "rules must be governed as part of architecture."
+        ),
+        "oracle_docs_urls": (
+            "https://docs.oracle.com/en-us/iaas/Content/Object/home.htm|"
+            "https://docs.oracle.com/en-us/iaas/Content/Object/Tasks/usingmultipartuploads.htm|"
+            "https://docs.oracle.com/en-us/iaas/Content/Object/Tasks/usingpreauthenticatedrequests.htm|"
+            "https://www.oracle.com/cloud/storage/pricing/"
+        ),
+    },
+    {
         "service_id": "GOLDENGATE",
         "name": "OCI GoldenGate",
         "category": "CDC_REPLICATION",
@@ -1059,6 +1103,243 @@ SERVICE_PROFILES: list[dict[str, object]] = [
         ),
     },
     {
+        "service_id": "DATA_FLOW",
+        "name": "OCI Data Flow",
+        "category": "SPARK_PROCESSING",
+        "sla_uptime_pct": None,
+        "pricing_model": "Serverless Spark runtime consumption. Review OCI price list and tenancy-specific service limits before sizing.",
+        "limits": {
+            "execution_model": "Serverless Apache Spark applications and runs",
+            "api_driven": True,
+            "supported_languages": ["SQL", "Python", "Java", "Scala", "spark-submit"],
+            "free_trial_simple_experiment_instances": 2,
+            "limits_are_tenancy_specific": True,
+            "label": "documented",
+            "note": (
+                "Oracle documents Data Flow as serverless Spark. Quotas must be checked in "
+                "Limits, Quotas and Usage because practical concurrency and capacity depend "
+                "on tenancy subscription and requested increases."
+            ),
+        },
+        "architectural_fit": (
+            "Serverless Apache Spark processing for large data transformations, data lake processing, "
+            "and advanced batch analytics jobs. Fits when OCI Data Integration needs Spark scale-out "
+            "or when engineers want reusable Spark applications without managing clusters."
+        ),
+        "anti_patterns": (
+            "NOT an operational API mediation layer or low-latency event processor. "
+            "Do not use it for small request/response transformations better served by OIC, "
+            "Functions, or database-native SQL. Spark driver bottlenecks and data skew must be "
+            "designed for explicitly."
+        ),
+        "interoperability_notes": (
+            "Used by OCI Data Integration for scale-out tasks. Reads and writes data in Object Storage "
+            "and other Spark-accessible data sources. Can use Data Catalog metastore for shared metadata. "
+            "IAM policies, private endpoints, and Object Storage layout drive successful use."
+        ),
+        "oracle_docs_urls": (
+            "https://docs.oracle.com/en-us/iaas/data-flow/using/home.htm|"
+            "https://docs.oracle.com/en-us/iaas/data-flow/using/dfs_service_overview.htm|"
+            "https://docs.oracle.com/en-us/iaas/Content/data-flow/using/dfs_administer_data_flow.htm|"
+            "https://docs.oracle.com/en-us/iaas/Content/General/service-limits/default.htm"
+        ),
+    },
+    {
+        "service_id": "DATA_CATALOG",
+        "name": "OCI Data Catalog",
+        "category": "DATA_GOVERNANCE",
+        "sla_uptime_pct": None,
+        "pricing_model": "Review OCI price list and tenancy limits. Costs and quotas depend on catalog resources and usage.",
+        "limits": {
+            "catalog_instances_per_region": 2,
+            "harvest_jobs_supported": True,
+            "business_glossary_supported": True,
+            "private_endpoint_supported": True,
+            "metastore_for_data_flow_supported": True,
+            "label": "documented",
+            "note": (
+                "Data Catalog is a metadata management and governance service. It is not a data movement "
+                "engine; it harvests and enriches metadata for discovery, lineage, glossary, and governance."
+            ),
+        },
+        "architectural_fit": (
+            "Metadata discovery and governance for data integration estates. Helps data engineers, "
+            "stewards, analysts, and scientists discover assets, harvest technical metadata, manage "
+            "business glossary terms, enrich objects, and support Data Flow metastore usage."
+        ),
+        "anti_patterns": (
+            "NOT an ETL/ELT runtime, CDC engine, message broker, or transformation engine. "
+            "Do not treat catalog coverage as proof of data quality or data freshness. Harvesting "
+            "schedules and glossary ownership must be governed."
+        ),
+        "interoperability_notes": (
+            "Integrates with Data Integration lineage, Object Storage assets, databases, private endpoints, "
+            "IAM, Events, Search, Monitoring, and Data Flow metastore. Use it to provide evidence and "
+            "metadata context around integration recommendations."
+        ),
+        "oracle_docs_urls": (
+            "https://docs.oracle.com/en-us/iaas/Content/data-catalog/home.htm|"
+            "https://docs.oracle.com/en-us/iaas/Content/data-catalog/using/overview.htm|"
+            "https://docs.oracle.com/en-us/iaas/Content/General/service-limits/default.htm"
+        ),
+    },
+    {
+        "service_id": "GOLDENGATE_DATA_TRANSFORMS",
+        "name": "OCI GoldenGate Data Transforms",
+        "category": "DATA_TRANSFORMATION",
+        "sla_uptime_pct": None,
+        "pricing_model": "Delivered through OCI GoldenGate deployment patterns; review GoldenGate pricing and deployment sizing.",
+        "limits": {
+            "graphical_data_flows_supported": True,
+            "graphical_workflows_supported": True,
+            "requires_goldengate_deployment": True,
+            "generic_connections_required": True,
+            "label": "documented",
+            "note": (
+                "Data Transforms provides graphical data flows and workflows inside OCI GoldenGate "
+                "Data Transforms deployments. It is related to ODI concepts but operated through "
+                "the GoldenGate deployment experience."
+            ),
+        },
+        "architectural_fit": (
+            "Graphical data transformation and workflow design for loading and transforming data "
+            "between systems when the estate is already using OCI GoldenGate. Useful for database "
+            "and warehouse transformation flows adjacent to replication."
+        ),
+        "anti_patterns": (
+            "NOT a replacement for real-time CDC replication, event streaming, or application "
+            "orchestration. Do not use it as the universal integration hub when OCI Data Integration, "
+            "ODI, or OIC is the better runtime fit."
+        ),
+        "interoperability_notes": (
+            "Pairs with OCI GoldenGate data replication deployments and Generic connections. "
+            "Commonly works with Autonomous Database, Object Storage, and Oracle database targets. "
+            "Credential, network, and connection assignment governance is required before launch."
+        ),
+        "oracle_docs_urls": (
+            "https://docs.oracle.com/en-us/iaas/goldengate/doc/data-transforms.html|"
+            "https://docs.oracle.com/en-us/iaas/goldengate/doc/data-transforms-quickstart.html|"
+            "https://docs.oracle.com/en/database/data-integration/data-transforms/using/using-oracle-data-transforms.pdf"
+        ),
+    },
+    {
+        "service_id": "ODI",
+        "name": "Oracle Data Integrator",
+        "category": "ENTERPRISE_ETL",
+        "sla_uptime_pct": None,
+        "pricing_model": "Licensed Oracle middleware product; deployment and infrastructure costs depend on chosen platform.",
+        "limits": {
+            "elt_architecture": True,
+            "batch_integration_supported": True,
+            "event_based_integration_supported": True,
+            "service_based_integration_supported": True,
+            "big_data_support": True,
+            "label": "documented",
+            "note": (
+                "ODI is Oracle's enterprise data integration platform for ELT/ETL, data movement, "
+                "synchronization, quality, management, and data services. It is not a managed OCI "
+                "service profile by default, so operational limits depend on deployment topology."
+            ),
+        },
+        "architectural_fit": (
+            "Enterprise data integration platform for high-volume batch loads, event-driven or "
+            "trickle-feed integration, data-centric architectures, and SOA-enabled data services. "
+            "Appropriate where clients already standardize on ODI or require declarative ELT close "
+            "to Oracle database and warehouse platforms."
+        ),
+        "anti_patterns": (
+            "NOT the simplest choice for lightweight SaaS/API orchestration or cloud-native event "
+            "buffering. Avoid introducing ODI just to replace governed OCI managed services when "
+            "no client standard or workload requirement calls for it."
+        ),
+        "interoperability_notes": (
+            "Can be used with Oracle GoldenGate and Enterprise Data Quality in broader Oracle Data "
+            "Integration estates. Deployment architecture controls scalability, scheduling, security, "
+            "repository design, and runtime availability."
+        ),
+        "oracle_docs_urls": (
+            "https://www.oracle.com/middleware/technologies/data-integrator.html|"
+            "https://www.oracle.com/middleware/technologies/data-integration.html|"
+            "https://docs.oracle.com/en/middleware/fusion-middleware/data-integrator/12.2.1.3/odiun/overview-oracle-data-integrator.html|"
+            "https://docs.oracle.com/en/database/data-integration/index.html"
+        ),
+    },
+    {
+        "service_id": "STREAM_ANALYTICS",
+        "name": "Oracle Stream Analytics",
+        "category": "STREAM_ANALYTICS",
+        "sla_uptime_pct": None,
+        "pricing_model": "Review Oracle Integration/Stream Analytics deployment and subscription model before sizing.",
+        "limits": {
+            "spark_based_pipelines": True,
+            "continuous_query_language": True,
+            "goldengate_integration_supported": True,
+            "oracle_integration_workflow_trigger_supported": True,
+            "managed_service_and_on_premises_options": True,
+            "label": "documented",
+            "note": (
+                "Stream Analytics creates Spark-based streaming analytics pipelines. It analyzes "
+                "events in motion and can trigger workflows or feed analytics outputs."
+            ),
+        },
+        "architectural_fit": (
+            "Real-time analytics and complex event processing over event streams. Fits operational "
+            "dashboards, temporal analytics, pattern detection, and GoldenGate/Kafka stream analysis "
+            "where decisions must be made while data is still in motion."
+        ),
+        "anti_patterns": (
+            "NOT an event broker, CDC replication engine, ETL batch runtime, or generic business "
+            "orchestration engine. It should consume streams produced by GoldenGate, Kafka, or "
+            "Streaming rather than replace those services."
+        ),
+        "interoperability_notes": (
+            "Can analyze transaction event streams pushed by GoldenGate to Kafka. Processed outcomes "
+            "can trigger Oracle Integration workflows or feed data lake/analytics surfaces."
+        ),
+        "oracle_docs_urls": (
+            "https://docs.oracle.com/en/cloud/paas/integration-cloud/user-stream-analytics/overview-oracle-streaming-analytics.html|"
+            "https://docs.oracle.com/en/database/data-integration/index.html"
+        ),
+    },
+    {
+        "service_id": "ENTERPRISE_DATA_QUALITY",
+        "name": "Oracle Enterprise Data Quality",
+        "category": "DATA_QUALITY",
+        "sla_uptime_pct": None,
+        "pricing_model": "Licensed Oracle middleware product; OCI Marketplace deployment still requires appropriate EDQ licenses.",
+        "limits": {
+            "data_quality_management": True,
+            "data_profiling_supported": True,
+            "data_matching_supported": True,
+            "data_cleansing_supported": True,
+            "marketplace_deployment_available": True,
+            "label": "documented",
+            "note": (
+                "EDQ governs, measures, improves, and manages data quality. OCI deployment is possible "
+                "through Marketplace, but licensing and repository database design remain client-specific."
+            ),
+        },
+        "architectural_fit": (
+            "Data quality management for migration, MDM, BI, data integration, and CRM quality use cases. "
+            "Use when the architecture needs profiling, cleansing, standardization, matching, or quality "
+            "governance before or after integration flows."
+        ),
+        "anti_patterns": (
+            "NOT a transport, ETL scheduler, API gateway, or streaming platform. Do not use EDQ to "
+            "mask missing data ownership, data stewardship, or upstream quality accountability."
+        ),
+        "interoperability_notes": (
+            "Complements ODI, GoldenGate, and broader Oracle Data Integration estates. Can be deployed "
+            "on OCI Marketplace with Tomcat or WebLogic and requires an Oracle Database repository."
+        ),
+        "oracle_docs_urls": (
+            "https://www.oracle.com/middleware/technologies/data-integration.html|"
+            "https://www.oracle.com/middleware/technologies/enterprise-data-quality.html|"
+            "https://docs.oracle.com/middleware/12211/edq/docs.htm|"
+            "https://docs.oracle.com/en/database/data-integration/index.html"
+        ),
+    },
+    {
         "service_id": "OBSERVABILITY",
         "name": "OCI Monitoring, APM, Logging, and Log Analytics",
         "category": "OBSERVABILITY",
@@ -1146,6 +1427,207 @@ SERVICE_PROFILES: list[dict[str, object]] = [
             "https://docs.oracle.com/en-us/iaas/security-zone/using/security-zones.htm|"
             "https://www.oracle.com/contracts/docs/paas_iaas_pub_cld_srvs_pillar_4021422.pdf"
         ),
+    },
+]
+
+SERVICE_INTEROPERABILITY_RULES: list[dict[str, object]] = [
+    {
+        "source_service_id": "API_GATEWAY",
+        "target_service_id": "OIC3",
+        "relationship_type": "http_backend",
+        "patterns": ["#01", "#03", "#11", "#13"],
+        "required_components": ["JWT/OAuth policy", "deployment route", "OIC endpoint"],
+        "constraints": {"payload_limit_source": "API Gateway request limit and OIC message-size limit both apply"},
+        "risk_notes": "Keep API Gateway as policy edge; transformation-heavy logic belongs in OIC or backend services.",
+    },
+    {
+        "source_service_id": "API_GATEWAY",
+        "target_service_id": "FUNCTIONS",
+        "relationship_type": "function_backend",
+        "patterns": ["#01", "#03", "#08", "#13"],
+        "required_components": ["authorizer or backend function", "IAM policy"],
+        "constraints": {"payload_limit_source": "Functions invoke body limit applies"},
+        "risk_notes": "Use only for narrow stateless compute; avoid large payload mediation.",
+    },
+    {
+        "source_service_id": "API_GATEWAY",
+        "target_service_id": "ORDS",
+        "relationship_type": "database_api_backend",
+        "patterns": ["#01", "#03", "#11", "#13"],
+        "required_components": ["ORDS endpoint", "JWT/OAuth or mTLS policy"],
+        "constraints": {"availability_source": "ORDS availability follows host platform"},
+        "risk_notes": "Do not expose ORDS directly for external clients without gateway policy enforcement.",
+    },
+    {
+        "source_service_id": "OIC3",
+        "target_service_id": "STREAMING",
+        "relationship_type": "kafka_adapter",
+        "patterns": ["#02", "#07", "#09", "#10", "#14", "#17"],
+        "required_components": ["OIC Kafka adapter", "stream pool", "partition key strategy"],
+        "constraints": {"message_size": "Streaming 1 MB record limit; OIC message-size limit also applies"},
+        "risk_notes": "Use Streaming for event backbone; keep OIC focused on orchestration and adapter mediation.",
+    },
+    {
+        "source_service_id": "STREAMING",
+        "target_service_id": "FUNCTIONS",
+        "relationship_type": "event_consumer",
+        "patterns": ["#02", "#09", "#10", "#14"],
+        "required_components": ["consumer function", "idempotency key", "offset handling"],
+        "constraints": {"throughput": "Partition throughput and Functions concurrency both apply"},
+        "risk_notes": "Consumers must be idempotent because event delivery is at least once.",
+    },
+    {
+        "source_service_id": "QUEUE",
+        "target_service_id": "FUNCTIONS",
+        "relationship_type": "work_item_consumer",
+        "patterns": ["#04", "#07", "#08", "#09"],
+        "required_components": ["queue", "consumer function", "dead-letter channel"],
+        "constraints": {"message_size": "Queue message-size and Functions invoke limits both apply"},
+        "risk_notes": "Use Queue for work dispatch, not replayable event log semantics.",
+    },
+    {
+        "source_service_id": "CONNECTOR_HUB",
+        "target_service_id": "OBJECT_STORAGE",
+        "relationship_type": "managed_route_target",
+        "patterns": ["#02", "#05", "#09", "#12", "#14"],
+        "required_components": ["connector", "source service", "bucket target"],
+        "constraints": {"execution_model": "Connector Hub operations are sequential source-task-target routes"},
+        "risk_notes": "Good for archive and telemetry movement; not a general workflow engine.",
+    },
+    {
+        "source_service_id": "CONNECTOR_HUB",
+        "target_service_id": "FUNCTIONS",
+        "relationship_type": "managed_route_task",
+        "patterns": ["#02", "#08", "#09", "#14"],
+        "required_components": ["connector", "function task", "IAM policy"],
+        "constraints": {"execution_model": "Connector Hub function tasks run inside a source-task-target route"},
+        "risk_notes": "Keep processing bounded; complex orchestration belongs in OIC or explicit workflow design.",
+    },
+    {
+        "source_service_id": "GOLDENGATE",
+        "target_service_id": "STREAMING",
+        "relationship_type": "cdc_event_handoff",
+        "patterns": ["#02", "#05", "#09", "#10", "#14"],
+        "required_components": ["GoldenGate deployment", "stream target", "schema governance"],
+        "constraints": {"deployment": "GoldenGate/Data Streams capabilities depend on deployment version"},
+        "risk_notes": "Best fit for database CDC to event backbone; not generic API mediation.",
+    },
+    {
+        "source_service_id": "DATA_INTEGRATION",
+        "target_service_id": "OBJECT_STORAGE",
+        "relationship_type": "batch_storage_target",
+        "patterns": ["#05", "#06", "#12"],
+        "required_components": ["workspace", "bucket", "data asset", "task"],
+        "constraints": {"latency": "Data Integration pipelines are not designed for low-latency tasks"},
+        "risk_notes": "Use for governed batch/ELT, not operational real-time mediation.",
+    },
+    {
+        "source_service_id": "DATA_INTEGRATION",
+        "target_service_id": "DATA_FLOW",
+        "relationship_type": "spark_task_execution",
+        "patterns": ["#05", "#06", "#12", "#17"],
+        "required_components": ["Data Integration task", "Data Flow application", "Object Storage staging"],
+        "constraints": {"runtime": "Spark job capacity and tenancy Data Flow quotas apply"},
+        "risk_notes": "Use for scale-out transformations; avoid for low-latency operational mediation.",
+    },
+    {
+        "source_service_id": "DATA_INTEGRATION",
+        "target_service_id": "DATA_CATALOG",
+        "relationship_type": "lineage_metadata_publication",
+        "patterns": ["#05", "#06", "#12"],
+        "required_components": ["workspace", "lineage metadata", "catalog governance process"],
+        "constraints": {"governance": "Catalog harvest and lineage freshness depend on configured schedules"},
+        "risk_notes": "Catalog evidence is metadata, not proof of payload quality or runtime freshness.",
+    },
+    {
+        "source_service_id": "DATA_FLOW",
+        "target_service_id": "OBJECT_STORAGE",
+        "relationship_type": "spark_data_lake_processing",
+        "patterns": ["#05", "#06", "#12", "#17"],
+        "required_components": ["Spark application", "bucket layout", "IAM policy"],
+        "constraints": {"performance": "Partitioning, skew, driver sizing, and file layout drive practical throughput"},
+        "risk_notes": "Poor Object Storage partitioning can dominate Spark runtime regardless of service capacity.",
+    },
+    {
+        "source_service_id": "DATA_CATALOG",
+        "target_service_id": "DATA_FLOW",
+        "relationship_type": "metastore_metadata",
+        "patterns": ["#05", "#06", "#12"],
+        "required_components": ["Data Catalog metastore", "Data Flow application", "IAM policy"],
+        "constraints": {"governance": "Metastore access must align with data domain ownership"},
+        "risk_notes": "Do not treat metastore registration as data access authorization by itself.",
+    },
+    {
+        "source_service_id": "GOLDENGATE",
+        "target_service_id": "GOLDENGATE_DATA_TRANSFORMS",
+        "relationship_type": "replication_transform_pair",
+        "patterns": ["#05", "#06", "#10", "#12", "#14"],
+        "required_components": ["GoldenGate deployment", "Data Transforms deployment", "Generic connections"],
+        "constraints": {"deployment": "Data Transforms is configured through OCI GoldenGate deployment patterns"},
+        "risk_notes": "Keep CDC replication and transformation responsibilities explicit to avoid hidden dual-write semantics.",
+    },
+    {
+        "source_service_id": "GOLDENGATE_DATA_TRANSFORMS",
+        "target_service_id": "OBJECT_STORAGE",
+        "relationship_type": "transformed_dataset_target",
+        "patterns": ["#05", "#06", "#12"],
+        "required_components": ["data flow", "workflow", "bucket target"],
+        "constraints": {"staging": "Object Storage lifecycle, file naming, and replay strategy must be governed"},
+        "risk_notes": "Avoid unmanaged data lake drops without catalog, lineage, and retention rules.",
+    },
+    {
+        "source_service_id": "ODI",
+        "target_service_id": "GOLDENGATE",
+        "relationship_type": "batch_cdc_hybrid",
+        "patterns": ["#05", "#06", "#10", "#12", "#14"],
+        "required_components": ["ODI repositories", "GoldenGate deployment", "monitoring policy"],
+        "constraints": {"runtime": "ODI availability and throughput depend on customer-managed deployment topology"},
+        "risk_notes": "Use only when client ODI standardization or workload shape justifies a non-managed runtime.",
+    },
+    {
+        "source_service_id": "ENTERPRISE_DATA_QUALITY",
+        "target_service_id": "ODI",
+        "relationship_type": "quality_gate",
+        "patterns": ["#05", "#06", "#12", "#16"],
+        "required_components": ["quality rules", "profiling output", "ODI load process"],
+        "constraints": {"ownership": "Quality thresholds and remediation ownership must be defined outside the tool"},
+        "risk_notes": "Quality tooling cannot replace data stewardship or source-system accountability.",
+    },
+    {
+        "source_service_id": "GOLDENGATE",
+        "target_service_id": "STREAM_ANALYTICS",
+        "relationship_type": "cdc_stream_analytics",
+        "patterns": ["#02", "#09", "#10", "#14"],
+        "required_components": ["GoldenGate stream", "Kafka-compatible topic", "Stream Analytics pipeline"],
+        "constraints": {"streaming": "Pipeline semantics depend on event-time windows, checkpointing, and source ordering"},
+        "risk_notes": "Use for event analytics; do not route transactional command processing through analytics pipelines.",
+    },
+    {
+        "source_service_id": "STREAM_ANALYTICS",
+        "target_service_id": "OIC3",
+        "relationship_type": "event_insight_workflow_trigger",
+        "patterns": ["#02", "#08", "#09", "#14"],
+        "required_components": ["published pipeline", "alert action", "OIC workflow endpoint"],
+        "constraints": {"latency": "Analytics detection and workflow invocation are separate reliability domains"},
+        "risk_notes": "Make alert deduplication and workflow idempotency explicit.",
+    },
+    {
+        "source_service_id": "OBJECT_STORAGE",
+        "target_service_id": "DATA_INTEGRATION",
+        "relationship_type": "batch_storage_source",
+        "patterns": ["#05", "#06", "#12"],
+        "required_components": ["bucket", "data asset", "workspace"],
+        "constraints": {"latency": "Batch windows and workspace usage assumptions apply"},
+        "risk_notes": "Make lifecycle and retention assumptions explicit before sizing.",
+    },
+    {
+        "source_service_id": "OIC3",
+        "target_service_id": "OBJECT_STORAGE",
+        "relationship_type": "large_payload_reference",
+        "patterns": ["#03", "#05", "#06", "#07", "#17"],
+        "required_components": ["bucket", "object key reference", "OIC file/object adapter"],
+        "constraints": {"payload": "Use references when inline message payload limits would be exceeded"},
+        "risk_notes": "Avoid passing large binary/file payloads through orchestration inline.",
     },
 ]
 
@@ -1337,6 +1819,253 @@ def seed_service_profiles(session: Session) -> int:
     return count
 
 
+def _split_oracle_docs_urls(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [url.strip() for url in value.split("|") if url.strip()]
+
+
+def _humanize_limit_key(key: str) -> str:
+    return key.replace("_", " ").strip().title()
+
+
+def _infer_limit_unit(key: str, value: object) -> str | None:
+    if key.endswith("_kb"):
+        return "KB"
+    if key.endswith("_mb") or "_mb_" in key:
+        return "MB"
+    if key.endswith("_gb") or "_gb_" in key:
+        return "GB"
+    if key.endswith("_s") or "_s_" in key:
+        return "seconds"
+    if key.endswith("_h") or "_h_" in key:
+        return "hours"
+    if key.endswith("_d") or "_d_" in key:
+        return "days"
+    if key.endswith("_pct"):
+        return "percent"
+    if key.endswith("_per_month"):
+        return "per month"
+    if isinstance(value, bool):
+        return "boolean"
+    return None
+
+
+def _infer_limit_type(key: str) -> str:
+    normalized = key.lower()
+    if "payload" in normalized or "message_size" in normalized or "body" in normalized:
+        return "payload"
+    if "throughput" in normalized or "concurrency" in normalized or "rps" in normalized:
+        return "performance"
+    if "retention" in normalized:
+        return "retention"
+    if "max_" in normalized or normalized.startswith("max"):
+        return "quota"
+    if "billing" in normalized or "pricing" in normalized or "free_" in normalized:
+        return "quota"
+    return "operational"
+
+
+def _can_request_limit_increase(key: str) -> bool:
+    normalized = key.lower()
+    if "payload" in normalized or "message_size" in normalized or "body" in normalized:
+        return False
+    return "max_" in normalized or "partition" in normalized or "gateway" in normalized
+
+
+def seed_service_product_library(session: Session) -> int:
+    """Seed normalized service-product versions, limits, evidence, and matrix rules."""
+
+    changed = 0
+    profiles = {
+        profile.service_id: profile
+        for profile in session.scalars(select(ServiceCapabilityProfile)).all()
+    }
+
+    for profile in profiles.values():
+        first_source_url = _split_oracle_docs_urls(profile.oracle_docs_urls)[0] if profile.oracle_docs_urls else None
+        version = session.scalar(
+            select(ServiceProductVersion).where(
+                ServiceProductVersion.service_profile_id == profile.id,
+                ServiceProductVersion.version_label == profile.version,
+            )
+        )
+        version_payload: dict[str, object] = {
+            "service_id": profile.service_id,
+            "source_profile_version": profile.version,
+            "pricing_model": profile.pricing_model,
+            "sla_uptime_pct": profile.sla_uptime_pct,
+        }
+        if version is None:
+            version = ServiceProductVersion(
+                service_profile_id=profile.id,
+                version_label=profile.version,
+                description=profile.architectural_fit,
+                capabilities=cast(dict[str, object], dict(profile.limits)),
+                use_cases=[profile.architectural_fit] if profile.architectural_fit else [],
+                anti_patterns=[profile.anti_patterns] if profile.anti_patterns else [],
+                commercial_notes=profile.pricing_model,
+                product_metadata=version_payload,
+                created_by="system-seed",
+            )
+            session.add(version)
+            session.flush()
+            _audit(
+                session,
+                "seed_insert",
+                "service_product_version",
+                version.id,
+                {"service_id": profile.service_id, "version": profile.version},
+            )
+            changed += 1
+        else:
+            version.description = profile.architectural_fit
+            version.capabilities = cast(dict[str, object], dict(profile.limits))
+            version.use_cases = [profile.architectural_fit] if profile.architectural_fit else []
+            version.anti_patterns = [profile.anti_patterns] if profile.anti_patterns else []
+            version.commercial_notes = profile.pricing_model
+            version.product_metadata = version_payload
+
+        for key, value in cast(dict[str, object], profile.limits).items():
+            if key == "label":
+                continue
+            existing_limit = session.scalar(
+                select(ServiceLimit).where(
+                    ServiceLimit.service_profile_id == profile.id,
+                    ServiceLimit.limit_key == key,
+                )
+            )
+            if existing_limit is None:
+                existing_limit = ServiceLimit(
+                    service_profile_id=profile.id,
+                    limit_key=key,
+                    label=_humanize_limit_key(key),
+                    scope="service",
+                    limit_type=_infer_limit_type(key),
+                    value=value,
+                    unit=_infer_limit_unit(key, value),
+                    can_request_increase=_can_request_limit_increase(key),
+                    source_url=first_source_url,
+                    confidence=0.9 if first_source_url else 0.75,
+                    notes=None,
+                )
+                session.add(existing_limit)
+                session.flush()
+                _audit(
+                    session,
+                    "seed_insert",
+                    "service_limit",
+                    existing_limit.id,
+                    {"service_id": profile.service_id, "limit_key": key},
+                )
+                changed += 1
+            else:
+                existing_limit.label = _humanize_limit_key(key)
+                existing_limit.limit_type = _infer_limit_type(key)
+                existing_limit.value = value
+                existing_limit.unit = _infer_limit_unit(key, value)
+                existing_limit.can_request_increase = _can_request_limit_increase(key)
+                existing_limit.source_url = first_source_url
+                existing_limit.confidence = 0.9 if first_source_url else 0.75
+                existing_limit.is_active = True
+
+        for index, url in enumerate(_split_oracle_docs_urls(profile.oracle_docs_urls), start=1):
+            existing_source = session.scalar(
+                select(ServiceEvidenceSource).where(
+                    ServiceEvidenceSource.service_profile_id == profile.id,
+                    ServiceEvidenceSource.url == url,
+                )
+            )
+            title = f"{profile.name} evidence source {index}"
+            if "service-limits" in url or "limits" in url:
+                title = f"{profile.name} service limits"
+            elif "pricing" in url or "price-list" in url:
+                title = f"{profile.name} pricing"
+            if existing_source is None:
+                existing_source = ServiceEvidenceSource(
+                    service_profile_id=profile.id,
+                    source_type="official_docs" if "docs.oracle.com" in url else "official_pricing",
+                    url=url,
+                    title=title,
+                    publisher="Oracle",
+                    trust_tier="tier_1_official_docs" if "docs.oracle.com" in url else "tier_2_official_commercial",
+                    retrieval_strategy="http_fetch",
+                    expected_update_frequency_days=90,
+                    status="seeded_pending_verification",
+                )
+                session.add(existing_source)
+                session.flush()
+                _audit(
+                    session,
+                    "seed_insert",
+                    "service_evidence_source",
+                    existing_source.id,
+                    {"service_id": profile.service_id, "url": url},
+                )
+                changed += 1
+            else:
+                existing_source.title = title
+                existing_source.publisher = "Oracle"
+                existing_source.retrieval_strategy = "http_fetch"
+                existing_source.expected_update_frequency_days = 90
+                if existing_source.status == "pending_verification":
+                    existing_source.status = "seeded_pending_verification"
+
+    for rule_data in SERVICE_INTEROPERABILITY_RULES:
+        source = profiles.get(cast(str, rule_data["source_service_id"]))
+        target = profiles.get(cast(str, rule_data["target_service_id"]))
+        if source is None or target is None:
+            continue
+        relationship_type = cast(str, rule_data["relationship_type"])
+        existing_rule = session.scalar(
+            select(ServiceInteroperabilityRule).where(
+                ServiceInteroperabilityRule.source_service_profile_id == source.id,
+                ServiceInteroperabilityRule.target_service_profile_id == target.id,
+                ServiceInteroperabilityRule.relationship_type == relationship_type,
+            )
+        )
+        source_url = _split_oracle_docs_urls(source.oracle_docs_urls)[0] if source.oracle_docs_urls else None
+        if existing_rule is None:
+            existing_rule = ServiceInteroperabilityRule(
+                source_service_profile_id=source.id,
+                target_service_profile_id=target.id,
+                relationship_type=relationship_type,
+                supported=True,
+                directionality="source_to_target",
+                patterns=cast(list[object], rule_data.get("patterns", [])),
+                required_components=cast(list[object], rule_data.get("required_components", [])),
+                constraints=cast(dict[str, object], rule_data.get("constraints", {})),
+                risk_notes=cast(str | None, rule_data.get("risk_notes")),
+                source_url=source_url,
+                confidence=0.85,
+            )
+            session.add(existing_rule)
+            session.flush()
+            _audit(
+                session,
+                "seed_insert",
+                "service_interoperability_rule",
+                existing_rule.id,
+                {
+                    "source_service_id": source.service_id,
+                    "target_service_id": target.service_id,
+                    "relationship_type": relationship_type,
+                },
+            )
+            changed += 1
+        else:
+            existing_rule.supported = True
+            existing_rule.patterns = cast(list[object], rule_data.get("patterns", []))
+            existing_rule.required_components = cast(list[object], rule_data.get("required_components", []))
+            existing_rule.constraints = cast(dict[str, object], rule_data.get("constraints", {}))
+            existing_rule.risk_notes = cast(str | None, rule_data.get("risk_notes"))
+            existing_rule.source_url = source_url
+            existing_rule.confidence = 0.85
+            existing_rule.is_active = True
+
+    return changed
+
+
 def seed_prompt_template(session: Session) -> int:
     existing = session.scalar(
         select(PromptTemplateVersion).where(PromptTemplateVersion.version == PROMPT_TEMPLATE["version"])
@@ -1368,12 +2097,13 @@ def main() -> None:
         dictionary_options = seed_dictionary_options(session)
         prompt_templates = seed_prompt_template(session)
         service_profiles = seed_service_profiles(session)
+        service_product_library = seed_service_product_library(session)
         session.commit()
         print(
             "Seed complete: "
             f"patterns={patterns}, assumptions={assumptions}, "
             f"dictionary_options={dictionary_options}, prompt_templates={prompt_templates}, "
-            f"service_profiles={service_profiles}"
+            f"service_profiles={service_profiles}, service_product_library={service_product_library}"
         )
 
 

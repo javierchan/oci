@@ -58,6 +58,9 @@ MINIMUM_SUPPORTED_CATALOG_SIZE = 480
 MINIMUM_SUPPORTED_DISTINCT_SYSTEMS = 70
 SYNTHETIC_JOBS_TABLE_NAME = "synthetic_generation_jobs"
 SYNTHETIC_JOBS_REQUIRED_MIGRATION = "20260428_0007"
+SYNTHETIC_QUEUE_MAX_MESSAGE_KB = 256.0
+SYNTHETIC_QUEUE_REFERENCE_PAYLOAD_KB = 192.0
+SYNTHETIC_API_GATEWAY_BACKEND_TOOL_KEYS = frozenset({"OIC Gen3", "OCI Functions", "Oracle Functions"})
 
 IMPORT_HEADER_ROW: list[str] = [
     "#",
@@ -571,11 +574,15 @@ def _payload_value(
     index: int,
 ) -> float:
     low, high = pattern.payload_range_kb
+    if "OCI Queue" in pattern.route_core_tools:
+        high = min(high, int(SYNTHETIC_QUEUE_REFERENCE_PAYLOAD_KB))
     value = round(rng.uniform(low, high), 1)
+    if "OCI Queue" in pattern.route_core_tools and index % 37 == 0:
+        return SYNTHETIC_QUEUE_REFERENCE_PAYLOAD_KB
+    if "OCI Queue" in pattern.route_core_tools:
+        return min(value, SYNTHETIC_QUEUE_REFERENCE_PAYLOAD_KB)
     if "OIC Gen3" in pattern.route_core_tools and index % 61 == 0:
         return 12288.0
-    if "OCI Queue" in pattern.route_core_tools and index % 37 == 0:
-        return 320.0
     if "OCI Streaming" in pattern.route_core_tools and index % 53 == 0:
         return 1536.0
     if "OCI Functions" in pattern.route_core_tools and index % 71 == 0:
@@ -650,8 +657,20 @@ def _destination_technology_2(index: int) -> str | None:
     return DESTINATION_TECHNOLOGIES[index % len(DESTINATION_TECHNOLOGIES)]
 
 
+def _active_route_overlay_keys(core_tools: tuple[str, ...], overlay_keys: tuple[str, ...]) -> tuple[str, ...]:
+    if not overlay_keys:
+        return ()
+    first_overlay = overlay_keys[0]
+    if first_overlay == "OCI API Gateway" and (
+        not core_tools or core_tools[0] not in SYNTHETIC_API_GATEWAY_BACKEND_TOOL_KEYS
+    ):
+        return ()
+    return (first_overlay,)
+
+
 def build_canvas_state(core_tools: tuple[str, ...], overlay_keys: tuple[str, ...], payload_kb: float) -> str:
-    route_nodes = [*overlay_keys[:1], *core_tools[:3]]
+    active_overlay_keys = _active_route_overlay_keys(core_tools, overlay_keys)
+    route_nodes = [*active_overlay_keys, *core_tools[:3]]
     nodes: list[dict[str, object]] = []
     edges: list[dict[str, object]] = []
     previous_id = "source-system"
@@ -681,6 +700,20 @@ def build_canvas_state(core_tools: tuple[str, ...], overlay_keys: tuple[str, ...
             }
         )
         previous_id = instance_id
+    inactive_overlay_keys = [tool_key for tool_key in overlay_keys if tool_key not in active_overlay_keys]
+    for overlay_index, tool_key in enumerate(inactive_overlay_keys, start=1):
+        instance_id = f"overlay{overlay_index}"
+        label = SHORT_TOOL_LABELS.get(tool_key, tool_key)
+        nodes.append(
+            {
+                "instanceId": instance_id,
+                "toolKey": tool_key,
+                "label": label,
+                "payloadNote": "overlay",
+                "x": route_start_x + (overlay_index - 1) * route_gap_x,
+                "y": route_y - 150,
+            }
+        )
     edges.append(
         {
             "edgeId": f"e{len(route_nodes) + 1}",

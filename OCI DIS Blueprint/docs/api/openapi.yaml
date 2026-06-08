@@ -292,6 +292,56 @@
         "title": "AiReviewCreateRequest",
         "type": "object"
       },
+      "AiReviewDecisionBrief": {
+        "additionalProperties": false,
+        "description": "Decision-ready AI review brief assembled from governed evidence.",
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "decision_points": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Decision Points",
+            "type": "array"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "primary_risk": {
+            "title": "Primary Risk",
+            "type": "string"
+          },
+          "recommended_next_action": {
+            "title": "Recommended Next Action",
+            "type": "string"
+          },
+          "signoff_status": {
+            "enum": [
+              "blocked",
+              "needs_review",
+              "ready_with_caveats",
+              "ready"
+            ],
+            "title": "Signoff Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signoff_status",
+          "headline",
+          "primary_risk",
+          "recommended_next_action"
+        ],
+        "title": "AiReviewDecisionBrief",
+        "type": "object"
+      },
       "AiReviewDriftItem": {
         "additionalProperties": false,
         "description": "One planned-baseline versus actual-state drift item.",
@@ -785,6 +835,92 @@
         "title": "AiReviewGroup",
         "type": "object"
       },
+      "AiReviewJobCompareResponse": {
+        "additionalProperties": false,
+        "description": "Comparison between two completed AI review job results.",
+        "properties": {
+          "added_findings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Added Findings",
+            "type": "array"
+          },
+          "base_job_id": {
+            "title": "Base Job Id",
+            "type": "string"
+          },
+          "base_readiness_label": {
+            "title": "Base Readiness Label",
+            "type": "string"
+          },
+          "base_readiness_score": {
+            "title": "Base Readiness Score",
+            "type": "integer"
+          },
+          "critical_high_delta": {
+            "title": "Critical High Delta",
+            "type": "integer"
+          },
+          "finding_count_delta": {
+            "title": "Finding Count Delta",
+            "type": "integer"
+          },
+          "persistent_findings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Persistent Findings",
+            "type": "array"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "readiness_score_delta": {
+            "title": "Readiness Score Delta",
+            "type": "integer"
+          },
+          "resolved_findings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Resolved Findings",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "target_job_id": {
+            "title": "Target Job Id",
+            "type": "string"
+          },
+          "target_readiness_label": {
+            "title": "Target Readiness Label",
+            "type": "string"
+          },
+          "target_readiness_score": {
+            "title": "Target Readiness Score",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "base_job_id",
+          "target_job_id",
+          "base_readiness_score",
+          "target_readiness_score",
+          "readiness_score_delta",
+          "base_readiness_label",
+          "target_readiness_label",
+          "finding_count_delta",
+          "critical_high_delta",
+          "summary"
+        ],
+        "title": "AiReviewJobCompareResponse",
+        "type": "object"
+      },
       "AiReviewJobListResponse": {
         "additionalProperties": false,
         "description": "Collection response for persisted AI review jobs.",
@@ -993,6 +1129,111 @@
         "title": "AiReviewPersonaSummary",
         "type": "object"
       },
+      "AiReviewProviderStatus": {
+        "additionalProperties": false,
+        "description": "Provider health/configuration status without exposing credentials.",
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "data_retention_policy": {
+            "title": "Data Retention Policy",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "deterministic_only",
+              "llm_available",
+              "misconfigured"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt_redaction_policy": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Prompt Redaction Policy",
+            "type": "array"
+          },
+          "provider": {
+            "const": "oca",
+            "default": "oca",
+            "enum": [
+              "oca"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "quota": {
+            "$ref": "#/components/schemas/AiReviewQuotaState"
+          },
+          "request_timeout_seconds": {
+            "title": "Request Timeout Seconds",
+            "type": "number"
+          },
+          "status_message": {
+            "title": "Status Message",
+            "type": "string"
+          },
+          "wire_api": {
+            "title": "Wire Api",
+            "type": "string"
+          }
+        },
+        "required": [
+          "configured",
+          "mode",
+          "model",
+          "wire_api",
+          "base_url",
+          "request_timeout_seconds",
+          "quota",
+          "data_retention_policy",
+          "status_message"
+        ],
+        "title": "AiReviewProviderStatus",
+        "type": "object"
+      },
+      "AiReviewQuotaState": {
+        "additionalProperties": false,
+        "description": "Role and budget status for governed AI review creation.",
+        "properties": {
+          "actor_jobs_today": {
+            "default": 0,
+            "title": "Actor Jobs Today",
+            "type": "integer"
+          },
+          "daily_job_limit": {
+            "title": "Daily Job Limit",
+            "type": "integer"
+          },
+          "llm_daily_job_limit": {
+            "title": "Llm Daily Job Limit",
+            "type": "integer"
+          },
+          "remaining_jobs_today": {
+            "title": "Remaining Jobs Today",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "daily_job_limit",
+          "remaining_jobs_today",
+          "llm_daily_job_limit"
+        ],
+        "title": "AiReviewQuotaState",
+        "type": "object"
+      },
       "AiReviewRecommendationAcceptance": {
         "additionalProperties": false,
         "description": "Human acceptance record for one recommendation.",
@@ -1041,10 +1282,84 @@
         "title": "AiReviewRecommendationAcceptance",
         "type": "object"
       },
+      "AiReviewRemediationStep": {
+        "additionalProperties": false,
+        "description": "One prioritized, owner-oriented action generated from findings.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "action_href": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Href"
+          },
+          "expected_impact": {
+            "title": "Expected Impact",
+            "type": "string"
+          },
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "integration_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Integration Ids",
+            "type": "array"
+          },
+          "owner": {
+            "enum": [
+              "Architect",
+              "Analyst",
+              "Operations",
+              "Executive"
+            ],
+            "title": "Owner",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "priority",
+          "owner",
+          "title",
+          "action",
+          "expected_impact"
+        ],
+        "title": "AiReviewRemediationStep",
+        "type": "object"
+      },
       "AiReviewResponse": {
         "additionalProperties": false,
         "description": "Governed review assembled from deterministic product evidence plus optional LLM summary.",
         "properties": {
+          "decision_brief": {
+            "$ref": "#/components/schemas/AiReviewDecisionBrief"
+          },
           "drift": {
             "$ref": "#/components/schemas/AiReviewDriftReport"
           },
@@ -1163,6 +1478,13 @@
             "title": "Readiness Score",
             "type": "integer"
           },
+          "remediation_plan": {
+            "items": {
+              "$ref": "#/components/schemas/AiReviewRemediationStep"
+            },
+            "title": "Remediation Plan",
+            "type": "array"
+          },
           "reviewer_personas": {
             "items": {
               "$ref": "#/components/schemas/AiReviewPersonaSummary"
@@ -1179,9 +1501,23 @@
             "title": "Scope",
             "type": "string"
           },
+          "stress_scenarios": {
+            "items": {
+              "$ref": "#/components/schemas/AiReviewStressScenario"
+            },
+            "title": "Stress Scenarios",
+            "type": "array"
+          },
           "summary": {
             "title": "Summary",
             "type": "string"
+          },
+          "topology_insights": {
+            "items": {
+              "$ref": "#/components/schemas/AiReviewTopologyInsight"
+            },
+            "title": "Topology Insights",
+            "type": "array"
           }
         },
         "required": [
@@ -1193,6 +1529,65 @@
           "summary"
         ],
         "title": "AiReviewResponse",
+        "type": "object"
+      },
+      "AiReviewStressScenario": {
+        "additionalProperties": false,
+        "description": "Deterministic growth or evidence scenario for architecture review.",
+        "properties": {
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "multiplier": {
+            "title": "Multiplier",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "projected_daily_payload_gb": {
+            "title": "Projected Daily Payload Gb",
+            "type": "number"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "top_integration_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Top Integration Ids",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "multiplier",
+          "confidence",
+          "summary",
+          "projected_daily_payload_gb"
+        ],
+        "title": "AiReviewStressScenario",
         "type": "object"
       },
       "AiReviewSuggestedPatch": {
@@ -1240,6 +1635,108 @@
           "safety_note"
         ],
         "title": "AiReviewSuggestedPatch",
+        "type": "object"
+      },
+      "AiReviewTopologyInsight": {
+        "additionalProperties": false,
+        "description": "Topology-aware insight derived from source, destination, QA, and warning concentration.",
+        "properties": {
+          "action_href": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Href"
+          },
+          "destination_system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination System"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "insight_type": {
+            "enum": [
+              "system_hotspot",
+              "edge_hotspot",
+              "payload_hotspot"
+            ],
+            "title": "Insight Type",
+            "type": "string"
+          },
+          "integration_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Integration Ids",
+            "type": "array"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "positive"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "source_system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source System"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "system_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Name"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "insight_type",
+          "severity",
+          "title",
+          "summary",
+          "metric"
+        ],
+        "title": "AiReviewTopologyInsight",
         "type": "object"
       },
       "ApproveJustificationRequest": {
@@ -3674,6 +4171,135 @@
         "title": "ImportBatchResponse",
         "type": "object"
       },
+      "ImportQualityAssistantResponse": {
+        "additionalProperties": false,
+        "description": "Data-quality assistant summary for one import batch.",
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "excluded_count": {
+            "title": "Excluded Count",
+            "type": "integer"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ImportQualityFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "included_count": {
+            "title": "Included Count",
+            "type": "integer"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/ImportQualityMetric"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "normalization_event_count": {
+            "title": "Normalization Event Count",
+            "type": "integer"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "recommended_next_action": {
+            "title": "Recommended Next Action",
+            "type": "string"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "batch_id",
+          "status",
+          "filename",
+          "row_count",
+          "included_count",
+          "excluded_count",
+          "normalization_event_count",
+          "recommended_next_action"
+        ],
+        "title": "ImportQualityAssistantResponse",
+        "type": "object"
+      },
+      "ImportQualityFinding": {
+        "additionalProperties": false,
+        "description": "One deterministic import-quality finding with an action target.",
+        "properties": {
+          "action_href": {
+            "title": "Action Href",
+            "type": "string"
+          },
+          "action_label": {
+            "title": "Action Label",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "severity",
+          "title",
+          "summary",
+          "action_label",
+          "action_href"
+        ],
+        "title": "ImportQualityFinding",
+        "type": "object"
+      },
+      "ImportQualityMetric": {
+        "additionalProperties": false,
+        "description": "One metric used by the import data-quality assistant.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "value",
+          "detail"
+        ],
+        "title": "ImportQualityMetric",
+        "type": "object"
+      },
       "JustificationListResponse": {
         "additionalProperties": false,
         "description": "Project-level collection of justification narratives.",
@@ -5358,6 +5984,1326 @@
         "title": "ScopedRecalculationRequest",
         "type": "object"
       },
+      "ServiceEvidenceSourceResponse": {
+        "additionalProperties": false,
+        "description": "Trusted evidence source tracked for verification.",
+        "properties": {
+          "content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Hash"
+          },
+          "expected_update_frequency_days": {
+            "title": "Expected Update Frequency Days",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_changed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Changed At"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "retrieval_strategy": {
+            "title": "Retrieval Strategy",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "trust_tier": {
+            "title": "Trust Tier",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_type",
+          "url",
+          "title",
+          "publisher",
+          "trust_tier",
+          "retrieval_strategy",
+          "expected_update_frequency_days",
+          "last_checked_at",
+          "last_changed_at",
+          "content_hash",
+          "status",
+          "updated_at"
+        ],
+        "title": "ServiceEvidenceSourceResponse",
+        "type": "object"
+      },
+      "ServiceInteroperabilityMatrixResponse": {
+        "additionalProperties": false,
+        "description": "Service-to-service matrix response.",
+        "properties": {
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceInteroperabilityRuleResponse"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceProductSummaryResponse"
+            },
+            "title": "Services",
+            "type": "array"
+          },
+          "total_rules": {
+            "title": "Total Rules",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "services",
+          "rules",
+          "total_rules"
+        ],
+        "title": "ServiceInteroperabilityMatrixResponse",
+        "type": "object"
+      },
+      "ServiceInteroperabilityRuleResponse": {
+        "additionalProperties": false,
+        "description": "Directional service interoperability rule.",
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "constraints": {
+            "title": "Constraints",
+            "type": "object"
+          },
+          "directionality": {
+            "title": "Directionality",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "last_verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Verified At"
+          },
+          "patterns": {
+            "items": {},
+            "title": "Patterns",
+            "type": "array"
+          },
+          "relationship_type": {
+            "title": "Relationship Type",
+            "type": "string"
+          },
+          "required_components": {
+            "items": {},
+            "title": "Required Components",
+            "type": "array"
+          },
+          "risk_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Notes"
+          },
+          "source_service_id": {
+            "title": "Source Service Id",
+            "type": "string"
+          },
+          "source_service_name": {
+            "title": "Source Service Name",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "supported": {
+            "title": "Supported",
+            "type": "boolean"
+          },
+          "target_service_id": {
+            "title": "Target Service Id",
+            "type": "string"
+          },
+          "target_service_name": {
+            "title": "Target Service Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_service_id",
+          "source_service_name",
+          "target_service_id",
+          "target_service_name",
+          "relationship_type",
+          "supported",
+          "directionality",
+          "patterns",
+          "required_components",
+          "constraints",
+          "risk_notes",
+          "source_url",
+          "confidence",
+          "last_verified_at",
+          "is_active",
+          "updated_at"
+        ],
+        "title": "ServiceInteroperabilityRuleResponse",
+        "type": "object"
+      },
+      "ServiceLimitResponse": {
+        "additionalProperties": false,
+        "description": "Normalized service limit or operational constraint.",
+        "properties": {
+          "can_request_increase": {
+            "title": "Can Request Increase",
+            "type": "boolean"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "default_value": {
+            "title": "Default Value"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "limit_key": {
+            "title": "Limit Key",
+            "type": "string"
+          },
+          "limit_type": {
+            "title": "Limit Type",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "source_retrieved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Retrieved At"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "id",
+          "limit_key",
+          "label",
+          "scope",
+          "limit_type",
+          "value",
+          "unit",
+          "can_request_increase",
+          "source_url",
+          "source_retrieved_at",
+          "confidence",
+          "notes",
+          "is_active",
+          "updated_at"
+        ],
+        "title": "ServiceLimitResponse",
+        "type": "object"
+      },
+      "ServiceProductDetailResponse": {
+        "additionalProperties": false,
+        "description": "Detailed service product profile with normalized governance evidence.",
+        "properties": {
+          "anti_patterns": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anti Patterns"
+          },
+          "architectural_fit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Architectural Fit"
+          },
+          "architecture_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Architecture Role"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "current_version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServiceProductVersionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_count": {
+            "default": 0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "evidence_sources": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceEvidenceSourceResponse"
+            },
+            "title": "Evidence Sources",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "interoperability_count": {
+            "default": 0,
+            "title": "Interoperability Count",
+            "type": "integer"
+          },
+          "interoperability_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interoperability Notes"
+          },
+          "interoperability_rules": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceInteroperabilityRuleResponse"
+            },
+            "title": "Interoperability Rules",
+            "type": "array"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "last_verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Verified At"
+          },
+          "limits": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceLimitResponse"
+            },
+            "title": "Limits",
+            "type": "array"
+          },
+          "limits_count": {
+            "default": 0,
+            "title": "Limits Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "oracle_docs_urls": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oracle Docs Urls"
+          },
+          "pricing_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Model"
+          },
+          "service_id": {
+            "title": "Service Id",
+            "type": "string"
+          },
+          "sla_uptime_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sla Uptime Pct"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "verification_status": {
+            "default": "seeded_pending_verification",
+            "title": "Verification Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "service_id",
+          "name",
+          "category",
+          "architecture_role",
+          "summary",
+          "pricing_model",
+          "sla_uptime_pct",
+          "version",
+          "is_active",
+          "updated_at",
+          "architectural_fit",
+          "anti_patterns",
+          "interoperability_notes",
+          "oracle_docs_urls"
+        ],
+        "title": "ServiceProductDetailResponse",
+        "type": "object"
+      },
+      "ServiceProductListResponse": {
+        "additionalProperties": false,
+        "description": "Service product list response.",
+        "properties": {
+          "open_findings_count": {
+            "default": 0,
+            "title": "Open Findings Count",
+            "type": "integer"
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceProductSummaryResponse"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "stale_evidence_count": {
+            "default": 0,
+            "title": "Stale Evidence Count",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "products",
+          "total"
+        ],
+        "title": "ServiceProductListResponse",
+        "type": "object"
+      },
+      "ServiceProductSummaryResponse": {
+        "additionalProperties": false,
+        "description": "List-card summary for one service product.",
+        "properties": {
+          "architecture_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Architecture Role"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "evidence_count": {
+            "default": 0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "interoperability_count": {
+            "default": 0,
+            "title": "Interoperability Count",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "last_verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Verified At"
+          },
+          "limits_count": {
+            "default": 0,
+            "title": "Limits Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pricing_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Model"
+          },
+          "service_id": {
+            "title": "Service Id",
+            "type": "string"
+          },
+          "sla_uptime_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sla Uptime Pct"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "verification_status": {
+            "default": "seeded_pending_verification",
+            "title": "Verification Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "service_id",
+          "name",
+          "category",
+          "architecture_role",
+          "summary",
+          "pricing_model",
+          "sla_uptime_pct",
+          "version",
+          "is_active",
+          "updated_at"
+        ],
+        "title": "ServiceProductSummaryResponse",
+        "type": "object"
+      },
+      "ServiceProductVersionResponse": {
+        "additionalProperties": false,
+        "description": "Versioned metadata snapshot for one service product.",
+        "properties": {
+          "anti_patterns": {
+            "items": {},
+            "title": "Anti Patterns",
+            "type": "array"
+          },
+          "capabilities": {
+            "title": "Capabilities",
+            "type": "object"
+          },
+          "commercial_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commercial Notes"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "deprecation_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deprecation Notes"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "effective_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "title": "Metadata",
+            "type": "object"
+          },
+          "regional_availability": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regional Availability"
+          },
+          "security_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Security Notes"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "use_cases": {
+            "items": {},
+            "title": "Use Cases",
+            "type": "array"
+          },
+          "version_label": {
+            "title": "Version Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version_label",
+          "description",
+          "capabilities",
+          "use_cases",
+          "anti_patterns",
+          "regional_availability",
+          "commercial_notes",
+          "security_notes",
+          "deprecation_notes",
+          "metadata",
+          "effective_from",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ServiceProductVersionResponse",
+        "type": "object"
+      },
+      "ServiceVerificationAlertListResponse": {
+        "additionalProperties": false,
+        "description": "Verification freshness and finding alert queue.",
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceVerificationAlertResponse"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "open_findings_count": {
+            "title": "Open Findings Count",
+            "type": "integer"
+          },
+          "stale_evidence_count": {
+            "title": "Stale Evidence Count",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "alerts",
+          "total",
+          "open_findings_count",
+          "stale_evidence_count"
+        ],
+        "title": "ServiceVerificationAlertListResponse",
+        "type": "object"
+      },
+      "ServiceVerificationAlertResponse": {
+        "additionalProperties": false,
+        "description": "Actionable verification freshness alert.",
+        "properties": {
+          "alert_type": {
+            "title": "Alert Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "finding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "service_profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Profile Id"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "alert_type",
+          "severity",
+          "title",
+          "summary",
+          "service_profile_id",
+          "service_id",
+          "source_url",
+          "finding_id",
+          "status",
+          "created_at"
+        ],
+        "title": "ServiceVerificationAlertResponse",
+        "type": "object"
+      },
+      "ServiceVerificationFindingResponse": {
+        "additionalProperties": false,
+        "description": "Human-reviewable finding produced by a service verification job.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence_excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Excerpt"
+          },
+          "finding_type": {
+            "title": "Finding Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "new_value": {
+            "title": "New Value"
+          },
+          "old_value": {
+            "title": "Old Value"
+          },
+          "recommended_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Action"
+          },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "service_profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Profile Id"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "job_id",
+          "service_profile_id",
+          "finding_type",
+          "severity",
+          "title",
+          "summary",
+          "old_value",
+          "new_value",
+          "source_url",
+          "evidence_excerpt",
+          "recommended_action",
+          "review_status",
+          "reviewed_by",
+          "reviewed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ServiceVerificationFindingResponse",
+        "type": "object"
+      },
+      "ServiceVerificationFindingReviewRequest": {
+        "additionalProperties": false,
+        "description": "Manual review decision for a verification finding.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "review_status": {
+            "pattern": "^(accepted|dismissed|reviewed)$",
+            "title": "Review Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_status"
+        ],
+        "title": "ServiceVerificationFindingReviewRequest",
+        "type": "object"
+      },
+      "ServiceVerificationJobListResponse": {
+        "additionalProperties": false,
+        "description": "Verification job list response.",
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceVerificationJobResponse"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "jobs",
+          "total"
+        ],
+        "title": "ServiceVerificationJobListResponse",
+        "type": "object"
+      },
+      "ServiceVerificationJobResponse": {
+        "additionalProperties": false,
+        "description": "Verification job summary for future execute-agent runs.",
+        "properties": {
+          "changes_detected": {
+            "title": "Changes Detected",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_details": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Details"
+          },
+          "findings": {
+            "items": {},
+            "title": "Findings",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "recommendations": {
+            "items": {},
+            "title": "Recommendations",
+            "type": "array"
+          },
+          "request_payload": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Payload"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "services_checked": {
+            "items": {},
+            "title": "Services Checked",
+            "type": "array"
+          },
+          "sources_checked": {
+            "title": "Sources Checked",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "requested_by",
+          "scope",
+          "request_payload",
+          "status",
+          "started_at",
+          "completed_at",
+          "services_checked",
+          "sources_checked",
+          "changes_detected",
+          "findings",
+          "recommendations",
+          "error_details",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ServiceVerificationJobResponse",
+        "type": "object"
+      },
+      "ServiceVerificationRunRequest": {
+        "additionalProperties": false,
+        "description": "Request to execute source verification for selected service products.",
+        "properties": {
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          },
+          "max_sources": {
+            "default": 8,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Sources",
+            "type": "integer"
+          },
+          "service_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Service Ids",
+            "type": "array"
+          }
+        },
+        "title": "ServiceVerificationRunRequest",
+        "type": "object"
+      },
       "SourceRowListResponse": {
         "additionalProperties": false,
         "description": "Paginated list of source rows.",
@@ -6526,6 +8472,16 @@
               "title": "X-Actor-Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -6616,6 +8572,16 @@
               ],
               "title": "Integration Id"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6665,6 +8631,16 @@
             "schema": {
               "default": "api-user",
               "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
               "type": "string"
             }
           }
@@ -6769,6 +8745,16 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6824,6 +8810,16 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6854,6 +8850,131 @@
         ]
       }
     },
+    "/api/v1/ai-reviews/projects/{project_id}/jobs/compare": {
+      "get": {
+        "description": "Return readiness and finding deltas between two completed jobs.",
+        "operationId": "compare_project_ai_review_jobs_api_v1_ai_reviews_projects__project_id__jobs_compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "base_job_id",
+            "required": true,
+            "schema": {
+              "title": "Base Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_job_id",
+            "required": true,
+            "schema": {
+              "title": "Target Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiReviewJobCompareResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare two completed AI review jobs for trend/evolution analysis",
+        "tags": [
+          "AI Reviews"
+        ]
+      }
+    },
+    "/api/v1/ai-reviews/provider-status": {
+      "get": {
+        "description": "Return non-secret provider and budget status for the current actor.",
+        "operationId": "get_ai_review_provider_status_api_v1_ai_reviews_provider_status_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiReviewProviderStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect configured AI review provider status and caller quota",
+        "tags": [
+          "AI Reviews"
+        ]
+      }
+    },
     "/api/v1/ai-reviews/{job_id}": {
       "get": {
         "description": "Return one persisted review job and result payload when complete.",
@@ -6865,6 +8986,16 @@
             "required": true,
             "schema": {
               "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
               "type": "string"
             }
           }
@@ -6892,6 +9023,67 @@
           }
         },
         "summary": "Inspect one AI review job",
+        "tags": [
+          "AI Reviews"
+        ]
+      }
+    },
+    "/api/v1/ai-reviews/{job_id}/export": {
+      "get": {
+        "description": "Return a portable Markdown brief for one persisted AI review job.",
+        "operationId": "export_ai_review_job_api_v1_ai_reviews__job_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export one completed AI review job as Markdown",
         "tags": [
           "AI Reviews"
         ]
@@ -6927,6 +9119,16 @@
             "schema": {
               "default": "api-user",
               "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
               "type": "string"
             }
           }
@@ -7006,6 +9208,16 @@
             "schema": {
               "default": "api-user",
               "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
               "type": "string"
             }
           }
@@ -7093,9 +9305,8 @@
           {
             "in": "header",
             "name": "X-Actor-Role",
-            "required": false,
+            "required": true,
             "schema": {
-              "default": "Admin",
               "title": "X-Actor-Role",
               "type": "string"
             }
@@ -7229,9 +9440,8 @@
           {
             "in": "header",
             "name": "X-Actor-Role",
-            "required": false,
+            "required": true,
             "schema": {
-              "default": "Admin",
               "title": "X-Actor-Role",
               "type": "string"
             }
@@ -7302,9 +9512,8 @@
           {
             "in": "header",
             "name": "X-Actor-Role",
-            "required": false,
+            "required": true,
             "schema": {
-              "default": "Admin",
               "title": "X-Actor-Role",
               "type": "string"
             }
@@ -9244,6 +11453,57 @@
         ]
       }
     },
+    "/api/v1/imports/{project_id}/{batch_id}/quality-assistant": {
+      "get": {
+        "operationId": "get_import_quality_assistant_api_v1_imports__project_id___batch_id__quality_assistant_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportQualityAssistantResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get deterministic import data-quality assistant guidance",
+        "tags": [
+          "Imports"
+        ]
+      }
+    },
     "/api/v1/imports/{project_id}/{batch_id}/rows": {
       "get": {
         "operationId": "get_import_rows_api_v1_imports__project_id___batch_id__rows_get",
@@ -9906,9 +12166,8 @@
           {
             "in": "header",
             "name": "X-Actor-Role",
-            "required": false,
+            "required": true,
             "schema": {
-              "default": "Admin",
               "title": "X-Actor-Role",
               "type": "string"
             }
@@ -9978,9 +12237,8 @@
           {
             "in": "header",
             "name": "X-Actor-Role",
-            "required": false,
+            "required": true,
             "schema": {
-              "default": "Admin",
               "title": "X-Actor-Role",
               "type": "string"
             }
@@ -10072,9 +12330,8 @@
           {
             "in": "header",
             "name": "X-Actor-Role",
-            "required": false,
+            "required": true,
             "schema": {
-              "default": "Admin",
               "title": "X-Actor-Role",
               "type": "string"
             }
@@ -10544,39 +12801,81 @@
         ]
       }
     },
-    "/api/v1/services/": {
+    "/api/v1/service-products": {
       "get": {
-        "operationId": "list_services_api_v1_services__get",
+        "operationId": "list_service_products_api_v1_service_products_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response List Services Api V1 Services  Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ServiceProductListResponse"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "List all OCI service capability profiles",
+        "summary": "List governed service products",
         "tags": [
-          "Services"
+          "Service Products"
         ]
       }
     },
-    "/api/v1/services/{service_id}": {
+    "/api/v1/service-products/": {
       "get": {
-        "operationId": "get_service_api_v1_services__service_id__get",
+        "operationId": "list_service_products_api_v1_service_products__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceProductListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List governed service products",
+        "tags": [
+          "Service Products"
+        ]
+      }
+    },
+    "/api/v1/service-products/matrix": {
+      "get": {
+        "operationId": "get_service_interoperability_matrix_api_v1_service_products_matrix_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceInteroperabilityMatrixResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get the service interoperability matrix",
+        "tags": [
+          "Service Products"
+        ]
+      }
+    },
+    "/api/v1/service-products/verification-alerts": {
+      "get": {
+        "operationId": "list_service_verification_alerts_api_v1_service_products_verification_alerts_get",
         "parameters": [
           {
-            "in": "path",
-            "name": "service_id",
-            "required": true,
+            "in": "query",
+            "name": "limit",
+            "required": false,
             "schema": {
-              "title": "Service Id",
-              "type": "string"
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
             }
           }
         ],
@@ -10585,8 +12884,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response Get Service Api V1 Services  Service Id  Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ServiceVerificationAlertListResponse"
                 }
               }
             },
@@ -10603,9 +12901,421 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get a service profile by service_id (e.g. OIC3)",
+        "summary": "List service verification freshness alerts",
         "tags": [
-          "Services"
+          "Service Products"
+        ]
+      }
+    },
+    "/api/v1/service-products/verification-jobs": {
+      "get": {
+        "operationId": "list_service_verification_jobs_api_v1_service_products_verification_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceVerificationJobListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List service verification jobs",
+        "tags": [
+          "Service Products"
+        ]
+      },
+      "post": {
+        "operationId": "execute_service_verification_job_api_v1_service_products_verification_jobs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ServiceVerificationRunRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceVerificationJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a service evidence verification job",
+        "tags": [
+          "Service Products"
+        ]
+      }
+    },
+    "/api/v1/service-products/verification-jobs/{job_id}": {
+      "get": {
+        "operationId": "get_service_verification_job_api_v1_service_products_verification_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceVerificationJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get one service verification job",
+        "tags": [
+          "Service Products"
+        ]
+      }
+    },
+    "/api/v1/service-products/verification-jobs/{job_id}/findings": {
+      "get": {
+        "operationId": "list_service_verification_findings_api_v1_service_products_verification_jobs__job_id__findings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ServiceVerificationFindingResponse"
+                  },
+                  "title": "Response List Service Verification Findings Api V1 Service Products Verification Jobs  Job Id  Findings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List findings for one service verification job",
+        "tags": [
+          "Service Products"
+        ]
+      }
+    },
+    "/api/v1/service-products/verification-jobs/{job_id}/findings/{finding_id}/review": {
+      "post": {
+        "operationId": "review_service_verification_finding_api_v1_service_products_verification_jobs__job_id__findings__finding_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceVerificationFindingReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceVerificationFindingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record a manual review decision for one verification finding",
+        "tags": [
+          "Service Products"
+        ]
+      }
+    },
+    "/api/v1/service-products/{service_id}": {
+      "get": {
+        "operationId": "get_service_product_api_v1_service_products__service_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service_id",
+            "required": true,
+            "schema": {
+              "title": "Service Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceProductDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get governed service product detail",
+        "tags": [
+          "Service Products"
+        ]
+      }
+    },
+    "/api/v1/service-products/{service_id}/interoperability": {
+      "get": {
+        "operationId": "list_service_product_interoperability_api_v1_service_products__service_id__interoperability_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service_id",
+            "required": true,
+            "schema": {
+              "title": "Service Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ServiceInteroperabilityRuleResponse"
+                  },
+                  "title": "Response List Service Product Interoperability Api V1 Service Products  Service Id  Interoperability Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get interoperability rules for a service product",
+        "tags": [
+          "Service Products"
+        ]
+      }
+    },
+    "/api/v1/service-products/{service_id}/limits": {
+      "get": {
+        "operationId": "list_service_product_limits_api_v1_service_products__service_id__limits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service_id",
+            "required": true,
+            "schema": {
+              "title": "Service Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ServiceLimitResponse"
+                  },
+                  "title": "Response List Service Product Limits Api V1 Service Products  Service Id  Limits Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get normalized limits for a service product",
+        "tags": [
+          "Service Products"
         ]
       }
     },

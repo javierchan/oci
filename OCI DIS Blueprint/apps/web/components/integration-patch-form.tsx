@@ -12,7 +12,7 @@ import { QaBadge } from "@/components/qa-badge";
 import { emitToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { deriveCanvasSemantics, parseCanvasState } from "@/lib/canvas-governance";
-import type { DictionaryOption, Integration, IntegrationPatch, PatternDefinition } from "@/lib/types";
+import type { CanvasCombination, DictionaryOption, Integration, IntegrationPatch, PatternDefinition } from "@/lib/types";
 
 type IntegrationPatchFormProps = {
   projectId: string;
@@ -20,6 +20,7 @@ type IntegrationPatchFormProps = {
   patterns: PatternDefinition[];
   toolOptions: DictionaryOption[];
   overlayOptions: DictionaryOption[];
+  combinations: CanvasCombination[];
 };
 
 function parseCoreTools(value: string | null): string[] {
@@ -38,6 +39,7 @@ export function IntegrationPatchForm({
   patterns,
   toolOptions,
   overlayOptions,
+  combinations,
 }: IntegrationPatchFormProps): JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -70,10 +72,10 @@ export function IntegrationPatchForm({
         nodes: savedCanvasState.nodes,
         edges: savedCanvasState.edges,
         overlayToolKeys: overlayOptions.map((option) => option.value),
-        combinations: [],
+        combinations,
         selectedPattern: currentIntegration.selected_pattern,
       }),
-    [currentIntegration.selected_pattern, overlayOptions, savedCanvasState.edges, savedCanvasState.nodes],
+    [combinations, currentIntegration.selected_pattern, overlayOptions, savedCanvasState.edges, savedCanvasState.nodes],
   );
 
   useEffect(() => {

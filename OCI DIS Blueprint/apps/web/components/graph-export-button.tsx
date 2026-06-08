@@ -3,6 +3,7 @@
 /* PNG export control for the system dependency graph SVG. */
 
 import type { RefObject } from "react";
+import { Download } from "lucide-react";
 
 type GraphExportButtonProps = {
   projectId: string;
@@ -43,8 +44,9 @@ export function GraphExportButton({
     <button
       type="button"
       onClick={() => exportPNG(svgRef, projectId)}
-      className="inline-flex items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
+      className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 text-xs font-semibold text-[var(--color-text-secondary)] transition hover:border-[var(--color-line-strong)] hover:text-[var(--color-text-primary)]"
     >
+      <Download className="h-4 w-4" />
       Export PNG
     </button>
   );

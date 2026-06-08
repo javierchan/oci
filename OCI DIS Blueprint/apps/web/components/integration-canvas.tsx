@@ -42,10 +42,10 @@ import {
 } from "@/lib/canvas-governance";
 import type {
   CanvasCombination,
+  CanvasServiceProfile,
   DictionaryOption,
   OICEstimateResponse,
   PatternDefinition,
-  ServiceCapabilityProfile,
 } from "@/lib/types";
 
 type PatternCategory = string;
@@ -103,7 +103,7 @@ type IntegrationCanvasProps = {
   destinationTechnology: string | null;
   selectedPattern: string | null;
   patternDetail: PatternDefinition | null;
-  serviceProfiles: ServiceCapabilityProfile[];
+  serviceProfiles: CanvasServiceProfile[];
   coreTools: string[];
   toolOptions: DictionaryOption[];
   overlayOptions: DictionaryOption[];
@@ -207,13 +207,13 @@ function parsePatternComponents(value: string | null): string[] {
 
 function resolveServiceProfile(
   toolKey: string,
-  serviceProfilesById: Map<string, ServiceCapabilityProfile>,
-): ServiceCapabilityProfile | null {
+  serviceProfilesById: Map<string, CanvasServiceProfile>,
+): CanvasServiceProfile | null {
   const serviceId = resolveCanvasServiceId(toolKey);
   return serviceId ? serviceProfilesById.get(serviceId) ?? null : null;
 }
 
-function topConstraintLabel(profile: ServiceCapabilityProfile): string {
+function topConstraintLabel(profile: CanvasServiceProfile): string {
   switch (profile.service_id) {
     case "OIC3":
       return "Max msg: 10 MB";

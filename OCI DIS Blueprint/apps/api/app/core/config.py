@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     OCA_AUTH_JSON_PATH: str = "/codex/auth.json"
     OCA_CLIENT_NAME: str = "codex-cli"
     OCA_CLIENT_VERSION: str = "0"
+    AI_REVIEW_DAILY_JOB_LIMIT: int = 100
+    AI_REVIEW_LLM_DAILY_JOB_LIMIT: int = 25
+
+    # Service Product Library verification agent
+    SERVICE_VERIFICATION_SCHEDULE_ENABLED: bool = False
+    SERVICE_VERIFICATION_SCHEDULE_SECONDS: int = 86400
+    SERVICE_VERIFICATION_STALE_SCAN_MAX_SOURCES: int = 20
 
     # Calc Engine
     OIC_BILLING_THRESHOLD_KB: float = 50.0

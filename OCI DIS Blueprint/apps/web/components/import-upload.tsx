@@ -12,13 +12,14 @@ import { emitToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { APP_VERSION } from "@/lib/app-version";
 import { displaySourceFieldLabel, formatDate } from "@/lib/format";
-import type { ImportBatch, SourceRowList } from "@/lib/types";
+import type { ImportBatch, ImportQualityAssistant, SourceRowList } from "@/lib/types";
 
 type ImportUploadProps = {
   projectId: string;
   projectName: string;
   initialBatches: ImportBatch[];
   initialRows: SourceRowList | null;
+  initialQualityAssistant: ImportQualityAssistant | null;
   initialSelectedBatchId: string | null;
   highlightedRowNumber: number | null;
 };
@@ -64,6 +65,22 @@ function formatBytes(size: number): string {
     return `${(size / 1024).toFixed(1)} KB`;
   }
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function qualitySeverityTone(severity: string): string {
+  if (severity === "critical") {
+    return "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100";
+  }
+  if (severity === "high") {
+    return "border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-100";
+  }
+  if (severity === "medium") {
+    return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
+  }
+  if (severity === "positive") {
+    return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100";
+  }
+  return "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-secondary)]";
 }
 
 function ImportStepper({
@@ -126,6 +143,7 @@ export function ImportUpload({
   projectName,
   initialBatches,
   initialRows,
+  initialQualityAssistant,
   initialSelectedBatchId,
   highlightedRowNumber,
 }: ImportUploadProps): JSX.Element {
@@ -447,6 +465,57 @@ export function ImportUpload({
       </section>
 
       {initialRows && initialSelectedBatchId ? (
+        <>
+        {initialQualityAssistant ? (
+          <section className="app-card p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="app-kicker">Import Data Quality Assistant</p>
+                <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
+                  Batch {initialQualityAssistant.batch_id.slice(0, 8)} evidence check
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+                  {initialQualityAssistant.recommended_next_action}
+                </p>
+              </div>
+              <span className="app-theme-chip">{initialQualityAssistant.status}</span>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+              {initialQualityAssistant.metrics.slice(0, 9).map((metric) => (
+                <article
+                  key={metric.label}
+                  className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3"
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+                    {metric.label}
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">{metric.value}</p>
+                  <p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">{metric.detail}</p>
+                </article>
+              ))}
+            </div>
+            {initialQualityAssistant.findings.length > 0 ? (
+              <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                {initialQualityAssistant.findings.slice(0, 6).map((finding) => (
+                  <article
+                    key={`${finding.severity}-${finding.title}`}
+                    className={`rounded-2xl border p-4 ${qualitySeverityTone(finding.severity)}`}
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-70">
+                      {finding.severity}
+                    </p>
+                    <h3 className="mt-1 font-semibold">{finding.title}</h3>
+                    <p className="mt-2 text-sm leading-6 opacity-85">{finding.summary}</p>
+                    <Link href={finding.action_href} className="mt-3 inline-flex text-sm font-semibold underline underline-offset-4">
+                      {finding.action_label}
+                    </Link>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         <section className="app-table-shell">
           <div className="border-b border-[var(--color-border)] px-6 py-5">
             <h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
@@ -616,6 +685,7 @@ export function ImportUpload({
             </div>
           </div>
         </section>
+        </>
       ) : null}
 
       <section id="import-history" className="app-table-shell">

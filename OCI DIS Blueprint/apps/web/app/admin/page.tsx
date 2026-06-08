@@ -1,17 +1,23 @@
 /* Admin governance hub with entry points for patterns, dictionaries, and assumptions. */
 
 import Link from "next/link";
-import { BookOpen, Database, FlaskConical, Layers3 } from "lucide-react";
+import { BookOpen, Database, FlaskConical, Layers3, Network } from "lucide-react";
 
 import { Breadcrumb } from "@/components/breadcrumb";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 
 export default async function AdminHubPage(): Promise<JSX.Element> {
-  const [patterns, categories, assumptions, syntheticJobs] = await Promise.all([
+  const [patterns, categories, assumptions, serviceProducts, syntheticJobs] = await Promise.all([
     api.listPatterns(),
     api.listDictionaryCategories(),
     api.listAssumptions(),
+    api.listServiceProducts().catch(() => ({
+      products: [],
+      total: 0,
+      stale_evidence_count: 0,
+      open_findings_count: 0,
+    })),
     api.listSyntheticJobs({ limit: 1 }).catch(() => ({ jobs: [], total: 0 })),
   ]);
   const dictionaries = await Promise.all(
@@ -31,6 +37,10 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
     .map((assumption) => assumption.updated_at ?? assumption.created_at)
     .sort()
     .at(-1);
+  const latestServiceUpdate = serviceProducts.products
+    .map((service) => service.updated_at)
+    .sort()
+    .at(-1);
   const latestSyntheticUpdate = syntheticJobs.jobs[0]?.updated_at;
 
   return (
@@ -40,7 +50,7 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
         <p className="app-kicker">Admin Governance</p>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">Library</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-            Source of truth for patterns, dictionaries, assumptions, and deterministic synthetic validation.
+            Source of truth for integration patterns, service products, dictionaries, assumptions, and deterministic synthetic validation.
         </p>
         </div>
         <div className="flex flex-col items-start gap-3 lg:items-end">
@@ -52,19 +62,19 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Link
           href="/admin/patterns"
           className="app-card p-6 transition hover:-translate-y-0.5 hover:shadow-md"
         >
           <div className="flex items-start justify-between gap-3">
-            <p className="app-label">OIC Patterns</p>
+            <p className="app-label">Integration Patterns</p>
             <span className="rounded-lg bg-[var(--color-surface-2)] p-2 text-[var(--color-accent)]">
               <Layers3 className="h-4 w-4" />
             </span>
           </div>
           <p className="mt-4 text-4xl font-semibold text-[var(--color-text-primary)]">{patterns.total}</p>
-          <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Seeded and custom integration patterns.</p>
+          <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Tool-agnostic integration patterns mapped to governed services.</p>
           <p className="mt-3 text-xs text-[var(--color-text-muted)]">
             Last modified: {latestPatternUpdate ? formatDate(latestPatternUpdate) : "—"}
           </p>
@@ -85,6 +95,26 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
           <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Governed option sets used throughout the catalog.</p>
           <p className="mt-3 text-xs text-[var(--color-text-muted)]">
             Last modified: {latestDictionaryUpdate ? formatDate(latestDictionaryUpdate) : "—"}
+          </p>
+          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage</span>
+        </Link>
+
+        <Link
+          href="/admin/services"
+          className="app-card p-6 transition hover:-translate-y-0.5 hover:shadow-md"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <p className="app-label">Service Products</p>
+            <span className="rounded-lg bg-[var(--color-surface-2)] p-2 text-[var(--color-accent)]">
+              <Network className="h-4 w-4" />
+            </span>
+          </div>
+          <p className="mt-4 text-4xl font-semibold text-[var(--color-text-primary)]">{serviceProducts.total}</p>
+          <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
+            Governed service limits, evidence, and interoperability matrix.
+          </p>
+          <p className="mt-3 text-xs text-[var(--color-text-muted)]">
+            Last modified: {latestServiceUpdate ? formatDate(latestServiceUpdate) : "—"}
           </p>
           <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage</span>
         </Link>
@@ -133,8 +163,8 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
       <section className="app-card border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] p-5">
         <p className="app-label text-[var(--color-qa-revisar-text)]">Governance impact</p>
         <p className="mt-2 text-sm leading-6 text-[var(--color-qa-revisar-text)]">
-          Changes here affect all projects. System patterns seeded from the workbook can be edited but not deleted.
-          Dictionary and assumption changes take effect on the next recalculation.
+          Changes here affect all projects. Integration patterns are tool-agnostic; service product rules describe
+          concrete OCI limits and interoperability. Dictionary and assumption changes take effect on the next recalculation.
         </p>
       </section>
     </div>

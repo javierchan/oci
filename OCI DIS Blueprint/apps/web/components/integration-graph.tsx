@@ -1,12 +1,19 @@
 "use client";
 
-/* React + SVG renderer for the system dependency graph using D3 force layout only for positioning. */
+/* SVG renderer for the integration topology workspace with clustered system domains. */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { RefObject } from "react";
+import type { MouseEvent, RefObject } from "react";
 import * as d3 from "d3";
 
 import { displayQaStatus } from "@/lib/format";
+import {
+  TOPOLOGY_DOMAIN_ORDER,
+  TOPOLOGY_DOMAINS,
+  qaTotalsForEdges,
+  topologyDomainForNode,
+} from "@/lib/topology";
+import type { TopologyDomainId, TopologyLayoutMode } from "@/lib/topology";
 import type { GraphEdge, GraphNode, GraphResponse } from "@/lib/types";
 
 type GraphMode = "select" | "pan";
@@ -19,6 +26,7 @@ type IntegrationGraphProps = {
   onEdgeClick: (_edge: GraphEdge) => void;
   colorMode: "qa" | "bp";
   focusedSystemId: string;
+  layoutMode: TopologyLayoutMode;
   svgRef: RefObject<SVGSVGElement>;
   mode: GraphMode;
   viewport: { x: number; y: number; scale: number };
@@ -36,46 +44,77 @@ type Position = {
   y: number;
 };
 
-type SimNode = d3.SimulationNodeDatum & GraphNode;
-type SimEdge = d3.SimulationLinkDatum<SimNode> & GraphEdge;
+type ClusterGeometry = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
-const LOGICAL_WIDTH = 1200;
-const LOGICAL_HEIGHT = 760;
-const LARGE_TOPOLOGY_THRESHOLD = 50;
-const FOCUSED_LABEL_LIMIT = 10;
+type SimNode = d3.SimulationNodeDatum & GraphNode & { domainId: TopologyDomainId };
+
+const LOGICAL_WIDTH = 1320;
+const LOGICAL_HEIGHT = 1000;
+const LABELS_PER_DOMAIN = 3;
+
+const CLUSTER_GEOMETRY: Record<TopologyDomainId, ClusterGeometry> = {
+  finance: { x: 130, y: 315, width: 285, height: 190 },
+  "human-capital": { x: 515, y: 278, width: 295, height: 205 },
+  marketplace: { x: 900, y: 315, width: 315, height: 190 },
+  identity: { x: 125, y: 565, width: 275, height: 182 },
+  "data-platform": { x: 500, y: 528, width: 335, height: 210 },
+  retail: { x: 900, y: 565, width: 315, height: 182 },
+  logistics: { x: 205, y: 795, width: 340, height: 145 },
+  "supply-chain": { x: 710, y: 795, width: 365, height: 145 },
+  shared: { x: 550, y: 760, width: 230, height: 128 },
+};
+
 const EDGE_STATUS_STYLES: Record<
-  "ok" | "revisar" | "mixed" | "pending",
+  "ok" | "review" | "mixed" | "pending",
   { stroke: string; marker: string; glow: string }
 > = {
   ok: {
     stroke: "#15803d",
     marker: "#15803d",
-    glow: "rgba(21, 128, 61, 0.34)",
+    glow: "rgba(21, 128, 61, 0.26)",
   },
-  revisar: {
-    stroke: "#c2410c",
-    marker: "#c2410c",
-    glow: "rgba(194, 65, 12, 0.36)",
+  review: {
+    stroke: "#b45309",
+    marker: "#b45309",
+    glow: "rgba(180, 83, 9, 0.26)",
   },
   mixed: {
-    stroke: "#a16207",
-    marker: "#a16207",
-    glow: "rgba(161, 98, 7, 0.34)",
+    stroke: "#ca8a04",
+    marker: "#ca8a04",
+    glow: "rgba(202, 138, 4, 0.24)",
   },
   pending: {
-    stroke: "#475569",
-    marker: "#475569",
-    glow: "rgba(71, 85, 105, 0.3)",
+    stroke: "#b91c1c",
+    marker: "#b91c1c",
+    glow: "rgba(185, 28, 28, 0.24)",
   },
 };
-const BP_COLORS = ["#0ea5e9", "#22c55e", "#f97316", "#eab308", "#8b5cf6", "#ef4444", "#14b8a6", "#f43f5e"];
 
-function edgeStatusKey(status: string): "ok" | "revisar" | "mixed" | "pending" {
+const BP_COLORS = ["#0f766e", "#2563eb", "#c2410c", "#7c3aed", "#be185d", "#ca8a04", "#0891b2", "#64748b"];
+
+function clusterCenter(domainId: TopologyDomainId): { x: number; y: number } {
+  const cluster = CLUSTER_GEOMETRY[domainId];
+  return {
+    x: cluster.x + cluster.width / 2,
+    y: cluster.y + cluster.height / 2,
+  };
+}
+
+function truncateNodeLabel(label: string, maxLength = 25): string {
+  return label.length > maxLength ? `${label.slice(0, maxLength)}...` : label;
+}
+
+function edgeStatusKey(status: string): "ok" | "review" | "mixed" | "pending" {
   if (status === "OK") {
     return "ok";
   }
   if (status === "REVISAR") {
-    return "revisar";
+    return "review";
   }
   if (status === "PENDING") {
     return "pending";
@@ -83,126 +122,80 @@ function edgeStatusKey(status: string): "ok" | "revisar" | "mixed" | "pending" {
   return "mixed";
 }
 
-function linkDistance(nodeCount: number): number {
-  if (nodeCount >= 60) {
-    return 56;
+function nodeRadius(integrationCount: number, maxCount: number): number {
+  if (maxCount === 0) {
+    return 15;
   }
-  if (nodeCount >= 40) {
-    return 68;
-  }
-  if (nodeCount >= 20) {
-    return 82;
-  }
-  return 96;
+  return 14 + (integrationCount / maxCount) * 18;
 }
 
-function chargeStrength(nodeCount: number): number {
-  if (nodeCount >= 60) {
-    return -120;
+function edgeWidth(integrationCount: number, maxCount: number): number {
+  if (maxCount <= 1) {
+    return 2.4;
   }
-  if (nodeCount >= 40) {
-    return -150;
-  }
-  if (nodeCount >= 20) {
-    return -210;
-  }
-  return -280;
+  return 2.2 + ((integrationCount - 1) / (maxCount - 1)) * 5.3;
 }
 
-function collisionPadding(nodeCount: number): number {
+function linkDistance(nodeCount: number, layoutMode: TopologyLayoutMode): number {
+  if (layoutMode === "cluster") {
+    return nodeCount >= 60 ? 112 : 126;
+  }
   if (nodeCount >= 60) {
-    return 8;
-  }
-  if (nodeCount >= 40) {
-    return 10;
-  }
-  if (nodeCount >= 20) {
-    return 14;
-  }
-  return 18;
-}
-
-function minimumInitialScale(nodeCount: number): number {
-  if (nodeCount >= 60) {
-    return 0.92;
+    return 58;
   }
   if (nodeCount >= 35) {
-    return 0.98;
+    return 72;
   }
-  return 1;
+  return 92;
 }
 
-function truncateNodeLabel(label: string, maxLength = 32): string {
-  return label.length > maxLength ? `${label.slice(0, maxLength)}…` : label;
+function chargeStrength(nodeCount: number, layoutMode: TopologyLayoutMode): number {
+  if (layoutMode === "cluster") {
+    return nodeCount >= 60 ? -52 : -84;
+  }
+  return nodeCount >= 60 ? -125 : -190;
 }
 
-function resolveFocusViewportNodes(
-  nodes: SimNode[],
-  edges: SimEdge[],
-  focusedSystemId: string,
-): SimNode[] {
-  if (!focusedSystemId) {
-    return nodes;
+function edgeDashArray(edge: GraphEdge): string | undefined {
+  const text = edge.patterns.join(" ").toLowerCase();
+  if (edge.patterns.length > 1) {
+    return "10 5 2 5";
   }
-
-  const focusNode = nodes.find((node) => node.label === focusedSystemId);
-  if (!focusNode) {
-    return nodes;
+  if (
+    text.includes("event") ||
+    text.includes("pub") ||
+    text.includes("async") ||
+    text.includes("cdc") ||
+    text.includes("batch") ||
+    text.includes("webhook")
+  ) {
+    return "8 6";
   }
-
-  const focusIds = new Set<string>([focusNode.id]);
-  edges.forEach((edge) => {
-    if (edge.source === focusNode.id || edge.target === focusNode.id) {
-      focusIds.add(edge.source);
-      focusIds.add(edge.target);
-    }
-  });
-
-  const focusNodes = nodes.filter((node) => focusIds.has(node.id));
-  return focusNodes.length >= 2 ? focusNodes : nodes;
+  return undefined;
 }
 
-function fitViewport(
-  nodes: SimNode[],
-  maxNodeCount: number,
-  totalNodeCount: number,
-): { x: number; y: number; scale: number } {
-  if (nodes.length === 0) {
-    return { x: 0, y: 0, scale: 1 };
+function nodeQaColor(node: GraphNode, graph: GraphResponse): string {
+  const relatedEdges = graph.edges.filter((edge) => edge.source === node.id || edge.target === node.id);
+  if (relatedEdges.length === 0) {
+    return "#64748b";
   }
+  const totals = qaTotalsForEdges(relatedEdges);
+  if (totals.pending > 0) {
+    return EDGE_STATUS_STYLES.pending.stroke;
+  }
+  if (totals.review > 0 && totals.ok > 0) {
+    return EDGE_STATUS_STYLES.mixed.stroke;
+  }
+  if (totals.review > 0) {
+    return EDGE_STATUS_STYLES.review.stroke;
+  }
+  return EDGE_STATUS_STYLES.ok.stroke;
+}
 
-  const padding = totalNodeCount >= 50 ? 12 : totalNodeCount >= 25 ? 18 : 26;
-  const bounds = nodes.reduce(
-    (accumulator, node) => {
-      const radius = nodeRadius(node.integration_count, maxNodeCount);
-      return {
-        minX: Math.min(accumulator.minX, (node.x ?? LOGICAL_WIDTH / 2) - radius),
-        maxX: Math.max(accumulator.maxX, (node.x ?? LOGICAL_WIDTH / 2) + radius),
-        minY: Math.min(accumulator.minY, (node.y ?? LOGICAL_HEIGHT / 2) - radius),
-        maxY: Math.max(accumulator.maxY, (node.y ?? LOGICAL_HEIGHT / 2) + radius),
-      };
-    },
-    {
-      minX: Number.POSITIVE_INFINITY,
-      maxX: Number.NEGATIVE_INFINITY,
-      minY: Number.POSITIVE_INFINITY,
-      maxY: Number.NEGATIVE_INFINITY,
-    },
-  );
-
-  const contentWidth = Math.max(bounds.maxX - bounds.minX, 1);
-  const contentHeight = Math.max(bounds.maxY - bounds.minY, 1);
-  const fittedScale = Math.min(
-    (LOGICAL_WIDTH - padding * 2) / contentWidth,
-    (LOGICAL_HEIGHT - padding * 2) / contentHeight,
-    1.08,
-  );
-  const scale = Math.max(minimumInitialScale(totalNodeCount), fittedScale);
-  return {
-    scale,
-    x: padding - bounds.minX * scale + (LOGICAL_WIDTH - padding * 2 - contentWidth * scale) / 2,
-    y: padding - bounds.minY * scale + (LOGICAL_HEIGHT - padding * 2 - contentHeight * scale) / 2,
-  };
+function nodeBusinessProcessColor(node: GraphNode): string {
+  const bp = node.business_processes[0] ?? node.id;
+  const index = Math.abs(bp.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % BP_COLORS.length;
+  return BP_COLORS[index];
 }
 
 function shortenEdge(
@@ -219,57 +212,56 @@ function shortenEdge(
   return {
     start: {
       id: source.id,
-      x: source.x + offsetX * (sourceRadius + 4),
-      y: source.y + offsetY * (sourceRadius + 4),
+      x: source.x + offsetX * (sourceRadius + 6),
+      y: source.y + offsetY * (sourceRadius + 6),
     },
     end: {
       id: target.id,
-      x: target.x - offsetX * (targetRadius + 4),
-      y: target.y - offsetY * (targetRadius + 4),
+      x: target.x - offsetX * (targetRadius + 8),
+      y: target.y - offsetY * (targetRadius + 8),
     },
   };
 }
 
-function edgeWidth(integrationCount: number, maxCount: number): number {
-  if (maxCount <= 1) {
-    return 3.2;
-  }
-  return 3.2 + ((integrationCount - 1) / (maxCount - 1)) * 3.4;
-}
-
-function nodeRadius(integrationCount: number, maxCount: number): number {
-  if (maxCount === 0) {
-    return 20;
-  }
-  return 20 + (integrationCount / maxCount) * 30;
-}
-
-function nodeColor(node: GraphNode, graph: GraphResponse, mode: "qa" | "bp"): string {
-  if (mode === "bp") {
-    const bp = node.business_processes[0] ?? node.id;
-    const index = Math.abs(bp.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % BP_COLORS.length;
-    return BP_COLORS[index];
+function fitViewport(nodes: SimNode[], maxNodeCount: number): { x: number; y: number; scale: number } {
+  if (nodes.length === 0) {
+    return { x: 0, y: 0, scale: 1 };
   }
 
-  const relatedEdges = graph.edges.filter((edge) => edge.source === node.id || edge.target === node.id);
-  if (relatedEdges.length === 0) {
-    return "#6b7280";
-  }
-  const statuses = relatedEdges.map((edge) => edge.dominant_qa_status);
-  const allOk = statuses.every((status) => status === "OK");
-  const allRevisar = statuses.every((status) => status === "REVISAR");
-  const hasPending = statuses.some((status) => status === "PENDING");
+  const bounds = nodes.reduce(
+    (accumulator, node) => {
+      const radius = nodeRadius(node.integration_count, maxNodeCount) + 62;
+      return {
+        minX: Math.min(accumulator.minX, (node.x ?? LOGICAL_WIDTH / 2) - radius),
+        maxX: Math.max(accumulator.maxX, (node.x ?? LOGICAL_WIDTH / 2) + radius),
+        minY: Math.min(accumulator.minY, (node.y ?? LOGICAL_HEIGHT / 2) - radius),
+        maxY: Math.max(accumulator.maxY, (node.y ?? LOGICAL_HEIGHT / 2) + radius),
+      };
+    },
+    {
+      minX: Number.POSITIVE_INFINITY,
+      maxX: Number.NEGATIVE_INFINITY,
+      minY: Number.POSITIVE_INFINITY,
+      maxY: Number.NEGATIVE_INFINITY,
+    },
+  );
 
-  if (allOk) {
-    return "#22c55e";
-  }
-  if (allRevisar) {
-    return "#f97316";
-  }
-  if (hasPending) {
-    return "#6b7280";
-  }
-  return "#eab308";
+  const padding = 44;
+  const topReserved = 255;
+  const availableHeight = LOGICAL_HEIGHT - topReserved - padding;
+  const contentWidth = Math.max(bounds.maxX - bounds.minX, 1);
+  const contentHeight = Math.max(bounds.maxY - bounds.minY, 1);
+  const fittedScale = Math.min(
+    (LOGICAL_WIDTH - padding * 2) / contentWidth,
+    availableHeight / contentHeight,
+    1,
+  );
+
+  return {
+    scale: fittedScale,
+    x: padding - bounds.minX * fittedScale + (LOGICAL_WIDTH - padding * 2 - contentWidth * fittedScale) / 2,
+    y: topReserved - bounds.minY * fittedScale + (availableHeight - contentHeight * fittedScale) / 2,
+  };
 }
 
 export function IntegrationGraph({
@@ -280,6 +272,7 @@ export function IntegrationGraph({
   onEdgeClick,
   colorMode,
   focusedSystemId,
+  layoutMode,
   svgRef,
   mode,
   viewport,
@@ -297,43 +290,93 @@ export function IntegrationGraph({
     () => Math.max(1, ...graph.nodes.map((node) => node.integration_count)),
     [graph.nodes],
   );
-  const totalNodeCount = graph.nodes.length;
   const maxEdgeCount = useMemo(
     () => Math.max(1, ...graph.edges.map((edge) => edge.integration_count)),
     [graph.edges],
   );
+  const domainCounts = useMemo(() => {
+    const counts = new Map<TopologyDomainId, number>();
+    graph.nodes.forEach((node) => {
+      const domain = topologyDomainForNode(node);
+      counts.set(domain.id, (counts.get(domain.id) ?? 0) + 1);
+    });
+    return counts;
+  }, [graph.nodes]);
+  const labelNodeIds = useMemo(() => {
+    const ids = new Set<string>();
+    TOPOLOGY_DOMAIN_ORDER.forEach((domainId) => {
+      graph.nodes
+        .filter((node) => topologyDomainForNode(node).id === domainId)
+        .sort((left, right) => right.integration_count - left.integration_count || left.label.localeCompare(right.label))
+        .slice(0, LABELS_PER_DOMAIN)
+        .forEach((node) => ids.add(node.id));
+    });
+    return ids;
+  }, [graph.nodes]);
+  const focusedNode = focusedSystemId ? graph.nodes.find((node) => node.label === focusedSystemId) ?? null : null;
+  const focusedNodeId = focusedNode?.id ?? selectedNodeId;
+  const activeNodeId = hoveredNodeId ?? focusedNodeId;
+  const hoveredEdge = hoveredEdgeId ? graph.edges.find((edge) => edge.id === hoveredEdgeId) ?? null : null;
+  const connectedNodeIds = useMemo(() => {
+    if (hoveredEdge) {
+      return new Set([hoveredEdge.source, hoveredEdge.target]);
+    }
+    if (!activeNodeId) {
+      return new Set<string>();
+    }
+    const related = graph.edges.filter((edge) => edge.source === activeNodeId || edge.target === activeNodeId);
+    return new Set([activeNodeId, ...related.flatMap((edge) => [edge.source, edge.target])]);
+  }, [activeNodeId, graph.edges, hoveredEdge]);
+  const qaTotals = useMemo(() => qaTotalsForEdges(graph.edges), [graph.edges]);
 
   useEffect(() => {
     viewportRef.current = viewport;
   }, [viewport]);
 
   useEffect(() => {
-    const nodes: SimNode[] = graph.nodes.map((node) => ({ ...node }));
-    const edges: SimEdge[] = graph.edges.map((edge) => ({ ...edge }));
+    const nodes: SimNode[] = graph.nodes.map((node) => ({
+      ...node,
+      domainId: topologyDomainForNode(node).id,
+    }));
+    const links: Array<d3.SimulationLinkDatum<SimNode>> = graph.edges.map((edge) => ({
+      source: edge.source,
+      target: edge.target,
+    }));
 
-    const sim = d3
+    const simulation = d3
       .forceSimulation(nodes)
       .force(
         "link",
         d3
-          .forceLink<SimNode, SimEdge>(edges)
+          .forceLink<SimNode, d3.SimulationLinkDatum<SimNode>>(links)
           .id((datum) => datum.id)
-          .distance(linkDistance(totalNodeCount)),
+          .distance(linkDistance(nodes.length, layoutMode))
+          .strength(layoutMode === "cluster" ? 0.055 : 0.35),
       )
-      .force("charge", d3.forceManyBody().strength(chargeStrength(totalNodeCount)))
-      .force("center", d3.forceCenter(LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2))
+      .force("charge", d3.forceManyBody().strength(chargeStrength(nodes.length, layoutMode)))
+      .force(
+        "x",
+        d3
+          .forceX<SimNode>((node) => (layoutMode === "cluster" ? clusterCenter(node.domainId).x : LOGICAL_WIDTH / 2))
+          .strength(layoutMode === "cluster" ? 0.68 : 0.045),
+      )
+      .force(
+        "y",
+        d3
+          .forceY<SimNode>((node) => (layoutMode === "cluster" ? clusterCenter(node.domainId).y : LOGICAL_HEIGHT / 2))
+          .strength(layoutMode === "cluster" ? 0.72 : 0.05),
+      )
       .force(
         "collision",
         d3
           .forceCollide<SimNode>()
-          .radius((datum) => nodeRadius(datum.integration_count, maxNodeCount) + collisionPadding(totalNodeCount)),
+          .radius((node) => nodeRadius(node.integration_count, maxNodeCount) + (layoutMode === "cluster" ? 18 : 10)),
       );
 
-    sim.tick(300);
-    sim.stop();
+    simulation.tick(layoutMode === "cluster" ? 360 : 320);
+    simulation.stop();
 
-    const viewportNodes = resolveFocusViewportNodes(nodes, edges, focusedSystemId);
-    const fittedViewport = fitViewport(viewportNodes, maxNodeCount, totalNodeCount);
+    const fittedViewport = fitViewport(nodes, maxNodeCount);
     onHomeViewportChange(fittedViewport);
     onViewportChange(fittedViewport);
     setPositions(
@@ -348,23 +391,24 @@ export function IntegrationGraph({
         ]),
       ),
     );
-  }, [focusedSystemId, graph, maxNodeCount, onHomeViewportChange, onViewportChange, totalNodeCount]);
+  }, [graph, layoutMode, maxNodeCount, onHomeViewportChange, onViewportChange]);
 
   useEffect(() => {
     const element = svgRef.current;
     if (!element) {
       return;
     }
+    const svgElement = element;
 
     function handleNativeWheel(event: WheelEvent): void {
       event.preventDefault();
       const currentViewport = viewportRef.current;
       const delta = event.deltaY > 0 ? 0.9 : 1.1;
-      const rect = element!.getBoundingClientRect();
+      const rect = svgElement.getBoundingClientRect();
       const cx = event.clientX - rect.left;
       const cy = event.clientY - rect.top;
       onViewportChange(() => {
-        const nextScale = Math.min(Math.max(currentViewport.scale * delta, 0.2), 4);
+        const nextScale = Math.min(Math.max(currentViewport.scale * delta, 0.2), 3.8);
         return {
           scale: nextScale,
           x: cx - (cx - currentViewport.x) * (nextScale / currentViewport.scale),
@@ -373,76 +417,13 @@ export function IntegrationGraph({
       });
     }
 
-    element.addEventListener("wheel", handleNativeWheel, { passive: false });
+    svgElement.addEventListener("wheel", handleNativeWheel, { passive: false });
     return () => {
-      element.removeEventListener("wheel", handleNativeWheel);
+      svgElement.removeEventListener("wheel", handleNativeWheel);
     };
   }, [onViewportChange, svgRef]);
 
-  const hoveredEdge = hoveredEdgeId
-    ? graph.edges.find((edge) => edge.id === hoveredEdgeId) ?? null
-    : null;
-
-  const activeNodeId = hoveredNodeId ?? selectedNodeId;
-  const connectedNodeIds = useMemo(() => {
-    if (hoveredEdge) {
-      return new Set([hoveredEdge.source, hoveredEdge.target]);
-    }
-    if (!activeNodeId) {
-      return new Set<string>();
-    }
-    const related = graph.edges.filter((edge) => edge.source === activeNodeId || edge.target === activeNodeId);
-    return new Set([activeNodeId, ...related.flatMap((edge) => [edge.source, edge.target])]);
-  }, [activeNodeId, graph.edges, hoveredEdge]);
-  const focusedSystemNode = focusedSystemId
-    ? graph.nodes.find((node) => node.label === focusedSystemId) ?? null
-    : null;
-  const focusedSystemNeighborhood = useMemo(() => {
-    if (!focusedSystemNode) {
-      return new Set<string>();
-    }
-    const related = graph.edges.filter(
-      (edge) => edge.source === focusedSystemNode.id || edge.target === focusedSystemNode.id,
-    );
-    return new Set([focusedSystemNode.id, ...related.flatMap((edge) => [edge.source, edge.target])]);
-  }, [focusedSystemNode, graph.edges]);
-  const largeTopology = totalNodeCount > LARGE_TOPOLOGY_THRESHOLD;
-  const focusedNodeId = focusedSystemNode?.id ?? null;
-  const directFocusedNeighborIds = useMemo(() => {
-    if (!focusedNodeId) {
-      return new Set<string>();
-    }
-    const neighbors = new Set<string>();
-    graph.edges.forEach((edge) => {
-      if (edge.source === focusedNodeId) {
-        neighbors.add(edge.target);
-      }
-      if (edge.target === focusedNodeId) {
-        neighbors.add(edge.source);
-      }
-    });
-    return neighbors;
-  }, [focusedNodeId, graph.edges]);
-  const focusedLabelNodeIds = useMemo(() => {
-    if (!largeTopology || !focusedNodeId) {
-      return new Set<string>();
-    }
-    const scores = new Map<string, number>();
-    graph.edges.forEach((edge) => {
-      if (edge.source === focusedNodeId) {
-        scores.set(edge.target, (scores.get(edge.target) ?? 0) + edge.integration_count);
-      }
-      if (edge.target === focusedNodeId) {
-        scores.set(edge.source, (scores.get(edge.source) ?? 0) + edge.integration_count);
-      }
-    });
-    const prioritized = [...directFocusedNeighborIds]
-      .sort((left, right) => (scores.get(right) ?? 0) - (scores.get(left) ?? 0))
-      .slice(0, FOCUSED_LABEL_LIMIT);
-    return new Set([focusedNodeId, ...prioritized]);
-  }, [directFocusedNeighborIds, focusedNodeId, graph.edges, largeTopology]);
-
-  function handleMouseDown(event: React.MouseEvent<SVGSVGElement>): void {
+  function handleMouseDown(event: MouseEvent<SVGSVGElement>): void {
     if (mode !== "pan") {
       return;
     }
@@ -450,7 +431,7 @@ export function IntegrationGraph({
     setDragStart({ x: event.clientX, y: event.clientY });
   }
 
-  function handleMouseMove(event: React.MouseEvent<SVGSVGElement>): void {
+  function handleMouseMove(event: MouseEvent<SVGSVGElement>): void {
     if (mode !== "pan" || !isDragging || !dragStart) {
       return;
     }
@@ -472,10 +453,9 @@ export function IntegrationGraph({
   return (
     <div
       className={[
-        "console-grid-bg relative overflow-hidden rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] shadow-sm",
+        "console-grid-bg relative h-full min-h-[42rem] overflow-hidden bg-[var(--color-surface)]",
         mode === "pan" ? (isDragging ? "cursor-grabbing" : "cursor-grab") : "cursor-default",
       ].join(" ")}
-      style={{ height: "min(760px, calc(100vh - 14rem))" }}
     >
       <svg
         ref={svgRef}
@@ -483,27 +463,67 @@ export function IntegrationGraph({
         preserveAspectRatio="xMidYMid meet"
         className="block h-full w-full"
         style={{ touchAction: "none" }}
+        aria-label="Integration system dependency topology"
+        role="img"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-          <defs>
-            <marker id="arrow-ok" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto" markerUnits="userSpaceOnUse">
-              <path d="M0,0 L0,14 L14,7 z" fill={EDGE_STATUS_STYLES.ok.marker} stroke="var(--color-surface)" strokeWidth="1.1" />
+        <defs>
+          {Object.entries(EDGE_STATUS_STYLES).map(([key, style]) => (
+            <marker
+              key={key}
+              id={`topology-arrow-${key}`}
+              markerWidth="12"
+              markerHeight="12"
+              refX="10"
+              refY="6"
+              orient="auto"
+              markerUnits="userSpaceOnUse"
+            >
+              <path d="M0,0 L0,12 L12,6 z" fill={style.marker} stroke="var(--color-surface)" strokeWidth="1" />
             </marker>
-            <marker id="arrow-revisar" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto" markerUnits="userSpaceOnUse">
-              <path d="M0,0 L0,14 L14,7 z" fill={EDGE_STATUS_STYLES.revisar.marker} stroke="var(--color-surface)" strokeWidth="1.1" />
-            </marker>
-            <marker id="arrow-mixed" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto" markerUnits="userSpaceOnUse">
-              <path d="M0,0 L0,14 L14,7 z" fill={EDGE_STATUS_STYLES.mixed.marker} stroke="var(--color-surface)" strokeWidth="1.1" />
-            </marker>
-            <marker id="arrow-pending" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto" markerUnits="userSpaceOnUse">
-              <path d="M0,0 L0,14 L14,7 z" fill={EDGE_STATUS_STYLES.pending.marker} stroke="var(--color-surface)" strokeWidth="1.1" />
-            </marker>
-          </defs>
+          ))}
+        </defs>
 
-          <g transform={`translate(${viewport.x}, ${viewport.y}) scale(${viewport.scale})`}>
+        <g transform={`translate(${viewport.x}, ${viewport.y}) scale(${viewport.scale})`}>
+          {layoutMode === "cluster"
+            ? TOPOLOGY_DOMAIN_ORDER.map((domainId) => {
+                const count = domainCounts.get(domainId) ?? 0;
+                if (count === 0) {
+                  return null;
+                }
+                const geometry = CLUSTER_GEOMETRY[domainId];
+                const domain = TOPOLOGY_DOMAINS[domainId];
+                return (
+                  <g key={domainId} pointerEvents="none">
+                    <rect
+                      x={geometry.x}
+                      y={geometry.y}
+                      width={geometry.width}
+                      height={geometry.height}
+                      rx={18}
+                      fill={domain.color}
+                      opacity={0.08}
+                      stroke={domain.color}
+                      strokeWidth={2}
+                      strokeDasharray="4 5"
+                    />
+                    <text
+                      x={geometry.x + 18}
+                      y={geometry.y + 28}
+                      fontSize={11}
+                      fontWeight={800}
+                      fill={domain.color}
+                    >
+                      {domain.shortLabel}
+                    </text>
+                  </g>
+                );
+              })
+            : null}
+
           {graph.edges.map((edge) => {
             const source = positions[edge.source];
             const target = positions[edge.target];
@@ -520,48 +540,19 @@ export function IntegrationGraph({
             const shortened = shortenEdge(source, target, sourceRadius, targetRadius);
             const isHovered = hoveredEdgeId === edge.id;
             const isSelected = selectedEdgeId === edge.id;
-            const isConnectedToHoveredNode = activeNodeId
+            const isConnectedToActiveNode = activeNodeId
               ? edge.source === activeNodeId || edge.target === activeNodeId
               : false;
-            const isDirectFocusEdge = focusedNodeId
-              ? edge.source === focusedNodeId || edge.target === focusedNodeId
-              : false;
-            const isNeighborhoodEdge = focusedNodeId
-              ? focusedSystemNeighborhood.has(edge.source) && focusedSystemNeighborhood.has(edge.target)
-              : false;
-            const isInteractionEdge = isHovered || isSelected || isConnectedToHoveredNode;
-            const shouldDim =
-              (!!hoveredEdgeId && !isHovered) ||
-              (!!activeNodeId && !isConnectedToHoveredNode && !isHovered) ||
-              (!!selectedEdgeId && !isSelected && !isConnectedToHoveredNode) ||
-              (!!focusedSystemNode && !isNeighborhoodEdge && !isInteractionEdge) ||
-              (largeTopology && !!focusedNodeId && !isDirectFocusEdge && !isInteractionEdge);
-            const arrowKey = edgeStatusKey(edge.dominant_qa_status);
-            const edgeStyle = EDGE_STATUS_STYLES[arrowKey];
-            const baseStrokeWidth = edgeWidth(edge.integration_count, maxEdgeCount);
-            const mainStrokeWidth = baseStrokeWidth * (isHovered || isSelected ? 1.55 : isDirectFocusEdge ? 1.2 : 0.78);
-            const edgeOpacity =
-              isHovered || isSelected
-                ? 1
-                : largeTopology && focusedNodeId
-                  ? isDirectFocusEdge
-                    ? 0.86
-                    : isNeighborhoodEdge
-                      ? 0.1
-                      : 0.014
-                  : shouldDim
-                    ? focusedSystemNode
-                      ? 0.055
-                      : 0.2
-                    : selectedEdgeId && selectedEdgeId !== edge.id
-                      ? 0.42
-                      : 0.76;
-            const haloOpacity = isDirectFocusEdge || isHovered || isSelected ? 0.9 : Math.min(edgeOpacity, 0.1);
-            const showArrowhead =
-              isHovered ||
-              isSelected ||
-              isDirectFocusEdge ||
-              (!largeTopology && !shouldDim && edgeOpacity > 0.2);
+            const isActive = isHovered || isSelected || isConnectedToActiveNode;
+            const hasActiveContext = Boolean(activeNodeId || selectedEdgeId || hoveredEdgeId);
+            const statusKey = edgeStatusKey(edge.dominant_qa_status);
+            const statusStyle = EDGE_STATUS_STYLES[statusKey];
+            const strokeWidth = edgeWidth(edge.integration_count, maxEdgeCount) * (isHovered || isSelected ? 1.28 : 1);
+            const opacity = hasActiveContext ? (isActive ? 0.92 : 0.075) : layoutMode === "cluster" ? 0.22 : 0.52;
+            const markerEnd = isActive || (!hasActiveContext && edge.integration_count >= maxEdgeCount * 0.58)
+              ? `url(#topology-arrow-${statusKey})`
+              : undefined;
+
             return (
               <g
                 key={edge.id}
@@ -580,9 +571,9 @@ export function IntegrationGraph({
                   x2={shortened.end.x}
                   y2={shortened.end.y}
                   stroke="var(--color-surface)"
-                  strokeWidth={mainStrokeWidth + (isDirectFocusEdge ? 4.6 : 2.4)}
+                  strokeWidth={strokeWidth + 4}
                   strokeLinecap="round"
-                  opacity={haloOpacity}
+                  opacity={isActive ? 0.95 : 0.28}
                   vectorEffect="non-scaling-stroke"
                 />
                 <line
@@ -590,15 +581,15 @@ export function IntegrationGraph({
                   y1={shortened.start.y}
                   x2={shortened.end.x}
                   y2={shortened.end.y}
-                  className={showArrowhead && !shouldDim ? "graph-edge-animated" : undefined}
-                  strokeWidth={mainStrokeWidth}
-                  stroke={edgeStyle.stroke}
-                  markerEnd={showArrowhead ? `url(#arrow-${arrowKey})` : undefined}
+                  stroke={statusStyle.stroke}
+                  strokeWidth={strokeWidth}
                   strokeLinecap="round"
-                  opacity={edgeOpacity}
+                  strokeDasharray={edgeDashArray(edge)}
+                  markerEnd={markerEnd}
+                  opacity={opacity}
                   vectorEffect="non-scaling-stroke"
                   style={{
-                    filter: shouldDim ? undefined : `drop-shadow(0 0 6px ${edgeStyle.glow})`,
+                    filter: isActive ? `drop-shadow(0 0 7px ${statusStyle.glow})` : undefined,
                   }}
                 />
               </g>
@@ -611,54 +602,23 @@ export function IntegrationGraph({
               return null;
             }
             const radius = nodeRadius(node.integration_count, maxNodeCount);
-            const fill = nodeColor(node, graph, colorMode);
+            const domain = topologyDomainForNode(node);
+            const qaColor = colorMode === "qa" ? nodeQaColor(node, graph) : nodeBusinessProcessColor(node);
             const isSelected = selectedNodeId === node.id;
             const isHovered = hoveredNodeId === node.id;
-            const isFocusedNode = focusedNodeId === node.id;
-            const isDirectFocusNeighbor = directFocusedNeighborIds.has(node.id);
+            const isFocused = focusedNodeId === node.id;
             const isConnected = connectedNodeIds.size === 0 || connectedNodeIds.has(node.id);
-            const matchesFocusedSystem =
-              focusedSystemNeighborhood.size === 0 || focusedSystemNeighborhood.has(node.id);
-            const isInteractionNode = isHovered || isSelected || (connectedNodeIds.size > 0 && connectedNodeIds.has(node.id));
-            const showFocusedLabel =
-              focusedLabelNodeIds.has(node.id) || isInteractionNode || isFocusedNode;
-            const isLargeFocusBackground =
-              largeTopology &&
-              !!focusedNodeId &&
-              !isFocusedNode &&
-              !isDirectFocusNeighbor &&
-              !isInteractionNode;
-            const visualRadius = isLargeFocusBackground ? Math.max(7, Math.min(12, radius * 0.28)) : radius;
-            const circleOpacity =
-              largeTopology && focusedNodeId
-                ? isFocusedNode
-                  ? 1
-                  : isDirectFocusNeighbor
-                    ? 0.9
-                    : isInteractionNode
-                      ? 0.9
-                      : 0.2
-                : isConnected && matchesFocusedSystem
-                  ? 1
-                  : focusedSystemNeighborhood.size > 0
-                    ? 0.08
-                    : 0.42;
-            const countOpacity =
-              largeTopology && focusedNodeId
-                ? isFocusedNode || isDirectFocusNeighbor || isInteractionNode
-                  ? 1
-                  : 0.08
-                : isConnected && matchesFocusedSystem
-                  ? 1
-                  : 0.25;
+            const hasActiveContext = Boolean(activeNodeId || selectedEdgeId || hoveredEdgeId);
+            const opacity = hasActiveContext ? (isConnected || isFocused || isSelected || isHovered ? 1 : 0.22) : 1;
             const shouldShowLabel =
-              !largeTopology ||
-              !focusedNodeId ||
-              showFocusedLabel;
-            const labelOpacity = shouldShowLabel ? (isFocusedNode ? 1 : 0.94) : 0;
-            const showSubLabel = shouldShowLabel && (isFocusedNode || isSelected || isHovered);
-            const labelText = truncateNodeLabel(node.label, isFocusedNode ? 34 : 28);
-            const labelWidth = Math.min(230, Math.max(104, labelText.length * 6.2 + 24));
+              labelNodeIds.has(node.id) ||
+              isSelected ||
+              isHovered ||
+              isFocused ||
+              (connectedNodeIds.size > 0 && connectedNodeIds.has(node.id));
+            const label = truncateNodeLabel(node.label, isSelected || isFocused ? 32 : 24);
+            const labelWidth = Math.min(180, Math.max(86, label.length * 5.8 + 22));
+
             return (
               <g
                 key={node.id}
@@ -673,52 +633,52 @@ export function IntegrationGraph({
                 style={{ cursor: mode === "select" ? "pointer" : undefined }}
               >
                 <title>{node.label}</title>
-                {isFocusedNode ? (
+                {isFocused || isSelected ? (
                   <circle
-                    r={radius + 12}
+                    r={radius + 8}
                     fill="none"
-                    stroke="var(--color-accent)"
-                    strokeWidth={4}
-                    opacity={0.26}
-                  />
-                ) : null}
-                {isDirectFocusNeighbor && !isFocusedNode ? (
-                  <circle
-                    r={radius + 6}
-                    fill="none"
-                    stroke="var(--color-accent)"
-                    strokeWidth={2}
-                    opacity={0.18}
+                    stroke="var(--color-text-primary)"
+                    strokeWidth={3.2}
+                    opacity={0.9}
                   />
                 ) : null}
                 <circle
-                  r={visualRadius}
-                  fill={fill}
-                  stroke={isSelected || isFocusedNode ? "var(--color-text-primary)" : "var(--color-surface)"}
-                  strokeWidth={isSelected || isFocusedNode ? 4 : 2}
-                  opacity={circleOpacity}
-                  style={{
-                    filter: isConnected && connectedNodeIds.size > 0 ? "drop-shadow(0 0 6px currentColor)" : undefined,
-                  }}
+                  r={radius}
+                  fill="var(--color-surface)"
+                  stroke={qaColor}
+                  strokeWidth={isHovered || isSelected || isFocused ? 4 : 2.8}
+                  opacity={opacity}
+                  style={{ filter: isHovered || isSelected || isFocused ? "drop-shadow(0 8px 16px rgba(15, 23, 42, 0.18))" : undefined }}
                 />
+                <circle r={Math.max(4, radius * 0.18)} cx={radius * 0.48} cy={-radius * 0.44} fill={domain.color} opacity={opacity} />
                 <text
                   textAnchor="middle"
-                  dominantBaseline="central"
-                  fontSize={visualRadius * 0.55}
-                  fill="white"
-                  fontWeight="700"
-                  opacity={countOpacity}
+                  y={-2}
+                  fontSize={Math.max(9, radius * 0.42)}
+                  fill="var(--color-text-primary)"
+                  fontWeight={800}
+                  opacity={opacity}
                 >
                   {node.integration_count}
                 </text>
+                <text
+                  textAnchor="middle"
+                  y={radius * 0.42}
+                  fontSize={8.5}
+                  fill="var(--color-text-muted)"
+                  fontWeight={700}
+                  opacity={opacity}
+                >
+                  ix
+                </text>
                 {shouldShowLabel ? (
-                  <g transform={`translate(0, ${visualRadius + 10})`} pointerEvents="none" opacity={labelOpacity}>
+                  <g transform={`translate(0, ${radius + 9})`} pointerEvents="none" opacity={opacity}>
                     <rect
                       x={-labelWidth / 2}
                       y={0}
                       width={labelWidth}
-                      height={showSubLabel ? 34 : 22}
-                      rx={11}
+                      height={23}
+                      rx={11.5}
                       fill="var(--color-surface)"
                       stroke="var(--color-border)"
                       opacity={0.96}
@@ -726,60 +686,18 @@ export function IntegrationGraph({
                     />
                     <text
                       textAnchor="middle"
-                      y={14}
-                      fontSize={10.5}
-                      fontWeight="700"
+                      y={15}
+                      fontSize={9.5}
+                      fontWeight={700}
                       fill="var(--color-text-primary)"
                     >
-                      {labelText}
+                      {label}
                     </text>
-                    {showSubLabel ? (
-                      <text
-                        textAnchor="middle"
-                        y={27}
-                        fontSize={8.5}
-                        fontWeight="600"
-                        fill="var(--color-text-muted)"
-                      >
-                        {node.brands.length} brand{node.brands.length === 1 ? "" : "s"}
-                      </text>
-                    ) : null}
                   </g>
                 ) : null}
               </g>
             );
           })}
-
-          {hoveredNodeId ? (
-            (() => {
-              const position = positions[hoveredNodeId];
-              const node = graph.nodes.find((entry) => entry.id === hoveredNodeId);
-              if (!position || !node) {
-                return null;
-              }
-              const radius = nodeRadius(node.integration_count, maxNodeCount);
-              return (
-                <g transform={`translate(${position.x}, ${position.y - radius - 8})`} pointerEvents="none">
-                  <rect
-                    x={-80}
-                    y={-44}
-                    width={160}
-                    height={44}
-                    rx={6}
-                    fill="var(--color-surface)"
-                    stroke="var(--color-border)"
-                    style={{ filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.15))" }}
-                  />
-                  <text textAnchor="middle" y={-26} fontSize={11} fontWeight="600" fill="var(--color-text-primary)">
-                    {node.label}
-                  </text>
-                  <text textAnchor="middle" y={-10} fontSize={10} fill="var(--color-text-secondary)">
-                    {node.integration_count} integrations
-                  </text>
-                </g>
-              );
-            })()
-          ) : null}
 
           {hoveredEdge ? (
             (() => {
@@ -788,39 +706,68 @@ export function IntegrationGraph({
               if (!source || !target) {
                 return null;
               }
+              const x = (source.x + target.x) / 2;
+              const y = (source.y + target.y) / 2 - 10;
+              const label = `${hoveredEdge.integration_count} integration${hoveredEdge.integration_count === 1 ? "" : "s"}`;
               return (
-                <text
-                  x={(source.x + target.x) / 2}
-                  y={(source.y + target.y) / 2 - 8}
-                  textAnchor="middle"
-                  fontSize={10}
-                  fill="var(--color-text-secondary)"
-                  className="pointer-events-none select-none"
-                >
-                  {hoveredEdge.integration_count} integration{hoveredEdge.integration_count === 1 ? "" : "s"}
-                </text>
+                <g transform={`translate(${x}, ${y})`} pointerEvents="none">
+                  <rect
+                    x={-62}
+                    y={-18}
+                    width={124}
+                    height={27}
+                    rx={13.5}
+                    fill="var(--color-text-primary)"
+                    opacity={0.94}
+                  />
+                  <text textAnchor="middle" y={0} fontSize={10.5} fontWeight={700} fill="var(--color-surface)">
+                    {label}
+                  </text>
+                </g>
               );
             })()
           ) : null}
-          </g>
-        </svg>
+        </g>
+      </svg>
 
-      <div className="pointer-events-none absolute bottom-4 left-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-xs text-[var(--color-text-secondary)]">
-        <div className="mb-2 font-semibold text-[var(--color-text-primary)]">Legend</div>
-        <div className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-[#22c55e]" />
-          All OK
+      <div className="pointer-events-none absolute bottom-5 right-5 w-[min(18rem,calc(100%-2.5rem))] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]/95 p-4 text-xs text-[var(--color-text-secondary)] shadow-[0_12px_30px_rgba(15,23,42,0.13)] backdrop-blur">
+        <p className="app-label">Map Legend</p>
+        <div className="mt-4">
+          <p className="font-semibold text-[var(--color-text-primary)]">Edge thickness = volume</p>
+          <div className="mt-3 flex items-end gap-5">
+            {[2, 4, 7].map((width, index) => (
+              <span key={width} className="flex flex-col items-center gap-1">
+                <span className="block w-9 rounded-full bg-[var(--color-text-primary)]" style={{ height: `${width}px` }} />
+                <span className="text-[10px] text-[var(--color-text-muted)]">{["low", "med", "high"][index]}</span>
+              </span>
+            ))}
+          </div>
         </div>
-        <div className="mt-1 flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-[#f97316]" />
-          All {displayQaStatus("REVISAR")}
+        <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+          <p className="font-semibold text-[var(--color-text-primary)]">Color = QA status</p>
+          <div className="mt-2 space-y-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#15803d]" />OK</span>
+              <span>{qaTotals.ok}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#b45309]" />{displayQaStatus("REVISAR")}</span>
+              <span>{qaTotals.review}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#b91c1c]" />{displayQaStatus("PENDING")}</span>
+              <span>{qaTotals.pending}</span>
+            </div>
+          </div>
         </div>
-        <div className="mt-1 flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-[#eab308]" />
-          Mixed
+        <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+          <p className="font-semibold text-[var(--color-text-primary)]">Style = pattern</p>
+          <div className="mt-2 space-y-2">
+            <span className="flex items-center gap-3"><span className="h-px w-10 bg-[var(--color-text-primary)]" />Synchronous</span>
+            <span className="flex items-center gap-3"><span className="h-px w-10 border-t border-dashed border-[var(--color-text-primary)]" />Asynchronous</span>
+            <span className="flex items-center gap-3"><span className="h-px w-10 border-t-2 border-dotted border-[var(--color-text-primary)]" />Mixed</span>
+          </div>
         </div>
-        <div className="mt-2 border-t border-[var(--color-border)] pt-2">Node size = integration count</div>
-        <div>Edge width = connection count</div>
       </div>
     </div>
   );

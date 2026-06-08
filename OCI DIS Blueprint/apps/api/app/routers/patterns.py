@@ -51,7 +51,7 @@ async def create_pattern(
     body: PatternDefinitionCreate,
     db: AsyncSession = Depends(get_db),
     actor_id: str = Header("api-user", alias="X-Actor-Id"),
-    actor_role: str = Header("Admin", alias="X-Actor-Role"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
 ) -> PatternDefinitionResponse:
     require_admin(actor_role)
     async with db.begin():
@@ -64,7 +64,7 @@ async def update_pattern(
     body: PatternDefinitionUpdate,
     db: AsyncSession = Depends(get_db),
     actor_id: str = Header("api-user", alias="X-Actor-Id"),
-    actor_role: str = Header("Admin", alias="X-Actor-Role"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
 ) -> PatternDefinitionResponse:
     require_admin(actor_role)
     async with db.begin():
@@ -76,7 +76,7 @@ async def delete_pattern(
     pattern_id: str,
     db: AsyncSession = Depends(get_db),
     actor_id: str = Header("api-user", alias="X-Actor-Id"),
-    actor_role: str = Header("Admin", alias="X-Actor-Role"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
 ) -> Response:
     require_admin(actor_role)
     async with db.begin():

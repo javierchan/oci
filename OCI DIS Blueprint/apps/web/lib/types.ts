@@ -55,6 +55,73 @@ export interface AiReviewMetric {
   detail: string;
 }
 
+export interface AiReviewQuotaState {
+  daily_job_limit: number;
+  actor_jobs_today: number;
+  remaining_jobs_today: number;
+  llm_daily_job_limit: number;
+}
+
+export interface AiReviewProviderStatus {
+  provider: "oca";
+  configured: boolean;
+  mode: "deterministic_only" | "llm_available" | "misconfigured";
+  model: string;
+  wire_api: string;
+  base_url: string;
+  request_timeout_seconds: number;
+  quota: AiReviewQuotaState;
+  data_retention_policy: string;
+  prompt_redaction_policy: string[];
+  status_message: string;
+}
+
+export interface AiReviewDecisionBrief {
+  signoff_status: "blocked" | "needs_review" | "ready_with_caveats" | "ready";
+  headline: string;
+  primary_risk: string;
+  recommended_next_action: string;
+  decision_points: string[];
+  blockers: string[];
+}
+
+export interface AiReviewTopologyInsight {
+  id: string;
+  insight_type: "system_hotspot" | "edge_hotspot" | "payload_hotspot";
+  severity: Exclude<AiReviewSeverity, "critical">;
+  title: string;
+  summary: string;
+  metric: string;
+  system_name: string | null;
+  source_system: string | null;
+  destination_system: string | null;
+  action_href: string | null;
+  integration_ids: string[];
+}
+
+export interface AiReviewStressScenario {
+  id: string;
+  name: string;
+  multiplier: number;
+  confidence: "high" | "medium" | "low";
+  summary: string;
+  projected_daily_payload_gb: number;
+  top_integration_ids: string[];
+  warnings: string[];
+}
+
+export interface AiReviewRemediationStep {
+  id: string;
+  priority: number;
+  owner: "Architect" | "Analyst" | "Operations" | "Executive";
+  title: string;
+  action: string;
+  expected_impact: string;
+  action_href: string | null;
+  finding_ids: string[];
+  integration_ids: string[];
+}
+
 export interface AiReviewEvidence {
   id: string;
   label: string;
@@ -198,6 +265,10 @@ export interface AiReviewResponse {
   llm_summary: string | null;
   graph_context: AiReviewGraphContext | null;
   metrics: AiReviewMetric[];
+  decision_brief: AiReviewDecisionBrief;
+  topology_insights: AiReviewTopologyInsight[];
+  stress_scenarios: AiReviewStressScenario[];
+  remediation_plan: AiReviewRemediationStep[];
   findings: AiReviewFinding[];
   groups: AiReviewGroup[];
   evidence: AiReviewEvidence[];
@@ -242,6 +313,23 @@ export interface AiReviewJob {
 export interface AiReviewJobList {
   jobs: AiReviewJob[];
   total: number;
+}
+
+export interface AiReviewJobCompare {
+  project_id: string;
+  base_job_id: string;
+  target_job_id: string;
+  base_readiness_score: number;
+  target_readiness_score: number;
+  readiness_score_delta: number;
+  base_readiness_label: string;
+  target_readiness_label: string;
+  finding_count_delta: number;
+  critical_high_delta: number;
+  added_findings: string[];
+  resolved_findings: string[];
+  persistent_findings: string[];
+  summary: string;
 }
 
 export interface AiReviewApplyPatchResponse {
@@ -386,6 +474,34 @@ export interface SourceRowList {
   total: number;
   page: number;
   page_size: number;
+}
+
+export interface ImportQualityMetric {
+  label: string;
+  value: string;
+  detail: string;
+}
+
+export interface ImportQualityFinding {
+  severity: string;
+  title: string;
+  summary: string;
+  action_label: string;
+  action_href: string;
+}
+
+export interface ImportQualityAssistant {
+  project_id: string;
+  batch_id: string;
+  status: string;
+  filename: string;
+  row_count: number;
+  included_count: number;
+  excluded_count: number;
+  normalization_event_count: number;
+  recommended_next_action: string;
+  metrics: ImportQualityMetric[];
+  findings: ImportQualityFinding[];
 }
 
 export interface Integration {
@@ -534,39 +650,206 @@ export interface PatternList {
   total: number;
 }
 
-export interface ServiceCapabilityProfile {
+export interface CanvasServiceProfile {
   id: string;
   service_id: string;
   name: string;
-  category:
-    | "ORCHESTRATION"
-    | "API_INGRESS"
-    | "EVENT_BACKBONE"
-    | "WORK_QUEUE"
-    | "SERVERLESS_COMPUTE"
-    | "OCI_DATA_MOVER"
-    | "CDC_REPLICATION"
-    | "DATABASE_REST"
-    | "BATCH_ETL"
-    | "OBSERVABILITY"
-    | "IDENTITY_SECURITY"
-    | string;
+  category: string;
   sla_uptime_pct: number | null;
   pricing_model: string | null;
   limits: Record<string, unknown>;
-  architectural_fit: string | null;
-  anti_patterns: string | null;
-  interoperability_notes: string | null;
-  oracle_docs_urls: string | null;
-  is_active: boolean;
-  version: string;
+  summary: string | null;
+  architecture_role: string | null;
+}
+
+export interface ServiceProductVersion {
+  id: string;
+  version_label: string;
+  description: string | null;
+  capabilities: Record<string, unknown>;
+  use_cases: unknown[];
+  anti_patterns: unknown[];
+  regional_availability: string | null;
+  commercial_notes: string | null;
+  security_notes: string | null;
+  deprecation_notes: string | null;
+  metadata: Record<string, unknown>;
+  effective_from: string | null;
+  created_by: string;
   created_at: string;
   updated_at: string;
 }
 
-export interface ServiceCapabilityProfileList {
-  services: ServiceCapabilityProfile[];
+export interface ServiceLimit {
+  id: string;
+  limit_key: string;
+  label: string;
+  scope: string;
+  limit_type: string;
+  value: unknown;
+  unit: string | null;
+  default_value: unknown | null;
+  can_request_increase: boolean;
+  source_url: string | null;
+  source_retrieved_at: string | null;
+  confidence: number;
+  notes: string | null;
+  is_active: boolean;
+  updated_at: string;
+}
+
+export interface ServiceEvidenceSource {
+  id: string;
+  source_type: string;
+  url: string;
+  title: string;
+  publisher: string;
+  trust_tier: string;
+  retrieval_strategy: string;
+  expected_update_frequency_days: number;
+  last_checked_at: string | null;
+  last_changed_at: string | null;
+  content_hash: string | null;
+  status: string;
+  updated_at: string;
+}
+
+export interface ServiceInteroperabilityRule {
+  id: string;
+  source_service_id: string;
+  source_service_name: string;
+  target_service_id: string;
+  target_service_name: string;
+  relationship_type: string;
+  supported: boolean;
+  directionality: string;
+  patterns: unknown[];
+  required_components: unknown[];
+  constraints: Record<string, unknown>;
+  risk_notes: string | null;
+  source_url: string | null;
+  confidence: number;
+  last_verified_at: string | null;
+  is_active: boolean;
+  updated_at: string;
+}
+
+export interface ServiceProductSummary {
+  id: string;
+  service_id: string;
+  name: string;
+  category: string;
+  architecture_role: string | null;
+  summary: string | null;
+  pricing_model: string | null;
+  sla_uptime_pct: number | null;
+  version: string;
+  is_active: boolean;
+  limits_count: number;
+  evidence_count: number;
+  interoperability_count: number;
+  verification_status: string;
+  last_verified_at: string | null;
+  updated_at: string;
+}
+
+export interface ServiceProductDetail extends ServiceProductSummary {
+  architectural_fit: string | null;
+  anti_patterns: string | null;
+  interoperability_notes: string | null;
+  oracle_docs_urls: string | null;
+  current_version: ServiceProductVersion | null;
+  limits: ServiceLimit[];
+  evidence_sources: ServiceEvidenceSource[];
+  interoperability_rules: ServiceInteroperabilityRule[];
+}
+
+export interface ServiceProductList {
+  products: ServiceProductSummary[];
   total: number;
+  stale_evidence_count: number;
+  open_findings_count: number;
+}
+
+export interface ServiceInteroperabilityMatrix {
+  services: ServiceProductSummary[];
+  rules: ServiceInteroperabilityRule[];
+  total_rules: number;
+}
+
+export interface ServiceVerificationJob {
+  id: string;
+  requested_by: string;
+  scope: string;
+  request_payload: Record<string, unknown> | null;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  services_checked: unknown[];
+  sources_checked: number;
+  changes_detected: number;
+  findings: unknown[];
+  recommendations: unknown[];
+  error_details: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceVerificationJobList {
+  jobs: ServiceVerificationJob[];
+  total: number;
+}
+
+export interface ServiceVerificationFinding {
+  id: string;
+  job_id: string;
+  service_profile_id: string | null;
+  finding_type: string;
+  severity: string;
+  title: string;
+  summary: string;
+  old_value: unknown | null;
+  new_value: unknown | null;
+  source_url: string | null;
+  evidence_excerpt: string | null;
+  recommended_action: string | null;
+  review_status: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceVerificationAlert {
+  id: string;
+  alert_type: string;
+  severity: string;
+  title: string;
+  summary: string;
+  service_profile_id: string | null;
+  service_id: string | null;
+  source_url: string | null;
+  finding_id: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface ServiceVerificationAlertList {
+  alerts: ServiceVerificationAlert[];
+  total: number;
+  open_findings_count: number;
+  stale_evidence_count: number;
+}
+
+export interface ServiceVerificationRunRequest {
+  service_ids?: string[];
+  max_sources?: number;
+  force?: boolean;
+}
+
+export interface ServiceVerificationFindingReviewRequest {
+  review_status: "accepted" | "dismissed" | "reviewed";
+  note?: string;
 }
 
 export interface PatternDefinitionCreate {

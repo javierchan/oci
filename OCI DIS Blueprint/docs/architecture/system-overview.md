@@ -9,8 +9,8 @@
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐              │
 │  │  Next.js Web │    │  FastAPI API │    │  Celery      │              │
 │  │  :3000       │◄──►│  :8000       │◄──►│  Worker      │              │
-│  │  apps/web/   │    │  apps/api/   │    │  (import +   │              │
-│  └──────────────┘    └──────┬───────┘    │  recalc)     │              │
+│  │  apps/web/   │    │  apps/api/   │    │  async jobs  │              │
+│  └──────────────┘    └──────┬───────┘    │  + beat      │              │
 │                             │            └──────┬───────┘              │
 │                    ┌────────┼────────┐          │                      │
 │                    ▼        ▼        ▼          ▼                      │
@@ -73,6 +73,24 @@ Celery: recalc_worker.recalculate_project()
        └─► trigger DashboardSnapshot generation
 ```
 
+## Data Flow — Service Product Verification
+
+```
+Admin starts verification
+       │
+       ▼
+POST /api/v1/service-products/verification-jobs
+       │
+       ├─► ServiceVerificationJob created (status=pending)
+       └─► Celery: service_verification_worker.execute_service_verification_job_task()
+              │
+              ├─► fetch allowlisted official evidence sources
+              ├─► update evidence freshness and content hashes
+              ├─► create reviewable findings for conservative limit/deprecation signals
+              ├─► emit AuditEvent for job lifecycle and accepted finding changes
+              └─► job status=completed/failed
+```
+
 ## Key Design Decisions
 
 | Decision | Rationale |
@@ -82,7 +100,8 @@ Celery: recalc_worker.recalculate_project()
 | `VolumetrySnapshot` is immutable | Reproducible dashboard comparisons |
 | AuditEvent on every write | PRD-045 — full audit without joins |
 | MinIO in dev, OCI Object Storage in prod | S3-compatible — endpoint swap only |
-| Celery for import + recalc | Avoids API timeout on large files; async job polling |
+| Celery for long-running jobs | Avoids API timeout on imports, recalculation, AI review, synthetic generation, and service verification |
+| Service Product Library uses canonical `/service-products` APIs | Retires raw service-profile endpoints from the public production contract |
 
 ## Service Limits (from workbook TPL - Supuestos)
 

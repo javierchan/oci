@@ -112,6 +112,34 @@ services:
         condition: service_healthy
 
   # ─────────────────────────────────────────
+  # Celery beat (optional scheduled jobs)
+  # ─────────────────────────────────────────
+  beat:
+    image: ocidisblueprint-api
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      target: development
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://dis:dis@db:5432/oci_dis
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+      SERVICE_VERIFICATION_SCHEDULE_ENABLED: ${SERVICE_VERIFICATION_SCHEDULE_ENABLED:-false}
+      SERVICE_VERIFICATION_SCHEDULE_SECONDS: ${SERVICE_VERIFICATION_SCHEDULE_SECONDS:-86400}
+      SERVICE_VERIFICATION_STALE_SCAN_MAX_SOURCES: ${SERVICE_VERIFICATION_STALE_SCAN_MAX_SOURCES:-20}
+    volumes:
+      - ./apps/api:/app
+      - ./packages/calc-engine:/calc-engine:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────
   # Next.js — Web app (production-mode local runtime)
   # ─────────────────────────────────────────
   web:

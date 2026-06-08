@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import json
 
+import pytest
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+
+from app.models import ImportBatch, Project, SourceIntegrationRow
+from app.models.project import ImportStatus
 from app.services import import_service
 
 
@@ -152,3 +157,85 @@ def test_build_catalog_integration_marks_reference_only_patterns_for_review() ->
     assert integration.qa_status == "REVISAR"
     assert integration.qa_reasons is not None
     assert "PATTERN_REFERENCE_ONLY" in integration.qa_reasons
+
+
+@pytest.mark.asyncio
+async def test_import_quality_assistant_summarizes_batch_evidence(test_engine: AsyncEngine) -> None:
+    """Verify the import-quality assistant derives read-only batch guidance."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(
+            id="project-import-quality-1",
+            name="Import Quality Fixture",
+            owner_id="analyst",
+            status="active",
+            description=None,
+            project_metadata=None,
+        )
+        batch = ImportBatch(
+            id="batch-import-quality-1",
+            project_id=project.id,
+            filename="quality.xlsx",
+            parser_version="1.0.0",
+            status=ImportStatus.COMPLETED,
+            header_map={
+                "payload_per_execution_kb": "19",
+                "selected_pattern": "33",
+                "trigger_type": "17",
+                "source_system": "22",
+                "destination_system": "26",
+                import_service.RAW_HEADERS_METADATA_KEY: json.dumps(
+                    {
+                        "17": "Tipo Trigger OIC",
+                        "19": "Payload por Ejecución (KB)",
+                        "22": "Sistema de Origen",
+                        "26": "Sistema de Destino",
+                        "33": "Patrón",
+                    }
+                ),
+            },
+        )
+        included = SourceIntegrationRow(
+            import_batch_id=batch.id,
+            source_row_number=6,
+            raw_data={
+                "Tipo Trigger OIC": "REST Trigger",
+                "Payload por Ejecución (KB)": "",
+                "Sistema de Origen": "CRM",
+                "Sistema de Destino": "ERP",
+                "Patrón": "",
+            },
+            included=True,
+            exclusion_reason=None,
+            normalization_events=[
+                {
+                    "field": "payload_per_execution_kb",
+                    "old_value": "1 MB",
+                    "new_value": 1024,
+                    "rule": "payload_unit_mb_to_kb",
+                }
+            ],
+        )
+        excluded = SourceIntegrationRow(
+            import_batch_id=batch.id,
+            source_row_number=7,
+            raw_data={"Sistema de Origen": "Legacy"},
+            included=False,
+            exclusion_reason="TBQ != Y",
+            normalization_events=[],
+        )
+        session.add_all([project, batch, included, excluded])
+        await session.commit()
+
+        response = await import_service.get_import_quality_assistant(project.id, batch.id, session)
+
+    assert response.project_id == "project-import-quality-1"
+    assert response.batch_id == "batch-import-quality-1"
+    assert response.row_count == 2
+    assert response.included_count == 1
+    assert response.excluded_count == 1
+    assert response.normalization_event_count == 1
+    assert any(metric.label == "Payload" and metric.value == "0%" for metric in response.metrics)
+    assert any(finding.title == "Payload coverage is incomplete" for finding in response.findings)
+    assert any(finding.title == "Source rows were excluded" for finding in response.findings)

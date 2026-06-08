@@ -31,6 +31,7 @@ AiReviewArea = Literal[
     "governance",
 ]
 AiReviewDriftStatus = Literal["no_baseline", "no_drift", "minor_drift", "material_drift", "blocking_drift"]
+AiReviewProviderMode = Literal["deterministic_only", "llm_available", "misconfigured"]
 
 
 class AiReviewGraphContext(BaseModel):
@@ -112,6 +113,97 @@ class AiReviewMetric(BaseModel):
     label: str
     value: str
     detail: str
+
+
+class AiReviewQuotaState(BaseModel):
+    """Role and budget status for governed AI review creation."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    daily_job_limit: int
+    actor_jobs_today: int = 0
+    remaining_jobs_today: int
+    llm_daily_job_limit: int
+
+
+class AiReviewProviderStatus(BaseModel):
+    """Provider health/configuration status without exposing credentials."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    provider: Literal["oca"] = "oca"
+    configured: bool
+    mode: AiReviewProviderMode
+    model: str
+    wire_api: str
+    base_url: str
+    request_timeout_seconds: float
+    quota: AiReviewQuotaState
+    data_retention_policy: str
+    prompt_redaction_policy: list[str] = Field(default_factory=list)
+    status_message: str
+
+
+class AiReviewDecisionBrief(BaseModel):
+    """Decision-ready AI review brief assembled from governed evidence."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    signoff_status: Literal["blocked", "needs_review", "ready_with_caveats", "ready"]
+    headline: str
+    primary_risk: str
+    recommended_next_action: str
+    decision_points: list[str] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+
+
+class AiReviewTopologyInsight(BaseModel):
+    """Topology-aware insight derived from source, destination, QA, and warning concentration."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    insight_type: Literal["system_hotspot", "edge_hotspot", "payload_hotspot"]
+    severity: Literal["high", "medium", "low", "positive"]
+    title: str
+    summary: str
+    metric: str
+    system_name: Optional[str] = None
+    source_system: Optional[str] = None
+    destination_system: Optional[str] = None
+    action_href: Optional[str] = None
+    integration_ids: list[str] = Field(default_factory=list)
+
+
+class AiReviewStressScenario(BaseModel):
+    """Deterministic growth or evidence scenario for architecture review."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    name: str
+    multiplier: float
+    confidence: Literal["high", "medium", "low"]
+    summary: str
+    projected_daily_payload_gb: float
+    top_integration_ids: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class AiReviewRemediationStep(BaseModel):
+    """One prioritized, owner-oriented action generated from findings."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    priority: int
+    owner: Literal["Architect", "Analyst", "Operations", "Executive"]
+    title: str
+    action: str
+    expected_impact: str
+    action_href: Optional[str] = None
+    finding_ids: list[str] = Field(default_factory=list)
+    integration_ids: list[str] = Field(default_factory=list)
 
 
 class AiReviewEvidence(BaseModel):
@@ -275,6 +367,17 @@ class AiReviewResponse(BaseModel):
     llm_summary: Optional[str] = None
     graph_context: Optional[AiReviewGraphContext] = None
     metrics: list[AiReviewMetric] = Field(default_factory=list)
+    decision_brief: AiReviewDecisionBrief = Field(
+        default_factory=lambda: AiReviewDecisionBrief(
+            signoff_status="needs_review",
+            headline="Review generated before decision brief enrichment was available.",
+            primary_risk="Open review findings need architect triage.",
+            recommended_next_action="Review the findings and evidence registry.",
+        )
+    )
+    topology_insights: list[AiReviewTopologyInsight] = Field(default_factory=list)
+    stress_scenarios: list[AiReviewStressScenario] = Field(default_factory=list)
+    remediation_plan: list[AiReviewRemediationStep] = Field(default_factory=list)
     findings: list[AiReviewFinding] = Field(default_factory=list)
     groups: list[AiReviewGroup] = Field(default_factory=list)
     evidence: list[AiReviewEvidence] = Field(default_factory=list)
@@ -316,6 +419,27 @@ class AiReviewJobListResponse(BaseModel):
 
     jobs: list[AiReviewJobResponse] = Field(default_factory=list)
     total: int = 0
+
+
+class AiReviewJobCompareResponse(BaseModel):
+    """Comparison between two completed AI review job results."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    project_id: str
+    base_job_id: str
+    target_job_id: str
+    base_readiness_score: int
+    target_readiness_score: int
+    readiness_score_delta: int
+    base_readiness_label: str
+    target_readiness_label: str
+    finding_count_delta: int
+    critical_high_delta: int
+    added_findings: list[str] = Field(default_factory=list)
+    resolved_findings: list[str] = Field(default_factory=list)
+    persistent_findings: list[str] = Field(default_factory=list)
+    summary: str
 
 
 class AiReviewApplyPatchResponse(BaseModel):

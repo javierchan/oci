@@ -597,6 +597,15 @@ def _brief_findings(review_payload: dict[str, object] | None) -> list[dict[str, 
     return [cast(dict[str, object], item) for item in findings if isinstance(item, dict)]
 
 
+def _brief_items(review_payload: dict[str, object] | None, key: str) -> list[dict[str, object]]:
+    if not review_payload:
+        return []
+    items = review_payload.get(key)
+    if not isinstance(items, list):
+        return []
+    return [cast(dict[str, object], item) for item in items if isinstance(item, dict)]
+
+
 async def create_brief_export(project_id: str, db: AsyncSession) -> ExportJobResponse:
     """Generate an executive Markdown brief from dashboard, drift, and review evidence."""
 
@@ -643,6 +652,68 @@ async def create_brief_export(project_id: str, db: AsyncSession) -> ExportJobRes
         f"- Planned vs actual drift: {_brief_text(drift.get('status'), 'No drift result available')}",
         f"- Drift summary: {_brief_text(drift.get('summary'), 'No drift summary available')}",
         "",
+        "## Decision Brief",
+        "",
+    ]
+    decision_brief = cast(dict[str, object], review_payload.get("decision_brief", {})) if review_payload else {}
+    if decision_brief:
+        lines.extend(
+            [
+                f"- Sign-off status: {_brief_text(decision_brief.get('signoff_status'))}",
+                f"- Primary risk: {_brief_text(decision_brief.get('primary_risk'))}",
+                f"- Recommended next action: {_brief_text(decision_brief.get('recommended_next_action'))}",
+            ]
+        )
+    else:
+        lines.append("- No AI Review decision brief is available.")
+
+    lines.extend(
+        [
+            "",
+            "## Topology Intelligence",
+            "",
+        ]
+    )
+    topology_insights = _brief_items(review_payload, "topology_insights")
+    if topology_insights:
+        for insight in topology_insights[:5]:
+            lines.append(
+                "- "
+                + f"{_brief_text(insight.get('title'))}: "
+                + f"{_brief_text(insight.get('summary'))} "
+                + f"({_brief_text(insight.get('metric'))})"
+            )
+    else:
+        lines.append("- No topology insight is available.")
+
+    lines.extend(["", "## Stress Scenarios", ""])
+    stress_scenarios = _brief_items(review_payload, "stress_scenarios")
+    if stress_scenarios:
+        for scenario in stress_scenarios[:6]:
+            lines.append(
+                "- "
+                + f"{_brief_text(scenario.get('name'))}: "
+                + f"{_brief_text(scenario.get('summary'))}"
+            )
+    else:
+        lines.append("- No stress scenario is available.")
+
+    lines.extend(["", "## Remediation Plan", ""])
+    remediation_plan = _brief_items(review_payload, "remediation_plan")
+    if remediation_plan:
+        for step in remediation_plan[:6]:
+            lines.append(
+                f"{_brief_text(step.get('priority'))}. "
+                + f"{_brief_text(step.get('title'))} — "
+                + f"{_brief_text(step.get('action'))} "
+                + f"Owner: {_brief_text(step.get('owner'))}."
+            )
+    else:
+        lines.append("- No remediation plan is available.")
+
+    lines.extend(
+        [
+            "",
         "## Pattern Support Boundary",
         "",
         "- Parity-ready patterns in use: "
@@ -652,7 +723,8 @@ async def create_brief_export(project_id: str, db: AsyncSession) -> ExportJobRes
         "",
         "## Top Risks",
         "",
-    ]
+        ]
+    )
     if dashboard_snapshot.risks:
         for risk in dashboard_snapshot.risks[:8]:
             lines.append(f"- {risk.label}: {risk.count}")

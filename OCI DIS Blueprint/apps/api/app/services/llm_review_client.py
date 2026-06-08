@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +13,20 @@ import httpx
 
 from app.core.config import Settings
 from app.schemas.ai_review import AiReviewFinding, AiReviewMetric
+
+PROMPT_REDACTION_POLICY = [
+    "email addresses",
+    "bearer/api tokens",
+    "password/secret assignments",
+    "long opaque key strings",
+]
+
+SENSITIVE_TEXT_PATTERNS = [
+    re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),
+    re.compile(r"\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{12,}", re.IGNORECASE),
+    re.compile(r"(?i)\b(api[_-]?key|token|secret|password)\s*[:=]\s*['\"]?[^'\"\s,;]{4,}"),
+    re.compile(r"\b[A-Za-z0-9_-]{32,}\b"),
+]
 
 
 @dataclass(frozen=True)
@@ -117,6 +132,51 @@ def _resolved_oca_config(settings: Settings) -> OcaRuntimeConfig:
     )
 
 
+def provider_status_payload(
+    settings: Settings,
+    *,
+    actor_jobs_today: int = 0,
+) -> dict[str, object]:
+    """Return provider health metadata without exposing credentials."""
+
+    runtime_config = _resolved_oca_config(settings)
+    daily_limit = max(0, settings.AI_REVIEW_DAILY_JOB_LIMIT)
+    remaining = max(0, daily_limit - actor_jobs_today)
+    configured = bool(runtime_config.api_key)
+    mode: Literal["deterministic_only", "llm_available", "misconfigured"]
+    if configured and runtime_config.wire_api.strip().lower() == "responses":
+        mode = "llm_available"
+        status_message = "LLM synthesis is configured; deterministic evidence remains the source of truth."
+    elif configured:
+        mode = "misconfigured"
+        status_message = f"LLM provider is configured with unsupported wire API: {runtime_config.wire_api}."
+    else:
+        mode = "deterministic_only"
+        status_message = "No LLM key is configured; AI Review will use deterministic governed evidence only."
+    return {
+        "provider": "oca",
+        "configured": configured,
+        "mode": mode,
+        "model": runtime_config.model,
+        "wire_api": runtime_config.wire_api,
+        "base_url": runtime_config.base_url,
+        "request_timeout_seconds": settings.OCA_REQUEST_TIMEOUT_SECONDS,
+        "quota": {
+            "daily_job_limit": daily_limit,
+            "actor_jobs_today": actor_jobs_today,
+            "remaining_jobs_today": remaining,
+            "llm_daily_job_limit": max(0, settings.AI_REVIEW_LLM_DAILY_JOB_LIMIT),
+        },
+        "data_retention_policy": (
+            "The app persists deterministic review results and audit events. External LLM prompts are "
+            "transient request payloads assembled from redacted evidence; provider retention is governed "
+            "by the configured enterprise provider contract."
+        ),
+        "prompt_redaction_policy": PROMPT_REDACTION_POLICY,
+        "status_message": status_message,
+    }
+
+
 def _response_payload(response: httpx.Response) -> dict[str, Any]:
     try:
         payload = response.json()
@@ -190,6 +250,23 @@ def _compact_metrics(metrics: list[AiReviewMetric]) -> list[dict[str, str]]:
     ]
 
 
+def _redact_sensitive_text(value: str) -> str:
+    redacted = value
+    for pattern in SENSITIVE_TEXT_PATTERNS:
+        redacted = pattern.sub("[REDACTED]", redacted)
+    return redacted
+
+
+def _redact_prompt_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return _redact_sensitive_text(value)
+    if isinstance(value, list):
+        return [_redact_prompt_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _redact_prompt_value(item) for key, item in value.items()}
+    return value
+
+
 def _build_prompt(
     *,
     project_name: str,
@@ -199,6 +276,10 @@ def _build_prompt(
     metrics: list[AiReviewMetric],
     findings: list[AiReviewFinding],
     evidence_pack: list[str],
+    decision_brief: dict[str, object] | None = None,
+    topology_insights: list[dict[str, object]] | None = None,
+    stress_scenarios: list[dict[str, object]] | None = None,
+    remediation_plan: list[dict[str, object]] | None = None,
 ) -> list[dict[str, str]]:
     review_payload = {
         "project_name": project_name,
@@ -207,21 +288,27 @@ def _build_prompt(
         "deterministic_summary": deterministic_summary,
         "metrics": _compact_metrics(metrics),
         "findings": _compact_findings(findings),
+        "decision_brief": decision_brief or {},
+        "topology_insights": topology_insights or [],
+        "stress_scenarios": stress_scenarios or [],
+        "remediation_plan": remediation_plan or [],
         "evidence_pack": evidence_pack,
     }
+    redacted_payload = _redact_prompt_value(review_payload)
     return [
         {
             "role": "system",
             "content": (
                 "You are an OCI integration architecture review assistant. "
                 "Use only the provided evidence. Do not invent facts, counts, services, or blockers. "
-                "Return a concise executive review summary in US English, 70-110 words. "
-                "Mention the readiness label, top risk theme, and the next architect action."
+                "Return a concise executive review summary in US English, 90-130 words. "
+                "Mention the sign-off status, top risk theme, topology or stress signal if present, "
+                "and the next architect action."
             ),
         },
         {
             "role": "user",
-            "content": json.dumps(review_payload, ensure_ascii=False, sort_keys=True),
+            "content": json.dumps(redacted_payload, ensure_ascii=False, sort_keys=True),
         },
     ]
 
@@ -236,6 +323,10 @@ async def synthesize_review_summary(
     metrics: list[AiReviewMetric],
     findings: list[AiReviewFinding],
     evidence_pack: list[str],
+    decision_brief: dict[str, object] | None = None,
+    topology_insights: list[dict[str, object]] | None = None,
+    stress_scenarios: list[dict[str, object]] | None = None,
+    remediation_plan: list[dict[str, object]] | None = None,
 ) -> LlmReviewResult:
     """Use the configured OCA Responses API to synthesize an executive summary."""
 
@@ -260,6 +351,10 @@ async def synthesize_review_summary(
             metrics=metrics,
             findings=findings,
             evidence_pack=evidence_pack,
+            decision_brief=decision_brief,
+            topology_insights=topology_insights,
+            stress_scenarios=stress_scenarios,
+            remediation_plan=remediation_plan,
         ),
         "max_output_tokens": 260,
     }

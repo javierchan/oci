@@ -2,8 +2,9 @@
 
 API surface implements all route groups from PRD-043:
   /projects, /imports, /catalog, /dictionaries, /patterns,
-  /assumptions, /services, /recalculate, /volumetry, /dashboard,
-  /justifications, /audit, /exports, /admin/synthetic
+  /assumptions, /recalculate, /volumetry, /dashboard,
+  /justifications, /audit, /exports, /admin/synthetic,
+  /ai-reviews, /service-products
 
 OpenAPI 3.1 spec auto-generated at /docs and /openapi.json.
 """
@@ -30,7 +31,7 @@ from app.routers import (
     justifications_router,
     audit_router,
     exports_router,
-    services_router,
+    service_products_router,
     admin_synthetic_router,
     ai_reviews_router,
 )
@@ -84,7 +85,7 @@ app.include_router(dashboard_router, prefix=API_PREFIX)
 app.include_router(justifications_router, prefix=API_PREFIX)
 app.include_router(audit_router, prefix=API_PREFIX)
 app.include_router(exports_router, prefix=API_PREFIX)
-app.include_router(services_router, prefix=API_PREFIX)
+app.include_router(service_products_router, prefix=API_PREFIX)
 app.include_router(admin_synthetic_router, prefix=API_PREFIX)
 app.include_router(ai_reviews_router, prefix=API_PREFIX)
 

@@ -33,6 +33,19 @@ def test_generated_smoke_dataset_meets_smoke_targets_and_full_pattern_coverage()
     assert validation.max_canvas_state_length < 1000
 
 
+def test_synthetic_queue_routes_stay_within_governed_message_limit() -> None:
+    for spec in (synthetic_service.DEFAULT_SYNTHETIC_SPEC, synthetic_service.SMOKE_SYNTHETIC_SPEC):
+        dataset = synthetic_service.generate_synthetic_dataset(spec)
+        queue_rows = [
+            row
+            for row in [*dataset.import_rows, *dataset.manual_rows]
+            if "OCI Queue" in row.core_tools
+        ]
+
+        assert queue_rows
+        assert max(row.payload_per_execution_kb for row in queue_rows) <= synthetic_service.SYNTHETIC_QUEUE_MAX_MESSAGE_KB
+
+
 def test_canvas_state_is_compact_and_parseable_shape() -> None:
     payload = synthetic_service.build_canvas_state(
         ("OIC Gen3", "OCI Queue", "OCI Functions"),
@@ -59,3 +72,21 @@ def test_canvas_state_uses_non_overlapping_route_positions() -> None:
     assert {node["y"] for node in nodes} == {220}
     for left, right in zip(nodes, nodes[1:]):
         assert right["x"] - left["x"] >= 260
+
+
+def test_canvas_state_keeps_incompatible_gateway_overlay_off_active_route() -> None:
+    payload = synthetic_service.build_canvas_state(
+        ("OCI Streaming", "OIC Gen3"),
+        ("OCI API Gateway",),
+        54.0,
+    )
+    parsed = json.loads(payload)
+    gateway_node = next(node for node in parsed["nodes"] if node["toolKey"] == "OCI API Gateway")
+    connected_node_ids = {
+        node_id
+        for edge in parsed["edges"]
+        for node_id in (edge["sourceInstanceId"], edge["targetInstanceId"])
+    }
+
+    assert gateway_node["instanceId"] not in connected_node_ids
+    assert gateway_node["payloadNote"] == "overlay"

@@ -13,7 +13,7 @@ from app.models import CatalogIntegration, Project, VolumetrySnapshot
 from app.routers import ai_reviews
 from app.schemas.ai_review import AiReviewGraphContext
 from app.services import ai_review_service
-from app.services.llm_review_client import _resolved_oca_config, _response_payload, _response_text
+from app.services.llm_review_client import _build_prompt, _resolved_oca_config, _response_payload, _response_text
 
 
 def _admin_headers() -> dict[str, str]:
@@ -151,6 +151,15 @@ async def test_project_ai_review_job_create_run_get_and_accept(
     assert all(finding.evidence_ids for finding in result.findings)
     assert result.evidence[0].id == "EV-001"
     assert len(result.reviewer_personas) == 4
+    assert result.decision_brief.signoff_status == "needs_review"
+    assert result.decision_brief.primary_risk
+    assert result.decision_brief.decision_points
+    assert result.topology_insights
+    assert result.topology_insights[0].insight_type == "system_hotspot"
+    assert len(result.stress_scenarios) == 4
+    assert result.stress_scenarios[-1].multiplier == 10.0
+    assert result.remediation_plan
+    assert result.remediation_plan[0].finding_ids
     assert result.llm_status == "skipped"
 
     get_response = await api_client.get(f"/api/v1/ai-reviews/{job_id}")
@@ -174,6 +183,11 @@ async def test_project_ai_review_job_create_run_get_and_accept(
     accepted = accept_response.json()["accepted_recommendations"]
     assert accepted[0]["finding_id"] == "qa-review-open"
     assert accepted[0]["accepted_by"] == "architect-user"
+
+    export_response = await api_client.get(f"/api/v1/ai-reviews/{job_id}/export")
+    assert export_response.status_code == 200
+    assert export_response.headers["content-type"].startswith("text/markdown")
+    assert "# AI Review Brief - AI Review Fixture" in export_response.text
 
 
 @pytest.mark.asyncio
@@ -236,6 +250,92 @@ async def test_integration_scoped_ai_review_requires_and_uses_integration_id(
     assert applied["job"]["accepted_recommendations"][0]["finding_id"] == finding.id
     assert applied["job"]["accepted_recommendations"][0]["applied_patch"]["integration_id"] == integration_id
     assert "AI Review finding" in applied["integration"]["comments"]
+
+
+@pytest.mark.asyncio
+async def test_ai_review_roles_provider_status_quota_and_compare(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify production AI Review boundaries: roles, provider status, quota, and job comparison."""
+
+    project_id, _ = await _seed_review_fixture(test_engine)
+
+    provider_response = await api_client.get("/api/v1/ai-reviews/provider-status")
+    assert provider_response.status_code == 200
+    provider_payload = provider_response.json()
+    assert provider_payload["provider"] == "oca"
+    assert provider_payload["configured"] is False
+    assert provider_payload["quota"]["daily_job_limit"] >= 0
+    assert "email addresses" in provider_payload["prompt_redaction_policy"]
+
+    viewer_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}",
+        headers={"X-Actor-Id": "viewer-user", "X-Actor-Role": "Viewer"},
+        json={"include_llm": False},
+    )
+    assert viewer_response.status_code == 403
+
+    def fake_apply_async(*, args: list[object], task_id: str) -> SimpleNamespace:
+        return SimpleNamespace(id=task_id, args=args)
+
+    monkeypatch.setattr(
+        ai_reviews.execute_ai_review_job_task,
+        "apply_async",
+        fake_apply_async,
+    )
+
+    first_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}",
+        headers=_admin_headers(),
+        json={"include_llm": False},
+    )
+    assert first_response.status_code == 202
+    first_job_id = first_response.json()["id"]
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            await ai_review_service.mark_ai_review_job_running(first_job_id, session)
+        async with session.begin():
+            await ai_review_service.run_ai_review_job(first_job_id, session)
+
+    second_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}",
+        headers={**_admin_headers(), "X-Actor-Id": "architect-user-2"},
+        json={"include_llm": False},
+    )
+    assert second_response.status_code == 202
+    second_job_id = second_response.json()["id"]
+    async with session_factory() as session:
+        async with session.begin():
+            await ai_review_service.mark_ai_review_job_running(second_job_id, session)
+        async with session.begin():
+            await ai_review_service.run_ai_review_job(second_job_id, session)
+
+    compare_response = await api_client.get(
+        f"/api/v1/ai-reviews/projects/{project_id}/jobs/compare",
+        params={"base_job_id": first_job_id, "target_job_id": second_job_id},
+    )
+    assert compare_response.status_code == 200
+    compare_payload = compare_response.json()
+    assert compare_payload["base_job_id"] == first_job_id
+    assert compare_payload["target_job_id"] == second_job_id
+    assert "summary" in compare_payload
+
+    monkeypatch.setattr(
+        ai_review_service,
+        "get_settings",
+        lambda: Settings(AI_REVIEW_DAILY_JOB_LIMIT=0),
+    )
+    quota_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}",
+        headers={**_admin_headers(), "X-Actor-Id": "quota-user"},
+        json={"include_llm": False},
+    )
+    assert quota_response.status_code == 429
+    assert quota_response.json()["detail"]["error_code"] == "AI_REVIEW_DAILY_QUOTA_EXCEEDED"
 
 
 @pytest.mark.asyncio
@@ -393,6 +493,9 @@ async def test_graph_context_scopes_project_ai_review_evidence(
     assert review.metrics[0].label == "Catalog rows"
     assert review.metrics[0].value == "1"
     assert any("Graph node scope: CRM" in item for item in review.evidence_pack)
+    assert review.topology_insights
+    assert review.topology_insights[0].system_name in {"CRM", "ERP"}
+    assert review.stress_scenarios[0].confidence in {"medium", "low"}
 
 
 def test_oca_response_payload_parses_server_sent_event_frame() -> None:
@@ -440,3 +543,21 @@ def test_oca_runtime_config_uses_codex_config_and_auth(tmp_path) -> None:
     assert runtime_config.model == "oca/gpt-5.5"
     assert runtime_config.headers["client"] == "codex-cli"
     assert runtime_config.headers["client-version"] == "0"
+
+
+def test_oca_prompt_redacts_sensitive_values() -> None:
+    prompt = _build_prompt(
+        project_name="Secret Fixture",
+        readiness_score=80,
+        readiness_label="Demo-ready with caveats",
+        deterministic_summary="Owner jane.doe@example.com uses api_key=abcdef1234567890abcdef1234567890.",
+        metrics=[],
+        findings=[],
+        evidence_pack=["Bearer abcdef1234567890abcdef1234567890"],
+    )
+
+    payload = prompt[1]["content"]
+
+    assert "jane.doe@example.com" not in payload
+    assert "abcdef1234567890abcdef1234567890" not in payload
+    assert "[REDACTED]" in payload

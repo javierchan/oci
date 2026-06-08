@@ -30,6 +30,7 @@ from app.schemas.ai_review import (
     AiReviewBaselineResponse,
     AiReviewCategory,
     AiReviewCreateRequest,
+    AiReviewDecisionBrief,
     AiReviewDriftItem,
     AiReviewDriftReport,
     AiReviewEvidence,
@@ -37,18 +38,23 @@ from app.schemas.ai_review import (
     AiReviewFinding,
     AiReviewGraphContext,
     AiReviewGroup,
+    AiReviewJobCompareResponse,
     AiReviewJobListResponse,
     AiReviewJobResponse,
     AiReviewMetric,
     AiReviewPersonaSummary,
+    AiReviewProviderStatus,
     AiReviewRecommendationAcceptance,
+    AiReviewRemediationStep,
     AiReviewResponse,
     AiReviewSeverity,
+    AiReviewStressScenario,
     AiReviewSuggestedPatch,
+    AiReviewTopologyInsight,
 )
 from app.schemas.catalog import CatalogIntegrationPatch
 from app.services import audit_service, catalog_service
-from app.services.llm_review_client import LlmReviewResult, synthesize_review_summary
+from app.services.llm_review_client import LlmReviewResult, provider_status_payload, synthesize_review_summary
 from app.services.pattern_support import get_pattern_support
 from app.services.serializers import sanitize_for_json
 
@@ -380,6 +386,45 @@ def _with_review_note(existing: str | None, finding: AiReviewFinding) -> str:
     return f"{existing.rstrip()}\n\n{note}" if existing and existing.strip() else note
 
 
+def _field_diff(field: str, current: object | None, recommended: object | None) -> AiReviewFieldDiff:
+    return AiReviewFieldDiff(
+        field=field,
+        current=_stringify_drift_value(current),
+        recommended=_stringify_drift_value(recommended),
+    )
+
+
+def _trigger_pattern_candidate(row: CatalogIntegration) -> tuple[str, str] | None:
+    trigger_text = f"{row.trigger_type or ''} {row.type or ''} {row.base or ''}".lower()
+    if "rest" in trigger_text or "soap" in trigger_text or "request" in trigger_text:
+        return (
+            "#01",
+            "AI Review inferred Request-Reply because trigger evidence indicates a synchronous REST/SOAP path.",
+        )
+    if "event" in trigger_text or "webhook" in trigger_text or "stream" in trigger_text or "pub" in trigger_text:
+        return (
+            "#02",
+            "AI Review inferred Event-Driven / Pub-Sub because trigger evidence indicates asynchronous event delivery.",
+        )
+    return None
+
+
+def _trigger_tool_candidate(row: CatalogIntegration) -> tuple[str, str | None] | None:
+    trigger_text = f"{row.trigger_type or ''} {row.type or ''} {row.base or ''}".lower()
+    if "event" in trigger_text or "webhook" in trigger_text or "stream" in trigger_text or "pub" in trigger_text:
+        return "OIC Gen3, OCI Streaming", None
+    if "rest" in trigger_text or "soap" in trigger_text or "request" in trigger_text:
+        overlay = "OCI API Gateway" if row.source_api_reference or "api" in (row.source_technology or "").lower() else None
+        return "OIC Gen3", overlay
+    if "scheduled" in trigger_text or "schedule" in trigger_text:
+        return "OIC Gen3", None
+    return None
+
+
+def _is_canvas_state(value: str | None) -> bool:
+    return bool(value and value.strip().startswith("{"))
+
+
 def _suggested_patch_for_finding(
     finding: AiReviewFinding,
     rows_by_id: dict[str, CatalogIntegration],
@@ -390,25 +435,67 @@ def _suggested_patch_for_finding(
     if row is None:
         return None
     recommended_comments = _with_review_note(row.comments, finding)
-    if recommended_comments == (row.comments or ""):
+    patch: dict[str, object] = {}
+    field_diffs: list[AiReviewFieldDiff] = []
+    label = "Apply governance note"
+    description = (
+        "Adds the human-approved recommendation to the architect-owned comments field. "
+        "It does not alter source lineage or payload values."
+    )
+    safety_note = "Bounded to architect-owned fields and emitted through catalog audit."
+
+    if recommended_comments != (row.comments or ""):
+        patch["comments"] = recommended_comments
+        field_diffs.append(_field_diff("comments", row.comments, recommended_comments))
+
+    if finding.id == "pattern-coverage-gap" and not _has_text(row.selected_pattern):
+        candidate = _trigger_pattern_candidate(row)
+        if candidate is not None:
+            selected_pattern, rationale = candidate
+            patch["selected_pattern"] = selected_pattern
+            if not _has_text(row.pattern_rationale):
+                patch["pattern_rationale"] = rationale
+            field_diffs.append(_field_diff("selected_pattern", row.selected_pattern, selected_pattern))
+            if "pattern_rationale" in patch:
+                field_diffs.append(_field_diff("pattern_rationale", row.pattern_rationale, rationale))
+            label = "Apply pattern recommendation"
+            description = (
+                "Assigns a fully supported pattern only because the current row has no pattern and trigger "
+                "evidence maps conservatively to a phase-parity pattern."
+            )
+            safety_note = (
+                "Safe because it fills empty architect-owned pattern fields from explicit trigger evidence; "
+                "source lineage remains unchanged."
+            )
+
+    if finding.id == "design-canvas-gap" and not _has_text(row.core_tools) and not _is_canvas_state(row.additional_tools_overlays):
+        candidate = _trigger_tool_candidate(row)
+        if candidate is not None:
+            core_tools, overlay = candidate
+            patch["core_tools"] = core_tools
+            field_diffs.append(_field_diff("core_tools", row.core_tools, core_tools))
+            if overlay and not _has_text(row.additional_tools_overlays):
+                patch["additional_tools_overlays"] = overlay
+                field_diffs.append(_field_diff("additional_tools_overlays", row.additional_tools_overlays, overlay))
+            label = "Apply route tool recommendation"
+            description = (
+                "Registers conservative core route tools for a row that currently has no governed design tools."
+            )
+            safety_note = (
+                "Safe because it fills empty architect-owned tool fields from explicit trigger evidence and "
+                "does not overwrite an existing canvas state."
+            )
+
+    if not patch:
         return None
     return AiReviewSuggestedPatch(
         integration_id=row.id,
-        label="Apply governance note",
-        description=(
-            "Adds the human-approved recommendation to the architect-owned comments field. "
-            "It does not alter source lineage, patterns, service selections, or payload values."
-        ),
-        patch={"comments": recommended_comments},
-        field_diffs=[
-            AiReviewFieldDiff(
-                field="comments",
-                current=row.comments,
-                recommended=recommended_comments,
-            )
-        ],
+        label=label,
+        description=description,
+        patch=patch,
+        field_diffs=field_diffs,
         safe_to_apply=True,
-        safety_note="Bounded to the architect-owned comments field and still emitted through catalog audit.",
+        safety_note=safety_note,
     )
 
 
@@ -731,6 +818,266 @@ def _personas(
     return [summaries[persona] for persona in requested_personas if persona in summaries]
 
 
+def _row_daily_payload_kb(row: CatalogIntegration) -> float:
+    payload = row.payload_per_execution_kb or 0.0
+    executions = row.executions_per_day or 0.0
+    return float(payload * executions)
+
+
+def _format_data_volume(daily_payload_kb: float) -> str:
+    if daily_payload_kb <= 0:
+        return "0 GB/day"
+    daily_gb = daily_payload_kb / 1024 / 1024
+    if daily_gb < 1:
+        return f"{daily_gb:.2f} GB/day"
+    return f"{daily_gb:.1f} GB/day"
+
+
+def _decision_brief(
+    *,
+    score: int,
+    label: str,
+    findings: list[AiReviewFinding],
+    drift: AiReviewDriftReport,
+) -> AiReviewDecisionBrief:
+    blockers = [
+        finding.title
+        for finding in findings
+        if finding.severity in {"critical", "high"} and finding.severity != "positive"
+    ][:5]
+    top_action = next((finding.recommendation for finding in findings if finding.severity != "positive"), "")
+    primary_risk = blockers[0] if blockers else "No critical or high-priority blocker is visible in the governed evidence."
+    if any(finding.severity == "critical" for finding in findings) or drift.status == "blocking_drift":
+        signoff_status: Literal["blocked", "needs_review", "ready_with_caveats", "ready"] = "blocked"
+        headline = f"{label}: architecture sign-off is blocked until critical evidence is resolved."
+    elif blockers or drift.status in {"material_drift", "minor_drift"}:
+        signoff_status = "needs_review"
+        headline = f"{label}: architect decisions remain before this can be treated as approved."
+    elif score < 90:
+        signoff_status = "ready_with_caveats"
+        headline = f"{label}: usable for review with caveats that should be tracked."
+    else:
+        signoff_status = "ready"
+        headline = f"{label}: governed evidence is clean enough for executive review."
+
+    decision_points = [
+        f"{finding.title}: {finding.recommendation}"
+        for finding in findings
+        if finding.severity != "positive"
+    ][:4]
+    if not decision_points:
+        decision_points = ["Keep the baseline current and re-run AI Review after material catalog or canvas changes."]
+
+    return AiReviewDecisionBrief(
+        signoff_status=signoff_status,
+        headline=headline,
+        primary_risk=primary_risk,
+        recommended_next_action=top_action or "Save or refresh the planned baseline and keep monitoring drift.",
+        decision_points=decision_points,
+        blockers=blockers,
+    )
+
+
+def _topology_insights(
+    *,
+    project_id: str,
+    rows: list[CatalogIntegration],
+    warning_map: dict[str, list[str]],
+) -> list[AiReviewTopologyInsight]:
+    if not rows:
+        return []
+
+    system_rows: dict[str, list[CatalogIntegration]] = {}
+    edge_rows: dict[tuple[str, str], list[CatalogIntegration]] = {}
+    for row in rows:
+        source = row.source_system or "Unknown source"
+        destination = row.destination_system or "Unknown destination"
+        system_rows.setdefault(source, []).append(row)
+        system_rows.setdefault(destination, []).append(row)
+        edge_rows.setdefault((source, destination), []).append(row)
+
+    insights: list[AiReviewTopologyInsight] = []
+    top_system, top_system_rows = max(system_rows.items(), key=lambda item: len(item[1]))
+    top_system_review_rows = [
+        row
+        for row in top_system_rows
+        if (row.qa_status or "").upper() == "REVISAR" or row.id in warning_map
+    ]
+    insights.append(
+        AiReviewTopologyInsight(
+            id="TOP-001",
+            insight_type="system_hotspot",
+            severity="high" if top_system_review_rows else "medium",
+            title=f"{top_system} is the highest-dependency system in scope",
+            summary=(
+                f"{top_system} participates in {len(top_system_rows)} integration touchpoint(s); "
+                f"{len(top_system_review_rows)} need QA or service-warning attention."
+            ),
+            metric=f"{len(top_system_rows)} touchpoints",
+            system_name=top_system,
+            action_href=_catalog_href(project_id, f"system={quote_plus(top_system)}"),
+            integration_ids=_first_ids(top_system_review_rows or top_system_rows),
+        )
+    )
+
+    edge_candidates = [
+        (edge, edge_scope)
+        for edge, edge_scope in edge_rows.items()
+        if any((row.qa_status or "").upper() == "REVISAR" or row.id in warning_map for row in edge_scope)
+    ]
+    if edge_candidates:
+        (source, destination), risky_edge_rows = max(
+            edge_candidates,
+            key=lambda item: (
+                sum(1 for row in item[1] if row.id in warning_map),
+                sum(1 for row in item[1] if (row.qa_status or "").upper() == "REVISAR"),
+                len(item[1]),
+            ),
+        )
+        insights.append(
+            AiReviewTopologyInsight(
+                id="TOP-002",
+                insight_type="edge_hotspot",
+                severity="high",
+                title=f"{source} -> {destination} concentrates review risk",
+                summary=(
+                    f"{len(risky_edge_rows)} integration(s) share this route; "
+                    f"{sum(1 for row in risky_edge_rows if row.id in warning_map)} have service-warning evidence."
+                ),
+                metric=f"{len(risky_edge_rows)} route rows",
+                source_system=source,
+                destination_system=destination,
+                action_href=_catalog_href(
+                    project_id,
+                    f"source_system={quote_plus(source)}&destination_system={quote_plus(destination)}",
+                ),
+                integration_ids=_first_ids(risky_edge_rows),
+            )
+        )
+
+    payload_edges = [
+        (edge, edge_scope, sum(_row_daily_payload_kb(row) for row in edge_scope))
+        for edge, edge_scope in edge_rows.items()
+    ]
+    payload_edges = [item for item in payload_edges if item[2] > 0]
+    if payload_edges:
+        (source, destination), payload_edge_rows, daily_payload_kb = max(payload_edges, key=lambda item: item[2])
+        insights.append(
+            AiReviewTopologyInsight(
+                id="TOP-003",
+                insight_type="payload_hotspot",
+                severity="medium",
+                title=f"{source} -> {destination} carries the highest modeled payload",
+                summary=(
+                    f"Current modeled daily transfer is {_format_data_volume(daily_payload_kb)} before growth multipliers."
+                ),
+                metric=_format_data_volume(daily_payload_kb),
+                source_system=source,
+                destination_system=destination,
+                action_href=_catalog_href(
+                    project_id,
+                    f"source_system={quote_plus(source)}&destination_system={quote_plus(destination)}",
+                ),
+                integration_ids=_first_ids(sorted(payload_edge_rows, key=_row_daily_payload_kb, reverse=True)),
+            )
+        )
+
+    return insights[:3]
+
+
+def _stress_scenarios(
+    *,
+    rows: list[CatalogIntegration],
+    warning_map: dict[str, list[str]],
+) -> list[AiReviewStressScenario]:
+    total = len(rows)
+    if total == 0:
+        return []
+    missing_payload = [row for row in rows if row.payload_per_execution_kb is None]
+    current_daily_payload_kb = sum(_row_daily_payload_kb(row) for row in rows)
+    top_rows = sorted(rows, key=_row_daily_payload_kb, reverse=True)
+    payload_coverage = _pct(total - len(missing_payload), total)
+    confidence: Literal["high", "medium", "low"]
+    if payload_coverage < 60:
+        confidence = "low"
+    elif warning_map or payload_coverage < 90:
+        confidence = "medium"
+    else:
+        confidence = "high"
+    warning_text = []
+    if missing_payload:
+        warning_text.append(f"{len(missing_payload)} row(s) lack payload evidence.")
+    if warning_map:
+        warning_text.append(f"{len(warning_map)} row(s) already have design/service warnings at current scale.")
+
+    scenarios: list[AiReviewStressScenario] = []
+    for multiplier, name in (
+        (1.0, "Current evidence baseline"),
+        (2.0, "2x growth stress"),
+        (5.0, "5x growth stress"),
+        (10.0, "10x growth stress"),
+    ):
+        if multiplier == 1.0:
+            summary = (
+                f"Modeled daily payload is {_format_data_volume(current_daily_payload_kb)} with "
+                f"{payload_coverage}% payload coverage."
+            )
+        else:
+            summary = (
+                f"At {multiplier:g}x, modeled daily payload becomes "
+                f"{_format_data_volume(current_daily_payload_kb * multiplier)}. "
+                "Treat rows with current warnings as first redesign candidates."
+            )
+        scenarios.append(
+            AiReviewStressScenario(
+                id=f"STRESS-{int(multiplier):03d}",
+                name=name,
+                multiplier=multiplier,
+                confidence=confidence,
+                summary=summary,
+                projected_daily_payload_gb=round((current_daily_payload_kb * multiplier) / 1024 / 1024, 3),
+                top_integration_ids=_first_ids(top_rows),
+                warnings=warning_text if multiplier == 1.0 else warning_text or [
+                    "No payload coverage or current-warning caveat was detected."
+                ],
+            )
+        )
+    return scenarios
+
+
+def _remediation_owner(review_area: str) -> Literal["Architect", "Analyst", "Operations", "Executive"]:
+    if review_area in {"data_quality", "snapshot_freshness"}:
+        return "Analyst"
+    if review_area in {"stress_review", "red_team"}:
+        return "Operations"
+    if review_area == "demo_readiness":
+        return "Executive"
+    return "Architect"
+
+
+def _remediation_plan(findings: list[AiReviewFinding]) -> list[AiReviewRemediationStep]:
+    actionable = [finding for finding in findings if finding.severity != "positive"]
+    plan: list[AiReviewRemediationStep] = []
+    for index, finding in enumerate(actionable[:6], start=1):
+        plan.append(
+            AiReviewRemediationStep(
+                id=f"STEP-{index:03d}",
+                priority=index,
+                owner=_remediation_owner(finding.review_area),
+                title=finding.title,
+                action=finding.recommendation,
+                expected_impact=(
+                    "Improves sign-off confidence by resolving a "
+                    f"{finding.severity} {finding.review_area.replace('_', ' ')} finding."
+                ),
+                action_href=finding.action_href,
+                finding_ids=[finding.id],
+                integration_ids=finding.integration_ids[:MAX_LINKED_INTEGRATIONS],
+            )
+        )
+    return plan
+
+
 def _compact_findings(findings: list[AiReviewFinding]) -> list[AiReviewFinding]:
     return findings[:8]
 
@@ -817,6 +1164,45 @@ async def _load_job(job_id: str, db: AsyncSession) -> AiReviewJob:
             detail={"detail": "AI review job not found.", "error_code": "AI_REVIEW_JOB_NOT_FOUND"},
         )
     return job
+
+
+async def _actor_job_count_today(actor_id: str, db: AsyncSession) -> int:
+    start_of_day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    return int(
+        await db.scalar(
+            select(func.count())
+            .select_from(AiReviewJob)
+            .where(
+                AiReviewJob.requested_by == actor_id,
+                AiReviewJob.created_at >= start_of_day,
+            )
+        )
+        or 0
+    )
+
+
+async def _enforce_job_quota(actor_id: str, db: AsyncSession) -> None:
+    settings = get_settings()
+    daily_limit = max(0, settings.AI_REVIEW_DAILY_JOB_LIMIT)
+    used = await _actor_job_count_today(actor_id, db)
+    if used >= daily_limit:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "detail": "Daily AI review job quota exceeded for this actor.",
+                "error_code": "AI_REVIEW_DAILY_QUOTA_EXCEEDED",
+                "daily_job_limit": daily_limit,
+                "actor_jobs_today": used,
+            },
+        )
+
+
+async def get_ai_review_provider_status(actor_id: str, db: AsyncSession) -> AiReviewProviderStatus:
+    """Return provider health, quota, and data-policy metadata for the caller."""
+
+    used = await _actor_job_count_today(actor_id or AI_REVIEW_ACTOR_FALLBACK, db)
+    payload = provider_status_payload(get_settings(), actor_jobs_today=used)
+    return AiReviewProviderStatus.model_validate(payload)
 
 
 async def list_ai_review_jobs(project_id: str, db: AsyncSession, limit: int = 20) -> AiReviewJobListResponse:
@@ -1032,10 +1418,12 @@ async def create_ai_review_job(
             },
         )
 
+    requested_by = actor_id or AI_REVIEW_ACTOR_FALLBACK
+    await _enforce_job_quota(requested_by, db)
     input_payload = cast(dict[str, object], sanitize_for_json(body.model_dump()))
     job = AiReviewJob(
         project_id=project_id,
-        requested_by=actor_id or AI_REVIEW_ACTOR_FALLBACK,
+        requested_by=requested_by,
         scope=body.scope,
         integration_id=body.integration_id,
         input_payload=input_payload,
@@ -1641,6 +2029,10 @@ async def build_review_result(
             detail=drift.summary,
         ),
     ]
+    decision_brief = _decision_brief(score=score, label=label, findings=findings, drift=drift)
+    topology_insights = _topology_insights(project_id=project_id, rows=rows, warning_map=warning_map)
+    stress_scenarios = _stress_scenarios(rows=rows, warning_map=warning_map)
+    remediation_plan = _remediation_plan(findings)
     evidence_pack = [
         f"project_id={project_id}",
         f"scope={scope}",
@@ -1669,6 +2061,10 @@ async def build_review_result(
             metrics=metrics,
             findings=_compact_findings(findings),
             evidence_pack=evidence_pack,
+            decision_brief=decision_brief.model_dump(mode="json"),
+            topology_insights=[item.model_dump(mode="json") for item in topology_insights],
+            stress_scenarios=[item.model_dump(mode="json") for item in stress_scenarios],
+            remediation_plan=[item.model_dump(mode="json") for item in remediation_plan],
         )
         if include_llm
         else LlmReviewResult(status="skipped", model=None, summary=None)
@@ -1688,6 +2084,10 @@ async def build_review_result(
         llm_summary=llm_result.summary,
         graph_context=graph_context,
         metrics=metrics,
+        decision_brief=decision_brief,
+        topology_insights=topology_insights,
+        stress_scenarios=stress_scenarios,
+        remediation_plan=remediation_plan,
         findings=findings,
         groups=_groups(findings),
         evidence=evidence,
@@ -1924,3 +2324,169 @@ async def apply_ai_review_finding_patch(
         integration=integration,
         applied_patch=refreshed_patch,
     )
+
+
+def _completed_review_for_job(job: AiReviewJob) -> AiReviewResponse:
+    if _status_value(job) != "completed" or job.result_payload is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "AI review comparison/export requires completed jobs with result payloads.",
+                "error_code": "AI_REVIEW_JOB_RESULT_REQUIRED",
+            },
+        )
+    review = _review_from_payload(job.result_payload)
+    if review is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "AI review job has no result payload.",
+                "error_code": "AI_REVIEW_RESULT_MISSING",
+            },
+        )
+    return review
+
+
+def _critical_high_count(review: AiReviewResponse) -> int:
+    return sum(1 for finding in review.findings if finding.severity in {"critical", "high"})
+
+
+async def compare_ai_review_jobs(
+    project_id: str,
+    base_job_id: str,
+    target_job_id: str,
+    db: AsyncSession,
+) -> AiReviewJobCompareResponse:
+    """Compare two completed review jobs for evolution/regression analysis."""
+
+    await _load_project(project_id, db)
+    base_job = await _load_job(base_job_id, db)
+    target_job = await _load_job(target_job_id, db)
+    if base_job.project_id != project_id or target_job.project_id != project_id:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "AI review job not found for this project.", "error_code": "AI_REVIEW_JOB_NOT_FOUND"},
+        )
+    base_review = _completed_review_for_job(base_job)
+    target_review = _completed_review_for_job(target_job)
+    base_findings = {finding.id: finding.title for finding in base_review.findings}
+    target_findings = {finding.id: finding.title for finding in target_review.findings}
+    added_ids = sorted(set(target_findings) - set(base_findings))
+    resolved_ids = sorted(set(base_findings) - set(target_findings))
+    persistent_ids = sorted(set(base_findings) & set(target_findings))
+    readiness_delta = target_review.readiness_score - base_review.readiness_score
+    critical_high_delta = _critical_high_count(target_review) - _critical_high_count(base_review)
+    if readiness_delta > 0 and critical_high_delta <= 0:
+        summary = f"Readiness improved by {readiness_delta} point(s) with no increase in critical/high findings."
+    elif readiness_delta < 0 or critical_high_delta > 0:
+        summary = (
+            f"Readiness changed by {readiness_delta} point(s); critical/high finding count changed by "
+            f"{critical_high_delta}."
+        )
+    else:
+        summary = "Readiness is stable against the selected baseline review job."
+    return AiReviewJobCompareResponse(
+        project_id=project_id,
+        base_job_id=base_job_id,
+        target_job_id=target_job_id,
+        base_readiness_score=base_review.readiness_score,
+        target_readiness_score=target_review.readiness_score,
+        readiness_score_delta=readiness_delta,
+        base_readiness_label=base_review.readiness_label,
+        target_readiness_label=target_review.readiness_label,
+        finding_count_delta=len(target_review.findings) - len(base_review.findings),
+        critical_high_delta=critical_high_delta,
+        added_findings=[target_findings[finding_id] for finding_id in added_ids],
+        resolved_findings=[base_findings[finding_id] for finding_id in resolved_ids],
+        persistent_findings=[target_findings[finding_id] for finding_id in persistent_ids],
+        summary=summary,
+    )
+
+
+def render_ai_review_markdown(job: AiReviewJob) -> str:
+    """Render one completed AI review job as portable Markdown evidence."""
+
+    review = _completed_review_for_job(job)
+    lines = [
+        f"# AI Review Brief - {review.project_name}",
+        "",
+        f"- Job ID: `{job.id}`",
+        f"- Project ID: `{job.project_id}`",
+        f"- Scope: `{review.scope}`",
+        f"- Generated: `{review.generated_at.isoformat()}`",
+        f"- Engine: `{review.engine}`",
+        f"- LLM status: `{review.llm_status}`",
+        "",
+        "## Decision Brief",
+        "",
+        f"- Sign-off status: **{review.decision_brief.signoff_status.replace('_', ' ')}**",
+        f"- Readiness: **{review.readiness_label}** ({review.readiness_score}/100)",
+        f"- Headline: {review.decision_brief.headline}",
+        f"- Primary risk: {review.decision_brief.primary_risk}",
+        f"- Next action: {review.decision_brief.recommended_next_action}",
+        "",
+        "## Summary",
+        "",
+        review.llm_summary or review.summary,
+        "",
+        "## Metrics",
+        "",
+    ]
+    lines.extend(f"- {metric.label}: {metric.value} ({metric.detail})" for metric in review.metrics)
+    lines.extend(["", "## Topology Intelligence", ""])
+    if review.topology_insights:
+        for insight in review.topology_insights:
+            lines.append(f"- {insight.title}: {insight.summary} `{insight.metric}`")
+    else:
+        lines.append("- No topology insight was generated for this scope.")
+    lines.extend(["", "## Stress Scenarios", ""])
+    for scenario in review.stress_scenarios:
+        lines.append(
+            f"- {scenario.name} ({scenario.multiplier:g}x, {scenario.confidence} confidence): "
+            f"{scenario.summary}"
+        )
+    lines.extend(["", "## Remediation Plan", ""])
+    if review.remediation_plan:
+        for step in review.remediation_plan:
+            lines.append(f"{step.priority}. {step.title} — {step.action} Owner: {step.owner}.")
+    else:
+        lines.append("- No remediation steps were generated.")
+    lines.extend(["", "## Findings", ""])
+    for finding in review.findings:
+        lines.append(
+            f"- [{finding.severity.upper()}] {finding.title}: {finding.recommendation} "
+            f"Evidence: {', '.join(finding.evidence_ids) or 'none'}."
+        )
+    lines.extend(["", "## Evidence Registry", ""])
+    for evidence in review.evidence:
+        lines.append(f"- {evidence.id}: {evidence.label} — {evidence.detail}")
+    lines.extend(
+        [
+            "",
+            "## Governance",
+            "",
+            "- Export generated from persisted AI Review evidence.",
+            "- Applying recommendations remains a separate audited action.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+async def export_ai_review_markdown(job_id: str, actor_id: str, db: AsyncSession) -> tuple[str, str, str]:
+    """Return Markdown content for one job and audit the export event."""
+
+    job = await _load_job(job_id, db)
+    content = render_ai_review_markdown(job)
+    filename = f"{job.project_id}-{job.id}-ai-review.md"
+    await audit_service.emit(
+        event_type="ai_review_exported",
+        entity_type="ai_review_job",
+        entity_id=job.id,
+        actor_id=actor_id or AI_REVIEW_ACTOR_FALLBACK,
+        old_value=None,
+        new_value={"format": "md", "filename": filename},
+        project_id=job.project_id,
+        db=db,
+        correlation_id=job.id,
+    )
+    return content, filename, job.project_id
