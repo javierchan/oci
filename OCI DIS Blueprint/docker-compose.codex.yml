@@ -1,0 +1,17 @@
+# Docker Compose override for local Codex backend credentials.
+# Usage:
+#   CODEX_HOME="$HOME/.codex" docker compose -f docker-compose.yml -f docker-compose.codex.yml up -d api worker
+#
+# This keeps LLM credentials out of .env and mounts the Codex config/auth files
+# read-only at the paths consumed by apps/api/app/core/config.py.
+
+services:
+  api:
+    volumes:
+      - ${CODEX_HOME:?Set CODEX_HOME to your Codex home directory}/config.toml:/codex/config.toml:ro
+      - ${CODEX_HOME:?Set CODEX_HOME to your Codex home directory}/auth.json:/codex/auth.json:ro
+
+  worker:
+    volumes:
+      - ${CODEX_HOME:?Set CODEX_HOME to your Codex home directory}/config.toml:/codex/config.toml:ro
+      - ${CODEX_HOME:?Set CODEX_HOME to your Codex home directory}/auth.json:/codex/auth.json:ro

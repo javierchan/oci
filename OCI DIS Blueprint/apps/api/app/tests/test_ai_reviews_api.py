@@ -13,7 +13,7 @@ from app.models import CatalogIntegration, Project, VolumetrySnapshot
 from app.routers import ai_reviews
 from app.schemas.ai_review import AiReviewGraphContext
 from app.services import ai_review_service
-from app.services.llm_review_client import _build_prompt, _resolved_oca_config, _response_payload, _response_text
+from app.services.llm_review_client import _build_prompt, _resolved_codex_config, _response_payload, _response_text
 
 
 def _admin_headers() -> dict[str, str]:
@@ -265,8 +265,8 @@ async def test_ai_review_roles_provider_status_quota_and_compare(
     provider_response = await api_client.get("/api/v1/ai-reviews/provider-status")
     assert provider_response.status_code == 200
     provider_payload = provider_response.json()
-    assert provider_payload["provider"] == "oca"
-    assert provider_payload["configured"] is False
+    assert provider_payload["provider"] == "codex"
+    assert isinstance(provider_payload["configured"], bool)
     assert provider_payload["quota"]["daily_job_limit"] >= 0
     assert "email addresses" in provider_payload["prompt_redaction_policy"]
 
@@ -498,7 +498,7 @@ async def test_graph_context_scopes_project_ai_review_evidence(
     assert review.stress_scenarios[0].confidence in {"medium", "low"}
 
 
-def test_oca_response_payload_parses_server_sent_event_frame() -> None:
+def test_codex_response_payload_parses_server_sent_event_frame() -> None:
     response = Response(
         200,
         text=(
@@ -512,16 +512,36 @@ def test_oca_response_payload_parses_server_sent_event_frame() -> None:
     assert _response_text(payload) == "Executive summary."
 
 
-def test_oca_runtime_config_uses_codex_config_and_auth(tmp_path) -> None:
+def test_codex_response_payload_parses_streaming_text_events() -> None:
+    response = Response(
+        200,
+        text=(
+            'event: response.output_text.delta\n'
+            'data: {"type":"response.output_text.delta","delta":"Codex"}\n\n'
+            'event: response.output_text.delta\n'
+            'data: {"type":"response.output_text.delta","delta":" works"}\n\n'
+            'event: response.output_text.done\n'
+            'data: {"type":"response.output_text.done","text":"Codex works."}\n\n'
+            'event: response.completed\n'
+            'data: {"type":"response.completed","response":{"status":"completed"}}\n\n'
+        ),
+    )
+
+    payload = _response_payload(response)
+
+    assert _response_text(payload) == "Codex works."
+
+
+def test_codex_runtime_config_uses_codex_config_and_auth(tmp_path) -> None:
     config_path = tmp_path / "config.toml"
     auth_path = tmp_path / "auth.json"
     config_path.write_text(
         "\n".join(
             [
-                "[model_providers.oca]",
-                'base_url = "https://example.test/litellm"',
+                "[model_providers.codex]",
+                'base_url = "https://example.test/codex"',
                 'wire_api = "responses"',
-                'model = "oca/gpt-5.5"',
+                'model = "gpt-5.5"',
                 'http_headers = { client = "codex-cli", client-version = "0" }',
             ]
         ),
@@ -529,23 +549,60 @@ def test_oca_runtime_config_uses_codex_config_and_auth(tmp_path) -> None:
     )
     auth_path.write_text('{"OPENAI_API_KEY":"codex-test-key"}', encoding="utf-8")
     settings = Settings(
-        OCA_API_KEY="",
-        OCA_BASE_URL="https://fallback.test",
-        OCA_MODEL="fallback-model",
-        OCA_CONFIG_PATH=str(config_path),
-        OCA_AUTH_JSON_PATH=str(auth_path),
+        CODEX_BASE_URL="https://fallback.test",
+        CODEX_MODEL="fallback-model",
+        CODEX_CONFIG_PATH=str(config_path),
+        CODEX_AUTH_JSON_PATH=str(auth_path),
     )
 
-    runtime_config = _resolved_oca_config(settings)
+    runtime_config = _resolved_codex_config(settings)
 
     assert runtime_config.api_key == "codex-test-key"
-    assert runtime_config.base_url == "https://example.test/litellm"
-    assert runtime_config.model == "oca/gpt-5.5"
+    assert runtime_config.base_url == "https://example.test/codex"
+    assert runtime_config.model == "gpt-5.5"
     assert runtime_config.headers["client"] == "codex-cli"
     assert runtime_config.headers["client-version"] == "0"
 
 
-def test_oca_prompt_redacts_sensitive_values() -> None:
+def test_codex_runtime_config_uses_codex_token_auth(tmp_path) -> None:
+    config_path = tmp_path / "config.toml"
+    auth_path = tmp_path / "auth.json"
+    config_path.write_text("[model_providers.codex]\n", encoding="utf-8")
+    auth_path.write_text(
+        '{"OPENAI_API_KEY": null, "tokens": {"access_token": "codex-access-token", "account_id": "acct-1"}}',
+        encoding="utf-8",
+    )
+    settings = Settings(
+        CODEX_CONFIG_PATH=str(config_path),
+        CODEX_AUTH_JSON_PATH=str(auth_path),
+    )
+
+    runtime_config = _resolved_codex_config(settings)
+
+    assert runtime_config.api_key == "codex-access-token"
+    assert runtime_config.account_id == "acct-1"
+
+
+def test_codex_runtime_config_ignores_deprecated_oca_keys(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.toml"
+    auth_path = tmp_path / "auth.json"
+    config_path.write_text("[model_providers.codex]\n", encoding="utf-8")
+    auth_path.write_text('{"OCA_API_KEY":"deprecated-test-key"}', encoding="utf-8")
+    monkeypatch.setenv("OCA_API_KEY", "deprecated-env-key")
+    settings = Settings(
+        CODEX_CONFIG_PATH=str(config_path),
+        CODEX_AUTH_JSON_PATH=str(auth_path),
+    )
+
+    runtime_config = _resolved_codex_config(settings)
+
+    assert runtime_config.api_key == ""
+
+
+def test_codex_prompt_redacts_sensitive_values() -> None:
     prompt = _build_prompt(
         project_name="Secret Fixture",
         readiness_score=80,

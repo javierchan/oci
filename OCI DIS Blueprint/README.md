@@ -51,6 +51,20 @@ docker compose run --rm api python -m app.migrations.seed
 - API docs: http://localhost:8000/docs
 - MinIO console: http://localhost:9001 (minio / minio123)
 
+## Codex Backend for AI Review
+
+AI Review uses the Codex backend configuration mounted into the API and worker
+containers. LLM credentials must not be provided through `.env`; the deprecated
+`OCA_API_KEY` path is ignored by the application.
+
+```bash
+CODEX_HOME="$HOME/.codex" \
+  docker compose -f docker-compose.yml -f docker-compose.codex.yml up -d api worker
+```
+
+The override mounts `${CODEX_HOME}/config.toml` and `${CODEX_HOME}/auth.json`
+read-only at `/codex/config.toml` and `/codex/auth.json`.
+
 ---
 
 ## Running Tests

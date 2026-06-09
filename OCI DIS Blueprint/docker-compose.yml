@@ -63,14 +63,14 @@ services:
       REDIS_URL: redis://redis:6379/0
       ENVIRONMENT: development
       CORS_ALLOWED_ORIGINS: '["http://localhost:3000"]'
-      OCA_API_KEY: ${OCA_API_KEY:-}
-      OCA_BASE_URL: ${OCA_BASE_URL:-https://code-internal.aiservice.us-chicago-1.oci.oraclecloud.com/20250206/app/litellm}
-      OCA_MODEL: ${OCA_MODEL:-oca/gpt-5.5}
-      OCA_WIRE_API: ${OCA_WIRE_API:-responses}
-      OCA_CONFIG_PATH: ${OCA_CONFIG_PATH:-/codex/config.toml}
-      OCA_AUTH_JSON_PATH: ${OCA_AUTH_JSON_PATH:-/codex/auth.json}
-      OCA_CLIENT_NAME: ${OCA_CLIENT_NAME:-codex-cli}
-      OCA_CLIENT_VERSION: ${OCA_CLIENT_VERSION:-0}
+      CODEX_BASE_URL: ${CODEX_BASE_URL:-https://chatgpt.com/backend-api/codex}
+      CODEX_MODEL: ${CODEX_MODEL:-gpt-5.5}
+      CODEX_WIRE_API: ${CODEX_WIRE_API:-responses}
+      CODEX_CONFIG_PATH: ${CODEX_CONFIG_PATH:-/codex/config.toml}
+      CODEX_AUTH_JSON_PATH: ${CODEX_AUTH_JSON_PATH:-/codex/auth.json}
+      CODEX_PROVIDER_NAME: ${CODEX_PROVIDER_NAME:-codex}
+      CODEX_CLIENT_NAME: ${CODEX_CLIENT_NAME:-codex-cli}
+      CODEX_CLIENT_VERSION: ${CODEX_CLIENT_VERSION:-0}
     ports:
       - "8000:8000"
     volumes:
@@ -102,6 +102,14 @@ services:
       DATABASE_URL: postgresql+asyncpg://dis:dis@db:5432/oci_dis
       REDIS_URL: redis://redis:6379/0
       ENVIRONMENT: development
+      CODEX_BASE_URL: ${CODEX_BASE_URL:-https://chatgpt.com/backend-api/codex}
+      CODEX_MODEL: ${CODEX_MODEL:-gpt-5.5}
+      CODEX_WIRE_API: ${CODEX_WIRE_API:-responses}
+      CODEX_CONFIG_PATH: ${CODEX_CONFIG_PATH:-/codex/config.toml}
+      CODEX_AUTH_JSON_PATH: ${CODEX_AUTH_JSON_PATH:-/codex/auth.json}
+      CODEX_PROVIDER_NAME: ${CODEX_PROVIDER_NAME:-codex}
+      CODEX_CLIENT_NAME: ${CODEX_CLIENT_NAME:-codex-cli}
+      CODEX_CLIENT_VERSION: ${CODEX_CLIENT_VERSION:-0}
     volumes:
       - ./apps/api:/app
       - ./packages/calc-engine:/calc-engine:ro

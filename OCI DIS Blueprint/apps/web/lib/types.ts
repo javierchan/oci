@@ -63,7 +63,7 @@ export interface AiReviewQuotaState {
 }
 
 export interface AiReviewProviderStatus {
-  provider: "oca";
+  provider: "codex";
   configured: boolean;
   mode: "deterministic_only" | "llm_available" | "misconfigured";
   model: string;

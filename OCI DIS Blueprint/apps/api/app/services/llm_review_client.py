@@ -40,10 +40,11 @@ class LlmReviewResult:
 
 
 @dataclass(frozen=True)
-class OcaRuntimeConfig:
-    """Resolved OCA runtime settings from environment plus optional Codex config."""
+class CodexRuntimeConfig:
+    """Resolved Codex backend runtime settings from mounted Codex config/auth."""
 
     api_key: str
+    account_id: str | None
     base_url: str
     wire_api: str
     model: str
@@ -53,6 +54,10 @@ class OcaRuntimeConfig:
 def _responses_url(base_url: str) -> str:
     normalized = base_url.rstrip("/")
     return normalized if normalized.endswith("/responses") else f"{normalized}/responses"
+
+
+def _uses_chatgpt_codex_backend(base_url: str) -> bool:
+    return "chatgpt.com/backend-api/codex" in base_url.rstrip("/")
 
 
 def _read_json_file(path_value: str) -> dict[str, Any]:
@@ -85,30 +90,37 @@ def _string_value(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-def _codex_provider_config(config_path: str) -> dict[str, Any]:
+def _codex_provider_config(config_path: str, provider_name: str) -> dict[str, Any]:
     config = _read_toml_file(config_path)
     providers = config.get("model_providers")
     if not isinstance(providers, dict):
         return {}
-    provider = providers.get("oca")
+    provider = providers.get(provider_name)
     return provider if isinstance(provider, dict) else {}
 
 
-def _codex_auth_key(auth_path: str) -> str:
+def _codex_auth_credentials(auth_path: str) -> tuple[str, str | None]:
     auth = _read_json_file(auth_path)
-    for key_name in ("OCA_API_KEY", "oca_api_key", "OPENAI_API_KEY", "openai_api_key"):
+    for key_name in ("CODEX_API_KEY", "codex_api_key", "OPENAI_API_KEY", "openai_api_key"):
         value = _string_value(auth.get(key_name))
         if value:
-            return value
-    return ""
+            return value, None
+    tokens = auth.get("tokens")
+    if isinstance(tokens, dict):
+        account_id = _string_value(tokens.get("account_id"))
+        for key_name in ("access_token", "id_token"):
+            value = _string_value(tokens.get(key_name))
+            if value:
+                return value, account_id
+    return "", None
 
 
-def _resolved_oca_config(settings: Settings) -> OcaRuntimeConfig:
-    provider = _codex_provider_config(settings.OCA_CONFIG_PATH)
+def _resolved_codex_config(settings: Settings) -> CodexRuntimeConfig:
+    provider = _codex_provider_config(settings.CODEX_CONFIG_PATH, settings.CODEX_PROVIDER_NAME)
     provider_headers = provider.get("http_headers")
     headers = {
-        "client": settings.OCA_CLIENT_NAME,
-        "client-version": settings.OCA_CLIENT_VERSION,
+        "client": settings.CODEX_CLIENT_NAME,
+        "client-version": settings.CODEX_CLIENT_VERSION,
     }
     if isinstance(provider_headers, dict):
         headers.update(
@@ -119,12 +131,13 @@ def _resolved_oca_config(settings: Settings) -> OcaRuntimeConfig:
             }
         )
 
-    base_url = _string_value(provider.get("base_url")) or settings.OCA_BASE_URL
-    wire_api = _string_value(provider.get("wire_api")) or settings.OCA_WIRE_API
-    model = _string_value(provider.get("model")) or settings.OCA_MODEL
-    api_key = settings.OCA_API_KEY.strip() or _codex_auth_key(settings.OCA_AUTH_JSON_PATH)
-    return OcaRuntimeConfig(
+    base_url = _string_value(provider.get("base_url")) or settings.CODEX_BASE_URL
+    wire_api = _string_value(provider.get("wire_api")) or settings.CODEX_WIRE_API
+    model = _string_value(provider.get("model")) or settings.CODEX_MODEL
+    api_key, account_id = _codex_auth_credentials(settings.CODEX_AUTH_JSON_PATH)
+    return CodexRuntimeConfig(
         api_key=api_key,
+        account_id=account_id,
         base_url=base_url,
         wire_api=wire_api,
         model=model,
@@ -139,7 +152,7 @@ def provider_status_payload(
 ) -> dict[str, object]:
     """Return provider health metadata without exposing credentials."""
 
-    runtime_config = _resolved_oca_config(settings)
+    runtime_config = _resolved_codex_config(settings)
     daily_limit = max(0, settings.AI_REVIEW_DAILY_JOB_LIMIT)
     remaining = max(0, daily_limit - actor_jobs_today)
     configured = bool(runtime_config.api_key)
@@ -149,18 +162,18 @@ def provider_status_payload(
         status_message = "LLM synthesis is configured; deterministic evidence remains the source of truth."
     elif configured:
         mode = "misconfigured"
-        status_message = f"LLM provider is configured with unsupported wire API: {runtime_config.wire_api}."
+        status_message = f"Codex backend is configured with unsupported wire API: {runtime_config.wire_api}."
     else:
         mode = "deterministic_only"
-        status_message = "No LLM key is configured; AI Review will use deterministic governed evidence only."
+        status_message = "Codex backend auth is not mounted; AI Review will use deterministic governed evidence only."
     return {
-        "provider": "oca",
+        "provider": "codex",
         "configured": configured,
         "mode": mode,
         "model": runtime_config.model,
         "wire_api": runtime_config.wire_api,
         "base_url": runtime_config.base_url,
-        "request_timeout_seconds": settings.OCA_REQUEST_TIMEOUT_SECONDS,
+        "request_timeout_seconds": settings.CODEX_REQUEST_TIMEOUT_SECONDS,
         "quota": {
             "daily_job_limit": daily_limit,
             "actor_jobs_today": actor_jobs_today,
@@ -170,7 +183,7 @@ def provider_status_payload(
         "data_retention_policy": (
             "The app persists deterministic review results and audit events. External LLM prompts are "
             "transient request payloads assembled from redacted evidence; provider retention is governed "
-            "by the configured enterprise provider contract."
+            "by the configured Codex backend contract."
         ),
         "prompt_redaction_policy": PROMPT_REDACTION_POLICY,
         "status_message": status_message,
@@ -185,8 +198,9 @@ def _response_payload(response: httpx.Response) -> dict[str, Any]:
     if isinstance(payload, dict):
         return payload
 
-    # OCA's Responses endpoint returns a single server-sent event frame even
-    # for non-streaming calls: "data: {json}\n\n".
+    text_chunks: list[str] = []
+    final_payload: dict[str, Any] | None = None
+    first_payload: dict[str, Any] | None = None
     for event in response.text.split("\n\n"):
         data_lines = [
             line.removeprefix("data:").strip()
@@ -197,9 +211,26 @@ def _response_payload(response: httpx.Response) -> dict[str, Any]:
         if not data or data == "[DONE]":
             continue
         parsed = json.loads(data)
-        if isinstance(parsed, dict):
-            return parsed
-    return {}
+        if not isinstance(parsed, dict):
+            continue
+        if first_payload is None:
+            first_payload = parsed
+        event_type = parsed.get("type")
+        if event_type == "response.output_text.done":
+            text = _string_value(parsed.get("text"))
+            if text:
+                return {"output_text": text}
+        if event_type == "response.output_text.delta":
+            delta = parsed.get("delta")
+            if isinstance(delta, str):
+                text_chunks.append(delta)
+        if event_type == "response.completed":
+            response_payload = parsed.get("response")
+            if isinstance(response_payload, dict):
+                final_payload = response_payload
+    if text_chunks:
+        return {"output_text": "".join(text_chunks).strip()}
+    return final_payload or first_payload or {}
 
 
 def _response_text(payload: dict[str, Any]) -> str | None:
@@ -328,9 +359,9 @@ async def synthesize_review_summary(
     stress_scenarios: list[dict[str, object]] | None = None,
     remediation_plan: list[dict[str, object]] | None = None,
 ) -> LlmReviewResult:
-    """Use the configured OCA Responses API to synthesize an executive summary."""
+    """Use the configured Codex backend Responses API to synthesize an executive summary."""
 
-    runtime_config = _resolved_oca_config(settings)
+    runtime_config = _resolved_codex_config(settings)
     if not runtime_config.api_key:
         return LlmReviewResult(status="not_configured", model=runtime_config.model, summary=None)
     if runtime_config.wire_api.strip().lower() != "responses":
@@ -338,35 +369,50 @@ async def synthesize_review_summary(
             status="failed",
             model=runtime_config.model,
             summary=None,
-            error=f"Unsupported OCA wire API: {runtime_config.wire_api}",
+            error=f"Unsupported Codex wire API: {runtime_config.wire_api}",
         )
 
-    body = {
-        "model": runtime_config.model,
-        "input": _build_prompt(
-            project_name=project_name,
-            readiness_score=readiness_score,
-            readiness_label=readiness_label,
-            deterministic_summary=deterministic_summary,
-            metrics=metrics,
-            findings=findings,
-            evidence_pack=evidence_pack,
-            decision_brief=decision_brief,
-            topology_insights=topology_insights,
-            stress_scenarios=stress_scenarios,
-            remediation_plan=remediation_plan,
-        ),
-        "max_output_tokens": 260,
-    }
+    prompt = _build_prompt(
+        project_name=project_name,
+        readiness_score=readiness_score,
+        readiness_label=readiness_label,
+        deterministic_summary=deterministic_summary,
+        metrics=metrics,
+        findings=findings,
+        evidence_pack=evidence_pack,
+        decision_brief=decision_brief,
+        topology_insights=topology_insights,
+        stress_scenarios=stress_scenarios,
+        remediation_plan=remediation_plan,
+    )
+    if _uses_chatgpt_codex_backend(runtime_config.base_url):
+        body = {
+            "model": runtime_config.model,
+            "instructions": prompt[0]["content"],
+            "input": prompt[1:],
+            "store": False,
+            "stream": True,
+        }
+        accept_header = "text/event-stream"
+    else:
+        body = {
+            "model": runtime_config.model,
+            "input": prompt,
+            "max_output_tokens": 260,
+            "store": False,
+        }
+        accept_header = "application/json"
     headers = {
         "Authorization": f"Bearer {runtime_config.api_key}",
         "Content-Type": "application/json",
-        "Accept": "application/json",
+        "Accept": accept_header,
         **runtime_config.headers,
     }
+    if runtime_config.account_id:
+        headers["ChatGPT-Account-Id"] = runtime_config.account_id
 
     try:
-        async with httpx.AsyncClient(timeout=settings.OCA_REQUEST_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=settings.CODEX_REQUEST_TIMEOUT_SECONDS) as client:
             response = await client.post(_responses_url(runtime_config.base_url), headers=headers, json=body)
             response.raise_for_status()
             payload = _response_payload(response)

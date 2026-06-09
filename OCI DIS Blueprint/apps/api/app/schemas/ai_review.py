@@ -131,7 +131,7 @@ class AiReviewProviderStatus(BaseModel):
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    provider: Literal["oca"] = "oca"
+    provider: Literal["codex"] = "codex"
     configured: bool
     mode: AiReviewProviderMode
     model: str

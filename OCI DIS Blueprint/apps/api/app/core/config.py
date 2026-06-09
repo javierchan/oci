@@ -34,16 +34,16 @@ class Settings(BaseSettings):
     STORAGE_ACCESS_KEY: str = ""
     STORAGE_SECRET_KEY: str = ""
 
-    # Governed AI review LLM provider (Oracle Code Assist / Responses API)
-    OCA_API_KEY: str = ""
-    OCA_BASE_URL: str = "https://code-internal.aiservice.us-chicago-1.oci.oraclecloud.com/20250206/app/litellm"
-    OCA_MODEL: str = "oca/gpt-5.5"
-    OCA_WIRE_API: str = "responses"
-    OCA_REQUEST_TIMEOUT_SECONDS: float = 20.0
-    OCA_CONFIG_PATH: str = "/codex/config.toml"
-    OCA_AUTH_JSON_PATH: str = "/codex/auth.json"
-    OCA_CLIENT_NAME: str = "codex-cli"
-    OCA_CLIENT_VERSION: str = "0"
+    # Governed AI review LLM provider (Codex backend / Responses API)
+    CODEX_BASE_URL: str = "https://chatgpt.com/backend-api/codex"
+    CODEX_MODEL: str = "gpt-5.5"
+    CODEX_WIRE_API: str = "responses"
+    CODEX_REQUEST_TIMEOUT_SECONDS: float = 20.0
+    CODEX_CONFIG_PATH: str = "/codex/config.toml"
+    CODEX_AUTH_JSON_PATH: str = "/codex/auth.json"
+    CODEX_PROVIDER_NAME: str = "codex"
+    CODEX_CLIENT_NAME: str = "codex-cli"
+    CODEX_CLIENT_VERSION: str = "0"
     AI_REVIEW_DAILY_JOB_LIMIT: int = 100
     AI_REVIEW_LLM_DAILY_JOB_LIMIT: int = 25
 
