@@ -25,6 +25,10 @@
   --canvas-db-border: #f97316;
   --canvas-node-label: #0f172a;
   --canvas-node-sub: #334155;
+  --canvas-edge: #64748b;
+  --canvas-edge-muted: #cbd5e1;
+  --canvas-edge-valid: #0f8f68;
+  --canvas-edge-warning: #b45309;
   --color-status-active-bg: #dcfce7;
   --color-status-active-text: #15803d;
   --color-status-active-border: #86efac;
@@ -112,6 +116,10 @@
   --canvas-db-border: #f97316;
   --canvas-node-label: #f1f5f9;
   --canvas-node-sub: #94a3b8;
+  --canvas-edge: #94a3b8;
+  --canvas-edge-muted: #475569;
+  --canvas-edge-valid: #34d399;
+  --canvas-edge-warning: #f59e0b;
   --color-status-active-bg: #052e16;
   --color-status-active-text: #86efac;
   --color-status-active-border: #166534;

@@ -60,12 +60,15 @@ const CANVAS_HEIGHT = 560;
 const MIN_SCALE = 0.5;
 const MIN_READABLE_AUTO_SCALE = 0.68;
 const MAX_SCALE = 2;
-const ROUTE_NODE_GAP = 42;
-const TOOL_NODE_WIDTH = 190;
-const TOOL_NODE_HEIGHT = 142;
-const SYSTEM_NODE_WIDTH = 236;
-const SYSTEM_NODE_HEIGHT = 104;
-const HANDLE_RADIUS = 6;
+const ROUTE_NODE_GAP = 64;
+const TOOL_NODE_WIDTH = 184;
+const TOOL_NODE_HEIGHT = 126;
+const SYSTEM_NODE_WIDTH = 218;
+const SYSTEM_NODE_HEIGHT = 96;
+const HANDLE_RADIUS = 5;
+const EDGE_HIT_STROKE = 14;
+const EDGE_STROKE = 2.4;
+const EDGE_SELECTED_STROKE = 3.2;
 
 type FixedNodeMeta = {
   subtitle: string | null;
@@ -602,6 +605,26 @@ function hasCongestedLayout(
   );
 }
 
+function hasUnlanedPrimaryRoute(nodes: CanvasNode[], edges: CanvasEdge[]): boolean {
+  const routeIds = primaryRouteNodeIds(nodes, edges);
+  if (routeIds.length < 2) {
+    return false;
+  }
+  const routeNodes = routeIds
+    .map((instanceId) => nodes.find((node) => node.instanceId === instanceId))
+    .filter((node): node is CanvasNode => Boolean(node));
+  if (routeNodes.length < 2) {
+    return false;
+  }
+  const centers = routeNodes.map((node) => node.y + TOOL_NODE_HEIGHT / 2);
+  const verticalSpread = Math.max(...centers) - Math.min(...centers);
+  const hasBacktracking = routeNodes.some((node, index) => {
+    const previous = routeNodes[index - 1];
+    return Boolean(previous && node.x < previous.x + TOOL_NODE_WIDTH * 0.72);
+  });
+  return verticalSpread > 46 || hasBacktracking;
+}
+
 function fixedNodes(
   sourceSystem: string,
   sourceTechnology: string | null,
@@ -715,6 +738,28 @@ function nodeCenter(node: FlowNode): { x: number; y: number } {
   return { x: node.x + nodeWidth(node) / 2, y: node.y + nodeHeight(node) / 2 };
 }
 
+function edgeStrokeColor(
+  edge: CanvasEdge,
+  activeEdgeIds: Set<string>,
+  hasBlockingIssues: boolean,
+): string {
+  if (!activeEdgeIds.has(edge.edgeId)) {
+    return "var(--canvas-edge-muted)";
+  }
+  return hasBlockingIssues ? "var(--canvas-edge-warning)" : "var(--canvas-edge-valid)";
+}
+
+function edgeMarkerId(
+  edge: CanvasEdge,
+  activeEdgeIds: Set<string>,
+  hasBlockingIssues: boolean,
+): string {
+  if (!activeEdgeIds.has(edge.edgeId)) {
+    return "canvas-arrowhead-muted";
+  }
+  return hasBlockingIssues ? "canvas-arrowhead-warning" : "canvas-arrowhead-valid";
+}
+
 function flowBounds(nodes: FlowNode[]): CanvasBounds | null {
   if (nodes.length === 0) {
     return null;
@@ -802,12 +847,12 @@ function truncateLabel(value: string, maxChars: number): string {
 
 function labelFontSize(node: FlowNode): number {
   if (node.fixed) {
-    return node.label.length > 34 ? 14.5 : 16;
+    return node.label.length > 34 ? 13.5 : 15;
   }
   if (node.label.length > 34) {
-    return 14.25;
+    return 13.5;
   }
-  return node.label.length > 22 ? 15 : 16.5;
+  return node.label.length > 22 ? 14.25 : 15.25;
 }
 
 function wrappedTextLines(value: string, maxChars: number, maxLines = 2): string[] {
@@ -850,7 +895,7 @@ function wrappedTextLines(value: string, maxChars: number, maxLines = 2): string
 }
 
 function renderedLabelLines(node: FlowNode): string[] {
-  return wrappedTextLines(node.label, node.fixed ? 17 : 18, 2);
+  return wrappedTextLines(node.label, node.fixed ? 18 : 17, 2);
 }
 
 function renderedSubtitle(node: FlowNode): string {
@@ -862,7 +907,7 @@ function renderedPayload(node: FlowNode): string {
   if (node.fixed) {
     return "";
   }
-  return truncateLabel(node.payloadNote || "No payload note", 42);
+  return truncateLabel(node.payloadNote || "No payload note", 36);
 }
 
 function dominantHandle(source: FlowNode, target: FlowNode, outgoing: boolean): HandlePosition {
@@ -889,7 +934,7 @@ function edgePath(source: FlowNode, target: FlowNode): { path: string; midpoint:
   const end = handleCoordinates(target, targetHandle);
   const horizontal = Math.abs(end.x - start.x);
   const vertical = Math.abs(end.y - start.y);
-  const offset = Math.max(40, Math.min(120, Math.max(horizontal, vertical) / 2));
+  const offset = Math.max(44, Math.min(96, Math.max(horizontal, vertical) * 0.46));
   const c1 =
     sourceHandle === "right"
       ? { x: start.x + offset, y: start.y }
@@ -998,6 +1043,7 @@ export function IntegrationCanvas({
   const [draggingNode, setDraggingNode] = useState<{ id: string; dx: number; dy: number } | null>(null);
   const [panning, setPanning] = useState<{ x: number; y: number; viewportX: number; viewportY: number } | null>(null);
   const autoLayoutSignatureRef = useRef<string | null>(null);
+  const autoLayoutAppliedRef = useRef(false);
   const [connecting, setConnecting] = useState<{
     sourceInstanceId: string;
     startHandle: HandlePosition;
@@ -1059,6 +1105,7 @@ export function IntegrationCanvas({
     setEndpointPositions(parsed.endpointPositions ?? {});
     viewportUserAdjustedRef.current = false;
     autoFitSignatureRef.current = null;
+    autoLayoutAppliedRef.current = false;
     lastSerializedRef.current = serializeCanvasState(
       parsed.nodes,
       parsed.edges,
@@ -1111,6 +1158,7 @@ export function IntegrationCanvas({
       }),
     [combinations, edges, nodes, overlayToolKeys, selectedPattern],
   );
+  const activeEdgeIds = useMemo(() => new Set(semantics.activeEdgeIds), [semantics.activeEdgeIds]);
   const interoperabilityReport = useMemo(
     () =>
       evaluateCanvasInteroperability({
@@ -1141,11 +1189,16 @@ export function IntegrationCanvas({
 
   useEffect(() => {
     const layoutSignature = `${renderCanvasWidth}:${nodes.map((node) => `${node.instanceId}:${Math.round(node.x)}:${Math.round(node.y)}`).join("|")}:${edges.map((edge) => `${edge.sourceInstanceId}>${edge.targetInstanceId}`).join("|")}`;
+    const needsInitialLaneLayout =
+      !autoLayoutAppliedRef.current &&
+      (hasCongestedLayout(nodes, edges, renderCanvasWidth, endpointPositions) ||
+        hasUnlanedPrimaryRoute(nodes, edges));
     if (
       autoLayoutSignatureRef.current !== layoutSignature &&
-      hasCongestedLayout(nodes, edges, renderCanvasWidth, endpointPositions)
+      needsInitialLaneLayout
     ) {
       autoLayoutSignatureRef.current = layoutSignature;
+      autoLayoutAppliedRef.current = true;
       const arrangedNodes = arrangeCanvasNodes(nodes, edges, renderCanvasWidth);
       setNodes(arrangedNodes);
       setEndpointPositions(defaultEndpointPositions(renderCanvasWidth, arrangedNodes));
@@ -1614,7 +1667,7 @@ export function IntegrationCanvas({
         draggable
         onDragStart={(event) => event.dataTransfer.setData("text/tool-key", option.value)}
         onClick={() => addNode(option.value)}
-        className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-[var(--color-text-primary)] transition hover:border-[var(--color-accent)] hover:bg-[var(--color-surface)] ${
+        className={`inline-flex h-10 min-w-[168px] items-center justify-start gap-2 whitespace-nowrap rounded-full px-3 text-sm font-medium text-[var(--color-text-primary)] transition hover:border-[var(--color-accent)] hover:bg-[var(--color-surface)] ${
           isOverlay
             ? "border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)]"
             : "border border-[var(--color-border)] bg-[var(--color-surface-2)]"
@@ -1622,7 +1675,7 @@ export function IntegrationCanvas({
         title={option.description ?? "Drag onto the canvas or click to add a node"}
       >
         <span
-          className="inline-flex h-6 w-6 items-center justify-center rounded-full"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
           style={{ backgroundColor: definition.accent, color: "white" }}
         >
           {definition.icon}
@@ -1754,14 +1807,29 @@ export function IntegrationCanvas({
                     opacity="0.55"
                   />
                 </pattern>
-                <marker id="canvas-arrowhead" markerWidth="16" markerHeight="16" refX="15" refY="8" orient="auto">
-                  <path
-                    d="M0,0 L0,16 L16,8 z"
-                    fill="var(--color-accent)"
-                    stroke="var(--color-surface)"
-                    strokeWidth="1"
-                  />
-                </marker>
+                {[
+                  ["canvas-arrowhead-valid", "var(--canvas-edge-valid)"],
+                  ["canvas-arrowhead-warning", "var(--canvas-edge-warning)"],
+                  ["canvas-arrowhead-muted", "var(--canvas-edge-muted)"],
+                ].map(([markerId, markerColor]) => (
+                  <marker
+                    key={markerId}
+                    id={markerId}
+                    markerWidth="11"
+                    markerHeight="11"
+                    refX="10"
+                    refY="5.5"
+                    orient="auto"
+                    markerUnits="userSpaceOnUse"
+                  >
+                    <path
+                      d="M1,1 L10,5.5 L1,10 z"
+                      fill={markerColor}
+                      stroke="var(--color-surface)"
+                      strokeWidth="0.75"
+                    />
+                  </marker>
+                ))}
               </defs>
 
               <rect
@@ -1785,27 +1853,58 @@ export function IntegrationCanvas({
                   const geometry = edgePath(source, target);
                   const screenMidpoint = worldToScreen(geometry.midpoint, viewport);
                   const selected = isEdgeSelected(selectedElement, edge.edgeId);
+                  const edgeColor = edgeStrokeColor(
+                    edge,
+                    activeEdgeIds,
+                    interoperabilityReport.blockers.length > 0,
+                  );
                   return (
                     <g key={edge.edgeId}>
                       <path
                         d={geometry.path}
                         fill="none"
-                        stroke="var(--color-accent)"
-                        strokeOpacity={selected ? 0.34 : 0.26}
-                        strokeWidth={selected ? 10 : 8.5}
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d={geometry.path}
-                        fill="none"
-                        stroke="var(--color-accent)"
-                        strokeWidth={selected ? 5.4 : 4.6}
-                        markerEnd="url(#canvas-arrowhead)"
+                        stroke="transparent"
+                        strokeWidth={EDGE_HIT_STROKE}
                         strokeLinecap="round"
                         onClick={(event) => {
                           event.stopPropagation();
                           setSelectedElement({ kind: "edge", id: edge.edgeId });
                         }}
+                      />
+                      <path
+                        d={geometry.path}
+                        fill="none"
+                        stroke={edgeColor}
+                        strokeOpacity={activeEdgeIds.has(edge.edgeId) ? 0.16 : 0}
+                        strokeWidth={7}
+                        strokeLinecap="round"
+                        pointerEvents="none"
+                      />
+                      {selected ? (
+                        <path
+                          d={geometry.path}
+                          fill="none"
+                          stroke={edgeColor}
+                          strokeOpacity={0.14}
+                          strokeWidth={9}
+                          strokeLinecap="round"
+                          pointerEvents="none"
+                        />
+                      ) : null}
+                      <path
+                        d={geometry.path}
+                        fill="none"
+                        stroke={edgeColor}
+                        strokeOpacity={activeEdgeIds.has(edge.edgeId) ? 0.95 : 0.56}
+                        strokeWidth={selected ? EDGE_SELECTED_STROKE : EDGE_STROKE}
+                        markerEnd={`url(#${edgeMarkerId(
+                          edge,
+                          activeEdgeIds,
+                          interoperabilityReport.blockers.length > 0,
+                        )})`}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        pointerEvents="none"
                       />
                       {editingEdgeId === edge.edgeId ? (
                         <foreignObject x={geometry.midpoint.x - 76} y={geometry.midpoint.y - 14} width={152} height={34}>
@@ -1868,7 +1967,7 @@ export function IntegrationCanvas({
                     d={`M ${handleCoordinates(connectingSource, connecting.startHandle).x} ${handleCoordinates(connectingSource, connecting.startHandle).y} L ${connecting.currentPoint.x} ${connecting.currentPoint.y}`}
                     fill="none"
                     stroke="var(--color-accent)"
-                    strokeWidth={3.2}
+                    strokeWidth={2.4}
                     strokeDasharray="8 6"
                   />
                 ) : null}
@@ -1895,9 +1994,10 @@ export function IntegrationCanvas({
                       ? `${renderedSubtitle(node)} · Overlay`
                       : renderedSubtitle(node);
                   const labelLines = renderedLabelLines(node);
-                  const subtitleY = labelLines.length > 1 ? 66 : 60;
-                  const payloadY = labelLines.length > 1 ? 86 : 82;
-                  const profileY = labelLines.length > 1 ? 100 : 96;
+                  const labelX = node.fixed ? 60 : 58;
+                  const subtitleY = labelLines.length > 1 ? 58 : 56;
+                  const payloadY = labelLines.length > 1 ? 78 : 75;
+                  const profileY = 91;
 
                   return (
                     <g
@@ -1938,15 +2038,15 @@ export function IntegrationCanvas({
                       <rect
                         width={width}
                         height={height}
-                        rx={24}
+                        rx={16}
                         fill={definition.surface}
                         stroke={selected ? "var(--color-accent)" : definition.accent}
-                        strokeWidth={selected ? 3.5 : 2}
-                        strokeDasharray={isOverlayNode ? "10 6" : undefined}
+                        strokeWidth={selected ? 2.6 : 1.6}
+                        strokeDasharray={isOverlayNode ? "8 6" : undefined}
                       />
-                      <foreignObject x={18} y={16} width={38} height={38}>
+                      <foreignObject x={14} y={14} width={32} height={32}>
                         <div
-                          className="flex h-[38px] w-[38px] items-center justify-center rounded-full shadow-sm"
+                          className="flex h-8 w-8 items-center justify-center rounded-full shadow-sm"
                           style={{ backgroundColor: definition.accent, color: "white" }}
                         >
                           {definition.icon}
@@ -1954,7 +2054,7 @@ export function IntegrationCanvas({
                       </foreignObject>
 
                       {editingNodeId === node.instanceId ? (
-                        <foreignObject x={66} y={16} width={width - 82} height={34}>
+                        <foreignObject x={labelX} y={14} width={width - labelX - 12} height={34}>
                           <input
                             autoFocus
                             value={draftValue}
@@ -1991,12 +2091,12 @@ export function IntegrationCanvas({
                         </foreignObject>
                       ) : (
                         <text
-                          x={66}
-                          y={labelLines.length > 1 ? 30 : 38}
+                          x={labelX}
+                          y={labelLines.length > 1 ? 29 : 37}
                           fontSize={labelFontSize(node)}
                           fontWeight="700"
                           fill="var(--canvas-node-label)"
-                          letterSpacing="-0.01em"
+                          letterSpacing="0"
                           onDoubleClick={(event) => {
                             event.stopPropagation();
                             if (!node.fixed) {
@@ -2005,7 +2105,7 @@ export function IntegrationCanvas({
                           }}
                         >
                           {labelLines.map((line, index) => (
-                            <tspan key={`${node.instanceId}-label-${index}`} x={66} dy={index === 0 ? 0 : 17}>
+                            <tspan key={`${node.instanceId}-label-${index}`} x={labelX} dy={index === 0 ? 0 : 16}>
                               {line}
                             </tspan>
                           ))}
@@ -2013,9 +2113,9 @@ export function IntegrationCanvas({
                       )}
 
                       <text
-                        x={66}
+                        x={labelX}
                         y={subtitleY}
-                        fontSize={node.fixed ? 12 : 12.5}
+                        fontSize={node.fixed ? 11.5 : 12}
                         fontWeight="600"
                         fill="var(--canvas-node-sub)"
                       >
@@ -2023,7 +2123,7 @@ export function IntegrationCanvas({
                       </text>
 
                       {!node.fixed && editingPayloadId === node.instanceId ? (
-                        <foreignObject x={18} y={payloadY - 17} width={width - 36} height={30}>
+                        <foreignObject x={14} y={payloadY - 17} width={width - 28} height={30}>
                           <input
                             autoFocus
                             value={draftValue}
@@ -2060,9 +2160,9 @@ export function IntegrationCanvas({
                         </foreignObject>
                       ) : !node.fixed ? (
                         <text
-                          x={18}
+                          x={14}
                           y={payloadY}
-                          fontSize={12}
+                          fontSize={11.5}
                           fontWeight={node.payloadNote ? 600 : 500}
                           fill={node.payloadNote ? "var(--canvas-node-sub)" : "var(--color-text-secondary)"}
                           onDoubleClick={(event) => {
@@ -2075,10 +2175,10 @@ export function IntegrationCanvas({
                       ) : null}
 
                       {!node.fixed && serviceProfile ? (
-                        <foreignObject x={18} y={profileY} width={width - 36} height={38}>
-                          <div className="h-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]/78 px-3 py-2 text-xs text-[var(--color-text-secondary)] shadow-sm">
+                        <foreignObject x={14} y={profileY} width={width - 28} height={28}>
+                          <div className="flex h-full items-center justify-between gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]/80 px-2.5 text-[10.5px] text-[var(--color-text-secondary)] shadow-sm">
                             <div
-                              className="font-semibold"
+                              className="shrink-0 font-semibold"
                               style={{
                                 color:
                                   (serviceProfile.sla_uptime_pct ?? 0) < 99.9
@@ -2091,13 +2191,13 @@ export function IntegrationCanvas({
                                 ? `${serviceProfile.sla_uptime_pct.toFixed(1).replace(/\.0$/, "")}%`
                                 : "n/a"}
                             </div>
-                            <div className="mt-0.5 truncate">{topConstraintLabel(serviceProfile)}</div>
+                            <div className="truncate">{topConstraintLabel(serviceProfile)}</div>
                           </div>
                         </foreignObject>
                       ) : null}
 
                       {!node.fixed && (hovered || selected) ? (
-                        <foreignObject x={18} y={height + 10} width={width - 36} height={32}>
+                        <foreignObject x={14} y={height + 8} width={width - 28} height={32}>
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -2152,7 +2252,7 @@ export function IntegrationCanvas({
                               cy={point.y - node.y}
                               r={HANDLE_RADIUS}
                               fill="var(--color-accent)"
-                              stroke="white"
+                              stroke="var(--color-surface)"
                               strokeWidth={2}
                               onMouseDown={(event) => {
                                 event.stopPropagation();
