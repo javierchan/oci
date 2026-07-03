@@ -469,14 +469,15 @@ def _suggested_patch_for_finding(
             )
 
     if finding.id == "design-canvas-gap" and not _has_text(row.core_tools) and not _is_canvas_state(row.additional_tools_overlays):
-        candidate = _trigger_tool_candidate(row)
-        if candidate is not None:
-            core_tools, overlay = candidate
+        tool_candidate = _trigger_tool_candidate(row)
+        if tool_candidate is not None:
+            core_tools, overlay = tool_candidate
+            overlay_text = overlay
             patch["core_tools"] = core_tools
             field_diffs.append(_field_diff("core_tools", row.core_tools, core_tools))
-            if overlay and not _has_text(row.additional_tools_overlays):
-                patch["additional_tools_overlays"] = overlay
-                field_diffs.append(_field_diff("additional_tools_overlays", row.additional_tools_overlays, overlay))
+            if overlay_text is not None and not _has_text(row.additional_tools_overlays):
+                patch["additional_tools_overlays"] = overlay_text
+                field_diffs.append(_field_diff("additional_tools_overlays", row.additional_tools_overlays, overlay_text))
             label = "Apply route tool recommendation"
             description = (
                 "Registers conservative core route tools for a row that currently has no governed design tools."

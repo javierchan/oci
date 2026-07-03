@@ -452,13 +452,14 @@ async def _load_service_library(
     dict[str, ServiceProductVersion],
     dict[str, ServiceCapabilityProfile],
 ]:
-    profiles = (
+    profile_rows = (
         await db.scalars(
             select(ServiceCapabilityProfile)
             .where(ServiceCapabilityProfile.is_active.is_(True))
             .order_by(ServiceCapabilityProfile.category, ServiceCapabilityProfile.service_id)
         )
     ).all()
+    profiles: list[ServiceCapabilityProfile] = list(profile_rows)
     profile_ids = [profile.id for profile in profiles]
     if not profile_ids:
         return [], {}, {}, {}, {}, {}
@@ -927,7 +928,7 @@ async def mark_verification_job_failed(
     """Persist a failed terminal state for a verification job."""
 
     job = await _load_verification_job_model(job_id, db)
-    old_value = {"status": job.status, "error_details": job.error_details}
+    old_value: dict[str, object] = {"status": job.status, "error_details": job.error_details}
     job.status = "failed"
     job.completed_at = _now_utc()
     job.error_details = error_details
@@ -996,8 +997,8 @@ async def run_verification_job(job_id: str, db: AsyncSession) -> ServiceVerifica
         source for source in sources if _source_should_be_checked(source, request, now)
     ][: request.max_sources]
 
-    finding_summaries: list[dict[str, object]] = []
-    recommendations: list[dict[str, object]] = []
+    finding_summaries: list[object] = []
+    recommendations: list[object] = []
 
     for source in queued_sources:
         if not _is_allowed_evidence_url(source.url):
@@ -1213,7 +1214,7 @@ async def _apply_accepted_finding_update(
             },
         )
 
-    old_limit = {
+    old_limit: dict[str, object] = {
         "value": limit.value,
         "unit": limit.unit,
         "source_url": limit.source_url,
@@ -1242,18 +1243,19 @@ async def _apply_accepted_finding_update(
         if source is not None:
             source.status = "verified"
 
-    applied_update = {
+    new_limit: dict[str, object] = {
+        "value": limit.value,
+        "unit": limit.unit,
+        "source_url": limit.source_url,
+        "source_retrieved_at": limit.source_retrieved_at.isoformat() if limit.source_retrieved_at else None,
+        "confidence": limit.confidence,
+    }
+    applied_update: dict[str, object] = {
         "entity_type": "service_limit",
         "entity_id": limit.id,
         "limit_key": limit.limit_key,
         "old_value": old_limit,
-        "new_value": {
-            "value": limit.value,
-            "unit": limit.unit,
-            "source_url": limit.source_url,
-            "source_retrieved_at": limit.source_retrieved_at.isoformat() if limit.source_retrieved_at else None,
-            "confidence": limit.confidence,
-        },
+        "new_value": new_limit,
     }
     await audit_service.emit(
         event_type="service_limit_updated_from_verification",
@@ -1261,7 +1263,7 @@ async def _apply_accepted_finding_update(
         entity_id=limit.id,
         actor_id=actor_id,
         old_value=old_limit,
-        new_value=cast(dict[str, object], applied_update["new_value"]),
+        new_value=new_limit,
         project_id=None,
         db=db,
         correlation_id=finding.job_id,
@@ -1284,12 +1286,12 @@ async def review_verification_finding(
             status_code=404,
             detail={"detail": "Service verification finding not found", "error_code": "SERVICE_VERIFICATION_FINDING_NOT_FOUND"},
         )
-    old_value = {
+    old_value: dict[str, object] = {
         "review_status": finding.review_status,
         "reviewed_by": finding.reviewed_by,
         "reviewed_at": finding.reviewed_at.isoformat() if finding.reviewed_at else None,
     }
-    applied_update = None
+    applied_update: dict[str, object] | None = None
     if request.review_status == "accepted":
         applied_update = await _apply_accepted_finding_update(finding, actor_id, db)
     finding.review_status = request.review_status
