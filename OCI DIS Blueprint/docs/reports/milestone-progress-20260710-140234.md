@@ -41,7 +41,7 @@
 ### What Was Validated
 
 - `npm audit`: 0 vulnerabilities.
-- Backend + calc engine: 112 tests passed, including all 42 calc-engine tests.
+- Backend + calc engine: 113 tests passed, including all 42 calc-engine tests.
 - Ruff and mypy passed.
 - Frontend: 19 tests, TypeScript, ESLint, and Next.js production build passed.
 - Alembic migrated PostgreSQL to `20260710_0014`; seed remained idempotent.

@@ -9,7 +9,7 @@
 
 | Area | Status | Evidence |
 |---|---|---|
-| Backend API and calc engine | complete | 112 tests passed, including all 42 calc-engine tests |
+| Backend API and calc engine | complete | 113 tests passed, including all 42 calc-engine tests |
 | Frontend | complete | TypeScript, ESLint, 19 tests, and production build passed |
 | Browser workflows | complete | 3 Playwright E2E tests passed |
 | Dependency security | complete | npm audit 0; Trivy 0 HIGH/CRITICAL for API and web images |

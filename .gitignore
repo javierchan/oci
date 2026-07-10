@@ -17,6 +17,7 @@ pip-wheel-metadata/
 venv/
 .env
 .env.*
+!OCI DIS Blueprint/.env.example
 .mypy_cache/
 .pytype/
 .pytest_cache/

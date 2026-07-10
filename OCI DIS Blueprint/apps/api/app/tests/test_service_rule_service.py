@@ -8,9 +8,21 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.calc_engine import Assumptions
+from app.core.config import Settings
 from app.models import ServiceCapabilityProfile, ServiceEvidenceSource, ServiceLimit
 from app.services.canvas_interoperability import build_design_constraint_messages
 from app.services.service_rule_service import apply_service_rules, load_service_rule_bundle
+
+
+def test_service_limits_are_not_environment_settings() -> None:
+    """Keep normalized service limits out of the process configuration contract."""
+
+    deprecated_fields = {
+        "OIC_BILLING_THRESHOLD_KB",
+        "OIC_PACK_SIZE_MSGS_PER_HOUR",
+        "PAYLOAD_MONTH_DAYS",
+    }
+    assert deprecated_fields.isdisjoint(Settings.model_fields)
 
 
 @pytest.mark.asyncio

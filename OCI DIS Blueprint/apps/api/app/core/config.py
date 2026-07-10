@@ -52,11 +52,6 @@ class Settings(BaseSettings):
     SERVICE_VERIFICATION_SCHEDULE_SECONDS: int = 86400
     SERVICE_VERIFICATION_STALE_SCAN_MAX_SOURCES: int = 20
 
-    # Calc Engine
-    OIC_BILLING_THRESHOLD_KB: float = 50.0
-    OIC_PACK_SIZE_MSGS_PER_HOUR: int = 5000
-    PAYLOAD_MONTH_DAYS: int = 30
-
     # Import rules (parity-mode defaults — PRD-017)
     IMPORT_TBQ_COLUMN: str = "TBQ"
     IMPORT_TBQ_REQUIRED_VALUE: str = "Y"
