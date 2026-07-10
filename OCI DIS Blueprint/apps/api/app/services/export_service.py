@@ -422,6 +422,13 @@ async def create_xlsx_export(
         for metric, value in metrics.items():
             consolidated_sheet.append([domain, metric, _excel_cell_value(value)])
 
+    provenance_sheet = workbook.create_sheet("Rule Provenance")
+    provenance_sheet.append(["key", "value"])
+    raw_service_rules = (snapshot.snapshot_metadata or {}).get("service_rules", {})
+    service_rules = cast(dict[str, object], raw_service_rules) if isinstance(raw_service_rules, dict) else {}
+    for key, value in sorted(service_rules.items()):
+        provenance_sheet.append([key, _excel_cell_value(value)])
+
     support_sheet = workbook.create_sheet("Pattern Support")
     support_sheet.append(["Pattern ID", "Support", "Parity Ready", "Summary"])
     selected_pattern_ids = sorted(
@@ -526,6 +533,8 @@ async def create_pdf_export(
         f"Functions GB-s: {dashboard_snapshot.kpi_strip.functions_execution_units_gb_s:g}",
         f"QA OK %: {dashboard_snapshot.maturity.qa_ok_pct:.2f}",
         f"Pattern assigned %: {dashboard_snapshot.maturity.pattern_assigned_pct:.2f}",
+        f"Service rules version: {dashboard_snapshot.charts.service_rules.version}",
+        f"Service rules freshness: {dashboard_snapshot.charts.service_rules.freshness_status}",
     ]
     if support_boundary["reference_only_pattern_ids"]:
         lines.append(
@@ -629,6 +638,8 @@ async def create_brief_export(project_id: str, db: AsyncSession) -> ExportJobRes
         f"- Snapshot ID: `{snapshot_id}`",
         f"- Catalog integrations: {catalog_page.total}",
         f"- Planned baseline: {_brief_text(active_baseline.label if active_baseline else None, 'No approved baseline')}",
+        f"- Service rules: `{dashboard_snapshot.charts.service_rules.version}`",
+        f"- Service-rule freshness: {dashboard_snapshot.charts.service_rules.freshness_status}",
         "",
         "## Executive Summary",
         "",

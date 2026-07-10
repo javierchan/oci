@@ -354,8 +354,10 @@ The Playwright smoke suite validates:
 
 - the `/admin/synthetic` landing page renders governed presets
 - the browser can submit a bounded `ephemeral-smoke` job from the UI
-- the recent-jobs table renders the created job
-- the matching `/admin/synthetic/{job_id}` detail page loads successfully
+- the job reaches terminal `cleaned_up` with validation and cleanup evidence
+- a retained job reaches `completed`, exposes dashboard/catalog/canvas/map data,
+  and is explicitly cleaned up
+- catalog preview tabs, Service Products, and Assumptions render successfully
 
 Operational note for local agent environments:
 

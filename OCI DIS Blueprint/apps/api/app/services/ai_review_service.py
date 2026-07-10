@@ -53,7 +53,7 @@ from app.schemas.ai_review import (
     AiReviewTopologyInsight,
 )
 from app.schemas.catalog import CatalogIntegrationPatch
-from app.services import audit_service, catalog_service
+from app.services import audit_service, catalog_service, service_rule_service
 from app.services.llm_review_client import LlmReviewResult, provider_status_payload, synthesize_review_summary
 from app.services.pattern_support import get_pattern_support
 from app.services.serializers import sanitize_for_json
@@ -1527,6 +1527,7 @@ async def build_review_result(
         project_id=project_id,
         rows=rows,
     )
+    service_rules = await service_rule_service.load_service_rule_bundle(db)
 
     total = len(rows)
     qa_counts = Counter((row.qa_status or "PENDING").upper() for row in rows)
@@ -1616,6 +1617,19 @@ async def build_review_result(
         entity_type="project",
         entity_id=project_id,
         href=_catalog_href(project_id),
+    )
+    _evidence(
+        evidence,
+        label="Service Product rules",
+        detail=(
+            f"{service_rules.version}; freshness={service_rules.freshness_status}; "
+            f"stale evidence={service_rules.stale_evidence_count}; "
+            f"open findings={service_rules.open_findings_count}."
+        ),
+        source="service_product_library",
+        entity_type="service_rule_bundle",
+        entity_id=service_rules.version,
+        href="/admin/services",
     )
 
     findings: list[AiReviewFinding] = []
@@ -2029,6 +2043,11 @@ async def build_review_result(
             value="No baseline" if drift.status == "no_baseline" else str(drift.item_count),
             detail=drift.summary,
         ),
+        AiReviewMetric(
+            label="Service rules",
+            value=service_rules.freshness_status.replace("_", " ").title(),
+            detail=f"Runtime decisions use {service_rules.version} from {service_rules.source}.",
+        ),
     ]
     decision_brief = _decision_brief(score=score, label=label, findings=findings, drift=drift)
     topology_insights = _topology_insights(project_id=project_id, rows=rows, warning_map=warning_map)
@@ -2049,6 +2068,11 @@ async def build_review_result(
         f"planned_baseline={drift.baseline.id if drift.baseline else 'none'}",
         f"planned_drift_status={drift.status}",
         f"planned_drift_items={drift.item_count}",
+        f"service_rules_version={service_rules.version}",
+        f"service_rules_source={service_rules.source}",
+        f"service_rules_freshness={service_rules.freshness_status}",
+        f"service_rules_stale_evidence={service_rules.stale_evidence_count}",
+        f"service_rules_open_findings={service_rules.open_findings_count}",
         f"formal_evidence_ids={','.join(item.id for item in evidence)}",
     ]
     deterministic_summary = _summary(score, label, findings)

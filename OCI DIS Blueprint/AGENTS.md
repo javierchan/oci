@@ -25,7 +25,7 @@ Full requirements are in `TLP - PRD` tab of `Catalogo_Integracion.xlsx` (PRD-001
 | Job queue | Celery + Redis | import and recalc jobs |
 | Object storage | MinIO (dev) / OCI Object Storage (prod) | files + exports |
 | Calc engine | Pure Python (no DB, no HTTP) | `packages/calc-engine/` |
-| Shared types | TypeScript (web ↔ API contract) | `packages/shared-schema/` |
+| Web API types | TypeScript contract projections | `apps/web/lib/types.ts` |
 
 **All services run in Docker Desktop on macOS.** No host-level dependencies.
 Spin up everything with `docker compose up --build`.
@@ -61,13 +61,9 @@ packages/
       qa.py             Row-level QA logic
       importer.py       XLSX/CSV parser + inclusion rules
     src/tests/          Pytest parity tests — MUST pass before milestone done
-  shared-schema/        TypeScript types shared between web and expected API shape
-  ui/                   Reusable React components
   test-fixtures/        Seed data, benchmark files, parity snapshots
 
 infra/
-  docker/               Dockerfiles for production
-  ci/                   GitHub Actions workflows
   migrations/           SQL init scripts
 
 docs/
@@ -339,12 +335,24 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       routes, generated reports exist on disk, focused backend validation and
       smoke tests pass, and all required quality gates are green
 
+### M25 — Production Quality Gates + Service Rule Ownership
+- [x] Remove vulnerable npm resolutions and enforce `npm audit` in CI
+- [x] Run API and all calc-engine tests, frontend tests/build, browser E2E,
+      PostgreSQL migrations, and production image scanning in the effective workflow
+- [x] Make normalized Service Product limits and interoperability rules the
+      authoritative runtime source for canvas, recalculation, dashboard, AI Review, and exports
+- [x] Restrict AssumptionSet and its UI to client workload inputs; migrate legacy service keys out
+- [x] Validate terminal synthetic-job states and cleanup through Playwright
+- [x] Remove duplicate CI definitions and nonexistent npm workspaces
+- [x] **Exit criteria**: dependency audit is clean; backend, calc-engine, frontend,
+      migration, browser, and image gates execute from one canonical CI contract
+
 ---
 
 ## Coding rules
 
 ### General
-- **TypeScript strict mode** everywhere in `apps/web/` and `packages/shared-schema/`
+- **TypeScript strict mode** everywhere in `apps/web/`
 - **Python type hints** on every function signature in `apps/api/` and `packages/calc-engine/`
 - No `any` in TypeScript. No untyped function args in Python.
 - Every new file must have a module docstring explaining its purpose.
@@ -394,7 +402,7 @@ cp .env.example .env
 docker compose up --build
 
 # Run API tests
-docker compose run --rm api pytest packages/calc-engine/src/tests -v
+docker compose run --rm --no-deps api python -m pytest app/tests /calc-engine/src/tests -q
 
 # Apply migrations
 docker compose run --rm api alembic upgrade head
@@ -432,6 +440,9 @@ Route groups (PRD-043):
 /api/v1/justifications
 /api/v1/audit
 /api/v1/exports
+/api/v1/service-products
+/api/v1/admin/synthetic
+/api/v1/ai-reviews
 ```
 
 ---
@@ -445,6 +456,9 @@ A milestone is **not done** until:
 4. No linting errors (`ruff check app/`)
 5. A written summary of changes (diff) is produced
 6. Benchmark comparison to workbook outputs is documented
+7. Frontend unit tests and production build pass
+8. Playwright critical-flow E2E reaches terminal job states and cleans up fixtures
+9. `npm audit --audit-level=high` and production image scans pass
 
 ---
 

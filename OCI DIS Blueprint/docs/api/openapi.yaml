@@ -960,6 +960,7 @@
           "error_details": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -985,6 +986,7 @@
             "type": "string"
           },
           "input_payload": {
+            "additionalProperties": true,
             "title": "Input Payload",
             "type": "object"
           },
@@ -1168,9 +1170,6 @@
           "provider": {
             "const": "codex",
             "default": "codex",
-            "enum": [
-              "codex"
-            ],
             "title": "Provider",
             "type": "string"
           },
@@ -1250,6 +1249,7 @@
           "applied_patch": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -1614,6 +1614,7 @@
             "type": "string"
           },
           "patch": {
+            "additionalProperties": true,
             "title": "Patch",
             "type": "object"
           },
@@ -1757,6 +1758,7 @@
         "description": "Admin payload to create a new versioned assumption set.",
         "properties": {
           "assumptions": {
+            "additionalProperties": true,
             "title": "Assumptions",
             "type": "object"
           },
@@ -1813,6 +1815,7 @@
         "description": "Serialized assumption set.",
         "properties": {
           "assumptions": {
+            "additionalProperties": true,
             "title": "Assumptions",
             "type": "object"
           },
@@ -1874,6 +1877,7 @@
           "assumptions": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -1994,6 +1998,7 @@
           "metadata": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -2005,6 +2010,7 @@
           "new_value": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -2016,6 +2022,7 @@
           "old_value": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -2051,7 +2058,7 @@
       "Body_upload_and_import_api_v1_imports__project_id__post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -2370,6 +2377,7 @@
           "raw_column_values": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -3137,6 +3145,9 @@
             },
             "title": "Payload Distribution",
             "type": "array"
+          },
+          "service_rules": {
+            "$ref": "#/components/schemas/DashboardServiceRuleStatus"
           }
         },
         "required": [
@@ -3265,6 +3276,50 @@
           "count"
         ],
         "title": "DashboardRisk",
+        "type": "object"
+      },
+      "DashboardServiceRuleStatus": {
+        "additionalProperties": false,
+        "description": "Provenance and freshness of rules used for the technical snapshot.",
+        "properties": {
+          "freshness_status": {
+            "default": "unavailable",
+            "title": "Freshness Status",
+            "type": "string"
+          },
+          "last_verified_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Verified At"
+          },
+          "open_findings_count": {
+            "default": 0,
+            "title": "Open Findings Count",
+            "type": "integer"
+          },
+          "source": {
+            "default": "unavailable",
+            "title": "Source",
+            "type": "string"
+          },
+          "stale_evidence_count": {
+            "default": 0,
+            "title": "Stale Evidence Count",
+            "type": "integer"
+          },
+          "version": {
+            "default": "unavailable",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "title": "DashboardServiceRuleStatus",
         "type": "object"
       },
       "DashboardSnapshotListResponse": {
@@ -4067,6 +4122,7 @@
           "error_details": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -4499,12 +4555,14 @@
           },
           "normalization_events": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "title": "Normalization Events",
             "type": "array"
           },
           "raw_data": {
+            "additionalProperties": true,
             "title": "Raw Data",
             "type": "object"
           },
@@ -5653,6 +5711,7 @@
           "project_metadata": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -5708,6 +5767,7 @@
             "title": "Notes"
           },
           "template_config": {
+            "additionalProperties": true,
             "title": "Template Config",
             "type": "object"
           },
@@ -5777,6 +5837,7 @@
             "title": "Notes"
           },
           "template_config": {
+            "additionalProperties": true,
             "title": "Template Config",
             "type": "object"
           },
@@ -5842,6 +5903,7 @@
           "template_config": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -6123,6 +6185,7 @@
             "type": "number"
           },
           "constraints": {
+            "additionalProperties": true,
             "title": "Constraints",
             "type": "object"
           },
@@ -6720,6 +6783,7 @@
             "type": "array"
           },
           "capabilities": {
+            "additionalProperties": true,
             "title": "Capabilities",
             "type": "object"
           },
@@ -6782,6 +6846,7 @@
             "type": "string"
           },
           "metadata": {
+            "additionalProperties": true,
             "title": "Metadata",
             "type": "object"
           },
@@ -7185,6 +7250,7 @@
           "error_details": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -7210,6 +7276,7 @@
           "request_payload": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -7368,6 +7435,7 @@
             "type": "array"
           },
           "raw_data": {
+            "additionalProperties": true,
             "title": "Raw Data",
             "type": "object"
           },
@@ -7677,6 +7745,7 @@
           "error_details": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -7710,6 +7779,7 @@
             "type": "integer"
           },
           "input_payload": {
+            "additionalProperties": true,
             "title": "Input Payload",
             "type": "object"
           },
@@ -7718,6 +7788,7 @@
             "type": "integer"
           },
           "normalized_payload": {
+            "additionalProperties": true,
             "title": "Normalized Payload",
             "type": "object"
           },
@@ -7754,6 +7825,7 @@
           "result_summary": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -7790,6 +7862,7 @@
           "validation_results": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -7918,6 +7991,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -7983,6 +8063,7 @@
           "metadata": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -7997,6 +8078,7 @@
           },
           "row_results": {
             "additionalProperties": {
+              "additionalProperties": true,
               "type": "object"
             },
             "title": "Row Results",
@@ -8037,6 +8119,7 @@
           },
           "rows": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "title": "Rows",
@@ -8074,6 +8157,7 @@
           "metadata": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -12137,6 +12221,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response List Patterns Api V1 Patterns  Get",
                   "type": "object"
                 }
@@ -12282,6 +12367,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Get Pattern Api V1 Patterns  Pattern Id  Get",
                   "type": "object"
                 }

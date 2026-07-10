@@ -31,25 +31,11 @@ type ParameterItem = {
   unit?: string;
 };
 
-const SERVICE_METADATA_LABELS: Record<string, string> = {
-  data_integrator_usage_model: "Data Integrator usage model",
-  data_integration_compute_isolated: "DI isolated compute per workspace",
-  functions_cold_start_typical: "Functions cold start typical",
-  functions_ram_default_per_ad: "Functions RAM default per AD",
+const BUSINESS_METADATA_LABELS: Record<string, string> = {
   salesforce_batch_limit_millions: "Salesforce batch limit (millions)",
   file_server_concurrent_connections: "File Server concurrent connections",
   default_record_size_bytes: "Default record size (bytes)",
   hours_per_month: "Hours per month",
-};
-
-const SOURCE_REFERENCE_LABELS: Record<string, string> = {
-  oic_limits: "OIC limits",
-  oic_billing: "OIC billing",
-  streaming_limits: "Streaming limits",
-  functions_limits: "Functions limits",
-  queue_limits: "Queue limits",
-  data_integration_limits: "Data Integration limits",
-  data_integrator_proxy_usage: "Data Integrator proxy usage",
 };
 
 function readMetadataRecord(
@@ -230,45 +216,21 @@ export default function AdminAssumptionDetailPage({
     return <div className="rounded-[2rem] border border-rose-200 bg-rose-50 p-8 text-sm text-rose-700 shadow-sm">{error || "Assumption version not found."}</div>;
   }
 
-  const sourceReferences = readMetadataRecord(assumption.raw_assumptions, "source_references");
-  const serviceMetadata = readMetadataRecord(assumption.raw_assumptions, "service_metadata");
-  const oicParameters: ParameterItem[] = [
-    { label: "Billing threshold", value: assumption.oic_billing_threshold_kb, unit: "KB" },
-    { label: "Pack size Non-BYOL", value: assumption.oic_pack_size_msgs_per_hour, unit: "msgs/hour" },
-    { label: "Pack size BYOL", value: assumption.oic_byol_pack_size_msgs_per_hour, unit: "msgs/hour" },
-    { label: "REST max payload", value: assumption.oic_rest_max_payload_kb, unit: "KB" },
-    { label: "FTP max payload", value: assumption.oic_ftp_max_payload_kb, unit: "KB" },
-    { label: "Kafka max payload", value: assumption.oic_kafka_max_payload_kb, unit: "KB" },
-    { label: "Timeout", value: assumption.oic_timeout_s, unit: "seconds" },
+  const businessMetadata = readMetadataRecord(assumption.raw_assumptions, "business_metadata");
+  const businessParameters: ParameterItem[] = [
     { label: "Month days", value: assumption.month_days },
-  ];
-  const queueStreamingParameters: ParameterItem[] = [
-    { label: "Queue billing unit", value: assumption.queue_billing_unit_kb, unit: "KB" },
-    { label: "Queue max message", value: assumption.queue_max_message_kb, unit: "KB" },
-    { label: "Queue retention", value: assumption.queue_retention_days, unit: "days" },
     {
       label: "Queue throughput soft limit",
       value: assumption.queue_throughput_soft_limit_msgs_per_second,
       unit: "msg/s",
     },
-    { label: "Streaming write throughput", value: assumption.streaming_partition_throughput_mb_s, unit: "MB/s" },
-    { label: "Streaming read throughput", value: assumption.streaming_read_throughput_mb_s, unit: "MB/s" },
-    { label: "Streaming max message size", value: assumption.streaming_max_message_size_mb, unit: "MB" },
-    { label: "Streaming retention", value: assumption.streaming_retention_days, unit: "days" },
     { label: "Streaming default partitions", value: assumption.streaming_default_partitions },
   ];
-  const functionsDataParameters: ParameterItem[] = [
+  const workloadParameters: ParameterItem[] = [
     { label: "Functions default duration", value: assumption.functions_default_duration_ms, unit: "ms" },
     { label: "Functions default memory", value: assumption.functions_default_memory_mb, unit: "MB" },
     { label: "Functions default concurrency", value: assumption.functions_default_concurrency },
-    { label: "Functions max timeout", value: assumption.functions_max_timeout_s, unit: "seconds" },
     { label: "Functions batch size", value: assumption.functions_batch_size_records, unit: "records" },
-    { label: "DI workspaces per region", value: assumption.data_integration_workspaces_per_region },
-    {
-      label: "DI deleted workspace retention",
-      value: assumption.data_integration_deleted_workspace_retention_days,
-      unit: "days",
-    },
   ];
 
   return (
@@ -347,13 +309,13 @@ export default function AdminAssumptionDetailPage({
         </article>
         <article className="app-card p-5">
           <div className="flex items-center justify-between gap-3">
-            <p className="app-label">OIC Threshold</p>
+            <p className="app-label">Business Calendar</p>
             <span className="rounded-lg bg-[var(--color-surface-2)] p-2 text-[var(--color-accent)]">
               <Gauge className="h-4 w-4" />
             </span>
           </div>
           <p className="mt-3 font-mono text-2xl font-semibold text-[var(--color-text-primary)]">
-            {formatParameterValue(assumption.oic_billing_threshold_kb, "KB")}
+            {formatParameterValue(assumption.month_days, "days")}
           </p>
         </article>
         <article className="app-card p-5">
@@ -367,24 +329,27 @@ export default function AdminAssumptionDetailPage({
         </article>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-3">
-        <ParameterPanel title="OIC Parameters" summary="Billing + limits" items={oicParameters} />
-        <ParameterPanel title="Queue + Streaming" summary="Messaging constraints" items={queueStreamingParameters} />
-        <ParameterPanel title="Functions + Data Integration" summary="Compute + workspace limits" items={functionsDataParameters} />
+      <section className="flex flex-wrap items-center justify-between gap-4 border-y border-[var(--color-border)] py-5">
+        <div>
+          <p className="app-label">Rule Ownership</p>
+          <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+            Oracle service limits and interoperability rules are authoritative in Service Product Library, not this version.
+          </p>
+        </div>
+        <Link href="/admin/services" className="app-button-secondary">Open Service Products</Link>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
+      <section className="grid gap-4 xl:grid-cols-2">
+        <ParameterPanel title="Business Inputs" summary="Calendar + client workload" items={businessParameters} />
+        <ParameterPanel title="Workload Defaults" summary="Functions sizing inputs" items={workloadParameters} />
+      </section>
+
+      <section>
         <MetadataPanel
-          title="Workbook Source References"
-          empty="No governed source references captured."
-          entries={sourceReferences}
-          labels={SOURCE_REFERENCE_LABELS}
-        />
-        <MetadataPanel
-          title="Service Metadata"
-          empty="No workbook metadata captured."
-          entries={serviceMetadata}
-          labels={SERVICE_METADATA_LABELS}
+          title="Business Metadata"
+          empty="No additional client assumptions captured."
+          entries={businessMetadata}
+          labels={BUSINESS_METADATA_LABELS}
         />
       </section>
 

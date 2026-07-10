@@ -41,7 +41,7 @@ from app.schemas.catalog import (
     OICEstimateRequest,
     OICEstimateResponse,
 )
-from app.services import audit_service, import_service, recalc_service
+from app.services import audit_service, import_service, recalc_service, service_rule_service
 from app.services.canvas_interoperability import (
     CanvasDesignValidationError,
     is_canvas_json_state,
@@ -49,6 +49,7 @@ from app.services.canvas_interoperability import (
 )
 from app.services.justification_service import serialize_justification_record
 from app.services.pattern_support import support_reason_code
+from app.services.service_rule_service import ServiceRuleBundle
 from app.services.serializers import parse_float, parse_int, parse_text, sanitize_for_json, split_csv
 
 PATCHABLE_FIELDS = {
@@ -310,7 +311,7 @@ async def _validate_pattern(pattern_id: Optional[str], db: AsyncSession) -> None
 
 async def _load_canvas_validation_context(
     db: AsyncSession,
-) -> tuple[set[str], set[str], Assumptions]:
+) -> tuple[set[str], set[str], Assumptions, ServiceRuleBundle]:
     options = (
         await db.scalars(
             select(DictionaryOption).where(
@@ -329,7 +330,8 @@ async def _load_canvas_validation_context(
         option.value for option in options if option.category == "OVERLAYS" and option.value
     }
     assumptions = await _load_default_assumptions(db)
-    return allowed_core_tools, allowed_overlay_tools, assumptions
+    service_rules = await service_rule_service.load_service_rule_bundle(db)
+    return allowed_core_tools, allowed_overlay_tools, assumptions, service_rules
 
 
 def _raise_canvas_validation_error(exc: CanvasDesignValidationError) -> None:
@@ -343,6 +345,7 @@ def _normalize_design_values(
     allowed_core_tools: set[str],
     allowed_overlay_tools: set[str],
     assumptions: Assumptions,
+    service_rules: ServiceRuleBundle,
     payload_kb: float | None,
     trigger_type: str | None,
     is_real_time: bool | None,
@@ -367,6 +370,7 @@ def _normalize_design_values(
             integration_type=integration_type,
             enforce_canvas_route=enforce_canvas_route,
             enforce_blockers=enforce_blockers,
+            service_rules=service_rules,
         )
     except CanvasDesignValidationError as exc:
         _raise_canvas_validation_error(exc)
@@ -567,13 +571,16 @@ async def manual_create_integration(
     core_tools_value = _normalize_core_tools(data.core_tools)
     await _validate_pattern(data.selected_pattern, db)
     if core_tools_value:
-        allowed_core_tools, allowed_overlay_tools, assumptions = await _load_canvas_validation_context(db)
+        allowed_core_tools, allowed_overlay_tools, assumptions, service_rules = (
+            await _load_canvas_validation_context(db)
+        )
         normalized_design = _normalize_design_values(
             core_tools=core_tools_value,
             additional_tools_overlays=None,
             allowed_core_tools=allowed_core_tools,
             allowed_overlay_tools=allowed_overlay_tools,
             assumptions=assumptions,
+            service_rules=service_rules,
             payload_kb=data.payload_per_execution_kb,
             trigger_type=data.type,
             is_real_time=None,
@@ -857,7 +864,9 @@ async def update_integration(
                 },
             )
 
-        allowed_core_tools, allowed_overlay_tools, assumptions = await _load_canvas_validation_context(db)
+        allowed_core_tools, allowed_overlay_tools, assumptions, service_rules = (
+            await _load_canvas_validation_context(db)
+        )
         incoming_canvas = (
             cast(str | None, patch_data.get("additional_tools_overlays"))
             if "additional_tools_overlays" in patch_data
@@ -869,6 +878,7 @@ async def update_integration(
             allowed_core_tools=allowed_core_tools,
             allowed_overlay_tools=allowed_overlay_tools,
             assumptions=assumptions,
+            service_rules=service_rules,
             payload_kb=row.payload_per_execution_kb,
             trigger_type=row.trigger_type,
             is_real_time=row.is_real_time,
@@ -926,6 +936,7 @@ async def bulk_patch(
     allowed_core_tools: set[str] | None = None
     allowed_overlay_tools: set[str] | None = None
     assumptions: Assumptions | None = None
+    service_rules: ServiceRuleBundle | None = None
 
     recalc_required = False
     for integration_id in integration_ids:
@@ -945,8 +956,15 @@ async def bulk_patch(
                             "error_code": "CANVAS_PATCH_INCOMPLETE",
                         },
                     )
-                if allowed_core_tools is None or allowed_overlay_tools is None or assumptions is None:
-                    allowed_core_tools, allowed_overlay_tools, assumptions = await _load_canvas_validation_context(db)
+                if (
+                    allowed_core_tools is None
+                    or allowed_overlay_tools is None
+                    or assumptions is None
+                    or service_rules is None
+                ):
+                    allowed_core_tools, allowed_overlay_tools, assumptions, service_rules = (
+                        await _load_canvas_validation_context(db)
+                    )
                 incoming_canvas = (
                     cast(str | None, row_patch_data.get("additional_tools_overlays"))
                     if "additional_tools_overlays" in row_patch_data
@@ -958,6 +976,7 @@ async def bulk_patch(
                     allowed_core_tools=allowed_core_tools,
                     allowed_overlay_tools=allowed_overlay_tools,
                     assumptions=assumptions,
+                    service_rules=service_rules,
                     payload_kb=row.payload_per_execution_kb,
                     trigger_type=row.trigger_type,
                     is_real_time=row.is_real_time,

@@ -1,3 +1,10 @@
+# Historical Milestone Log
+
+> This is an append-only record of validations performed at their stated dates.
+> Counts such as `6/6 containers` describe the stack at that historical point
+> and are not the current operational contract. See `status-report.md` for the
+> current validated state.
+
 ## M11 — Navigation + Color System + Light/Dark Theme
 
 **Completed:** 2026-04-14

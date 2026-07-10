@@ -32,6 +32,13 @@ AiReviewArea = Literal[
 ]
 AiReviewDriftStatus = Literal["no_baseline", "no_drift", "minor_drift", "material_drift", "blocking_drift"]
 AiReviewProviderMode = Literal["deterministic_only", "llm_available", "misconfigured"]
+AiReviewPersona = Literal["architect", "security", "operations", "executive"]
+
+
+def default_reviewer_personas() -> list[AiReviewPersona]:
+    """Return the complete default review board with literal types preserved."""
+
+    return ["architect", "security", "operations", "executive"]
 
 
 class AiReviewGraphContext(BaseModel):
@@ -54,9 +61,7 @@ class AiReviewCreateRequest(BaseModel):
     integration_id: Optional[str] = None
     include_llm: bool = True
     graph_context: Optional[AiReviewGraphContext] = None
-    reviewer_personas: list[Literal["architect", "security", "operations", "executive"]] = Field(
-        default_factory=lambda: ["architect", "security", "operations", "executive"],
-    )
+    reviewer_personas: list[AiReviewPersona] = Field(default_factory=default_reviewer_personas)
 
 
 class AiReviewBaselineCreateRequest(BaseModel):

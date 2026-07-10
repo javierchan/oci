@@ -325,6 +325,17 @@ export default async function ProjectDashboardPage({
 
       {latestDashboard ? (
         <section className="space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[var(--color-border)] py-3 text-sm">
+            <div>
+              <span className="font-medium text-[var(--color-text-primary)]">Service rules</span>
+              <span className="ml-2 text-[var(--color-text-secondary)]">
+                {latestDashboard.charts.service_rules.version} · {latestDashboard.charts.service_rules.freshness_status.replaceAll("_", " ")}
+              </span>
+            </div>
+            <Link href="/admin/services" className="app-link">
+              Review evidence
+            </Link>
+          </div>
           {latestDashboard.charts.forecast_confidence.level !== "high" ? (
             <article
               className={[

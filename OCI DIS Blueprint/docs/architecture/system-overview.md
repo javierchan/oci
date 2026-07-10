@@ -20,7 +20,7 @@
 │              └─────────┘ └──────┘ └─────────────────┘                 │
 │                                                                         │
 │  packages/calc-engine/ ──────► called by API service + Celery worker   │
-│  packages/shared-schema/ ────► TypeScript types shared web ↔ API shape │
+│  apps/web/lib/types.ts ──────► typed projections of Pydantic API shape │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -63,12 +63,13 @@ POST /api/v1/recalculate/{project_id}
        ▼
 Celery: recalc_worker.recalculate_project()
        │
-       ├─► load CatalogIntegrations + current AssumptionSet
+       ├─► load CatalogIntegrations + client AssumptionSet
+       ├─► assemble immutable ServiceRuleBundle from normalized product tables
        ├─► call consolidate_project() [calc-engine/volumetry.py]
        │     ├─ per-row: OIC msgs, DI GB, Functions units, Streaming GB
        │     └─ consolidated: peak packs, total invocations, workspace active
        │
-       ├─► persist VolumetrySnapshot (immutable, with assumption_set_version)
+       ├─► persist VolumetrySnapshot (assumption version + service-rule provenance)
        ├─► emit AuditEvent(recalculation)
        └─► trigger DashboardSnapshot generation
 ```
@@ -102,14 +103,18 @@ POST /api/v1/service-products/verification-jobs
 | MinIO in dev, OCI Object Storage in prod | S3-compatible — endpoint swap only |
 | Celery for long-running jobs | Avoids API timeout on imports, recalculation, AI review, synthetic generation, and service verification |
 | Service Product Library uses canonical `/service-products` APIs | Retires raw service-profile endpoints from the public production contract |
+| Normalized service limits are authoritative | Re-seeding never overwrites reviewed limits; Assumptions contain client inputs only |
+| One repository-root CI workflow | Prevents drift between non-executed copies and the effective GitHub contract |
 
-## Service Limits (from workbook TPL - Supuestos)
+## Runtime Rule Ownership
 
-| Service | Limit | Applied in |
-|---------|-------|-----------|
-| OIC Gen3 REST payload | 50 MB max | importer validation |
-| OIC Gen3 FTP payload | 50 MB max | importer validation |
-| OIC Kafka payload | 10 MB max | importer validation |
-| OIC timeout | 300s | pattern recommendation logic |
-| OIC billing threshold | 50 KB/message | volumetry.py |
-| OIC pack size | 5,000 msgs/hour | volumetry.py |
+| Data | Authoritative owner | Consumers |
+|------|---------------------|-----------|
+| Oracle limits | `service_limits` | calc input assembly, canvas, exports |
+| Service relationships | `service_interoperability_rules` | canvas and AI Review |
+| Evidence freshness | evidence sources + verification jobs/findings | dashboard and AI Review |
+| Client workload unknowns | `assumption_sets` | deterministic calc defaults |
+
+The calc engine remains pure: the API service assembles the immutable runtime
+object before invoking formulas. Historical snapshots without rule provenance
+remain readable and are labeled as not recorded.

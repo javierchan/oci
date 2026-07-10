@@ -20,6 +20,7 @@ from app.schemas.dashboard import (
     DashboardKPIStrip,
     DashboardMaturity,
     DashboardRisk,
+    DashboardServiceRuleStatus,
     DashboardSnapshotListResponse,
     DashboardSnapshotResponse,
     DashboardSnapshotSummary,
@@ -151,12 +152,19 @@ def _normalize_dashboard_charts(raw_charts: dict[str, object]) -> DashboardChart
         if isinstance(forecast_confidence, dict)
         else _forecast_confidence(coverage.payload)
     )
+    raw_service_rules = raw_charts.get("service_rules")
+    service_rules = (
+        DashboardServiceRuleStatus(**cast(dict[str, Any], raw_service_rules))
+        if isinstance(raw_service_rules, dict)
+        else DashboardServiceRuleStatus()
+    )
     return DashboardCharts(
         coverage=coverage,
         completeness=completeness,
         pattern_mix=[PatternMixEntry(**cast(dict[str, Any], entry)) for entry in pattern_mix],
         payload_distribution=[PayloadDistributionBucket(**cast(dict[str, Any], entry)) for entry in payload_distribution],
         forecast_confidence=normalized_confidence,
+        service_rules=service_rules,
     )
 
 
@@ -225,7 +233,11 @@ def _build_kpi_strip(volumetry_snapshot: VolumetrySnapshot) -> dict[str, object]
     ).model_dump()
 
 
-def _build_charts(rows: list[CatalogIntegration], pattern_names: dict[str, str]) -> dict[str, object]:
+def _build_charts(
+    rows: list[CatalogIntegration],
+    pattern_names: dict[str, str],
+    service_rule_metadata: dict[str, object] | None = None,
+) -> dict[str, object]:
     total = len(rows)
     formal_id_complete = sum(1 for row in rows if _has_text(row.interface_id))
     pattern_complete = sum(1 for row in rows if _has_text(row.selected_pattern))
@@ -286,6 +298,9 @@ def _build_charts(rows: list[CatalogIntegration], pattern_names: dict[str, str])
         pattern_mix=pattern_mix,
         payload_distribution=payload_distribution,
         forecast_confidence=_forecast_confidence(coverage.payload),
+        service_rules=DashboardServiceRuleStatus(
+            **cast(dict[str, Any], service_rule_metadata or {})
+        ),
     )
     return charts.model_dump()
 
@@ -357,13 +372,15 @@ async def create_dashboard_snapshot(
 
     rows = await _load_catalog_rows(project_id, db)
     pattern_names = await _pattern_name_map(db)
+    snapshot_metadata = volumetry_snapshot.snapshot_metadata or {}
+    service_rule_metadata = _dict_value(snapshot_metadata.get("service_rules", {}))
 
     snapshot = DashboardSnapshot(
         project_id=project_id,
         volumetry_snapshot_id=volumetry_snapshot.id,
         mode="technical",
         kpi_strip=_build_kpi_strip(volumetry_snapshot),
-        charts=_build_charts(rows, pattern_names),
+        charts=_build_charts(rows, pattern_names, service_rule_metadata),
         risks=_build_risks(rows),
         maturity=_build_maturity(rows),
     )

@@ -72,7 +72,7 @@ def test_reference_seed_is_idempotent_and_workbook_complete() -> None:
     Base.metadata.drop_all(engine)
 
 
-def test_assumption_seed_is_idempotent_and_workbook_complete() -> None:
+def test_assumption_seed_is_idempotent_and_contains_only_client_inputs() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
 
@@ -88,12 +88,10 @@ def test_assumption_seed_is_idempotent_and_workbook_complete() -> None:
             select(AssumptionSet).where(AssumptionSet.version == ASSUMPTION_SET["version"])
         )
         assert assumption_set is not None
-        assert assumption_set.assumptions["oic_billing_threshold_kb"] == 50
-        assert assumption_set.assumptions["oic_byol_pack_size_msgs_per_hour"] == 20000
-        assert assumption_set.assumptions["queue_billing_unit_kb"] == 64
-        assert assumption_set.assumptions["functions_max_timeout_s"] == 300
         assert assumption_set.assumptions["month_days"] == 31
-        assert assumption_set.assumptions["source_references"]
-        assert assumption_set.assumptions["service_metadata"]
+        assert assumption_set.assumptions["functions_default_duration_ms"] == 2000
+        assert assumption_set.assumptions["business_metadata"]
+        assert "oic_billing_threshold_kb" not in assumption_set.assumptions
+        assert "queue_max_message_kb" not in assumption_set.assumptions
 
     Base.metadata.drop_all(engine)

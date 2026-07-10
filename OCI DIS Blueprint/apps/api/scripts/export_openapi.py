@@ -8,8 +8,19 @@ import sys
 from pathlib import Path
 
 API_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = Path(__file__).resolve().parents[3]
-OUTPUT_PATH = REPO_ROOT / "docs" / "api" / "openapi.yaml"
+
+
+def _resolve_output_path() -> Path:
+    """Resolve the contract artifact in a checkout or the API container."""
+
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "docs" / "api" / "openapi.yaml"
+        if candidate.exists():
+            return candidate
+    return Path("/docs/api/openapi.yaml")
+
+
+OUTPUT_PATH = _resolve_output_path()
 
 
 def build_openapi_text() -> str:

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Literal, Sequence
 
 from app.core.calc_engine import Assumptions
+from app.services.service_rule_service import EMPTY_SERVICE_RULE_BUNDLE, ServiceRuleBundle
 from app.services.serializers import split_csv
 
 SOURCE_NODE_ID = "source-system"
@@ -33,6 +34,18 @@ TOOL_TO_SERVICE_ID: dict[str, str] = {
 CONNECTOR_HUB_ALLOWED_SOURCES = frozenset({"QUEUE", "STREAMING"})
 CONNECTOR_HUB_ALLOWED_TARGETS = frozenset({"FUNCTIONS", "STREAMING", "OBJECT_STORAGE"})
 API_GATEWAY_ALLOWED_BACKENDS = frozenset({"FUNCTIONS", "OIC3", "ORDS"})
+
+SERVICE_VALUE_ALIASES: dict[str, str] = {
+    "QUEUE": "QUEUE",
+    "OCI QUEUE": "QUEUE",
+    "STREAMING": "STREAMING",
+    "OCI STREAMING": "STREAMING",
+    "FUNCTIONS": "FUNCTIONS",
+    "OCI FUNCTIONS": "FUNCTIONS",
+    "ORACLE FUNCTIONS": "FUNCTIONS",
+    "OBJECT STORAGE": "OBJECT_STORAGE",
+    "OCI OBJECT STORAGE": "OBJECT_STORAGE",
+}
 
 
 @dataclass(frozen=True)
@@ -539,6 +552,7 @@ def _payload_blockers(
     payload_kb: float | None,
     tool_keys: set[str],
     assumptions: Assumptions,
+    service_rules: ServiceRuleBundle,
 ) -> list[CanvasInteroperabilityFinding]:
     if payload_kb is None:
         return []
@@ -548,7 +562,8 @@ def _payload_blockers(
         (
             "oic-payload-limit",
             {"OIC Gen3"},
-            assumptions.oic_rest_max_payload_kb,
+            service_rules.numeric_limit("OIC3", "max_message_size_kb")
+            or assumptions.oic_rest_max_payload_kb,
             "OIC payload exceeds the documented message limit",
             "Route the payload through object storage or reduce the synchronous message size before using OIC Gen3 on the active path.",
             ("OIC3",),
@@ -556,7 +571,8 @@ def _payload_blockers(
         (
             "functions-payload-limit",
             {"OCI Functions", "Oracle Functions"},
-            assumptions.functions_max_invoke_body_kb,
+            service_rules.numeric_limit("FUNCTIONS", "max_invoke_body_kb")
+            or assumptions.functions_max_invoke_body_kb,
             "Functions payload exceeds the documented invoke limit",
             "Oracle Functions cannot accept this payload body size on the active path. Use OIC or externalize the payload before invocation.",
             ("FUNCTIONS",),
@@ -564,7 +580,8 @@ def _payload_blockers(
         (
             "gateway-payload-limit",
             {"OCI API Gateway"},
-            assumptions.api_gw_max_body_kb,
+            service_rules.numeric_limit("API_GATEWAY", "max_request_body_kb")
+            or assumptions.api_gw_max_body_kb,
             "API Gateway payload exceeds the documented request-body limit",
             "The gateway edge cannot carry this request size. Reduce the body or move the payload off-band before API Gateway.",
             ("API_GATEWAY",),
@@ -572,7 +589,8 @@ def _payload_blockers(
         (
             "queue-payload-limit",
             {"OCI Queue"},
-            assumptions.queue_max_message_kb,
+            service_rules.numeric_limit("QUEUE", "max_message_size_kb")
+            or assumptions.queue_max_message_kb,
             "Queue payload exceeds the documented message limit",
             "OCI Queue should carry a lightweight reference, not the full payload. Externalize the document and enqueue a token or pointer.",
             ("QUEUE",),
@@ -580,7 +598,8 @@ def _payload_blockers(
         (
             "streaming-payload-limit",
             {"OCI Streaming"},
-            assumptions.streaming_max_message_kb,
+            service_rules.numeric_limit("STREAMING", "max_message_size_kb")
+            or assumptions.streaming_max_message_kb,
             "Streaming payload exceeds the documented message limit",
             "OCI Streaming enforces a 1 MB message ceiling. Store the large document elsewhere and publish only the event reference.",
             ("STREAMING",),
@@ -605,9 +624,28 @@ def _connector_hub_blockers(
     routes: Sequence[CanvasInteroperabilityRoute],
     edges: Sequence[CanvasEdge],
     overlay_tool_keys: set[str],
+    service_rules: ServiceRuleBundle,
 ) -> list[CanvasInteroperabilityFinding]:
     blockers: list[CanvasInteroperabilityFinding] = []
     active_node_ids = {node_id for route in routes for node_id in route.node_ids}
+    governed_sources = {
+        SERVICE_VALUE_ALIASES[value]
+        for value in service_rules.string_values("CONNECTOR_HUB", "sources")
+        if value in SERVICE_VALUE_ALIASES
+    }
+    governed_targets = {
+        SERVICE_VALUE_ALIASES[value]
+        for limit_key in (
+            "targets_from_queue",
+            "targets_from_streaming",
+            "targets_from_monitoring",
+            "targets_from_logging",
+        )
+        for value in service_rules.string_values("CONNECTOR_HUB", limit_key)
+        if value in SERVICE_VALUE_ALIASES
+    }
+    allowed_sources = governed_sources or CONNECTOR_HUB_ALLOWED_SOURCES
+    allowed_targets = governed_targets or CONNECTOR_HUB_ALLOWED_TARGETS
 
     for route_index, route in enumerate(routes):
         for index, service_id in enumerate(route.service_ids):
@@ -620,7 +658,7 @@ def _connector_hub_blockers(
             previous_service_id = _resolve_canvas_service_id(previous_tool_key) if previous_tool_key else None
             next_service_id = _resolve_canvas_service_id(next_tool_key) if next_tool_key else None
 
-            if previous_service_id is None or previous_service_id not in CONNECTOR_HUB_ALLOWED_SOURCES:
+            if previous_service_id is None or previous_service_id not in allowed_sources:
                 _push_unique_finding(
                     blockers,
                     CanvasInteroperabilityFinding(
@@ -635,7 +673,7 @@ def _connector_hub_blockers(
                     ),
                 )
 
-            if next_service_id is None or next_service_id not in CONNECTOR_HUB_ALLOWED_TARGETS:
+            if next_service_id is None or next_service_id not in allowed_targets:
                 _push_unique_finding(
                     blockers,
                     CanvasInteroperabilityFinding(
@@ -700,9 +738,11 @@ def _connector_hub_blockers(
 def _gateway_findings(
     routes: Sequence[CanvasInteroperabilityRoute],
     trigger_type: str | None,
+    service_rules: ServiceRuleBundle,
 ) -> list[CanvasInteroperabilityFinding]:
     findings: list[CanvasInteroperabilityFinding] = []
     is_soap_trigger = _includes_any(trigger_type, ["SOAP"])
+    allowed_backends = service_rules.targets_for("API_GATEWAY") or API_GATEWAY_ALLOWED_BACKENDS
 
     for route_index, route in enumerate(routes):
         for index, service_id in enumerate(route.service_ids):
@@ -725,7 +765,7 @@ def _gateway_findings(
                     ),
                 )
 
-            if next_service_id is not None and next_service_id not in API_GATEWAY_ALLOWED_BACKENDS:
+            if next_service_id is not None and next_service_id not in allowed_backends:
                 _push_unique_finding(
                     findings,
                     CanvasInteroperabilityFinding(
@@ -750,6 +790,7 @@ def _operational_findings(
     source_technology: str | None,
     destination_technology: str | None,
     integration_type: str | None,
+    service_rules: ServiceRuleBundle,
 ) -> list[CanvasInteroperabilityFinding]:
     warnings: list[CanvasInteroperabilityFinding] = []
     is_rest_like = (
@@ -796,13 +837,14 @@ def _operational_findings(
             )
 
         if "OIC3" in route_services and "STREAMING" in route_services and is_event_like:
+            relationship = service_rules.relationship("OIC3", "STREAMING")
             _push_unique_finding(
                 warnings,
                 CanvasInteroperabilityFinding(
                     id="oic-streaming-connectivity-warning",
                     severity="warning",
                     title="OIC + Streaming route still needs deployment-context validation",
-                    detail=(
+                    detail=relationship.risk_notes if relationship and relationship.risk_notes else (
                         "Oracle supports Streaming with OIC through the Streaming or Kafka adapter, but the exact inbound or outbound pattern depends on connectivity mode and deployment context. "
                         "Validate connectivity-agent or private-endpoint details during design review."
                     ),
@@ -869,17 +911,18 @@ def evaluate_canvas_interoperability(
     source_technology: str | None,
     destination_technology: str | None,
     integration_type: str | None,
+    service_rules: ServiceRuleBundle = EMPTY_SERVICE_RULE_BUNDLE,
 ) -> CanvasInteroperabilityReport:
     """Evaluate full route-aware interoperability checks from a canvas payload."""
 
     overlay_tool_set = set(overlay_tool_keys)
     routes = _build_routes(nodes, edges)
     active_tool_keys = {tool_key for route in routes for tool_key in route.tool_keys}
-    gateway_findings = _gateway_findings(routes, trigger_type)
+    gateway_findings = _gateway_findings(routes, trigger_type, service_rules)
     route_service_sets = [set(route.service_ids) for route in routes]
     blockers = [
-        *_payload_blockers(payload_kb, active_tool_keys, assumptions),
-        *_connector_hub_blockers(routes, edges, overlay_tool_set),
+        *_payload_blockers(payload_kb, active_tool_keys, assumptions, service_rules),
+        *_connector_hub_blockers(routes, edges, overlay_tool_set, service_rules),
         *(finding for finding in gateway_findings if finding.severity == "blocker"),
     ]
     warnings = [
@@ -891,6 +934,7 @@ def evaluate_canvas_interoperability(
             source_technology,
             destination_technology,
             integration_type,
+            service_rules,
         ),
     ]
     advisories = _advisories(
@@ -918,6 +962,7 @@ def _evaluate_toolset_interoperability(
     source_technology: str | None,
     destination_technology: str | None,
     integration_type: str | None,
+    service_rules: ServiceRuleBundle,
 ) -> CanvasInteroperabilityReport:
     all_tool_keys = set(core_tool_keys) | set(overlay_tool_keys)
     route_service_sets = [
@@ -927,7 +972,7 @@ def _evaluate_toolset_interoperability(
             if (service_id := _resolve_canvas_service_id(tool_key)) is not None
         }
     ]
-    blockers = _payload_blockers(payload_kb, all_tool_keys, assumptions)
+    blockers = _payload_blockers(payload_kb, all_tool_keys, assumptions, service_rules)
     if "OCI API Gateway" in all_tool_keys and _includes_any(trigger_type, ["SOAP"]):
         blockers.append(
             CanvasInteroperabilityFinding(
@@ -949,6 +994,7 @@ def _evaluate_toolset_interoperability(
         source_technology,
         destination_technology,
         integration_type,
+        service_rules,
     )
     advisories = _advisories(
         route_service_sets,
@@ -1015,6 +1061,7 @@ def normalize_canvas_design(
     integration_type: str | None,
     enforce_canvas_route: bool,
     enforce_blockers: bool,
+    service_rules: ServiceRuleBundle = EMPTY_SERVICE_RULE_BUNDLE,
 ) -> NormalizedCanvasDesign:
     """Validate and normalize persisted design fields for catalog writes."""
 
@@ -1083,6 +1130,7 @@ def normalize_canvas_design(
             source_technology=source_technology,
             destination_technology=destination_technology,
             integration_type=integration_type,
+            service_rules=service_rules,
         )
         if enforce_blockers and report.blockers:
             titles = "; ".join(finding.title for finding in report.blockers)
@@ -1115,6 +1163,7 @@ def normalize_canvas_design(
         source_technology=source_technology,
         destination_technology=destination_technology,
         integration_type=integration_type,
+        service_rules=service_rules,
     )
     if enforce_blockers and report.blockers:
         titles = "; ".join(finding.title for finding in report.blockers)
@@ -1143,6 +1192,7 @@ def build_design_constraint_messages(
     source_technology: str | None,
     destination_technology: str | None,
     integration_type: str | None,
+    service_rules: ServiceRuleBundle = EMPTY_SERVICE_RULE_BUNDLE,
 ) -> list[str]:
     """Convert current design findings into snapshot-friendly warning strings."""
 
@@ -1163,6 +1213,7 @@ def build_design_constraint_messages(
             source_technology=source_technology,
             destination_technology=destination_technology,
             integration_type=integration_type,
+            service_rules=service_rules,
         )
     else:
         report = _evaluate_toolset_interoperability(
@@ -1175,6 +1226,7 @@ def build_design_constraint_messages(
             source_technology=source_technology,
             destination_technology=destination_technology,
             integration_type=integration_type,
+            service_rules=service_rules,
         )
 
     messages: list[str] = []

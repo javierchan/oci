@@ -87,6 +87,19 @@ class DashboardForecastConfidence(BaseModel):
     payload_coverage_ratio: float = 0.0
 
 
+class DashboardServiceRuleStatus(BaseModel):
+    """Provenance and freshness of rules used for the technical snapshot."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    version: str = "unavailable"
+    source: str = "unavailable"
+    freshness_status: str = "unavailable"
+    stale_evidence_count: int = 0
+    open_findings_count: int = 0
+    last_verified_at: str | None = None
+
+
 class DashboardCharts(BaseModel):
     """Composite dashboard chart payload."""
 
@@ -97,6 +110,7 @@ class DashboardCharts(BaseModel):
     pattern_mix: list[PatternMixEntry] = Field(default_factory=list)
     payload_distribution: list[PayloadDistributionBucket] = Field(default_factory=list)
     forecast_confidence: DashboardForecastConfidence = Field(default_factory=DashboardForecastConfidence)
+    service_rules: DashboardServiceRuleStatus = Field(default_factory=DashboardServiceRuleStatus)
 
 
 class DashboardRisk(BaseModel):

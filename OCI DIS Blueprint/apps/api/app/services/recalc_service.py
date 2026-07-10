@@ -38,19 +38,23 @@ from app.schemas.volumetry import (
     VolumetrySnapshotRowResultsResponse,
     VolumetrySnapshotSummary,
 )
-from app.services import audit_service
+from app.services import audit_service, service_rule_service
 from app.services.canvas_interoperability import build_design_constraint_messages
+from app.services.service_rule_service import ServiceRuleBundle
 from app.workers.celery_app import celery_app
 
 
-def _to_assumptions(assumption_set: AssumptionSet) -> Assumptions:
+def _to_assumptions(
+    assumption_set: AssumptionSet,
+    service_rules: ServiceRuleBundle = service_rule_service.EMPTY_SERVICE_RULE_BUNDLE,
+) -> Assumptions:
     allowed_keys = {field.name for field in fields(Assumptions)}
     filtered = {
         key: value
         for key, value in assumption_set.assumptions.items()
         if key in allowed_keys
     }
-    return Assumptions(**filtered)
+    return service_rule_service.apply_service_rules(Assumptions(**filtered), service_rules)
 
 
 def _integration_input(row: CatalogIntegration) -> IntegrationInput:
@@ -123,6 +127,7 @@ def _integration_input_with_overrides(
 def _design_constraint_warnings(
     row: CatalogIntegration,
     assumptions: Assumptions,
+    service_rules: ServiceRuleBundle,
 ) -> list[str]:
     return build_design_constraint_messages(
         core_tools=row.core_tools,
@@ -134,6 +139,7 @@ def _design_constraint_warnings(
         source_technology=row.source_technology,
         destination_technology=row.destination_technology_1,
         integration_type=row.type,
+        service_rules=service_rules,
     )
 
 
@@ -209,7 +215,8 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
         )
     ).all()
 
-    assumptions = _to_assumptions(assumption_set)
+    service_rules = await service_rule_service.load_service_rule_bundle(db)
+    assumptions = _to_assumptions(assumption_set, service_rules)
     frequency_map = await _frequency_map(db)
     derived_inputs: dict[str, tuple[float | None, float | None]] = {}
     row_inputs: list[IntegrationInput] = []
@@ -278,7 +285,7 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
         if streaming_partitions:
             peak_streaming_partitions = max(peak_streaming_partitions, int(streaming_partitions))
 
-        design_constraint_warnings = _design_constraint_warnings(row, assumptions)
+        design_constraint_warnings = _design_constraint_warnings(row, assumptions, service_rules)
         row_results[row.id] = {
             "executions_per_day": executions_day,
             "payload_per_hour_kb": payload_hour,
@@ -301,7 +308,10 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
         triggered_by=actor_id,
         row_results=row_results,
         consolidated=consolidated,
-        snapshot_metadata={"integration_count": len(integrations)},
+        snapshot_metadata={
+            "integration_count": len(integrations),
+            "service_rules": service_rules.metadata(),
+        },
     )
     db.add(snapshot)
     await db.flush()
@@ -311,7 +321,11 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
         entity_id=project_id,
         actor_id=actor_id,
         old_value=None,
-        new_value={"snapshot_id": snapshot.id, "assumption_set_version": assumption_set.version},
+        new_value={
+            "snapshot_id": snapshot.id,
+            "assumption_set_version": assumption_set.version,
+            "service_rules": service_rules.metadata(),
+        },
         project_id=project_id,
         db=db,
     )

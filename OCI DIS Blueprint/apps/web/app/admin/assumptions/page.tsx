@@ -101,7 +101,7 @@ function AdminAssumptionsClient(): JSX.Element {
           <p className="app-kicker">Admin Governance</p>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">Assumptions</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-            Version the shared volumetry assumptions used across recalculations and exports.
+            Version client workload inputs that affect sizing when project evidence is not yet available.
           </p>
           <div className="mt-4">
             <Breadcrumb
@@ -123,6 +123,13 @@ function AdminAssumptionsClient(): JSX.Element {
         >
           {showCreate ? "Hide Form" : "New Version"}
         </button>
+      </section>
+
+      <section className="flex flex-wrap items-center justify-between gap-4 border-y border-[var(--color-border)] py-4">
+        <p className="max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+          Oracle limits and interoperability rules are governed by Service Product Library and are versioned independently.
+        </p>
+        <Link href="/admin/services" className="app-link">Open Service Product Library</Link>
       </section>
 
       {showCreate ? (
@@ -182,7 +189,7 @@ function AdminAssumptionsClient(): JSX.Element {
                   )}
                 </div>
                 <p className="mt-4 text-sm leading-6 text-[var(--color-text-secondary)]">
-                  Created {formatDate(assumption.created_at)}. Clone or inspect this immutable set before changing shared volumetry behavior.
+                  Created {formatDate(assumption.created_at)}. Clone or inspect this immutable set before changing client planning inputs.
                 </p>
                 <div className="mt-auto flex flex-wrap items-center gap-3 pt-5">
                   <Link

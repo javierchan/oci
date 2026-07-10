@@ -1,5 +1,9 @@
 # Service Product Library and Verification Agent Plan
 
+**Status (2026-07-10): Implemented.** Normalized Service Product tables are the
+runtime source for limits and interoperability. Assumptions now contain client
+workload inputs only, and migration `20260710_0014` removes duplicated service keys.
+
 ## Objective
 
 Move OCI service-product knowledge out of generic assumptions and into a governed, verifiable product library for data integration architecture. The library should describe each service, its role in integration patterns, interoperability, limits, operational constraints, evidence sources, and verification freshness.
@@ -18,7 +22,10 @@ The current Library groups patterns, dictionaries, assumptions, and synthetic la
 
 This proposal adds a first-class `Service Products` area to Admin Library and creates a verification agent that checks high-value external sources before the product team treats service metadata as current.
 
-Implementation note, Jun 7 2026: Phase 1 reuses `service_capability_profiles` as the canonical service-product base so existing Canvas and service-profile consumers remain backward-compatible. Normalized child tables now provide versions, limits, evidence, interoperability rules, verification jobs, and verification findings.
+Implementation note, Jul 10 2026: `service_capability_profiles` remains product
+identity/bootstrap metadata. Normalized child tables provide versions, limits,
+evidence, interoperability rules, jobs, and findings; runtime decisions never
+read profile JSON limits or service keys from Assumptions.
 
 ## Proposed Library Navigation
 
@@ -531,11 +538,11 @@ Add confidence indicators:
 
 ### Phase 1 — Read Model and Seed
 
-- Add new tables.
-- Seed initial service products from current dictionaries/assumptions/tool taxonomy.
-- Copy service limits out of `AssumptionSet` into `service_limits`.
-- Keep assumptions backward-compatible during transition.
-- Add read-only UI pages.
+- [x] Add normalized tables and Alembic migrations.
+- [x] Seed initial Oracle service products and governed evidence.
+- [x] Copy service limits into `service_limits`.
+- [x] Preserve historical read compatibility during transition.
+- [x] Add Service Product list/detail and matrix UI.
 
 Exit criteria:
 
@@ -564,10 +571,10 @@ Exit criteria:
 
 ### Phase 3 — Rule Consumption
 
-- Update canvas validation to read service interoperability.
-- Update AI Review evidence bundle to include service product metadata and verification freshness.
-- Update export brief and dashboard confidence signals.
-- Update calc-engine input assembly while preserving calc-engine purity.
+- [x] Update canvas validation to read normalized limits and interoperability.
+- [x] Add service-rule version and freshness to AI Review evidence.
+- [x] Add provenance to dashboard, JSON/XLSX/PDF/brief exports, and snapshots.
+- [x] Assemble calc-engine inputs in the service layer while preserving purity.
 
 Exit criteria:
 
@@ -577,10 +584,10 @@ Exit criteria:
 
 ### Phase 4 — Assumption Split
 
-- Refactor Assumptions UI into business/client assumptions only.
-- Add migration report showing moved keys.
-- Add compatibility shim for older snapshots.
-- Update documentation and export labels.
+- [x] Refactor Assumptions UI into business/client inputs only.
+- [x] Add migration `20260710_0014` to remove service-owned keys.
+- [x] Keep older snapshots readable with explicit missing provenance.
+- [x] Update documentation and export labels.
 
 Exit criteria:
 
@@ -589,12 +596,12 @@ Exit criteria:
 
 ### Phase 5 — Productization Hardening
 
-- Add role and approval policies.
-- Add domain allowlist configuration.
-- Add source refresh schedule.
-- Add stale metadata alerts.
-- Add CI contract checks for seeded service metadata.
-- Add admin runbook.
+- [x] Enforce admin role and human acceptance before rule mutation.
+- [x] Restrict verification sources to the Oracle allowlist.
+- [x] Add Celery Beat refresh scheduling controls.
+- [x] Add stale evidence and open-finding alerts.
+- [x] Add service seed, rule-ingestion, and API regression tests to canonical CI.
+- [x] Document operational validation and ownership boundaries.
 
 Exit criteria:
 

@@ -45,7 +45,7 @@ Adopt the following monorepo stack:
 ## Consequences
 
 - Calculation logic in `packages/calc-engine/` can be tested independently of the API
-- TypeScript types in `packages/shared-schema/` must be kept in sync with Pydantic schemas — enforce via CI
+- TypeScript API projections in `apps/web/lib/types.ts` must stay aligned with Pydantic schemas — enforce with type, frontend, and OpenAPI gates
 - Alembic manages all schema migrations — no ad-hoc SQL allowed
 - MinIO → OCI Object Storage swap is configuration-only (S3 endpoint + credentials)
 - Team needs Python and TypeScript proficiency; document patterns clearly in AGENTS.md
@@ -55,5 +55,5 @@ Adopt the following monorepo stack:
 - [x] Scaffold monorepo structure
 - [x] Create Dockerfiles for API and Web
 - [x] Create docker-compose.yml with all services
-- [ ] Generate OpenAPI spec and TypeScript client from it
-- [ ] Set up Alembic migration baseline
+- [x] Commit and verify the generated OpenAPI artifact
+- [x] Set up and continuously validate Alembic migrations

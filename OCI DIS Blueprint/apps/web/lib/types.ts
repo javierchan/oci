@@ -967,30 +967,13 @@ export interface QueueMetrics {
 
 export interface AssumptionSetCreate {
   version: string;
-  oic_billing_threshold_kb: number;
-  oic_pack_size_msgs_per_hour: number;
-  oic_byol_pack_size_msgs_per_hour: number;
   month_days: number;
-  oic_rest_max_payload_kb: number;
-  oic_ftp_max_payload_kb: number;
-  oic_kafka_max_payload_kb: number;
-  oic_timeout_s: number;
-  streaming_partition_throughput_mb_s: number;
-  streaming_read_throughput_mb_s: number;
-  streaming_max_message_size_mb: number;
-  streaming_retention_days: number;
   streaming_default_partitions: number;
   functions_default_duration_ms: number;
   functions_default_memory_mb: number;
   functions_default_concurrency: number;
-  functions_max_timeout_s: number;
   functions_batch_size_records: number;
-  queue_billing_unit_kb: number;
-  queue_max_message_kb: number;
-  queue_retention_days: number;
   queue_throughput_soft_limit_msgs_per_second: number;
-  data_integration_workspaces_per_region: number;
-  data_integration_deleted_workspace_retention_days: number;
   raw_assumptions?: Record<string, unknown>;
 }
 
@@ -1214,12 +1197,22 @@ export interface DashboardForecastConfidence {
   payload_coverage_ratio: number;
 }
 
+export interface DashboardServiceRuleStatus {
+  version: string;
+  source: string;
+  freshness_status: string;
+  stale_evidence_count: number;
+  open_findings_count: number;
+  last_verified_at: string | null;
+}
+
 export interface DashboardCharts {
   coverage: DashboardCoverage;
   completeness: DashboardCompleteness;
   pattern_mix: DashboardPatternMixEntry[];
   payload_distribution: DashboardPayloadDistributionBucket[];
   forecast_confidence: DashboardForecastConfidence;
+  service_rules: DashboardServiceRuleStatus;
 }
 
 export interface DashboardRisk {

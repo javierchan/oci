@@ -53,8 +53,8 @@ services:
   # ─────────────────────────────────────────
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
       target: development
     restart: unless-stopped
     env_file: .env
@@ -76,6 +76,7 @@ services:
     volumes:
       - ./apps/api:/app                          # hot reload in dev
       - ./packages/calc-engine:/calc-engine:ro   # shared engine
+      - ./docs:/docs                             # OpenAPI artifact validation
     depends_on:
       db:
         condition: service_healthy
@@ -92,8 +93,8 @@ services:
   # ─────────────────────────────────────────
   worker:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
       target: development
     restart: unless-stopped
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
@@ -125,8 +126,8 @@ services:
   beat:
     image: ocidisblueprint-api
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
       target: development
     restart: unless-stopped
     command: celery -A app.workers.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule

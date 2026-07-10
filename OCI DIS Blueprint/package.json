@@ -4,10 +4,7 @@
   "private": true,
   "description": "OCI Integration Design Blueprint — monorepo",
   "workspaces": [
-    "apps/web",
-    "packages/ui",
-    "packages/shared-schema",
-    "packages/test-fixtures"
+    "apps/web"
   ],
   "scripts": {
     "dev": "docker compose up --build",
@@ -16,14 +13,14 @@
     "dev:web": "docker compose up web -d",
     "build": "docker compose build",
     "down": "docker compose down",
-    "test": "docker compose run --rm api pytest packages/calc-engine/src/tests -v",
-    "test:web": "docker compose run --rm web npm test",
+    "test": "docker compose run --rm api pytest app/tests /calc-engine/src/tests -v",
+    "test:web": "docker build --target test --output type=cacheonly -f apps/web/Dockerfile .",
     "logs": "docker compose logs -f",
     "db:migrate": "docker compose run --rm api alembic upgrade head",
     "db:rollback": "docker compose run --rm api alembic downgrade -1",
     "db:seed": "docker compose run --rm api python -m app.migrations.seed",
-    "lint:api": "docker compose run --rm api ruff check app/",
-    "lint:web": "docker compose run --rm web npm run lint"
+    "lint:api": "docker compose run --rm api ruff check app /calc-engine/src",
+    "lint:web": "docker build --target lint --output type=cacheonly -f apps/web/Dockerfile ."
   },
   "overrides": {
     "postcss": "8.5.12",

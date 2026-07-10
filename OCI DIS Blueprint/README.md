@@ -22,6 +22,7 @@ Replaces `Catalogo_Integracion.xlsx` with a governed platform enabling architect
 - **Jobs:** Celery + Redis
 - **Storage:** MinIO (dev) / OCI Object Storage (prod)
 - **Calc engine:** `packages/calc-engine/` (pure Python, no I/O)
+- **Service rules:** normalized Service Product tables; Assumptions contain client workload inputs only
 
 All services run in **Docker Desktop on macOS** — no host dependencies.
 
@@ -70,20 +71,23 @@ read-only at `/codex/config.toml` and `/codex/auth.json`.
 ## Running Tests
 
 ```bash
-# Calc engine parity tests (must pass before any milestone is done)
-docker compose run --rm api pytest packages/calc-engine/src/tests -v
+# API integration + calc-engine parity tests
+docker compose run --rm --no-deps api python -m pytest app/tests /calc-engine/src/tests -q
 
-# API integration tests
-docker compose run --rm api pytest app/tests -v
+# Web tests and static checks, using non-runtime Docker build targets
+npm run test:web
+npm run lint:web
 
-# Web type check
-docker compose run --rm web npm run type-check
+# Refresh and verify the committed OpenAPI artifact
+docker compose run --rm --no-deps api python scripts/export_openapi.py
+docker compose run --rm --no-deps api python scripts/export_openapi.py --check
 
-# Refresh the committed OpenAPI artifact
-./.venv/bin/python apps/api/scripts/export_openapi.py
-
-# Verify the committed OpenAPI artifact is in sync
-./.venv/bin/python apps/api/scripts/export_openapi.py --check
+# Frontend gates (same commands used by effective CI)
+npm --prefix apps/web run type-check
+npm --prefix apps/web run lint
+npm --prefix apps/web test
+npm --prefix apps/web run build
+npm audit --audit-level=high
 ```
 
 ## Schema-Dependent Admin Smoke Check
@@ -169,8 +173,10 @@ npm run test:e2e:install
 npm run test:e2e
 ```
 
-The Playwright smoke suite covers the `/admin/synthetic` landing page and the
-create-to-detail flow for a bounded `ephemeral-smoke` run.
+The Playwright suite covers the Synthetic Lab landing page, terminal cleanup
+for `ephemeral-smoke`, terminal completion plus explicit cleanup for
+`retained-smoke`, and dashboard, catalog preview tabs, integration canvas,
+topology, Service Products, and Assumptions.
 
 ---
 
@@ -181,18 +187,23 @@ apps/api/          FastAPI backend
 apps/web/          Next.js frontend
 packages/
   calc-engine/     Deterministic volumetry + QA engine
-  shared-schema/   TypeScript types
-  ui/              React component library
   test-fixtures/   Benchmark data and parity expectations
-infra/             Docker, CI, SQL migrations
+infra/             SQL/bootstrap infrastructure
 docs/
   adr/             Architecture Decision Records
   architecture/    System diagrams
   api/             OpenAPI spec
+  reports/         Current status plus dated audit evidence
+  prompts/         Historical execution prompts; not active contracts
 AGENTS.md          Codex implementation guide
 docker-compose.yml Local dev stack
 .env.example       Environment template
 ```
+
+The only effective CI definition is the repository-root workflow at
+`.github/workflows/oci-dis-blueprint-quality.yml`. It runs API and calc tests,
+Ruff, mypy, migrations, OpenAPI drift, frontend types/lint/tests/build, npm
+audit, browser E2E, and production image scans.
 
 ---
 
@@ -233,12 +244,19 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 Phase 1 parity has been validated in Docker against the benchmark workbook rules:
 
 - Import parity: `157` TBQ=`Y` rows, `13` excluded `Duplicado 2`, `144` loaded rows in source order
-- Reference seed data: `17` patterns, `1` default assumption set, `55` dictionary options, `11` service capability profiles
+- Reference seed data: `17` patterns, client-only assumption sets, governed dictionaries, and `18` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Calc-engine parity: `26 passed`
-- Web and API stack: all six containers running and healthy in Docker Compose
+- Backend + calc-engine: `111 passed` (`42` calc-engine tests)
+- Frontend: `19 passed`, strict TypeScript, ESLint, and production build green
+- Browser E2E: `3 passed`, including terminal job state and cleanup validation
+- Dependency audit: `0` vulnerabilities
+- Web and API stack: all seven services running and healthy in Docker Compose
 
-Implementation and benchmark notes for milestones `M1` through `M8` are captured in [`docs/phase1-validation.md`](./docs/phase1-validation.md).
+The current validated state is recorded in
+[`docs/reports/status-report.md`](./docs/reports/status-report.md). Historical
+implementation prompts and dated reports are retained only as traceability
+evidence; `AGENTS.md`, `README.md`, the root workflow, and current architecture
+documents define the active operational contract.
 
 ---
 

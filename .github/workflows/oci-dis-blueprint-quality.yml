@@ -23,6 +23,22 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: "${{ github.workspace }}/OCI DIS Blueprint/apps/api:${{ github.workspace }}/OCI DIS Blueprint/packages/calc-engine/src"
+      DATABASE_URL: postgresql+asyncpg://dis:dis@localhost:5432/oci_dis
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dis
+          POSTGRES_PASSWORD: dis
+          POSTGRES_DB: oci_dis
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dis -d oci_dis"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Check out repository
@@ -49,13 +65,16 @@ jobs:
         run: npm ci
 
       - name: Backend tests
-        run: cd apps/api && python -m pytest --tb=short -q
+        run: python -m pytest apps/api/app/tests packages/calc-engine/src/tests --tb=short -q
 
       - name: Backend lint
-        run: cd apps/api && python -m ruff check .
+        run: python -m ruff check apps/api/app packages/calc-engine/src
 
       - name: Backend type check
         run: cd apps/api && python -m mypy app --ignore-missing-imports --no-error-summary
+
+      - name: Apply migrations to PostgreSQL
+        run: cd apps/api && python -m alembic upgrade head
 
       - name: OpenAPI artifact check
         run: cd apps/api && python scripts/export_openapi.py --check
@@ -65,3 +84,90 @@ jobs:
 
       - name: Frontend lint
         run: cd apps/web && npx eslint . --ext .ts,.tsx --max-warnings 0
+
+      - name: Frontend dependency audit
+        run: npm audit --audit-level=high
+
+      - name: Frontend production build
+        run: npm --prefix apps/web run build
+
+      - name: Frontend unit tests
+        run: npm --prefix apps/web test
+
+  browser:
+    name: Browser E2E
+    needs: quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "26.0.0"
+          cache: npm
+          cache-dependency-path: "OCI DIS Blueprint/package-lock.json"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Start application stack
+        run: docker compose up -d --build --wait
+
+      - name: Apply database migrations
+        run: docker compose exec -T api alembic upgrade head
+
+      - name: Seed governed reference data
+        run: docker compose exec -T api python -m app.migrations.seed
+
+      - name: Install Playwright Chromium
+        run: npm --prefix apps/web run test:e2e:install
+
+      - name: Run browser E2E
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+          PLAYWRIGHT_API_URL: http://localhost:8000
+        run: npm --prefix apps/web run test:e2e
+
+      - name: Capture container logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop application stack
+        if: always()
+        run: docker compose down -v
+
+  images:
+    name: Production Image Security
+    needs: quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Build API production image
+        run: docker build --target production -t ocidisblueprint-api:ci -f apps/api/Dockerfile .
+
+      - name: Build web production image
+        run: docker build --target production -t ocidisblueprint-web:ci -f apps/web/Dockerfile .
+
+      - name: Scan API image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ocidisblueprint-api:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+      - name: Scan web image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ocidisblueprint-web:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
