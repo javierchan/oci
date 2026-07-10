@@ -246,7 +246,7 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
 - Import parity: `157` TBQ=`Y` rows, `13` excluded `Duplicado 2`, `144` loaded rows in source order
 - Reference seed data: `17` patterns, client-only assumption sets, governed dictionaries, and `18` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine: `111 passed` (`42` calc-engine tests)
+- Backend + calc-engine: `112 passed` (`42` calc-engine tests)
 - Frontend: `19 passed`, strict TypeScript, ESLint, and production build green
 - Browser E2E: `3 passed`, including terminal job state and cleanup validation
 - Dependency audit: `0` vulnerabilities

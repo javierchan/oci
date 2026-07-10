@@ -2,8 +2,22 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from httpx import AsyncClient
+
+from app.core.readiness import _repository_heads
+
+
+def test_repository_heads_are_independent_of_working_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Resolve Alembic revisions from the API root even when CI runs elsewhere."""
+
+    monkeypatch.chdir(tmp_path)
+    assert _repository_heads() == {"20260710_0014"}
 
 
 @pytest.mark.asyncio
