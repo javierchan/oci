@@ -113,6 +113,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Prepare container environment
+        run: cp .env.example .env
+
       - name: Start application stack
         run: docker compose up -d --build --wait
 
