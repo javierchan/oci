@@ -8,6 +8,7 @@ Replaces `Catalogo_Integracion.xlsx` with a governed platform enabling architect
 - Calculate volumetry (OIC, Data Integration, Functions, Streaming)
 - Generate deterministic technical dashboards and justification narratives
 - Export results for delivery teams and clients
+- Download a self-documenting governed workbook for offline capture and safe re-import
 
 **Source of truth for behavior:** `Catalogo_Integracion.xlsx` → tab `TLP - PRD`
 **Agent instructions (Codex):** [`AGENTS.md`](./AGENTS.md)
@@ -68,6 +69,19 @@ CODEX_HOME="$HOME/.codex" \
 The override mounts `${CODEX_HOME}/config.toml` and `${CODEX_HOME}/auth.json`
 read-only under `/codex-host`. The production entrypoint copies them to a private
 runtime directory and immediately drops API and worker execution to `app:10001`.
+
+## Offline Capture Workbook
+
+The Import workflow downloads template `v2.0.0` directly from the API. The
+workbook includes a blank governed capture sheet, novice instructions, preflight
+checks, field guidance, pattern examples, and current Service Product Library
+references. Its `_Listas` manifest records the template/importer contract and
+governed-source freshness. Examples are never placed in the importable sheet.
+
+Existing unversioned v1 workbooks remain importable with a legacy warning.
+Template v2 rejects formulas and changed headers so offline capture cannot hide
+logic or silently drift from the App contract. See
+[`docs/architecture/offline-capture-workbook-v2.md`](./docs/architecture/offline-capture-workbook-v2.md).
 
 ---
 
@@ -263,6 +277,8 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M22 | QA Coverage + Confidence Signals | ✅ Complete | 2026-04-16 |
 | M23 | Pattern Coverage 03–17 — End-to-End Operationalization | ✅ Complete | 2026-04-16 |
 | M24 | Admin Synthetic Lab — Governed Test Project Generation | ✅ Complete | 2026-04-16 |
+| M25 | Production Quality Gates + Service Rule Ownership | ✅ Complete | 2026-07-10 |
+| M26 | Governed Offline Capture Workbook 2.0 | ✅ Complete | 2026-07-10 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -272,9 +288,9 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
 - Import parity: `157` TBQ=`Y` rows, `13` excluded `Duplicado 2`, `144` loaded rows in source order
 - Reference seed data: `17` patterns, client-only assumption sets, governed dictionaries, and `18` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine: `113 passed` (`42` calc-engine tests)
+- Backend + calc-engine: `119 passed` (`77` API and `42` calc-engine tests)
 - Frontend: `19 passed`, strict TypeScript, ESLint, and production build green
-- Browser E2E: `3 passed`, including terminal job state and cleanup validation
+- Browser E2E: `4 passed`, including workbook download, terminal job state, and cleanup validation
 - Dependency audit: `0` vulnerabilities
 - Web and API stack: all seven services running and healthy in Docker Compose
 

@@ -2224,6 +2224,137 @@
         "title": "CanvasGovernanceResponse",
         "type": "object"
       },
+      "CaptureTemplateColumnMetadata": {
+        "additionalProperties": false,
+        "description": "Public metadata for one governed capture column.",
+        "properties": {
+          "data_type": {
+            "title": "Data Type",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "header": {
+            "title": "Header",
+            "type": "string"
+          },
+          "requirement": {
+            "title": "Requirement",
+            "type": "string"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "header",
+          "section",
+          "requirement",
+          "data_type",
+          "description"
+        ],
+        "title": "CaptureTemplateColumnMetadata",
+        "type": "object"
+      },
+      "CaptureTemplateMetadata": {
+        "additionalProperties": false,
+        "description": "Version and governed-source metadata for the downloadable template.",
+        "properties": {
+          "capture_row_limit": {
+            "title": "Capture Row Limit",
+            "type": "integer"
+          },
+          "capture_sheet": {
+            "title": "Capture Sheet",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/CaptureTemplateColumnMetadata"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "evidence_source_count": {
+            "title": "Evidence Source Count",
+            "type": "integer"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "importer_min_version": {
+            "title": "Importer Min Version",
+            "type": "string"
+          },
+          "interoperability_rule_count": {
+            "title": "Interoperability Rule Count",
+            "type": "integer"
+          },
+          "last_verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Verified At"
+          },
+          "pattern_count": {
+            "title": "Pattern Count",
+            "type": "integer"
+          },
+          "service_limit_count": {
+            "title": "Service Limit Count",
+            "type": "integer"
+          },
+          "service_product_count": {
+            "title": "Service Product Count",
+            "type": "integer"
+          },
+          "stale_evidence_count": {
+            "title": "Stale Evidence Count",
+            "type": "integer"
+          },
+          "template_version": {
+            "title": "Template Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_version",
+          "importer_min_version",
+          "filename",
+          "generated_at",
+          "capture_sheet",
+          "capture_row_limit",
+          "pattern_count",
+          "service_product_count",
+          "service_limit_count",
+          "interoperability_rule_count",
+          "evidence_source_count",
+          "stale_evidence_count",
+          "last_verified_at"
+        ],
+        "title": "CaptureTemplateMetadata",
+        "type": "object"
+      },
       "CatalogFacetsResponse": {
         "additionalProperties": false,
         "description": "Lightweight catalog filter metadata for list views.",
@@ -5072,6 +5203,13 @@
         "additionalProperties": false,
         "description": "Admin payload to create a custom pattern definition.",
         "properties": {
+          "applicability_examples": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Applicability Examples",
+            "type": "array"
+          },
           "business_value": {
             "anyOf": [
               {
@@ -5116,6 +5254,20 @@
           "pattern_id": {
             "title": "Pattern Id",
             "type": "string"
+          },
+          "required_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Inputs",
+            "type": "array"
+          },
+          "selection_questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Selection Questions",
+            "type": "array"
           },
           "technical_flow": {
             "anyOf": [
@@ -5163,6 +5315,13 @@
         "additionalProperties": false,
         "description": "Serialized pattern definition.",
         "properties": {
+          "applicability_examples": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Applicability Examples",
+            "type": "array"
+          },
           "business_value": {
             "anyOf": [
               {
@@ -5225,6 +5384,20 @@
             "title": "Pattern Id",
             "type": "string"
           },
+          "required_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Inputs",
+            "type": "array"
+          },
+          "selection_questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Selection Questions",
+            "type": "array"
+          },
           "support": {
             "$ref": "#/components/schemas/PatternSupportResponse"
           },
@@ -5282,6 +5455,9 @@
           "when_not_to_use",
           "technical_flow",
           "business_value",
+          "applicability_examples",
+          "selection_questions",
+          "required_inputs",
           "is_system",
           "is_active",
           "version",
@@ -5296,6 +5472,20 @@
         "additionalProperties": false,
         "description": "Admin payload to update a custom or system pattern definition.",
         "properties": {
+          "applicability_examples": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applicability Examples"
+          },
           "business_value": {
             "anyOf": [
               {
@@ -5350,6 +5540,34 @@
               }
             ],
             "title": "Oci Components"
+          },
+          "required_inputs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Inputs"
+          },
+          "selection_questions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Questions"
           },
           "technical_flow": {
             "anyOf": [
@@ -10982,6 +11200,27 @@
         "summary": "Update a governed dictionary option",
         "tags": [
           "Dictionaries"
+        ]
+      }
+    },
+    "/api/v1/exports/template/metadata": {
+      "get": {
+        "operationId": "get_capture_template_metadata_api_v1_exports_template_metadata_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureTemplateMetadata"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Describe the current governed offline capture template",
+        "tags": [
+          "Exports"
         ]
       }
     },

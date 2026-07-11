@@ -1,4 +1,4 @@
-/* Playwright configuration for admin synthetic browser smoke coverage. */
+/* Playwright configuration for critical production browser flows. */
 
 import { defineConfig } from "@playwright/test";
 

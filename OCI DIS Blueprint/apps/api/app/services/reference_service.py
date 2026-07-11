@@ -52,6 +52,9 @@ def serialize_pattern(pattern: PatternDefinition) -> PatternDefinitionResponse:
         when_not_to_use=pattern.when_not_to_use,
         technical_flow=pattern.technical_flow,
         business_value=pattern.business_value,
+        applicability_examples=pattern.applicability_examples,
+        selection_questions=pattern.selection_questions,
+        required_inputs=pattern.required_inputs,
         is_system=pattern.is_system,
         is_active=pattern.is_active,
         version=pattern.version,
@@ -197,6 +200,9 @@ async def create_pattern(
         when_not_to_use=data.when_not_to_use,
         technical_flow=data.technical_flow,
         business_value=data.business_value,
+        applicability_examples=data.applicability_examples,
+        selection_questions=data.selection_questions,
+        required_inputs=data.required_inputs,
         is_system=False,
     )
     db.add(pattern)

@@ -37,11 +37,21 @@ from app.schemas.imports import (
     SourceRowResponse,
 )
 from app.services import audit_service, recalc_service
+from app.services.capture_template_service import (
+    CAPTURE_SHEET_NAME,
+    COLUMNS as TEMPLATE_COLUMNS,
+    IMPORTER_MIN_VERSION,
+    MANIFEST_SHEET_NAME,
+    TEMPLATE_VERSION,
+)
 from app.services.pattern_support import support_reason_code
 from app.services.serializers import parse_bool, parse_float, parse_int, parse_text, sanitize_for_json
 
-SOURCE_SHEET_NAME = "Catálogo de Integraciones"
+SOURCE_SHEET_NAME = CAPTURE_SHEET_NAME
 RAW_HEADERS_METADATA_KEY = "__raw_headers__"
+TEMPLATE_VERSION_METADATA_KEY = "__template_version__"
+TEMPLATE_COMPATIBILITY_METADATA_KEY = "__template_compatibility__"
+TEMPLATE_GENERATED_AT_METADATA_KEY = "__template_generated_at__"
 FALLBACK_COLUMN_INDEXES: dict[str, int] = {
     "seq_number": 1,
     "interface_id": 2,
@@ -107,6 +117,76 @@ def _header_alias_matches(alias: str, header: str) -> bool:
 
 def _bad_request(detail: str, error_code: str) -> HTTPException:
     return HTTPException(status_code=400, detail={"detail": detail, "error_code": error_code})
+
+
+def _read_template_manifest(workbook: Any) -> dict[str, str]:
+    """Read the hidden template manifest without depending on fixed cell coordinates."""
+
+    if MANIFEST_SHEET_NAME not in workbook.sheetnames:
+        return {}
+    sheet = workbook[MANIFEST_SHEET_NAME]
+    for row in sheet.iter_rows():
+        for cell in row:
+            if cell.value != "MANIFEST_KEY":
+                continue
+            result: dict[str, str] = {}
+            for manifest_row in range(cell.row + 1, sheet.max_row + 1):
+                key = sheet.cell(manifest_row, cell.column).value
+                value = sheet.cell(manifest_row, cell.column + 1).value
+                if key in (None, ""):
+                    break
+                result[str(key)] = "" if value is None else str(value)
+            return result
+    return {}
+
+
+def _validate_template_version(manifest: dict[str, str]) -> str:
+    """Return a compatibility label or reject a workbook from a future major contract."""
+
+    version = manifest.get("template_version")
+    if not version:
+        return "legacy_v1_accepted"
+    try:
+        major = int(version.split(".", 1)[0])
+        current_major = int(TEMPLATE_VERSION.split(".", 1)[0])
+    except ValueError as exc:
+        raise _bad_request(
+            f"Template version '{version}' is not valid. Download a fresh template from the App.",
+            "IMPORT_TEMPLATE_VERSION_INVALID",
+        ) from exc
+    if major > current_major:
+        raise _bad_request(
+            f"Template v{version} requires a newer importer. This environment supports through v{TEMPLATE_VERSION}.",
+            "IMPORT_TEMPLATE_VERSION_UNSUPPORTED",
+        )
+    return "current" if version == TEMPLATE_VERSION else "older_supported"
+
+
+def _assert_no_capture_formulas(sheet: Any) -> None:
+    """Reject formulas in capture cells to prevent hidden logic and formula injection."""
+
+    for row in sheet.iter_rows(min_row=2):
+        for cell in row:
+            if cell.data_type == "f" or (isinstance(cell.value, str) and cell.value.startswith("=")):
+                raise _bad_request(
+                    f"Formula found in {SOURCE_SHEET_NAME}!{cell.coordinate}. Replace it with its final value before upload.",
+                    "IMPORT_FORMULA_NOT_ALLOWED",
+                )
+
+
+def _validate_v2_headers(all_rows: list[list], manifest: dict[str, str]) -> None:
+    """Keep the v2 capture contract exact while preserving legacy workbook compatibility."""
+
+    if manifest.get("template_version") != TEMPLATE_VERSION:
+        return
+    header_index = detect_header_row(all_rows)
+    actual_headers = [str(value).strip() if value is not None else "" for value in all_rows[header_index]]
+    expected_headers = [column.header for column in TEMPLATE_COLUMNS]
+    if actual_headers[: len(expected_headers)] != expected_headers:
+        raise _bad_request(
+            "The governed v2 capture headers were renamed, removed, or reordered. Download a fresh template and paste values only into its capture rows.",
+            "IMPORT_TEMPLATE_HEADERS_CHANGED",
+        )
 
 
 def serialize_batch(batch: ImportBatch) -> ImportBatchResponse:
@@ -430,7 +510,7 @@ async def create_import_batch(project_id: str, filename: str, db: AsyncSession) 
     batch = ImportBatch(
         project_id=project_id,
         filename=filename,
-        parser_version="1.0.0",
+        parser_version=IMPORTER_MIN_VERSION,
         status=ImportStatus.PENDING,
     )
     db.add(batch)
@@ -452,20 +532,27 @@ async def process_import(batch_id: str, file_path: str, db: AsyncSession) -> Imp
     batch.status = ImportStatus.PROCESSING
     await db.flush()
 
-    workbook = load_workbook(filename=file_path, data_only=True, read_only=True)
+    workbook = load_workbook(filename=file_path, data_only=False, read_only=True)
+    manifest = _read_template_manifest(workbook)
+    compatibility = _validate_template_version(manifest)
     if SOURCE_SHEET_NAME not in workbook.sheetnames:
         raise _bad_request(
             f"Required sheet '{SOURCE_SHEET_NAME}' not found in workbook.",
             "IMPORT_SHEET_NOT_FOUND",
         )
     sheet = workbook[SOURCE_SHEET_NAME]
+    _assert_no_capture_formulas(sheet)
     all_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
+    _validate_v2_headers(all_rows, manifest)
     import_result = parse_rows(all_rows)
     header_row_index = detect_header_row(all_rows)
     raw_header_labels = _build_raw_header_labels(all_rows[header_row_index] if all_rows else [])
     stored_header_map = {
         **import_result.header_map,
         RAW_HEADERS_METADATA_KEY: json.dumps(raw_header_labels, ensure_ascii=True),
+        TEMPLATE_VERSION_METADATA_KEY: manifest.get("template_version", "1.x-unversioned"),
+        TEMPLATE_COMPATIBILITY_METADATA_KEY: compatibility,
+        TEMPLATE_GENERATED_AT_METADATA_KEY: manifest.get("generated_at_utc", ""),
     }
     correlation_id = str(uuid.uuid4())
 

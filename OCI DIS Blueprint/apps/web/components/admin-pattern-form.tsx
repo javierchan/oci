@@ -52,6 +52,9 @@ function defaultPatternValue(): PatternDefinitionCreate {
     when_not_to_use: "",
     technical_flow: "",
     business_value: "",
+    applicability_examples: [],
+    selection_questions: [],
+    required_inputs: [],
   };
 }
 
@@ -83,6 +86,9 @@ export function AdminPatternForm({
       when_not_to_use: initialValue.when_not_to_use ?? "",
       technical_flow: initialValue.technical_flow ?? "",
       business_value: initialValue.business_value ?? "",
+      applicability_examples: initialValue.applicability_examples,
+      selection_questions: initialValue.selection_questions,
+      required_inputs: initialValue.required_inputs,
     });
   }, [initialValue]);
 
@@ -112,6 +118,9 @@ export function AdminPatternForm({
     form.when_not_to_use,
     form.business_value,
     form.technical_flow,
+    ...(form.applicability_examples ?? []),
+    ...(form.selection_questions ?? []),
+    ...(form.required_inputs ?? []),
   ].filter((value) => (value ?? "").trim() !== "").length;
   const guidanceFieldCount = [
     form.when_to_use,
@@ -151,6 +160,9 @@ export function AdminPatternForm({
       when_not_to_use: form.when_not_to_use?.trim() || undefined,
       technical_flow: form.technical_flow?.trim() || undefined,
       business_value: form.business_value?.trim() || undefined,
+      applicability_examples: form.applicability_examples?.filter((value) => value.trim()).map((value) => value.trim()),
+      selection_questions: form.selection_questions?.filter((value) => value.trim()).map((value) => value.trim()),
+      required_inputs: form.required_inputs?.filter((value) => value.trim()).map((value) => value.trim()),
     });
   }
 
@@ -407,6 +419,38 @@ export function AdminPatternForm({
               className="app-input"
             />
           </label>
+          <div className="mt-4 grid gap-4 xl:grid-cols-3">
+            <label className="block">
+              <span className="app-label mb-2 block">Applicability Examples</span>
+              <textarea
+                value={(form.applicability_examples ?? []).join("\n")}
+                onChange={(event) => setForm((current) => ({ ...current, applicability_examples: event.target.value.split("\n") }))}
+                rows={6}
+                placeholder="One concrete scenario per line"
+                className="app-input"
+              />
+            </label>
+            <label className="block">
+              <span className="app-label mb-2 block">Selection Questions</span>
+              <textarea
+                value={(form.selection_questions ?? []).join("\n")}
+                onChange={(event) => setForm((current) => ({ ...current, selection_questions: event.target.value.split("\n") }))}
+                rows={6}
+                placeholder="One architecture question per line"
+                className="app-input"
+              />
+            </label>
+            <label className="block">
+              <span className="app-label mb-2 block">Required Inputs</span>
+              <textarea
+                value={(form.required_inputs ?? []).join("\n")}
+                onChange={(event) => setForm((current) => ({ ...current, required_inputs: event.target.value.split("\n") }))}
+                rows={6}
+                placeholder="One sizing or governance input per line"
+                className="app-input"
+              />
+            </label>
+          </div>
         </section>
         </div>
       </div>

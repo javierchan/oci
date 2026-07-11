@@ -5,24 +5,33 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.schemas.export import ExportJobResponse
-from app.services import export_service
+from app.schemas.export import CaptureTemplateMetadata, ExportJobResponse
+from app.services import capture_template_service, export_service
 
 router = APIRouter(prefix="/exports", tags=["Exports"])
 
 
 @router.get("/template/xlsx", summary="Download the offline capture template workbook")
 async def download_capture_template(db: AsyncSession = Depends(get_db)) -> Response:
-    workbook_bytes = await export_service.generate_capture_template(db)
+    workbook_bytes, metadata = await capture_template_service.generate_capture_template(db)
     return Response(
         content=workbook_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": (
-                f"attachment; filename=oci-dis-import-template-v{export_service.TEMPLATE_VERSION}.xlsx"
+                f"attachment; filename={metadata.filename}"
             )
         },
     )
+
+
+@router.get(
+    "/template/metadata",
+    response_model=CaptureTemplateMetadata,
+    summary="Describe the current governed offline capture template",
+)
+async def get_capture_template_metadata(db: AsyncSession = Depends(get_db)) -> CaptureTemplateMetadata:
+    return await capture_template_service.get_capture_template_metadata(db)
 
 
 @router.post("/{project_id}/xlsx", response_model=ExportJobResponse, summary="Export catalog as XLSX")

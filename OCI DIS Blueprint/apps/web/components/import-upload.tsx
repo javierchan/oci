@@ -4,15 +4,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download } from "lucide-react";
 
 import { ConfirmModal } from "@/components/modal";
 import { emitToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { APP_VERSION } from "@/lib/app-version";
-import { displaySourceFieldLabel, formatDate } from "@/lib/format";
-import type { ImportBatch, ImportQualityAssistant, SourceRowList } from "@/lib/types";
+import { formatDate } from "@/lib/format";
+import type { CaptureTemplateMetadata, ImportBatch, ImportQualityAssistant, SourceRowList } from "@/lib/types";
 
 type ImportUploadProps = {
   projectId: string;
@@ -29,19 +28,6 @@ const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").re
   /\/api\/v1\/?$/,
   "",
 );
-const TEMPLATE_COLUMNS = [
-  { label: "#", workbookHeader: "#" },
-  { label: "Interface ID", workbookHeader: "ID de Interfaz" },
-  { label: "Brand", workbookHeader: "Marca" },
-  { label: "Business Process", workbookHeader: "Proceso de Negocio" },
-  { label: "Interface Name", workbookHeader: "Interfaz" },
-  { label: "Description", workbookHeader: "Descripción" },
-  { label: "Type", workbookHeader: "Tipo" },
-  { label: "Interface Status", workbookHeader: "Estado Interfaz" },
-  { label: "Complexity", workbookHeader: "Complejidad" },
-  { label: "Initial Scope", workbookHeader: "Alcance Inicial" },
-];
-
 function phaseFromBatchStatus(batch: ImportBatch): UploadPhase {
   switch (batch.status) {
     case "pending":
@@ -163,6 +149,23 @@ export function ImportUpload({
   const [rowPageSize, setRowPageSize] = useState<number>(25);
   const [historyPage, setHistoryPage] = useState<number>(1);
   const [historyPageSize, setHistoryPageSize] = useState<number>(12);
+  const [templateMetadata, setTemplateMetadata] = useState<CaptureTemplateMetadata | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void api.getCaptureTemplateMetadata().then((metadata) => {
+      if (active) {
+        setTemplateMetadata(metadata);
+      }
+    }).catch(() => {
+      if (active) {
+        setTemplateMetadata(null);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const filteredRows = useMemo(() => {
     if (!initialRows) {
@@ -207,6 +210,8 @@ export function ImportUpload({
   const visibleHistory = history.slice(historyStartIndex, historyStartIndex + historyPageSize);
   const historyLoadedTotal = history.reduce((sum, batch) => sum + (batch.loaded_count ?? 0), 0);
   const historyExcludedTotal = history.reduce((sum, batch) => sum + (batch.excluded_count ?? 0), 0);
+  const requiredTemplateColumns = templateMetadata?.columns.filter((column) => column.requirement === "Requerido") ?? [];
+  const templateCompatibility = latestBatch?.header_map?.["__template_compatibility__"] ?? null;
 
   function updateSelectedFile(file: File | null): void {
     setSelectedFile(file);
@@ -311,25 +316,40 @@ export function ImportUpload({
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <a
               href={`${API_BASE}/api/v1/exports/template/xlsx`}
-              download={`oci-dis-import-template-v${APP_VERSION}.xlsx`}
+              download={templateMetadata?.filename}
               className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface)] hover:text-[var(--color-text-primary)]"
             >
               <Download className="h-4 w-4" />
               Download Template (.xlsx)
             </a>
-            <span className="app-theme-chip">Last updated: v{APP_VERSION}</span>
+            <span className="app-theme-chip">
+              Template v{templateMetadata?.template_version ?? "current"}
+            </span>
+            {templateMetadata ? (
+              <span className="text-xs text-[var(--color-text-muted)]">
+                {templateMetadata.pattern_count} patterns · {templateMetadata.service_product_count} OCI services · {templateMetadata.capture_row_limit} capture rows
+              </span>
+            ) : null}
           </div>
+          {templateCompatibility && templateCompatibility !== "current" ? (
+            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+              The latest batch used an older supported workbook ({templateCompatibility.replaceAll("_", " ")}). It imported successfully; use the current template for guided validation and governed references.
+            </div>
+          ) : null}
           <div className="mt-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3.5">
-            <p className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">Required workbook columns</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-[var(--color-text-muted)]">Required capture columns</p>
+            <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+              The workbook also includes field guidance, preflight checks, examples, patterns, OCI products, service limits, and interoperability evidence.
+            </p>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
-              {TEMPLATE_COLUMNS.map((column) => (
+              {requiredTemplateColumns.map((column) => (
                 <div
-                  key={`${column.label}-${column.workbookHeader}`}
+                  key={column.field}
                   className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2"
                 >
-                  <p className="text-sm font-medium text-[var(--color-text-primary)]">{column.label}</p>
+                  <p className="text-sm font-medium text-[var(--color-text-primary)]">{column.header}</p>
                   <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                    Accepted header: {displaySourceFieldLabel(column.workbookHeader)}
+                    {column.description}
                   </p>
                 </div>
               ))}

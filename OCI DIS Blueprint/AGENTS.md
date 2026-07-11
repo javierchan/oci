@@ -349,6 +349,17 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 - [x] **Exit criteria**: dependency audit is clean; backend, calc-engine, frontend,
       migration, browser, and image gates execute from one canonical CI contract
 
+### M26 — Governed Offline Capture Workbook 2.0
+- [x] Replace the importable example row with a blank 500-row capture surface
+- [x] Add novice-oriented instructions, preflight checks, guided examples, and a field dictionary
+- [x] Export governed patterns, OCI products, limits, interoperability, evidence freshness, and official sources
+- [x] Use one backend-owned column/version contract and named validation ranges
+- [x] Add structured pattern applicability examples, selection questions, and required inputs
+- [x] Preserve v1 import compatibility while rejecting formulas, future versions, and modified v2 headers
+- [x] Validate download-fill-upload round trip and render every visible workbook sheet
+- [x] **Exit criteria**: the App download is self-documenting, contains no importable examples,
+      maps one captured row exactly, exposes governed metadata in Import UI, and passes all quality gates
+
 ---
 
 ## Coding rules

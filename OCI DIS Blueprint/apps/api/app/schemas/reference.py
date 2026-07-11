@@ -22,6 +22,9 @@ class PatternDefinitionCreate(BaseModel):
     when_not_to_use: Optional[str] = None
     technical_flow: Optional[str] = None
     business_value: Optional[str] = None
+    applicability_examples: list[str] = Field(default_factory=list)
+    selection_questions: list[str] = Field(default_factory=list)
+    required_inputs: list[str] = Field(default_factory=list)
 
 
 class PatternDefinitionUpdate(BaseModel):
@@ -37,6 +40,9 @@ class PatternDefinitionUpdate(BaseModel):
     when_not_to_use: Optional[str] = None
     technical_flow: Optional[str] = None
     business_value: Optional[str] = None
+    applicability_examples: Optional[list[str]] = None
+    selection_questions: Optional[list[str]] = None
+    required_inputs: Optional[list[str]] = None
 
 
 class PatternSupportDimensionsResponse(BaseModel):
@@ -79,6 +85,9 @@ class PatternDefinitionResponse(BaseModel):
     when_not_to_use: Optional[str]
     technical_flow: Optional[str]
     business_value: Optional[str]
+    applicability_examples: list[str]
+    selection_questions: list[str]
+    required_inputs: list[str]
     is_system: bool
     is_active: bool
     version: str

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from io import BytesIO
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
@@ -11,12 +10,10 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AiReviewBaseline, AiReviewJob, AiReviewJobStatus, DictionaryOption, Project, VolumetrySnapshot
+from app.models import AiReviewBaseline, AiReviewJob, AiReviewJobStatus, Project, VolumetrySnapshot
 from app.schemas.export import ExportJobResponse
 from app.services import dashboard_service, justification_service, recalc_service
 from app.services.catalog_service import list_integrations
@@ -27,78 +24,6 @@ from app.services.serializers import sanitize_for_json
 EXPORT_ROOT = Path("uploads/exports")
 FILES_DIR = EXPORT_ROOT / "files"
 JOBS_DIR = EXPORT_ROOT / "jobs"
-TEMPLATE_SHEET_NAME = "Catálogo de Integraciones"
-REFERENCE_SHEET_NAME = "Reference"
-TEMPLATE_VERSION = "1.0.0"
-
-TEMPLATE_COLUMNS = [
-    ("seq_number", "#", "number", "", "Optional"),
-    ("interface_id", "ID de Interfaz", "text", "", "Optional"),
-    ("brand", "Marca", "text", "", "Required"),
-    ("business_process", "Proceso de Negocio", "text", "", "Required"),
-    ("interface_name", "Interfaz", "text", "", "Required"),
-    ("description", "Descripción", "text", "", "Optional"),
-    ("type", "Tipo", "enum", "Dictionary: TRIGGER_TYPE", "Optional"),
-    ("interface_status", "Estado Interfaz", "text", "", "Optional"),
-    ("complexity", "Complejidad", "enum", "Dictionary: COMPLEXITY", "Optional"),
-    ("initial_scope", "Alcance Inicial", "text", "", "Optional"),
-    ("status", "Estado", "text", "", "Optional"),
-    ("mapping_status", "Estado de Mapeo", "text", "", "Optional"),
-    ("source_system", "Sistema de Origen", "text", "", "Required"),
-    ("source_technology", "Tecnología de Origen", "text", "", "Optional"),
-    ("source_api_reference", "API Reference", "text", "", "Optional"),
-    ("source_owner", "Propietario de Origen", "text", "", "Optional"),
-    ("destination_system", "Sistema de Destino", "text", "", "Required"),
-    ("destination_technology", "Tecnología de Destino", "text", "", "Optional"),
-    ("destination_owner", "Propietario de Destino", "text", "", "Optional"),
-    ("frequency", "Frecuencia", "enum", "Dictionary: FREQUENCY", "Required"),
-    ("payload_per_execution_kb", "Tamaño KB", "number", "", "Optional"),
-    ("tbq", "TBQ", "enum", "Y, N", "Required"),
-    ("patterns", "Patrones", "text", "", "Optional"),
-    ("uncertainty", "Incertidumbre", "text", "", "Optional"),
-    ("owner", "Owner", "text", "", "Optional"),
-]
-TEMPLATE_HEADERS = [column[1] for column in TEMPLATE_COLUMNS]
-
-TEMPLATE_EXAMPLE_ROW = [
-    1,
-    "INT-001",
-    "Oracle",
-    "Finance & Accounting",
-    "GL Journal Entry Sync",
-    "Nightly GL sync from SAP to Oracle ATP",
-    "Scheduled",
-    "En Progreso",
-    "Medio",
-    "Si",
-    "En Progreso",
-    "Pendiente",
-    "SAP ECC",
-    "REST",
-    "/api/v1/gl",
-    "Finance Team",
-    "Oracle ATP",
-    "REST",
-    "ATP Team",
-    "Una vez al día",
-    150,
-    "Y",
-    "#02",
-    "",
-    "Finance Architect",
-]
-
-REQUIRED_HEADER_COLUMNS = {3, 4, 5, 13, 17, 20, 22}
-GOVERNED_HEADER_COLUMNS = {7, 9, 14, 18, 21}
-
-BLUE_FILL = PatternFill(fill_type="solid", fgColor="4472C4")
-YELLOW_FILL = PatternFill(fill_type="solid", fgColor="FFC000")
-GRAY_FILL = PatternFill(fill_type="solid", fgColor="808080")
-WHITE_FONT = Font(color="FFFFFF", bold=True)
-BLACK_FONT = Font(color="000000", bold=True)
-EXAMPLE_FONT = Font(color="6B7280", italic=True)
-
-
 def _ensure_export_dirs() -> None:
     FILES_DIR.mkdir(parents=True, exist_ok=True)
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
@@ -106,44 +31,6 @@ def _ensure_export_dirs() -> None:
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _escape_excel_list(values: list[str]) -> str:
-    return '"' + ",".join(value.replace('"', '""') for value in values) + '"'
-
-
-async def _dictionary_values(category: str, db: AsyncSession) -> list[str]:
-    result = await db.scalars(
-        select(DictionaryOption.value)
-        .where(
-            DictionaryOption.category == category,
-            DictionaryOption.is_active.is_(True),
-        )
-        .order_by(DictionaryOption.sort_order, DictionaryOption.value)
-    )
-    return [value for value in result.all() if value]
-
-
-def _header_fill(index: int) -> PatternFill:
-    if index in REQUIRED_HEADER_COLUMNS:
-        return BLUE_FILL
-    if index in GOVERNED_HEADER_COLUMNS:
-        return YELLOW_FILL
-    return GRAY_FILL
-
-
-def _header_font(index: int) -> Font:
-    if index in GOVERNED_HEADER_COLUMNS:
-        return BLACK_FONT
-    return WHITE_FONT
-
-
-def _set_template_workbook_properties(workbook: Workbook) -> None:
-    created_at = _utc_now()
-    workbook.properties.creator = "OCI DIS Blueprint"
-    workbook.properties.lastModifiedBy = "OCI DIS Blueprint"
-    workbook.properties.created = created_at
-    workbook.properties.modified = created_at
 
 
 async def _load_project(project_id: str, db: AsyncSession) -> Project:
@@ -262,79 +149,6 @@ def _pattern_support_payload(pattern_ids: list[str]) -> dict[str, object]:
             if not get_pattern_support(pattern_id).parity_ready
         ],
     }
-
-
-async def generate_capture_template(db: AsyncSession) -> bytes:
-    """Build the offline integration-capture workbook template."""
-
-    workbook = Workbook()
-    _set_template_workbook_properties(workbook)
-    sheet = workbook.active
-    sheet.title = TEMPLATE_SHEET_NAME
-
-    for column_index, header in enumerate(TEMPLATE_HEADERS, start=1):
-        cell = sheet.cell(row=1, column=column_index, value=header)
-        cell.fill = _header_fill(column_index)
-        cell.font = _header_font(column_index)
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-    for column_index, value in enumerate(TEMPLATE_EXAMPLE_ROW, start=1):
-        cell = sheet.cell(row=2, column=column_index, value=value)
-        cell.font = EXAMPLE_FONT
-        cell.alignment = Alignment(vertical="top", wrap_text=True)
-
-    frequency_values, trigger_values, complexity_values = await _load_template_validations(db)
-    validations = [
-        ("T3:T200", frequency_values),
-        ("G3:G200", trigger_values),
-        ("I3:I200", complexity_values),
-        ("V3:V200", ["Y", "N"]),
-    ]
-    for cell_range, values in validations:
-        if not values:
-            continue
-        validation = DataValidation(
-            type="list",
-            formula1=_escape_excel_list(values),
-            allow_blank=True,
-        )
-        validation.add(cell_range)
-        sheet.add_data_validation(validation)
-
-    for column_index, header in enumerate(TEMPLATE_HEADERS, start=1):
-        max_length = max(len(str(header)), len(str(TEMPLATE_EXAMPLE_ROW[column_index - 1])))
-        column_letter = sheet.cell(row=1, column=column_index).column_letter
-        sheet.column_dimensions[column_letter].width = max(15, max_length * 1.2)
-
-    sheet.freeze_panes = "A2"
-    sheet.auto_filter.ref = f"A1:{sheet.cell(row=1, column=len(TEMPLATE_HEADERS)).column_letter}2"
-
-    reference_sheet = workbook.create_sheet(REFERENCE_SHEET_NAME)
-    reference_sheet.append(["Column Name", "Canonical Field", "Data Type", "Accepted Values", "Requirement"])
-    for index, (field_name, header, data_type, accepted_values, requirement) in enumerate(TEMPLATE_COLUMNS, start=1):
-        reference_sheet.append([header, field_name, data_type, accepted_values or "Free text", requirement])
-        reference_sheet.column_dimensions["A"].width = 24
-        reference_sheet.column_dimensions["B"].width = 24
-        reference_sheet.column_dimensions["C"].width = 16
-        reference_sheet.column_dimensions["D"].width = 28
-        reference_sheet.column_dimensions["E"].width = 14
-        if index == 1:
-            for cell in reference_sheet[1]:
-                cell.font = Font(bold=True)
-                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    reference_sheet.freeze_panes = "A2"
-    reference_sheet.auto_filter.ref = "A1:E1"
-
-    output = BytesIO()
-    workbook.save(output)
-    return output.getvalue()
-
-
-async def _load_template_validations(db: AsyncSession) -> tuple[list[str], list[str], list[str]]:
-    frequency_values = await _dictionary_values("FREQUENCY", db)
-    trigger_values = await _dictionary_values("TRIGGER_TYPE", db)
-    complexity_values = await _dictionary_values("COMPLEXITY", db)
-    return frequency_values, trigger_values, complexity_values
 
 
 def _render_basic_pdf(lines: list[str], file_path: Path) -> None:

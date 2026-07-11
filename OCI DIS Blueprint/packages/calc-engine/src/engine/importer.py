@@ -43,7 +43,7 @@ class ImportResult:
     loaded_count: int
     header_map: dict[str, str]
     rows: list[ParsedRow]
-    parser_version: str = "1.0.0"
+    parser_version: str = "2.0.0"
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +344,7 @@ def parse_rows(
         ))
 
     return ImportResult(
-        source_row_count=len(data_rows),
+        source_row_count=len(parsed),
         tbq_y_count=tbq_y_count,
         excluded_count=excluded_count,
         loaded_count=loaded_count,

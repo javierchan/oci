@@ -1615,14 +1615,47 @@ def _audit(session: Session, event_type: str, entity_type: str, entity_id: str, 
     )
 
 
+def _pattern_lines(value: str | None) -> list[str]:
+    """Normalize multiline workbook guidance into structured seed values."""
+
+    if not value:
+        return []
+    return [line.lstrip("-• 0123456789.").strip() for line in value.splitlines() if line.strip()]
+
+
+def _pattern_capture_guidance(pattern_data: dict[str, str]) -> tuple[list[str], list[str], list[str]]:
+    """Derive novice-friendly selection aids from the governed pattern narrative."""
+
+    examples = _pattern_lines(pattern_data.get("when_to_use"))[:3]
+    first_example = examples[0] if examples else f"The scenario matches {pattern_data['name']}"
+    questions = [
+        f"Does the scenario satisfy this condition: {first_example}?",
+        "Have failure handling, retries, idempotency, and relevant limits been documented?",
+        "Do the selected services match the route designed in Canvas?",
+    ]
+    required_inputs = ["Source and destination", "Frequency", "Payload per execution", "Trigger type"]
+    category = pattern_data["category"].upper()
+    if "ASYN" in category or "DATA" in category:
+        required_inputs.extend(["Retention or processing window", "Idempotency and retry/DLQ"])
+    if pattern_data["pattern_id"] in {"#02", "#07", "#17"}:
+        required_inputs.append("Fan-out and destination count")
+    return examples, questions, required_inputs
+
+
 def seed_patterns(session: Session) -> int:
     count = 0
     for pattern_data in PATTERNS:
+        applicability_examples, selection_questions, required_inputs = _pattern_capture_guidance(pattern_data)
         existing = session.scalar(
             select(PatternDefinition).where(PatternDefinition.pattern_id == pattern_data["pattern_id"])
         )
         if existing is None:
-            existing = PatternDefinition(**pattern_data)
+            existing = PatternDefinition(
+                **pattern_data,
+                applicability_examples=applicability_examples,
+                selection_questions=selection_questions,
+                required_inputs=required_inputs,
+            )
             session.add(existing)
             session.flush()
             if hasattr(existing, "is_system"):
@@ -1638,6 +1671,9 @@ def seed_patterns(session: Session) -> int:
             existing.when_not_to_use = cast(str | None, pattern_data.get("when_not_to_use"))
             existing.technical_flow = cast(str | None, pattern_data.get("technical_flow"))
             existing.business_value = cast(str | None, pattern_data.get("business_value"))
+            existing.applicability_examples = applicability_examples
+            existing.selection_questions = selection_questions
+            existing.required_inputs = required_inputs
             if hasattr(existing, "is_system"):
                 existing.is_system = True
             existing.version = "1.0.0"
@@ -1648,6 +1684,9 @@ def seed_patterns(session: Session) -> int:
         existing.when_not_to_use = cast(str | None, pattern_data.get("when_not_to_use"))
         existing.technical_flow = cast(str | None, pattern_data.get("technical_flow"))
         existing.business_value = cast(str | None, pattern_data.get("business_value"))
+        existing.applicability_examples = applicability_examples
+        existing.selection_questions = selection_questions
+        existing.required_inputs = required_inputs
         existing.version = "1.0.0"
     return count
 

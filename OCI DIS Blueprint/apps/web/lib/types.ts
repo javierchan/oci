@@ -624,6 +624,9 @@ export interface PatternDefinition {
   when_not_to_use: string | null;
   technical_flow: string | null;
   business_value: string | null;
+  applicability_examples: string[];
+  selection_questions: string[];
+  required_inputs: string[];
   is_active: boolean;
   version: string;
   is_system: boolean;
@@ -862,6 +865,35 @@ export interface PatternDefinitionCreate {
   when_not_to_use?: string;
   technical_flow?: string;
   business_value?: string;
+  applicability_examples?: string[];
+  selection_questions?: string[];
+  required_inputs?: string[];
+}
+
+export interface CaptureTemplateColumnMetadata {
+  field: string;
+  header: string;
+  section: string;
+  requirement: "Requerido" | "Recomendado" | "Opcional";
+  data_type: string;
+  description: string;
+}
+
+export interface CaptureTemplateMetadata {
+  template_version: string;
+  importer_min_version: string;
+  filename: string;
+  generated_at: string;
+  capture_sheet: string;
+  capture_row_limit: number;
+  pattern_count: number;
+  service_product_count: number;
+  service_limit_count: number;
+  interoperability_rule_count: number;
+  evidence_source_count: number;
+  stale_evidence_count: number;
+  last_verified_at: string | null;
+  columns: CaptureTemplateColumnMetadata[];
 }
 
 export interface DictionaryOption {

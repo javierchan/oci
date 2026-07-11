@@ -17,6 +17,7 @@ import type {
   AiReviewScope,
   AuditPage,
   CanvasGovernance,
+  CaptureTemplateMetadata,
   CatalogIntegrationDetail,
   CatalogIntegrationDeleteResponse,
   CatalogFacets,
@@ -558,6 +559,9 @@ export const api = {
 
   listPatterns: (): Promise<PatternList> =>
     apiFetch<PatternList>("/api/v1/patterns/"),
+
+  getCaptureTemplateMetadata: (): Promise<CaptureTemplateMetadata> =>
+    apiFetch<CaptureTemplateMetadata>("/api/v1/exports/template/metadata"),
 
   listServiceProducts: (): Promise<ServiceProductList> =>
     apiFetch<ServiceProductList>("/api/v1/service-products"),

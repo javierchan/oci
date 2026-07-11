@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
+from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.models import CatalogIntegration, DashboardSnapshot, Project, VolumetrySnapshot
+from app.services import capture_template_service, import_service
 
 pytestmark = [
     pytest.mark.filterwarnings(
@@ -33,14 +37,194 @@ async def test_capture_template_export_returns_valid_workbook(api_client: AsyncC
     )
 
     workbook = load_workbook(filename=BytesIO(response.content))
-    sheet = workbook.active
-    assert sheet.title == "Catálogo de Integraciones"
+    assert workbook.active.title == "Inicio"
+    sheet = workbook["Catálogo de Integraciones"]
     assert sheet["A1"].value == "#"
     assert sheet["B1"].value == "ID de Interfaz"
-    assert sheet["A2"].value == 1
-    assert sheet.freeze_panes == "A2"
-    assert sheet.auto_filter.ref == "A1:Y2"
-    assert "Reference" in workbook.sheetnames
+    assert sheet["A2"].value is None
+    assert sheet.freeze_panes == "F2"
+    assert sheet.max_row <= 2
+    assert all(cell.value is None for cell in sheet[2])
+    assert sheet.auto_filter.ref == "A1:AN501"
+    assert workbook.sheetnames == [
+        "Inicio",
+        "_Listas",
+        "Catálogo de Integraciones",
+        "Validación Previa",
+        "Ejemplos Guiados",
+        "Guía de Campos",
+        "Patrones",
+        "Servicios OCI",
+        "Límites OCI",
+        "Interoperabilidad",
+    ]
+    assert workbook["_Listas"].sheet_state == "veryHidden"
+    assert "LIST_FREQUENCY" in workbook.defined_names
+    assert "LIST_PATTERNS" in workbook.defined_names
+    assert len(sheet.data_validations.dataValidation) >= 6
+    assert "v2.0.0" in response.headers["content-disposition"]
+
+
+@pytest.mark.asyncio
+async def test_capture_template_metadata_matches_download_contract(api_client: AsyncClient) -> None:
+    """Expose one backend-owned version and column contract to the web app."""
+
+    response = await api_client.get("/api/v1/exports/template/metadata")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["template_version"] == "2.0.0"
+    assert payload["filename"] == "oci-dis-import-template-v2.0.0.xlsx"
+    assert payload["capture_sheet"] == "Catálogo de Integraciones"
+    assert payload["capture_row_limit"] == 500
+    assert len(payload["columns"]) == 40
+    required = {item["field"] for item in payload["columns"] if item["requirement"] == "Requerido"}
+    assert required == {"brand", "business_process", "interface_name", "frequency", "source_system", "destination_system", "tbq"}
+
+
+@pytest.mark.asyncio
+async def test_capture_template_round_trip_imports_exactly_one_row(
+    test_engine: AsyncEngine,
+    tmp_path: Path,
+) -> None:
+    """Download-fill-import round trip maps the productive capture fields exactly."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(id="template-roundtrip", name="Template Roundtrip", owner_id="architect", status="active")
+        session.add(project)
+        await session.flush()
+        workbook_bytes, _ = await capture_template_service.generate_capture_template(session)
+        workbook = load_workbook(BytesIO(workbook_bytes))
+        sheet = workbook["Catálogo de Integraciones"]
+        header_columns = {cell.value: cell.column for cell in sheet[1]}
+        values = {
+            "#": 1,
+            "ID de Interfaz": "INT-ROUNDTRIP-001",
+            "Marca": "Retail",
+            "Proceso de Negocio": "Order to Cash",
+            "Interfaz": "Publicar pedido confirmado",
+            "Frecuencia": "Cada 1 hora",
+            "Tipo Trigger OIC": "Event Trigger",
+            "Payload por Ejecución (KB)": 150,
+            "Fan-out (Si/No)": "Sí",
+            "# Destinos": 3,
+            "Sistema de Origen": "Oracle ERP Cloud",
+            "Sistema de Destino": "Order Fulfillment",
+            "TBQ": "Y",
+            "Patrón Seleccionado (Manual)": "#02",
+            "Racional del Patrón (Manual)": "Decouples the producer from three consumers.",
+            "Retry Policy": "3 attempts; exponential backoff; DLQ",
+            "Herramientas Core Cuantificables / Volumétricas": "OCI Streaming | OIC Gen3",
+            "Herramientas Adicionales / Overlays (Complemento Manual)": "OCI API Gateway | OCI APM",
+        }
+        for header, value in values.items():
+            sheet.cell(2, header_columns[header], value)
+        file_path = tmp_path / "capture-v2.xlsx"
+        workbook.save(file_path)
+
+        batch = await import_service.create_import_batch(project.id, file_path.name, session)
+        processed = await import_service.process_import(batch.id, str(file_path), session)
+        await session.flush()
+        integrations = list((await session.scalars(select(CatalogIntegration).where(CatalogIntegration.project_id == project.id))).all())
+
+        assert processed.source_row_count == 1
+        assert processed.loaded_count == 1
+        assert processed.header_map is not None
+        assert processed.header_map["__template_version__"] == "2.0.0"
+        assert processed.header_map["__template_compatibility__"] == "current"
+        assert len(integrations) == 1
+        integration = integrations[0]
+        assert integration.interface_id == "INT-ROUNDTRIP-001"
+        assert integration.trigger_type == "Event Trigger"
+        assert integration.selected_pattern == "#02"
+        assert integration.fan_out_targets == 3
+        assert integration.core_tools == "OCI Streaming | OIC Gen3"
+
+
+@pytest.mark.asyncio
+async def test_capture_template_rejects_formulas(
+    test_engine: AsyncEngine,
+    tmp_path: Path,
+) -> None:
+    """Capture formulas cannot hide logic or executable spreadsheet payloads."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(id="template-formula", name="Template Formula", owner_id="architect", status="active")
+        session.add(project)
+        await session.flush()
+        workbook_bytes, _ = await capture_template_service.generate_capture_template(session)
+        workbook = load_workbook(BytesIO(workbook_bytes))
+        workbook["Catálogo de Integraciones"]["E2"] = '=HYPERLINK("https://example.com","Open")'
+        file_path = tmp_path / "capture-formula.xlsx"
+        workbook.save(file_path)
+        batch = await import_service.create_import_batch(project.id, file_path.name, session)
+        with pytest.raises(HTTPException) as exc_info:
+            await import_service.process_import(batch.id, str(file_path), session)
+        detail = exc_info.value.detail
+        assert isinstance(detail, dict)
+        assert detail["error_code"] == "IMPORT_FORMULA_NOT_ALLOWED"
+
+
+@pytest.mark.asyncio
+async def test_unversioned_v1_workbook_remains_supported(
+    test_engine: AsyncEngine,
+    tmp_path: Path,
+) -> None:
+    """Existing unversioned capture workbooks import with an explicit legacy label."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(id="template-v1", name="Template v1", owner_id="architect", status="active")
+        session.add(project)
+        await session.flush()
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Catálogo de Integraciones"
+        sheet.append([
+            "#",
+            "ID de Interfaz",
+            "Marca",
+            "Proceso de Negocio",
+            "Interfaz",
+            "Sistema de Origen",
+            "Sistema de Destino",
+            "Frecuencia",
+            "TBQ",
+        ])
+        sheet.append([1, "INT-V1-001", "Retail", "Order to Cash", "Legacy capture", "ERP", "OMS", "Mensual", "Y"])
+        file_path = tmp_path / "capture-v1.xlsx"
+        workbook.save(file_path)
+        batch = await import_service.create_import_batch(project.id, file_path.name, session)
+        processed = await import_service.process_import(batch.id, str(file_path), session)
+        assert processed.loaded_count == 1
+        assert processed.header_map is not None
+        assert processed.header_map["__template_compatibility__"] == "legacy_v1_accepted"
+
+
+@pytest.mark.asyncio
+async def test_v2_workbook_rejects_changed_headers(
+    test_engine: AsyncEngine,
+    tmp_path: Path,
+) -> None:
+    """A governed v2 manifest cannot be paired with silently changed capture headers."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(id="template-headers", name="Template Headers", owner_id="architect", status="active")
+        session.add(project)
+        await session.flush()
+        workbook_bytes, _ = await capture_template_service.generate_capture_template(session)
+        workbook = load_workbook(BytesIO(workbook_bytes))
+        workbook["Catálogo de Integraciones"]["E1"] = "Nombre inventado"
+        file_path = tmp_path / "capture-renamed.xlsx"
+        workbook.save(file_path)
+        batch = await import_service.create_import_batch(project.id, file_path.name, session)
+        with pytest.raises(HTTPException) as exc_info:
+            await import_service.process_import(batch.id, str(file_path), session)
+        detail = exc_info.value.detail
+        assert isinstance(detail, dict)
+        assert detail["error_code"] == "IMPORT_TEMPLATE_HEADERS_CHANGED"
 
 
 @pytest.mark.asyncio
