@@ -20,11 +20,12 @@ Replaces `Catalogo_Integracion.xlsx` with a governed platform enabling architect
 - **Web:** Next.js 15 (TypeScript, Node.js 26.0.0) — `apps/web/`
 - **Database:** PostgreSQL 16
 - **Jobs:** Celery + Redis
-- **Storage:** MinIO (dev) / OCI Object Storage (prod)
+- **Storage:** MinIO (local runtime) / OCI Object Storage (deployed runtime)
 - **Calc engine:** `packages/calc-engine/` (pure Python, no I/O)
 - **Service rules:** normalized Service Product tables; Assumptions contain client workload inputs only
 
-All services run in **Docker Desktop on macOS** — no host dependencies.
+All services run in **production mode** on Docker Desktop — no host Python or
+Node.js dependencies and no source-code bind mounts.
 
 ---
 
@@ -37,14 +38,14 @@ cd "OCI DIS Blueprint"
 # 2. Copy environment template
 cp .env.example .env
 
-# 3. Start the full stack
-docker compose up --build
+# 3. Build and start the production stack
+docker compose up -d --build --wait
 
 # 4. Apply database migrations (first time)
-docker compose run --rm api alembic upgrade head
+docker compose exec -T api alembic upgrade head
 
 # 5. Seed reference data (patterns, dictionary, assumptions)
-docker compose run --rm api python -m app.migrations.seed
+docker compose exec -T api python -m app.migrations.seed
 ```
 
 **Access:**
@@ -60,40 +61,48 @@ containers. LLM credentials must not be provided through `.env`; the deprecated
 
 ```bash
 CODEX_HOME="$HOME/.codex" \
-  docker compose -f docker-compose.yml -f docker-compose.codex.yml up -d api worker
+  docker compose -f docker-compose.yml -f docker-compose.codex.yml \
+  up -d --build --wait
 ```
 
 The override mounts `${CODEX_HOME}/config.toml` and `${CODEX_HOME}/auth.json`
-read-only at `/codex/config.toml` and `/codex/auth.json`.
+read-only under `/codex-host`. The production entrypoint copies them to a private
+runtime directory and immediately drops API and worker execution to `app:10001`.
 
 ---
 
 ## Running Tests
 
 ```bash
-# API integration + calc-engine parity tests
-docker compose run --rm --no-deps api python -m pytest app/tests /calc-engine/src/tests -q
+# API integration tests with ephemeral export storage
+docker run --rm \
+  --tmpfs /app/uploads:rw,uid=10001,gid=10001,mode=0770 \
+  ocidisblueprint-api:latest \
+  python -m pytest -p no:cacheprovider app/tests -q
+
+# Pure calc-engine parity tests
+docker run --rm -w /calc-engine ocidisblueprint-api:latest \
+  python -m pytest -p no:cacheprovider src/tests -q
 
 # Web tests and static checks, using non-runtime Docker build targets
-npm run test:web
-npm run lint:web
+docker build --target test --output type=cacheonly -f apps/web/Dockerfile .
+docker build --target lint --output type=cacheonly -f apps/web/Dockerfile .
 
-# Refresh and verify the committed OpenAPI artifact
-docker compose run --rm --no-deps api python scripts/export_openapi.py
-docker compose run --rm --no-deps api python scripts/export_openapi.py --check
+# Verify the OpenAPI artifact packaged in the production image
+docker run --rm ocidisblueprint-api:latest \
+  python scripts/export_openapi.py --check
 
-# Frontend gates (same commands used by effective CI)
-npm --prefix apps/web run type-check
-npm --prefix apps/web run lint
-npm --prefix apps/web test
-npm --prefix apps/web run build
-npm audit --audit-level=high
+# Production build and dependency audit
+docker build --target production -t ocidisblueprint-web:latest \
+  -f apps/web/Dockerfile .
+docker run --rm -v "$PWD":/workspace -w /workspace node:26.0.0-alpine \
+  npm audit --audit-level=high
 ```
 
 ## Schema-Dependent Admin Smoke Check
 
 When the Admin Synthetic Lab schema, router, worker, or UI changes, run this
-against the live dev stack before calling the feature validated:
+against the live production-mode stack before calling the feature validated:
 
 ```bash
 # Ensure the running API container has the latest DB schema.

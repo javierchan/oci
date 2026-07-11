@@ -399,16 +399,21 @@ All commands run inside Docker containers — no local Python or Node required o
 ```bash
 # First time setup
 cp .env.example .env
-docker compose up --build
+docker compose up -d --build --wait
 
-# Run API tests
-docker compose run --rm --no-deps api python -m pytest app/tests /calc-engine/src/tests -q
+# Run API and calc-engine tests independently as the production non-root user
+docker run --rm \
+  --tmpfs /app/uploads:rw,uid=10001,gid=10001,mode=0770 \
+  ocidisblueprint-api:latest \
+  python -m pytest -p no:cacheprovider app/tests -q
+docker run --rm -w /calc-engine ocidisblueprint-api:latest \
+  python -m pytest -p no:cacheprovider src/tests -q
 
 # Apply migrations
-docker compose run --rm api alembic upgrade head
+docker compose exec -T api alembic upgrade head
 
 # Seed reference data
-docker compose run --rm api python -m app.migrations.seed
+docker compose exec -T api python -m app.migrations.seed
 
 # Open API docs
 open http://localhost:8000/docs

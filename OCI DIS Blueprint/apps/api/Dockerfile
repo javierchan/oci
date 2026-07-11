@@ -1,10 +1,10 @@
-# Multi-stage build from the repository root so the pure calc engine is present
-# in both development and production images.
+# Production API image built from the repository root so the pure calc engine
+# is packaged with the application.
 FROM python:3.12-slim AS base
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+RUN apt-get update && apt-get install -y --no-install-recommends curl gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------- dependency builder ----------
@@ -19,26 +19,26 @@ FROM base AS deps
 COPY --from=dependency-builder /tmp/wheels /tmp/wheels
 RUN pip install --no-cache-dir /tmp/wheels/* && rm -rf /tmp/wheels
 
-# ---------- development ----------
-FROM deps AS development
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    ENVIRONMENT=development
-COPY apps/api .
-COPY packages/calc-engine /calc-engine
-COPY docs/api/openapi.yaml /docs/api/openapi.yaml
-EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-
 # ---------- production ----------
 FROM deps AS production
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    ENVIRONMENT=production
-RUN addgroup --system app && adduser --system --ingroup app app
+    ENVIRONMENT=production \
+    HOME=/tmp/oci-dis-home
+RUN addgroup --system --gid 10001 app \
+    && adduser --system --uid 10001 --ingroup app app \
+    && mkdir -p "$HOME" \
+    && chown app:app "$HOME" \
+    && chmod 0700 "$HOME"
 COPY --chown=app:app apps/api .
 COPY --chown=app:app packages/calc-engine /calc-engine
 COPY --chown=app:app docs/api/openapi.yaml /docs/api/openapi.yaml
+COPY apps/api/production-entrypoint.sh /usr/local/bin/oci-dis-entrypoint
+RUN mkdir -p /app/uploads \
+    && chown app:app /app/uploads \
+    && chmod 0770 /app/uploads \
+    && chmod 0755 /usr/local/bin/oci-dis-entrypoint
 USER app
 EXPOSE 8000
+ENTRYPOINT ["oci-dis-entrypoint"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

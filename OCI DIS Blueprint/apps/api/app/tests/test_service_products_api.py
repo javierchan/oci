@@ -50,6 +50,13 @@ def test_seed_service_products_cover_oracle_data_integration_portfolio() -> None
     }
     assert expected_rules.issubset(rules)
 
+    oic_profile = next(
+        profile for profile in SERVICE_PROFILES if profile["service_id"] == "OIC3"
+    )
+    oic_docs = str(oic_profile["oracle_docs_urls"])
+    assert "message-pack-usage-synchronous-requests.html" in oic_docs
+    assert "message-pack-usage-and-synchronous-requests.html" not in oic_docs
+
 
 @pytest.mark.asyncio
 async def test_legacy_services_api_is_not_mounted(api_client: AsyncClient) -> None:

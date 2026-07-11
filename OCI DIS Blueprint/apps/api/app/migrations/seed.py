@@ -666,7 +666,7 @@ SERVICE_PROFILES: list[dict[str, object]] = [
         "oracle_docs_urls": (
             "https://docs.oracle.com/en-us/iaas/application-integration/index.html|"
             "https://docs.oracle.com/en/cloud/paas/application-integration/oracle-integration-oci/service-limits.html|"
-            "https://docs.oracle.com/en/cloud/paas/application-integration/oracle-integration-oci/message-pack-usage-and-synchronous-requests.html|"
+            "https://docs.oracle.com/en/cloud/paas/application-integration/oracle-integration-oci/message-pack-usage-synchronous-requests.html|"
             "https://docs.oracle.com/en/cloud/paas/application-integration/find-adapters.html|"
             "https://docs.oracle.com/en/cloud/paas/application-integration/aiagents/enable-mcp-project.html|"
             "https://www.oracle.com/integration/pricing/"

@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "OCI DIS Blueprint API"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: str = "production"
     CORS_ALLOWED_ORIGINS: list[str] = [
         "http://localhost:3000",
     ]

@@ -10,13 +10,6 @@ COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/package.json
 RUN npm ci
 
-# ---------- development ----------
-FROM deps AS development
-COPY apps/web ./apps/web
-WORKDIR /workspace/apps/web
-EXPOSE 3000
-CMD ["npm", "run", "dev"]
-
 # ---------- quality gates ----------
 FROM deps AS test
 COPY apps/web ./apps/web
