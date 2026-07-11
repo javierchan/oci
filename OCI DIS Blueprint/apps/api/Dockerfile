@@ -1,16 +1,15 @@
 # Production API image built from the repository root so the pure calc engine
 # is packaged with the application.
-FROM python:3.12-slim AS base
+FROM python:3.12-alpine AS base
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl gosu \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk upgrade --no-cache \
+    && apk add --no-cache curl su-exec
 
 # ---------- runtime dependency builder ----------
 FROM base AS runtime-dependency-builder
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache gcc musl-dev postgresql-dev
 COPY apps/api/requirements-runtime.txt /tmp/requirements-runtime.txt
 RUN pip wheel --no-cache-dir --wheel-dir /tmp/runtime-wheels -r /tmp/requirements-runtime.txt
 
@@ -25,8 +24,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     ENVIRONMENT=production \
     HOME=/tmp/oci-dis-home
-RUN addgroup --system --gid 10001 app \
-    && adduser --system --uid 10001 --ingroup app app \
+RUN addgroup -S -g 10001 app \
+    && adduser -S -D -H -u 10001 -G app app \
     && mkdir -p "$HOME" \
     && chown app:app "$HOME" \
     && chmod 0700 "$HOME"

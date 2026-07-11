@@ -2,18 +2,18 @@
 
 **Validated:** 2026-07-10
 **Branch:** `main`
-**Base commit:** `7b663ce08f755a08b654d6d4f655981f99bc726d`
+**Base commit:** `0ce01c3df68dc397acc5c0c5422eb8ca589e81bf`
 **Detailed remediation:** `milestone-progress-20260710-140234.md`
 
 ## Current Status
 
 | Area | Status | Evidence |
 |---|---|---|
-| Backend API and calc engine | complete | 114 tests passed, including all 42 calc-engine tests |
+| Backend API and calc engine | complete | 119 tests passed: 77 API and all 42 calc-engine tests |
 | Frontend | complete | TypeScript, ESLint, 19 tests, and production build passed |
-| Browser workflows | complete | 3 Playwright E2E tests passed |
-| Dependency security | complete | npm audit 0; Trivy 0 HIGH/CRITICAL for API and web images |
-| Database | complete | Alembic at `20260710_0015`; seed idempotent |
+| Browser workflows | complete | 4 Playwright E2E tests passed, including governed workbook download |
+| Dependency security | complete | npm audit 0; Docker Scout 0 HIGH/CRITICAL for API and web images |
+| Database | complete | Alembic at `20260710_0016`; seed idempotent |
 | Runtime | complete | 7 Compose services running; no recent error signatures |
 | Effective CI | complete | one root workflow covers code, browser, build, and image gates |
 
@@ -27,6 +27,21 @@
   execution; API recalculation overlays the versioned normalized rule bundle.
 - New dashboard, export, and AI-review evidence carries the effective rule
   bundle version and freshness metadata.
+
+## Governed Offline Capture Workbook
+
+- Import downloads template `v2.0.0` from one backend-owned column and version
+  contract, with 500 blank capture rows and no example data in the import surface.
+- Ten workbook sheets provide novice instructions, preflight checks, guided
+  examples, field definitions, patterns, OCI products, limits, interoperability,
+  evidence freshness, and official source URLs.
+- Named validation ranges and a very-hidden manifest keep dropdowns, headers,
+  source counts, generation time, and compatibility metadata deterministic.
+- Existing unversioned v1 workbooks remain supported with a legacy warning;
+  future major versions, changed v2 headers, and formulas are rejected.
+- A generated workbook was filled and imported through the production service
+  path with exact field mapping. All ten visible sheets rendered without formula
+  errors, and Playwright verified the App metadata and downloaded filename.
 
 ## Production Runtime
 
@@ -47,9 +62,14 @@
 - The API production image excludes pytest, mypy, Ruff, aiosqlite, API tests,
   calc-engine tests, generated reports, and dependency manifests. It retains an
   empty writable `generated-reports` runtime directory required by Synthetic Lab.
-- The API image now reports approximately 867 MB local virtual size, down from
-  approximately 1.11 GB before cleanup. The web image remains approximately
-  302 MB local virtual size and contains only the standalone Next.js runtime.
+- The API production image now uses `python:3.12-alpine`. Docker inspect reports
+  approximately 194 MB of image content for API and 73 MB for web; Docker
+  Desktop reports approximately 689 MB and 302 MB of local virtual size,
+  respectively. Web contains only the standalone Next.js runtime.
+- Removed the unused `python-jose`/`ecdsa` dependency and replaced the vulnerable
+  Go-based `gosu` binary with Alpine `su-exec`. The Codex bootstrap still starts
+  as root only long enough to copy credentials, then API and worker run as
+  UID/GID `10001`.
 - Celery startup broker retry behavior is explicit and regression-tested for
   forward compatibility with Celery 6.
 - Removed the unused `@testing-library/react` dependency and moved D3 type

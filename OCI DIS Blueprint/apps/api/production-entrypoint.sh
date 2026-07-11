@@ -21,7 +21,7 @@ if [ "$(id -u)" -eq 0 ]; then
         chmod 0400 "$runtime_codex_dir/auth.json"
     fi
 
-    exec gosu app "$@"
+    exec su-exec app "$@"
 fi
 
 exec "$@"
