@@ -2,14 +2,14 @@
 
 **Validated:** 2026-07-10
 **Branch:** `main`
-**Base commit:** `a1dd379e96ffaf4ec2dcf16349c49868b0eb4981`
+**Base commit:** `7b663ce08f755a08b654d6d4f655981f99bc726d`
 **Detailed remediation:** `milestone-progress-20260710-140234.md`
 
 ## Current Status
 
 | Area | Status | Evidence |
 |---|---|---|
-| Backend API and calc engine | complete | 113 tests passed, including all 42 calc-engine tests |
+| Backend API and calc engine | complete | 114 tests passed, including all 42 calc-engine tests |
 | Frontend | complete | TypeScript, ESLint, 19 tests, and production build passed |
 | Browser workflows | complete | 3 Playwright E2E tests passed |
 | Dependency security | complete | npm audit 0; Trivy 0 HIGH/CRITICAL for API and web images |
@@ -38,6 +38,26 @@
   immediately drops API and worker execution to `app:10001`.
 - API and worker share only the persistent `uploads_data` volume required for
   imports and exports; source code never enters that writable volume.
+
+## Production Dependency Cleanup
+
+- Python dependencies are separated into production runtime and non-deployable
+  quality sets. The CI aggregate installs both, while the production image
+  installs only `requirements-runtime.txt`.
+- The API production image excludes pytest, mypy, Ruff, aiosqlite, API tests,
+  calc-engine tests, generated reports, and dependency manifests. It retains an
+  empty writable `generated-reports` runtime directory required by Synthetic Lab.
+- The API image now reports approximately 867 MB local virtual size, down from
+  approximately 1.11 GB before cleanup. The web image remains approximately
+  302 MB local virtual size and contains only the standalone Next.js runtime.
+- Celery startup broker retry behavior is explicit and regression-tested for
+  forward compatibility with Celery 6.
+- Removed the unused `@testing-library/react` dependency and moved D3 type
+  declarations to frontend development dependencies. `npm audit` remains at zero.
+- Removed approximately 1.15 GB of ignored host artifacts, including `.venv`,
+  `node_modules`, `.next`, caches, temporary uploads, and test outputs. Versioned
+  audit evidence was preserved. Temporary quality and Playwright images were
+  deleted after validation; no dangling OCI DIS Blueprint images remain.
 
 ## Terminal Job Evidence
 

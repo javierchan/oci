@@ -46,7 +46,9 @@ apps/
       workers/          Celery tasks (import_worker, recalc_worker)
       migrations/       Alembic migrations
     Dockerfile
-    requirements.txt
+    requirements-runtime.txt  Production-only dependencies
+    requirements-quality.txt  Test and static-analysis dependencies
+    requirements.txt          Complete CI dependency aggregate
   web/                  Next.js app
     src/app/            App Router pages (dashboard, catalog, imports …)
     src/components/     Shared UI components
@@ -401,12 +403,14 @@ All commands run inside Docker containers — no local Python or Node required o
 cp .env.example .env
 docker compose up -d --build --wait
 
-# Run API and calc-engine tests independently as the production non-root user
+# Build the non-deployable quality image, then run API and calc-engine tests
+docker build --target quality -t ocidisblueprint-api-quality:local \
+  -f apps/api/Dockerfile .
 docker run --rm \
   --tmpfs /app/uploads:rw,uid=10001,gid=10001,mode=0770 \
-  ocidisblueprint-api:latest \
+  ocidisblueprint-api-quality:local \
   python -m pytest -p no:cacheprovider app/tests -q
-docker run --rm -w /calc-engine ocidisblueprint-api:latest \
+docker run --rm -w /calc-engine ocidisblueprint-api-quality:local \
   python -m pytest -p no:cacheprovider src/tests -q
 
 # Apply migrations

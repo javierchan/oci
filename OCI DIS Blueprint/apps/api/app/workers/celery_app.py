@@ -12,6 +12,7 @@ celery_app = Celery("oci_dis_blueprint", broker=settings.REDIS_URL, backend=sett
 celery_app.conf.task_serializer = "json"
 celery_app.conf.accept_content = ["json"]
 celery_app.conf.result_serializer = "json"
+celery_app.conf.broker_connection_retry_on_startup = True
 celery_app.conf.imports = (
     "app.workers.ai_review_worker",
     "app.workers.import_worker",

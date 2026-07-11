@@ -74,15 +74,26 @@ runtime directory and immediately drops API and worker execution to `app:10001`.
 ## Running Tests
 
 ```bash
+# Build the non-deployable API quality image once
+docker build --target quality -t ocidisblueprint-api-quality:local \
+  -f apps/api/Dockerfile .
+
 # API integration tests with ephemeral export storage
 docker run --rm \
   --tmpfs /app/uploads:rw,uid=10001,gid=10001,mode=0770 \
-  ocidisblueprint-api:latest \
+  ocidisblueprint-api-quality:local \
   python -m pytest -p no:cacheprovider app/tests -q
 
 # Pure calc-engine parity tests
-docker run --rm -w /calc-engine ocidisblueprint-api:latest \
+docker run --rm -w /calc-engine ocidisblueprint-api-quality:local \
   python -m pytest -p no:cacheprovider src/tests -q
+
+# API static analysis as the non-root image user
+docker run --rm ocidisblueprint-api-quality:local \
+  ruff check --no-cache app /calc-engine/src
+docker run --rm ocidisblueprint-api-quality:local \
+  mypy app --ignore-missing-imports --no-error-summary \
+  --cache-dir=/tmp/mypy-cache
 
 # Web tests and static checks, using non-runtime Docker build targets
 docker build --target test --output type=cacheonly -f apps/web/Dockerfile .
@@ -130,7 +141,8 @@ If the synthetic worker flow or cleanup policy changed, prefer the automated
 bounded smoke script:
 
 ```bash
-./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_lab.py
+docker compose exec -T api \
+  python scripts/smoke_admin_synthetic_lab.py
 ```
 
 This validates health, preset discovery, job creation, polling, recent-job
@@ -141,7 +153,8 @@ To validate explicit cleanup on a retained small project instead of the
 ephemeral auto-clean path:
 
 ```bash
-./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_lab.py --preset-code retained-smoke
+docker compose exec -T api \
+  python scripts/smoke_admin_synthetic_lab.py --preset-code retained-smoke
 ```
 
 That retained run must reach `completed`, invoke the cleanup route, and finish
@@ -167,7 +180,8 @@ To validate retry end to end on a controlled failed job without inventing a
 new product preset:
 
 ```bash
-./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_retry.py
+docker compose exec -T api \
+  python scripts/smoke_admin_synthetic_retry.py
 ```
 
 That helper seeds a bounded failed source job through the service layer, calls
@@ -186,6 +200,9 @@ The Playwright suite covers the Synthetic Lab landing page, terminal cleanup
 for `ephemeral-smoke`, terminal completion plus explicit cleanup for
 `retained-smoke`, and dashboard, catalog preview tabs, integration canvas,
 topology, Service Products, and Assumptions.
+
+Containerized browser runs can set `PLAYWRIGHT_OUTPUT_DIR=/tmp/playwright-results`
+so traces and failure screenshots remain ephemeral.
 
 ---
 

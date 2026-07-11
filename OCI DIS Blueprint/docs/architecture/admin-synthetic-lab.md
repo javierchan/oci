@@ -302,7 +302,8 @@ smoke path as well:
 Preferred automated path:
 
 ```bash
-./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_lab.py
+docker compose exec -T api \
+  python scripts/smoke_admin_synthetic_lab.py
 ```
 
 That script verifies the full bounded contract for the `ephemeral-smoke`
@@ -319,7 +320,8 @@ preset:
 The same script also supports the retained bounded preset:
 
 ```bash
-./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_lab.py --preset-code retained-smoke
+docker compose exec -T api \
+  python scripts/smoke_admin_synthetic_lab.py --preset-code retained-smoke
 ```
 
 For `retained-smoke`, the expected runtime sequence is:
@@ -333,7 +335,8 @@ For `retained-smoke`, the expected runtime sequence is:
 Preferred retry-runtime path:
 
 ```bash
-./.venv/bin/python apps/api/scripts/smoke_admin_synthetic_retry.py
+docker compose exec -T api \
+  python scripts/smoke_admin_synthetic_retry.py
 ```
 
 That script intentionally seeds a bounded failed source job through the real

@@ -4,6 +4,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? "test-results",
   timeout: 90_000,
   expect: {
     timeout: 15_000,

@@ -10,8 +10,8 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test",
-    "test:e2e:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium"
+    "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-0} playwright test",
+    "test:e2e:install": "PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-0} playwright install chromium"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
@@ -21,7 +21,6 @@
     "@radix-ui/react-tooltip": "^1.0.7",
     "@tanstack/react-query": "^5.100.6",
     "@tanstack/react-table": "^8.17.3",
-    "@types/d3": "^7.4.3",
     "axios": "^1.15.2",
     "clsx": "^2.1.1",
     "d3": "^7.9.0",
@@ -36,7 +35,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
-    "@testing-library/react": "^16.0.0",
+    "@types/d3": "^7.4.3",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
