@@ -46,6 +46,19 @@ def test_synthetic_queue_routes_stay_within_governed_message_limit() -> None:
         assert max(row.payload_per_execution_kb for row in queue_rows) <= synthetic_service.SYNTHETIC_QUEUE_MAX_MESSAGE_KB
 
 
+def test_synthetic_streaming_routes_stay_within_governed_message_limit() -> None:
+    for spec in (synthetic_service.DEFAULT_SYNTHETIC_SPEC, synthetic_service.SMOKE_SYNTHETIC_SPEC):
+        dataset = synthetic_service.generate_synthetic_dataset(spec)
+        streaming_rows = [
+            row
+            for row in [*dataset.import_rows, *dataset.manual_rows]
+            if "OCI Streaming" in row.core_tools
+        ]
+
+        assert streaming_rows
+        assert max(row.payload_per_execution_kb for row in streaming_rows) <= synthetic_service.SYNTHETIC_STREAMING_MAX_MESSAGE_KB
+
+
 def test_canvas_state_is_compact_and_parseable_shape() -> None:
     payload = synthetic_service.build_canvas_state(
         ("OIC Gen3", "OCI Queue", "OCI Functions"),

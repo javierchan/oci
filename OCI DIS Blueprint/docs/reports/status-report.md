@@ -136,7 +136,7 @@
   Delete affordance; remaining disabled controls express real workflow preconditions.
 - Provider banners distinguish configured, verified, degraded, deterministic-only,
   and misconfigured states from persisted jobs and agent runs.
-- Production Docker validation passed 100 API, 42 calc-engine, 15 pricing-engine,
+- Production Docker validation passed 101 API, 42 calc-engine, 15 pricing-engine,
   53 frontend unit tests, strict TypeScript, ESLint, Ruff, mypy, OpenAPI check,
   Node 26 production build, and 15 of 15 Playwright flows. Real OCI validation
   covered synthesis, allowlisted Function Calling, and Guardrails prompt-injection

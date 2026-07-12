@@ -60,6 +60,7 @@ SYNTHETIC_JOBS_TABLE_NAME = "synthetic_generation_jobs"
 SYNTHETIC_JOBS_REQUIRED_MIGRATION = "20260428_0007"
 SYNTHETIC_QUEUE_MAX_MESSAGE_KB = 256.0
 SYNTHETIC_QUEUE_REFERENCE_PAYLOAD_KB = 192.0
+SYNTHETIC_STREAMING_MAX_MESSAGE_KB = 1024.0
 SYNTHETIC_API_GATEWAY_BACKEND_TOOL_KEYS = frozenset({"OIC Gen3", "OCI Functions", "Oracle Functions"})
 
 IMPORT_HEADER_ROW: list[str] = [
@@ -576,15 +577,20 @@ def _payload_value(
     low, high = pattern.payload_range_kb
     if "OCI Queue" in pattern.route_core_tools:
         high = min(high, int(SYNTHETIC_QUEUE_REFERENCE_PAYLOAD_KB))
+    if "OCI Streaming" in pattern.route_core_tools:
+        high = min(high, int(SYNTHETIC_STREAMING_MAX_MESSAGE_KB))
     value = round(rng.uniform(low, high), 1)
     if "OCI Queue" in pattern.route_core_tools and index % 37 == 0:
         return SYNTHETIC_QUEUE_REFERENCE_PAYLOAD_KB
     if "OCI Queue" in pattern.route_core_tools:
         return min(value, SYNTHETIC_QUEUE_REFERENCE_PAYLOAD_KB)
+    if "OCI Streaming" in pattern.route_core_tools:
+        return SYNTHETIC_STREAMING_MAX_MESSAGE_KB if index % 53 == 0 else min(
+            value,
+            SYNTHETIC_STREAMING_MAX_MESSAGE_KB,
+        )
     if "OIC Gen3" in pattern.route_core_tools and index % 61 == 0:
         return 12288.0
-    if "OCI Streaming" in pattern.route_core_tools and index % 53 == 0:
-        return 1536.0
     if "OCI Functions" in pattern.route_core_tools and index % 71 == 0:
         return 7168.0
     return value
