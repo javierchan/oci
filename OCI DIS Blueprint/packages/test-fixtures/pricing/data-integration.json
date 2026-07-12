@@ -1,0 +1,90 @@
+{
+  "fixture_version": "1.0",
+  "service": {
+    "service_id": "oci-data-integration",
+    "display_name": "OCI Data Integration",
+    "workbook_preset": "Data Integration"
+  },
+  "price_items": [
+    {
+      "part_number": "B92598",
+      "display_name": "OCI Data Integration - Workspace Usage",
+      "price_type": "HOUR",
+      "metric": "Workspace Usage Per Hour",
+      "service_category": "Data Integration - Workspace Usage",
+      "currency": "USD",
+      "unit_price": "0.16",
+      "tier": null,
+      "workbook_evidence": { "price_sheet_row": 391, "preset_sheet_rows": [87, 92] }
+    },
+    {
+      "part_number": "B92599",
+      "display_name": "OCI Data Integration - Data Processed",
+      "price_type": "HOUR",
+      "metric": "Gigabyte of Data Processed Per Hour",
+      "service_category": "Data Integration - Data Processed",
+      "currency": "USD",
+      "unit_price": "0.04",
+      "tier": null,
+      "workbook_evidence": { "price_sheet_row": 392, "preset_sheet_rows": [88, 93] }
+    },
+    {
+      "part_number": "B93306",
+      "display_name": "OCI Data Integration - Pipeline Operator Execution",
+      "price_type": "HOUR_UTILIZED",
+      "metric": "Execution Hour",
+      "service_category": "Data Integration - Pipeline Operator Execution",
+      "currency": "USD",
+      "unit_price": "0",
+      "tier": {
+        "raw": { "range_min_inclusive": "0", "range_max_inclusive": "30" },
+        "normalized": { "range_min_exclusive": null, "range_max_inclusive": "30" }
+      },
+      "workbook_evidence": { "price_sheet_row": 450, "preset_sheet_rows": [89, 94] }
+    },
+    {
+      "part_number": "B93306",
+      "display_name": "OCI Data Integration - Pipeline Operator Execution",
+      "price_type": "HOUR_UTILIZED",
+      "metric": "Execution Hour",
+      "service_category": "Data Integration - Pipeline Operator Execution",
+      "currency": "USD",
+      "unit_price": "0.3",
+      "tier": {
+        "raw": { "range_min_inclusive": "30", "range_max_inclusive": "999999999999999" },
+        "normalized": { "range_min_exclusive": "30", "range_max_inclusive": "999999999999999" }
+      },
+      "workbook_evidence": { "price_sheet_row": 451, "preset_sheet_rows": [90, 95] }
+    }
+  ],
+  "parity_cases": [
+    {
+      "id": "data-integration-workspace-744-hours",
+      "part_number": "B92598",
+      "formula": "quantity * instances * unit_price * rate * hours",
+      "inputs": { "quantity": "1", "instances": "1", "unit_price": "0.16", "rate": "1", "hours": "744" },
+      "expected": { "monthly_unrounded": "119.040", "monthly_currency": "119.04", "annual_currency": "1428.48" }
+    },
+    {
+      "id": "data-integration-ten-gb-per-hour",
+      "part_number": "B92599",
+      "formula": "quantity * instances * unit_price * rate * hours",
+      "inputs": { "quantity": "10", "instances": "1", "unit_price": "0.04", "rate": "1", "hours": "744" },
+      "expected": { "monthly_unrounded": "297.600", "monthly_currency": "297.60", "annual_currency": "3571.20" }
+    },
+    {
+      "id": "data-integration-operator-paid-utilized-hours",
+      "part_number": "B93306",
+      "selected_tier": { "range_min_exclusive": "30", "range_max_inclusive": "999999999999999" },
+      "formula": "quantity * instances * unit_price * rate * effective_hours",
+      "inputs": { "quantity": "1", "instances": "1", "unit_price": "0.3", "rate": "1", "effective_hours": "60" },
+      "expected": { "monthly_unrounded": "18.00", "monthly_currency": "18.00", "annual_currency": "216.00" }
+    },
+    {
+      "id": "data-integration-operator-tier-boundary",
+      "part_number": "B93306",
+      "inputs": { "tier_basis_quantity": "30" },
+      "expected": { "selected_unit_price": "0", "boundary_owner": "lower_tier" }
+    }
+  ]
+}

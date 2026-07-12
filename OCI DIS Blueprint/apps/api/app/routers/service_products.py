@@ -20,8 +20,10 @@ from app.schemas.service_products import (
     ServiceVerificationRunRequest,
 )
 from app.services import service_product_service
+from app.services import agent_service
+from app.schemas.agent import AgentCreateRequest
 from app.services.authz import require_admin
-from app.workers.service_verification_worker import execute_service_verification_job_task
+from app.workers.agent_worker import execute_agent_run_task
 
 router = APIRouter(prefix="/service-products", tags=["Service Products"])
 
@@ -91,10 +93,30 @@ async def execute_service_verification_job(
     request = body or ServiceVerificationRunRequest()
     async with db.begin():
         job = await service_product_service.create_verification_job(request, actor_id, db)
+        agent_run = await agent_service.create_agent_run(
+            AgentCreateRequest(
+                agent_type="service_verification",
+                context={
+                    "verification_job_id": job.id,
+                    "request": request.model_dump(mode="json"),
+                },
+            ),
+            actor_id,
+            actor_role,
+            db,
+        )
+        await agent_service.link_agent_run(
+            agent_run.id, legacy_job_type="service_verification", legacy_job_id=job.id, db=db
+        )
     try:
-        execute_service_verification_job_task.apply_async(args=[job.id], task_id=job.id)
+        execute_agent_run_task.apply_async(args=[agent_run.id], task_id=agent_run.id, queue="agents")
     except Exception as exc:  # pragma: no cover - defensive dispatch path
         async with db.begin():
+            await agent_service.mark_agent_run_failed(
+                agent_run.id,
+                {"detail": "Unable to dispatch service verification agent."},
+                db,
+            )
             await service_product_service.mark_verification_job_failed(
                 job.id,
                 {"detail": f"Unable to dispatch service verification job: {exc}"},

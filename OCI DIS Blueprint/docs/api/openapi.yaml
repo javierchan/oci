@@ -1,6 +1,675 @@
 {
   "components": {
     "schemas": {
+      "AgentApprovalDecisionRequest": {
+        "additionalProperties": false,
+        "description": "Explicit human decision for an agent proposal.",
+        "properties": {
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "AgentApprovalDecisionRequest",
+        "type": "object"
+      },
+      "AgentApprovalResponse": {
+        "additionalProperties": false,
+        "description": "Human approval state for one proposed mutation.",
+        "properties": {
+          "action_type": {
+            "title": "Action Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "proposed_payload": {
+            "additionalProperties": true,
+            "title": "Proposed Payload",
+            "type": "object"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "action_type",
+          "status",
+          "proposed_payload",
+          "reviewed_by",
+          "review_note",
+          "reviewed_at"
+        ],
+        "title": "AgentApprovalResponse",
+        "type": "object"
+      },
+      "AgentCreateRequest": {
+        "additionalProperties": false,
+        "description": "Bounded request for one asynchronous agent run.",
+        "properties": {
+          "agent_type": {
+            "enum": [
+              "architecture_review",
+              "service_verification",
+              "import_quality",
+              "integration_design",
+              "topology_investigation",
+              "bom_scenario",
+              "support_assistant"
+            ],
+            "title": "Agent Type",
+            "type": "string"
+          },
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "include_provider": {
+            "default": true,
+            "title": "Include Provider",
+            "type": "boolean"
+          },
+          "integration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Id"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "required": [
+          "agent_type"
+        ],
+        "title": "AgentCreateRequest",
+        "type": "object"
+      },
+      "AgentDefinitionResponse": {
+        "additionalProperties": false,
+        "description": "Versioned, immutable runtime definition exposed to authorized clients.",
+        "properties": {
+          "allowed_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Roles",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "mutates_data": {
+            "title": "Mutates Data",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "requires_project": {
+            "title": "Requires Project",
+            "type": "boolean"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
+          },
+          "type": {
+            "enum": [
+              "architecture_review",
+              "service_verification",
+              "import_quality",
+              "integration_design",
+              "topology_investigation",
+              "bom_scenario",
+              "support_assistant"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "version",
+          "name",
+          "description",
+          "location",
+          "tools",
+          "allowed_roles",
+          "mutates_data",
+          "requires_project"
+        ],
+        "title": "AgentDefinitionResponse",
+        "type": "object"
+      },
+      "AgentProviderStatusResponse": {
+        "additionalProperties": false,
+        "description": "Non-secret OCI provider and Docker runtime readiness.",
+        "properties": {
+          "api_key_configured": {
+            "title": "Api Key Configured",
+            "type": "boolean"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "function_calling_available": {
+            "title": "Function Calling Available",
+            "type": "boolean"
+          },
+          "guardrails_enabled": {
+            "title": "Guardrails Enabled",
+            "type": "boolean"
+          },
+          "guardrails_version": {
+            "title": "Guardrails Version",
+            "type": "string"
+          },
+          "max_retries": {
+            "title": "Max Retries",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "project_configured": {
+            "title": "Project Configured",
+            "type": "boolean"
+          },
+          "provider": {
+            "const": "oci_genai",
+            "default": "oci_genai",
+            "title": "Provider",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "responses_capability": {
+            "title": "Responses Capability",
+            "type": "string"
+          },
+          "runtime": {
+            "const": "docker_celery_agents_queue",
+            "default": "docker_celery_agents_queue",
+            "title": "Runtime",
+            "type": "string"
+          },
+          "status_message": {
+            "title": "Status Message",
+            "type": "string"
+          },
+          "transport_strategy": {
+            "title": "Transport Strategy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "region",
+          "endpoint",
+          "api_key_configured",
+          "project_configured",
+          "function_calling_available",
+          "transport_strategy",
+          "responses_capability",
+          "guardrails_enabled",
+          "guardrails_version",
+          "max_retries",
+          "status_message"
+        ],
+        "title": "AgentProviderStatusResponse",
+        "type": "object"
+      },
+      "AgentRunListResponse": {
+        "additionalProperties": false,
+        "description": "Recent governed agent executions.",
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRunResponse"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runs",
+          "total"
+        ],
+        "title": "AgentRunListResponse",
+        "type": "object"
+      },
+      "AgentRunResponse": {
+        "additionalProperties": false,
+        "description": "Full persisted agent execution without secrets or raw provider payloads.",
+        "properties": {
+          "agent_type": {
+            "enum": [
+              "architecture_review",
+              "service_verification",
+              "import_quality",
+              "integration_design",
+              "topology_investigation",
+              "bom_scenario",
+              "support_assistant"
+            ],
+            "title": "Agent Type",
+            "type": "string"
+          },
+          "approvals": {
+            "items": {
+              "$ref": "#/components/schemas/AgentApprovalResponse"
+            },
+            "title": "Approvals",
+            "type": "array"
+          },
+          "cancel_requested": {
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition_version": {
+            "title": "Definition Version",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "integration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Id"
+          },
+          "max_steps": {
+            "title": "Max Steps",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "opc_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opc Request Id"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "provider_response_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Response Id"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "waiting_approval",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "step_count": {
+            "title": "Step Count",
+            "type": "integer"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/AgentStepResponse"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "agent_type",
+          "definition_version",
+          "project_id",
+          "integration_id",
+          "requested_by",
+          "status",
+          "context",
+          "result",
+          "error",
+          "model",
+          "provider_response_id",
+          "opc_request_id",
+          "input_tokens",
+          "output_tokens",
+          "step_count",
+          "max_steps",
+          "cancel_requested",
+          "started_at",
+          "finished_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AgentRunResponse",
+        "type": "object"
+      },
+      "AgentStepResponse": {
+        "additionalProperties": false,
+        "description": "Sanitized execution step for progress and diagnostics.",
+        "properties": {
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "opc_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opc Request Id"
+          },
+          "output_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Summary"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "step_type": {
+            "title": "Step Type",
+            "type": "string"
+          },
+          "tool_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Name"
+          }
+        },
+        "required": [
+          "id",
+          "sequence",
+          "step_type",
+          "tool_name",
+          "status",
+          "output_summary",
+          "opc_request_id",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "AgentStepResponse",
+        "type": "object"
+      },
       "AiReviewAcceptRecommendationRequest": {
         "additionalProperties": false,
         "description": "Bounded payload for accepting one recommendation without catalog mutation.",
@@ -1135,8 +1804,9 @@
         "additionalProperties": false,
         "description": "Provider health/configuration status without exposing credentials.",
         "properties": {
-          "base_url": {
-            "title": "Base Url",
+          "auth_mode": {
+            "const": "api_key",
+            "title": "Auth Mode",
             "type": "string"
           },
           "configured": {
@@ -1147,10 +1817,16 @@
             "title": "Data Retention Policy",
             "type": "string"
           },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
           "mode": {
             "enum": [
               "deterministic_only",
+              "llm_configured",
               "llm_available",
+              "llm_degraded",
               "misconfigured"
             ],
             "title": "Mode",
@@ -1168,34 +1844,52 @@
             "type": "array"
           },
           "provider": {
-            "const": "codex",
-            "default": "codex",
+            "const": "oci_genai",
+            "default": "oci_genai",
             "title": "Provider",
             "type": "string"
           },
           "quota": {
             "$ref": "#/components/schemas/AiReviewQuotaState"
           },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
           "request_timeout_seconds": {
             "title": "Request Timeout Seconds",
             "type": "number"
+          },
+          "retry_policy": {
+            "$ref": "#/components/schemas/AiReviewRetryPolicy"
+          },
+          "safety": {
+            "$ref": "#/components/schemas/AiReviewSafetyStatus"
           },
           "status_message": {
             "title": "Status Message",
             "type": "string"
           },
-          "wire_api": {
-            "title": "Wire Api",
+          "transport": {
+            "title": "Transport",
             "type": "string"
+          },
+          "transport_strategy": {
+            "$ref": "#/components/schemas/AiReviewTransportStrategy"
           }
         },
         "required": [
           "configured",
           "mode",
           "model",
-          "wire_api",
-          "base_url",
+          "transport",
+          "transport_strategy",
+          "region",
+          "auth_mode",
+          "endpoint",
           "request_timeout_seconds",
+          "retry_policy",
+          "safety",
           "quota",
           "data_retention_policy",
           "status_message"
@@ -1531,6 +2225,87 @@
         "title": "AiReviewResponse",
         "type": "object"
       },
+      "AiReviewRetryPolicy": {
+        "additionalProperties": false,
+        "description": "Bounded provider retry contract exposed for operational review.",
+        "properties": {
+          "max_retries": {
+            "title": "Max Retries",
+            "type": "integer"
+          },
+          "respects_retry_after": {
+            "title": "Respects Retry After",
+            "type": "boolean"
+          },
+          "retryable_status_codes": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Retryable Status Codes",
+            "type": "array"
+          },
+          "strategy": {
+            "const": "exponential_full_jitter",
+            "title": "Strategy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "max_retries",
+          "strategy",
+          "retryable_status_codes",
+          "respects_retry_after"
+        ],
+        "title": "AiReviewRetryPolicy",
+        "type": "object"
+      },
+      "AiReviewSafetyStatus": {
+        "additionalProperties": false,
+        "description": "Privacy-preserving identity and OCI Guardrails configuration.",
+        "properties": {
+          "guardrails_enabled": {
+            "title": "Guardrails Enabled",
+            "type": "boolean"
+          },
+          "guardrails_failure_mode": {
+            "title": "Guardrails Failure Mode",
+            "type": "string"
+          },
+          "guardrails_version": {
+            "title": "Guardrails Version",
+            "type": "string"
+          },
+          "input_protections": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Input Protections",
+            "type": "array"
+          },
+          "output_protections": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Output Protections",
+            "type": "array"
+          },
+          "safety_identifier": {
+            "const": "hmac_sha256",
+            "title": "Safety Identifier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "safety_identifier",
+          "guardrails_enabled",
+          "guardrails_version",
+          "guardrails_failure_mode",
+          "input_protections",
+          "output_protections"
+        ],
+        "title": "AiReviewSafetyStatus",
+        "type": "object"
+      },
       "AiReviewStressScenario": {
         "additionalProperties": false,
         "description": "Deterministic growth or evidence scenario for architecture review.",
@@ -1738,6 +2513,44 @@
           "metric"
         ],
         "title": "AiReviewTopologyInsight",
+        "type": "object"
+      },
+      "AiReviewTransportStrategy": {
+        "additionalProperties": false,
+        "description": "Responses-first transport policy and observed process capability.",
+        "properties": {
+          "configured_mode": {
+            "title": "Configured Mode",
+            "type": "string"
+          },
+          "fallback": {
+            "const": "chat_completions",
+            "title": "Fallback",
+            "type": "string"
+          },
+          "preferred": {
+            "const": "responses",
+            "title": "Preferred",
+            "type": "string"
+          },
+          "responses_capability": {
+            "enum": [
+              "available",
+              "unavailable",
+              "unverified",
+              "disabled"
+            ],
+            "title": "Responses Capability",
+            "type": "string"
+          }
+        },
+        "required": [
+          "preferred",
+          "fallback",
+          "configured_mode",
+          "responses_capability"
+        ],
+        "title": "AiReviewTransportStrategy",
         "type": "object"
       },
       "ApproveJustificationRequest": {
@@ -2055,6 +2868,34 @@
         "title": "AuditEventResponse",
         "type": "object"
       },
+      "Body_import_rate_card_api_v1_pricing_rate_card_imports_post": {
+        "properties": {
+          "currency": {
+            "default": "USD",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "name"
+        ],
+        "title": "Body_import_rate_card_api_v1_pricing_rate_card_imports_post",
+        "type": "object"
+      },
       "Body_upload_and_import_api_v1_imports__project_id__post": {
         "properties": {
           "file": {
@@ -2067,6 +2908,483 @@
           "file"
         ],
         "title": "Body_upload_and_import_api_v1_imports__project_id__post",
+        "type": "object"
+      },
+      "BomComparisonResponse": {
+        "additionalProperties": false,
+        "description": "Deterministic delta between two governed BOM snapshots.",
+        "properties": {
+          "annual_delta": {
+            "title": "Annual Delta",
+            "type": "number"
+          },
+          "baseline_snapshot_id": {
+            "title": "Baseline Snapshot Id",
+            "type": "string"
+          },
+          "comparison_snapshot_id": {
+            "title": "Comparison Snapshot Id",
+            "type": "string"
+          },
+          "contract_delta": {
+            "title": "Contract Delta",
+            "type": "number"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "drivers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "environment_monthly_deltas": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Environment Monthly Deltas",
+            "type": "object"
+          },
+          "monthly_delta": {
+            "title": "Monthly Delta",
+            "type": "number"
+          },
+          "service_monthly_deltas": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Service Monthly Deltas",
+            "type": "object"
+          }
+        },
+        "required": [
+          "baseline_snapshot_id",
+          "comparison_snapshot_id",
+          "currency",
+          "monthly_delta",
+          "annual_delta",
+          "contract_delta",
+          "service_monthly_deltas",
+          "environment_monthly_deltas"
+        ],
+        "title": "BomComparisonResponse",
+        "type": "object"
+      },
+      "BomGenerationRequest": {
+        "additionalProperties": false,
+        "description": "Request a governed BOM for an approved deployment scenario.",
+        "properties": {
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario_id"
+        ],
+        "title": "BomGenerationRequest",
+        "type": "object"
+      },
+      "BomJobListResponse": {
+        "additionalProperties": false,
+        "description": "Recent BOM jobs for one project.",
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/BomJobResponse"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "BomJobListResponse",
+        "type": "object"
+      },
+      "BomJobResponse": {
+        "additionalProperties": false,
+        "description": "Terminal BOM generation job state.",
+        "properties": {
+          "bom_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bom Snapshot Id"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Details"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "scenario_id",
+          "requested_by",
+          "status",
+          "started_at",
+          "completed_at",
+          "bom_snapshot_id",
+          "error_details",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BomJobResponse",
+        "type": "object"
+      },
+      "BomLineItemResponse": {
+        "additionalProperties": false,
+        "description": "One auditable priced or blocked line.",
+        "properties": {
+          "annual_amount": {
+            "title": "Annual Amount",
+            "type": "number"
+          },
+          "contract_amount": {
+            "title": "Contract Amount",
+            "type": "number"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "formula": {
+            "title": "Formula",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "inputs": {
+            "additionalProperties": true,
+            "title": "Inputs",
+            "type": "object"
+          },
+          "metric_name": {
+            "title": "Metric Name",
+            "type": "string"
+          },
+          "monthly_amount": {
+            "title": "Monthly Amount",
+            "type": "number"
+          },
+          "part_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Number"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "number"
+          },
+          "service_id": {
+            "title": "Service Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "unit_price": {
+            "title": "Unit Price",
+            "type": "number"
+          },
+          "warnings": {
+            "items": {},
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "environment",
+          "service_id",
+          "part_number",
+          "description",
+          "metric_name",
+          "quantity",
+          "unit",
+          "unit_price",
+          "monthly_amount",
+          "annual_amount",
+          "contract_amount",
+          "formula",
+          "inputs",
+          "status",
+          "warnings",
+          "provenance"
+        ],
+        "title": "BomLineItemResponse",
+        "type": "object"
+      },
+      "BomReviewRequest": {
+        "additionalProperties": false,
+        "description": "Approve or publish a complete BOM snapshot.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "publication_status": {
+            "pattern": "^(approved|published)$",
+            "title": "Publication Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "publication_status"
+        ],
+        "title": "BomReviewRequest",
+        "type": "object"
+      },
+      "BomSnapshotListResponse": {
+        "additionalProperties": false,
+        "description": "Recent BOM snapshots without line-item payloads.",
+        "properties": {
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/BomSnapshotResponse"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "BomSnapshotListResponse",
+        "type": "object"
+      },
+      "BomSnapshotResponse": {
+        "additionalProperties": false,
+        "description": "Full immutable BOM and its provenance.",
+        "properties": {
+          "annual_total": {
+            "title": "Annual Total",
+            "type": "number"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "contract_total": {
+            "title": "Contract Total",
+            "type": "number"
+          },
+          "coverage_pct": {
+            "title": "Coverage Pct",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "engine_version": {
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "line_items": {
+            "items": {
+              "$ref": "#/components/schemas/BomLineItemResponse"
+            },
+            "title": "Line Items",
+            "type": "array"
+          },
+          "mapping_version": {
+            "title": "Mapping Version",
+            "type": "string"
+          },
+          "monthly_total": {
+            "title": "Monthly Total",
+            "type": "number"
+          },
+          "price_catalog_snapshot_id": {
+            "title": "Price Catalog Snapshot Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "publication_status": {
+            "title": "Publication Status",
+            "type": "string"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "technical_snapshot_id": {
+            "title": "Technical Snapshot Id",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {},
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "scenario_id",
+          "technical_snapshot_id",
+          "price_catalog_snapshot_id",
+          "mapping_version",
+          "engine_version",
+          "currency",
+          "coverage_pct",
+          "monthly_total",
+          "annual_total",
+          "contract_total",
+          "summary",
+          "warnings",
+          "publication_status",
+          "approved_by",
+          "approved_at",
+          "created_at"
+        ],
+        "title": "BomSnapshotResponse",
         "type": "object"
       },
       "BulkPatchRequest": {
@@ -3640,6 +4958,270 @@
           "created_at"
         ],
         "title": "DashboardSnapshotSummary",
+        "type": "object"
+      },
+      "DeploymentEnvironmentInput": {
+        "additionalProperties": false,
+        "description": "Physical environment allocation used by one deployment scenario.",
+        "properties": {
+          "active_hours_month": {
+            "default": 744.0,
+            "maximum": 744.0,
+            "minimum": 0.0,
+            "title": "Active Hours Month",
+            "type": "number"
+          },
+          "active_months_year": {
+            "default": 12,
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Active Months Year",
+            "type": "integer"
+          },
+          "demand_share": {
+            "default": 1.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Demand Share",
+            "type": "number"
+          },
+          "dr_role": {
+            "default": "primary",
+            "pattern": "^(primary|standby|none)$",
+            "title": "Dr Role",
+            "type": "string"
+          },
+          "ha_multiplier": {
+            "default": 1.0,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Ha Multiplier",
+            "type": "number"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "DeploymentEnvironmentInput",
+        "type": "object"
+      },
+      "DeploymentScenarioCreateRequest": {
+        "additionalProperties": false,
+        "description": "Create a governed deployment scenario from a technical snapshot.",
+        "properties": {
+          "assumptions": {
+            "additionalProperties": true,
+            "title": "Assumptions",
+            "type": "object"
+          },
+          "contract_months": {
+            "default": 12,
+            "maximum": 120.0,
+            "minimum": 1.0,
+            "title": "Contract Months",
+            "type": "integer"
+          },
+          "currency": {
+            "default": "USD",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "environments": {
+            "items": {
+              "$ref": "#/components/schemas/DeploymentEnvironmentInput"
+            },
+            "title": "Environments",
+            "type": "array"
+          },
+          "name": {
+            "default": "Baseline deployment",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "price_mode": {
+            "default": "public_list",
+            "pattern": "^(public_list|contract_rate|manual_rate_card)$",
+            "title": "Price Mode",
+            "type": "string"
+          },
+          "region": {
+            "default": "global",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Region",
+            "type": "string"
+          },
+          "service_config": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Service Config",
+            "type": "object"
+          },
+          "technical_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Technical Snapshot Id"
+          }
+        },
+        "title": "DeploymentScenarioCreateRequest",
+        "type": "object"
+      },
+      "DeploymentScenarioListResponse": {
+        "additionalProperties": false,
+        "description": "Deployment scenarios for one project.",
+        "properties": {
+          "scenarios": {
+            "items": {
+              "$ref": "#/components/schemas/DeploymentScenarioResponse"
+            },
+            "title": "Scenarios",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "DeploymentScenarioListResponse",
+        "type": "object"
+      },
+      "DeploymentScenarioResponse": {
+        "additionalProperties": false,
+        "description": "Governed project deployment scenario.",
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "assumptions": {
+            "additionalProperties": true,
+            "title": "Assumptions",
+            "type": "object"
+          },
+          "contract_months": {
+            "title": "Contract Months",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "environments": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Environments",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_mode": {
+            "title": "Price Mode",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "service_config": {
+            "additionalProperties": true,
+            "title": "Service Config",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "technical_snapshot_id": {
+            "title": "Technical Snapshot Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "status",
+          "currency",
+          "region",
+          "price_mode",
+          "technical_snapshot_id",
+          "contract_months",
+          "environments",
+          "service_config",
+          "assumptions",
+          "created_by",
+          "approved_by",
+          "approved_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DeploymentScenarioResponse",
         "type": "object"
       },
       "DictionaryCategoryListResponse": {
@@ -6004,6 +7586,519 @@
         "title": "PayloadDistributionBucket",
         "type": "object"
       },
+      "PriceCatalogSnapshotListResponse": {
+        "additionalProperties": false,
+        "description": "Recent immutable price catalogs.",
+        "properties": {
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/PriceCatalogSnapshotResponse"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "PriceCatalogSnapshotListResponse",
+        "type": "object"
+      },
+      "PriceCatalogSnapshotResponse": {
+        "additionalProperties": false,
+        "description": "Immutable normalized price catalog metadata.",
+        "properties": {
+          "approval_status": {
+            "title": "Approval Status",
+            "type": "string"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "retrieved_at": {
+            "format": "date-time",
+            "title": "Retrieved At",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_last_updated": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Last Updated"
+          },
+          "sync_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Job Id"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "sync_job_id",
+          "currency",
+          "source_last_updated",
+          "retrieved_at",
+          "content_hash",
+          "item_count",
+          "approval_status",
+          "approved_by",
+          "approved_at",
+          "metadata",
+          "created_at"
+        ],
+        "title": "PriceCatalogSnapshotResponse",
+        "type": "object"
+      },
+      "PriceItemListResponse": {
+        "additionalProperties": false,
+        "description": "Paginated price items.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PriceItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "PriceItemListResponse",
+        "type": "object"
+      },
+      "PriceItemResponse": {
+        "additionalProperties": false,
+        "description": "Normalized price item or tier.",
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metric_name": {
+            "title": "Metric Name",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "part_number": {
+            "title": "Part Number",
+            "type": "string"
+          },
+          "price_type": {
+            "title": "Price Type",
+            "type": "string"
+          },
+          "range_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Max"
+          },
+          "range_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Min"
+          },
+          "range_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Unit"
+          },
+          "service_category": {
+            "title": "Service Category",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "snapshot_id",
+          "part_number",
+          "display_name",
+          "metric_name",
+          "service_category",
+          "price_type",
+          "currency",
+          "model",
+          "value",
+          "range_min",
+          "range_max",
+          "range_unit"
+        ],
+        "title": "PriceItemResponse",
+        "type": "object"
+      },
+      "PriceSourceListResponse": {
+        "additionalProperties": false,
+        "description": "Available price sources.",
+        "properties": {
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/PriceSourceResponse"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "PriceSourceListResponse",
+        "type": "object"
+      },
+      "PriceSourceResponse": {
+        "additionalProperties": false,
+        "description": "One governed source of OCI list or contracted prices.",
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "source_type",
+          "base_url",
+          "currency",
+          "status",
+          "last_synced_at",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PriceSourceResponse",
+        "type": "object"
+      },
+      "PriceSyncJobListResponse": {
+        "additionalProperties": false,
+        "description": "Recent price synchronization jobs.",
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/PriceSyncJobResponse"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "PriceSyncJobListResponse",
+        "type": "object"
+      },
+      "PriceSyncJobResponse": {
+        "additionalProperties": false,
+        "description": "Terminal price synchronization job state.",
+        "properties": {
+          "changes_detected": {
+            "title": "Changes Detected",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "error_details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Details"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "requested_by",
+          "currency",
+          "status",
+          "started_at",
+          "completed_at",
+          "item_count",
+          "changes_detected",
+          "snapshot_id",
+          "error_details",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PriceSyncJobResponse",
+        "type": "object"
+      },
+      "PriceSyncRequest": {
+        "additionalProperties": false,
+        "description": "Request to synchronize a price source in one currency.",
+        "properties": {
+          "currency": {
+            "default": "USD",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          }
+        },
+        "title": "PriceSyncRequest",
+        "type": "object"
+      },
       "ProjectArchiveResponse": {
         "additionalProperties": false,
         "description": "Archive action result for one project.",
@@ -6516,6 +8611,66 @@
           }
         },
         "title": "ResetJustificationRequest",
+        "type": "object"
+      },
+      "ScenarioAssistantResponse": {
+        "additionalProperties": false,
+        "description": "Evidence-backed scenario draft and minimum missing client questions.",
+        "properties": {
+          "ai_status": {
+            "title": "Ai Status",
+            "type": "string"
+          },
+          "ai_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Summary"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "string"
+          },
+          "detected_services": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Detected Services",
+            "type": "array"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/DeploymentScenarioCreateRequest"
+          },
+          "required_questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Questions",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "draft",
+          "detected_services",
+          "required_questions",
+          "warnings",
+          "confidence",
+          "ai_status",
+          "ai_summary"
+        ],
+        "title": "ScenarioAssistantResponse",
         "type": "object"
       },
       "ScopedRecalculationRequest": {
@@ -7863,6 +10018,218 @@
         "title": "ServiceVerificationRunRequest",
         "type": "object"
       },
+      "SkuMappingListResponse": {
+        "additionalProperties": false,
+        "description": "Governed SKU mappings and coverage.",
+        "properties": {
+          "billable_count": {
+            "title": "Billable Count",
+            "type": "integer"
+          },
+          "mappings": {
+            "items": {
+              "$ref": "#/components/schemas/SkuMappingResponse"
+            },
+            "title": "Mappings",
+            "type": "array"
+          },
+          "non_billable_count": {
+            "title": "Non Billable Count",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "billable_count",
+          "non_billable_count"
+        ],
+        "title": "SkuMappingListResponse",
+        "type": "object"
+      },
+      "SkuMappingPatchRequest": {
+        "additionalProperties": false,
+        "description": "Admin change to an existing mapping decision.",
+        "properties": {
+          "billing_metric_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Metric Key"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "formula_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formula Key"
+          },
+          "is_billable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Billable"
+          },
+          "part_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Number"
+          },
+          "predicates": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predicates"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "pattern": "^(draft|approved|retired)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "SkuMappingPatchRequest",
+        "type": "object"
+      },
+      "SkuMappingResponse": {
+        "additionalProperties": false,
+        "description": "Approved mapping from service demand to OCI SKU.",
+        "properties": {
+          "billing_metric_key": {
+            "title": "Billing Metric Key",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "formula_key": {
+            "title": "Formula Key",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_billable": {
+            "title": "Is Billable",
+            "type": "boolean"
+          },
+          "part_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Number"
+          },
+          "predicates": {
+            "additionalProperties": true,
+            "title": "Predicates",
+            "type": "object"
+          },
+          "service_id": {
+            "title": "Service Id",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tool_key": {
+            "title": "Tool Key",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "service_id",
+          "tool_key",
+          "part_number",
+          "billing_metric_key",
+          "formula_key",
+          "predicates",
+          "is_billable",
+          "status",
+          "version",
+          "source_url",
+          "confidence",
+          "updated_at"
+        ],
+        "title": "SkuMappingResponse",
+        "type": "object"
+      },
       "SourceRowListResponse": {
         "additionalProperties": false,
         "description": "Paginated list of source rows.",
@@ -7966,6 +10333,315 @@
           }
         },
         "title": "StreamingMetrics",
+        "type": "object"
+      },
+      "SupportAttachmentRequest": {
+        "additionalProperties": false,
+        "description": "Explicit App component context supplied by the user.",
+        "properties": {
+          "attachment_type": {
+            "enum": [
+              "page",
+              "project",
+              "integration",
+              "catalog",
+              "topology",
+              "canvas",
+              "import",
+              "bom",
+              "admin"
+            ],
+            "title": "Attachment Type",
+            "type": "string"
+          },
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
+          "href": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Href",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attachment_type",
+          "label",
+          "href"
+        ],
+        "title": "SupportAttachmentRequest",
+        "type": "object"
+      },
+      "SupportAttachmentResponse": {
+        "additionalProperties": false,
+        "description": "Persisted component context safe to render in the assistant.",
+        "properties": {
+          "attachment_type": {
+            "enum": [
+              "page",
+              "project",
+              "integration",
+              "catalog",
+              "topology",
+              "canvas",
+              "import",
+              "bom",
+              "admin"
+            ],
+            "title": "Attachment Type",
+            "type": "string"
+          },
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "attachment_type",
+          "label",
+          "entity_id",
+          "href",
+          "context"
+        ],
+        "title": "SupportAttachmentResponse",
+        "type": "object"
+      },
+      "SupportConversationResponse": {
+        "additionalProperties": false,
+        "description": "Session-isolated support conversation with bounded history.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/SupportMessageResponse"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "messages",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SupportConversationResponse",
+        "type": "object"
+      },
+      "SupportMessageCreateRequest": {
+        "additionalProperties": false,
+        "description": "One bounded support question plus current and pinned context.",
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/SupportAttachmentRequest"
+            },
+            "maxItems": 8,
+            "title": "Attachments",
+            "type": "array"
+          },
+          "content": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "integration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Id"
+          },
+          "page_title": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Page Title",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "route": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Route",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content",
+          "route",
+          "page_title"
+        ],
+        "title": "SupportMessageCreateRequest",
+        "type": "object"
+      },
+      "SupportMessageResponse": {
+        "additionalProperties": false,
+        "description": "Persisted support turn and its agent execution state.",
+        "properties": {
+          "agent_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Run Id"
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/SupportAttachmentResponse"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "citations": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "completed",
+              "failed",
+              "refused"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "content",
+          "status",
+          "agent_run_id",
+          "context",
+          "citations",
+          "attachments",
+          "created_at"
+        ],
+        "title": "SupportMessageResponse",
         "type": "object"
       },
       "SyntheticArtifactExportJobResponse": {
@@ -9022,6 +11698,423 @@
         "summary": "List governed synthetic-generation presets",
         "tags": [
           "Admin Synthetic"
+        ]
+      }
+    },
+    "/api/v1/agents": {
+      "get": {
+        "operationId": "list_agents_api_v1_agents_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentDefinitionResponse"
+                  },
+                  "title": "Response List Agents Api V1 Agents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List governed agent definitions",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
+    "/api/v1/agents/provider-status": {
+      "get": {
+        "operationId": "get_agent_provider_status_api_v1_agents_provider_status_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProviderStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect agent provider readiness",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
+    "/api/v1/agents/runs": {
+      "get": {
+        "operationId": "list_agent_runs_api_v1_agents_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List governed agent runs",
+        "tags": [
+          "Agents"
+        ]
+      },
+      "post": {
+        "operationId": "create_agent_run_api_v1_agents_runs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create an agent run",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
+    "/api/v1/agents/runs/{run_id}": {
+      "get": {
+        "operationId": "get_agent_run_api_v1_agents_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect one agent run",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
+    "/api/v1/agents/runs/{run_id}/approvals/{approval_id}": {
+      "post": {
+        "operationId": "decide_agent_approval_api_v1_agents_runs__run_id__approvals__approval_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentApprovalDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide an agent proposal",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
+    "/api/v1/agents/runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancel_agent_run_api_v1_agents_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request agent cancellation",
+        "tags": [
+          "Agents"
         ]
       }
     },
@@ -12066,6 +15159,77 @@
         ]
       }
     },
+    "/api/v1/imports/{project_id}/{batch_id}/quality-agent": {
+      "post": {
+        "operationId": "run_import_quality_agent_api_v1_imports__project_id___batch_id__quality_agent_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Analyst",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run the governed import quality agent",
+        "tags": [
+          "Imports"
+        ]
+      }
+    },
     "/api/v1/imports/{project_id}/{batch_id}/quality-assistant": {
       "get": {
         "operationId": "get_import_quality_assistant_api_v1_imports__project_id___batch_id__quality_assistant_get",
@@ -12990,6 +16154,586 @@
         ]
       }
     },
+    "/api/v1/pricing/catalog-snapshots": {
+      "get": {
+        "operationId": "list_price_catalog_snapshots_api_v1_pricing_catalog_snapshots_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceCatalogSnapshotListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List immutable OCI price catalogs",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/catalog-snapshots/{snapshot_id}/approve": {
+      "post": {
+        "operationId": "approve_price_catalog_snapshot_api_v1_pricing_catalog_snapshots__snapshot_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceCatalogSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve a reviewed price catalog",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/catalog-snapshots/{snapshot_id}/items": {
+      "get": {
+        "operationId": "list_price_items_api_v1_pricing_catalog_snapshots__snapshot_id__items_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceItemListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List normalized price items",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/rate-card-imports": {
+      "post": {
+        "operationId": "import_rate_card_api_v1_pricing_rate_card_imports_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_rate_card_api_v1_pricing_rate_card_imports_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceCatalogSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import an authorized contract rate card CSV",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/sku-mappings": {
+      "get": {
+        "operationId": "list_sku_mappings_api_v1_pricing_sku_mappings_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkuMappingListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List governed SKU mappings",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/sku-mappings/{mapping_id}": {
+      "patch": {
+        "operationId": "patch_sku_mapping_api_v1_pricing_sku_mappings__mapping_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mapping_id",
+            "required": true,
+            "schema": {
+              "title": "Mapping Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkuMappingPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkuMappingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update a SKU mapping",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/sources": {
+      "get": {
+        "operationId": "list_price_sources_api_v1_pricing_sources_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceSourceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List governed OCI price sources",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/sync-jobs": {
+      "get": {
+        "operationId": "list_price_sync_jobs_api_v1_pricing_sync_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceSyncJobListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List price sync jobs",
+        "tags": [
+          "Pricing"
+        ]
+      },
+      "post": {
+        "operationId": "create_price_sync_job_api_v1_pricing_sync_jobs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceSyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceSyncJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Synchronize one governed OCI price source",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/sync-jobs/{job_id}": {
+      "get": {
+        "operationId": "get_price_sync_job_api_v1_pricing_sync_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceSyncJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get one price sync job",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
     "/api/v1/projects/": {
       "get": {
         "description": "Return all projects ordered by creation date descending.",
@@ -13257,6 +17001,962 @@
         "summary": "Archive one project",
         "tags": [
           "Projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/bom-jobs": {
+      "get": {
+        "operationId": "list_bom_jobs_api_v1_projects__project_id__bom_jobs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BomJobListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List BOM jobs",
+        "tags": [
+          "Bill of Materials"
+        ]
+      },
+      "post": {
+        "operationId": "create_bom_job_api_v1_projects__project_id__bom_jobs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BomGenerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BomJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate a governed OCI BOM",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/bom-jobs/{job_id}": {
+      "get": {
+        "operationId": "get_bom_job_api_v1_projects__project_id__bom_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BomJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get one BOM job",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/bom-snapshots": {
+      "get": {
+        "operationId": "list_bom_snapshots_api_v1_projects__project_id__bom_snapshots_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BomSnapshotListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List BOM snapshots",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/bom-snapshots/compare": {
+      "get": {
+        "operationId": "compare_bom_snapshots_api_v1_projects__project_id__bom_snapshots_compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "baseline_id",
+            "required": true,
+            "schema": {
+              "title": "Baseline Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "comparison_id",
+            "required": true,
+            "schema": {
+              "title": "Comparison Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BomComparisonResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare two governed BOMs",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}": {
+      "get": {
+        "operationId": "get_bom_snapshot_api_v1_projects__project_id__bom_snapshots__snapshot_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BomSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get one BOM snapshot",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/exports/json": {
+      "get": {
+        "operationId": "download_bom_json_api_v1_projects__project_id__bom_snapshots__snapshot_id__exports_json_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download governed BOM as JSON",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/exports/pdf": {
+      "get": {
+        "operationId": "download_bom_pdf_api_v1_projects__project_id__bom_snapshots__snapshot_id__exports_pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download governed BOM as PDF",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/exports/xlsx": {
+      "get": {
+        "operationId": "download_bom_xlsx_api_v1_projects__project_id__bom_snapshots__snapshot_id__exports_xlsx_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download governed BOM as XLSX",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/review": {
+      "post": {
+        "operationId": "review_bom_snapshot_api_v1_projects__project_id__bom_snapshots__snapshot_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BomReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BomSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve or publish a complete BOM",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/deployment-scenarios": {
+      "get": {
+        "operationId": "list_deployment_scenarios_api_v1_projects__project_id__deployment_scenarios_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentScenarioListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List deployment scenarios",
+        "tags": [
+          "Bill of Materials"
+        ]
+      },
+      "post": {
+        "operationId": "create_deployment_scenario_api_v1_projects__project_id__deployment_scenarios_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeploymentScenarioCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentScenarioResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a deployment scenario",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/deployment-scenarios/agent": {
+      "post": {
+        "operationId": "run_bom_scenario_agent_api_v1_projects__project_id__deployment_scenarios_agent_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run the governed BOM scenario agent",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/deployment-scenarios/assistant": {
+      "get": {
+        "operationId": "get_deployment_scenario_assistant_api_v1_projects__project_id__deployment_scenarios_assistant_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_llm",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Llm",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioAssistantResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Draft a smart deployment scenario",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/deployment-scenarios/{scenario_id}/approve": {
+      "post": {
+        "operationId": "approve_deployment_scenario_api_v1_projects__project_id__deployment_scenarios__scenario_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentScenarioResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve a deployment scenario",
+        "tags": [
+          "Bill of Materials"
         ]
       }
     },
@@ -13931,6 +18631,210 @@
         "summary": "Get normalized limits for a service product",
         "tags": [
           "Service Products"
+        ]
+      }
+    },
+    "/api/v1/support/conversations/current": {
+      "post": {
+        "operationId": "get_or_create_support_conversation_api_v1_support_conversations_current_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Support-Session-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Support-Session-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "web-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get or create the current isolated support conversation",
+        "tags": [
+          "Contextual Support"
+        ]
+      }
+    },
+    "/api/v1/support/conversations/{conversation_id}": {
+      "get": {
+        "operationId": "get_support_conversation_api_v1_support_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Support-Session-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Support-Session-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read one isolated support conversation",
+        "tags": [
+          "Contextual Support"
+        ]
+      }
+    },
+    "/api/v1/support/conversations/{conversation_id}/messages": {
+      "post": {
+        "operationId": "create_support_message_api_v1_support_conversations__conversation_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Support-Session-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Support-Session-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "web-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportMessageCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit one contextual App support question",
+        "tags": [
+          "Contextual Support"
         ]
       }
     },

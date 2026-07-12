@@ -1,6 +1,11 @@
 /* Typed fetch wrapper for the OCI DIS Blueprint frontend. */
 
 import type {
+  AgentDefinition,
+  AgentProviderStatus,
+  AgentRun,
+  AgentRunList,
+  AgentRunRequest,
   AssumptionList,
   AssumptionSet,
   AssumptionSetCreate,
@@ -16,6 +21,11 @@ import type {
   AiReviewProviderStatus,
   AiReviewScope,
   AuditPage,
+  BomJob,
+  BomJobList,
+  BomComparison,
+  BomSnapshot,
+  BomSnapshotList,
   CanvasGovernance,
   CaptureTemplateMetadata,
   CatalogIntegrationDetail,
@@ -31,6 +41,9 @@ import type {
   DictOptionCreate,
   DuplicateCheckParams,
   DictionaryOptionList,
+  DeploymentScenario,
+  DeploymentScenarioCreate,
+  DeploymentScenarioList,
   GraphParams,
   GraphResponse,
   ImportBatch,
@@ -46,6 +59,12 @@ import type {
   PatternDefinition,
   PatternDefinitionCreate,
   PatternList,
+  PriceCatalogSnapshot,
+  PriceCatalogSnapshotList,
+  PriceItemList,
+  PriceSourceList,
+  PriceSyncJob,
+  PriceSyncJobList,
   Project,
   ProjectArchiveResponse,
   ProjectDeleteResponse,
@@ -61,7 +80,13 @@ import type {
   ServiceVerificationJobList,
   ServiceVerificationJob,
   ServiceVerificationRunRequest,
+  ScenarioAssistant,
+  SkuMapping,
+  SkuMappingList,
+  SkuMappingPatch,
   SourceRowList,
+  SupportConversation,
+  SupportMessageInput,
   SyntheticGenerationJob,
   SyntheticGenerationJobList,
   SyntheticGenerationJobRequest,
@@ -104,6 +129,13 @@ function adminHeaders(): HeadersInit {
   return {
     "X-Actor-Id": "web-admin",
     "X-Actor-Role": "Admin",
+  };
+}
+
+function supportHeaders(sessionId: string): HeadersInit {
+  return {
+    ...adminHeaders(),
+    "X-Support-Session-Id": sessionId,
   };
 }
 
@@ -182,6 +214,30 @@ export function getErrorMessage(error: unknown, fallback: string): string {
 
 export function apiDownloadUrl(path: string): string {
   return `${PUBLIC_BASE}${path}`;
+}
+
+export async function apiDownloadBlob(path: string): Promise<{ blob: Blob; filename: string | null }> {
+  const response = await fetch(`${PUBLIC_BASE}${path}`, {
+    cache: "no-store",
+    headers: adminHeaders(),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    const parsed = parseApiError(response.status, path, body);
+    throw new ApiError({
+      status: response.status,
+      path,
+      message: parsed.message,
+      errorCode: parsed.errorCode,
+      detail: parsed.detail,
+    });
+  }
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename\*?=(?:UTF-8''|\")?([^";]+)/i);
+  return {
+    blob: await response.blob(),
+    filename: match ? decodeURIComponent(match[1].trim()) : null,
+  };
 }
 
 function parseApiError(status: number, path: string, body: string): ParsedApiError {
@@ -394,6 +450,57 @@ function serializePatch(body: IntegrationPatch): string {
 }
 
 export const api = {
+  listAgents: (): Promise<AgentDefinition[]> =>
+    apiFetch<AgentDefinition[]>("/api/v1/agents", { headers: adminHeaders() }),
+
+  getAgentProviderStatus: (): Promise<AgentProviderStatus> =>
+    apiFetch<AgentProviderStatus>("/api/v1/agents/provider-status", { headers: adminHeaders() }),
+
+  listAgentRuns: (params: { project_id?: string; limit?: number } = {}): Promise<AgentRunList> =>
+    apiFetch<AgentRunList>(`/api/v1/agents/runs${withQuery(params)}`, { headers: adminHeaders() }),
+
+  getAgentRun: (runId: string): Promise<AgentRun> =>
+    apiFetch<AgentRun>(`/api/v1/agents/runs/${encodeURIComponent(runId)}`, { headers: adminHeaders() }),
+
+  runAgent: (body: AgentRunRequest): Promise<AgentRun> =>
+    apiFetch<AgentRun>("/api/v1/agents/runs", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify(body),
+    }),
+
+  cancelAgentRun: (runId: string): Promise<AgentRun> =>
+    apiFetch<AgentRun>(`/api/v1/agents/runs/${encodeURIComponent(runId)}/cancel`, {
+      method: "POST",
+      headers: adminHeaders(),
+    }),
+
+  getOrCreateSupportConversation: (sessionId: string): Promise<SupportConversation> =>
+    apiFetch<SupportConversation>("/api/v1/support/conversations/current", {
+      method: "POST",
+      headers: supportHeaders(sessionId),
+    }),
+
+  getSupportConversation: (conversationId: string, sessionId: string): Promise<SupportConversation> =>
+    apiFetch<SupportConversation>(
+      `/api/v1/support/conversations/${encodeURIComponent(conversationId)}`,
+      { headers: supportHeaders(sessionId) },
+    ),
+
+  sendSupportMessage: (
+    conversationId: string,
+    sessionId: string,
+    body: SupportMessageInput,
+  ): Promise<SupportConversation> =>
+    apiFetch<SupportConversation>(
+      `/api/v1/support/conversations/${encodeURIComponent(conversationId)}/messages`,
+      {
+        method: "POST",
+        headers: supportHeaders(sessionId),
+        body: JSON.stringify(body),
+      },
+    ),
+
   listProjects: (): Promise<ProjectList> =>
     apiFetch<ProjectListResponse>("/api/v1/projects/").then(normalizeProjects),
 
@@ -498,6 +605,12 @@ export const api = {
 
   getImportQualityAssistant: (projectId: string, batchId: string): Promise<ImportQualityAssistant> =>
     apiFetch<ImportQualityAssistant>(`/api/v1/imports/${projectId}/${batchId}/quality-assistant`),
+
+  runImportQualityAgent: (projectId: string, batchId: string): Promise<AgentRun> =>
+    apiFetch<AgentRun>(`/api/v1/imports/${projectId}/${batchId}/quality-agent`, {
+      method: "POST",
+      headers: adminHeaders(),
+    }),
 
   listImportRows: (
     projectId: string,
@@ -753,4 +866,152 @@ export const api = {
       method: "POST",
       headers: adminHeaders(),
     }),
+
+  listPriceSources: (): Promise<PriceSourceList> =>
+    apiFetch<PriceSourceList>("/api/v1/pricing/sources", { headers: adminHeaders() }),
+
+  createPriceSyncJob: (body: { source_id?: string; currency: string }): Promise<PriceSyncJob> =>
+    apiFetch<PriceSyncJob>("/api/v1/pricing/sync-jobs", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify(body),
+    }),
+
+  listPriceSyncJobs: (limit = 20): Promise<PriceSyncJobList> =>
+    apiFetch<PriceSyncJobList>(`/api/v1/pricing/sync-jobs${withQuery({ limit })}`, {
+      headers: adminHeaders(),
+    }),
+
+  getPriceSyncJob: (jobId: string): Promise<PriceSyncJob> =>
+    apiFetch<PriceSyncJob>(`/api/v1/pricing/sync-jobs/${encodeURIComponent(jobId)}`, {
+      headers: adminHeaders(),
+    }),
+
+  listPriceCatalogSnapshots: (limit = 20): Promise<PriceCatalogSnapshotList> =>
+    apiFetch<PriceCatalogSnapshotList>(`/api/v1/pricing/catalog-snapshots${withQuery({ limit })}`, {
+      headers: adminHeaders(),
+    }),
+
+  approvePriceCatalogSnapshot: (snapshotId: string): Promise<PriceCatalogSnapshot> =>
+    apiFetch<PriceCatalogSnapshot>(
+      `/api/v1/pricing/catalog-snapshots/${encodeURIComponent(snapshotId)}/approve`,
+      { method: "POST", headers: adminHeaders() },
+    ),
+
+  listPriceItems: (
+    snapshotId: string,
+    params: { search?: string; page?: number; page_size?: number } = {},
+  ): Promise<PriceItemList> =>
+    apiFetch<PriceItemList>(
+      `/api/v1/pricing/catalog-snapshots/${encodeURIComponent(snapshotId)}/items${withQuery(params)}`,
+      { headers: adminHeaders() },
+    ),
+
+  importPriceRateCard: async (file: File, name: string, currency: string): Promise<PriceCatalogSnapshot> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("name", name);
+    formData.append("currency", currency);
+    return apiFetch<PriceCatalogSnapshot>("/api/v1/pricing/rate-card-imports", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: formData,
+    });
+  },
+
+  listSkuMappings: (): Promise<SkuMappingList> =>
+    apiFetch<SkuMappingList>("/api/v1/pricing/sku-mappings", { headers: adminHeaders() }),
+
+  patchSkuMapping: (mappingId: string, body: SkuMappingPatch): Promise<SkuMapping> =>
+    apiFetch<SkuMapping>(`/api/v1/pricing/sku-mappings/${encodeURIComponent(mappingId)}`, {
+      method: "PATCH",
+      headers: adminHeaders(),
+      body: JSON.stringify(body),
+    }),
+
+  listDeploymentScenarios: (projectId: string): Promise<DeploymentScenarioList> =>
+    apiFetch<DeploymentScenarioList>(`/api/v1/projects/${projectId}/deployment-scenarios`, {
+      headers: adminHeaders(),
+    }),
+
+  getDeploymentScenarioAssistant: (projectId: string, includeLlm = false): Promise<ScenarioAssistant> =>
+    apiFetch<ScenarioAssistant>(
+      `/api/v1/projects/${projectId}/deployment-scenarios/assistant${withQuery({ include_llm: String(includeLlm) })}`,
+      { headers: adminHeaders() },
+    ),
+
+  runBomScenarioAgent: (projectId: string): Promise<AgentRun> =>
+    apiFetch<AgentRun>(`/api/v1/projects/${projectId}/deployment-scenarios/agent`, {
+      method: "POST",
+      headers: adminHeaders(),
+    }),
+
+  createDeploymentScenario: (
+    projectId: string,
+    body: DeploymentScenarioCreate,
+  ): Promise<DeploymentScenario> =>
+    apiFetch<DeploymentScenario>(`/api/v1/projects/${projectId}/deployment-scenarios`, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify(body),
+    }),
+
+  approveDeploymentScenario: (projectId: string, scenarioId: string): Promise<DeploymentScenario> =>
+    apiFetch<DeploymentScenario>(
+      `/api/v1/projects/${projectId}/deployment-scenarios/${encodeURIComponent(scenarioId)}/approve`,
+      { method: "POST", headers: adminHeaders() },
+    ),
+
+  createBomJob: (projectId: string, scenarioId: string): Promise<BomJob> =>
+    apiFetch<BomJob>(`/api/v1/projects/${projectId}/bom-jobs`, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ scenario_id: scenarioId }),
+    }),
+
+  listBomJobs: (projectId: string, limit = 20): Promise<BomJobList> =>
+    apiFetch<BomJobList>(`/api/v1/projects/${projectId}/bom-jobs${withQuery({ limit })}`, {
+      headers: adminHeaders(),
+    }),
+
+  getBomJob: (projectId: string, jobId: string): Promise<BomJob> =>
+    apiFetch<BomJob>(`/api/v1/projects/${projectId}/bom-jobs/${encodeURIComponent(jobId)}`, {
+      headers: adminHeaders(),
+    }),
+
+  listBomSnapshots: (projectId: string, limit = 20): Promise<BomSnapshotList> =>
+    apiFetch<BomSnapshotList>(`/api/v1/projects/${projectId}/bom-snapshots${withQuery({ limit })}`, {
+      headers: adminHeaders(),
+    }),
+
+  getBomSnapshot: (projectId: string, snapshotId: string): Promise<BomSnapshot> =>
+    apiFetch<BomSnapshot>(
+      `/api/v1/projects/${projectId}/bom-snapshots/${encodeURIComponent(snapshotId)}`,
+      { headers: adminHeaders() },
+    ),
+
+  compareBomSnapshots: (
+    projectId: string,
+    baselineId: string,
+    comparisonId: string,
+  ): Promise<BomComparison> =>
+    apiFetch<BomComparison>(
+      `/api/v1/projects/${projectId}/bom-snapshots/compare${withQuery({ baseline_id: baselineId, comparison_id: comparisonId })}`,
+      { headers: adminHeaders() },
+    ),
+
+  reviewBomSnapshot: (
+    projectId: string,
+    snapshotId: string,
+    publicationStatus: "approved" | "published",
+    note?: string,
+  ): Promise<BomSnapshot> =>
+    apiFetch<BomSnapshot>(
+      `/api/v1/projects/${projectId}/bom-snapshots/${encodeURIComponent(snapshotId)}/review`,
+      {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ publication_status: publicationStatus, note }),
+      },
+    ),
 };

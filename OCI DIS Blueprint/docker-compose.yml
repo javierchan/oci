@@ -66,14 +66,19 @@ services:
       REDIS_URL: redis://redis:6379/0
       ENVIRONMENT: production
       CORS_ALLOWED_ORIGINS: '["http://localhost:3000"]'
-      CODEX_BASE_URL: ${CODEX_BASE_URL:-https://chatgpt.com/backend-api/codex}
-      CODEX_MODEL: ${CODEX_MODEL:-gpt-5.5}
-      CODEX_WIRE_API: ${CODEX_WIRE_API:-responses}
-      CODEX_CONFIG_PATH: ${CODEX_CONFIG_PATH:-/codex/config.toml}
-      CODEX_AUTH_JSON_PATH: ${CODEX_AUTH_JSON_PATH:-/codex/auth.json}
-      CODEX_PROVIDER_NAME: ${CODEX_PROVIDER_NAME:-codex}
-      CODEX_CLIENT_NAME: ${CODEX_CLIENT_NAME:-codex-cli}
-      CODEX_CLIENT_VERSION: ${CODEX_CLIENT_VERSION:-0}
+      OCI_GENAI_REGION: ${OCI_GENAI_REGION:-us-chicago-1}
+      OCI_GENAI_BASE_URL: ${OCI_GENAI_BASE_URL:-https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1}
+      OCI_GENAI_MODEL_ID: ${OCI_GENAI_MODEL_ID:-openai.gpt-oss-20b}
+      OCI_GENAI_MODEL_NAME: ${OCI_GENAI_MODEL_NAME:-OpenAI gpt-oss-20b}
+      OCI_GENAI_PROJECT_ID: ${OCI_GENAI_PROJECT_ID:-}
+      OCI_GENAI_COMPARTMENT_ID: ${OCI_GENAI_COMPARTMENT_ID:-}
+      OCI_GENAI_TRANSPORT_MODE: ${OCI_GENAI_TRANSPORT_MODE:-auto}
+      OCI_GENAI_MAX_RETRIES: ${OCI_GENAI_MAX_RETRIES:-2}
+      OCI_GENAI_RETRY_BASE_SECONDS: ${OCI_GENAI_RETRY_BASE_SECONDS:-0.5}
+      OCI_GENAI_RETRY_MAX_SECONDS: ${OCI_GENAI_RETRY_MAX_SECONDS:-8.0}
+      OCI_GENAI_GUARDRAILS_ENABLED: ${OCI_GENAI_GUARDRAILS_ENABLED:-true}
+      OCI_GENAI_GUARDRAILS_VERSION: ${OCI_GENAI_GUARDRAILS_VERSION:-1.0.1}
+      OCI_GENAI_GUARDRAILS_FAILURE_MODE: ${OCI_GENAI_GUARDRAILS_FAILURE_MODE:-closed}
     ports:
       - "8000:8000"
     volumes:
@@ -101,14 +106,51 @@ services:
       DATABASE_URL: postgresql+asyncpg://dis:dis@db:5432/oci_dis
       REDIS_URL: redis://redis:6379/0
       ENVIRONMENT: production
-      CODEX_BASE_URL: ${CODEX_BASE_URL:-https://chatgpt.com/backend-api/codex}
-      CODEX_MODEL: ${CODEX_MODEL:-gpt-5.5}
-      CODEX_WIRE_API: ${CODEX_WIRE_API:-responses}
-      CODEX_CONFIG_PATH: ${CODEX_CONFIG_PATH:-/codex/config.toml}
-      CODEX_AUTH_JSON_PATH: ${CODEX_AUTH_JSON_PATH:-/codex/auth.json}
-      CODEX_PROVIDER_NAME: ${CODEX_PROVIDER_NAME:-codex}
-      CODEX_CLIENT_NAME: ${CODEX_CLIENT_NAME:-codex-cli}
-      CODEX_CLIENT_VERSION: ${CODEX_CLIENT_VERSION:-0}
+      OCI_GENAI_REGION: ${OCI_GENAI_REGION:-us-chicago-1}
+      OCI_GENAI_BASE_URL: ${OCI_GENAI_BASE_URL:-https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1}
+      OCI_GENAI_MODEL_ID: ${OCI_GENAI_MODEL_ID:-openai.gpt-oss-20b}
+      OCI_GENAI_MODEL_NAME: ${OCI_GENAI_MODEL_NAME:-OpenAI gpt-oss-20b}
+      OCI_GENAI_PROJECT_ID: ${OCI_GENAI_PROJECT_ID:-}
+      OCI_GENAI_COMPARTMENT_ID: ${OCI_GENAI_COMPARTMENT_ID:-}
+      OCI_GENAI_TRANSPORT_MODE: ${OCI_GENAI_TRANSPORT_MODE:-auto}
+      OCI_GENAI_MAX_RETRIES: ${OCI_GENAI_MAX_RETRIES:-2}
+      OCI_GENAI_RETRY_BASE_SECONDS: ${OCI_GENAI_RETRY_BASE_SECONDS:-0.5}
+      OCI_GENAI_RETRY_MAX_SECONDS: ${OCI_GENAI_RETRY_MAX_SECONDS:-8.0}
+      OCI_GENAI_GUARDRAILS_ENABLED: ${OCI_GENAI_GUARDRAILS_ENABLED:-true}
+      OCI_GENAI_GUARDRAILS_VERSION: ${OCI_GENAI_GUARDRAILS_VERSION:-1.0.1}
+      OCI_GENAI_GUARDRAILS_FAILURE_MODE: ${OCI_GENAI_GUARDRAILS_FAILURE_MODE:-closed}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Dedicated governed OCI GenAI agent runtime. It shares the immutable API
+  # image but consumes only the isolated agents queue.
+  agent-worker:
+    <<: *api-runtime
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2 -Q agents
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://dis:dis@db:5432/oci_dis
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: production
+      OCI_GENAI_REGION: ${OCI_GENAI_REGION:-us-chicago-1}
+      OCI_GENAI_BASE_URL: ${OCI_GENAI_BASE_URL:-https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1}
+      OCI_GENAI_MODEL_ID: ${OCI_GENAI_MODEL_ID:-openai.gpt-oss-20b}
+      OCI_GENAI_MODEL_NAME: ${OCI_GENAI_MODEL_NAME:-OpenAI gpt-oss-20b}
+      OCI_GENAI_PROJECT_ID: ${OCI_GENAI_PROJECT_ID:-}
+      OCI_GENAI_COMPARTMENT_ID: ${OCI_GENAI_COMPARTMENT_ID:-}
+      OCI_GENAI_TRANSPORT_MODE: ${OCI_GENAI_TRANSPORT_MODE:-auto}
+      OCI_GENAI_MAX_RETRIES: ${OCI_GENAI_MAX_RETRIES:-2}
+      OCI_GENAI_RETRY_BASE_SECONDS: ${OCI_GENAI_RETRY_BASE_SECONDS:-0.5}
+      OCI_GENAI_RETRY_MAX_SECONDS: ${OCI_GENAI_RETRY_MAX_SECONDS:-8.0}
+      OCI_GENAI_GUARDRAILS_ENABLED: ${OCI_GENAI_GUARDRAILS_ENABLED:-true}
+      OCI_GENAI_GUARDRAILS_VERSION: ${OCI_GENAI_GUARDRAILS_VERSION:-1.0.1}
+      OCI_GENAI_GUARDRAILS_FAILURE_MODE: ${OCI_GENAI_GUARDRAILS_FAILURE_MODE:-closed}
     volumes:
       - uploads_data:/app/uploads
     depends_on:

@@ -3,18 +3,46 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from httpx import AsyncClient, Response
+from httpx import AsyncClient, Request, Response
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.models import AiReviewBaseline, CatalogIntegration, Project, VolumetrySnapshot
 from app.routers import ai_reviews
 from app.schemas.ai_review import AiReviewGraphContext
-from app.services import ai_review_service
-from app.services.llm_review_client import _build_prompt, _resolved_codex_config, _response_payload, _response_text
+from app.services import ai_review_service, genai_client
+from app.services.genai_client import (
+    _build_prompt,
+    _normalize_summary,
+    _resolved_oci_config,
+    _response_text,
+    _token_usage,
+    provider_status_payload,
+)
+
+
+def test_provider_status_distinguishes_configured_verified_and_degraded(tmp_path: Path) -> None:
+    """Configuration alone must not be presented as verified provider availability."""
+
+    key_file = tmp_path / "api_key"
+    key_file.write_text("sk-test-only", encoding="utf-8")
+    settings = Settings(
+        OCI_GENAI_API_KEY_FILE=str(key_file),
+        OCI_GENAI_PROJECT_ID="ocid1.generativeaiproject.oc1.test",
+    )
+
+    configured = provider_status_payload(settings)
+    verified = provider_status_payload(settings, last_provider_status="completed")
+    degraded = provider_status_payload(settings, last_provider_status="failed")
+
+    assert configured["mode"] == "llm_configured"
+    assert verified["mode"] == "llm_available"
+    assert degraded["mode"] == "llm_degraded"
+    assert "latest synthesis failed" in str(degraded["status_message"])
 
 
 def _admin_headers() -> dict[str, str]:
@@ -106,12 +134,13 @@ async def test_project_ai_review_job_create_run_get_and_accept(
 
     project_id, _ = await _seed_review_fixture(test_engine)
 
-    def fake_apply_async(*, args: list[object], task_id: str) -> SimpleNamespace:
+    def fake_apply_async(*, args: list[object], task_id: str, queue: str) -> SimpleNamespace:
         assert args == [task_id]
+        assert queue == "agents"
         return SimpleNamespace(id=task_id)
 
     monkeypatch.setattr(
-        ai_reviews.execute_ai_review_job_task,
+        ai_reviews.execute_agent_run_task,
         "apply_async",
         fake_apply_async,
     )
@@ -201,11 +230,12 @@ async def test_integration_scoped_ai_review_requires_and_uses_integration_id(
 
     project_id, integration_id = await _seed_review_fixture(test_engine)
 
-    def fake_apply_async(*, args: list[object], task_id: str) -> SimpleNamespace:
+    def fake_apply_async(*, args: list[object], task_id: str, queue: str) -> SimpleNamespace:
+        assert queue == "agents"
         return SimpleNamespace(id=task_id, args=args)
 
     monkeypatch.setattr(
-        ai_reviews.execute_ai_review_job_task,
+        ai_reviews.execute_agent_run_task,
         "apply_async",
         fake_apply_async,
     )
@@ -266,7 +296,13 @@ async def test_ai_review_roles_provider_status_quota_and_compare(
     provider_response = await api_client.get("/api/v1/ai-reviews/provider-status")
     assert provider_response.status_code == 200
     provider_payload = provider_response.json()
-    assert provider_payload["provider"] == "codex"
+    assert provider_payload["provider"] == "oci_genai"
+    assert provider_payload["model"] == "OpenAI gpt-oss-20b"
+    assert provider_payload["transport"] == "oci-openai-responses-first-auto"
+    assert provider_payload["transport_strategy"]["preferred"] == "responses"
+    assert provider_payload["retry_policy"]["max_retries"] == 2
+    assert provider_payload["safety"]["guardrails_enabled"] is True
+    assert provider_payload["region"] == "us-chicago-1"
     assert isinstance(provider_payload["configured"], bool)
     assert provider_payload["quota"]["daily_job_limit"] >= 0
     assert "email addresses" in provider_payload["prompt_redaction_policy"]
@@ -278,11 +314,12 @@ async def test_ai_review_roles_provider_status_quota_and_compare(
     )
     assert viewer_response.status_code == 403
 
-    def fake_apply_async(*, args: list[object], task_id: str) -> SimpleNamespace:
+    def fake_apply_async(*, args: list[object], task_id: str, queue: str) -> SimpleNamespace:
+        assert queue == "agents"
         return SimpleNamespace(id=task_id, args=args)
 
     monkeypatch.setattr(
-        ai_reviews.execute_ai_review_job_task,
+        ai_reviews.execute_agent_run_task,
         "apply_async",
         fake_apply_async,
     )
@@ -565,111 +602,104 @@ async def test_graph_context_scopes_project_ai_review_evidence(
     assert review.stress_scenarios[0].confidence in {"medium", "low"}
 
 
-def test_codex_response_payload_parses_server_sent_event_frame() -> None:
-    response = Response(
-        200,
-        text=(
-            'data: {"output":[{"type":"message","content":[{"type":"output_text",'
-            '"text":"Executive summary."}]}]}\n\n'
-        ),
-    )
+def test_oci_chat_completions_payload_extracts_text_and_usage() -> None:
+    payload = {
+        "choices": [{"message": {"role": "assistant", "content": "Executive summary."}}],
+        "usage": {"prompt_tokens": 120, "completion_tokens": 32},
+    }
 
-    payload = _response_payload(response)
+    input_tokens, output_tokens = _token_usage(payload)
 
     assert _response_text(payload) == "Executive summary."
+    assert input_tokens == 120
+    assert output_tokens == 32
 
 
-def test_codex_response_payload_parses_streaming_text_events() -> None:
-    response = Response(
-        200,
-        text=(
-            'event: response.output_text.delta\n'
-            'data: {"type":"response.output_text.delta","delta":"Codex"}\n\n'
-            'event: response.output_text.delta\n'
-            'data: {"type":"response.output_text.delta","delta":" works"}\n\n'
-            'event: response.output_text.done\n'
-            'data: {"type":"response.output_text.done","text":"Codex works."}\n\n'
-            'event: response.completed\n'
-            'data: {"type":"response.completed","response":{"status":"completed"}}\n\n'
-        ),
-    )
-
-    payload = _response_payload(response)
-
-    assert _response_text(payload) == "Codex works."
+def test_oci_summary_normalization_removes_markdown_emphasis() -> None:
+    assert _normalize_summary("**Decision:** confirm `HA/DR` topology.") == "Decision: confirm HA/DR topology."
 
 
-def test_codex_runtime_config_uses_codex_config_and_auth(tmp_path) -> None:
-    config_path = tmp_path / "config.toml"
-    auth_path = tmp_path / "auth.json"
-    config_path.write_text(
-        "\n".join(
-            [
-                "[model_providers.codex]",
-                'base_url = "https://example.test/codex"',
-                'wire_api = "responses"',
-                'model = "gpt-5.5"',
-                'http_headers = { client = "codex-cli", client-version = "0" }',
-            ]
-        ),
-        encoding="utf-8",
-    )
-    auth_path.write_text('{"OPENAI_API_KEY":"codex-test-key"}', encoding="utf-8")
+def test_oci_runtime_config_requires_mounted_api_key_file(tmp_path) -> None:
+    api_key_path = tmp_path / "api_key"
     settings = Settings(
-        CODEX_BASE_URL="https://fallback.test",
-        CODEX_MODEL="fallback-model",
-        CODEX_CONFIG_PATH=str(config_path),
-        CODEX_AUTH_JSON_PATH=str(auth_path),
+        OCI_GENAI_API_KEY_FILE=str(api_key_path),
     )
 
-    runtime_config = _resolved_codex_config(settings)
+    assert _resolved_oci_config(settings).configured is False
 
-    assert runtime_config.api_key == "codex-test-key"
-    assert runtime_config.base_url == "https://example.test/codex"
-    assert runtime_config.model == "gpt-5.5"
-    assert runtime_config.headers["client"] == "codex-cli"
-    assert runtime_config.headers["client-version"] == "0"
+    api_key_path.write_text("sk-test-secret", encoding="utf-8")
 
-
-def test_codex_runtime_config_uses_codex_token_auth(tmp_path) -> None:
-    config_path = tmp_path / "config.toml"
-    auth_path = tmp_path / "auth.json"
-    config_path.write_text("[model_providers.codex]\n", encoding="utf-8")
-    auth_path.write_text(
-        '{"OPENAI_API_KEY": null, "tokens": {"access_token": "codex-access-token", "account_id": "acct-1"}}',
-        encoding="utf-8",
-    )
-    settings = Settings(
-        CODEX_CONFIG_PATH=str(config_path),
-        CODEX_AUTH_JSON_PATH=str(auth_path),
-    )
-
-    runtime_config = _resolved_codex_config(settings)
-
-    assert runtime_config.api_key == "codex-access-token"
-    assert runtime_config.account_id == "acct-1"
+    runtime_config = _resolved_oci_config(settings)
+    assert runtime_config.configured is True
+    assert runtime_config.model_name == "OpenAI gpt-oss-20b"
+    assert runtime_config.model_id == "openai.gpt-oss-20b"
+    assert runtime_config.base_url.endswith("/openai/v1")
 
 
-def test_codex_runtime_config_ignores_deprecated_oca_keys(
+@pytest.mark.asyncio
+async def test_oci_genai_uses_bearer_key_chat_completions_and_canonical_model(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config_path = tmp_path / "config.toml"
-    auth_path = tmp_path / "auth.json"
-    config_path.write_text("[model_providers.codex]\n", encoding="utf-8")
-    auth_path.write_text('{"OCA_API_KEY":"deprecated-test-key"}', encoding="utf-8")
-    monkeypatch.setenv("OCA_API_KEY", "deprecated-env-key")
+    api_key_path = tmp_path / "api_key"
+    api_key_path.write_text("sk-test-secret", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs: object) -> None:
+            captured["client_kwargs"] = kwargs
+
+        async def __aenter__(self) -> "FakeAsyncClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def post(self, url: str, **kwargs: object) -> Response:
+            captured["url"] = url
+            captured.update(kwargs)
+            return Response(
+                200,
+                headers={"opc-request-id": "oci-request-123"},
+                json={
+                    "choices": [{"message": {"role": "assistant", "content": "Architecture scope confirmed."}}],
+                    "usage": {"prompt_tokens": 20, "completion_tokens": 4},
+                },
+                request=Request("POST", url),
+            )
+
+    monkeypatch.setattr(genai_client.httpx, "AsyncClient", FakeAsyncClient)
     settings = Settings(
-        CODEX_CONFIG_PATH=str(config_path),
-        CODEX_AUTH_JSON_PATH=str(auth_path),
+        OCI_GENAI_API_KEY_FILE=str(api_key_path),
+        OCI_GENAI_PROJECT_ID="ocid1.generativeaiproject.oc1.test",
+        OCI_GENAI_TRANSPORT_MODE="chat_completions",
+        OCI_GENAI_GUARDRAILS_ENABLED=False,
     )
 
-    runtime_config = _resolved_codex_config(settings)
+    result = await genai_client.synthesize_governed_summary(
+        settings=settings,
+        system_instruction="Use only evidence.",
+        evidence={"scope": "architecture"},
+    )
 
-    assert runtime_config.api_key == ""
+    assert result.status == "completed"
+    assert result.opc_request_id == "oci-request-123"
+    assert captured["url"] == (
+        "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/"
+        "openai/v1/chat/completions"
+    )
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["Authorization"] == "Bearer sk-test-secret"
+    assert headers["OpenAI-Project"] == "ocid1.generativeaiproject.oc1.test"
+    request_json = captured["json"]
+    assert isinstance(request_json, dict)
+    assert request_json["model"] == settings.OCI_GENAI_MODEL_ID
+    assert len(str(request_json["safety_identifier"])) == 64
+    assert "system" not in str(request_json["safety_identifier"])
 
 
-def test_codex_prompt_redacts_sensitive_values() -> None:
+def test_oci_prompt_redacts_sensitive_values() -> None:
     prompt = _build_prompt(
         project_name="Secret Fixture",
         readiness_score=80,

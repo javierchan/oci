@@ -1,0 +1,30 @@
+{
+  "fixture_version": "1.0",
+  "service": {
+    "service_id": "oci-api-gateway",
+    "display_name": "OCI API Gateway",
+    "workbook_preset": "API Management"
+  },
+  "price_items": [
+    {
+      "part_number": "B92072",
+      "display_name": "API Gateway - 1,000,000 API Calls",
+      "price_type": "MONTH",
+      "metric": "1,000,000 API Calls Per Month",
+      "service_category": "Application Development - API Management",
+      "currency": "USD",
+      "unit_price": "3",
+      "tier": null,
+      "workbook_evidence": { "price_sheet_row": 371, "preset_sheet_rows": [207, 208] }
+    }
+  ],
+  "parity_cases": [
+    {
+      "id": "api-gateway-two-point-five-million-calls",
+      "part_number": "B92072",
+      "formula": "gross_quantity / billing_unit * unit_price",
+      "inputs": { "gross_quantity": "2500000", "billing_unit": "1000000", "unit_price": "3" },
+      "expected": { "billing_units": "2.5", "monthly_unrounded": "7.5", "monthly_currency": "7.50", "annual_currency": "90.00" }
+    }
+  ]
+}

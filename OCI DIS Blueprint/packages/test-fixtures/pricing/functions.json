@@ -1,0 +1,88 @@
+{
+  "fixture_version": "1.0",
+  "service": {
+    "service_id": "oci-functions",
+    "display_name": "OCI Functions",
+    "workbook_preset": "OCI Functions"
+  },
+  "price_items": [
+    {
+      "part_number": "B90617",
+      "display_name": "Oracle Functions - Execution Time",
+      "price_type": "MONTH",
+      "metric": "10,000 GB Memory-Seconds",
+      "service_category": "Application Development - Serverless",
+      "currency": "USD",
+      "unit_price": "0",
+      "tier": {
+        "raw": { "range_min_inclusive": "0", "range_max_inclusive": "40" },
+        "normalized": { "range_min_exclusive": null, "range_max_inclusive": "40" }
+      },
+      "workbook_evidence": { "price_sheet_row": 324, "preset_sheet_rows": [193, 197] }
+    },
+    {
+      "part_number": "B90617",
+      "display_name": "Oracle Functions - Execution Time",
+      "price_type": "MONTH",
+      "metric": "10,000 GB Memory-Seconds",
+      "service_category": "Application Development - Serverless",
+      "currency": "USD",
+      "unit_price": "0.1417",
+      "tier": {
+        "raw": { "range_min_inclusive": "40", "range_max_inclusive": "999999999" },
+        "normalized": { "range_min_exclusive": "40", "range_max_inclusive": "999999999" }
+      },
+      "workbook_evidence": { "price_sheet_row": 325, "preset_sheet_rows": [194, 198] }
+    },
+    {
+      "part_number": "B90618",
+      "display_name": "Oracle Functions - Invocations",
+      "price_type": "MONTH",
+      "metric": "1MIL Function Invocations",
+      "service_category": "Application Development - Serverless",
+      "currency": "USD",
+      "unit_price": "0",
+      "tier": {
+        "raw": { "range_min_inclusive": "0", "range_max_inclusive": "2" },
+        "normalized": { "range_min_exclusive": null, "range_max_inclusive": "2" }
+      },
+      "workbook_evidence": { "price_sheet_row": 326, "preset_sheet_rows": [195, 199] }
+    },
+    {
+      "part_number": "B90618",
+      "display_name": "Oracle Functions - Invocations",
+      "price_type": "MONTH",
+      "metric": "1MIL Function Invocations",
+      "service_category": "Application Development - Serverless",
+      "currency": "USD",
+      "unit_price": "0.2",
+      "tier": {
+        "raw": { "range_min_inclusive": "2", "range_max_inclusive": "999999999" },
+        "normalized": { "range_min_exclusive": "2", "range_max_inclusive": "999999999" }
+      },
+      "workbook_evidence": { "price_sheet_row": 327, "preset_sheet_rows": [196, 200] }
+    }
+  ],
+  "parity_cases": [
+    {
+      "id": "functions-execution-free-boundary",
+      "part_number": "B90617",
+      "inputs": { "tier_basis_billing_units": "40" },
+      "expected": { "selected_unit_price": "0", "boundary_owner": "lower_tier", "monthly_currency": "0.00" }
+    },
+    {
+      "id": "functions-execution-paid-after-shared-free-allocation",
+      "part_number": "B90617",
+      "formula": "(gross_quantity - free_quantity) / billing_unit * unit_price",
+      "inputs": { "gross_quantity": "500000", "free_quantity": "400000", "billing_unit": "10000", "unit_price": "0.1417" },
+      "expected": { "billing_units": "10", "monthly_unrounded": "1.4170", "monthly_currency": "1.42", "annual_currency": "17.00" }
+    },
+    {
+      "id": "functions-invocations-paid-after-shared-free-allocation",
+      "part_number": "B90618",
+      "formula": "(gross_quantity - free_quantity) / billing_unit * unit_price",
+      "inputs": { "gross_quantity": "3500000", "free_quantity": "2000000", "billing_unit": "1000000", "unit_price": "0.2" },
+      "expected": { "billing_units": "1.5", "monthly_unrounded": "0.30", "monthly_currency": "0.30", "annual_currency": "3.60" }
+    }
+  ]
+}

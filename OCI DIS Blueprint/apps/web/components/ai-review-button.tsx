@@ -31,6 +31,9 @@ type AiReviewButtonProps = {
   className?: string;
   disabled?: boolean;
   beforeOpen?: () => boolean | Promise<boolean>;
+  open?: boolean;
+  onOpenChange?: (_open: boolean) => void;
+  hideTrigger?: boolean;
 };
 
 const SEVERITY_STYLES: Record<AiReviewSeverity, string> = {
@@ -88,6 +91,12 @@ function providerModeTone(mode: AiReviewProviderStatus["mode"]): string {
   }
   if (mode === "misconfigured") {
     return "border-rose-300 bg-rose-50 text-rose-900 dark:border-[#ff453a]/60 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
+  }
+  if (mode === "llm_degraded") {
+    return "border-orange-300 bg-orange-50 text-orange-900 dark:border-[#ff9f0a]/60 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
+  }
+  if (mode === "llm_configured") {
+    return "border-blue-300 bg-blue-50 text-blue-900 dark:border-[#0a84ff]/50 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
   }
   return "border-amber-300 bg-amber-50 text-amber-900 dark:border-[#ffd60a]/50 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
 }
@@ -397,9 +406,19 @@ function AiReviewDialog({
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">Provider status</p>
                   <h4 className="mt-1 text-base font-semibold">{providerStatus.status_message}</h4>
                   <p className="mt-2 text-xs leading-5 opacity-80">
-                    Model {providerStatus.model} · {providerStatus.wire_api} · {providerStatus.quota.remaining_jobs_today} of{" "}
+                    Model {providerStatus.model} · {providerStatus.region} · Responses-first with Chat fallback ·{" "}
+                    {providerStatus.quota.remaining_jobs_today} of{" "}
                     {providerStatus.quota.daily_job_limit} jobs remaining today
                   </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="app-theme-chip">
+                      Responses {providerStatus.transport_strategy.responses_capability}
+                    </span>
+                    <span className="app-theme-chip">
+                      Guardrails {providerStatus.safety.guardrails_enabled ? `v${providerStatus.safety.guardrails_version}` : "off"}
+                    </span>
+                    <span className="app-theme-chip">{providerStatus.retry_policy.max_retries} retries</span>
+                  </div>
                 </div>
                 <span className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
                   {providerStatus.mode.replace(/_/g, " ")}
@@ -840,12 +859,12 @@ function AiReviewDialog({
 
               <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
                 {review.metrics.map((metric) => (
-                  <article key={metric.label} className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+                  <article key={metric.label} className="min-w-0 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
                       {metric.label}
                     </p>
-                    <p className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{metric.value}</p>
-                    <p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">{metric.detail}</p>
+                    <p className="mt-2 [overflow-wrap:anywhere] text-2xl font-semibold text-[var(--color-text-primary)]">{metric.value}</p>
+                    <p className="mt-2 [overflow-wrap:anywhere] text-xs leading-5 text-[var(--color-text-secondary)]">{metric.detail}</p>
                   </article>
                 ))}
               </section>
@@ -1046,8 +1065,12 @@ export function AiReviewButton({
   className = "app-button-secondary gap-2",
   disabled = false,
   beforeOpen,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger = false,
 }: AiReviewButtonProps): JSX.Element {
-  const [open, setOpen] = useState<boolean>(false);
+  const [internalOpen, setInternalOpen] = useState<boolean>(false);
+  const open = controlledOpen ?? internalOpen;
   const [selectedScope, setSelectedScope] = useState<AiReviewScope>(defaultScope);
   const [loading, setLoading] = useState<boolean>(false);
   const [job, setJob] = useState<AiReviewJob | null>(null);
@@ -1063,6 +1086,13 @@ export function AiReviewButton({
   const [baselineLabel, setBaselineLabel] = useState<string>("Approved project baseline");
   const [baselineNote, setBaselineNote] = useState<string>("");
   const [preparing, setPreparing] = useState<boolean>(false);
+
+  function setOpen(nextOpen: boolean): void {
+    if (controlledOpen === undefined) {
+      setInternalOpen(nextOpen);
+    }
+    onOpenChange?.(nextOpen);
+  }
 
   async function openReview(): Promise<void> {
     if (disabled || preparing) return;
@@ -1346,15 +1376,17 @@ export function AiReviewButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => void openReview()}
-        disabled={disabled || preparing}
-        className={className}
-      >
-        {preparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-        {preparing ? "Preparing evidence…" : label}
-      </button>
+      {!hideTrigger ? (
+        <button
+          type="button"
+          onClick={() => void openReview()}
+          disabled={disabled || preparing}
+          className={className}
+        >
+          {preparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {preparing ? "Preparing evidence…" : label}
+        </button>
+      ) : null}
       {open ? (
         <AiReviewDialog
           integrationId={integrationId}

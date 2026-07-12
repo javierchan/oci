@@ -315,11 +315,12 @@ async def test_service_verification_job_dispatches_async_worker(
 
     dispatched: dict[str, object] = {}
 
-    def fake_apply_async(*, args: list[str], task_id: str) -> None:
+    def fake_apply_async(*, args: list[str], task_id: str, queue: str) -> None:
         dispatched["args"] = args
         dispatched["task_id"] = task_id
+        dispatched["queue"] = queue
 
-    monkeypatch.setattr(service_products_router.execute_service_verification_job_task, "apply_async", fake_apply_async)
+    monkeypatch.setattr(service_products_router.execute_agent_run_task, "apply_async", fake_apply_async)
 
     run_response = await api_client.post(
         "/api/v1/service-products/verification-jobs",
@@ -331,8 +332,9 @@ async def test_service_verification_job_dispatches_async_worker(
     job_payload = run_response.json()
     assert job_payload["status"] == "pending"
     assert job_payload["request_payload"] == {"service_ids": ["OIC3"], "max_sources": 1, "force": True}
-    assert dispatched["args"] == [job_payload["id"]]
-    assert dispatched["task_id"] == job_payload["id"]
+    assert dispatched["args"] == [dispatched["task_id"]]
+    assert dispatched["task_id"] != job_payload["id"]
+    assert dispatched["queue"] == "agents"
 
 
 @pytest.mark.asyncio

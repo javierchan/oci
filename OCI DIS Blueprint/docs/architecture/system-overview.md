@@ -20,6 +20,7 @@
 │              └─────────┘ └──────┘ └─────────────────┘                 │
 │                                                                         │
 │  packages/calc-engine/ ──────► called by API service + Celery worker   │
+│  agent-worker ─► OCI Responses-first + governed tools + Guardrails     │
 │  apps/web/lib/types.ts ──────► typed projections of Pydantic API shape │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -102,6 +103,7 @@ POST /api/v1/service-products/verification-jobs
 | AuditEvent on every write | PRD-045 — full audit without joins |
 | MinIO in dev, OCI Object Storage in prod | S3-compatible — endpoint swap only |
 | Celery for long-running jobs | Avoids API timeout on imports, recalculation, AI review, synthetic generation, and service verification |
+| Dedicated Docker agent queue | Isolates OCI Function Calling from deterministic background workloads |
 | Service Product Library uses canonical `/service-products` APIs | Retires raw service-profile endpoints from the public production contract |
 | Normalized service limits are authoritative | Re-seeding never overwrites reviewed limits; Assumptions contain client inputs only |
 | One repository-root CI workflow | Prevents drift between non-executed copies and the effective GitHub contract |

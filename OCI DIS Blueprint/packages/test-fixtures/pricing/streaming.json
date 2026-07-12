@@ -1,0 +1,48 @@
+{
+  "fixture_version": "1.0",
+  "service": {
+    "service_id": "oci-streaming",
+    "display_name": "OCI Streaming",
+    "workbook_preset": "OCI Streaming"
+  },
+  "price_items": [
+    {
+      "part_number": "B90938",
+      "display_name": "Streaming - PUT or GET",
+      "price_type": "MONTH",
+      "metric": "Gigabytes of Data Transferred",
+      "service_category": "OCI Streaming",
+      "currency": "USD",
+      "unit_price": "0.025",
+      "tier": null,
+      "workbook_evidence": { "price_sheet_row": 334, "preset_sheet_rows": [86, 91, 188, 190, 192] }
+    },
+    {
+      "part_number": "B90939",
+      "display_name": "Streaming - Storage",
+      "price_type": "HOUR",
+      "metric": "Gigabytes Per Hour",
+      "service_category": "OCI Streaming",
+      "currency": "USD",
+      "unit_price": "0.0002",
+      "tier": null,
+      "workbook_evidence": { "price_sheet_row": 335, "preset_sheet_rows": [187, 189, 191] }
+    }
+  ],
+  "parity_cases": [
+    {
+      "id": "streaming-transfer-100-gb",
+      "part_number": "B90938",
+      "formula": "quantity * instances * unit_price * rate",
+      "inputs": { "quantity": "100", "instances": "1", "unit_price": "0.025", "rate": "1" },
+      "expected": { "monthly_unrounded": "2.500", "monthly_currency": "2.50", "annual_currency": "30.00" }
+    },
+    {
+      "id": "streaming-storage-ten-gb-744-hours",
+      "part_number": "B90939",
+      "formula": "quantity * instances * unit_price * rate * hours",
+      "inputs": { "quantity": "10", "instances": "1", "unit_price": "0.0002", "rate": "1", "hours": "744" },
+      "expected": { "monthly_unrounded": "1.4880", "monthly_currency": "1.49", "annual_unrounded": "17.8560", "annual_currency": "17.86" }
+    }
+  ]
+}

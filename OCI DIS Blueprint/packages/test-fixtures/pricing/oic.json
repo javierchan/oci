@@ -1,0 +1,75 @@
+{
+  "fixture_version": "1.0",
+  "service": {
+    "service_id": "oic-gen3",
+    "display_name": "Oracle Integration Cloud",
+    "workbook_preset": "Application Integration"
+  },
+  "price_items": [
+    {
+      "part_number": "B89639",
+      "display_name": "Oracle Integration Cloud Service - Standard",
+      "price_type": "HOUR",
+      "metric": "5K Messages Per Hour",
+      "service_category": "Application Integration - OIC",
+      "currency": "USD",
+      "unit_price": "0.6452",
+      "tier": null,
+      "workbook_evidence": { "price_sheet_row": 291, "preset_sheet_row": 226 }
+    },
+    {
+      "part_number": "B89640",
+      "display_name": "Oracle Integration Cloud Service - Enterprise",
+      "price_type": "HOUR",
+      "metric": "5K Messages Per Hour",
+      "service_category": "Application Integration - OIC",
+      "currency": "USD",
+      "unit_price": "1.2903",
+      "tier": null,
+      "workbook_evidence": { "price_sheet_row": 292, "preset_sheet_row": 227 }
+    },
+    {
+      "part_number": "B89643",
+      "display_name": "Oracle Integration Cloud Service - Standard - BYOL",
+      "price_type": "HOUR",
+      "metric": "20K Messages Per Hour",
+      "service_category": "Application Integration - OIC",
+      "currency": "USD",
+      "unit_price": "0.3226",
+      "tier": null,
+      "workbook_evidence": { "price_sheet_row": 293, "preset_sheet_row": 228 }
+    },
+    {
+      "part_number": "B89644",
+      "display_name": "Oracle Integration Cloud Service - Enterprise - BYOL",
+      "price_type": "HOUR",
+      "metric": "20K Messages Per Hour",
+      "service_category": "Application Integration - OIC",
+      "currency": "USD",
+      "unit_price": "0.3226",
+      "tier": null,
+      "workbook_evidence": { "price_sheet_row": 294, "preset_sheet_row": 225 }
+    }
+  ],
+  "parity_cases": [
+    {
+      "id": "oic-standard-five-packs-744-hours",
+      "part_number": "B89639",
+      "formula": "quantity * instances * unit_price * rate * hours",
+      "inputs": {
+        "quantity": "5",
+        "instances": "1",
+        "unit_price": "0.6452",
+        "rate": "1",
+        "hours": "744",
+        "annual_active_months": 12
+      },
+      "expected": {
+        "monthly_unrounded": "2400.1440",
+        "monthly_currency": "2400.14",
+        "annual_unrounded": "28801.7280",
+        "annual_currency": "28801.73"
+      }
+    }
+  ]
+}

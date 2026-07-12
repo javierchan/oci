@@ -19,6 +19,8 @@ from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.readiness import check_migration_readiness
 from app.routers import (
+    agents_router,
+    support_router,
     projects_router,
     imports_router,
     catalog_router,
@@ -34,6 +36,8 @@ from app.routers import (
     service_products_router,
     admin_synthetic_router,
     ai_reviews_router,
+    bom_router,
+    pricing_router,
 )
 from app.schemas.readiness import ReadinessResponse
 
@@ -74,6 +78,8 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # Mount all route groups
 API_PREFIX = "/api/v1"
 app.include_router(projects_router, prefix=API_PREFIX)
+app.include_router(agents_router, prefix=API_PREFIX)
+app.include_router(support_router, prefix=API_PREFIX)
 app.include_router(imports_router, prefix=API_PREFIX)
 app.include_router(catalog_router, prefix=API_PREFIX)
 app.include_router(patterns_router, prefix=API_PREFIX)
@@ -88,6 +94,8 @@ app.include_router(exports_router, prefix=API_PREFIX)
 app.include_router(service_products_router, prefix=API_PREFIX)
 app.include_router(admin_synthetic_router, prefix=API_PREFIX)
 app.include_router(ai_reviews_router, prefix=API_PREFIX)
+app.include_router(pricing_router, prefix=API_PREFIX)
+app.include_router(bom_router, prefix=API_PREFIX)
 
 
 @app.get("/health", tags=["Health"])

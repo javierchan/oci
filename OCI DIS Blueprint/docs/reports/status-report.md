@@ -48,9 +48,9 @@
 - Compose builds API, worker, beat, and web exclusively from production targets.
 - API code, calc engine, and OpenAPI artifacts are packaged into immutable
   images; runtime source-code bind mounts and hot reload are not present.
-- API, worker, and beat share one non-root API image. The optional Codex override
-  preserves read-only `0600` credentials through a root-only bootstrap that
-  immediately drops API and worker execution to `app:10001`.
+- API, worker, and beat share one non-root API image. The OCI GenAI override
+  mounts the API key only into API and worker, copies it internally with mode
+  `0400`, and immediately drops both runtime processes to `app:10001`.
 - API and worker share only the persistent `uploads_data` volume required for
   imports and exports; source code never enters that writable volume.
 
@@ -67,9 +67,9 @@
   Desktop reports approximately 689 MB and 302 MB of local virtual size,
   respectively. Web contains only the standalone Next.js runtime.
 - Removed the unused `python-jose`/`ecdsa` dependency and replaced the vulnerable
-  Go-based `gosu` binary with Alpine `su-exec`. The Codex bootstrap still starts
-  as root only long enough to copy credentials, then API and worker run as
-  UID/GID `10001`.
+  Go-based `gosu` binary with Alpine `su-exec`. The OCI GenAI secret bootstrap
+  starts as root only long enough to copy the mounted API key, then API and worker
+  run as UID/GID `10001`.
 - Celery startup broker retry behavior is explicit and regression-tested for
   forward compatibility with Celery 6.
 - Removed the unused `@testing-library/react` dependency and moved D3 type
@@ -119,5 +119,27 @@
 
 - No current evidence-freshness risk is open. Scheduled governed verification
   remains required as each source reaches its configured review interval.
+- OCI GenAI credentials, Project metadata, and `openai.gpt-oss-20b` are operational.
+  The runtime attempts Responses first and temporarily caches endpoint-level
+  unavailability before using governed Chat Completions. Real synthesis, Function
+  Calling, persisted AgentRun, and AI Review validation completed successfully;
+  OCI Guardrails and bounded retry now wrap both paths.
 - Dated reports and files under `docs/prompts/` are historical evidence and are
   explicitly non-normative; this report and the repository contracts above are current.
+
+## Release UI Truthfulness
+
+- `Search or jump` launches Architecture Review directly instead of navigating to
+  a Dashboard placeholder. Outside project context it lists active projects and
+  requires explicit selection.
+- Removed the decorative Notifications button and the permanently disabled active-project
+  Delete affordance; remaining disabled controls express real workflow preconditions.
+- Provider banners distinguish configured, verified, degraded, deterministic-only,
+  and misconfigured states from persisted jobs and agent runs.
+- Production Docker validation passed 100 API, 42 calc-engine, 15 pricing-engine,
+  53 frontend unit tests, strict TypeScript, ESLint, Ruff, mypy, OpenAPI check,
+  Node 26 production build, and 15 of 15 Playwright flows. Real OCI validation
+  covered synthesis, allowlisted Function Calling, and Guardrails prompt-injection
+  refusal. Trivy reported zero high or critical findings in both production images.
+- In-app browser inspection loaded 17 production routes without framework overlays
+  or console warnings/errors; Map resolved to 480 integrations and 72 systems.

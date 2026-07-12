@@ -1,0 +1,50 @@
+{
+  "fixture_version": "1.0",
+  "service": {
+    "service_id": "oracle-goldengate",
+    "display_name": "OCI GoldenGate",
+    "workbook_preset": "GoldenGate"
+  },
+  "price_items": [
+    {
+      "part_number": "B92992",
+      "display_name": "OCI GoldenGate",
+      "price_type": "HOUR",
+      "metric": "OCPU Per Hour",
+      "service_category": "GoldenGate",
+      "currency": "USD",
+      "unit_price": "1.3441",
+      "tier": null,
+      "license_model": "license_included",
+      "workbook_evidence": { "price_sheet_row": 412, "preset_sheet_rows": [221, 223] }
+    },
+    {
+      "part_number": "B92993",
+      "display_name": "OCI GoldenGate - BYOL",
+      "price_type": "HOUR",
+      "metric": "OCPU Per Hour",
+      "service_category": "GoldenGate",
+      "currency": "USD",
+      "unit_price": "0.3226",
+      "tier": null,
+      "license_model": "byol",
+      "workbook_evidence": { "price_sheet_row": 413, "preset_sheet_rows": [222, 224] }
+    }
+  ],
+  "parity_cases": [
+    {
+      "id": "goldengate-two-ocpu-744-hours",
+      "part_number": "B92992",
+      "formula": "quantity * instances * unit_price * rate * hours",
+      "inputs": { "quantity": "2", "instances": "1", "unit_price": "1.3441", "rate": "1", "hours": "744" },
+      "expected": { "monthly_unrounded": "2000.0208", "monthly_currency": "2000.02", "annual_unrounded": "24000.2496", "annual_currency": "24000.25" }
+    },
+    {
+      "id": "goldengate-byol-two-ocpu-744-hours",
+      "part_number": "B92993",
+      "formula": "quantity * instances * unit_price * rate * hours",
+      "inputs": { "quantity": "2", "instances": "1", "unit_price": "0.3226", "rate": "1", "hours": "744" },
+      "expected": { "monthly_unrounded": "480.0288", "monthly_currency": "480.03", "annual_unrounded": "5760.3456", "annual_currency": "5760.35" }
+    }
+  ]
+}

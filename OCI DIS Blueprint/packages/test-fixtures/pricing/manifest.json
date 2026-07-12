@@ -1,0 +1,28 @@
+{
+  "fixture_version": "1.0",
+  "source": {
+    "kind": "authorized_sanitized_workbook_extract",
+    "sha256": "277394526572ad92c4b21a235dbc63c90f8dcc14bd06f9ee36dfc4c4b8dd3435",
+    "currency": "USD",
+    "currency_precision": 2,
+    "cached_price_timestamp": "2026-07-11T00:21:51Z",
+    "pricing_table": "O_OCI_PRICING_TABLE",
+    "preset_table": "O_OCI_PRODUCT_PRESETS_TABLE"
+  },
+  "workbook_conventions": {
+    "default_monthly_hours": "744",
+    "annual_active_months": 12,
+    "raw_tier_bounds": "both_inclusive_first_match",
+    "normalized_tier_bounds": "lower_exclusive_upper_inclusive",
+    "rounding": "ROUND_HALF_UP_AT_OUTPUT_BOUNDARY"
+  },
+  "services": [
+    "oic.json",
+    "data-integration.json",
+    "functions.json",
+    "streaming.json",
+    "queue.json",
+    "goldengate.json",
+    "api-gateway.json"
+  ]
+}

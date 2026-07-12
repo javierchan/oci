@@ -35,6 +35,7 @@ COPY --chown=app:app apps/api/scripts ./scripts
 COPY --chown=app:app apps/api/alembic.ini ./alembic.ini
 COPY --chown=app:app packages/calc-engine/src/__init__.py /calc-engine/src/__init__.py
 COPY --chown=app:app packages/calc-engine/src/engine /calc-engine/src/engine
+COPY --chown=app:app packages/pricing-engine/src/pricing_engine /pricing-engine/src/pricing_engine
 COPY --chown=app:app docs/api/openapi.yaml /docs/api/openapi.yaml
 COPY apps/api/production-entrypoint.sh /usr/local/bin/oci-dis-entrypoint
 RUN rm -rf /app/app/tests \
@@ -59,4 +60,5 @@ COPY --from=quality-dependency-builder /tmp/quality-wheels /tmp/quality-wheels
 RUN pip install --no-cache-dir /tmp/quality-wheels/* && rm -rf /tmp/quality-wheels
 COPY --chown=app:app apps/api/app/tests ./app/tests
 COPY --chown=app:app packages/calc-engine/src/tests /calc-engine/src/tests
+COPY --chown=app:app packages/pricing-engine/tests /pricing-engine/tests
 USER app

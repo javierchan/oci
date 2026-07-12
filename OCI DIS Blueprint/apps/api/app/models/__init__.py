@@ -2,6 +2,16 @@
 
 from app.models.base import Base
 from app.models.ai_review import AiReviewBaseline, AiReviewJob, AiReviewJobStatus
+from app.models.agent import (
+    AgentApproval,
+    AgentArtifact,
+    AgentRun,
+    AgentRunStatus,
+    AgentStep,
+    SupportAttachment,
+    SupportConversation,
+    SupportMessage,
+)
 from app.models.governance import (
     AssumptionSet,
     DictionaryOption,
@@ -16,6 +26,17 @@ from app.models.governance import (
     ServiceVerificationJob,
 )
 from app.models.project import CatalogIntegration, ImportBatch, Project, SourceIntegrationRow
+from app.models.pricing import (
+    BomJob,
+    BomLineItem,
+    BomSnapshot,
+    DeploymentScenario,
+    PriceCatalogSnapshot,
+    PriceItem,
+    PriceSource,
+    PriceSyncJob,
+    ServiceProductSkuMapping,
+)
 from app.models.snapshot import AuditEvent, DashboardSnapshot, JustificationRecord, VolumetrySnapshot
 from app.models.synthetic import SyntheticGenerationJob
 
@@ -23,21 +44,38 @@ __all__ = [
     "AiReviewJob",
     "AiReviewBaseline",
     "AiReviewJobStatus",
+    "AgentApproval",
+    "AgentArtifact",
+    "AgentRun",
+    "AgentRunStatus",
+    "AgentStep",
+    "SupportAttachment",
+    "SupportConversation",
+    "SupportMessage",
     "AssumptionSet",
     "AuditEvent",
     "Base",
+    "BomJob",
+    "BomLineItem",
+    "BomSnapshot",
     "CatalogIntegration",
     "DashboardSnapshot",
     "DictionaryOption",
+    "DeploymentScenario",
     "ImportBatch",
     "JustificationRecord",
     "PatternDefinition",
     "PromptTemplateVersion",
     "Project",
+    "PriceCatalogSnapshot",
+    "PriceItem",
+    "PriceSource",
+    "PriceSyncJob",
     "ServiceEvidenceSource",
     "ServiceInteroperabilityRule",
     "ServiceLimit",
     "ServiceProductVersion",
+    "ServiceProductSkuMapping",
     "ServiceVerificationFinding",
     "ServiceVerificationJob",
     "SourceIntegrationRow",

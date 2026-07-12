@@ -31,7 +31,13 @@ AiReviewArea = Literal[
     "governance",
 ]
 AiReviewDriftStatus = Literal["no_baseline", "no_drift", "minor_drift", "material_drift", "blocking_drift"]
-AiReviewProviderMode = Literal["deterministic_only", "llm_available", "misconfigured"]
+AiReviewProviderMode = Literal[
+    "deterministic_only",
+    "llm_configured",
+    "llm_available",
+    "llm_degraded",
+    "misconfigured",
+]
 AiReviewPersona = Literal["architect", "security", "operations", "executive"]
 
 
@@ -131,18 +137,58 @@ class AiReviewQuotaState(BaseModel):
     llm_daily_job_limit: int
 
 
+class AiReviewTransportStrategy(BaseModel):
+    """Responses-first transport policy and observed process capability."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    preferred: Literal["responses"]
+    fallback: Literal["chat_completions"]
+    configured_mode: str
+    responses_capability: Literal["available", "unavailable", "unverified", "disabled"]
+
+
+class AiReviewRetryPolicy(BaseModel):
+    """Bounded provider retry contract exposed for operational review."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    max_retries: int
+    strategy: Literal["exponential_full_jitter"]
+    retryable_status_codes: list[int]
+    respects_retry_after: bool
+
+
+class AiReviewSafetyStatus(BaseModel):
+    """Privacy-preserving identity and OCI Guardrails configuration."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    safety_identifier: Literal["hmac_sha256"]
+    guardrails_enabled: bool
+    guardrails_version: str
+    guardrails_failure_mode: str
+    input_protections: list[str]
+    output_protections: list[str]
+
+
 class AiReviewProviderStatus(BaseModel):
     """Provider health/configuration status without exposing credentials."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    provider: Literal["codex"] = "codex"
+    provider: Literal["oci_genai"] = "oci_genai"
     configured: bool
     mode: AiReviewProviderMode
     model: str
-    wire_api: str
-    base_url: str
+    transport: str
+    transport_strategy: AiReviewTransportStrategy
+    region: str
+    auth_mode: Literal["api_key"]
+    endpoint: str
     request_timeout_seconds: float
+    retry_policy: AiReviewRetryPolicy
+    safety: AiReviewSafetyStatus
     quota: AiReviewQuotaState
     data_retention_policy: str
     prompt_redaction_policy: list[str] = Field(default_factory=list)

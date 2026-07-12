@@ -1,0 +1,53 @@
+{
+  "fixture_version": "1.0",
+  "service": {
+    "service_id": "oci-queue",
+    "display_name": "OCI Queue",
+    "workbook_preset": "OCI Queue"
+  },
+  "price_items": [
+    {
+      "part_number": "B95697",
+      "display_name": "OCI Queue",
+      "price_type": "MONTH",
+      "metric": "1,000,000 Requests",
+      "service_category": "OCI Queue",
+      "currency": "USD",
+      "unit_price": "0",
+      "tier": {
+        "raw": { "range_min_inclusive": "0", "range_max_inclusive": "1" },
+        "normalized": { "range_min_exclusive": null, "range_max_inclusive": "1" }
+      },
+      "workbook_evidence": { "price_sheet_row": 607, "preset_sheet_rows": [558, 560] }
+    },
+    {
+      "part_number": "B95697",
+      "display_name": "OCI Queue",
+      "price_type": "MONTH",
+      "metric": "1,000,000 Requests",
+      "service_category": "OCI Queue",
+      "currency": "USD",
+      "unit_price": "0.22",
+      "tier": {
+        "raw": { "range_min_inclusive": "1", "range_max_inclusive": "999999999999999" },
+        "normalized": { "range_min_exclusive": "1", "range_max_inclusive": "999999999999999" }
+      },
+      "workbook_evidence": { "price_sheet_row": 608, "preset_sheet_rows": [559, 561] }
+    }
+  ],
+  "parity_cases": [
+    {
+      "id": "queue-free-boundary",
+      "part_number": "B95697",
+      "inputs": { "tier_basis_billing_units": "1" },
+      "expected": { "selected_unit_price": "0", "boundary_owner": "lower_tier", "monthly_currency": "0.00" }
+    },
+    {
+      "id": "queue-paid-after-shared-free-allocation",
+      "part_number": "B95697",
+      "formula": "(gross_quantity - free_quantity) / billing_unit * unit_price",
+      "inputs": { "gross_quantity": "2500000", "free_quantity": "1000000", "billing_unit": "1000000", "unit_price": "0.22" },
+      "expected": { "billing_units": "1.5", "monthly_unrounded": "0.330", "monthly_currency": "0.33", "annual_currency": "3.96" }
+    }
+  ]
+}

@@ -349,6 +349,88 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 - [x] **Exit criteria**: dependency audit is clean; backend, calc-engine, frontend,
       migration, browser, and image gates execute from one canonical CI contract
 
+### M27 — Governed OCI Pricing + Bill of Materials
+- [x] Add immutable public and contractual price catalogs with hash-based sync,
+      approval, audit, and normalized OCI SKU price tiers
+- [x] Add a pure Decimal pricing engine with workbook-parity fixtures and tests
+- [x] Add project deployment scenarios that separate logical integration demand
+      from physical environments, availability, licensing, and service sizing
+- [x] Add governed Service Product-to-SKU mappings and block unresolved coverage
+- [x] Add terminal Celery BOM jobs, immutable line-level provenance, review,
+      publication, deterministic comparison, and XLSX/JSON/PDF exports
+- [x] Add Admin Pricing and project BOM workspaces without exposing commercial
+      totals on the default technical dashboard
+- [x] Use OCI Generative AI only for advisory scenario summaries; deterministic
+      services remain the sole authority for quantities, prices, and totals
+- [x] **Exit criteria**: migrations, backend/engine/frontend suites, OpenAPI,
+      browser workflows, exports, RBAC, and light/dark responsive views validate
+      the governed list-price and authorized CSV rate-card paths
+
+### M33 — OCI Generative AI Provider Consolidation
+- [x] Standardize AI synthesis on OCI OpenAI-compatible Responses-first inference,
+      with governed Chat fallback for `openai.gpt-oss-20b` in `us-chicago-1`
+- [x] Mount the OCI Generative AI `sk-` secret from a read-only file, copy it with
+      mode `0400`, and never expose it through `.env`, frontend contracts, or logs
+- [x] Route Architecture Review and BOM scenario assistance through one redacted,
+      evidence-only provider while preserving deterministic results as authority
+- [x] Capture sanitized OCI request IDs and token usage for operational diagnostics
+- [x] Remove superseded provider configuration, auth mounts, wire parsing, and runtime dependencies
+- [x] **Exit criteria**: provider tests, real OCI smoke, full backend/frontend gates,
+      OpenAPI, Docker runtime, and browser AI workflows pass
+
+### M34 — Governed Enterprise AI Agents
+- [x] Add a versioned registry for Architecture Review, Service Verification,
+      Import Quality, Integration Design, Topology Investigation, and BOM Scenario agents
+- [x] Persist auditable agent runs, steps, evidence artifacts, approvals, provider
+      diagnostics, cancellation, and terminal states
+- [x] Execute agents in a dedicated production Docker `agent-worker` that consumes
+      only the Celery `agents` queue
+- [x] Use OCI Responses-first Function Calling with one typed, allowlisted deterministic
+      application tool per agent, governed Chat fallback, and no SQL, shell, Docker,
+      or arbitrary URL access
+- [x] Preserve existing specialized UI contracts while linking Architecture Review
+      and Service Verification jobs to the common runtime
+- [x] Add contextual Import and BOM agent actions plus an Admin Agent Operations surface
+- [x] Launch a real project Architecture Review directly from the global command
+      palette, including explicit active-project selection outside project context
+- [x] Distinguish configured, verified, and degraded OCI provider states from
+      persisted execution evidence instead of presenting configuration as availability
+- [x] Remove visible command and top-bar affordances that have no executable product behavior
+- [x] **Exit criteria**: migration head `20260712_0021`, backend/calc/pricing/frontend
+      quality gates, OpenAPI, Docker stack, browser flows, and real OCI Function Calling
+      smoke pass with a configured `OCI_GENAI_PROJECT_ID`
+
+### M35 — Session-Isolated Contextual App Assistant
+- [x] Add a read-only `support_assistant` definition that runs in the dedicated
+      Docker agent worker with one typed App-context tool
+- [x] Persist conversations, messages, component attachments, citations, and
+      AgentRun linkage under migration `20260712_0022`
+- [x] Isolate every conversation by an opaque browser UUID and return 404 for
+      cross-session conversation access
+- [x] Reject unrelated questions deterministically before OCI inference
+- [x] Derive current project, integration, topology, import, governance, and BOM
+      context from App routes and let users pin multiple views across navigation
+- [x] Mount a responsive floating assistant in the root layout so open state,
+      history, pending work, and attachments survive App Router navigation
+- [x] **Exit criteria**: migration head `20260712_0022`, backend/frontend/OpenAPI
+      gates, real OCI support answer, out-of-scope refusal, cross-route persistence,
+      dark/light visual validation, and browser console pass
+
+### M36 — OCI GenAI Resilience + Safety
+- [x] Prefer the OCI Responses API for synthesis and Function Calling while caching
+      model-level endpoint incompatibility before governed Chat fallback
+- [x] Add bounded exponential backoff with full jitter and `Retry-After` support for
+      transient inference and Guardrails failures
+- [x] Send an HMAC-derived `safety_identifier` for every model request without
+      exposing user, session, project, or integration identifiers
+- [x] Evaluate inputs and outputs with OCI Guardrails for prompt injection, harmful
+      content, and PII; redact PII and fail closed on blocked or unavailable checks
+- [x] Expose transport capability, retry policy, and safety configuration through
+      typed provider-status contracts and truthful UI labels
+- [x] **Exit criteria**: focused resilience tests, full API/calc/pricing/frontend gates,
+      OpenAPI, real OCI synthesis and Function Calling, Guardrails refusal, Docker
+      runtime, and light/dark browser validation pass
+
 ### M26 — Topology Decision Workspace
 - [x] Separate statistical majority from conservative edge risk so mixed paths
       cannot render as healthy when review or pending integrations are present
@@ -424,7 +506,7 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 - [x] Prevent topology review actions while filtered graph data is refreshing so
       the queue never opens against stale dependency paths
 - [x] **Exit criteria**: migration head `20260711_0018`, 16 of 16 Frequency rows use
-      `FQ01`–`FQ16`, Codex provider status is live, API/calc/frontend quality gates
+      `FQ01`–`FQ16`, OCI GenAI provider status is live, API/calc/frontend quality gates
       pass, and contextual AI, Catalog, Frequency, Dashboard, and Map Playwright pass
 
 ### M30 — Dashboard Feedback + Semantic Review Brief + macOS Dark Mode
@@ -573,6 +655,12 @@ Route groups (PRD-043):
 /api/v1/service-products
 /api/v1/admin/synthetic
 /api/v1/ai-reviews
+/api/v1/agents
+/api/v1/support
+/api/v1/pricing
+/api/v1/projects/{project_id}/deployment-scenarios
+/api/v1/projects/{project_id}/bom-jobs
+/api/v1/projects/{project_id}/bom-snapshots
 ```
 
 ---

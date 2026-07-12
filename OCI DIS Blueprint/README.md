@@ -9,6 +9,8 @@ Replaces `Catalogo_Integracion.xlsx` with a governed platform enabling architect
 - Generate deterministic technical dashboards and justification narratives
 - Export results for delivery teams and clients
 - Download a self-documenting governed workbook for offline capture and safe re-import
+- Refresh official OCI public prices and produce governed, traceable Bills of Materials
+- Ask a session-isolated contextual assistant about App workflows and governed architecture evidence
 
 **Source of truth for behavior:** `Catalogo_Integracion.xlsx` → tab `TLP - PRD`
 **Agent instructions (Codex):** [`AGENTS.md`](./AGENTS.md)
@@ -23,6 +25,7 @@ Replaces `Catalogo_Integracion.xlsx` with a governed platform enabling architect
 - **Jobs:** Celery + Redis
 - **Storage:** MinIO (local runtime) / OCI Object Storage (deployed runtime)
 - **Calc engine:** `packages/calc-engine/` (pure Python, no I/O)
+- **Pricing engine:** `packages/pricing-engine/` (pure Decimal calculations, no I/O)
 - **Service rules:** normalized Service Product tables; Assumptions contain client workload inputs only
 
 All services run in **production mode** on Docker Desktop — no host Python or
@@ -54,21 +57,44 @@ docker compose exec -T api python -m app.migrations.seed
 - API docs: http://localhost:8000/docs
 - MinIO console: http://localhost:9001 (minio / minio123)
 
-## Codex Backend for AI Review
+## OCI Generative AI for Governed Reviews
 
-AI Review uses the Codex backend configuration mounted into the API and worker
-containers. LLM credentials must not be provided through `.env`; the deprecated
-`OCA_API_KEY` path is ignored by the application.
+AI Review and the BOM scenario assistant use OCI Generative AI with
+`OpenAI gpt-oss-20b` in `us-chicago-1`. The deterministic review remains the
+source of truth; OCI GenAI receives only redacted, governed evidence and produces
+an optional decision summary.
 
 ```bash
-CODEX_HOME="$HOME/.codex" \
-  docker compose -f docker-compose.yml -f docker-compose.codex.yml \
+OCI_GENAI_PROJECT_ID=ocid1.generativeaiproject... \
+OCI_GENAI_API_KEY_FILE_HOST="$HOME/.oci-genai/api_key" \
+  docker compose -f docker-compose.yml -f docker-compose.oci-genai.yml \
   up -d --build --wait
 ```
 
-The override mounts `${CODEX_HOME}/config.toml` and `${CODEX_HOME}/auth.json`
-read-only under `/codex-host`. The production entrypoint copies them to a private
-runtime directory and immediately drops API and worker execution to `app:10001`.
+The override mounts the OCI Generative AI `sk-` secret read-only under
+`/oci-genai-host`. The production entrypoint copies it to
+`/tmp/oci-dis-home/.oci-genai/api_key` with mode `0400`, then immediately drops
+API and worker execution to `app:10001`. Never store the secret in `.env` or Git.
+Use OCI Vault or an equivalent approved secret mount in the deployed environment.
+The integration follows Oracle's official
+[OpenAI-compatible endpoint](https://docs.oracle.com/en-us/iaas/Content/generative-ai/openai-compatible-api.htm)
+and [OCI Generative AI API key](https://docs.oracle.com/en-us/iaas/Content/generative-ai/api-keys.htm)
+contracts.
+
+`OCI_GENAI_PROJECT_ID` and `OCI_GENAI_COMPARTMENT_ID` are non-secret OCI resource
+identifiers. New inference uses the OpenAI-compatible Responses API first and
+falls back to Chat Completions only when OCI reports Responses unavailable for
+the configured model. Requests use bounded retry with jitter, HMAC-derived
+`safety_identifier` values, and OCI Guardrails for prompt injection, harmful
+content, and PII. The dedicated `agent-worker` consumes only the `agents` queue.
+Agent tools are typed calls into existing deterministic services; no model
+receives SQL, shell, Docker, or arbitrary network access.
+See [`docs/architecture/oci-agent-runtime.md`](./docs/architecture/oci-agent-runtime.md).
+
+The global OCI DIS App Assistant persists across navigation, understands the
+current project/integration/BOM/topology route, accepts explicitly pinned App
+views, and refuses unrelated questions. See
+[`docs/architecture/contextual-support-assistant.md`](./docs/architecture/contextual-support-assistant.md).
 
 ## Offline Capture Workbook
 
@@ -82,6 +108,22 @@ Existing unversioned v1 workbooks remain importable with a legacy warning.
 Template v2 rejects formulas and changed headers so offline capture cannot hide
 logic or silently drift from the App contract. See
 [`docs/architecture/offline-capture-workbook-v2.md`](./docs/architecture/offline-capture-workbook-v2.md).
+
+## Governed OCI Pricing And BOM
+
+`BOM & Cost` converts an approved technical snapshot plus an approved physical
+deployment scenario into an immutable OCI planning estimate. Admin `Pricing`
+refreshes the documented Oracle public product-price endpoint, reviews immutable
+price snapshots, imports authorized contractual CSV rate cards, and governs
+Service Product-to-SKU mappings. Every BOM line preserves formula, demand,
+environment, mapping, price-item, and snapshot provenance.
+
+The technical dashboard remains cost-free. Commercial totals are visible only
+inside the explicit BOM workflow, and publication is blocked until pricing
+coverage reaches 100%. XLSX, JSON, and PDF exports are planning artifacts, not
+Oracle quotes. See
+[`docs/architecture/oci-pricing-bom-plan.md`](./docs/architecture/oci-pricing-bom-plan.md)
+and [`docs/architecture/oci-pricing-parity-spec.md`](./docs/architecture/oci-pricing-parity-spec.md).
 
 ---
 
@@ -279,6 +321,8 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M24 | Admin Synthetic Lab — Governed Test Project Generation | ✅ Complete | 2026-04-16 |
 | M25 | Production Quality Gates + Service Rule Ownership | ✅ Complete | 2026-07-10 |
 | M26 | Governed Offline Capture Workbook 2.0 | ✅ Complete | 2026-07-10 |
+| M27 | Governed OCI Pricing + Bill of Materials | ✅ Complete | 2026-07-12 |
+| M33 | OCI Generative AI Provider Consolidation | ✅ Complete | 2026-07-12 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -288,8 +332,10 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
 - Import parity: `157` TBQ=`Y` rows, `13` excluded `Duplicado 2`, `144` loaded rows in source order
 - Reference seed data: `17` patterns, client-only assumption sets, governed dictionaries, and `18` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine: `119 passed` (`77` API and `42` calc-engine tests)
-- Frontend: `19 passed`, strict TypeScript, ESLint, and production build green
+- Backend + calc-engine + pricing-engine: `145 passed`
+- Frontend: `37 passed`, strict TypeScript, ESLint, and production build green
+- Pricing/BOM E2E: public sync and BOM jobs reach terminal `completed` states
+- Production images: Trivy reports `0 HIGH` and `0 CRITICAL` for API and web
 - Browser E2E: `4 passed`, including workbook download, terminal job state, and cleanup validation
 - Dependency audit: `0` vulnerabilities
 - Web and API stack: all seven services running and healthy in Docker Compose

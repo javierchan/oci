@@ -5,13 +5,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download } from "lucide-react";
+import { Bot, Download, FileUp, Loader2 } from "lucide-react";
 
 import { ConfirmModal } from "@/components/modal";
 import { emitToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
-import type { CaptureTemplateMetadata, ImportBatch, ImportQualityAssistant, SourceRowList } from "@/lib/types";
+import type { AgentRun, CaptureTemplateMetadata, ImportBatch, ImportQualityAssistant, SourceRowList } from "@/lib/types";
 
 type ImportUploadProps = {
   projectId: string;
@@ -67,6 +67,16 @@ function qualitySeverityTone(severity: string): string {
     return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100";
   }
   return "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-secondary)]";
+}
+
+async function waitForQualityAgent(run: AgentRun): Promise<AgentRun> {
+  let current = run;
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (["completed", "failed", "cancelled"].includes(current.status)) return current;
+    await new Promise((resolve) => window.setTimeout(resolve, 1000));
+    current = await api.getAgentRun(current.id);
+  }
+  throw new Error("Import quality agent did not reach a terminal state within two minutes.");
 }
 
 function ImportStepper({
@@ -150,6 +160,8 @@ export function ImportUpload({
   const [historyPage, setHistoryPage] = useState<number>(1);
   const [historyPageSize, setHistoryPageSize] = useState<number>(12);
   const [templateMetadata, setTemplateMetadata] = useState<CaptureTemplateMetadata | null>(null);
+  const [qualityAgentRun, setQualityAgentRun] = useState<AgentRun | null>(null);
+  const [qualityAgentBusy, setQualityAgentBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -214,14 +226,23 @@ export function ImportUpload({
   const templateCompatibility = latestBatch?.header_map?.["__template_compatibility__"] ?? null;
 
   function updateSelectedFile(file: File | null): void {
+    if (file && !file.name.toLowerCase().endsWith(".xlsx")) {
+      setSelectedFile(null);
+      setError("Only .xlsx files are supported.");
+      setPhase("idle");
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
+      return;
+    }
     setSelectedFile(file);
     setError("");
-    setPhase(file ? "pending" : "idle");
+    setPhase("idle");
   }
 
   async function handleUpload(): Promise<void> {
     if (!selectedFile) {
-      setError("Select an .xlsx workbook first.");
+      inputRef.current?.click();
       return;
     }
 
@@ -235,8 +256,12 @@ export function ImportUpload({
     try {
       const batch = await api.uploadWorkbook(projectId, selectedFile);
       setCurrentBatch(batch);
-      setHistory((current: ImportBatch[]) => [batch, ...current]);
+      setHistory((current: ImportBatch[]) => [batch, ...current.filter((item) => item.id !== batch.id)]);
       setPhase(phaseFromBatchStatus(batch));
+      setSelectedFile(null);
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
       emitToast("success", `Workbook "${selectedFile.name}" queued.`);
     } catch (caughtError) {
       setPhase("failed");
@@ -244,6 +269,53 @@ export function ImportUpload({
       emitToast("error", caughtError instanceof Error ? caughtError.message : "Upload failed.");
     }
   }
+
+  useEffect(() => {
+    if (!currentBatch || (currentBatch.status !== "pending" && currentBatch.status !== "processing")) {
+      return;
+    }
+
+    let cancelled = false;
+    let requestInFlight = false;
+    const timer = window.setInterval(() => {
+      if (requestInFlight) {
+        return;
+      }
+      requestInFlight = true;
+      void api.getImportBatch(projectId, currentBatch.id).then((batch) => {
+        if (cancelled) {
+          return;
+        }
+        setCurrentBatch(batch);
+        setHistory((current: ImportBatch[]) => [batch, ...current.filter((item) => item.id !== batch.id)]);
+        setPhase(phaseFromBatchStatus(batch));
+        setError("");
+        if (batch.status === "completed") {
+          emitToast(
+            "success",
+            `Import completed: ${batch.loaded_count ?? 0} loaded, ${batch.excluded_count ?? 0} excluded.`,
+          );
+          router.refresh();
+        } else if (batch.status === "failed") {
+          const detail = batch.error_details?.detail;
+          const message = typeof detail === "string" ? detail : "The workbook could not be imported.";
+          setError(message);
+          emitToast("error", message);
+        }
+      }).catch((caughtError: unknown) => {
+        if (!cancelled) {
+          setError(caughtError instanceof Error ? caughtError.message : "Unable to refresh import status.");
+        }
+      }).finally(() => {
+        requestInFlight = false;
+      });
+    }, 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [currentBatch, projectId, router]);
 
   async function handleDeleteImport(batch: ImportBatch): Promise<void> {
     setDeletingBatchId(batch.id);
@@ -262,6 +334,21 @@ export function ImportUpload({
       emitToast("error", caughtError instanceof Error ? caughtError.message : "Unable to remove import.");
     } finally {
       setDeletingBatchId("");
+    }
+  }
+
+  async function runQualityAgent(): Promise<void> {
+    if (!initialSelectedBatchId) return;
+    setQualityAgentBusy(true);
+    try {
+      const terminal = await waitForQualityAgent(await api.runImportQualityAgent(projectId, initialSelectedBatchId));
+      setQualityAgentRun(terminal);
+      if (terminal.status !== "completed") throw new Error("Import quality agent did not complete successfully.");
+      emitToast("success", "Governed import quality agent completed.");
+    } catch (caughtError) {
+      emitToast("error", caughtError instanceof Error ? caughtError.message : "Unable to run import quality agent.");
+    } finally {
+      setQualityAgentBusy(false);
     }
   }
 
@@ -424,10 +511,15 @@ export function ImportUpload({
             <button
               type="button"
               onClick={handleUpload}
-              disabled={!selectedFile || phase === "pending" || phase === "processing"}
+              disabled={phase === "pending" || phase === "processing"}
               className="app-button-primary"
             >
-              {phase === "processing" || phase === "pending" ? "Queuing…" : "Upload & Queue Import"}
+              <FileUp className="h-4 w-4" aria-hidden="true" />
+              {phase === "processing" || phase === "pending"
+                ? "Import in progress…"
+                : selectedFile
+                  ? "Upload & Queue Import"
+                  : "Choose Workbook to Import"}
             </button>
             <span className="app-theme-chip">
               Status: {phase}
@@ -468,7 +560,7 @@ export function ImportUpload({
                   Import batch {currentBatch.id.slice(0, 8)} is {currentBatch.status}.
                 </h3>
                 <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
-                  The workbook has been accepted and the background worker is processing it. Refresh this page or open the batch detail to watch the counts update.
+                  The workbook has been accepted and the background worker is processing it. This status updates automatically until the import completes.
                 </p>
                 <Link
                   href={`/projects/${projectId}/import?batch_id=${currentBatch.id}`}
@@ -498,8 +590,20 @@ export function ImportUpload({
                   {initialQualityAssistant.recommended_next_action}
                 </p>
               </div>
-              <span className="app-theme-chip">{initialQualityAssistant.status}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="app-theme-chip">{initialQualityAssistant.status}</span>
+                <button type="button" className="app-button-secondary gap-2" disabled={qualityAgentBusy} onClick={() => void runQualityAgent()}>
+                  {qualityAgentBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+                  {qualityAgentBusy ? "Analyzing" : "Analyze with agent"}
+                </button>
+              </div>
             </div>
+            {qualityAgentRun?.result?.summary ? (
+              <div className="mt-4 rounded-lg border border-[var(--color-accent)]/35 bg-[var(--color-surface-2)] p-4">
+                <p className="app-label text-[var(--color-accent)]">Agent brief</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">{qualityAgentRun.result.summary}</p>
+              </div>
+            ) : null}
             <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
               {initialQualityAssistant.metrics.slice(0, 9).map((metric) => (
                 <article

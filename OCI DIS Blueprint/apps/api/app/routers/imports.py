@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
@@ -13,7 +13,9 @@ from app.schemas.imports import (
     ImportQualityAssistantResponse,
     SourceRowListResponse,
 )
-from app.services import import_service
+from app.schemas.agent import AgentCreateRequest, AgentRunResponse
+from app.services import agent_service, import_service
+from app.workers.agent_worker import execute_agent_run_task
 from app.workers.import_worker import process_import_task
 
 router = APIRouter(prefix="/imports", tags=["Imports"])
@@ -97,6 +99,39 @@ async def get_import_quality_assistant(
     db: AsyncSession = Depends(get_db),
 ) -> ImportQualityAssistantResponse:
     return await import_service.get_import_quality_assistant(project_id, batch_id, db)
+
+
+@router.post(
+    "/{project_id}/{batch_id}/quality-agent",
+    response_model=AgentRunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Run the governed import quality agent",
+)
+async def run_import_quality_agent(
+    project_id: str,
+    batch_id: str,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Analyst", alias="X-Actor-Role"),
+) -> AgentRunResponse:
+    async with db.begin():
+        run = await agent_service.create_agent_run(
+            AgentCreateRequest(
+                agent_type="import_quality",
+                project_id=project_id,
+                context={"batch_id": batch_id},
+            ),
+            actor_id,
+            actor_role,
+            db,
+        )
+    try:
+        execute_agent_run_task.apply_async(args=[run.id], task_id=run.id, queue="agents")
+    except Exception as exc:  # pragma: no cover - defensive dispatch path.
+        async with db.begin():
+            await agent_service.mark_agent_run_failed(run.id, {"detail": str(exc)}, db)
+        raise HTTPException(status_code=503, detail={"detail": "Agent worker could not be dispatched", "error_code": "AGENT_DISPATCH_FAILED"}) from exc
+    return run
 
 
 @router.delete(

@@ -56,8 +56,10 @@ test("opens both integration and current-canvas reviews with live provider statu
   await page.goto(`/projects/${projectId}/catalog/${integrationId}`);
 
   await page.getByRole("button", { name: "Review integration", exact: true }).click();
-  await expect(page.getByLabel("Governed AI review")).toBeVisible();
-  await expect(page.getByText("LLM synthesis is configured", { exact: false })).toBeVisible();
+  const integrationReviewBoard = page.getByLabel("Governed AI review");
+  await expect(integrationReviewBoard).toBeVisible();
+  await expect(integrationReviewBoard.getByText("Provider status", { exact: true })).toBeVisible();
+  await expect(integrationReviewBoard.getByText("governed deterministic evidence", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Close AI review" }).click();
 
   const canvasReview = page.getByRole("button", { name: "Review current canvas", exact: true });

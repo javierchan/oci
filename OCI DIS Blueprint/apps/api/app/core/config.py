@@ -1,6 +1,8 @@
 """Application configuration — all settings sourced from environment variables."""
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+from typing import Literal
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -34,16 +36,29 @@ class Settings(BaseSettings):
     STORAGE_ACCESS_KEY: str = ""
     STORAGE_SECRET_KEY: str = ""
 
-    # Governed AI review LLM provider (Codex backend / Responses API)
-    CODEX_BASE_URL: str = "https://chatgpt.com/backend-api/codex"
-    CODEX_MODEL: str = "gpt-5.5"
-    CODEX_WIRE_API: str = "responses"
-    CODEX_REQUEST_TIMEOUT_SECONDS: float = 20.0
-    CODEX_CONFIG_PATH: str = "/codex/config.toml"
-    CODEX_AUTH_JSON_PATH: str = "/codex/auth.json"
-    CODEX_PROVIDER_NAME: str = "codex"
-    CODEX_CLIENT_NAME: str = "codex-cli"
-    CODEX_CLIENT_VERSION: str = "0"
+    # Governed OCI Generative AI provider
+    OCI_GENAI_REGION: str = "us-chicago-1"
+    OCI_GENAI_BASE_URL: str = (
+        "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1"
+    )
+    OCI_GENAI_MODEL_ID: str = "openai.gpt-oss-20b"
+    OCI_GENAI_MODEL_NAME: str = "OpenAI gpt-oss-20b"
+    OCI_GENAI_PROJECT_ID: str = ""
+    OCI_GENAI_COMPARTMENT_ID: str = ""
+    OCI_GENAI_API_KEY_FILE: str = "/tmp/oci-dis-home/.oci-genai/api_key"
+    OCI_GENAI_TRANSPORT_MODE: Literal["auto", "responses", "chat_completions"] = "auto"
+    OCI_GENAI_RESPONSES_UNAVAILABLE_TTL_SECONDS: int = 3600
+    OCI_GENAI_CONNECT_TIMEOUT_SECONDS: float = 10.0
+    OCI_GENAI_READ_TIMEOUT_SECONDS: float = 240.0
+    OCI_GENAI_MAX_RETRIES: int = 2
+    OCI_GENAI_RETRY_BASE_SECONDS: float = 0.5
+    OCI_GENAI_RETRY_MAX_SECONDS: float = 8.0
+    OCI_GENAI_MAX_OUTPUT_TOKENS: int = 2048
+    OCI_GENAI_AGENT_MAX_STEPS: int = 4
+    OCI_GENAI_AGENT_MAX_EVIDENCE_CHARS: int = 60000
+    OCI_GENAI_GUARDRAILS_ENABLED: bool = True
+    OCI_GENAI_GUARDRAILS_VERSION: str = "1.0.1"
+    OCI_GENAI_GUARDRAILS_FAILURE_MODE: Literal["closed", "open"] = "closed"
     AI_REVIEW_DAILY_JOB_LIMIT: int = 100
     AI_REVIEW_LLM_DAILY_JOB_LIMIT: int = 25
 

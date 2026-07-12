@@ -10,6 +10,7 @@ import { ArrowRight, FolderOpen, Layers3, ShieldCheck, Trash2, User } from "luci
 
 import { ConfirmModal } from "@/components/modal";
 import { emitToast } from "@/hooks/use-toast";
+import { APP_NAME } from "@/lib/app-brand";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { Project } from "@/lib/types";
@@ -149,16 +150,6 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
             >
               {activeProjectId === row.project.id ? "Working…" : "Archive"}
             </button>
-            <button
-              type="button"
-              disabled
-              aria-disabled="true"
-              title="Archive this workspace first to unlock permanent deletion."
-              className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-xs font-semibold text-[var(--color-text-muted)] opacity-80"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Delete
-            </button>
           </>
         ) : null}
         {row.project.status === "archived" ? (
@@ -182,7 +173,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
       <section className="console-hero">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="app-kicker">Workspace · OCI DIS Blueprint</p>
+            <p className="app-kicker">Workspace · {APP_NAME}</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--color-text-primary)] md:text-4xl">
               Projects
             </h1>

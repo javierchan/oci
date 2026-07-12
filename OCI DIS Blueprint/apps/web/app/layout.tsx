@@ -4,17 +4,28 @@ import Script from "next/script";
 
 import { Nav } from "@/components/nav";
 import { ToastStack } from "@/components/toast";
+import { ContextualSupportAssistant } from "@/components/contextual-support-assistant";
 import { WorkspaceTopBar } from "@/components/workspace-topbar";
+import { APP_DESCRIPTION, APP_ICON_PATH, APP_NAME } from "@/lib/app-brand";
 
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "OCI DIS Blueprint",
-  description: "OCI DIS Blueprint frontend workspace",
+  title: {
+    default: APP_NAME,
+    template: `%s | ${APP_NAME}`,
+  },
+  applicationName: APP_NAME,
+  description: APP_DESCRIPTION,
+  appleWebApp: {
+    capable: true,
+    title: APP_NAME,
+    statusBarStyle: "default",
+  },
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    icon: [{ url: APP_ICON_PATH, type: "image/svg+xml" }],
+    shortcut: APP_ICON_PATH,
+    apple: APP_ICON_PATH,
   },
 };
 
@@ -55,6 +66,7 @@ export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
           </div>
         </div>
         <ToastStack />
+        <ContextualSupportAssistant />
       </body>
     </html>
   );

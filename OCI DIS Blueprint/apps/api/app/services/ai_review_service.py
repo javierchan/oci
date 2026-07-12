@@ -55,7 +55,7 @@ from app.schemas.ai_review import (
 from app.schemas.catalog import CatalogIntegrationPatch
 from app.services import audit_service, catalog_service, service_rule_service
 from app.services.canvas_interoperability import CanvasDesignValidationError, parse_canvas_state
-from app.services.llm_review_client import LlmReviewResult, provider_status_payload, synthesize_review_summary
+from app.services.genai_client import GenAiResult, provider_status_payload, synthesize_review_summary
 from app.services.pattern_support import get_pattern_support
 from app.services.serializers import sanitize_for_json, split_csv
 
@@ -1240,7 +1240,26 @@ async def get_ai_review_provider_status(actor_id: str, db: AsyncSession) -> AiRe
     """Return provider health, quota, and data-policy metadata for the caller."""
 
     used = await _actor_job_count_today(actor_id or AI_REVIEW_ACTOR_FALLBACK, db)
-    payload = provider_status_payload(get_settings(), actor_jobs_today=used)
+    recent_jobs = await db.scalars(
+        select(AiReviewJob)
+        .where(AiReviewJob.result_payload.is_not(None))
+        .order_by(AiReviewJob.finished_at.desc())
+        .limit(20)
+    )
+    last_provider_status: Literal["completed", "failed"] | None = None
+    for recent_job in recent_jobs.all():
+        result_payload = recent_job.result_payload
+        if not isinstance(result_payload, dict):
+            continue
+        candidate = result_payload.get("llm_status")
+        if candidate in {"completed", "failed"}:
+            last_provider_status = cast(Literal["completed", "failed"], candidate)
+            break
+    payload = provider_status_payload(
+        get_settings(),
+        actor_jobs_today=used,
+        last_provider_status=last_provider_status,
+    )
     return AiReviewProviderStatus.model_validate(payload)
 
 
@@ -1548,6 +1567,7 @@ async def build_review_result(
     graph_context: AiReviewGraphContext | None,
     reviewer_personas: list[str],
     db: AsyncSession,
+    safety_subject: str | None = None,
 ) -> AiReviewResponse:
     """Build a project or integration review from governed deterministic evidence."""
 
@@ -2128,9 +2148,10 @@ async def build_review_result(
             topology_insights=[item.model_dump(mode="json") for item in topology_insights],
             stress_scenarios=[item.model_dump(mode="json") for item in stress_scenarios],
             remediation_plan=[item.model_dump(mode="json") for item in remediation_plan],
+            safety_subject=safety_subject,
         )
         if include_llm
-        else LlmReviewResult(status="skipped", model=None, summary=None)
+        else GenAiResult(status="skipped", model=None, summary=None)
     )
 
     return AiReviewResponse(
@@ -2177,6 +2198,7 @@ async def run_project_review(project_id: str, db: AsyncSession) -> AiReviewRespo
         graph_context=None,
         reviewer_personas=["architect", "security", "operations", "executive"],
         db=db,
+        safety_subject="system",
     )
 
 
@@ -2197,6 +2219,7 @@ async def run_ai_review_job(job_id: str, db: AsyncSession) -> AiReviewJobRespons
         ),
         reviewer_personas=[str(item) for item in cast(list[object], input_payload.get("reviewer_personas", []))],
         db=db,
+        safety_subject=job.requested_by,
     )
     old_value: dict[str, object] = {"status": _status_value(job)}
     job.status = type(job.status).COMPLETED

@@ -13,9 +13,18 @@ from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AiReviewBaseline, AiReviewJob, AiReviewJobStatus, Project, VolumetrySnapshot
+from app.models import (
+    AiReviewBaseline,
+    AiReviewJob,
+    AiReviewJobStatus,
+    DeploymentScenario,
+    PriceCatalogSnapshot,
+    PriceSource,
+    Project,
+    VolumetrySnapshot,
+)
 from app.schemas.export import ExportJobResponse
-from app.services import dashboard_service, justification_service, recalc_service
+from app.services import bom_service, dashboard_service, justification_service, recalc_service
 from app.services.catalog_service import list_integrations
 from app.services.pattern_support import get_pattern_support
 from app.services.serializers import sanitize_for_json
@@ -592,6 +601,179 @@ async def create_brief_export(project_id: str, db: AsyncSession) -> ExportJobRes
         snapshot_id=snapshot_id,
         export_format="md",
         filename=f"{project_id}-{snapshot_id}-executive-brief.md",
+        file_path=file_path,
+    )
+
+
+async def create_bom_xlsx_export(
+    project_id: str,
+    bom_snapshot_id: str,
+    db: AsyncSession,
+) -> ExportJobResponse:
+    """Generate a governed, auditable OCI BOM workbook for offline review."""
+
+    project = await _load_project(project_id, db)
+    bom = await bom_service.get_bom_snapshot(project_id, bom_snapshot_id, db)
+    scenario = await db.get(DeploymentScenario, bom.scenario_id)
+    price_snapshot = await db.get(PriceCatalogSnapshot, bom.price_catalog_snapshot_id)
+    source = await db.get(PriceSource, price_snapshot.source_id) if price_snapshot else None
+
+    workbook = Workbook()
+    summary = workbook.active
+    summary.title = "BOM Summary"
+    summary.append(["OCI DIS Blueprint - Governed Bill of Materials"])
+    summary.append(["Project", project.name])
+    summary.append(["Scenario", scenario.name if scenario else bom.scenario_id])
+    summary.append(["Status", bom.publication_status])
+    summary.append(["Currency", bom.currency])
+    summary.append(["Coverage", f"{bom.coverage_pct:.1f}%"])
+    summary.append(["Monthly estimate", bom.monthly_total])
+    summary.append(["Annual estimate", bom.annual_total])
+    summary.append(["Contract estimate", bom.contract_total])
+    summary.append(["Notice", "Planning estimate only; not an Oracle quote."])
+
+    lines = workbook.create_sheet("Line Items")
+    lines.append(
+        [
+            "Environment", "Service", "Part Number", "Description", "Metric", "Quantity", "Unit",
+            "Unit Price", "Monthly", "Annual", "Contract", "Status", "Formula", "Warnings",
+        ]
+    )
+    for line in bom.line_items:
+        lines.append(
+            [
+                line.environment, line.service_id, line.part_number, line.description, line.metric_name,
+                line.quantity, line.unit, line.unit_price, line.monthly_amount, line.annual_amount,
+                line.contract_amount, line.status, line.formula, _excel_cell_value(line.warnings),
+            ]
+        )
+
+    provenance = workbook.create_sheet("Provenance")
+    provenance.append(["Key", "Value"])
+    provenance_rows = {
+        "BOM snapshot": bom.id,
+        "Technical snapshot": bom.technical_snapshot_id,
+        "Price catalog snapshot": bom.price_catalog_snapshot_id,
+        "Price source": source.name if source else None,
+        "Price source type": source.source_type if source else None,
+        "Price content hash": price_snapshot.content_hash if price_snapshot else None,
+        "Price retrieved at": price_snapshot.retrieved_at if price_snapshot else None,
+        "Mapping version": bom.mapping_version,
+        "Engine version": bom.engine_version,
+        "Scenario assumptions": scenario.scenario_assumptions if scenario else {},
+        "Service configuration": scenario.service_config if scenario else {},
+        "Environments": scenario.environments if scenario else [],
+    }
+    for key, value in provenance_rows.items():
+        provenance.append([key, _excel_cell_value(value)])
+
+    warnings = workbook.create_sheet("Warnings")
+    warnings.append(["Type", "Detail"])
+    if bom.warnings:
+        for warning in bom.warnings:
+            warnings.append(["BOM", _excel_cell_value(warning)])
+    else:
+        warnings.append(["BOM", "No blocking warnings."])
+
+    for sheet in workbook.worksheets:
+        sheet.freeze_panes = "A2"
+        sheet.auto_filter.ref = sheet.dimensions
+        for column_cells in sheet.columns:
+            width = min(max(len(str(cell.value or "")) for cell in column_cells) + 2, 60)
+            sheet.column_dimensions[column_cells[0].column_letter].width = width
+
+    _ensure_export_dirs()
+    job_id = str(uuid4())
+    file_path = _file_path(job_id, "xlsx")
+    workbook.save(file_path)
+    return await _build_job(
+        project_id=project_id,
+        snapshot_id=bom_snapshot_id,
+        export_format="xlsx",
+        filename=f"{project_id}-{bom_snapshot_id}-oci-bom.xlsx",
+        file_path=file_path,
+    )
+
+
+async def create_bom_json_export(
+    project_id: str,
+    bom_snapshot_id: str,
+    db: AsyncSession,
+) -> ExportJobResponse:
+    """Generate a machine-readable BOM bundle with immutable provenance."""
+
+    project = await _load_project(project_id, db)
+    bom = await bom_service.get_bom_snapshot(project_id, bom_snapshot_id, db)
+    scenario = await db.get(DeploymentScenario, bom.scenario_id)
+    price_snapshot = await db.get(PriceCatalogSnapshot, bom.price_catalog_snapshot_id)
+    source = await db.get(PriceSource, price_snapshot.source_id) if price_snapshot else None
+    payload = sanitize_for_json(
+        {
+            "schema_version": "oci-dis-bom-1.0",
+            "project": {"id": project.id, "name": project.name},
+            "bom": bom.model_dump(),
+            "scenario": bom_service.serialize_scenario(scenario).model_dump() if scenario else None,
+            "price_provenance": {
+                "snapshot_id": price_snapshot.id if price_snapshot else None,
+                "source_id": source.id if source else None,
+                "source_name": source.name if source else None,
+                "source_type": source.source_type if source else None,
+                "content_hash": price_snapshot.content_hash if price_snapshot else None,
+                "retrieved_at": price_snapshot.retrieved_at if price_snapshot else None,
+            },
+            "estimate_notice": "Planning estimate only; not an Oracle quote.",
+            "exported_at": _utc_now(),
+        }
+    )
+    _ensure_export_dirs()
+    job_id = str(uuid4())
+    file_path = _file_path(job_id, "json")
+    file_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return await _build_job(
+        project_id=project_id,
+        snapshot_id=bom_snapshot_id,
+        export_format="json",
+        filename=f"{project_id}-{bom_snapshot_id}-oci-bom.json",
+        file_path=file_path,
+    )
+
+
+async def create_bom_pdf_export(
+    project_id: str,
+    bom_snapshot_id: str,
+    db: AsyncSession,
+) -> ExportJobResponse:
+    """Generate a concise review PDF for one governed BOM snapshot."""
+
+    project = await _load_project(project_id, db)
+    bom = await bom_service.get_bom_snapshot(project_id, bom_snapshot_id, db)
+    scenario = await db.get(DeploymentScenario, bom.scenario_id)
+    lines = [
+        "OCI DIS Blueprint - Governed Bill of Materials",
+        f"Project: {project.name}",
+        f"Scenario: {scenario.name if scenario else bom.scenario_id}",
+        f"Status: {bom.publication_status} | Coverage: {bom.coverage_pct:.1f}%",
+        f"Monthly: {bom.currency} {bom.monthly_total:,.2f}",
+        f"Annual: {bom.currency} {bom.annual_total:,.2f}",
+        f"Contract: {bom.currency} {bom.contract_total:,.2f}",
+        "",
+        "Top line items:",
+    ]
+    for item in sorted(bom.line_items, key=lambda line: line.monthly_amount, reverse=True)[:20]:
+        lines.append(
+            f"{item.environment} | {item.service_id} | {item.part_number or 'N/A'} | "
+            f"{bom.currency} {item.monthly_amount:,.2f}/month | {item.status}"
+        )
+    lines.extend(["", "Planning estimate only; not an Oracle quote."])
+    _ensure_export_dirs()
+    job_id = str(uuid4())
+    file_path = _file_path(job_id, "pdf")
+    _render_basic_pdf(lines, file_path)
+    return await _build_job(
+        project_id=project_id,
+        snapshot_id=bom_snapshot_id,
+        export_format="pdf",
+        filename=f"{project_id}-{bom_snapshot_id}-oci-bom.pdf",
         file_path=file_path,
     )
 

@@ -37,6 +37,162 @@ export interface ProjectDeleteResponse {
   deleted_audit_events: number;
 }
 
+export type AgentType =
+  | "architecture_review"
+  | "service_verification"
+  | "import_quality"
+  | "integration_design"
+  | "topology_investigation"
+  | "bom_scenario"
+  | "support_assistant";
+export type AgentRunStatus = "pending" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
+
+export interface AgentDefinition {
+  type: AgentType;
+  version: string;
+  name: string;
+  description: string;
+  location: string;
+  tools: string[];
+  allowed_roles: string[];
+  mutates_data: boolean;
+  requires_project: boolean;
+}
+
+export interface AgentProviderStatus {
+  provider: "oci_genai";
+  model: string;
+  region: string;
+  endpoint: string;
+  api_key_configured: boolean;
+  project_configured: boolean;
+  function_calling_available: boolean;
+  transport_strategy: string;
+  responses_capability: string;
+  guardrails_enabled: boolean;
+  guardrails_version: string;
+  max_retries: number;
+  runtime: "docker_celery_agents_queue";
+  status_message: string;
+}
+
+export interface AgentStep {
+  id: string;
+  sequence: number;
+  step_type: string;
+  tool_name: string | null;
+  status: string;
+  output_summary: string | null;
+  opc_request_id: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface AgentApproval {
+  id: string;
+  action_type: string;
+  status: string;
+  proposed_payload: Record<string, unknown>;
+  reviewed_by: string | null;
+  review_note: string | null;
+  reviewed_at: string | null;
+}
+
+export interface AgentRun {
+  id: string;
+  agent_type: AgentType;
+  definition_version: string;
+  project_id: string | null;
+  integration_id: string | null;
+  requested_by: string;
+  status: AgentRunStatus;
+  context: Record<string, unknown>;
+  result: { summary?: string; evidence?: unknown; provider_status?: string; authority?: string } | null;
+  error: Record<string, unknown> | null;
+  model: string | null;
+  provider_response_id: string | null;
+  opc_request_id: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  step_count: number;
+  max_steps: number;
+  cancel_requested: boolean;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+  steps: AgentStep[];
+  approvals: AgentApproval[];
+}
+
+export interface AgentRunList {
+  runs: AgentRun[];
+  total: number;
+}
+
+export interface AgentRunRequest {
+  agent_type: AgentType;
+  project_id?: string;
+  integration_id?: string;
+  context?: Record<string, unknown>;
+  message?: string;
+  include_provider?: boolean;
+}
+
+export type SupportAttachmentType =
+  | "page"
+  | "project"
+  | "integration"
+  | "catalog"
+  | "topology"
+  | "canvas"
+  | "import"
+  | "bom"
+  | "admin";
+
+export interface SupportAttachmentInput {
+  attachment_type: SupportAttachmentType;
+  label: string;
+  entity_id?: string;
+  href: string;
+  context: Record<string, unknown>;
+}
+
+export interface SupportAttachment extends Omit<SupportAttachmentInput, "entity_id"> {
+  id: string;
+  entity_id: string | null;
+}
+
+export interface SupportMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  status: "pending" | "completed" | "failed" | "refused";
+  agent_run_id: string | null;
+  context: Record<string, unknown>;
+  citations: Array<{ label: string; href: string }>;
+  attachments: SupportAttachment[];
+  created_at: string;
+}
+
+export interface SupportConversation {
+  id: string;
+  title: string;
+  status: "active" | "archived";
+  messages: SupportMessage[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupportMessageInput {
+  content: string;
+  route: string;
+  page_title: string;
+  project_id?: string;
+  integration_id?: string;
+  attachments: SupportAttachmentInput[];
+}
+
 export type AiReviewSeverity = "critical" | "high" | "medium" | "low" | "positive";
 export type AiReviewScope = "project" | "integration";
 export type AiReviewJobStatus = "pending" | "running" | "completed" | "failed";
@@ -63,13 +219,35 @@ export interface AiReviewQuotaState {
 }
 
 export interface AiReviewProviderStatus {
-  provider: "codex";
+  provider: "oci_genai";
   configured: boolean;
-  mode: "deterministic_only" | "llm_available" | "misconfigured";
+  mode: "deterministic_only" | "llm_configured" | "llm_available" | "llm_degraded" | "misconfigured";
   model: string;
-  wire_api: string;
-  base_url: string;
+  transport: string;
+  transport_strategy: {
+    preferred: "responses";
+    fallback: "chat_completions";
+    configured_mode: string;
+    responses_capability: "available" | "unavailable" | "unverified" | "disabled";
+  };
+  region: string;
+  auth_mode: "api_key";
+  endpoint: string;
   request_timeout_seconds: number;
+  retry_policy: {
+    max_retries: number;
+    strategy: "exponential_full_jitter";
+    retryable_status_codes: number[];
+    respects_retry_after: boolean;
+  };
+  safety: {
+    safety_identifier: "hmac_sha256";
+    guardrails_enabled: boolean;
+    guardrails_version: string;
+    guardrails_failure_mode: string;
+    input_protections: string[];
+    output_protections: string[];
+  };
   quota: AiReviewQuotaState;
   data_retention_policy: string;
   prompt_redaction_policy: string[];
@@ -1329,4 +1507,264 @@ export interface DashboardSnapshot {
 export interface DashboardSnapshotList {
   snapshots: DashboardSnapshotSummary[];
   total: number;
+}
+
+export interface PriceSource {
+  id: string;
+  name: string;
+  source_type: string;
+  base_url: string | null;
+  currency: string;
+  status: string;
+  last_synced_at: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PriceSourceList {
+  sources: PriceSource[];
+  total: number;
+}
+
+export interface PriceSyncJob {
+  id: string;
+  source_id: string;
+  requested_by: string;
+  currency: string;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  item_count: number;
+  changes_detected: number;
+  snapshot_id: string | null;
+  error_details: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PriceSyncJobList {
+  jobs: PriceSyncJob[];
+  total: number;
+}
+
+export interface PriceCatalogSnapshot {
+  id: string;
+  source_id: string;
+  sync_job_id: string | null;
+  currency: string;
+  source_last_updated: string | null;
+  retrieved_at: string;
+  content_hash: string;
+  item_count: number;
+  approval_status: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface PriceCatalogSnapshotList {
+  snapshots: PriceCatalogSnapshot[];
+  total: number;
+}
+
+export interface PriceItem {
+  id: string;
+  snapshot_id: string;
+  part_number: string;
+  display_name: string;
+  metric_name: string;
+  service_category: string;
+  price_type: string;
+  currency: string;
+  model: string;
+  value: number;
+  range_min: number | null;
+  range_max: number | null;
+  range_unit: string | null;
+}
+
+export interface PriceItemList {
+  items: PriceItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export type SkuMappingStatus = "draft" | "approved" | "retired";
+
+export interface SkuMapping {
+  id: string;
+  service_id: string;
+  tool_key: string;
+  part_number: string | null;
+  billing_metric_key: string;
+  formula_key: string;
+  predicates: Record<string, unknown>;
+  is_billable: boolean;
+  status: SkuMappingStatus;
+  version: string;
+  source_url: string | null;
+  confidence: number;
+  updated_at: string;
+}
+
+export interface SkuMappingList {
+  mappings: SkuMapping[];
+  total: number;
+  billable_count: number;
+  non_billable_count: number;
+}
+
+export interface SkuMappingPatch {
+  part_number?: string | null;
+  billing_metric_key?: string;
+  formula_key?: string;
+  predicates?: Record<string, unknown>;
+  is_billable?: boolean;
+  status?: SkuMappingStatus;
+  confidence?: number;
+}
+
+export interface DeploymentEnvironmentInput {
+  name: string;
+  active_hours_month: number;
+  active_months_year: number;
+  demand_share: number;
+  ha_multiplier: number;
+  dr_role: "primary" | "standby" | "none";
+}
+
+export interface DeploymentScenarioCreate {
+  name: string;
+  technical_snapshot_id?: string | null;
+  currency: string;
+  region: string;
+  price_mode: "public_list" | "contract_rate" | "manual_rate_card";
+  contract_months: number;
+  environments: DeploymentEnvironmentInput[];
+  service_config: Record<string, Record<string, unknown>>;
+  assumptions: Record<string, unknown>;
+}
+
+export interface DeploymentScenario {
+  id: string;
+  project_id: string;
+  name: string;
+  status: string;
+  currency: string;
+  region: string;
+  price_mode: string;
+  technical_snapshot_id: string;
+  contract_months: number;
+  environments: Array<Record<string, unknown>>;
+  service_config: Record<string, unknown>;
+  assumptions: Record<string, unknown>;
+  created_by: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeploymentScenarioList {
+  scenarios: DeploymentScenario[];
+  total: number;
+}
+
+export interface ScenarioAssistant {
+  draft: DeploymentScenarioCreate;
+  detected_services: string[];
+  required_questions: string[];
+  warnings: string[];
+  confidence: string;
+  ai_status: string;
+  ai_summary: string | null;
+}
+
+export interface BomJob {
+  id: string;
+  project_id: string;
+  scenario_id: string;
+  requested_by: string;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  bom_snapshot_id: string | null;
+  error_details: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BomJobList {
+  jobs: BomJob[];
+  total: number;
+}
+
+export interface BomLineItem {
+  id: string;
+  environment: string;
+  service_id: string;
+  part_number: string | null;
+  description: string;
+  metric_name: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  monthly_amount: number;
+  annual_amount: number;
+  contract_amount: number;
+  formula: string;
+  inputs: Record<string, unknown>;
+  status: string;
+  warnings: unknown[];
+  provenance: Record<string, unknown>;
+}
+
+export interface BomSnapshot {
+  id: string;
+  project_id: string;
+  scenario_id: string;
+  technical_snapshot_id: string;
+  price_catalog_snapshot_id: string;
+  mapping_version: string;
+  engine_version: string;
+  currency: string;
+  coverage_pct: number;
+  monthly_total: number;
+  annual_total: number;
+  contract_total: number;
+  summary: Record<string, unknown>;
+  warnings: unknown[];
+  publication_status: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  line_items: BomLineItem[];
+  created_at: string;
+}
+
+export interface BomSnapshotList {
+  snapshots: BomSnapshot[];
+  total: number;
+}
+
+export interface BomComparison {
+  baseline_snapshot_id: string;
+  comparison_snapshot_id: string;
+  currency: string;
+  monthly_delta: number;
+  annual_delta: number;
+  contract_delta: number;
+  service_monthly_deltas: Record<string, number>;
+  environment_monthly_deltas: Record<string, number>;
+  drivers: string[];
+}
+
+export function isPriceSyncTerminal(status: string): boolean {
+  return status === "completed" || status === "failed";
+}
+
+export function isBomJobTerminal(status: string): boolean {
+  return status === "completed" || status === "failed";
 }

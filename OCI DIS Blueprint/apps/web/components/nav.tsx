@@ -8,6 +8,8 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import {
+  BadgeDollarSign,
+  Bot,
   ChevronRight,
   Database,
   FolderOpen,
@@ -24,6 +26,7 @@ import {
 } from "lucide-react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
+import { APP_ICON_PATH, APP_NAME, APP_TAGLINE } from "@/lib/app-brand";
 import { APP_VERSION } from "@/lib/app-version";
 import { api } from "@/lib/api";
 import { requestOpenCommandPalette } from "@/lib/command-palette";
@@ -56,6 +59,7 @@ const PROJECT_ICONS: Record<string, JSX.Element> = {
   Capture: <Wand2 className="h-4 w-4" />,
   Catalog: <List className="h-4 w-4" />,
   Map: <Network className="h-4 w-4" />,
+  "BOM & Cost": <BadgeDollarSign className="h-4 w-4" />,
 };
 
 const ADMIN_ICONS: Record<string, JSX.Element> = {
@@ -63,6 +67,8 @@ const ADMIN_ICONS: Record<string, JSX.Element> = {
   Patterns: <List className="h-4 w-4" />,
   Dictionaries: <Database className="h-4 w-4" />,
   Assumptions: <ShieldCheck className="h-4 w-4" />,
+  Pricing: <BadgeDollarSign className="h-4 w-4" />,
+  Agents: <Bot className="h-4 w-4" />,
 };
 
 const PROJECT_ID_PATTERN =
@@ -100,6 +106,12 @@ function contextLabelFromPath(pathname: string): string {
     if (pathParts[1] === "assumptions") {
       return "Assumptions";
     }
+    if (pathParts[1] === "pricing") {
+      return "Pricing";
+    }
+    if (pathParts[1] === "agents") {
+      return "Agent Operations";
+    }
     return "Admin";
   }
   if (pathParts[0] !== "projects") {
@@ -131,6 +143,9 @@ function contextLabelFromPath(pathname: string): string {
   if (section === "graph") {
     return "Graph";
   }
+  if (section === "bom") {
+    return "BOM & Cost";
+  }
 
   return section
     .replace(/-/g, " ")
@@ -161,37 +176,42 @@ function NavPanel({
 
   return (
     <div className={`flex h-full flex-col ${shellPadding} text-[var(--color-text-primary)]`}>
-      <div className="flex items-center gap-3 border-b border-[var(--color-border)] px-1 pb-4">
+      <div className="flex items-center gap-3.5 border-b border-[var(--color-border)] px-1 pb-4">
         <Image
-          src="/oracle-brandmark.svg"
+          src={APP_ICON_PATH}
           alt=""
           aria-hidden="true"
-          width={40}
-          height={40}
-          className="h-10 w-10 shrink-0 rounded-xl shadow-sm"
+          width={44}
+          height={44}
+          className="h-11 w-11 shrink-0 rounded-[14px] shadow-[0_8px_20px_rgba(199,70,52,0.18)]"
           priority
         />
         <div className="min-w-0">
-          <p className="text-sm font-semibold leading-tight text-[var(--color-text-primary)]">OCI DIS</p>
-          <p className="text-[11px] font-medium text-[var(--color-text-muted)]">Blueprint Console</p>
+          <p className="truncate text-[15px] font-semibold leading-tight text-[var(--color-text-primary)]">
+            {APP_NAME}
+          </p>
+          <p className="mt-1 truncate text-[10px] font-medium text-[var(--color-text-muted)]">
+            {APP_TAGLINE}
+          </p>
         </div>
       </div>
 
-      {!mobile ? (
-        <button
-          type="button"
-          onClick={requestOpenCommandPalette}
-          className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-left text-sm text-[var(--color-text-muted)] transition hover:bg-[var(--color-hover)]"
-          aria-label="Open command palette"
-          aria-haspopup="dialog"
-          aria-keyshortcuts="Meta+K Control+K"
-          title="Search commands and workspace routes"
-        >
-          <Search className="h-4 w-4" />
-          <span className="min-w-0 flex-1 truncate">Search or jump...</span>
-          <span className="console-kbd">⌘K</span>
-        </button>
-      ) : null}
+      <button
+        type="button"
+        onClick={() => {
+          onNavigate?.();
+          requestOpenCommandPalette();
+        }}
+        className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-left text-sm text-[var(--color-text-muted)] transition hover:bg-[var(--color-hover)]"
+        aria-label="Open command palette"
+        aria-haspopup="dialog"
+        aria-keyshortcuts="Meta+K Control+K"
+        title="Search commands and workspace routes"
+      >
+        <Search className="h-4 w-4" />
+        <span className="min-w-0 flex-1 truncate">Search or jump...</span>
+        <span className="console-kbd">⌘K</span>
+      </button>
 
       <NavSection title="Workspace">
         <nav className="space-y-2">
@@ -248,7 +268,9 @@ function NavPanel({
               key={link.href}
               href={link.href}
               onClick={onNavigate}
-              className={linkClasses(pathname === link.href || pathname.startsWith(`${link.href}/`))}
+              className={linkClasses(
+                pathname === link.href || (link.href !== "/admin" && pathname.startsWith(`${link.href}/`)),
+              )}
             >
               <span className="inline-flex items-center gap-2">
                 {ADMIN_ICONS[link.label] ?? <Settings className="h-4 w-4" />}
@@ -359,6 +381,8 @@ export function Nav(): JSX.Element {
     { href: "/admin/patterns", label: "Patterns" },
     { href: "/admin/dictionaries", label: "Dictionaries" },
     { href: "/admin/assumptions", label: "Assumptions" },
+    { href: "/admin/pricing", label: "Pricing" },
+    { href: "/admin/agents", label: "Agents" },
   ];
   const projectLinks: NavLink[] = projectId && hasProjectContext
     ? [
@@ -367,6 +391,7 @@ export function Nav(): JSX.Element {
         { href: `/projects/${projectId}/capture`, label: "Capture" },
         { href: `/projects/${projectId}/catalog`, label: "Catalog" },
         { href: `/projects/${projectId}/graph`, label: "Map" },
+        { href: `/projects/${projectId}/bom`, label: "BOM & Cost" },
       ]
     : [];
 
@@ -375,7 +400,7 @@ export function Nav(): JSX.Element {
       <div className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 backdrop-blur lg:hidden">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-[0.25em] text-[var(--color-accent)]">OCI DIS Blueprint</p>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-accent)]">{APP_NAME}</p>
             <p className="mt-1 truncate text-base font-semibold text-[var(--color-text-primary)]">{sectionTitle}</p>
             <p className="mt-1 truncate text-xs text-[var(--color-text-secondary)]">
               {hasProjectContext

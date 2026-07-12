@@ -23,8 +23,10 @@ from app.schemas.ai_review import (
     AiReviewScope,
 )
 from app.services import ai_review_service
+from app.services import agent_service
+from app.schemas.agent import AgentCreateRequest, AgentType
 from app.services.authz import require_ai_review_mutation, require_ai_review_read, require_ai_review_run
-from app.workers.ai_review_worker import execute_ai_review_job_task
+from app.workers.agent_worker import execute_agent_run_task
 
 router = APIRouter(prefix="/ai-reviews", tags=["AI Reviews"])
 
@@ -128,10 +130,40 @@ async def create_project_ai_review(
     request = body or AiReviewCreateRequest()
     async with db.begin():
         job = await ai_review_service.create_ai_review_job(project_id, request, actor_id, db)
+        agent_type: AgentType = (
+            "topology_investigation"
+            if request.graph_context is not None
+            else "integration_design"
+            if request.scope == "integration"
+            else "architecture_review"
+        )
+        agent_run = await agent_service.create_agent_run(
+            AgentCreateRequest(
+                agent_type=agent_type,
+                project_id=project_id,
+                integration_id=request.integration_id,
+                context={
+                    "graph_context": request.graph_context.model_dump(mode="json") if request.graph_context else None,
+                    "reviewer_personas": list(request.reviewer_personas),
+                },
+                include_provider=request.include_llm,
+            ),
+            actor_id,
+            actor_role,
+            db,
+        )
+        await agent_service.link_agent_run(
+            agent_run.id, legacy_job_type="ai_review", legacy_job_id=job.id, db=db
+        )
     try:
-        execute_ai_review_job_task.apply_async(args=[job.id], task_id=job.id)
+        execute_agent_run_task.apply_async(args=[agent_run.id], task_id=agent_run.id, queue="agents")
     except Exception as exc:  # pragma: no cover - defensive dispatch path
         async with db.begin():
+            await agent_service.mark_agent_run_failed(
+                agent_run.id,
+                {"detail": "Unable to dispatch architecture agent."},
+                db,
+            )
             await ai_review_service.mark_ai_review_job_failed(
                 job.id,
                 {"detail": f"Unable to dispatch AI review job: {exc}"},

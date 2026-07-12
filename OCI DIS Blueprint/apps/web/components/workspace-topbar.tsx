@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
-  Bell,
   ChevronRight,
   Command,
   FileSpreadsheet,
@@ -20,15 +19,19 @@ import {
   X,
 } from "lucide-react";
 
+import { AiReviewButton } from "@/components/ai-review-button";
 import { APP_VERSION } from "@/lib/app-version";
 import { api } from "@/lib/api";
 import { OPEN_COMMAND_PALETTE_EVENT } from "@/lib/command-palette";
+import type { Project } from "@/lib/types";
 
 type CommandItem = {
   label: string;
   description: string;
   href?: string;
   disabled?: boolean;
+  reviewProjectId?: string;
+  statusLabel?: string;
 };
 
 const PROJECT_ID_PATTERN =
@@ -75,10 +78,18 @@ function CommandPalette({
   open,
   onClose,
   projectId,
+  reviewProjects,
+  reviewProjectsLoading,
+  reviewProjectsError,
+  onRunAiReview,
 }: {
   open: boolean;
   onClose: () => void;
   projectId: string | null;
+  reviewProjects: Project[];
+  reviewProjectsLoading: boolean;
+  reviewProjectsError: boolean;
+  onRunAiReview: (_projectId: string) => void;
 }): JSX.Element | null {
   const [query, setQuery] = useState<string>("");
   const projectLinks: CommandItem[] = projectId
@@ -90,17 +101,31 @@ function CommandPalette({
         { label: "New integration capture", description: "Open the five-step manual wizard", href: `/projects/${projectId}/capture/new` },
       ]
     : [];
+  const activeReviewProjects = reviewProjects.filter((project) => project.status === "active");
+  const reviewItems: CommandItem[] = projectId
+    ? [
+        {
+          label: "Run AI review",
+          description: "Open the governed architecture review for this project",
+          reviewProjectId: projectId,
+        },
+      ]
+    : reviewProjectsLoading
+      ? [{ label: "Run AI review", description: "Loading active projects", disabled: true, statusLabel: "Loading" }]
+      : reviewProjectsError
+        ? [{ label: "Run AI review", description: "Projects could not be loaded", disabled: true, statusLabel: "Unavailable" }]
+        : activeReviewProjects.length > 0
+          ? activeReviewProjects.map((project) => ({
+              label: `Review ${project.name}`,
+              description: "Open the governed project architecture review",
+              reviewProjectId: project.id,
+            }))
+          : [{ label: "Run AI review", description: "Create an active project first", href: "/projects", statusLabel: "No projects" }];
   const items: CommandItem[] = [
     { label: "Projects", description: "Return to the project hub", href: "/projects" },
     ...projectLinks,
     { label: "Admin library", description: "Governed patterns, dictionaries, assumptions", href: "/admin" },
-    projectId
-      ? {
-          label: "Run AI review",
-          description: "Open the dashboard review board launcher",
-          href: `/projects/${projectId}`,
-        }
-      : { label: "Run AI review", description: "Open a project first to run the review board", disabled: true },
+    ...reviewItems,
   ];
   const normalizedQuery = query.trim().toLowerCase();
   const visibleItems = normalizedQuery
@@ -113,7 +138,7 @@ function CommandPalette({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/20 px-4 py-14 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Command palette">
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close command palette" onClick={onClose} />
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="Dismiss command palette" onClick={onClose} />
       <section className="relative mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl">
         <div className="flex items-center gap-3 border-b border-[var(--color-border)] px-4 py-3">
           <Search className="h-4 w-4 text-[var(--color-text-muted)]" />
@@ -147,19 +172,32 @@ function CommandPalette({
                   {item.label.includes("Import") || item.label.includes("workbook") ? <FileSpreadsheet className="h-4 w-4" /> : null}
                   {item.label.includes("capture") ? <Wand2 className="h-4 w-4" /> : null}
                   {item.label.includes("Projects") || item.label.includes("Admin") ? <FolderOpen className="h-4 w-4" /> : null}
-                  {item.label.includes("AI") ? <Sparkles className="h-4 w-4" /> : null}
+                  {item.label.includes("AI") || item.reviewProjectId ? <Sparkles className="h-4 w-4" /> : null}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold text-[var(--color-text-primary)]">{item.label}</span>
                   <span className="block truncate text-xs text-[var(--color-text-muted)]">{item.description}</span>
                 </span>
-                {item.disabled ? <span className="console-pill">Planned</span> : <ChevronRight className="h-4 w-4 text-[var(--color-text-muted)]" />}
+                {item.statusLabel ? <span className="console-pill">{item.statusLabel}</span> : <ChevronRight className="h-4 w-4 text-[var(--color-text-muted)]" />}
               </>
             );
 
+            if (item.reviewProjectId && !item.disabled) {
+              return (
+                <button
+                  key={`${item.label}-${item.reviewProjectId}`}
+                  type="button"
+                  onClick={() => onRunAiReview(item.reviewProjectId as string)}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-[var(--color-hover)]"
+                >
+                  {content}
+                </button>
+              );
+            }
+
             return item.href && !item.disabled ? (
               <Link
-                key={item.label}
+                key={`${item.label}-${item.href}`}
                 href={item.href}
                 onClick={onClose}
                 className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-[var(--color-hover)]"
@@ -186,6 +224,10 @@ export function WorkspaceTopBar(): JSX.Element {
   const projectId = projectIdFromPath(pathname);
   const [paletteOpen, setPaletteOpen] = useState<boolean>(false);
   const [projectName, setProjectName] = useState<string>("");
+  const [reviewProjects, setReviewProjects] = useState<Project[]>([]);
+  const [reviewProjectsLoading, setReviewProjectsLoading] = useState<boolean>(false);
+  const [reviewProjectsError, setReviewProjectsError] = useState<boolean>(false);
+  const [aiReviewProjectId, setAiReviewProjectId] = useState<string | null>(null);
   const sectionLabel = pathSectionLabel(pathname);
   const crumbs = useMemo(() => {
     if (!projectId) {
@@ -218,6 +260,39 @@ export function WorkspaceTopBar(): JSX.Element {
       cancelled = true;
     };
   }, [projectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!paletteOpen || projectId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setReviewProjectsLoading(true);
+    setReviewProjectsError(false);
+    void api
+      .listProjects()
+      .then((response) => {
+        if (!cancelled) {
+          setReviewProjects(response.projects);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setReviewProjects([]);
+          setReviewProjectsError(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setReviewProjectsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [paletteOpen, projectId]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -280,14 +355,6 @@ export function WorkspaceTopBar(): JSX.Element {
             >
               <Command className="h-4 w-4" />
             </button>
-            <button
-              type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-transparent text-[var(--color-text-secondary)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)]"
-              aria-label="Notifications"
-              title="Notifications"
-            >
-              <Bell className="h-4 w-4" />
-            </button>
             <span className="console-pill">v{APP_VERSION}</span>
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-text-primary)] text-[11px] font-bold text-[var(--color-surface)]">
               JC
@@ -295,7 +362,30 @@ export function WorkspaceTopBar(): JSX.Element {
           </div>
         </div>
       </header>
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projectId={projectId} />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        projectId={projectId}
+        reviewProjects={reviewProjects}
+        reviewProjectsLoading={reviewProjectsLoading}
+        reviewProjectsError={reviewProjectsError}
+        onRunAiReview={(selectedProjectId) => {
+          setPaletteOpen(false);
+          setAiReviewProjectId(selectedProjectId);
+        }}
+      />
+      {aiReviewProjectId ? (
+        <AiReviewButton
+          projectId={aiReviewProjectId}
+          open
+          hideTrigger
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              setAiReviewProjectId(null);
+            }
+          }}
+        />
+      ) : null}
     </>
   );
 }
