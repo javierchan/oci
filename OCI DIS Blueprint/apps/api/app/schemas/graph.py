@@ -2,7 +2,26 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
+
+
+class GraphIntegrationSummary(BaseModel):
+    """Actionable catalog context carried by one graph relationship."""
+
+    model_config = ConfigDict(strict=True)
+
+    id: str
+    name: str
+    qa_status: str
+    owner: str | None
+    pattern: str | None
+    trigger_type: str | None
+    interaction_mode: str
+    executions_per_day: float | None
+    payload_per_hour_kb: float | None
+    updated_at: datetime
 
 
 class GraphNode(BaseModel):
@@ -17,6 +36,8 @@ class GraphNode(BaseModel):
     as_destination_count: int
     brands: list[str]
     business_processes: list[str]
+    owners: list[str]
+    technologies: list[str]
 
 
 class GraphEdge(BaseModel):
@@ -35,6 +56,15 @@ class GraphEdge(BaseModel):
     patterns: list[str]
     qa_statuses: dict[str, int]
     dominant_qa_status: str
+    risk_qa_status: str
+    risk_score: int
+    interaction_mode: str
+    total_executions_per_day: float
+    total_payload_per_hour_kb: float
+    executions_coverage: int
+    payload_coverage: int
+    last_updated_at: datetime
+    integrations: list[GraphIntegrationSummary]
 
 
 class GraphMeta(BaseModel):
@@ -46,7 +76,11 @@ class GraphMeta(BaseModel):
     edge_count: int
     integration_count: int
     business_processes: list[str]
+    business_process_families: list[str]
     brands: list[str]
+    latest_updated_at: datetime | None
+    executions_coverage: int
+    payload_coverage: int
 
 
 class GraphResponse(BaseModel):

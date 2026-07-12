@@ -1140,6 +1140,21 @@ export interface GraphNode {
   as_destination_count: number;
   brands: string[];
   business_processes: string[];
+  owners: string[];
+  technologies: string[];
+}
+
+export interface GraphIntegrationSummary {
+  id: string;
+  name: string;
+  qa_status: string;
+  owner: string | null;
+  pattern: string | null;
+  trigger_type: string | null;
+  interaction_mode: "SYNCHRONOUS" | "ASYNCHRONOUS" | "MIXED" | "UNSPECIFIED";
+  executions_per_day: number | null;
+  payload_per_hour_kb: number | null;
+  updated_at: string;
 }
 
 export interface GraphEdge {
@@ -1154,6 +1169,15 @@ export interface GraphEdge {
   patterns: string[];
   qa_statuses: Record<string, number>;
   dominant_qa_status: string;
+  risk_qa_status: string;
+  risk_score: number;
+  interaction_mode: "SYNCHRONOUS" | "ASYNCHRONOUS" | "MIXED" | "UNSPECIFIED";
+  total_executions_per_day: number;
+  total_payload_per_hour_kb: number;
+  executions_coverage: number;
+  payload_coverage: number;
+  last_updated_at: string;
+  integrations: GraphIntegrationSummary[];
 }
 
 export interface GraphMeta {
@@ -1161,7 +1185,11 @@ export interface GraphMeta {
   edge_count: number;
   integration_count: number;
   business_processes: string[];
+  business_process_families: string[];
   brands: string[];
+  latest_updated_at: string | null;
+  executions_coverage: number;
+  payload_coverage: number;
 }
 
 export interface GraphResponse {
@@ -1172,6 +1200,7 @@ export interface GraphResponse {
 
 export interface GraphParams {
   business_process?: string;
+  business_process_family?: string;
   brand?: string;
   qa_status?: string;
   system?: string;
@@ -1238,6 +1267,22 @@ export interface DashboardServiceRuleStatus {
   last_verified_at: string | null;
 }
 
+export interface DashboardProductUsage {
+  tool_key: string;
+  service_id: string | null;
+  role: "core" | "overlay";
+  integration_count: number;
+  coverage_ratio: number;
+}
+
+export interface DashboardProductFootprint {
+  captured_product_count: number;
+  represented_product_count: number;
+  rows_with_products: number;
+  total_rows: number;
+  products: DashboardProductUsage[];
+}
+
 export interface DashboardCharts {
   coverage: DashboardCoverage;
   completeness: DashboardCompleteness;
@@ -1245,6 +1290,7 @@ export interface DashboardCharts {
   payload_distribution: DashboardPayloadDistributionBucket[];
   forecast_confidence: DashboardForecastConfidence;
   service_rules: DashboardServiceRuleStatus;
+  product_footprint: DashboardProductFootprint;
 }
 
 export interface DashboardRisk {

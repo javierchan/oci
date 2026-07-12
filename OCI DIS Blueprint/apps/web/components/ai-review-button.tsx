@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 
 import { ConfirmModal } from "@/components/modal";
 import { api, apiDownloadUrl, getErrorMessage } from "@/lib/api";
+import { formatAiReviewDriftValue, isAiReviewLayoutMetadataOnlyDrift } from "@/lib/ai-review";
 import type {
   AiReviewBaseline,
   AiReviewCategory,
@@ -27,14 +28,17 @@ type AiReviewButtonProps = {
   graphContext?: AiReviewGraphContext;
   defaultScope?: AiReviewScope;
   label?: string;
+  className?: string;
+  disabled?: boolean;
+  beforeOpen?: () => boolean | Promise<boolean>;
 };
 
 const SEVERITY_STYLES: Record<AiReviewSeverity, string> = {
-  critical: "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100",
-  high: "border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-100",
-  medium: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100",
-  low: "border-slate-300 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-100",
-  positive: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
+  critical: "border-rose-300 bg-rose-50 text-rose-900 dark:border-[#ff453a]/60 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]",
+  high: "border-orange-300 bg-orange-50 text-orange-900 dark:border-[#ff9f0a]/60 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]",
+  medium: "border-amber-300 bg-amber-50 text-amber-900 dark:border-[#ffd60a]/50 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]",
+  low: "border-slate-300 bg-slate-50 text-slate-800 dark:border-[#0a84ff]/50 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]",
+  positive: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-[#30d158]/50 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]",
 };
 
 const SEVERITY_LABELS: Record<AiReviewSeverity, string> = {
@@ -46,10 +50,10 @@ const SEVERITY_LABELS: Record<AiReviewSeverity, string> = {
 };
 
 const GROUP_TONES: Record<AiReviewCategory, string> = {
-  critical_blockers: "border-rose-300 bg-rose-50/70 dark:border-rose-950 dark:bg-rose-950/20",
-  high_confidence_fixes: "border-blue-300 bg-blue-50/70 dark:border-blue-950 dark:bg-blue-950/20",
-  needs_architect_decision: "border-amber-300 bg-amber-50/80 dark:border-amber-950 dark:bg-amber-950/20",
-  looks_production_ready: "border-emerald-300 bg-emerald-50/70 dark:border-emerald-950 dark:bg-emerald-950/20",
+  critical_blockers: "border-rose-300 bg-rose-50/70 dark:border-[#ff453a]/45 dark:bg-[var(--color-surface-2)]",
+  high_confidence_fixes: "border-blue-300 bg-blue-50/70 dark:border-[#0a84ff]/45 dark:bg-[var(--color-surface-2)]",
+  needs_architect_decision: "border-amber-300 bg-amber-50/80 dark:border-[#ffd60a]/40 dark:bg-[var(--color-surface-2)]",
+  looks_production_ready: "border-emerald-300 bg-emerald-50/70 dark:border-[#30d158]/40 dark:bg-[var(--color-surface-2)]",
 };
 
 function scoreTone(score: number): string {
@@ -60,18 +64,18 @@ function scoreTone(score: number): string {
 }
 
 function signoffTone(status: string): string {
-  if (status === "blocked") return "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100";
-  if (status === "needs_review") return "border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-100";
-  if (status === "ready_with_caveats") return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
-  return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100";
+  if (status === "blocked") return "border-rose-300 bg-rose-50 text-rose-900 dark:border-[#ff453a]/60 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
+  if (status === "needs_review") return "border-orange-300 bg-orange-50 text-orange-900 dark:border-[#ff9f0a]/60 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
+  if (status === "ready_with_caveats") return "border-amber-300 bg-amber-50 text-amber-900 dark:border-[#ffd60a]/50 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
+  return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-[#30d158]/50 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
 }
 
 function driftTone(status: AiReviewDriftStatus): string {
-  if (status === "blocking_drift") return "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100";
-  if (status === "material_drift") return "border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-100";
-  if (status === "minor_drift") return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
-  if (status === "no_drift") return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100";
-  return "border-slate-300 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-100";
+  if (status === "blocking_drift") return "border-rose-300 bg-rose-50 text-rose-900 dark:border-[#ff453a]/60 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
+  if (status === "material_drift") return "border-orange-300 bg-orange-50 text-orange-900 dark:border-[#ff9f0a]/60 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
+  if (status === "minor_drift") return "border-amber-300 bg-amber-50 text-amber-900 dark:border-[#ffd60a]/50 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
+  if (status === "no_drift") return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-[#30d158]/50 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
+  return "border-slate-300 bg-slate-50 text-slate-800 dark:border-[var(--color-border)] dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
 }
 
 function driftLabel(status: AiReviewDriftStatus): string {
@@ -80,12 +84,12 @@ function driftLabel(status: AiReviewDriftStatus): string {
 
 function providerModeTone(mode: AiReviewProviderStatus["mode"]): string {
   if (mode === "llm_available") {
-    return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100";
+    return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-[#30d158]/45 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
   }
   if (mode === "misconfigured") {
-    return "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100";
+    return "border-rose-300 bg-rose-50 text-rose-900 dark:border-[#ff453a]/60 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
   }
-  return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
+  return "border-amber-300 bg-amber-50 text-amber-900 dark:border-[#ffd60a]/50 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]";
 }
 
 function delay(ms: number): Promise<void> {
@@ -283,6 +287,7 @@ function jobResultLabel(job: AiReviewJob): string {
 
 function AiReviewDialog({
   integrationId,
+  graphContext,
   selectedScope,
   setSelectedScope,
   job,
@@ -310,6 +315,7 @@ function AiReviewDialog({
   onClose,
 }: {
   integrationId?: string;
+  graphContext?: AiReviewGraphContext;
   selectedScope: AiReviewScope;
   setSelectedScope: (_scope: AiReviewScope) => void;
   job: AiReviewJob | null;
@@ -339,10 +345,20 @@ function AiReviewDialog({
   const review = job?.result ?? null;
   const acceptedIds = new Set(job?.accepted_recommendations.map((item) => item.finding_id) ?? []);
   const canRunIntegrationScope = integrationId !== undefined;
+  const layoutMetadataOnlyItems =
+    review?.drift.items.filter((item) =>
+      isAiReviewLayoutMetadataOnlyDrift(item.field, item.planned, item.actual),
+    ) ?? [];
+  const actionableDriftItems =
+    review?.drift.items.filter(
+      (item) => !isAiReviewLayoutMetadataOnlyDrift(item.field, item.planned, item.actual),
+    ) ?? [];
+  const hasHistoricalLayoutOnlyDrift =
+    layoutMetadataOnlyItems.length > 0 && actionableDriftItems.length === 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/35 px-4 py-8 backdrop-blur-sm">
-      <button type="button" aria-label="Close AI review" className="absolute inset-0 cursor-default" onClick={onClose} />
+      <button type="button" aria-label="Dismiss AI review" className="absolute inset-0 cursor-default" onClick={onClose} />
       <section
         className="relative w-full max-w-6xl overflow-hidden rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl"
         role="dialog"
@@ -356,11 +372,11 @@ function AiReviewDialog({
               Governed AI Review
             </p>
             <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">
-              Architecture Review Board
+              {review ? `${review.project_name} architecture review` : "Architecture Review Board"}
             </h3>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-              Job-based review across QA, service sizing, canvas compatibility, growth stress, red-team contradictions,
-              and reviewer personas. Catalog data changes only when you explicitly apply a deterministic suggested patch.
+              Evidence-backed decision brief for architecture sign-off. Review the recommendation, material drift, and
+              next actions first; detailed evidence remains available below.
             </p>
           </div>
           <button
@@ -388,6 +404,23 @@ function AiReviewDialog({
                 <span className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
                   {providerStatus.mode.replace(/_/g, " ")}
                 </span>
+              </div>
+            </section>
+          ) : null}
+
+          {graphContext ? (
+            <section className="mb-5 flex items-start gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+              <Route className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-accent)]" />
+              <div>
+                <p className="app-label">Selected topology scope</p>
+                <p className="mt-1 text-sm font-semibold text-[var(--color-text-primary)]">
+                  {graphContext.type === "node"
+                    ? `Graph node: ${graphContext.label}`
+                    : `Graph edge: ${graphContext.source} → ${graphContext.target}`}
+                </p>
+                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                  Only integrations adjacent to this selection are included in the review evidence.
+                </p>
               </div>
             </section>
           ) : null}
@@ -693,7 +726,7 @@ function AiReviewDialog({
               <section className={`rounded-3xl border p-5 ${signoffTone(review.decision_brief.signoff_status)}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">Decision brief</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">Executive decision</p>
                     <h4 className="mt-2 text-xl font-semibold">{review.decision_brief.headline}</h4>
                     <p className="mt-2 text-sm leading-6 opacity-85">
                       <span className="font-semibold">Primary risk: </span>
@@ -732,14 +765,26 @@ function AiReviewDialog({
                 </div>
               </section>
 
-              <section className={`rounded-3xl border p-5 ${driftTone(review.drift.status)}`}>
+              <section
+                className={`rounded-3xl border p-5 ${
+                  hasHistoricalLayoutOnlyDrift
+                    ? "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-primary)]"
+                    : driftTone(review.drift.status)
+                }`}
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">
                       Planned vs actual drift
                     </p>
-                    <h4 className="mt-2 text-xl font-semibold capitalize">{driftLabel(review.drift.status)}</h4>
-                    <p className="mt-2 max-w-3xl text-sm leading-6 opacity-85">{review.drift.summary}</p>
+                    <h4 className="mt-2 text-xl font-semibold capitalize">
+                      {hasHistoricalLayoutOnlyDrift ? "Historical layout metadata only" : driftLabel(review.drift.status)}
+                    </h4>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 opacity-85">
+                      {hasHistoricalLayoutOnlyDrift
+                        ? "This stored review predates semantic canvas comparison. The governed overlays are unchanged; only canvas layout/version metadata differed. New reviews ignore this non-architectural change."
+                        : review.drift.summary}
+                    </p>
                     {review.drift.baseline ? (
                       <p className="mt-2 text-xs opacity-70">
                         Baseline: {review.drift.baseline.label} · {review.drift.baseline.row_count} row
@@ -749,12 +794,14 @@ function AiReviewDialog({
                     ) : null}
                   </div>
                   <span className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold">
-                    {review.drift.item_count} drift item{review.drift.item_count === 1 ? "" : "s"}
+                    {hasHistoricalLayoutOnlyDrift
+                      ? "0 governed drift items"
+                      : `${review.drift.item_count} drift item${review.drift.item_count === 1 ? "" : "s"}`}
                   </span>
                 </div>
-                {review.drift.items.length > 0 ? (
+                {actionableDriftItems.length > 0 ? (
                   <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                    {review.drift.items.slice(0, 8).map((item) => (
+                    {actionableDriftItems.slice(0, 8).map((item) => (
                       <article key={item.id} className="rounded-2xl border border-current/15 bg-white/45 p-3 text-xs dark:bg-black/15">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div>
@@ -765,16 +812,20 @@ function AiReviewDialog({
                             {item.severity}
                           </span>
                         </div>
-                        <div className="mt-3 grid gap-2 md:grid-cols-2">
-                          <p>
-                            <span className="font-semibold">Planned: </span>
-                            {item.planned || "—"}
-                          </p>
-                          <p>
-                            <span className="font-semibold">Actual: </span>
-                            {item.actual || "—"}
-                          </p>
-                        </div>
+                        <dl className="mt-3 grid gap-2 md:grid-cols-2">
+                          <div className="rounded-lg border border-current/10 bg-white/45 p-2.5 dark:bg-white/[0.04]">
+                            <dt className="font-semibold opacity-65">Approved plan</dt>
+                            <dd className="mt-1 break-words text-sm leading-5">
+                              {formatAiReviewDriftValue(item.field, item.planned)}
+                            </dd>
+                          </div>
+                          <div className="rounded-lg border border-current/10 bg-white/45 p-2.5 dark:bg-white/[0.04]">
+                            <dt className="font-semibold opacity-65">Current state</dt>
+                            <dd className="mt-1 break-words text-sm leading-5">
+                              {formatAiReviewDriftValue(item.field, item.actual)}
+                            </dd>
+                          </div>
+                        </dl>
                         <p className="mt-2 leading-5 opacity-80">{item.detail}</p>
                         {item.action_href ? (
                           <Link href={item.action_href} className="mt-2 inline-flex font-semibold underline underline-offset-4">
@@ -992,6 +1043,9 @@ export function AiReviewButton({
   graphContext,
   defaultScope = integrationId ? "integration" : "project",
   label = "Run AI review",
+  className = "app-button-secondary gap-2",
+  disabled = false,
+  beforeOpen,
 }: AiReviewButtonProps): JSX.Element {
   const [open, setOpen] = useState<boolean>(false);
   const [selectedScope, setSelectedScope] = useState<AiReviewScope>(defaultScope);
@@ -1008,6 +1062,18 @@ export function AiReviewButton({
   const [baselineSaving, setBaselineSaving] = useState<boolean>(false);
   const [baselineLabel, setBaselineLabel] = useState<string>("Approved project baseline");
   const [baselineNote, setBaselineNote] = useState<string>("");
+  const [preparing, setPreparing] = useState<boolean>(false);
+
+  async function openReview(): Promise<void> {
+    if (disabled || preparing) return;
+    setPreparing(true);
+    try {
+      const canOpen = beforeOpen ? await beforeOpen() : true;
+      if (canOpen) setOpen(true);
+    } finally {
+      setPreparing(false);
+    }
+  }
   const [confirmBaselineOpen, setConfirmBaselineOpen] = useState<boolean>(false);
   const [providerStatus, setProviderStatus] = useState<AiReviewProviderStatus | null>(null);
   const [historyCompare, setHistoryCompare] = useState<AiReviewJobCompare | null>(null);
@@ -1282,17 +1348,17 @@ export function AiReviewButton({
     <>
       <button
         type="button"
-        onClick={() => {
-          setOpen(true);
-        }}
-        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--color-text-primary)] px-4 py-2 text-sm font-semibold text-[var(--color-surface)] shadow-sm transition hover:translate-y-[-1px] hover:shadow-md"
+        onClick={() => void openReview()}
+        disabled={disabled || preparing}
+        className={className}
       >
-        <Sparkles className="h-4 w-4" />
-        {label}
+        {preparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+        {preparing ? "Preparing evidence…" : label}
       </button>
       {open ? (
         <AiReviewDialog
           integrationId={integrationId}
+          graphContext={graphContext}
           selectedScope={selectedScope}
           setSelectedScope={setSelectedScope}
           job={job}

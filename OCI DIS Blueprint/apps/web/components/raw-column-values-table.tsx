@@ -198,10 +198,11 @@ export function RawColumnValuesTable({
             <button
               type="button"
               onClick={() => beginEdit(fieldKey)}
-              className="shrink-0 opacity-0 transition group-hover:opacity-100"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-muted)] opacity-70 transition hover:border-[var(--color-accent-border)] hover:text-[var(--color-accent)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] group-hover:opacity-100"
               title="Edit source value"
+              aria-label={`Edit ${displayFieldLabel(fieldKey, columnNames)}`}
             >
-              <Pencil className="h-4 w-4 text-[var(--color-text-muted)]" />
+              <Pencil className="h-3.5 w-3.5" />
             </button>
           </div>
         )}
@@ -238,7 +239,7 @@ export function RawColumnValuesTable({
         <button
           type="button"
           onClick={() => setShowAllPopulated((current) => !current)}
-          className="mt-3 inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-[var(--color-accent)] transition hover:border-[var(--color-accent)]"
+          className="app-button-secondary mt-3"
         >
           {showAllPopulated ? "Show fewer populated columns" : `Show ${remainingPopulatedCount} more populated columns`}
         </button>
@@ -260,7 +261,7 @@ export function RawColumnValuesTable({
       ) : null}
 
       {toastVisible ? (
-        <div className="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm">
+        <div className="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm dark:border-[#30d158]/45 dark:bg-[var(--color-surface-2)] dark:text-[#30d158]">
           <Check className="h-3.5 w-3.5" />
           Saved
         </div>
@@ -269,7 +270,7 @@ export function RawColumnValuesTable({
       {savingKey ? (
         <p className="mt-3 text-xs text-[var(--color-text-muted)]">Saving raw column override…</p>
       ) : null}
-      {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+      {error ? <p className="mt-3 text-sm text-rose-600 dark:text-[#ff6961]">{error}</p> : null}
     </div>
   );
 }

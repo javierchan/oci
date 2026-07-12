@@ -3,12 +3,25 @@
 /* Context panel for selected systems and relationships in the topology workspace. */
 
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, ExternalLink, MoreHorizontal, Pencil, Sparkles, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  Cpu,
+  ExternalLink,
+  Gauge,
+  Sparkles,
+  UserRound,
+  X,
+} from "lucide-react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { AiReviewButton } from "@/components/ai-review-button";
 import { QaBadge } from "@/components/qa-badge";
-import { displayQaStatus } from "@/lib/format";
+import { displayQaStatus, formatCompactNumber } from "@/lib/format";
 import { qaTotalsForNode, topPatternsForEdges, topologyDomainForNode } from "@/lib/topology";
 import type { GraphEdge, GraphNode, GraphResponse } from "@/lib/types";
 
@@ -17,25 +30,18 @@ type GraphDetailPanelProps = {
   graph: GraphResponse;
   selectedNode: GraphNode | null;
   selectedEdge: GraphEdge | null;
+  onEdgeSelect: (_edge: GraphEdge) => void;
   onClose?: () => void;
 };
 
 function edgeMode(edge: GraphEdge): string {
-  const text = edge.patterns.join(" ").toLowerCase();
-  if (edge.patterns.length > 1) {
-    return "both";
-  }
-  if (
-    text.includes("event") ||
-    text.includes("pub") ||
-    text.includes("async") ||
-    text.includes("cdc") ||
-    text.includes("batch") ||
-    text.includes("webhook")
-  ) {
-    return "async";
-  }
-  return "sync";
+  const labels: Record<GraphEdge["interaction_mode"], string> = {
+    SYNCHRONOUS: "synchronous",
+    ASYNCHRONOUS: "asynchronous",
+    MIXED: "mixed",
+    UNSPECIFIED: "mode unspecified",
+  };
+  return labels[edge.interaction_mode];
 }
 
 function statusDot(status: string): string {
@@ -56,24 +62,30 @@ function DirectionList({
   title,
   edges,
   selectedNode,
+  onEdgeSelect,
 }: {
   title: string;
   edges: GraphEdge[];
   selectedNode: GraphNode;
+  onEdgeSelect: (_edge: GraphEdge) => void;
 }): JSX.Element {
   const inbound = title === "Inbound";
+  const [expanded, setExpanded] = useState<boolean>(false);
+  const visibleEdges = expanded ? sortedEdges(edges) : sortedEdges(edges).slice(0, 5);
   return (
     <section className="border-t border-[var(--color-border)] px-5 py-5">
       <p className="app-label">
         {title} · {edges.length}
       </p>
       <div className="mt-3 space-y-2">
-        {sortedEdges(edges).slice(0, 5).map((edge) => {
+        {visibleEdges.map((edge) => {
           const otherSystem = inbound ? edge.source : edge.target;
           return (
-            <article
+            <button
+              type="button"
               key={edge.id}
-              className="flex items-center gap-3 rounded-xl bg-[var(--color-surface-2)] px-3 py-3 text-sm"
+              onClick={() => onEdgeSelect(edge)}
+              className="flex w-full items-center gap-3 rounded-lg bg-[var(--color-surface-2)] px-3 py-3 text-left text-sm transition hover:bg-[var(--color-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
             >
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--color-surface)] text-[var(--color-text-secondary)]">
                 {inbound ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
@@ -83,17 +95,27 @@ function DirectionList({
                   {otherSystem === selectedNode.id ? selectedNode.label : otherSystem}
                 </p>
                 <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
-                  {edge.integration_count} integrations · {edgeMode(edge)}
+                  {edge.integration_count} integration{edge.integration_count === 1 ? "" : "s"} · {edgeMode(edge)}
                 </p>
               </div>
-              <span className={`h-2.5 w-2.5 rounded-full ${statusDot(edge.dominant_qa_status)}`} />
-            </article>
+              <span className={`h-2.5 w-2.5 rounded-full ${statusDot(edge.risk_qa_status)}`} />
+            </button>
           );
         })}
         {edges.length === 0 ? (
           <p className="rounded-xl border border-dashed border-[var(--color-border)] px-3 py-4 text-sm text-[var(--color-text-muted)]">
             No {title.toLowerCase()} dependencies.
           </p>
+        ) : null}
+        {edges.length > 5 ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((current) => !current)}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold text-[var(--color-accent)] hover:bg-[var(--color-hover)]"
+          >
+            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {expanded ? "Show less" : `Show all ${edges.length}`}
+          </button>
         ) : null}
       </div>
     </section>
@@ -131,8 +153,20 @@ export function GraphDetailPanel({
   graph,
   selectedNode,
   selectedEdge,
+  onEdgeSelect,
   onClose,
 }: GraphDetailPanelProps): JSX.Element {
+  const [showAllIntegrations, setShowAllIntegrations] = useState<boolean>(false);
+  const edgeMetricTotals = useMemo(() => {
+    if (!selectedEdge) {
+      return { executions: 0, payload: 0 };
+    }
+    return {
+      executions: selectedEdge.total_executions_per_day,
+      payload: selectedEdge.total_payload_per_hour_kb,
+    };
+  }, [selectedEdge]);
+
   if (selectedNode) {
     const connectedEdges = graph.edges.filter(
       (edge) => edge.source === selectedNode.id || edge.target === selectedNode.id,
@@ -142,6 +176,8 @@ export function GraphDetailPanel({
     const totals = qaTotalsForNode(selectedNode, graph.edges);
     const domain = topologyDomainForNode(selectedNode);
     const patterns = topPatternsForEdges(connectedEdges, 4);
+    const owners = selectedNode.owners.slice(0, 3);
+    const technologies = selectedNode.technologies.slice(0, 3);
 
     return (
       <PanelShell onClose={onClose}>
@@ -149,15 +185,24 @@ export function GraphDetailPanel({
           <p className="app-label" style={{ color: domain.color }}>
             {domain.shortLabel}
           </p>
-          <h2 className="mt-3 text-3xl font-semibold leading-tight text-[var(--color-text-primary)]">
+          <h2 className="mt-3 text-2xl font-semibold leading-tight text-[var(--color-text-primary)]">
             {selectedNode.label}
           </h2>
           <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
             {domain.label} system · {selectedNode.integration_count} integrations connect through this system
           </p>
 
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
+            {owners.length > 0 ? (
+              <span className="inline-flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5" />{owners.join(", ")}</span>
+            ) : null}
+            {technologies.length > 0 ? (
+              <span className="inline-flex items-center gap-1.5"><Cpu className="h-3.5 w-3.5" />{technologies.join(", ")}</span>
+            ) : null}
+          </div>
+
           <div className="mt-5 flex flex-wrap items-center gap-3">
-            <AiReviewButton projectId={projectId} graphContext={{ type: "node", label: selectedNode.label }} label="Ask co-pilot" />
+            <AiReviewButton projectId={projectId} graphContext={{ type: "node", label: selectedNode.label }} label="Analyze system" />
             <Link
               href={`/projects/${projectId}/catalog?system=${encodeURIComponent(selectedNode.label)}`}
               className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)]"
@@ -165,20 +210,6 @@ export function GraphDetailPanel({
               <ExternalLink className="h-4 w-4" />
               Catalog
             </Link>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-[var(--color-text-secondary)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)]"
-            >
-              <Pencil className="h-4 w-4" />
-              Edit
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--color-text-secondary)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)]"
-              aria-label="More system actions"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
           </div>
         </section>
 
@@ -209,8 +240,8 @@ export function GraphDetailPanel({
           </div>
         </section>
 
-        <DirectionList title="Outbound" edges={outbound} selectedNode={selectedNode} />
-        <DirectionList title="Inbound" edges={inbound} selectedNode={selectedNode} />
+        <DirectionList title="Outbound" edges={outbound} selectedNode={selectedNode} onEdgeSelect={onEdgeSelect} />
+        <DirectionList title="Inbound" edges={inbound} selectedNode={selectedNode} onEdgeSelect={onEdgeSelect} />
 
         <section className="border-t border-[var(--color-border)] px-5 py-5">
           <p className="app-label">Top Patterns</p>
@@ -221,7 +252,9 @@ export function GraphDetailPanel({
                   <span className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1 text-xs font-semibold">
                     {pattern.pattern}
                   </span>
-                  <span className="text-[var(--color-text-secondary)]">{pattern.pattern}</span>
+                  <span className="text-[var(--color-text-secondary)]">
+                    {pattern.pattern.includes(" · ") ? pattern.pattern.split(" · ").slice(1).join(" · ") : "Governed pattern"}
+                  </span>
                 </span>
                 <span className="font-semibold text-[var(--color-text-muted)]">{pattern.count}</span>
               </div>
@@ -244,14 +277,14 @@ export function GraphDetailPanel({
             {selectedEdge.source} → {selectedEdge.target}
           </h2>
           <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
-            {selectedEdge.integration_count} integrations · {edgeMode(selectedEdge)}
+            {selectedEdge.integration_count} integration{selectedEdge.integration_count === 1 ? "" : "s"} · {edgeMode(selectedEdge)}
           </p>
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <AiReviewButton
               projectId={projectId}
               integrationId={reviewIntegrationId}
               graphContext={{ type: "edge", source: selectedEdge.source, target: selectedEdge.target }}
-              label="Ask co-pilot"
+              label="Analyze dependency path"
             />
             <Link
               href={`/projects/${projectId}/catalog?source_system=${encodeURIComponent(selectedEdge.source)}&destination_system=${encodeURIComponent(selectedEdge.target)}`}
@@ -261,6 +294,23 @@ export function GraphDetailPanel({
               Catalog
             </Link>
           </div>
+        </section>
+
+        <section className="grid grid-cols-2 gap-2 border-t border-[var(--color-border)] px-5 py-5">
+          <div className="rounded-lg bg-[var(--color-surface-2)] p-3">
+            <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-muted)]"><Gauge className="h-3.5 w-3.5" />Executions / day</p>
+            <p className="mt-2 text-xl font-semibold">{formatCompactNumber(edgeMetricTotals.executions)}</p>
+            <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">{selectedEdge.executions_coverage}/{selectedEdge.integration_count} integrations covered</p>
+          </div>
+          <div className="rounded-lg bg-[var(--color-surface-2)] p-3">
+            <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-muted)]"><Cpu className="h-3.5 w-3.5" />Payload / hour</p>
+            <p className="mt-2 text-xl font-semibold">{formatCompactNumber(edgeMetricTotals.payload)} KB</p>
+            <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">{selectedEdge.payload_coverage}/{selectedEdge.integration_count} integrations covered</p>
+          </div>
+          <p className="col-span-2 inline-flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
+            <Clock3 className="h-3.5 w-3.5" />
+            Last catalog change {new Date(selectedEdge.last_updated_at).toLocaleString("en-US")}
+          </p>
         </section>
 
         <section className="border-t border-[var(--color-border)] px-5 py-5">
@@ -295,21 +345,37 @@ export function GraphDetailPanel({
         <section className="border-t border-[var(--color-border)] px-5 py-5">
           <p className="app-label">Integrations</p>
           <ul className="mt-3 space-y-2">
-            {selectedEdge.integration_names.slice(0, 8).map((name, index) => {
-              const qaStatus = selectedEdge.integration_qa_statuses[index] ?? selectedEdge.dominant_qa_status;
+            {(showAllIntegrations ? selectedEdge.integrations : selectedEdge.integrations.slice(0, 8)).map((integration) => {
               return (
                 <li
-                  key={`${selectedEdge.integration_ids[index]}-${name}`}
-                  className="flex items-center justify-between gap-3 rounded-xl bg-[var(--color-surface-2)] px-3 py-3"
+                  key={integration.id}
                 >
-                  <span className="min-w-0 truncate text-sm font-semibold text-[var(--color-text-primary)]" title={name}>
-                    {name}
-                  </span>
-                  <QaBadge status={qaStatus} />
+                  <Link
+                    href={`/projects/${projectId}/catalog/${integration.id}`}
+                    className="flex items-center justify-between gap-3 rounded-lg bg-[var(--color-surface-2)] px-3 py-3 transition hover:bg-[var(--color-hover)]"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]" title={integration.name}>{integration.name}</span>
+                      <span className="mt-1 block truncate text-xs text-[var(--color-text-muted)]">
+                        {[integration.pattern, integration.owner].filter(Boolean).join(" · ") || "Open integration record"}
+                      </span>
+                    </span>
+                    <QaBadge status={integration.qa_status} />
+                  </Link>
                 </li>
               );
             })}
           </ul>
+          {selectedEdge.integrations.length > 8 ? (
+            <button
+              type="button"
+              onClick={() => setShowAllIntegrations((current) => !current)}
+              className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold text-[var(--color-accent)] hover:bg-[var(--color-hover)]"
+            >
+              {showAllIntegrations ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {showAllIntegrations ? "Show less" : `Show all ${selectedEdge.integrations.length}`}
+            </button>
+          ) : null}
         </section>
 
         <section className="border-t border-[var(--color-border)] px-5 py-5">

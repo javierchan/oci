@@ -165,6 +165,9 @@ export function IntegrationDesignCanvasPanel({
   const [error, setError] = useState<string>("");
   const [hasConnectedRoute, setHasConnectedRoute] = useState<boolean>(normalizedCanvasSeed.hasConnectedRoute);
   const [hasBlockingIssues, setHasBlockingIssues] = useState<boolean>(normalizedCanvasSeed.hasBlockingIssues);
+  const canvasDirty =
+    canvasState !== normalizedCanvasSeed.serializedValue ||
+    toolKeys.join("|") !== normalizedCanvasSeed.coreToolKeys.join("|");
 
   useEffect(() => {
     setCanvasState(normalizedCanvasSeed.serializedValue);
@@ -179,16 +182,22 @@ export function IntegrationDesignCanvasPanel({
     return null;
   }
 
-  async function handleSaveCanvas(): Promise<void> {
+  async function handleSaveCanvas(refreshAfterSave = true): Promise<boolean> {
     if (!hasConnectedRoute) {
       setError("Connect the source and destination through the designed pipeline before saving.");
       setStatusMessage("");
-      return;
+      return false;
     }
     if (hasBlockingIssues) {
       setError("Resolve the Oracle-backed canvas blockers before saving.");
       setStatusMessage("");
-      return;
+      return false;
+    }
+
+    if (!canvasDirty) {
+      setStatusMessage("Canvas is saved and ready for review.");
+      setError("");
+      return true;
     }
 
     setSaving(true);
@@ -201,11 +210,15 @@ export function IntegrationDesignCanvasPanel({
         core_tools: toolKeys,
       });
       setStatusMessage("Canvas saved.");
-      startTransition(() => {
-        router.refresh();
-      });
+      if (refreshAfterSave) {
+        startTransition(() => {
+          router.refresh();
+        });
+      }
+      return true;
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Unable to save canvas.");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -228,12 +241,14 @@ export function IntegrationDesignCanvasPanel({
             projectId={projectId}
             integrationId={integration.id}
             defaultScope="integration"
-            label="Review canvas with AI"
+            label="Review current canvas"
+            disabled={saving || !hasConnectedRoute || hasBlockingIssues}
+            beforeOpen={() => handleSaveCanvas(false)}
           />
           <button
             type="button"
             onClick={() => {
-              void handleSaveCanvas();
+              void handleSaveCanvas(true);
             }}
             disabled={saving || !hasConnectedRoute || hasBlockingIssues}
             className="app-button-primary"

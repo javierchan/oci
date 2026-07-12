@@ -349,6 +349,24 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 - [x] **Exit criteria**: dependency audit is clean; backend, calc-engine, frontend,
       migration, browser, and image gates execute from one canonical CI contract
 
+### M26 — Topology Decision Workspace
+- [x] Separate statistical majority from conservative edge risk so mixed paths
+      cannot render as healthy when review or pending integrations are present
+- [x] Add governed edge metrics, coverage, interaction mode, owners,
+      technologies, actionable integration summaries, and real freshness metadata
+- [x] Replace the dense default graph with priority-path disclosure while keeping
+      all paths available and restoring every adjacent path during system focus
+- [x] Add searchable process-family and system controls, ranked architecture
+      triage, domain and three-stage flow layouts, adaptive legends, and metric modes
+- [x] Make nodes and edges keyboard operable and expose meaningful accessible names
+- [x] Replace the empty mobile fallback with a searchable risk and system explorer
+      that does not render the desktop SVG outside its supported breakpoint
+- [x] Make node and path detail panels actionable with catalog drill-through,
+      complete expandable lists, governed metrics, ownership, and change context
+- [x] Generate reliable styled PNG exports with visible completion/error state
+- [x] **Exit criteria**: graph API tests, frontend topology tests, production build,
+      desktop investigation E2E, PNG download E2E, and mobile explorer E2E pass
+
 ### M26 — Governed Offline Capture Workbook 2.0
 - [x] Replace the importable example row with a blank 500-row capture surface
 - [x] Add novice-oriented instructions, preflight checks, guided examples, and a field dictionary
@@ -359,6 +377,98 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 - [x] Validate download-fill-upload round trip and render every visible workbook sheet
 - [x] **Exit criteria**: the App download is self-documenting, contains no importable examples,
       maps one captured row exactly, exposes governed metadata in Import UI, and passes all quality gates
+
+### M27 — Topology Review Ergonomics + Accessible Controls
+- [x] Replace the one-shot highest-risk action with a browser-session review queue
+      that advances deterministically without mutating governed QA state
+- [x] Persist session review progress per project, expose progress in the command bar
+      and triage queue, and provide explicit start, continue, next, and restart states
+- [x] Render topology context as a non-modal drawer from tablet through laptop widths
+      and as the existing side panel on wide desktop so details remain immediately visible
+- [x] Replace native datalist filters with searchable ARIA combobox/listbox controls,
+      keyboard navigation, visible options, invalid-search feedback, and clear actions
+- [x] Add announced pressed states to segmented controls, visible hover tooltips to
+      icon commands, active-filter counts, and one clear-filter action
+- [x] Separate governed data filters from map-display controls and preserve the
+      list-first mobile dependency explorer
+- [x] **Exit criteria**: Node 26 production build, TypeScript/ESLint, frontend unit
+      tests, npm audit, desktop review progression E2E, PNG export E2E, and mobile
+      topology E2E pass; visual checks cover 1280×720, 1600×900, and 390×844
+
+### M28 — Complete Dashboard Product Footprint + Action Harmony
+- [x] Derive the Dashboard product inventory from core tools, architectural overlays,
+      and saved canvas nodes without hiding capture-only taxonomy entries
+- [x] Count each product once per integration and expose product role, usage count,
+      coverage ratio, and Service Product Library identifier when available
+- [x] Preserve compatibility for historical dashboard snapshots created before the
+      product-footprint contract existed
+- [x] Replace the fixed five-service presentation with the complete captured inventory
+      while keeping calculated service sizing as a separate technical section
+- [x] Standardize Dashboard actions with shared button classes, consistent dimensions,
+      familiar Lucide icons, command hierarchy, and responsive wrapping
+- [x] **Exit criteria**: the enterprise snapshot represents 9 of 9 products across
+      480 of 480 catalog rows; API tests, Ruff, frontend tests, TypeScript/ESLint,
+      Node 26 production build, desktop/mobile Playwright, and visual inspection pass
+
+### M29 — Contextual AI Actions + Catalog and Frequency Governance
+- [x] Make every visible AI launcher identify its actual review scope: project,
+      integration, current saved canvas, selected system, or dependency path
+- [x] Persist dirty Canvas evidence before opening its review and keep the backend
+      compatible with V4 endpoint positions without dropping the saved layout
+- [x] Expose selected graph context inside the review board and filter persisted
+      deterministic evidence to the selected system or dependency path
+- [x] Standardize Catalog pattern, complexity, QA, core-tool, and overlay labels on
+      one shared badge geometry while retaining semantic status colors
+- [x] Enforce uppercase `FQNN` frequency codes in UI and API, reject invalid or
+      duplicate active codes, and remove all superseded `FREQ-*` records by migration
+- [x] Prevent topology review actions while filtered graph data is refreshing so
+      the queue never opens against stale dependency paths
+- [x] **Exit criteria**: migration head `20260711_0018`, 16 of 16 Frequency rows use
+      `FQ01`–`FQ16`, Codex provider status is live, API/calc/frontend quality gates
+      pass, and contextual AI, Catalog, Frequency, Dashboard, and Map Playwright pass
+
+### M30 — Dashboard Feedback + Semantic Review Brief + macOS Dark Mode
+- [x] Move recalculation progress and completion feedback into the global toast system
+      so asynchronous jobs do not resize or reflow the Dashboard action toolbar
+- [x] Keep the Recalculate command width stable across idle and pending labels and
+      expose its busy state to assistive technology
+- [x] Compare canvas baselines by governed core tools and overlays instead of raw
+      serialized node positions or storage-version metadata
+- [x] Render historical canvas evidence as concise plan-versus-current values and
+      identify layout-only legacy differences without presenting them as actionable drift
+- [x] Reframe Review Project around an executive decision, decision agenda, blockers,
+      material drift, next action, and progressively disclosed supporting evidence
+- [x] Replace warm dark-mode surfaces with neutral graphite hierarchy, system-blue
+      accent controls, semantic label colors, and status colors reserved for status
+- [x] Keep Dashboard risk cards on graphite surfaces in dark mode while preserving
+      severity through restrained semantic borders and titles rather than light fills
+- [x] **Exit criteria**: API, calc-engine, frontend unit tests, Ruff, mypy,
+      TypeScript/ESLint, Node 26 production build, live recalculation, completed review
+      history, browser console, and desktop visual inspection pass in the Docker stack
+
+### M31 — Sidebar Ergonomics + Functional Command Launcher
+- [x] Reduce the sidebar theme selector to a balanced segmented control and place
+      context plus application version in one compact metadata row
+- [x] Connect the sidebar Search or jump control to the same command palette owned
+      by the workspace top bar instead of rendering a decorative duplicate
+- [x] Preserve `Command-K`, add dialog and keyboard shortcut semantics to the sidebar
+      launcher, autofocus the real query field, and keep route filtering navigable
+- [x] **Exit criteria**: frontend unit tests, TypeScript/ESLint, Node 26 production
+      build, live sidebar launch, query filtering, result navigation, focus state,
+      browser console, and dark-mode visual inspection pass in the Docker stack
+
+### M32 — Integration Detail Dark-Mode Legibility + Control Harmony
+- [x] Add dark table tokens so lineage headers, row separators, and hover states use
+      the same graphite hierarchy as the rest of the integration detail workspace
+- [x] Standardize Save and Remove controls on shared 40px button geometry, Lucide
+      icons, no-wrap labels, and a restrained dark destructive treatment
+- [x] Replace warm pattern and coverage panels with neutral dark surfaces plus
+      semantic borders, titles, and readable secondary text
+- [x] Keep raw-lineage edit actions visible, keyboard focusable, and explicitly
+      named for assistive technology instead of revealing them only on hover
+- [x] **Exit criteria**: frontend unit tests, TypeScript/ESLint, Node 26 production
+      build, exact reference integration, Review Integration, destructive-confirm
+      cancel flow, table contrast, edit affordances, and browser console pass in Docker
 
 ---
 

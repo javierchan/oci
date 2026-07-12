@@ -13,7 +13,11 @@ export type TopologyDomainId =
   | "supply-chain"
   | "shared";
 
-export type TopologyLayoutMode = "cluster" | "free";
+export type TopologyLayoutMode = "cluster" | "flow";
+
+export type TopologyMetricMode = "relationships" | "executions" | "payload";
+
+export type TopologyVisibilityMode = "priority" | "all";
 
 export type TopologyDomain = {
   id: TopologyDomainId;
@@ -29,6 +33,102 @@ export type QaTotals = {
   pending: number;
   total: number;
 };
+
+export type RiskReviewStep = {
+  reviewedIds: string[];
+  nextEdge: GraphEdge | null;
+  complete: boolean;
+};
+
+export const BUSINESS_PROCESS_COLORS = [
+  "#0f766e",
+  "#2563eb",
+  "#c2410c",
+  "#7c3aed",
+  "#be185d",
+  "#ca8a04",
+  "#0891b2",
+  "#64748b",
+];
+
+export function businessProcessFamily(value: string): string {
+  return value.split(" — ", 1)[0]?.trim() || "Unassigned";
+}
+
+export function businessProcessColor(value: string): string {
+  const family = businessProcessFamily(value);
+  const index = Math.abs(family.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0));
+  return BUSINESS_PROCESS_COLORS[index % BUSINESS_PROCESS_COLORS.length];
+}
+
+export function edgeMetricValue(edge: GraphEdge, metric: TopologyMetricMode): number {
+  if (metric === "executions") {
+    return edge.total_executions_per_day;
+  }
+  if (metric === "payload") {
+    return edge.total_payload_per_hour_kb;
+  }
+  return edge.integration_count;
+}
+
+export function edgeMetricCoverage(edge: GraphEdge, metric: TopologyMetricMode): number {
+  if (metric === "executions") {
+    return edge.executions_coverage;
+  }
+  if (metric === "payload") {
+    return edge.payload_coverage;
+  }
+  return edge.integration_count;
+}
+
+export function edgeMetricLabel(metric: TopologyMetricMode): string {
+  if (metric === "executions") {
+    return "Executions / day";
+  }
+  if (metric === "payload") {
+    return "Payload / hour";
+  }
+  return "Integration count";
+}
+
+export function edgeMetricUnit(metric: TopologyMetricMode): string {
+  if (metric === "executions") {
+    return "exec/day";
+  }
+  if (metric === "payload") {
+    return "KB/hour";
+  }
+  return "integrations";
+}
+
+export function edgeRiskLabel(edge: GraphEdge): string {
+  const review = edge.qa_statuses.REVISAR ?? 0;
+  const pending = edge.qa_statuses.PENDING ?? 0;
+  if (pending > 0) {
+    return `${pending} pending`;
+  }
+  if (review > 0) {
+    return `${review} need review`;
+  }
+  return "QA OK";
+}
+
+export function advanceRiskReview(
+  rankedRiskEdges: GraphEdge[],
+  reviewedEdgeIds: string[],
+  currentEdgeId: string | null,
+): RiskReviewStep {
+  const reviewed = new Set(reviewedEdgeIds);
+  if (currentEdgeId && rankedRiskEdges.some((edge) => edge.id === currentEdgeId)) {
+    reviewed.add(currentEdgeId);
+  }
+  const nextEdge = rankedRiskEdges.find((edge) => !reviewed.has(edge.id)) ?? null;
+  return {
+    reviewedIds: Array.from(reviewed),
+    nextEdge,
+    complete: rankedRiskEdges.length > 0 && !nextEdge,
+  };
+}
 
 export const TOPOLOGY_DOMAINS: Record<TopologyDomainId, TopologyDomain> = {
   finance: {

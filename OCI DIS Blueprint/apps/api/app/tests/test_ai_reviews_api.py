@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -9,7 +10,7 @@ from httpx import AsyncClient, Response
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.models import CatalogIntegration, Project, VolumetrySnapshot
+from app.models import AiReviewBaseline, CatalogIntegration, Project, VolumetrySnapshot
 from app.routers import ai_reviews
 from app.schemas.ai_review import AiReviewGraphContext
 from app.services import ai_review_service
@@ -384,6 +385,72 @@ async def test_ai_review_baseline_detects_planned_actual_drift(
     assert review.drift.item_count >= 2
     assert any(item.field == "selected_pattern" for item in review.drift.items)
     assert any(finding.id == "planned-actual-drift" for finding in review.findings)
+
+
+@pytest.mark.asyncio
+async def test_canvas_storage_version_change_does_not_create_architecture_drift(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Compare governed overlays instead of treating Canvas V3-to-V4 layout JSON as drift."""
+
+    project_id, integration_id = await _seed_review_fixture(test_engine)
+    create_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}/baseline",
+        headers=_admin_headers(),
+        json={"scope": "project", "label": "Approved canvas plan"},
+    )
+    assert create_response.status_code == 201
+    baseline_id = create_response.json()["id"]
+
+    v3_canvas = json.dumps(
+        {
+            "v": 3,
+            "nodes": [],
+            "edges": [],
+            "coreToolKeys": ["OCI Streaming"],
+            "overlayKeys": ["OCI Events"],
+        }
+    )
+    v4_canvas = json.dumps(
+        {
+            "v": 4,
+            "nodes": [],
+            "edges": [],
+            "coreToolKeys": ["OCI Streaming"],
+            "overlayKeys": ["OCI Events"],
+            "endpointPositions": {
+                "source-system": {"x": 40, "y": 120},
+                "destination-system": {"x": 900, "y": 120},
+            },
+        }
+    )
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            baseline = await session.get(AiReviewBaseline, baseline_id)
+            row = await session.get(CatalogIntegration, integration_id)
+            assert baseline is not None
+            assert row is not None
+            payload = dict(baseline.baseline_payload)
+            rows = [dict(item) for item in payload["rows"]]
+            rows[0]["additional_tools_overlays"] = v3_canvas
+            payload["rows"] = rows
+            baseline.baseline_payload = payload
+            row.additional_tools_overlays = v4_canvas
+
+        review = await ai_review_service.build_review_result(
+            project_id=project_id,
+            scope="project",
+            integration_id=None,
+            include_llm=False,
+            graph_context=None,
+            reviewer_personas=["architect"],
+            db=session,
+        )
+
+    assert all(item.field != "additional_tools_overlays" for item in review.drift.items)
 
 
 @pytest.mark.asyncio

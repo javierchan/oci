@@ -22,6 +22,7 @@ import {
 
 import { APP_VERSION } from "@/lib/app-version";
 import { api } from "@/lib/api";
+import { OPEN_COMMAND_PALETTE_EVENT } from "@/lib/command-palette";
 
 type CommandItem = {
   label: string;
@@ -230,6 +231,15 @@ export function WorkspaceTopBar(): JSX.Element {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    function onOpenCommandPalette(): void {
+      setPaletteOpen(true);
+    }
+
+    window.addEventListener(OPEN_COMMAND_PALETTE_EVENT, onOpenCommandPalette);
+    return () => window.removeEventListener(OPEN_COMMAND_PALETTE_EVENT, onOpenCommandPalette);
   }, []);
 
   return (

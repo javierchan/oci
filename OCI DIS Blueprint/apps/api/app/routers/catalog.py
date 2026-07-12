@@ -127,13 +127,21 @@ async def estimate_oic(
 async def get_graph(
     project_id: str,
     business_process: Optional[str] = None,
+    business_process_family: Optional[str] = None,
     brand: Optional[str] = None,
     qa_status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ) -> GraphResponse:
     """Return the directed system dependency graph before dynamic integration routes can match."""
 
-    return await graph_service.compute_graph(project_id, business_process, brand, qa_status, db)
+    return await graph_service.compute_graph(
+        project_id,
+        business_process,
+        business_process_family,
+        brand,
+        qa_status,
+        db,
+    )
 
 
 @router.get("/{project_id}/{integration_id}", response_model=CatalogIntegrationDetail, summary="Get single integration with lineage")

@@ -4,6 +4,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { Save, Trash2 } from "lucide-react";
 
 import { ConfirmModal } from "@/components/modal";
 import { PatternBadge } from "@/components/pattern-badge";
@@ -134,13 +135,14 @@ export function IntegrationPatchForm({
         <QaBadge status={currentIntegration.qa_status} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={handleSave}
           disabled={saving || deleting}
-          className="app-button-primary"
+          className="app-button-primary h-10 gap-2"
         >
+          <Save className="h-4 w-4" />
           {saving ? "Saving…" : "Save"}
         </button>
         <button
@@ -149,9 +151,11 @@ export function IntegrationPatchForm({
             setDeleteOpen(true);
           }}
           disabled={saving || deleting}
-          className="inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+          className="app-button-danger h-10 gap-2"
+          aria-label="Remove integration"
         >
-          {deleting ? "Removing…" : "Remove Integration"}
+          <Trash2 className="h-4 w-4" />
+          {deleting ? "Removing…" : "Remove"}
         </button>
       </div>
 
@@ -197,8 +201,8 @@ export function IntegrationPatchForm({
           className={[
             "rounded-2xl border p-4 text-sm",
             selectedPatternDefinition.support.parity_ready
-              ? "border-emerald-200 bg-emerald-50/80 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200"
-              : "border-amber-200 bg-amber-50/90 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200",
+              ? "border-emerald-200 bg-emerald-50/80 text-emerald-900 dark:border-[#30d158]/45 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]"
+              : "border-amber-200 bg-amber-50/90 text-amber-900 dark:border-[#ffd60a]/45 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]",
           ].join(" ")}
         >
           <div className="flex flex-wrap items-center gap-3">

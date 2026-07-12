@@ -3277,6 +3277,9 @@
             "title": "Payload Distribution",
             "type": "array"
           },
+          "product_footprint": {
+            "$ref": "#/components/schemas/DashboardProductFootprint"
+          },
           "service_rules": {
             "$ref": "#/components/schemas/DashboardServiceRuleStatus"
           }
@@ -3375,6 +3378,86 @@
           }
         },
         "title": "DashboardMaturity",
+        "type": "object"
+      },
+      "DashboardProductFootprint": {
+        "additionalProperties": false,
+        "description": "Complete product inventory derived from governed catalog canvases.",
+        "properties": {
+          "captured_product_count": {
+            "default": 0,
+            "title": "Captured Product Count",
+            "type": "integer"
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardProductUsage"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "represented_product_count": {
+            "default": 0,
+            "title": "Represented Product Count",
+            "type": "integer"
+          },
+          "rows_with_products": {
+            "default": 0,
+            "title": "Rows With Products",
+            "type": "integer"
+          },
+          "total_rows": {
+            "default": 0,
+            "title": "Total Rows",
+            "type": "integer"
+          }
+        },
+        "title": "DashboardProductFootprint",
+        "type": "object"
+      },
+      "DashboardProductUsage": {
+        "additionalProperties": false,
+        "description": "One captured product and the integrations that use it.",
+        "properties": {
+          "coverage_ratio": {
+            "default": 0.0,
+            "title": "Coverage Ratio",
+            "type": "number"
+          },
+          "integration_count": {
+            "default": 0,
+            "title": "Integration Count",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "core",
+              "overlay"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "tool_key": {
+            "title": "Tool Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_key",
+          "role"
+        ],
+        "title": "DashboardProductUsage",
         "type": "object"
       },
       "DashboardRisk": {
@@ -3972,6 +4055,10 @@
             "title": "Dominant Qa Status",
             "type": "string"
           },
+          "executions_coverage": {
+            "title": "Executions Coverage",
+            "type": "integer"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -4001,12 +4088,32 @@
             "title": "Integration Qa Statuses",
             "type": "array"
           },
+          "integrations": {
+            "items": {
+              "$ref": "#/components/schemas/GraphIntegrationSummary"
+            },
+            "title": "Integrations",
+            "type": "array"
+          },
+          "interaction_mode": {
+            "title": "Interaction Mode",
+            "type": "string"
+          },
+          "last_updated_at": {
+            "format": "date-time",
+            "title": "Last Updated At",
+            "type": "string"
+          },
           "patterns": {
             "items": {
               "type": "string"
             },
             "title": "Patterns",
             "type": "array"
+          },
+          "payload_coverage": {
+            "title": "Payload Coverage",
+            "type": "integer"
           },
           "qa_statuses": {
             "additionalProperties": {
@@ -4015,6 +4122,14 @@
             "title": "Qa Statuses",
             "type": "object"
           },
+          "risk_qa_status": {
+            "title": "Risk Qa Status",
+            "type": "string"
+          },
+          "risk_score": {
+            "title": "Risk Score",
+            "type": "integer"
+          },
           "source": {
             "title": "Source",
             "type": "string"
@@ -4022,6 +4137,14 @@
           "target": {
             "title": "Target",
             "type": "string"
+          },
+          "total_executions_per_day": {
+            "title": "Total Executions Per Day",
+            "type": "number"
+          },
+          "total_payload_per_hour_kb": {
+            "title": "Total Payload Per Hour Kb",
+            "type": "number"
           }
         },
         "required": [
@@ -4035,9 +4158,113 @@
           "business_processes",
           "patterns",
           "qa_statuses",
-          "dominant_qa_status"
+          "dominant_qa_status",
+          "risk_qa_status",
+          "risk_score",
+          "interaction_mode",
+          "total_executions_per_day",
+          "total_payload_per_hour_kb",
+          "executions_coverage",
+          "payload_coverage",
+          "last_updated_at",
+          "integrations"
         ],
         "title": "GraphEdge",
+        "type": "object"
+      },
+      "GraphIntegrationSummary": {
+        "description": "Actionable catalog context carried by one graph relationship.",
+        "properties": {
+          "executions_per_day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executions Per Day"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "interaction_mode": {
+            "title": "Interaction Mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern"
+          },
+          "payload_per_hour_kb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload Per Hour Kb"
+          },
+          "qa_status": {
+            "title": "Qa Status",
+            "type": "string"
+          },
+          "trigger_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Type"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "qa_status",
+          "owner",
+          "pattern",
+          "trigger_type",
+          "interaction_mode",
+          "executions_per_day",
+          "payload_per_hour_kb",
+          "updated_at"
+        ],
+        "title": "GraphIntegrationSummary",
         "type": "object"
       },
       "GraphMeta": {
@@ -4048,6 +4275,13 @@
               "type": "string"
             },
             "title": "Brands",
+            "type": "array"
+          },
+          "business_process_families": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Business Process Families",
             "type": "array"
           },
           "business_processes": {
@@ -4061,12 +4295,32 @@
             "title": "Edge Count",
             "type": "integer"
           },
+          "executions_coverage": {
+            "title": "Executions Coverage",
+            "type": "integer"
+          },
           "integration_count": {
             "title": "Integration Count",
             "type": "integer"
           },
+          "latest_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Updated At"
+          },
           "node_count": {
             "title": "Node Count",
+            "type": "integer"
+          },
+          "payload_coverage": {
+            "title": "Payload Coverage",
             "type": "integer"
           }
         },
@@ -4075,7 +4329,11 @@
           "edge_count",
           "integration_count",
           "business_processes",
-          "brands"
+          "business_process_families",
+          "brands",
+          "latest_updated_at",
+          "executions_coverage",
+          "payload_coverage"
         ],
         "title": "GraphMeta",
         "type": "object"
@@ -4116,6 +4374,20 @@
           "label": {
             "title": "Label",
             "type": "string"
+          },
+          "owners": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Owners",
+            "type": "array"
+          },
+          "technologies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Technologies",
+            "type": "array"
           }
         },
         "required": [
@@ -4125,7 +4397,9 @@
           "as_source_count",
           "as_destination_count",
           "brands",
-          "business_processes"
+          "business_processes",
+          "owners",
+          "technologies"
         ],
         "title": "GraphNode",
         "type": "object"
@@ -10453,6 +10727,22 @@
                 }
               ],
               "title": "Business Process"
+            }
+          },
+          {
+            "in": "query",
+            "name": "business_process_family",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Process Family"
             }
           },
           {

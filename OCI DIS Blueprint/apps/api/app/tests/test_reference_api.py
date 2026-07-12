@@ -105,6 +105,38 @@ async def test_dictionary_api_returns_volumetric_metadata(
 
 
 @pytest.mark.asyncio
+async def test_frequency_dictionary_enforces_canonical_codes(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    admin_headers = {"X-Actor-Role": "Admin", "X-Actor-Id": "frequency-test-admin"}
+    invalid_response = await api_client.post(
+        "/api/v1/dictionaries/FREQUENCY",
+        json={"code": "FREQ-17", "value": "Every 3 hours", "executions_per_day": 8.0},
+        headers=admin_headers,
+    )
+    assert invalid_response.status_code == 400
+    assert invalid_response.json()["detail"]["error_code"] == "INVALID_FREQUENCY_CODE"
+
+    created_response = await api_client.post(
+        "/api/v1/dictionaries/FREQUENCY",
+        json={"code": "fq17", "value": "Every 3 hours", "executions_per_day": 8.0},
+        headers=admin_headers,
+    )
+    assert created_response.status_code == 201
+    created = created_response.json()
+    assert created["code"] == "FQ17"
+
+    duplicate_response = await api_client.post(
+        "/api/v1/dictionaries/FREQUENCY",
+        json={"code": "FQ17", "value": "Duplicate", "executions_per_day": 8.0},
+        headers=admin_headers,
+    )
+    assert duplicate_response.status_code == 409
+    assert duplicate_response.json()["detail"]["error_code"] == "DICTIONARY_CODE_EXISTS"
+
+
+@pytest.mark.asyncio
 async def test_canvas_governance_api_returns_combinations(
     api_client: AsyncClient,
     test_engine: AsyncEngine,

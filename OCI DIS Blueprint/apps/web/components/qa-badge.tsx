@@ -19,7 +19,7 @@ export function QaBadge({ status }: QaBadgeProps): JSX.Element {
   const style = QA_STYLES[label] ?? QA_STYLES.PENDING;
 
   return (
-    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${style}`}>
+    <span className={`catalog-badge ${style}`}>
       {displayQaStatus(label)}
     </span>
   );

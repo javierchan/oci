@@ -66,9 +66,14 @@ export function AdminDictionaryForm({
       setValidationError("Value is required.");
       return;
     }
+    const normalizedCode = form.code?.trim().toUpperCase() ?? "";
+    if (category === "FREQUENCY" && !/^FQ\d{2}$/.test(normalizedCode)) {
+      setValidationError("Frequency code must use FQNN format, for example FQ17.");
+      return;
+    }
     setValidationError("");
     await onSubmit({
-      code: form.code.trim(),
+      code: normalizedCode,
       value: form.value.trim(),
       description: form.description?.trim() || undefined,
       executions_per_day: category === "FREQUENCY" ? form.executions_per_day ?? null : null,
@@ -99,13 +104,21 @@ export function AdminDictionaryForm({
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         <label className="block">
-          <span className="app-label mb-2 block">Code</span>
+          <span className="app-label mb-2 block">{category === "FREQUENCY" ? "Frequency Code" : "Code"}</span>
           <input
             value={form.code}
-            onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
-            placeholder={category === "FREQUENCY" ? "FREQ-14" : "OPTION-01"}
+            onChange={(event) => setForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))}
+            placeholder={category === "FREQUENCY" ? "FQ17" : "OPTION-01"}
+            maxLength={category === "FREQUENCY" ? 4 : undefined}
+            pattern={category === "FREQUENCY" ? "FQ[0-9]{2}" : undefined}
+            aria-describedby={category === "FREQUENCY" ? "frequency-code-help" : undefined}
             className="app-input"
           />
+          {category === "FREQUENCY" ? (
+            <span id="frequency-code-help" className="mt-1.5 block text-xs text-[var(--color-text-muted)]">
+              Governed identifier: FQ followed by two digits. Existing codes FQ01–FQ16 are reserved.
+            </span>
+          ) : null}
         </label>
 
         <label className="block">

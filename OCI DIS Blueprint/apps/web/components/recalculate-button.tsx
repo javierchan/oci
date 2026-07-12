@@ -4,7 +4,9 @@
 
 import { useRouter } from "next/navigation";
 import { startTransition, useState } from "react";
+import { RefreshCw } from "lucide-react";
 
+import { emitToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 
 type RecalculateButtonProps = {
@@ -14,14 +16,12 @@ type RecalculateButtonProps = {
 export function RecalculateButton({ projectId }: RecalculateButtonProps): JSX.Element {
   const router = useRouter();
   const [pending, setPending] = useState<boolean>(false);
-  const [error, setError] = useState<string>("");
-  const [statusMessage, setStatusMessage] = useState<string>("");
 
   async function waitForCompletion(jobId: string): Promise<void> {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       const job = await api.getRecalculationJob(projectId, jobId);
       if (job.status === "completed") {
-        setStatusMessage("Recalculation completed. Dashboard refreshed.");
+        emitToast("success", "Recalculation completed. Dashboard refreshed.");
         startTransition(() => {
           router.refresh();
         });
@@ -34,36 +34,32 @@ export function RecalculateButton({ projectId }: RecalculateButtonProps): JSX.El
         window.setTimeout(resolve, 1000);
       });
     }
-    setStatusMessage("Recalculation queued. Refresh in a moment to load the new snapshot.");
+    emitToast("info", "Recalculation is still running. The dashboard will use the current snapshot until it finishes.");
   }
 
   async function handleClick(): Promise<void> {
     setPending(true);
-    setError("");
-    setStatusMessage("");
     try {
       const job = await api.recalculate(projectId);
-      setStatusMessage("Recalculation queued. Waiting for the worker to finish...");
+      emitToast("info", "Recalculation started. Waiting for the governed worker.");
       await waitForCompletion(job.job_id);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Unable to recalculate.");
+      emitToast("error", caughtError instanceof Error ? caughtError.message : "Unable to recalculate.");
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <div className="flex flex-col items-start gap-2">
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={pending}
-        className="app-button-primary"
-      >
-        {pending ? "Queueing…" : "Run Recalculation"}
-      </button>
-      {statusMessage ? <p className="text-sm text-emerald-600">{statusMessage}</p> : null}
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-    </div>
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={pending}
+      className="app-button-primary h-10 w-[10.5rem] gap-2"
+      aria-busy={pending}
+    >
+      <RefreshCw className={`h-4 w-4 ${pending ? "animate-spin" : ""}`} />
+      {pending ? "Recalculating…" : "Recalculate"}
+    </button>
   );
 }

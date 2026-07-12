@@ -370,7 +370,12 @@ export default async function IntegrationDetailPage({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <AiReviewButton projectId={projectId} integrationId={integrationId} defaultScope="integration" />
+            <AiReviewButton
+              projectId={projectId}
+              integrationId={integrationId}
+              defaultScope="integration"
+              label="Review integration"
+            />
             <QaBadge status={integration.qa_status} />
           </div>
         </div>
@@ -586,10 +591,10 @@ export default async function IntegrationDetailPage({
                 {coverageSignals.map((signal) => (
                   <article
                     key={signal.title}
-                    className="rounded-2xl border border-sky-200 border-l-4 bg-sky-50 p-4"
+                    className="rounded-2xl border border-sky-200 border-l-4 bg-sky-50 p-4 dark:border-[#64d2ff]/45 dark:bg-[var(--color-surface-2)]"
                   >
-                    <p className="font-semibold text-sky-950">{signal.title}</p>
-                    <p className="mt-2 text-sm leading-6 text-sky-900">{signal.detail}</p>
+                    <p className="font-semibold text-sky-950 dark:text-[#64d2ff]">{signal.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-sky-900 dark:text-[var(--color-text-secondary)]">{signal.detail}</p>
                   </article>
                 ))}
               </div>

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -19,6 +19,8 @@ from app.schemas.dashboard import (
     DashboardForecastConfidence,
     DashboardKPIStrip,
     DashboardMaturity,
+    DashboardProductFootprint,
+    DashboardProductUsage,
     DashboardRisk,
     DashboardServiceRuleStatus,
     DashboardSnapshotListResponse,
@@ -27,6 +29,15 @@ from app.schemas.dashboard import (
     PatternMixEntry,
     PayloadDistributionBucket,
 )
+from app.services.canvas_interoperability import (
+    TOOL_TO_SERVICE_ID,
+    CanvasDesignValidationError,
+    parse_canvas_state,
+)
+from app.services.serializers import split_csv
+
+
+OVERLAY_TOOL_KEYS = frozenset({"OCI API Gateway", "OCI Events", "Process Automation"})
 
 
 def _has_text(value: str | None) -> bool:
@@ -158,6 +169,12 @@ def _normalize_dashboard_charts(raw_charts: dict[str, object]) -> DashboardChart
         if isinstance(raw_service_rules, dict)
         else DashboardServiceRuleStatus()
     )
+    raw_product_footprint = raw_charts.get("product_footprint")
+    product_footprint = (
+        DashboardProductFootprint(**cast(dict[str, Any], raw_product_footprint))
+        if isinstance(raw_product_footprint, dict)
+        else DashboardProductFootprint(total_rows=coverage.total_integrations)
+    )
     return DashboardCharts(
         coverage=coverage,
         completeness=completeness,
@@ -165,6 +182,7 @@ def _normalize_dashboard_charts(raw_charts: dict[str, object]) -> DashboardChart
         payload_distribution=[PayloadDistributionBucket(**cast(dict[str, Any], entry)) for entry in payload_distribution],
         forecast_confidence=normalized_confidence,
         service_rules=service_rules,
+        product_footprint=product_footprint,
     )
 
 
@@ -292,6 +310,51 @@ def _build_charts(
         for label in ordered_buckets
     ]
 
+    product_counts: Counter[str] = Counter()
+    product_roles: dict[str, Literal["core", "overlay"]] = {}
+    rows_with_products = 0
+    for row in rows:
+        core_keys = set(split_csv(row.core_tools))
+        overlay_keys: set[str] = set()
+        node_keys: set[str] = set()
+        try:
+            canvas = parse_canvas_state(row.additional_tools_overlays, tuple(core_keys))
+            core_keys.update(canvas.core_tool_keys)
+            overlay_keys.update(canvas.overlay_keys)
+            node_keys.update(node.tool_key for node in canvas.nodes)
+        except CanvasDesignValidationError:
+            overlay_keys.update(split_csv(row.additional_tools_overlays))
+
+        captured_keys = core_keys | overlay_keys | node_keys
+        if captured_keys:
+            rows_with_products += 1
+        for tool_key in captured_keys:
+            product_counts[tool_key] += 1
+            product_roles[tool_key] = (
+                "overlay" if tool_key in overlay_keys or tool_key in OVERLAY_TOOL_KEYS else "core"
+            )
+
+    products = [
+        DashboardProductUsage(
+            tool_key=tool_key,
+            service_id=TOOL_TO_SERVICE_ID.get(tool_key),
+            role=product_roles[tool_key],
+            integration_count=count,
+            coverage_ratio=(count / total) if total else 0.0,
+        )
+        for tool_key, count in sorted(
+            product_counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+    ]
+    product_footprint = DashboardProductFootprint(
+        captured_product_count=len(products),
+        represented_product_count=len(products),
+        rows_with_products=rows_with_products,
+        total_rows=total,
+        products=products,
+    )
+
     charts = DashboardCharts(
         coverage=coverage,
         completeness=completeness,
@@ -301,6 +364,7 @@ def _build_charts(
         service_rules=DashboardServiceRuleStatus(
             **cast(dict[str, Any], service_rule_metadata or {})
         ),
+        product_footprint=product_footprint,
     )
     return charts.model_dump()
 

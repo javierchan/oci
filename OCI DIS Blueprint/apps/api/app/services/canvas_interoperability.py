@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Literal, Sequence, cast
 
 from app.core.calc_engine import Assumptions
 from app.services.service_rule_service import EMPTY_SERVICE_RULE_BUNDLE, ServiceRuleBundle
@@ -21,6 +21,7 @@ TOOL_TO_SERVICE_ID: dict[str, str] = {
     "OCI Functions": "FUNCTIONS",
     "Oracle Functions": "FUNCTIONS",
     "OCI Data Integration": "DATA_INTEGRATION",
+    "Data Integrator": "ODI",
     "Oracle ORDS": "ORDS",
     "Oracle DB": "ORDS",
     "OCI APM": "OBSERVABILITY",
@@ -71,6 +72,15 @@ class CanvasEdge:
 
 
 @dataclass(frozen=True)
+class CanvasEndpointPosition:
+    """Persisted position for a source or destination endpoint."""
+
+    endpoint_id: Literal["source-system", "destination-system"]
+    x: float
+    y: float
+
+
+@dataclass(frozen=True)
 class ParsedCanvasState:
     """Sanitized canvas state after loading JSON or legacy overlay values."""
 
@@ -79,6 +89,7 @@ class ParsedCanvasState:
     edges: tuple[CanvasEdge, ...]
     core_tool_keys: tuple[str, ...]
     overlay_keys: tuple[str, ...]
+    endpoint_positions: tuple[CanvasEndpointPosition, ...]
 
 
 @dataclass(frozen=True)
@@ -233,6 +244,29 @@ def _edge_from_payload(value: object, index: int) -> CanvasEdge | None:
     )
 
 
+def _endpoint_positions_from_payload(value: object) -> tuple[CanvasEndpointPosition, ...]:
+    if not isinstance(value, dict):
+        return ()
+
+    positions: list[CanvasEndpointPosition] = []
+    for endpoint_id in (SOURCE_NODE_ID, DESTINATION_NODE_ID):
+        point = value.get(endpoint_id)
+        if not isinstance(point, dict):
+            continue
+        raw_x = point.get("x")
+        raw_y = point.get("y")
+        if not isinstance(raw_x, (int, float)) or not isinstance(raw_y, (int, float)):
+            continue
+        positions.append(
+            CanvasEndpointPosition(
+                endpoint_id=cast(Literal["source-system", "destination-system"], endpoint_id),
+                x=float(raw_x),
+                y=float(raw_y),
+            )
+        )
+    return tuple(positions)
+
+
 def _create_default_node(tool_key: str, index: int) -> CanvasNode:
     return CanvasNode(
         instance_id=f"default-node-{index + 1}",
@@ -322,6 +356,7 @@ def parse_canvas_state(value: str | None, core_tool_keys: Sequence[str]) -> Pars
             edges=_build_default_edges(default_nodes),
             core_tool_keys=normalized_core_tool_keys,
             overlay_keys=(),
+            endpoint_positions=(),
         )
 
     stripped = value.strip()
@@ -333,6 +368,7 @@ def parse_canvas_state(value: str | None, core_tool_keys: Sequence[str]) -> Pars
             edges=_build_default_edges(default_nodes),
             core_tool_keys=normalized_core_tool_keys,
             overlay_keys=_unique_sorted(split_csv(stripped)),
+            endpoint_positions=(),
         )
 
     try:
@@ -353,9 +389,10 @@ def parse_canvas_state(value: str | None, core_tool_keys: Sequence[str]) -> Pars
     nodes: list[CanvasNode] = []
     edges: list[CanvasEdge] = []
     overlay_keys: tuple[str, ...] = ()
+    endpoint_positions: tuple[CanvasEndpointPosition, ...] = ()
     core_keys_from_payload = normalized_core_tool_keys
 
-    if version == 3:
+    if version in (3, 4):
         raw_nodes = parsed.get("nodes")
         raw_edges = parsed.get("edges")
         if not isinstance(raw_nodes, list) or not isinstance(raw_edges, list):
@@ -375,6 +412,8 @@ def parse_canvas_state(value: str | None, core_tool_keys: Sequence[str]) -> Pars
             core_keys_from_payload = _unique_sorted([str(value) for value in payload_core_keys])
         if isinstance(payload_overlay_keys, list):
             overlay_keys = _unique_sorted([str(value) for value in payload_overlay_keys])
+        if version == 4:
+            endpoint_positions = _endpoint_positions_from_payload(parsed.get("endpointPositions"))
     elif version == 2:
         raw_nodes = parsed.get("nodes")
         raw_edges = parsed.get("edges")
@@ -416,6 +455,7 @@ def parse_canvas_state(value: str | None, core_tool_keys: Sequence[str]) -> Pars
         edges=sanitized_edges,
         core_tool_keys=core_keys_from_payload,
         overlay_keys=overlay_keys,
+        endpoint_positions=endpoint_positions,
     )
 
 
@@ -1015,11 +1055,12 @@ def serialize_canvas_state(
     nodes: Sequence[CanvasNode],
     edges: Sequence[CanvasEdge],
     semantics: CanvasSemantics,
+    endpoint_positions: Sequence[CanvasEndpointPosition] = (),
 ) -> str:
-    """Serialize a normalized V3 canvas payload back to storage."""
+    """Serialize a normalized V4 canvas payload back to storage."""
 
     payload = {
-        "v": 3,
+        "v": 4,
         "nodes": [
             {
                 "instanceId": node.instance_id,
@@ -1042,6 +1083,10 @@ def serialize_canvas_state(
         ],
         "coreToolKeys": list(semantics.core_tool_keys),
         "overlayKeys": list(semantics.overlay_keys),
+        "endpointPositions": {
+            position.endpoint_id: {"x": position.x, "y": position.y}
+            for position in endpoint_positions
+        },
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -1142,7 +1187,12 @@ def normalize_canvas_design(
         return NormalizedCanvasDesign(
             mode="canvas_json",
             core_tools_csv=_join_csv(semantics.core_tool_keys),
-            additional_tools_value=serialize_canvas_state(parsed.nodes, parsed.edges, semantics),
+            additional_tools_value=serialize_canvas_state(
+                parsed.nodes,
+                parsed.edges,
+                semantics,
+                parsed.endpoint_positions,
+            ),
             semantics=semantics,
             report=report,
         )

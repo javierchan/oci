@@ -2,7 +2,7 @@
 
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { Boxes, Download, ExternalLink, List, Network } from "lucide-react";
 
 import { AiReviewButton } from "@/components/ai-review-button";
 import { Breadcrumb } from "@/components/breadcrumb";
@@ -73,6 +73,7 @@ export default async function ProjectDashboardPage({
   const qaReviewPct = qaTotal > 0 ? Math.round(((qaBreakdown.REVISAR ?? 0) / qaTotal) * 100) : 0;
   const qaPendingPct = qaTotal > 0 ? Math.max(0, 100 - qaOkPct - qaReviewPct) : 0;
   const patternCount = latestDashboard?.charts.pattern_mix.filter((entry) => entry.count > 0).length ?? 0;
+  const productFootprint = latestDashboard?.charts.product_footprint;
 
   function pct(value: number): string {
     return qaTotal > 0 ? `${Math.round((value / qaTotal) * 100)}% of total` : "—";
@@ -89,7 +90,7 @@ export default async function ProjectDashboardPage({
     consolidated?.oic.total_billing_msgs_month,
     prevSnapshot?.consolidated?.oic.total_billing_msgs_month,
   );
-  const platformFootprint = [
+  const technicalSizing = [
     {
       label: "Functions Invocations / Month",
       value: formatCompactNumber(consolidated?.functions.total_invocations_month ?? 0),
@@ -159,20 +160,22 @@ export default async function ProjectDashboardPage({
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href={apiDownloadUrl(`/api/v1/exports/${projectId}/brief`)}
-                className="app-button-secondary gap-2 px-4 py-2 text-sm"
+                className="app-button-secondary h-10 gap-2"
                 title="Download an executive Markdown brief using dashboard, baseline, and AI review evidence."
               >
                 <Download className="h-4 w-4" />
                 Export brief
               </Link>
-              <Link href={`/projects/${projectId}/catalog`} className="app-button-secondary px-4 py-2 text-sm">
-                Open Catalog
+              <Link href={`/projects/${projectId}/catalog`} className="app-button-secondary h-10 gap-2">
+                <List className="h-4 w-4" />
+                Catalog
               </Link>
-              <Link href={`/projects/${projectId}/graph`} className="app-button-secondary px-4 py-2 text-sm">
-                Open Map
+              <Link href={`/projects/${projectId}/graph`} className="app-button-secondary h-10 gap-2">
+                <Network className="h-4 w-4" />
+                Map
               </Link>
               <RecalculateButton projectId={projectId} />
-              <AiReviewButton projectId={projectId} />
+              <AiReviewButton projectId={projectId} label="Review project" className="app-button-secondary h-10 gap-2" />
             </div>
             {latestSnapshot ? (
               <p className="text-xs text-[var(--color-text-muted)]">
@@ -226,20 +229,87 @@ export default async function ProjectDashboardPage({
         />
       </section>
 
-      <section className="space-y-4">
+      <section className="space-y-5" aria-labelledby="product-footprint-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="app-label">Platform Footprint</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">
-              Services active beyond OIC
+            <p className="app-label">Captured Product Footprint</p>
+            <h2 id="product-footprint-heading" className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">
+              Every product used in the architecture
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+              Derived from the governed core tools, architectural overlays, and saved canvas nodes across the catalog.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="app-status-chip active">
+              {productFootprint?.represented_product_count ?? 0} of {productFootprint?.captured_product_count ?? 0} represented
+            </span>
+            <span className="app-theme-chip">
+              {productFootprint?.rows_with_products ?? 0} of {productFootprint?.total_rows ?? catalogPage.total} rows covered
+            </span>
+          </div>
+        </div>
+        {productFootprint?.products.length ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {productFootprint.products.map((product) => (
+              <article key={product.tool_key} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface-3)] text-[var(--color-accent)]">
+                      <Boxes className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-semibold text-[var(--color-text-primary)]" title={product.tool_key}>
+                        {product.tool_key}
+                      </h3>
+                      <p className="mt-1 text-xs capitalize text-[var(--color-text-muted)]">{product.role} product</p>
+                    </div>
+                  </div>
+                  <span className={product.role === "overlay" ? "app-status-chip archived" : "app-status-chip active"}>
+                    {product.role === "overlay" ? "Overlay" : "Core"}
+                  </span>
+                </div>
+                <div className="mt-4 flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-2xl font-semibold text-[var(--color-text-primary)]">{formatNumber(product.integration_count)}</p>
+                    <p className="text-xs text-[var(--color-text-muted)]">integrations</p>
+                  </div>
+                  <p className="text-sm font-medium text-[var(--color-text-secondary)]">
+                    {formatNumber(product.coverage_ratio * 100, 1)}%
+                  </p>
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-3)]">
+                  <div className="h-full rounded-full bg-[var(--color-accent)]" style={{ width: `${Math.max(product.coverage_ratio * 100, 2)}%` }} />
+                </div>
+                {product.service_id ? (
+                  <Link href={`/admin/services/${product.service_id}`} className="app-link mt-4 inline-flex items-center gap-1 text-xs">
+                    Product evidence <ExternalLink className="h-3 w-3" />
+                  </Link>
+                ) : (
+                  <p className="mt-4 text-xs text-[var(--color-text-muted)]">Governed by capture taxonomy</p>
+                )}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-[var(--color-border)] px-5 py-8 text-sm text-[var(--color-text-secondary)]">
+            No product selections are available in this snapshot yet. Recalculate after capturing tools or saving a canvas.
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4" aria-labelledby="technical-sizing-heading">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="app-label">Technical Sizing</p>
+            <h2 id="technical-sizing-heading" className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
+              Calculated service metrics
             </h2>
           </div>
-          <span className="app-theme-chip">
-            DI workspace {consolidated?.data_integration.workspace_active ? "active" : "inactive"}
-          </span>
+          <span className="app-theme-chip">DI workspace {consolidated?.data_integration.workspace_active ? "active" : "inactive"}</span>
         </div>
         <div className="grid gap-4 xl:grid-cols-4 md:grid-cols-2">
-          {platformFootprint.map((card) => (
+          {technicalSizing.map((card) => (
             <VolumetryCard
               key={card.label}
               label={card.label}
@@ -457,18 +527,29 @@ export default async function ProjectDashboardPage({
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                   {latestDashboard.risks.map((risk) => {
-                    const severityClass =
+                    const severityTone =
                       risk.count >= 10
-                        ? "border-rose-300 bg-rose-50 text-rose-700"
+                        ? {
+                            card: "border-rose-300 bg-rose-50 dark:border-[#ff453a]/55 dark:bg-[var(--color-surface-2)]",
+                            accent: "text-rose-700 dark:text-[#ff6961]",
+                          }
                         : risk.count >= 5
-                          ? "border-amber-300 bg-amber-50 text-amber-700"
-                          : "border-sky-300 bg-sky-50 text-sky-700";
+                          ? {
+                              card: "border-amber-300 bg-amber-50 dark:border-[#ffd60a]/50 dark:bg-[var(--color-surface-2)]",
+                              accent: "text-amber-700 dark:text-[#ffd60a]",
+                            }
+                          : {
+                              card: "border-sky-300 bg-sky-50 dark:border-[#64d2ff]/45 dark:bg-[var(--color-surface-2)]",
+                              accent: "text-sky-700 dark:text-[#64d2ff]",
+                            };
                     const severityLabel = risk.count >= 10 ? "High" : risk.count >= 5 ? "Medium" : "Low";
                     return (
-                      <article key={risk.code} className={`rounded-2xl border p-4 ${severityClass}`}>
-                        <p className="text-xs uppercase tracking-[0.2em]">{severityLabel}</p>
-                        <p className="mt-2 font-semibold">{risk.label}</p>
-                        <p className="mt-2 text-sm">
+                      <article key={risk.code} className={`rounded-2xl border p-4 ${severityTone.card}`}>
+                        <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${severityTone.accent}`}>
+                          {severityLabel}
+                        </p>
+                        <p className={`mt-2 font-semibold ${severityTone.accent}`}>{risk.label}</p>
+                        <p className="mt-2 text-sm leading-5 text-[var(--color-text-secondary)]">
                           {risk.count} impacted integrations require review before the project can be considered governed.
                         </p>
                       </article>

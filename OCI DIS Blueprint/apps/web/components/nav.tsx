@@ -26,6 +26,7 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import { APP_VERSION } from "@/lib/app-version";
 import { api } from "@/lib/api";
+import { requestOpenCommandPalette } from "@/lib/command-palette";
 
 type NavLink = {
   href: string;
@@ -179,8 +180,12 @@ function NavPanel({
       {!mobile ? (
         <button
           type="button"
+          onClick={requestOpenCommandPalette}
           className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-left text-sm text-[var(--color-text-muted)] transition hover:bg-[var(--color-hover)]"
-          title="Use Command-K in the top bar to search or jump."
+          aria-label="Open command palette"
+          aria-haspopup="dialog"
+          aria-keyshortcuts="Meta+K Control+K"
+          title="Search commands and workspace routes"
         >
           <Search className="h-4 w-4" />
           <span className="min-w-0 flex-1 truncate">Search or jump...</span>
@@ -254,15 +259,25 @@ function NavPanel({
         </nav>
       </NavSection>
 
-      <div className={`space-y-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4 ${mobile ? "mt-6" : "mt-auto"}`}>
+      <div
+        className={`rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 ${
+          mobile ? "mt-6" : "mt-auto"
+        }`}
+      >
         <ThemeToggle />
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">Context</p>
-          <p className="mt-2 text-lg font-medium text-[var(--color-text-primary)]">
-            {hasProjectContext ? sectionTitle : sectionTitle === "Project" ? "Project" : sectionTitle}
+        <div className="mt-3 border-t border-[var(--color-border)] pt-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+            Context
           </p>
+          <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2">
+            <p className="min-w-0 truncate text-sm font-medium text-[var(--color-text-primary)]">
+              {hasProjectContext ? sectionTitle : sectionTitle === "Project" ? "Project" : sectionTitle}
+            </p>
+            <span className="shrink-0 font-mono text-[10px] font-medium text-[var(--color-text-muted)]">
+              v{APP_VERSION}
+            </span>
+          </div>
         </div>
-        <span className="app-theme-chip">v{APP_VERSION}</span>
       </div>
     </div>
   );

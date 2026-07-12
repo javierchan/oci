@@ -54,9 +54,10 @@ from app.schemas.ai_review import (
 )
 from app.schemas.catalog import CatalogIntegrationPatch
 from app.services import audit_service, catalog_service, service_rule_service
+from app.services.canvas_interoperability import CanvasDesignValidationError, parse_canvas_state
 from app.services.llm_review_client import LlmReviewResult, provider_status_payload, synthesize_review_summary
 from app.services.pattern_support import get_pattern_support
-from app.services.serializers import sanitize_for_json
+from app.services.serializers import sanitize_for_json, split_csv
 
 MAX_LINKED_INTEGRATIONS = 8
 AI_REVIEW_ACTOR_FALLBACK = "api-user"
@@ -172,7 +173,24 @@ def _tools_value(value: str | None) -> str | None:
     return ", ".join(parts) if parts else None
 
 
+def _canvas_governance_values(row: CatalogIntegration) -> tuple[str | None, str | None]:
+    """Return stable route-tool and overlay values without persisting canvas layout JSON."""
+
+    fallback_core = _tools_value(row.core_tools)
+    fallback_overlays = _tools_value(row.additional_tools_overlays)
+    try:
+        parsed = parse_canvas_state(row.additional_tools_overlays, split_csv(row.core_tools))
+    except CanvasDesignValidationError:
+        return fallback_core, fallback_overlays
+
+    return (
+        _tools_value(", ".join(parsed.core_tool_keys)),
+        _tools_value(", ".join(parsed.overlay_keys)),
+    )
+
+
 def _row_baseline_state(row: CatalogIntegration) -> dict[str, object | None]:
+    core_tools, overlays = _canvas_governance_values(row)
     return {
         "id": row.id,
         "seq_number": row.seq_number,
@@ -181,8 +199,8 @@ def _row_baseline_state(row: CatalogIntegration) -> dict[str, object | None]:
         "source_system": row.source_system,
         "destination_system": row.destination_system,
         "selected_pattern": row.selected_pattern,
-        "core_tools": _tools_value(row.core_tools),
-        "additional_tools_overlays": _tools_value(row.additional_tools_overlays),
+        "core_tools": core_tools,
+        "additional_tools_overlays": overlays,
         "trigger_type": row.trigger_type,
         "payload_per_execution_kb": row.payload_per_execution_kb,
         "qa_status": row.qa_status,
@@ -229,9 +247,29 @@ def _stringify_drift_value(value: object | None) -> str | None:
     return str(value)
 
 
+def _read_canvas_overlay_value(value: object | None) -> object | None:
+    if not isinstance(value, str) or not value.strip().startswith("{"):
+        return value
+    try:
+        parsed = parse_canvas_state(value, ())
+    except CanvasDesignValidationError:
+        return value
+    return ", ".join(parsed.overlay_keys) if parsed.overlay_keys else None
+
+
+def _display_drift_value(field: str, value: object | None) -> str | None:
+    if field == "additional_tools_overlays":
+        value = _read_canvas_overlay_value(value)
+    return _stringify_drift_value(value)
+
+
 def _normalize_drift_value(field: str, value: object | None) -> str:
     if value is None:
         return ""
+    if field == "additional_tools_overlays":
+        value = _read_canvas_overlay_value(value)
+        if value is None:
+            return ""
     if field in {"core_tools", "additional_tools_overlays"}:
         return "|".join(sorted(part.strip().lower() for part in str(value).split(",") if part.strip()))
     if field == "payload_per_execution_kb":
@@ -313,8 +351,8 @@ def _drift_report(
                     integration_id=planned_id,
                     field=field,
                     label=f"{label} · {field_label}",
-                    planned=_stringify_drift_value(planned_value),
-                    actual=_stringify_drift_value(actual_value),
+                    planned=_display_drift_value(field, planned_value),
+                    actual=_display_drift_value(field, actual_value),
                     detail=f"{field_label} differs from the approved planned baseline.",
                     action_href=_integration_href(project_id, planned_id),
                 )

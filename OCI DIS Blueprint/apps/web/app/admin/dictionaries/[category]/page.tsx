@@ -280,7 +280,7 @@ export default function AdminDictionaryCategoryPage({
               >
                 <div>
                   <p className="app-label">Code</p>
-                  <p className="mt-1 font-mono text-sm font-semibold text-[var(--color-text-primary)]">
+                  <p data-testid="dictionary-code" className="mt-1 font-mono text-sm font-semibold text-[var(--color-text-primary)]">
                     {option.code || "Uncoded"}
                   </p>
                 </div>

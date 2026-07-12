@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -100,6 +101,30 @@ class DashboardServiceRuleStatus(BaseModel):
     last_verified_at: str | None = None
 
 
+class DashboardProductUsage(BaseModel):
+    """One captured product and the integrations that use it."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    tool_key: str
+    service_id: str | None = None
+    role: Literal["core", "overlay"]
+    integration_count: int = 0
+    coverage_ratio: float = 0.0
+
+
+class DashboardProductFootprint(BaseModel):
+    """Complete product inventory derived from governed catalog canvases."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    captured_product_count: int = 0
+    represented_product_count: int = 0
+    rows_with_products: int = 0
+    total_rows: int = 0
+    products: list[DashboardProductUsage] = Field(default_factory=list)
+
+
 class DashboardCharts(BaseModel):
     """Composite dashboard chart payload."""
 
@@ -111,6 +136,7 @@ class DashboardCharts(BaseModel):
     payload_distribution: list[PayloadDistributionBucket] = Field(default_factory=list)
     forecast_confidence: DashboardForecastConfidence = Field(default_factory=DashboardForecastConfidence)
     service_rules: DashboardServiceRuleStatus = Field(default_factory=DashboardServiceRuleStatus)
+    product_footprint: DashboardProductFootprint = Field(default_factory=DashboardProductFootprint)
 
 
 class DashboardRisk(BaseModel):

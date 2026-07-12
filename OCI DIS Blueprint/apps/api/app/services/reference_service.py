@@ -35,6 +35,7 @@ from app.services import audit_service
 from app.services.pattern_support import get_pattern_support
 
 PATTERN_ID_RE = re.compile(r"^#\d{2}$")
+FREQUENCY_CODE_RE = re.compile(r"^FQ\d{2}$")
 
 
 def serialize_pattern(pattern: PatternDefinition) -> PatternDefinitionResponse:
@@ -131,6 +132,44 @@ def serialize_assumption_set(assumption_set: AssumptionSet) -> AssumptionSetResp
         created_at=assumption_set.created_at,
         updated_at=assumption_set.updated_at,
     )
+
+
+def _normalize_dictionary_code(category: str, code: str | None) -> str | None:
+    normalized = code.strip().upper() if code else None
+    if category == "FREQUENCY" and (normalized is None or not FREQUENCY_CODE_RE.fullmatch(normalized)):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "detail": "Frequency code must use FQNN format, for example FQ17.",
+                "error_code": "INVALID_FREQUENCY_CODE",
+            },
+        )
+    return normalized
+
+
+async def _ensure_dictionary_code_available(
+    category: str,
+    code: str | None,
+    db: AsyncSession,
+    *,
+    exclude_option_id: str | None = None,
+) -> None:
+    if code is None:
+        return
+    query = select(DictionaryOption.id).where(
+        DictionaryOption.category == category,
+        func.upper(DictionaryOption.code) == code,
+    )
+    if exclude_option_id is not None:
+        query = query.where(DictionaryOption.id != exclude_option_id)
+    if await db.scalar(query) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": f"Dictionary code {code} already exists in {category}.",
+                "error_code": "DICTIONARY_CODE_EXISTS",
+            },
+        )
 
 
 async def list_patterns(db: AsyncSession) -> PatternListResponse:
@@ -398,7 +437,13 @@ async def create_dictionary_option(
     """Create a new governed dictionary option and audit the insert."""
 
     normalized_category = normalize_dictionary_category(category)
-    option = DictionaryOption(category=normalized_category, **body.model_dump())
+    normalized_code = _normalize_dictionary_code(normalized_category, body.code)
+    await _ensure_dictionary_code_available(normalized_category, normalized_code, db)
+    option = DictionaryOption(
+        category=normalized_category,
+        **body.model_dump(exclude={"code"}),
+        code=normalized_code,
+    )
     db.add(option)
     await db.flush()
     await db.refresh(option)
@@ -429,6 +474,16 @@ async def update_dictionary_option(
     patch = body.model_dump(exclude_none=True)
     if not patch:
         return serialize_dictionary_option(option)
+
+    if "code" in patch:
+        normalized_code = _normalize_dictionary_code(option.category, cast(str, patch["code"]))
+        await _ensure_dictionary_code_available(
+            option.category,
+            normalized_code,
+            db,
+            exclude_option_id=option.id,
+        )
+        patch["code"] = normalized_code
 
     old_value = serialize_dictionary_option(option).model_dump()
     for field, value in patch.items():

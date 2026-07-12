@@ -15,7 +15,7 @@ const COMPLEXITY_STYLES: Record<string, string> = {
 export function ComplexityBadge({ value }: ComplexityBadgeProps): JSX.Element {
   if (!value) {
     return (
-      <span className="inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-medium text-[var(--color-text-muted)]">
+      <span className="catalog-badge border-[var(--color-border)] bg-[var(--color-surface-3)] text-[var(--color-text-muted)]">
         —
       </span>
     );
@@ -23,7 +23,7 @@ export function ComplexityBadge({ value }: ComplexityBadgeProps): JSX.Element {
 
   return (
     <span
-      className={`inline-flex rounded-full border border-transparent px-3 py-1 text-xs font-medium ${COMPLEXITY_STYLES[value] ?? "bg-[var(--color-surface-3)] text-[var(--color-text-secondary)]"}`}
+      className={`catalog-badge border-transparent ${COMPLEXITY_STYLES[value] ?? "bg-[var(--color-surface-3)] text-[var(--color-text-secondary)]"}`}
     >
       {displayComplexity(value)}
     </span>

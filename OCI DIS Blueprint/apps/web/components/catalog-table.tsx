@@ -782,7 +782,7 @@ export function CatalogTable({
                           <div className="mt-3 flex flex-wrap gap-2">
                             {selectedCoreTools.length > 0 ? (
                               selectedCoreTools.map((tool) => (
-                                <span key={tool} className="console-pill">
+                                <span key={tool} className="catalog-badge border-[var(--color-border)] bg-[var(--color-surface-3)] text-[var(--color-text-secondary)]">
                                   {tool}
                                 </span>
                               ))
@@ -796,7 +796,7 @@ export function CatalogTable({
                           <div className="mt-3 flex flex-wrap gap-2">
                             {selectedOverlayTools.length > 0 ? (
                               selectedOverlayTools.map((tool) => (
-                                <span key={tool} className="console-pill">
+                                <span key={tool} className="catalog-badge border-[var(--color-border)] bg-[var(--color-surface-3)] text-[var(--color-text-secondary)]">
                                   {tool}
                                 </span>
                               ))
