@@ -9,7 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.models import SyntheticGenerationJob
+from app.models import AgentRun, SupportConversation, SupportMessage, SyntheticGenerationJob
 from app.models.project import Project, ProjectStatus
 from app.routers import admin_synthetic
 
@@ -299,8 +299,34 @@ async def test_admin_synthetic_cleanup_archives_and_deletes_project(
             },
         )
         session.add(job)
+        agent_run = AgentRun(
+            agent_type="architecture_review",
+            definition_version="1.0.0",
+            project_id=project["id"],
+            requested_by="admin-user",
+            status="completed",
+            context_payload={"project_id": project["id"]},
+            result_payload={"summary": "Review retained in support history."},
+        )
+        conversation = SupportConversation(
+            session_id="synthetic-cleanup-session",
+            actor_id="admin-user",
+            title="Synthetic cleanup support",
+        )
+        session.add_all([agent_run, conversation])
+        await session.flush()
+        support_message = SupportMessage(
+            conversation_id=conversation.id,
+            role="assistant",
+            content="Review retained after project cleanup.",
+            agent_run_id=agent_run.id,
+            context_snapshot={"project_id": project["id"]},
+        )
+        session.add(support_message)
         await session.commit()
         job_id = job.id
+        agent_run_id = agent_run.id
+        support_message_id = support_message.id
 
     cleanup_response = await api_client.post(
         f"/api/v1/admin/synthetic/jobs/{job_id}/cleanup",
@@ -313,6 +339,12 @@ async def test_admin_synthetic_cleanup_archives_and_deletes_project(
 
     get_project_response = await api_client.get(f"/api/v1/projects/{project['id']}")
     assert get_project_response.status_code == 404
+
+    async with session_factory() as session:
+        assert await session.get(AgentRun, agent_run_id) is None
+        retained_message = await session.get(SupportMessage, support_message_id)
+        assert retained_message is not None
+        assert retained_message.agent_run_id is None
 
 
 @pytest.mark.asyncio

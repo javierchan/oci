@@ -3,17 +3,29 @@
 from __future__ import annotations
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
+    AgentApproval,
+    AgentArtifact,
+    AgentRun,
+    AgentStep,
+    AiReviewBaseline,
+    AiReviewJob,
     AuditEvent,
+    BomJob,
+    BomLineItem,
+    BomSnapshot,
     CatalogIntegration,
     DashboardSnapshot,
+    DeploymentScenario,
     ImportBatch,
     JustificationRecord,
     Project,
     SourceIntegrationRow,
+    SupportMessage,
+    SyntheticGenerationJob,
     VolumetrySnapshot,
 )
 from app.models.project import ProjectStatus
@@ -205,6 +217,32 @@ async def delete_project(project_id: str, actor_id: str, db: AsyncSession) -> Pr
         new_value=response.model_dump(),
         project_id=None,
         db=db,
+    )
+
+    agent_run_ids = select(AgentRun.id).where(AgentRun.project_id == project_id)
+    await db.execute(
+        update(SupportMessage)
+        .where(SupportMessage.agent_run_id.in_(agent_run_ids))
+        .values(agent_run_id=None)
+    )
+    await db.execute(delete(AgentApproval).where(AgentApproval.run_id.in_(agent_run_ids)))
+    await db.execute(delete(AgentArtifact).where(AgentArtifact.run_id.in_(agent_run_ids)))
+    await db.execute(delete(AgentStep).where(AgentStep.run_id.in_(agent_run_ids)))
+    await db.execute(delete(AgentRun).where(AgentRun.project_id == project_id))
+
+    await db.execute(delete(AiReviewJob).where(AiReviewJob.project_id == project_id))
+    await db.execute(delete(AiReviewBaseline).where(AiReviewBaseline.project_id == project_id))
+
+    bom_snapshot_ids = select(BomSnapshot.id).where(BomSnapshot.project_id == project_id)
+    await db.execute(delete(BomLineItem).where(BomLineItem.bom_snapshot_id.in_(bom_snapshot_ids)))
+    await db.execute(delete(BomSnapshot).where(BomSnapshot.project_id == project_id))
+    await db.execute(delete(BomJob).where(BomJob.project_id == project_id))
+    await db.execute(delete(DeploymentScenario).where(DeploymentScenario.project_id == project_id))
+
+    await db.execute(
+        update(SyntheticGenerationJob)
+        .where(SyntheticGenerationJob.project_id == project_id)
+        .values(project_id=None)
     )
 
     for snapshot in dashboard_snapshots:
