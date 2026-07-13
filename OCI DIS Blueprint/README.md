@@ -99,8 +99,10 @@ the endpoint truthfully reports process-local fallback metrics.
 See [`docs/architecture/oci-agent-runtime.md`](./docs/architecture/oci-agent-runtime.md).
 
 The global OCI DIS App Assistant persists across navigation, understands the
-current project/integration/BOM/topology route, accepts explicitly pinned App
-views, and refuses unrelated questions. See
+current integration and its ordered business process as well as project,
+governance, import, BOM, and topology evidence, accepts explicitly added App
+contexts, and refuses unrelated questions. Model history is not evidence, and an
+output-grounding gate replaces unsupported synthesis with a concise governed brief. See
 [`docs/architecture/contextual-support-assistant.md`](./docs/architecture/contextual-support-assistant.md).
 
 ## Offline Capture Workbook
@@ -334,6 +336,7 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M35 | Session-Isolated Contextual App Assistant | ✅ Complete | 2026-07-12 |
 | M36 | OCI GenAI Resilience + Safety | ✅ Complete | 2026-07-12 |
 | M37 | OCI GenAI Operational Telemetry | ✅ Complete | 2026-07-12 |
+| M38 | Contextual Assistant UX + App-wide Grounding | ✅ Complete | 2026-07-12 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot

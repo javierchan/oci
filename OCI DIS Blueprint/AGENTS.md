@@ -445,6 +445,23 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       Guardrails blocking; OpenAPI, backend/frontend gates, Redis aggregation,
       real OCI smoke, Docker runtime, and light/dark browser validation pass
 
+### M38 — Contextual Assistant UX + App-wide Grounding
+- [x] Replace the overlapping support panel with a responsive chat layout that
+      separates header, scrollable conversation, explicit context, and composer controls
+- [x] Rename view attachment to `Add context` and preserve up to eight governed
+      App contexts across project and admin navigation
+- [x] Expand bounded read-only evidence across App navigation, governance, patterns,
+      Service Products, projects, imports, integrations, ordered business processes,
+      Dashboard, topology context, deployment scenarios, and BOM
+- [x] Treat previous user questions as dialogue continuity while excluding prior
+      model answers from authoritative architecture evidence
+- [x] Add an output-grounding gate that rejects unsupported sensitive claims,
+      invented approval/deployment actions, tables, and excessive verbosity, then
+      returns a concise deterministic brief with auditable fallback state
+- [x] **Exit criteria**: backend and frontend gates, Node 26 production build,
+      healthy Docker stack, real OCI contextual answer, grounding fallback,
+      cross-route persistence, mobile/desktop light/dark visuals, and console pass
+
 ### M26 — Topology Decision Workspace
 - [x] Separate statistical majority from conservative edge risk so mixed paths
       cannot render as healthy when review or pending integrations are present

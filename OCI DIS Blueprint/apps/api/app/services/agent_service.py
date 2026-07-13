@@ -37,7 +37,7 @@ from app.schemas.agent import (
     AgentRunStatusValue,
     AgentType,
 )
-from app.services import audit_service
+from app.services import audit_service, support_service
 from app.services.authz import normalize_role, require_roles
 from app.services.genai_client import GenAiAgentResult, run_governed_tool_agent
 from app.services.genai_client import provider_status_payload
@@ -453,10 +453,18 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         if result and result.summary
         else _deterministic_summary(definition, evidence)
     )
+    grounding_fallback = False
+    if (
+        definition.type == "support_assistant"
+        and evidence.get("in_scope") is not False
+        and not safety_refused
+        and not support_service.support_summary_is_grounded(summary, evidence)
+    ):
+        summary = str(evidence.get("fallback_answer") or _deterministic_summary(definition, evidence))
+        grounding_fallback = True
+    provider_step.output_payload["grounding_fallback"] = grounding_fallback
     provider_status = result.status if result else "skipped"
     if definition.type == "support_assistant":
-        from app.services import support_service
-
         message_id = context.get("support_assistant_message_id")
         citations_value = evidence.get("citations")
         citations = (
@@ -504,6 +512,7 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         "provider_transport": result.transport if result else None,
         "provider_retry_count": result.retry_count if result else 0,
         "guardrails_status": result.guardrails_status if result else "skipped",
+        "grounding_fallback": grounding_fallback,
         "tool": tool_name,
         "evidence": sanitize_for_json(evidence),
         "authority": "governed_deterministic_evidence",
@@ -563,8 +572,6 @@ async def mark_agent_run_failed(run_id: str, error: dict[str, object], db: Async
             legacy_job.finished_at = run.finished_at
     message_id = cast(dict[str, object], run.context_payload).get("support_assistant_message_id")
     if run.agent_type == "support_assistant" and isinstance(message_id, str):
-        from app.services import support_service
-
         await support_service.fail_support_message(message_id, db)
     await db.flush()
     return await serialize_agent_run(run, db)

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.models import CatalogIntegration, PatternDefinition, Project, ServiceCapabilityProfile
 from app.routers import support as support_router
 from app.services import agent_service, support_service
 
@@ -76,7 +78,7 @@ async def test_support_conversation_is_isolated_and_out_of_scope_is_refused(
     )
     final_message = refreshed.json()["messages"][-1]
     assert final_message["status"] == "refused"
-    assert "only help with OCI DIS Architect" in final_message["content"]
+    assert "help with OCI DIS Architect" in final_message["content"]
 
 
 @pytest.mark.asyncio
@@ -113,3 +115,138 @@ async def test_support_turn_persists_explicit_component_context(
     user_message = submitted.json()["messages"][-2]
     assert user_message["attachments"][0]["label"] == "Integration Detail"
     assert user_message["attachments"][0]["context"] == {"selected_tab": "canvas"}
+
+
+@pytest.mark.asyncio
+async def test_support_evidence_connects_integration_to_business_process_and_governance(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            project = Project(
+                name="Support Evidence Project",
+                description="Governed order lifecycle assessment",
+                status="active",
+                owner_id="support-owner",
+            )
+            session.add(project)
+            await session.flush()
+            first = CatalogIntegration(
+                project_id=project.id,
+                seq_number=1,
+                interface_id="SUP-001",
+                interface_name="Capture Customer Order",
+                description="Receives a validated customer order.",
+                business_process="Order to Cash",
+                source_system="Commerce",
+                destination_system="Order Management",
+                selected_pattern="#98",
+                qa_status="OK",
+            )
+            second = CatalogIntegration(
+                project_id=project.id,
+                seq_number=2,
+                interface_id="SUP-002",
+                interface_name="Create Receivable",
+                description="Creates the customer receivable after fulfillment.",
+                business_process="Order to Cash",
+                source_system="Order Management",
+                destination_system="Finance",
+                selected_pattern="#98",
+                qa_status="REVISAR",
+            )
+            session.add_all(
+                [
+                    first,
+                    second,
+                    PatternDefinition(
+                        pattern_id="#98",
+                        name="Support Test Pattern",
+                        category="Test",
+                        description="A governed test pattern.",
+                        is_active=True,
+                    ),
+                    ServiceCapabilityProfile(
+                        service_id="support-test-service",
+                        name="Support Test Service",
+                        category="Integration",
+                        architectural_fit="Routes governed application messages.",
+                        is_active=True,
+                    ),
+                ]
+            )
+            await session.flush()
+            evidence = await support_service.build_support_evidence(
+                project.id,
+                first.id,
+                {
+                    "question": "Explain the Order to Cash process, its pattern, and Service Products.",
+                    "route": f"/projects/{project.id}/catalog/{first.id}",
+                    "page_title": "Integration Detail",
+                    "attachments": [],
+                    "transcript": [
+                        {"role": "user", "content": "What does this process do?"},
+                        {"role": "assistant", "content": "An earlier unverified model answer."},
+                    ],
+                },
+                session,
+            )
+
+    integration_evidence = cast(dict[str, object], evidence["integration"])
+    process_evidence = cast(dict[str, object], evidence["business_process_flow"])
+    ordered_integrations = cast(list[dict[str, object]], process_evidence["ordered_integrations"])
+    pattern_library = cast(list[dict[str, object]], evidence["pattern_library"])
+    service_library = cast(list[dict[str, object]], evidence["service_product_library"])
+    assert evidence["in_scope"] is True
+    assert len(cast(list[object], evidence["app_sections"])) == 8
+    assert integration_evidence["description"] == "Receives a validated customer order."
+    assert process_evidence["name"] == "Order to Cash"
+    assert process_evidence["captured_predecessor"] is None
+    assert process_evidence["captured_successor"] == "Create Receivable"
+    assert [item["name"] for item in ordered_integrations] == [
+        "Capture Customer Order",
+        "Create Receivable",
+    ]
+    assert any(item["name"] == "Support Test Pattern" for item in pattern_library)
+    assert any(
+        item["name"] == "Support Test Service" for item in service_library
+    )
+    assert evidence["conversation_questions"] == [
+        {"role": "user", "content": "What does this process do?"}
+    ]
+    assert "Capture Customer Order moves governed data" in str(evidence["fallback_answer"])
+
+
+def test_support_summary_grounding_rejects_unsupported_actions_and_sensitive_claims() -> None:
+    evidence: dict[str, object] = {
+        "integration": {
+            "recommended_next_action": "Review the captured process boundary and saved design."
+        }
+    }
+
+    assert support_service.support_summary_is_grounded(
+        "QA is OK. Review the captured process boundary and saved design.", evidence
+    )
+    assert not support_service.support_summary_is_grounded(
+        "Approve this integration and continue to deployment.", evidence
+    )
+    assert not support_service.support_summary_is_grounded(
+        "This avoids GDPR sanctions.", evidence
+    )
+    spanish_fallback = support_service._support_fallback_answer(
+        {
+            "response_language": "es",
+            "integration": {
+                "name": "Pedido a Inventario",
+                "source_system": "ERP",
+                "destination_system": "Inventario",
+                "business_process": "Order to Cash",
+                "qa_status": "OK",
+                "qa_reasons": [],
+                "needs_attention": False,
+            },
+        }
+    )
+    assert "mueve datos gobernados" in spanish_fallback
+    assert "Siguiente paso" in spanish_fallback

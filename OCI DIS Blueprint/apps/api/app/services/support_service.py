@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 from typing import Literal, cast
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -12,11 +13,16 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
+    AssumptionSet,
     BomSnapshot,
     CatalogIntegration,
     DashboardSnapshot,
     DeploymentScenario,
+    DictionaryOption,
+    ImportBatch,
+    PatternDefinition,
     Project,
+    ServiceCapabilityProfile,
     SupportAttachment,
     SupportConversation,
     SupportMessage,
@@ -31,8 +37,9 @@ from app.services.serializers import sanitize_for_json
 
 
 OUT_OF_SCOPE_RESPONSE = (
-    "I can only help with OCI DIS Architect, its workflows, and the integration architecture, "
-    "topology, Service Product, volumetry, pricing, or BOM evidence available in this App."
+    "I’m here to help with OCI DIS Architect and the architecture work inside it. "
+    "Ask me about a project, integration, business process, topology, Service Product, volumetry, "
+    "pricing, BOM, or how to use this workspace."
 )
 APP_DOMAIN_PATTERN = re.compile(
     r"\b(oci|dis|architect|app|application|project|integration|interface|catalog|capture|import|dashboard|"
@@ -49,6 +56,44 @@ OUTSIDE_TOPIC_PATTERN = re.compile(
     r"\b(weather|forecast outside|sports|score|recipe|poem|song|politics|president|celebrity|horoscope|"
     r"clima|deportes|receta|poema|cancion|politica|presidente|celebridad|horoscopo)\b",
     re.IGNORECASE,
+)
+MARKDOWN_TABLE_PATTERN = re.compile(r"(?m)^\s*\|.+\|\s*$")
+UNGROUNDED_SENSITIVE_TERMS: tuple[str, ...] = (
+    "gdpr",
+    "hipaa",
+    "pci dss",
+    "soc 2",
+    "sanction",
+    "sanción",
+    "sancion",
+)
+UNGROUNDED_ACTION_TERMS: tuple[str, ...] = (
+    "approve",
+    "approval",
+    "aprobar",
+    "aprobación",
+    "aprobacion",
+    "deploy",
+    "deployment",
+    "despliegue",
+    "production test",
+    "prueba en producción",
+    "prueba en produccion",
+)
+SPANISH_QUESTION_PATTERN = re.compile(
+    r"[¿¡áéíóúñ]|\b(qué|que|cómo|como|cuál|cual|dónde|donde|esta|este|integración|proceso|ayuda|siguiente)\b",
+    re.IGNORECASE,
+)
+
+APP_SECTIONS: tuple[dict[str, str], ...] = (
+    {"name": "Projects", "route": "/projects", "purpose": "Open and manage independent architecture assessments."},
+    {"name": "Dashboard", "route": "/projects/{project_id}", "purpose": "Review coverage, products, maturity, and prioritized risks."},
+    {"name": "Import", "route": "/projects/{project_id}/import", "purpose": "Download, upload, trace, and review governed workbook capture."},
+    {"name": "Capture", "route": "/projects/{project_id}/capture", "purpose": "Define an integration through the governed capture workflow."},
+    {"name": "Catalog", "route": "/projects/{project_id}/catalog", "purpose": "Review integration definitions, lineage, QA, patterns, and design decisions."},
+    {"name": "Map", "route": "/projects/{project_id}/graph", "purpose": "Investigate system dependencies, paths, concentration, and blast radius."},
+    {"name": "BOM & Cost", "route": "/projects/{project_id}/bom", "purpose": "Build governed deployment scenarios and immutable OCI estimates."},
+    {"name": "Library", "route": "/admin", "purpose": "Govern patterns, dictionaries, assumptions, Service Products, pricing, and agents."},
 )
 
 
@@ -78,6 +123,105 @@ def question_is_in_scope(question: str, *, has_context: bool) -> bool:
     if normalized.lower() in {"hello", "hi", "help", "hola", "ayuda", "what can you do?", "que puedes hacer?"}:
         return True
     return has_context and bool(REFERENTIAL_PATTERN.search(normalized))
+
+
+def support_summary_is_grounded(summary: str, evidence: dict[str, object]) -> bool:
+    """Reject verbose or sensitive support synthesis not supported by tool evidence."""
+
+    normalized_summary = summary.casefold()
+    serialized_evidence = str(sanitize_for_json(evidence)).casefold()
+    if len(summary.split()) > 280 or MARKDOWN_TABLE_PATTERN.search(summary):
+        return False
+    if any(term in normalized_summary and term not in serialized_evidence for term in UNGROUNDED_SENSITIVE_TERMS):
+        return False
+    recommended_action = ""
+    integration = evidence.get("integration")
+    if isinstance(integration, dict):
+        recommended_action = str(integration.get("recommended_next_action") or "").casefold()
+    return not any(
+        term in normalized_summary and term not in recommended_action
+        for term in UNGROUNDED_ACTION_TERMS
+    )
+
+
+def _support_fallback_answer(evidence: dict[str, object]) -> str:
+    """Build a concise App-owned answer when provider grounding is insufficient."""
+
+    spanish = evidence.get("response_language") == "es"
+    integration = evidence.get("integration")
+    process = evidence.get("business_process_flow")
+    if isinstance(integration, dict):
+        name = str(integration.get("name") or integration.get("interface_id") or "This integration")
+        source = str(integration.get("source_system") or "an uncaptured source")
+        destination = str(integration.get("destination_system") or "an uncaptured destination")
+        process_name = str(integration.get("business_process") or "an uncaptured business process")
+        lines = [
+            f"{name} mueve datos gobernados de {source} a {destination} dentro de {process_name}."
+            if spanish
+            else f"{name} moves governed data from {source} to {destination} within {process_name}.",
+        ]
+        if isinstance(process, dict):
+            predecessor = process.get("captured_predecessor")
+            successor = process.get("captured_successor")
+            if spanish:
+                lines.append(
+                    f"Antes: {predecessor}."
+                    if predecessor
+                    else "Antes: no hay una integración precedente capturada en este proceso."
+                )
+                lines.append(
+                    f"Después: {successor}."
+                    if successor
+                    else "Después: no hay una integración posterior capturada en este proceso."
+                )
+            else:
+                lines.append(
+                    f"Before: {predecessor}."
+                    if predecessor
+                    else "Before: no preceding integration is captured in this process."
+                )
+                lines.append(
+                    f"After: {successor}."
+                    if successor
+                    else "After: no following integration is captured in this process."
+                )
+        qa_status = str(integration.get("qa_status") or "Not captured")
+        qa_reasons = integration.get("qa_reasons")
+        if integration.get("needs_attention"):
+            reason_text = "; ".join(str(item) for item in qa_reasons) if isinstance(qa_reasons, list) else ""
+            attention = (
+                f"Atención: QA está en {qa_status}. {reason_text}"
+                if spanish
+                else f"Attention: QA is {qa_status}. {reason_text}"
+            )
+            lines.append(attention.strip())
+        else:
+            lines.append(
+                f"Atención: QA está en {qa_status}; no se identificó remediación a nivel de integración."
+                if spanish
+                else f"Attention: QA is {qa_status}; no row-level remediation is identified."
+            )
+        if spanish:
+            lines.append(
+                "Siguiente paso: revisa el límite capturado del proceso y el diseño guardado antes del cierre de arquitectura."
+                if not integration.get("needs_attention")
+                else "Siguiente paso: revisa las razones de QA y completa los campos gobernados faltantes en el detalle de la integración."
+            )
+        else:
+            lines.append(f"Next: {integration.get('recommended_next_action')}")
+        return "\n\n".join(lines)
+    project = evidence.get("project")
+    if isinstance(project, dict):
+        return (
+            f"{project.get('name')} contains {project.get('integration_count')} governed integrations. "
+            "I can help you inspect its QA distribution, business processes, topology, or latest BOM.\n\n"
+            "Tell me which decision you are working through, or add the relevant App context."
+        )
+    return (
+        "I can help you move through OCI DIS Architect and explain the governed evidence behind an integration, "
+        "business process, topology path, Service Product, or BOM.\n\n"
+        "Open the relevant workspace or add its context, then ask the decision you need to make."
+    )
 
 
 async def _conversation_for_session(
@@ -320,9 +464,10 @@ async def build_support_evidence(
     context: dict[str, object],
     db: AsyncSession,
 ) -> dict[str, object]:
-    """Build bounded governed evidence for one contextual support answer."""
+    """Build bounded, App-wide governed evidence for one contextual answer."""
 
     question = str(context.get("question") or context.get("message") or "").strip()
+    question_lower = question.casefold()
     attachments = cast(
         list[object], context.get("attachments") if isinstance(context.get("attachments"), list) else []
     )
@@ -337,43 +482,236 @@ async def build_support_evidence(
             "authority": "app_domain_policy",
             "citations": [],
         }
+
+    route = str(context.get("route") or "/projects")
+    citations: list[dict[str, str]] = [{"label": "Current context", "href": route}]
+    pattern_count = int(
+        await db.scalar(
+            select(func.count()).select_from(PatternDefinition).where(PatternDefinition.is_active.is_(True))
+        )
+        or 0
+    )
+    service_count = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(ServiceCapabilityProfile)
+            .where(ServiceCapabilityProfile.is_active.is_(True))
+        )
+        or 0
+    )
+    dictionary_count = int(
+        await db.scalar(
+            select(func.count()).select_from(DictionaryOption).where(DictionaryOption.is_active.is_(True))
+        )
+        or 0
+    )
+    assumption_count = int(await db.scalar(select(func.count()).select_from(AssumptionSet)) or 0)
     evidence: dict[str, object] = {
         "in_scope": True,
         "application": "OCI DIS Architect",
-        "current_view": {
-            "route": context.get("route"),
+        "answer_policy": {
+            "authority": "Only facts in this tool result are authoritative.",
+            "unknowns": "Say what evidence is missing instead of supplying generic external facts.",
+            "style": "Answer naturally and directly. Use short paragraphs or bullets, never a Markdown table.",
+        },
+        "response_language": "es" if SPANISH_QUESTION_PATTERN.search(question) else "en",
+        "current_context": {
+            "route": route,
             "page_title": context.get("page_title"),
         },
         "attached_components": attachments[:8],
-        "conversation": transcript[:12],
-        "capabilities": [
-            "governed workbook import and capture",
-            "integration catalog and lineage",
-            "volumetry and QA",
-            "integration design canvas and topology",
-            "Service Product Library and interoperability",
-            "governed OCI pricing and Bill of Materials",
-            "evidence-backed architecture and specialist agent reviews",
+        "conversation_questions": [
+            item
+            for item in transcript[:12]
+            if isinstance(item, dict) and item.get("role") == "user"
         ],
-        "citations": [{"label": "Current App view", "href": str(context.get("route") or "/projects")}],
+        "scope_rules": {
+            "conversation": "Previous questions provide dialogue continuity but are not architecture evidence.",
+            "integration": "Do not apply project-level risks to an integration unless its row evidence identifies the same issue.",
+            "process": "Do not invent predecessors, successors, events, approvals, or runtime behavior outside the captured ordered integrations.",
+            "actions": "Recommend only navigation, review, or missing capture supported by this result; never invent an approval workflow.",
+        },
+        "app_sections": list(APP_SECTIONS),
+        "governance_summary": {
+            "active_patterns": pattern_count,
+            "active_service_products": service_count,
+            "active_dictionary_options": dictionary_count,
+            "assumption_versions": assumption_count,
+        },
+        "citations": citations,
     }
+
+    wants_patterns = any(term in question_lower for term in ("pattern", "patrón", "patron")) or "/patterns" in route
+    wants_services = any(
+        term in question_lower
+        for term in ("service product", "servicio", "interoperability", "interoperabilidad", "limit", "límite")
+    ) or "/services" in route
+    if wants_patterns:
+        patterns = list(
+            (
+                await db.scalars(
+                    select(PatternDefinition)
+                    .where(PatternDefinition.is_active.is_(True))
+                    .order_by(PatternDefinition.pattern_id)
+                    .limit(24)
+                )
+            ).all()
+        )
+        evidence["pattern_library"] = [
+            {
+                "id": item.pattern_id,
+                "name": item.name,
+                "category": item.category,
+                "description": item.description,
+                "when_to_use": item.when_to_use,
+                "when_not_to_use": item.when_not_to_use,
+            }
+            for item in patterns
+        ]
+        citations.append({"label": "Pattern Library", "href": "/admin/patterns"})
+    if wants_services:
+        services = list(
+            (
+                await db.scalars(
+                    select(ServiceCapabilityProfile)
+                    .where(ServiceCapabilityProfile.is_active.is_(True))
+                    .order_by(ServiceCapabilityProfile.name)
+                    .limit(30)
+                )
+            ).all()
+        )
+        evidence["service_product_library"] = [
+            {
+                "id": item.service_id,
+                "name": item.name,
+                "category": item.category,
+                "architectural_fit": item.architectural_fit,
+                "interoperability_notes": item.interoperability_notes,
+            }
+            for item in services
+        ]
+        citations.append({"label": "Service Product Library", "href": "/admin/services"})
+
+    integration: CatalogIntegration | None = None
+    if integration_id:
+        candidate = await db.get(CatalogIntegration, integration_id)
+        if candidate is not None and (project_id is None or candidate.project_id == project_id):
+            integration = candidate
+            integration_needs_attention = str(integration.qa_status or "").upper() not in {"OK", "QA OK"}
+            evidence["integration"] = {
+                "id": integration.id,
+                "interface_id": integration.interface_id,
+                "name": integration.interface_name,
+                "description": integration.description,
+                "business_process": integration.business_process,
+                "owner": integration.owner,
+                "brand": integration.brand,
+                "status": integration.status,
+                "source_system": integration.source_system,
+                "source_technology": integration.source_technology,
+                "source_owner": integration.source_owner,
+                "destination_system": integration.destination_system,
+                "destination_technologies": [
+                    value
+                    for value in (
+                        integration.destination_technology_1,
+                        integration.destination_technology_2,
+                    )
+                    if value
+                ],
+                "destination_owner": integration.destination_owner,
+                "type": integration.type,
+                "trigger_type": integration.trigger_type,
+                "frequency": integration.frequency,
+                "executions_per_day": integration.executions_per_day,
+                "payload_per_execution_kb": integration.payload_per_execution_kb,
+                "payload_per_hour_kb": integration.payload_per_hour_kb,
+                "pattern": integration.selected_pattern,
+                "pattern_rationale": integration.pattern_rationale,
+                "qa_status": integration.qa_status,
+                "qa_reasons": integration.qa_reasons or [],
+                "core_tools": integration.core_tools,
+                "overlays": integration.additional_tools_overlays,
+                "retry_policy": integration.retry_policy,
+                "uncertainty": integration.uncertainty,
+                "needs_attention": integration_needs_attention,
+                "recommended_next_action": (
+                    "Review the listed QA reasons and complete the missing governed fields in Integration Detail."
+                    if integration_needs_attention
+                    else "No row-level QA remediation is identified. Review the captured process boundary and saved design before sign-off."
+                ),
+            }
+            citations.append(
+                {
+                    "label": integration.interface_name or integration.interface_id or "Integration",
+                    "href": f"/projects/{integration.project_id}/catalog/{integration.id}",
+                }
+            )
+
     if project_id:
         project = await db.get(Project, project_id)
         if project is not None:
             integration_count = int(
                 await db.scalar(
-                    select(func.count()).select_from(CatalogIntegration).where(CatalogIntegration.project_id == project.id)
+                    select(func.count())
+                    .select_from(CatalogIntegration)
+                    .where(CatalogIntegration.project_id == project.id)
                 )
                 or 0
             )
-            scenario_count = int(
-                await db.scalar(
-                    select(func.count()).select_from(DeploymentScenario).where(DeploymentScenario.project_id == project.id)
+            qa_rows = (
+                await db.execute(
+                    select(CatalogIntegration.qa_status, func.count())
+                    .where(CatalogIntegration.project_id == project.id)
+                    .group_by(CatalogIntegration.qa_status)
                 )
-                or 0
+            ).all()
+            process_rows = (
+                await db.execute(
+                    select(CatalogIntegration.business_process, func.count())
+                    .where(
+                        CatalogIntegration.project_id == project.id,
+                        CatalogIntegration.business_process.is_not(None),
+                        CatalogIntegration.business_process != "",
+                    )
+                    .group_by(CatalogIntegration.business_process)
+                    .order_by(func.count().desc(), CatalogIntegration.business_process)
+                    .limit(24)
+                )
+            ).all()
+            pattern_rows = (
+                await db.execute(
+                    select(CatalogIntegration.selected_pattern, func.count())
+                    .where(
+                        CatalogIntegration.project_id == project.id,
+                        CatalogIntegration.selected_pattern.is_not(None),
+                    )
+                    .group_by(CatalogIntegration.selected_pattern)
+                    .order_by(func.count().desc())
+                    .limit(20)
+                )
+            ).all()
+            latest_import = await db.scalar(
+                select(ImportBatch)
+                .where(ImportBatch.project_id == project.id)
+                .order_by(ImportBatch.created_at.desc())
+                .limit(1)
+            )
+            scenarios = list(
+                (
+                    await db.scalars(
+                        select(DeploymentScenario)
+                        .where(DeploymentScenario.project_id == project.id)
+                        .order_by(DeploymentScenario.updated_at.desc())
+                        .limit(8)
+                    )
+                ).all()
             )
             latest_bom = await db.scalar(
-                select(BomSnapshot).where(BomSnapshot.project_id == project.id).order_by(BomSnapshot.created_at.desc()).limit(1)
+                select(BomSnapshot)
+                .where(BomSnapshot.project_id == project.id)
+                .order_by(BomSnapshot.created_at.desc())
+                .limit(1)
             )
             latest_dashboard = await db.scalar(
                 select(DashboardSnapshot)
@@ -381,12 +719,48 @@ async def build_support_evidence(
                 .order_by(DashboardSnapshot.created_at.desc())
                 .limit(1)
             )
+            process_portfolio = [
+                {"name": str(name), "integration_count": int(count)}
+                for name, count in process_rows
+                if name
+            ]
             evidence["project"] = {
                 "id": project.id,
                 "name": project.name,
+                "description": project.description,
                 "status": project.status.value if hasattr(project.status, "value") else str(project.status),
                 "integration_count": integration_count,
-                "deployment_scenario_count": scenario_count,
+                "qa_distribution": {
+                    str(status or "UNSET"): int(count) for status, count in qa_rows
+                },
+                "business_processes": process_portfolio,
+                "pattern_distribution": {
+                    str(pattern or "UNSET"): int(count) for pattern, count in pattern_rows
+                },
+                "latest_import": (
+                    {
+                        "filename": latest_import.filename,
+                        "status": (
+                            latest_import.status.value
+                            if hasattr(latest_import.status, "value")
+                            else str(latest_import.status)
+                        ),
+                        "loaded_count": latest_import.loaded_count,
+                        "excluded_count": latest_import.excluded_count,
+                    }
+                    if latest_import
+                    else None
+                ),
+                "deployment_scenarios": [
+                    {
+                        "id": item.id,
+                        "name": item.name,
+                        "status": item.status,
+                        "region": item.region,
+                        "currency": item.currency,
+                    }
+                    for item in scenarios
+                ],
                 "latest_bom": (
                     {
                         "id": latest_bom.id,
@@ -402,43 +776,102 @@ async def build_support_evidence(
                     {
                         "snapshot_id": latest_dashboard.id,
                         "created_at": latest_dashboard.created_at,
-                        "risks": cast(list[object], latest_dashboard.risks or [])[:8],
+                        "kpis": cast(dict[str, object], latest_dashboard.kpi_strip or {}),
+                        "risks": cast(list[object], latest_dashboard.risks or [])[:10],
                         "maturity": cast(dict[str, object], latest_dashboard.maturity or {}),
                     }
                     if latest_dashboard
+                    and (
+                        integration is None
+                        or any(term in question_lower for term in ("dashboard", "project risk", "riesgo del proyecto"))
+                    )
                     else None
                 ),
             }
-            cast(list[dict[str, str]], evidence["citations"]).append(
-                {"label": project.name, "href": f"/projects/{project.id}"}
-            )
-    if integration_id:
-        integration = await db.get(CatalogIntegration, integration_id)
-        if integration is not None and (project_id is None or integration.project_id == project_id):
-            evidence["integration"] = {
-                "id": integration.id,
-                "interface_id": integration.interface_id,
-                "name": integration.interface_name,
-                "source_system": integration.source_system,
-                "destination_system": integration.destination_system,
-                "pattern": integration.selected_pattern,
-                "qa_status": integration.qa_status,
-                "qa_reasons": integration.qa_reasons or [],
-                "payload_per_execution_kb": integration.payload_per_execution_kb,
-                "frequency": integration.frequency,
-                "core_tools": integration.core_tools,
-                "overlays": integration.additional_tools_overlays,
-            }
-            cast(list[dict[str, str]], evidence["citations"]).append(
-                {
-                    "label": integration.interface_name or integration.interface_id or "Integration",
-                    "href": f"/projects/{integration.project_id}/catalog/{integration.id}",
+            citations.append({"label": project.name, "href": f"/projects/{project.id}"})
+
+            focus_process = integration.business_process if integration else None
+            if focus_process is None:
+                matches = [
+                    str(name)
+                    for name, _ in process_rows
+                    if name and str(name).casefold() in question_lower
+                ]
+                focus_process = max(matches, key=len) if matches else None
+            if focus_process:
+                process_integrations = list(
+                    (
+                        await db.scalars(
+                            select(CatalogIntegration)
+                            .where(
+                                CatalogIntegration.project_id == project.id,
+                                CatalogIntegration.business_process == focus_process,
+                            )
+                            .order_by(CatalogIntegration.seq_number)
+                            .limit(30)
+                        )
+                    ).all()
+                )
+                focus_index = next(
+                    (index for index, item in enumerate(process_integrations) if integration and item.id == integration.id),
+                    None,
+                )
+                evidence["business_process_flow"] = {
+                    "name": focus_process,
+                    "integration_count": len(process_integrations),
+                    "captured_predecessor": (
+                        process_integrations[focus_index - 1].interface_name
+                        if focus_index is not None and focus_index > 0
+                        else None
+                    ),
+                    "captured_successor": (
+                        process_integrations[focus_index + 1].interface_name
+                        if focus_index is not None and focus_index + 1 < len(process_integrations)
+                        else None
+                    ),
+                    "boundary_note": (
+                        "This is the only integration captured for this business process; no before or after step is evidenced."
+                        if len(process_integrations) == 1
+                        else "Before and after refer only to adjacent captured integrations in this ordered list."
+                    ),
+                    "ordered_integrations": [
+                        {
+                            "sequence": item.seq_number,
+                            "name": item.interface_name,
+                            "description": item.description,
+                            "source": item.source_system,
+                            "destination": item.destination_system,
+                            "pattern": item.selected_pattern,
+                            "qa_status": item.qa_status,
+                        }
+                        for item in process_integrations
+                    ],
                 }
-            )
-    evidence["fallback_answer"] = (
-        "I collected the governed context for this App view. OCI GenAI synthesis is unavailable right now; "
-        "use the cited project or integration record for the authoritative details."
-    )
+                citations.append(
+                    {
+                        "label": focus_process,
+                        "href": f"/projects/{project.id}/catalog?business_process={quote(focus_process)}",
+                    }
+                )
+    else:
+        projects = list(
+            (
+                await db.scalars(
+                    select(Project).order_by(Project.updated_at.desc()).limit(20)
+                )
+            ).all()
+        )
+        evidence["project_workspaces"] = [
+            {
+                "id": item.id,
+                "name": item.name,
+                "description": item.description,
+                "status": item.status.value if hasattr(item.status, "value") else str(item.status),
+            }
+            for item in projects
+        ]
+
+    evidence["fallback_answer"] = _support_fallback_answer(evidence)
     return cast(dict[str, object], sanitize_for_json(evidence))
 
 

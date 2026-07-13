@@ -26,11 +26,14 @@ conversation contract to its authenticated subject.
 
 - Current route and page title are attached to every turn.
 - Project and integration IDs are derived only from valid App routes.
-- Users can pin up to eight App views while navigating, then submit them with a question.
-- The worker loads bounded project, integration, latest Dashboard risk and maturity,
-  scenario, and latest BOM evidence through typed SQLAlchemy queries owned by the
-  application service.
-- The model receives the latest 12 completed turns and sanitized governed evidence.
+- Users can add up to eight explicit App contexts while navigating, then submit
+  them with a question.
+- The worker can read bounded App navigation, governance counts, pattern and
+  Service Product metadata, project portfolio, import, integration definition,
+  ordered business-process flow, Dashboard, deployment-scenario, and BOM evidence
+  through typed SQLAlchemy queries owned by the application service.
+- Previous user questions provide continuity. Previous model answers are never
+  reintroduced as architecture evidence.
 - Citations are App routes, not fabricated external references.
 
 ## Domain Boundary
@@ -39,6 +42,10 @@ A deterministic preflight classifier runs before OCI inference. Explicit outside
 topics are refused, and questions without App/domain terms require referential
 language plus attached App context. Refusal responses are application-owned; OCI
 cannot override them. Provider failure returns an honest deterministic fallback.
+An output-grounding gate also rejects unsupported sensitive claims, invented
+approval/deployment actions, Markdown tables, and excessive verbosity. Rejected
+synthesis is replaced by a concise App-owned answer built from the same evidence,
+while the AgentRun records that grounding fallback occurred.
 
 ## Persistence
 
@@ -51,8 +58,10 @@ cannot override them. Provider failure returns an honest deterministic fallback.
 
 The assistant is mounted in the root Next.js layout. Open state, session identity,
 conversation history, pending execution, and pinned contexts survive App Router
-navigation. The floating panel uses existing theme tokens and remains responsive
-on mobile and desktop.
+navigation. The floating panel uses a stable header, scroll-isolated conversation,
+single composer, explicit `Add context` action, and icon-only send command. It uses
+existing theme tokens and remains responsive on mobile and desktop without covering
+its own controls.
 
 Provider synthesis is constrained to short, decision-oriented answers in the
 user's language. It prioritizes governed counts and statuses, avoids Markdown
