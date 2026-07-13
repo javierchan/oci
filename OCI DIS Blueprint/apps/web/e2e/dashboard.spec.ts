@@ -21,6 +21,7 @@ async function findDashboardWithProducts(
   const projectsResponse = await request.get(`${apiBase}/api/v1/projects`);
   expect(projectsResponse.ok()).toBe(true);
   const projects = (await projectsResponse.json()) as ProjectList;
+  let best: { projectId: string; footprint: ProductFootprint } | null = null;
 
   for (const project of projects.projects) {
     const listResponse = await request.get(`${apiBase}/api/v1/dashboard/${project.id}/snapshots`);
@@ -33,9 +34,13 @@ async function findDashboardWithProducts(
     if (!snapshotResponse.ok()) continue;
     const snapshot = (await snapshotResponse.json()) as DashboardSnapshot;
     if (snapshot.charts.product_footprint.captured_product_count > 0) {
-      return { projectId: project.id, footprint: snapshot.charts.product_footprint };
+      const candidate = { projectId: project.id, footprint: snapshot.charts.product_footprint };
+      if (!best || candidate.footprint.total_rows > best.footprint.total_rows) {
+        best = candidate;
+      }
     }
   }
+  if (best) return best;
   throw new Error("E2E requires one Dashboard snapshot with captured products");
 }
 
