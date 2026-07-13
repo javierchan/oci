@@ -9,6 +9,7 @@ from httpx import Request, Response
 
 from app.core.config import Settings
 from app.services import genai_client
+from app.services.genai_telemetry import get_genai_metrics, reset_local_genai_metrics
 
 
 def _settings(key_path: Path, **overrides: object) -> Settings:
@@ -18,6 +19,7 @@ def _settings(key_path: Path, **overrides: object) -> Settings:
         "OCI_GENAI_COMPARTMENT_ID": "ocid1.compartment.oc1..test",
         "OCI_GENAI_BASE_URL": "https://example.test/openai/v1",
         "SECRET_KEY": "unit-test-safety-secret",
+        "OCI_GENAI_METRICS_REDIS_ENABLED": False,
     }
     values.update(overrides)
     return Settings.model_validate(values)
@@ -31,6 +33,7 @@ async def test_provider_retries_429_and_sends_hashed_safety_identifier(
     """A retryable throttle uses bounded backoff and never sends the raw actor ID."""
 
     key_path = tmp_path / "api_key"
+    reset_local_genai_metrics()
     key_path.write_text("sk-test", encoding="utf-8")
     calls: list[dict[str, object]] = []
     sleeps: list[float] = []
@@ -81,6 +84,13 @@ async def test_provider_retries_429_and_sends_hashed_safety_identifier(
     safety_identifier = str(calls[-1]["json"]["safety_identifier"])  # type: ignore[index]
     assert len(safety_identifier) == 64
     assert "architect" not in safety_identifier
+    metrics = await get_genai_metrics(_settings(key_path, OCI_GENAI_METRICS_REDIS_ENABLED=False))
+    counters = metrics["counters"]
+    assert isinstance(counters, dict)
+    assert counters["requests_total"] == 2
+    assert counters["successful_requests_total"] == 1
+    assert counters["retries_total"] == 1
+    assert counters["http_429_total"] == 1
 
 
 @pytest.mark.asyncio
@@ -91,6 +101,7 @@ async def test_auto_transport_caches_responses_404_and_falls_back_to_chat(
     """An unsupported Responses endpoint is probed once per process capability TTL."""
 
     key_path = tmp_path / "api_key"
+    reset_local_genai_metrics()
     key_path.write_text("sk-test", encoding="utf-8")
     urls: list[str] = []
 
@@ -130,6 +141,10 @@ async def test_auto_transport_caches_responses_404_and_falls_back_to_chat(
     assert second.transport == "chat_completions"
     assert sum(url.endswith("/responses") for url in urls) == 1
     assert sum(url.endswith("/chat/completions") for url in urls) == 2
+    metrics = await get_genai_metrics(settings)
+    counters = metrics["counters"]
+    assert isinstance(counters, dict)
+    assert counters["responses_fallbacks_total"] == 1
 
 
 @pytest.mark.asyncio
@@ -140,6 +155,7 @@ async def test_guardrails_block_prompt_injection_before_model_call(
     """Unsafe input is blocked before any model endpoint receives it."""
 
     key_path = tmp_path / "api_key"
+    reset_local_genai_metrics()
     key_path.write_text("sk-test", encoding="utf-8")
     urls: list[str] = []
 
@@ -179,6 +195,65 @@ async def test_guardrails_block_prompt_injection_before_model_call(
     assert result.error == "input_guardrails_blocked"
     assert result.guardrails_status == "blocked"
     assert len(urls) == 1
+    metrics = await get_genai_metrics(
+        _settings(key_path, OCI_GENAI_TRANSPORT_MODE="chat_completions")
+    )
+    counters = metrics["counters"]
+    assert isinstance(counters, dict)
+    assert counters["guardrail_blocks_total"] == 1
+    assert counters["provider_degradations_total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_terminal_5xx_records_retries_and_provider_degradation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A terminal OCI 5xx is observable without leaking payload or actor dimensions."""
+
+    key_path = tmp_path / "api_key"
+    key_path.write_text("sk-test", encoding="utf-8")
+    reset_local_genai_metrics()
+
+    class FakeClient:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+        async def post(self, url: str, *, headers: dict[str, str], json: dict[str, object]) -> Response:
+            del headers, json
+            return Response(503, request=Request("POST", url), json={"error": {"code": "unavailable"}})
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(genai_client.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(genai_client.asyncio, "sleep", no_sleep)
+    settings = _settings(
+        key_path,
+        OCI_GENAI_TRANSPORT_MODE="chat_completions",
+        OCI_GENAI_GUARDRAILS_ENABLED=False,
+        OCI_GENAI_MAX_RETRIES=1,
+    )
+    result = await genai_client.synthesize_governed_summary(
+        settings=settings,
+        system_instruction="Use governed evidence.",
+        evidence={"status": "ready"},
+    )
+
+    assert result.status == "failed"
+    metrics = await get_genai_metrics(settings)
+    counters = metrics["counters"]
+    assert isinstance(counters, dict)
+    assert counters["requests_total"] == 2
+    assert counters["retries_total"] == 1
+    assert counters["http_5xx_total"] == 2
+    assert counters["provider_degradations_total"] == 1
 
 
 @pytest.mark.asyncio

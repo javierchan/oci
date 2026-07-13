@@ -19,6 +19,20 @@ from app.services import genai_client
 HEADERS = {"X-Actor-Id": "architect-user", "X-Actor-Role": "Admin"}
 
 
+def test_guardrail_refusal_does_not_degrade_provider_health() -> None:
+    """A successful safety control is not reported as OCI provider downtime."""
+
+    assert agent_service.observed_provider_status(
+        {"provider_status": "failed", "guardrails_status": "blocked"}
+    ) is None
+    assert agent_service.observed_provider_status(
+        {"provider_status": "failed", "guardrails_status": "failed"}
+    ) == "failed"
+    assert agent_service.observed_provider_status(
+        {"provider_status": "completed", "guardrails_status": "completed"}
+    ) == "completed"
+
+
 async def _seed_project(test_engine: AsyncEngine) -> str:
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as session:
@@ -66,6 +80,15 @@ async def test_agent_catalog_create_execute_and_read(
     assert provider_response.status_code == 200
     assert provider_response.json()["runtime"] == "docker_celery_agents_queue"
     assert provider_response.json()["project_configured"] is False
+    metrics_response = await api_client.get("/api/v1/agents/provider-metrics", headers=HEADERS)
+    assert metrics_response.status_code == 200
+    assert metrics_response.json()["source"] in {"redis", "process"}
+    assert metrics_response.json()["counters"]["retries_total"] >= 0
+    viewer_metrics_response = await api_client.get(
+        "/api/v1/agents/provider-metrics",
+        headers={"X-Actor-Role": "Viewer"},
+    )
+    assert viewer_metrics_response.status_code == 403
 
     create_response = await api_client.post(
         "/api/v1/agents/runs",

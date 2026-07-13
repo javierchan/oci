@@ -22,6 +22,7 @@ import structlog
 
 from app.core.config import Settings
 from app.schemas.ai_review import AiReviewFinding, AiReviewMetric
+from app.services.genai_telemetry import record_genai_metric
 
 LOGGER = structlog.get_logger(__name__)
 
@@ -263,12 +264,20 @@ async def _post_with_retry(
     max_delay = max(base_delay, settings.OCI_GENAI_RETRY_MAX_SECONDS)
     retries = 0
     while True:
+        await record_genai_metric(settings, "requests_total")
         try:
             response = await client.post(url, headers=headers, json=json_payload)
+            if response.is_success:
+                await record_genai_metric(settings, "successful_requests_total")
+            if response.status_code == 429:
+                await record_genai_metric(settings, "http_429_total")
+            elif response.status_code >= 500:
+                await record_genai_metric(settings, "http_5xx_total")
             if response.status_code not in RETRYABLE_STATUS_CODES or retries >= max_retries:
                 return response, retries
             retry_after = _retry_after_seconds(response)
         except httpx.TransportError as exc:
+            await record_genai_metric(settings, "transport_errors_total")
             if retries >= max_retries:
                 raise
             response = None
@@ -280,6 +289,7 @@ async def _post_with_retry(
                 error_type=exc.__class__.__name__,
             )
         retries += 1
+        await record_genai_metric(settings, "retries_total")
         exponential_cap = min(max_delay, base_delay * (2 ** (retries - 1)))
         delay = retry_after if retry_after is not None else random.uniform(0.0, exponential_cap)
         await LOGGER.awarning(
@@ -363,6 +373,9 @@ async def _apply_guardrails(
         status: Literal["failed", "skipped"] = (
             "failed" if settings.OCI_GENAI_GUARDRAILS_FAILURE_MODE == "closed" else "skipped"
         )
+        if status == "failed":
+            await record_genai_metric(settings, "guardrail_failures_total")
+            await record_genai_metric(settings, "provider_degradations_total")
         return GuardrailCheck(status=status, content=content, error="guardrails_compartment_not_configured")
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -393,6 +406,8 @@ async def _apply_guardrails(
         response.raise_for_status()
         payload = response.json()
     except Exception as exc:  # pragma: no cover - provider behavior is environment-specific.
+        await record_genai_metric(settings, "guardrail_failures_total")
+        await record_genai_metric(settings, "provider_degradations_total")
         await LOGGER.awarning(
             "oci_genai_guardrails_failed",
             stage=stage,
@@ -404,6 +419,8 @@ async def _apply_guardrails(
     results = payload.get("results") if isinstance(payload, dict) else None
     sanitized, pii_count = _redact_guardrail_pii(content, results)
     blocked = _guardrails_blocked(results)
+    if blocked:
+        await record_genai_metric(settings, "guardrail_blocks_total")
     await LOGGER.ainfo(
         "oci_genai_guardrails_completed",
         stage=stage,
@@ -452,6 +469,7 @@ async def _post_model_request(
         ):
             _mark_responses_capability(runtime, settings, available=False)
             transport = "chat_completions"
+            await record_genai_metric(settings, "responses_fallbacks_total")
             await LOGGER.ainfo(
                 "oci_genai_responses_unavailable",
                 status_code=response.status_code,
@@ -818,6 +836,7 @@ async def _synthesize(
                 payload = {}
             raw_summary = _normalize_summary(_response_text(payload))
             if not raw_summary:
+                await record_genai_metric(settings, "provider_degradations_total")
                 return GenAiResult(
                     status="failed",
                     model=runtime.model_name,
@@ -851,6 +870,7 @@ async def _synthesize(
                 )
             summary = output_guard.content
     except Exception as exc:  # pragma: no cover - OCI/network failures are environment-specific.
+        await record_genai_metric(settings, "provider_degradations_total")
         await LOGGER.awarning(
             "oci_genai_request_failed",
             error_type=exc.__class__.__name__,
@@ -1221,6 +1241,7 @@ async def run_governed_tool_agent(
             guardrails_status=output_guard.status,
         )
     except Exception as exc:  # pragma: no cover - provider behavior is environment-specific.
+        await record_genai_metric(settings, "provider_degradations_total")
         safe_error = _safe_http_error(exc.response) if isinstance(exc, httpx.HTTPStatusError) else exc.__class__.__name__
         await LOGGER.awarning(
             "oci_genai_agent_request_failed", error_type=exc.__class__.__name__,

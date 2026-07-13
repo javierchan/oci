@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import cast
+from typing import Literal, cast
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -28,6 +28,8 @@ from app.schemas.agent import (
     AgentApprovalResponse,
     AgentCreateRequest,
     AgentDefinitionResponse,
+    AgentProviderMetricCounters,
+    AgentProviderMetricsResponse,
     AgentProviderStatusResponse,
     AgentRunListResponse,
     AgentRunResponse,
@@ -39,6 +41,7 @@ from app.services import audit_service
 from app.services.authz import normalize_role, require_roles
 from app.services.genai_client import GenAiAgentResult, run_governed_tool_agent
 from app.services.genai_client import provider_status_payload
+from app.services.genai_telemetry import get_genai_metrics
 from app.services.serializers import sanitize_for_json
 
 
@@ -47,6 +50,19 @@ TERMINAL_STATUSES = {
     AgentRunStatus.FAILED,
     AgentRunStatus.CANCELLED,
 }
+
+
+def observed_provider_status(
+    result_payload: dict[str, object],
+) -> Literal["completed", "failed"] | None:
+    """Separate expected safety refusals from provider availability failures."""
+
+    candidate = result_payload.get("provider_status")
+    if candidate == "failed" and result_payload.get("guardrails_status") == "blocked":
+        return None
+    if candidate in {"completed", "failed"}:
+        return cast(Literal["completed", "failed"], candidate)
+    return None
 
 
 def _status_value(run: AgentRun) -> str:
@@ -98,9 +114,9 @@ async def get_agent_provider_status(db: AsyncSession) -> AgentProviderStatusResp
         result_payload = recent_run.result_payload
         if not isinstance(result_payload, dict):
             continue
-        candidate = result_payload.get("provider_status")
-        if candidate in {"completed", "failed"}:
-            last_provider_status = str(candidate)
+        candidate = observed_provider_status(cast(dict[str, object], result_payload))
+        if candidate is not None:
+            last_provider_status = candidate
             break
     available = key_configured and project_configured and last_provider_status == "completed"
     if available:
@@ -126,6 +142,30 @@ async def get_agent_provider_status(db: AsyncSession) -> AgentProviderStatusResp
         guardrails_version=str(provider["safety"]["guardrails_version"]),  # type: ignore[index]
         max_retries=int(provider["retry_policy"]["max_retries"]),  # type: ignore[index]
         status_message=message,
+    )
+
+
+async def get_agent_provider_metrics() -> AgentProviderMetricsResponse:
+    """Return privacy-safe provider counters aggregated through Redis."""
+
+    payload = await get_genai_metrics(get_settings())
+    counters = cast(dict[str, int], payload["counters"])
+    last_event_value = payload["last_event_at"]
+    last_degradation_value = payload["last_degradation_at"]
+    return AgentProviderMetricsResponse(
+        source=cast(Literal["redis", "process"], payload["source"]),
+        retention_seconds=cast(int, payload["retention_seconds"]),
+        last_event_at=(
+            datetime.fromisoformat(last_event_value)
+            if isinstance(last_event_value, str)
+            else None
+        ),
+        last_degradation_at=(
+            datetime.fromisoformat(last_degradation_value)
+            if isinstance(last_degradation_value, str)
+            else None
+        ),
+        counters=AgentProviderMetricCounters(**counters),
     )
 
 

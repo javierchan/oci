@@ -73,6 +73,14 @@ Function Calling run produces `available`. A failed latest attempt produces
 usable. The global command palette launches the real project Architecture Review
 and requires explicit project selection when no project route is active.
 
+Provider telemetry is also operational rather than inferred from configuration.
+The centralized OCI transport records fixed counters in shared Redis for retries,
+Guardrails decisions, `429`, `5xx`, transport failures, Responses fallbacks, and
+terminal degradations. Agent Operations reads these counters from the restricted
+`/api/v1/agents/provider-metrics` endpoint. Redis outages do not block agents;
+the endpoint switches to a clearly labeled process-local fallback. No user,
+session, project, prompt, response, request ID, or tool name is a metric label.
+
 ## Execution
 
 1. A contextual product action creates its specialized compatibility job when needed.
@@ -100,7 +108,8 @@ to OCIR and used by OCI Hosted Agentic Applications without changing tool contra
 - Docker tests cover backend, frontend, migration, and image contracts.
 - `scripts/smoke_oci_agent.py` performs a sanitized real-provider Function Calling smoke.
 - Browser validation covers Agent Operations, global project selection, direct
-  Architecture Review launch, contextual agent workflows, and honest degraded status.
+  Architecture Review launch, contextual agent workflows, provider telemetry,
+  and honest degraded status.
 
 ## References
 

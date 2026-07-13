@@ -431,6 +431,20 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       OpenAPI, real OCI synthesis and Function Calling, Guardrails refusal, Docker
       runtime, and light/dark browser validation pass
 
+### M37 — OCI GenAI Operational Telemetry
+- [x] Count all OCI inference and Guardrails requests through the centralized retry transport
+- [x] Aggregate retries, `429`, `5xx`, transport failures, Guardrails blocks/failures,
+      Responses fallbacks, and terminal provider degradations across API and agent workers
+- [x] Store only fixed-cardinality counters in Redis with a process-local fallback;
+      never attach actor, session, project, prompt, or response dimensions
+- [x] Expose the counters through a role-restricted typed endpoint and the Admin
+      Agent Operations workspace with truthful shared-runtime/fallback labeling
+- [x] Expire inactive metric state after the configured retention interval and keep
+      telemetry failure outside the inference availability path
+- [x] **Exit criteria**: exact counter tests for `429`, `5xx`, retries, fallback and
+      Guardrails blocking; OpenAPI, backend/frontend gates, Redis aggregation,
+      real OCI smoke, Docker runtime, and light/dark browser validation pass
+
 ### M26 — Topology Decision Workspace
 - [x] Separate statistical majority from conservative edge risk so mixed paths
       cannot render as healthy when review or pending integrations are present

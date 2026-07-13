@@ -5,9 +5,10 @@ import { AgentOperations } from "@/components/agent-operations";
 import { api } from "@/lib/api";
 
 export default async function AgentOperationsPage(): Promise<JSX.Element> {
-  const [definitions, providerStatus, runList] = await Promise.all([
+  const [definitions, providerStatus, providerMetrics, runList] = await Promise.all([
     api.listAgents(),
     api.getAgentProviderStatus(),
+    api.getAgentProviderMetrics(),
     api.listAgentRuns({ limit: 50 }).catch(() => ({ runs: [], total: 0 })),
   ]);
   return (
@@ -20,7 +21,12 @@ export default async function AgentOperationsPage(): Promise<JSX.Element> {
         </div>
         <Breadcrumb items={[{ label: "Home", href: "/projects" }, { label: "Admin", href: "/admin" }, { label: "Agents" }]} />
       </section>
-      <AgentOperations definitions={definitions} providerStatus={providerStatus} initialRuns={runList.runs} />
+      <AgentOperations
+        definitions={definitions}
+        providerStatus={providerStatus}
+        initialMetrics={providerMetrics}
+        initialRuns={runList.runs}
+      />
     </div>
   );
 }

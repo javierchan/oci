@@ -238,6 +238,120 @@
         "title": "AgentDefinitionResponse",
         "type": "object"
       },
+      "AgentProviderMetricCounters": {
+        "additionalProperties": false,
+        "description": "Fixed-cardinality OCI provider counters with no identity dimensions.",
+        "properties": {
+          "guardrail_blocks_total": {
+            "title": "Guardrail Blocks Total",
+            "type": "integer"
+          },
+          "guardrail_failures_total": {
+            "title": "Guardrail Failures Total",
+            "type": "integer"
+          },
+          "http_429_total": {
+            "title": "Http 429 Total",
+            "type": "integer"
+          },
+          "http_5xx_total": {
+            "title": "Http 5Xx Total",
+            "type": "integer"
+          },
+          "provider_degradations_total": {
+            "title": "Provider Degradations Total",
+            "type": "integer"
+          },
+          "requests_total": {
+            "title": "Requests Total",
+            "type": "integer"
+          },
+          "responses_fallbacks_total": {
+            "title": "Responses Fallbacks Total",
+            "type": "integer"
+          },
+          "retries_total": {
+            "title": "Retries Total",
+            "type": "integer"
+          },
+          "successful_requests_total": {
+            "title": "Successful Requests Total",
+            "type": "integer"
+          },
+          "transport_errors_total": {
+            "title": "Transport Errors Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requests_total",
+          "successful_requests_total",
+          "retries_total",
+          "http_429_total",
+          "http_5xx_total",
+          "transport_errors_total",
+          "guardrail_blocks_total",
+          "guardrail_failures_total",
+          "responses_fallbacks_total",
+          "provider_degradations_total"
+        ],
+        "title": "AgentProviderMetricCounters",
+        "type": "object"
+      },
+      "AgentProviderMetricsResponse": {
+        "additionalProperties": false,
+        "description": "Aggregated operational telemetry shared by API and agent workers.",
+        "properties": {
+          "counters": {
+            "$ref": "#/components/schemas/AgentProviderMetricCounters"
+          },
+          "last_degradation_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Degradation At"
+          },
+          "last_event_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Event At"
+          },
+          "retention_seconds": {
+            "title": "Retention Seconds",
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "redis",
+              "process"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "retention_seconds",
+          "last_event_at",
+          "last_degradation_at",
+          "counters"
+        ],
+        "title": "AgentProviderMetricsResponse",
+        "type": "object"
+      },
       "AgentProviderStatusResponse": {
         "additionalProperties": false,
         "description": "Non-secret OCI provider and Docker runtime readiness.",
@@ -11743,6 +11857,49 @@
           }
         },
         "summary": "List governed agent definitions",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
+    "/api/v1/agents/provider-metrics": {
+      "get": {
+        "operationId": "get_agent_provider_metrics_api_v1_agents_provider_metrics_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProviderMetricsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect privacy-safe OCI provider metrics",
         "tags": [
           "Agents"
         ]

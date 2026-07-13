@@ -89,6 +89,13 @@ the configured model. Requests use bounded retry with jitter, HMAC-derived
 content, and PII. The dedicated `agent-worker` consumes only the `agents` queue.
 Agent tools are typed calls into existing deterministic services; no model
 receives SQL, shell, Docker, or arbitrary network access.
+
+Provider telemetry uses fixed-cardinality counters shared through Redis across
+the API and agent workers. Admin Agent Operations exposes retries, Guardrails
+blocks, `429`, `5xx`, Responses fallbacks, and terminal degradation counts. No
+prompt, response, actor, session, project, or integration identity is used as a
+metric dimension. If Redis is unavailable, inference remains operational and
+the endpoint truthfully reports process-local fallback metrics.
 See [`docs/architecture/oci-agent-runtime.md`](./docs/architecture/oci-agent-runtime.md).
 
 The global OCI DIS App Assistant persists across navigation, understands the
@@ -323,6 +330,10 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M26 | Governed Offline Capture Workbook 2.0 | ✅ Complete | 2026-07-10 |
 | M27 | Governed OCI Pricing + Bill of Materials | ✅ Complete | 2026-07-12 |
 | M33 | OCI Generative AI Provider Consolidation | ✅ Complete | 2026-07-12 |
+| M34 | Governed Enterprise AI Agents | ✅ Complete | 2026-07-12 |
+| M35 | Session-Isolated Contextual App Assistant | ✅ Complete | 2026-07-12 |
+| M36 | OCI GenAI Resilience + Safety | ✅ Complete | 2026-07-12 |
+| M37 | OCI GenAI Operational Telemetry | ✅ Complete | 2026-07-12 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -332,13 +343,14 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
 - Import parity: `157` TBQ=`Y` rows, `13` excluded `Duplicado 2`, `144` loaded rows in source order
 - Reference seed data: `17` patterns, client-only assumption sets, governed dictionaries, and `18` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine + pricing-engine: `145 passed`
-- Frontend: `37 passed`, strict TypeScript, ESLint, and production build green
+- Backend + calc-engine + pricing-engine: `160 passed` (`103` API, `42` calc-engine, `15` pricing-engine)
+- Frontend: `53 passed`, strict TypeScript, ESLint, and production build green
 - Pricing/BOM E2E: public sync and BOM jobs reach terminal `completed` states
 - Production images: Trivy reports `0 HIGH` and `0 CRITICAL` for API and web
-- Browser E2E: `4 passed`, including workbook download, terminal job state, and cleanup validation
+- Browser E2E: `16 passed`, including OCI provider telemetry refresh, contextual AI,
+  workbook download, terminal job state, BOM, topology, and cleanup validation
 - Dependency audit: `0` vulnerabilities
-- Web and API stack: all seven services running and healthy in Docker Compose
+- Web and API stack: all eight production services running and healthy in Docker Compose
 
 The current validated state is recorded in
 [`docs/reports/status-report.md`](./docs/reports/status-report.md). Historical

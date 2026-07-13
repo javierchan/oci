@@ -9,7 +9,7 @@ import { emitToast } from "@/hooks/use-toast";
 import { agentExecutionIndicatorTone, type AgentExecutionIndicatorTone } from "@/lib/agent-status";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
-import type { AgentDefinition, AgentProviderStatus, AgentRun } from "@/lib/types";
+import type { AgentDefinition, AgentProviderMetrics, AgentProviderStatus, AgentRun } from "@/lib/types";
 
 function isActive(status: AgentRun["status"]): boolean {
   return status === "pending" || status === "running" || status === "waiting_approval";
@@ -32,20 +32,27 @@ function statusIcon(run: AgentRun): JSX.Element {
 export function AgentOperations({
   definitions,
   providerStatus,
+  initialMetrics,
   initialRuns,
 }: {
   definitions: AgentDefinition[];
   providerStatus: AgentProviderStatus;
+  initialMetrics: AgentProviderMetrics;
   initialRuns: AgentRun[];
 }): JSX.Element {
   const [runs, setRuns] = useState<AgentRun[]>(initialRuns);
+  const [metrics, setMetrics] = useState<AgentProviderMetrics>(initialMetrics);
   const [refreshing, setRefreshing] = useState(false);
 
   async function refresh(silent = false): Promise<void> {
     if (!silent) setRefreshing(true);
     try {
-      const result = await api.listAgentRuns({ limit: 50 });
-      setRuns(result.runs);
+      const [runResult, metricResult] = await Promise.all([
+        api.listAgentRuns({ limit: 50 }),
+        api.getAgentProviderMetrics(),
+      ]);
+      setRuns(runResult.runs);
+      setMetrics(metricResult);
     } catch (error) {
       if (!silent) emitToast("error", error instanceof Error ? error.message : "Unable to refresh agent runs.");
     } finally {
@@ -90,6 +97,30 @@ export function AgentOperations({
           </div>
         </div>
         <span className="app-theme-chip">{providerStatus.function_calling_available ? "Function calling ready" : "Deterministic fallback"}</span>
+      </section>
+      <section aria-label="OCI provider telemetry" className="app-table-shell p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="app-label">Provider telemetry</p>
+            <h2 className="mt-1 text-xl font-semibold text-[var(--color-text-primary)]">Resilience and safety signals</h2>
+          </div>
+          <span className="app-theme-chip">{metrics.source === "redis" ? "Shared runtime" : "Process fallback"}</span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          {[
+            ["Retries", metrics.counters.retries_total],
+            ["Guardrail blocks", metrics.counters.guardrail_blocks_total],
+            ["HTTP 429", metrics.counters.http_429_total],
+            ["HTTP 5xx", metrics.counters.http_5xx_total],
+            ["Responses fallbacks", metrics.counters.responses_fallbacks_total],
+            ["Degradations", metrics.counters.provider_degradations_total],
+          ].map(([label, value]) => (
+            <article key={label} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+              <p className="text-xs font-semibold text-[var(--color-text-muted)]">{label}</p>
+              <p className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{value}</p>
+            </article>
+          ))}
+        </div>
       </section>
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {definitions.map((definition) => (

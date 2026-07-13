@@ -116,3 +116,29 @@ test("shows only active FQNN records and rejects a non-standard code in the edit
   await page.getByRole("button", { name: "Create Option" }).click();
   await expect(page.getByText("Frequency code must use FQNN format, for example FQ17.")).toBeVisible();
 });
+
+test("exposes refreshable provider resilience and safety telemetry", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/admin/agents");
+
+  const telemetry = page.getByRole("region", { name: "OCI provider telemetry" });
+  await expect(telemetry.getByRole("heading", { name: "Resilience and safety signals" })).toBeVisible();
+  await expect(telemetry.getByText(/Shared runtime|Process fallback/, { exact: true })).toBeVisible();
+  for (const label of [
+    "Retries",
+    "Guardrail blocks",
+    "HTTP 429",
+    "HTTP 5xx",
+    "Responses fallbacks",
+    "Degradations",
+  ]) {
+    await expect(telemetry.getByText(label, { exact: true })).toBeVisible();
+  }
+
+  const metricsResponse = page.waitForResponse(
+    (response) => response.url().includes("/api/v1/agents/provider-metrics") && response.ok(),
+  );
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await metricsResponse;
+  await expect(telemetry).toBeVisible();
+});

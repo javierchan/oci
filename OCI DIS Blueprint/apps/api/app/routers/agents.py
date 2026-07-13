@@ -10,6 +10,7 @@ from app.schemas.agent import (
     AgentApprovalDecisionRequest,
     AgentCreateRequest,
     AgentDefinitionResponse,
+    AgentProviderMetricsResponse,
     AgentProviderStatusResponse,
     AgentRunListResponse,
     AgentRunResponse,
@@ -20,6 +21,22 @@ from app.workers.agent_worker import execute_agent_run_task
 
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
+
+
+@router.get(
+    "/provider-metrics",
+    response_model=AgentProviderMetricsResponse,
+    summary="Inspect privacy-safe OCI provider metrics",
+)
+async def get_agent_provider_metrics(
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
+) -> AgentProviderMetricsResponse:
+    require_roles(
+        actor_role,
+        {"Admin", "Architect"},
+        error_code="AGENT_PROVIDER_METRICS_ROLE_REQUIRED",
+    )
+    return await agent_service.get_agent_provider_metrics()
 
 
 @router.get("/provider-status", response_model=AgentProviderStatusResponse, summary="Inspect agent provider readiness")

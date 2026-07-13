@@ -1,20 +1,19 @@
 # OCI DIS Blueprint Status Report
 
-**Validated:** 2026-07-10
+**Validated:** 2026-07-12
 **Branch:** `main`
-**Base commit:** `0ce01c3df68dc397acc5c0c5422eb8ca589e81bf`
 **Detailed remediation:** `milestone-progress-20260710-140234.md`
 
 ## Current Status
 
 | Area | Status | Evidence |
 |---|---|---|
-| Backend API and calc engine | complete | 119 tests passed: 77 API and all 42 calc-engine tests |
-| Frontend | complete | TypeScript, ESLint, 19 tests, and production build passed |
-| Browser workflows | complete | 4 Playwright E2E tests passed, including governed workbook download |
+| Backend and deterministic engines | complete | 160 tests passed: 103 API, 42 calc-engine, and 15 pricing-engine |
+| Frontend | complete | TypeScript, ESLint, 53 tests, and production build passed |
+| Browser workflows | complete | 16 Playwright E2E tests passed, including provider telemetry and contextual AI |
 | Dependency security | complete | npm audit 0; Docker Scout 0 HIGH/CRITICAL for API and web images |
-| Database | complete | Alembic at `20260710_0016`; seed idempotent |
-| Runtime | complete | 7 Compose services running; no recent error signatures |
+| Database | complete | Alembic at `20260712_0022`; seed idempotent |
+| Runtime | complete | 8 Compose services running; no recent error signatures |
 | Effective CI | complete | one root workflow covers code, browser, build, and image gates |
 
 ## Governed Rule Ownership
@@ -124,6 +123,10 @@
   unavailability before using governed Chat Completions. Real synthesis, Function
   Calling, persisted AgentRun, and AI Review validation completed successfully;
   OCI Guardrails and bounded retry now wrap both paths.
+- OCI GenAI operational counters aggregate through Redis across API and agent
+  workers, with a privacy-safe process fallback. Agent Operations exposes retries,
+  Guardrails blocks, `429`, `5xx`, Responses fallbacks, and provider degradations
+  without storing identity or prompt dimensions.
 - Dated reports and files under `docs/prompts/` are historical evidence and are
   explicitly non-normative; this report and the repository contracts above are current.
 
@@ -136,9 +139,9 @@
   Delete affordance; remaining disabled controls express real workflow preconditions.
 - Provider banners distinguish configured, verified, degraded, deterministic-only,
   and misconfigured states from persisted jobs and agent runs.
-- Production Docker validation passed 101 API, 42 calc-engine, 15 pricing-engine,
+- Production Docker validation passed 103 API, 42 calc-engine, 15 pricing-engine,
   53 frontend unit tests, strict TypeScript, ESLint, Ruff, mypy, OpenAPI check,
-  Node 26 production build, and 15 of 15 Playwright flows. Real OCI validation
+  Node 26 production build, and 16 of 16 Playwright flows. Real OCI validation
   covered synthesis, allowlisted Function Calling, and Guardrails prompt-injection
   refusal. Trivy reported zero high or critical findings in both production images.
 - In-app browser inspection loaded 17 production routes without framework overlays

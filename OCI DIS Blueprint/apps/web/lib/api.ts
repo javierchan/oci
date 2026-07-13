@@ -3,6 +3,7 @@
 import type {
   AgentDefinition,
   AgentProviderStatus,
+  AgentProviderMetrics,
   AgentRun,
   AgentRunList,
   AgentRunRequest,
@@ -455,6 +456,9 @@ export const api = {
 
   getAgentProviderStatus: (): Promise<AgentProviderStatus> =>
     apiFetch<AgentProviderStatus>("/api/v1/agents/provider-status", { headers: adminHeaders() }),
+
+  getAgentProviderMetrics: (): Promise<AgentProviderMetrics> =>
+    apiFetch<AgentProviderMetrics>("/api/v1/agents/provider-metrics", { headers: adminHeaders() }),
 
   listAgentRuns: (params: { project_id?: string; limit?: number } = {}): Promise<AgentRunList> =>
     apiFetch<AgentRunList>(`/api/v1/agents/runs${withQuery(params)}`, { headers: adminHeaders() }),

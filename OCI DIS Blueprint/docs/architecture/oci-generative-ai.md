@@ -50,6 +50,22 @@ equivalent approved secret manager.
 7. Missing credentials, blocked content, or provider failure falls back to an
    honest deterministic or refusal state.
 
+## Operational Telemetry
+
+Every OCI HTTP attempt passes through the same retry transport and increments a
+fixed-cardinality counter set: total/successful requests, retries, `429`, `5xx`,
+transport errors, Guardrails blocks/failures, Responses fallbacks, and terminal
+provider degradations. Redis aggregates the counters across API and worker
+processes under `OCI_GENAI_METRICS_REDIS_KEY`; inactive state expires after
+`OCI_GENAI_METRICS_RETENTION_SECONDS` (30 days by default).
+
+The telemetry path is non-blocking. Redis failure falls back to process-local
+counters and never changes an inference result. Metrics contain no prompt,
+response, OCI secret, request ID, actor, session, project, integration, or tool
+dimensions. `GET /api/v1/agents/provider-metrics` is restricted to Admin and
+Architect roles, and Agent Operations labels whether the source is the shared
+runtime or process fallback.
+
 ## Consumers
 
 - Project and integration Architecture Review
@@ -67,7 +83,8 @@ GenAI summarizes findings but cannot decide source freshness or overwrite normal
 
 - Unit tests assert redaction, provider status, bearer authentication, Responses
   capability fallback, Chat compatibility, retry timing, safety identity,
-  Guardrails blocking/redaction, response parsing, and token metadata.
+  Guardrails blocking/redaction, exact operational counters, response parsing,
+  and token metadata.
 - A sanitized smoke script calls the real model and emits no secret data.
 - Full API, calc-engine, pricing-engine, frontend, OpenAPI, Docker, and browser
   quality gates protect the integration from regression.

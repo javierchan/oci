@@ -59,6 +59,35 @@ class AgentProviderStatusResponse(BaseModel):
     status_message: str
 
 
+class AgentProviderMetricCounters(BaseModel):
+    """Fixed-cardinality OCI provider counters with no identity dimensions."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    requests_total: int
+    successful_requests_total: int
+    retries_total: int
+    http_429_total: int
+    http_5xx_total: int
+    transport_errors_total: int
+    guardrail_blocks_total: int
+    guardrail_failures_total: int
+    responses_fallbacks_total: int
+    provider_degradations_total: int
+
+
+class AgentProviderMetricsResponse(BaseModel):
+    """Aggregated operational telemetry shared by API and agent workers."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    source: Literal["redis", "process"]
+    retention_seconds: int
+    last_event_at: Optional[datetime]
+    last_degradation_at: Optional[datetime]
+    counters: AgentProviderMetricCounters
+
+
 class AgentCreateRequest(BaseModel):
     """Bounded request for one asynchronous agent run."""
 

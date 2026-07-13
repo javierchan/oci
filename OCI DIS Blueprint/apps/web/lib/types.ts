@@ -76,6 +76,25 @@ export interface AgentProviderStatus {
   status_message: string;
 }
 
+export interface AgentProviderMetrics {
+  source: "redis" | "process";
+  retention_seconds: number;
+  last_event_at: string | null;
+  last_degradation_at: string | null;
+  counters: {
+    requests_total: number;
+    successful_requests_total: number;
+    retries_total: number;
+    http_429_total: number;
+    http_5xx_total: number;
+    transport_errors_total: number;
+    guardrail_blocks_total: number;
+    guardrail_failures_total: number;
+    responses_fallbacks_total: number;
+    provider_degradations_total: number;
+  };
+}
+
 export interface AgentStep {
   id: string;
   sequence: number;

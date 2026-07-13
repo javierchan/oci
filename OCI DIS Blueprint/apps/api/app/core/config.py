@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     OCI_GENAI_GUARDRAILS_ENABLED: bool = True
     OCI_GENAI_GUARDRAILS_VERSION: str = "1.0.1"
     OCI_GENAI_GUARDRAILS_FAILURE_MODE: Literal["closed", "open"] = "closed"
+    OCI_GENAI_METRICS_REDIS_ENABLED: bool = True
+    OCI_GENAI_METRICS_REDIS_KEY: str = "oci_dis:genai:metrics:v1"
+    OCI_GENAI_METRICS_RETENTION_SECONDS: int = 2592000
     AI_REVIEW_DAILY_JOB_LIMIT: int = 100
     AI_REVIEW_LLM_DAILY_JOB_LIMIT: int = 25
 
