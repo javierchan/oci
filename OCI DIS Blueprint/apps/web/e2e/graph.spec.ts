@@ -99,6 +99,7 @@ test("investigates, re-weights, exports, and navigates the desktop topology", as
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: `${focusEdge.source} → ${focusEdge.target}` })).toBeVisible();
   await expect(page.getByRole("button", { name: "Analyze dependency path", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close topology detail panel" }).click();
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export topology as PNG" }).click();

@@ -120,13 +120,13 @@ jobs:
         run: docker compose up -d --build --wait
 
       - name: Apply database migrations
-        run: docker compose exec -T api alembic upgrade head
+        run: docker compose exec -T --user app api alembic upgrade head
 
       - name: Seed governed reference data
-        run: docker compose exec -T api python -m app.migrations.seed
+        run: docker compose exec -T --user app api python -m app.migrations.seed
 
       - name: Seed governed browser project
-        run: docker compose exec -T api python scripts/seed_synthetic_enterprise_project.py
+        run: docker compose exec -T --user app api python scripts/seed_synthetic_enterprise_project.py
 
       - name: Install Playwright Chromium
         run: npm --prefix apps/web run test:e2e:install

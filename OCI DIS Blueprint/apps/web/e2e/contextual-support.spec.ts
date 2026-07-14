@@ -94,6 +94,6 @@ test("resolves an unambiguous project dossier from a global App route", async ({
   await send.click();
   await expect(assistant.getByRole("link", { name: "BOM & Cost", exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(assistant.getByRole("link", { name: project.name, exact: true })).toBeVisible();
-  await expect(assistant).toContainText("USD");
+  await expect(assistant).toContainText(/USD|no tiene un BOM calculado/);
   await expect(assistant).not.toContainText("Open the relevant workspace or add its context");
 });

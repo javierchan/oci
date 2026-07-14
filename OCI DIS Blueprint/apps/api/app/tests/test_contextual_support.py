@@ -70,6 +70,7 @@ async def test_support_resolves_single_active_project_for_global_cost_question(
     assert project_evidence["name"] == "Only Active Support Project"
     assert project_evidence["latest_bom"] is None
     assert any(item["href"] == f"/projects/{project.id}" for item in citations)
+    assert any(item["href"] == f"/projects/{project.id}/bom" for item in citations)
     assert "todavía no tiene un BOM calculado" in str(evidence["fallback_answer"])
     assert evidence["direct_answer"] == evidence["fallback_answer"]
 

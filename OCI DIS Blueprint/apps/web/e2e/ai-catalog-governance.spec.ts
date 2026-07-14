@@ -58,7 +58,7 @@ test("opens both integration and current-canvas reviews with live provider statu
   await page.getByRole("button", { name: "Review integration", exact: true }).click();
   const integrationReviewBoard = page.getByLabel("Governed AI review");
   await expect(integrationReviewBoard).toBeVisible();
-  await expect(integrationReviewBoard.getByText("Provider status", { exact: true })).toBeVisible();
+  await expect(integrationReviewBoard.getByText("AI explanation status", { exact: true })).toBeVisible();
   await expect(integrationReviewBoard.getByText("governed deterministic evidence", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Close AI review" }).click();
 

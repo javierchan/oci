@@ -1057,7 +1057,7 @@ async def build_support_evidence(
                 ),
             }
             citations.append({"label": project.name, "href": f"/projects/{project.id}"})
-            if latest_bom is not None and question_intent == "project_cost":
+            if question_intent == "project_cost":
                 citations.append({"label": "BOM & Cost", "href": f"/projects/{project.id}/bom"})
 
             focus_process = integration.business_process if integration else None

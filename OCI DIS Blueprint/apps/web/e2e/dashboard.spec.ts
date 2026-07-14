@@ -74,7 +74,7 @@ test("represents every captured product and standardizes Dashboard actions", asy
   await page.getByRole("button", { name: "Review project", exact: true }).click();
   const reviewBoard = page.getByLabel("Governed AI review");
   await expect(reviewBoard).toBeVisible();
-  await expect(reviewBoard.getByText("Provider status", { exact: true })).toBeVisible();
+  await expect(reviewBoard.getByText("AI explanation status", { exact: true })).toBeVisible();
   await expect(reviewBoard.getByText("governed deterministic evidence", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Close AI review" }).click();
 
