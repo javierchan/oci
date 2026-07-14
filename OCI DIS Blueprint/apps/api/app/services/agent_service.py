@@ -65,6 +65,17 @@ def observed_provider_status(
     return None
 
 
+def observed_provider_transport(
+    result_payload: dict[str, object],
+) -> Literal["responses", "chat_completions"] | None:
+    """Return a persisted OCI transport observation from a completed agent run."""
+
+    candidate = result_payload.get("provider_transport") or result_payload.get("transport")
+    if candidate in {"responses", "chat_completions"}:
+        return cast(Literal["responses", "chat_completions"], candidate)
+    return None
+
+
 def _status_value(run: AgentRun) -> str:
     return run.status.value if isinstance(run.status, AgentRunStatus) else str(run.status)
 
@@ -110,6 +121,7 @@ async def get_agent_provider_status(db: AsyncSession) -> AgentProviderStatusResp
         .limit(20)
     )
     last_provider_status: str | None = None
+    last_provider_transport: Literal["responses", "chat_completions"] | None = None
     for recent_run in recent_runs.all():
         result_payload = recent_run.result_payload
         if not isinstance(result_payload, dict):
@@ -117,7 +129,16 @@ async def get_agent_provider_status(db: AsyncSession) -> AgentProviderStatusResp
         candidate = observed_provider_status(cast(dict[str, object], result_payload))
         if candidate is not None:
             last_provider_status = candidate
+            last_provider_transport = observed_provider_transport(
+                cast(dict[str, object], result_payload)
+            )
             break
+    responses_capability = str(provider["transport_strategy"]["responses_capability"])  # type: ignore[index]
+    if responses_capability == "unverified" and last_provider_status == "completed":
+        if last_provider_transport == "responses":
+            responses_capability = "available"
+        elif last_provider_transport == "chat_completions":
+            responses_capability = "unavailable"
     available = key_configured and project_configured and last_provider_status == "completed"
     if available:
         message = "OCI Responses-first Function Calling is verified with governed Chat fallback when Responses is unavailable; deterministic tools remain authoritative."
@@ -137,7 +158,7 @@ async def get_agent_provider_status(db: AsyncSession) -> AgentProviderStatusResp
         project_configured=project_configured,
         function_calling_available=available,
         transport_strategy=str(provider["transport"]),
-        responses_capability=str(provider["transport_strategy"]["responses_capability"]),  # type: ignore[index]
+        responses_capability=responses_capability,
         guardrails_enabled=bool(provider["safety"]["guardrails_enabled"]),  # type: ignore[index]
         guardrails_version=str(provider["safety"]["guardrails_version"]),  # type: ignore[index]
         max_retries=int(provider["retry_policy"]["max_retries"]),  # type: ignore[index]
@@ -446,9 +467,12 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         payload=cast(dict[str, object], sanitize_for_json(evidence)),
     )
     db.add(artifact)
+    direct_answer = evidence.get("direct_answer")
     summary = (
         "I could not process that request because OCI safety controls detected unsafe or manipulative instructions."
         if definition.type == "support_assistant" and safety_refused
+        else str(direct_answer)
+        if definition.type == "support_assistant" and isinstance(direct_answer, str)
         else result.summary
         if result and result.summary
         else _deterministic_summary(definition, evidence)

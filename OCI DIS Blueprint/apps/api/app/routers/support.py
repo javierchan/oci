@@ -54,6 +54,29 @@ async def get_support_conversation(
     return await support_service.get_conversation(conversation_id, session_id, db)
 
 
+@router.delete(
+    "/conversations/{conversation_id}/messages",
+    response_model=SupportConversationResponse,
+    summary="Clear one isolated support conversation history",
+)
+async def clear_support_conversation_history(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_db),
+    session_id: str = Header(..., alias="X-Support-Session-Id"),
+    actor_id: str = Header("web-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
+) -> SupportConversationResponse:
+    require_roles(
+        actor_role,
+        {"Admin", "Architect", "Analyst", "Viewer"},
+        error_code="SUPPORT_ROLE_REQUIRED",
+    )
+    async with db.begin():
+        return await support_service.clear_conversation_history(
+            conversation_id, session_id, actor_id, db
+        )
+
+
 @router.post(
     "/conversations/{conversation_id}/messages",
     response_model=SupportConversationResponse,

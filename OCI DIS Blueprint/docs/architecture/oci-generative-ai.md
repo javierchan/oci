@@ -14,7 +14,8 @@ for findings, service limits, quantities, prices, totals, patches, and audit.
 ## Runtime Contract
 
 - Base URL: `https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1`
-- Preferred endpoint: `/responses`
+- Preferred API-key endpoint: `/20231130/actions/v1/responses`
+- Chat compatibility endpoint: `/openai/v1/chat/completions`
 - Compatibility fallback: `/chat/completions` only after an endpoint-level `404` or `405`
 - Capability cache: one hour by default, preventing a failed Responses probe on every request
 - Agent project: `OCI_GENAI_PROJECT_ID`, sent as `OpenAI-Project`
@@ -31,6 +32,25 @@ mode `0400`, and read only by the backend. It must never be committed, placed in
 `.env`, returned by an endpoint, rendered in the browser, or included in logs.
 Production deployments should inject the same file contract from OCI Vault or an
 equivalent approved secret manager.
+
+## OCI Resource Retention
+
+The active `OCI_DIS_Architect` Project and `OCI_DIS_Architect_API` API key use
+the tenancy-defined `0-ResourceControl` namespace. Their resource-specific
+`CreatedAt`, `CreatedBy`, and `Team` values remain unchanged, while the required
+retention policy is:
+
+- `DeleteResource`: `WeeklyDeleteResourceNo`
+- `KeepResource`: `Customer Critical PoC`
+- `ShutdownResource`: `NightlyShutdownNo`
+- `ShutdownTime`: `Customer Critical PoC`
+
+These values were aligned on July 14, 2026 with the existing `demo-app`
+reference resource in `javierchan.co`. OCI CLI verification also confirmed that
+the App uses on-demand inference and has no active Dedicated AI Cluster or model
+endpoint in `us-chicago-1`; those resource types therefore require no App tag
+update. New OCI resources created for this integration must inherit the same
+retention policy without copying another resource's identity or creation tags.
 
 ## Governed Flow
 

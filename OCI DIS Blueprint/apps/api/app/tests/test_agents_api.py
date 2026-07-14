@@ -31,6 +31,15 @@ def test_guardrail_refusal_does_not_degrade_provider_health() -> None:
     assert agent_service.observed_provider_status(
         {"provider_status": "completed", "guardrails_status": "completed"}
     ) == "completed"
+    assert agent_service.observed_provider_transport(
+        {"provider_status": "completed", "provider_transport": "chat_completions"}
+    ) == "chat_completions"
+    assert agent_service.observed_provider_transport(
+        {"provider_status": "completed", "provider_transport": "responses"}
+    ) == "responses"
+    assert agent_service.observed_provider_transport(
+        {"provider_status": "skipped", "provider_transport": None}
+    ) is None
 
 
 async def _seed_project(test_engine: AsyncEngine) -> str:

@@ -2,7 +2,7 @@
 
 import { expect, test } from "@playwright/test";
 
-type ProjectList = { projects: Array<{ id: string; status: string }> };
+type ProjectList = { projects: Array<{ id: string; name: string; status: string }> };
 
 const apiBase = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8000";
 
@@ -43,6 +43,23 @@ test("keeps contextual support available and bounded across App navigation", asy
   expect(sendBox).not.toBeNull();
   expect((addContextBox?.x ?? 0) + (addContextBox?.width ?? 0)).toBeLessThanOrEqual(sendBox?.x ?? 0);
 
+  await assistant.getByRole("button", { name: "Clear assistant history", exact: true }).click();
+  const clearDialog = page.getByRole("alertdialog", { name: "Clear assistant history?", exact: true });
+  await expect(clearDialog).toBeVisible();
+  await clearDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(assistant.getByText("What is the weather today?", { exact: true })).toBeVisible();
+
+  await assistant.getByRole("button", { name: "Clear assistant history", exact: true }).click();
+  await clearDialog.getByRole("button", { name: "Clear history", exact: true }).click();
+  await expect(clearDialog).toBeHidden();
+  await expect(assistant.getByText("Hi. What are you working through?", { exact: true })).toBeVisible();
+  await expect(assistant.getByText("What is the weather today?", { exact: true })).toHaveCount(0);
+  await expect(assistant.getByRole("button", { name: "Clear assistant history", exact: true })).toBeDisabled();
+
+  await page.reload();
+  await expect(assistant).toBeVisible();
+  await expect(assistant.getByText("Hi. What are you working through?", { exact: true })).toBeVisible();
+
   await page.setViewportSize({ width: 390, height: 844 });
   const box = await assistant.boundingBox();
   expect(box).not.toBeNull();
@@ -51,4 +68,32 @@ test("keeps contextual support available and bounded across App navigation", asy
   expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390);
   expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(844);
   await expect(assistant.getByRole("textbox", { name: "Ask OCI DIS App Assistant", exact: true })).toBeVisible();
+});
+
+test("resolves an unambiguous project dossier from a global App route", async ({ page, request }) => {
+  const projectsResponse = await request.get(`${apiBase}/api/v1/projects`);
+  expect(projectsResponse.ok()).toBe(true);
+  const projects = (await projectsResponse.json()) as ProjectList;
+  const activeProjects = projects.projects.filter((candidate) => candidate.status === "active");
+  test.skip(activeProjects.length !== 1, "This continuity check requires exactly one active project.");
+  const [project] = activeProjects;
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/admin/agents");
+  await page.getByRole("button", { name: "Open OCI DIS App Assistant", exact: true }).click();
+
+  const assistant = page.getByRole("dialog", { name: "OCI DIS App Assistant", exact: true });
+  const input = assistant.getByRole("textbox", { name: "Ask OCI DIS App Assistant", exact: true });
+  const send = assistant.getByRole("button", { name: "Send message", exact: true });
+
+  await input.fill("¿Cuántos proyectos tenemos en la App?");
+  await send.click();
+  await expect(assistant.getByRole("link", { name: "Projects", exact: true })).toBeVisible({ timeout: 60_000 });
+
+  await input.fill("¿Cuál es el precio total de este proyecto?");
+  await send.click();
+  await expect(assistant.getByRole("link", { name: "BOM & Cost", exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(assistant.getByRole("link", { name: project.name, exact: true })).toBeVisible();
+  await expect(assistant).toContainText("USD");
+  await expect(assistant).not.toContainText("Open the relevant workspace or add its context");
 });

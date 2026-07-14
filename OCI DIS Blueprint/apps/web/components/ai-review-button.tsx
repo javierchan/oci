@@ -3,14 +3,31 @@
 /* Governed AI review launcher and result board for project and integration scopes. */
 
 import Link from "next/link";
-import { AlertTriangle, ClipboardCheck, Download, ListChecks, Loader2, Route, ShieldCheck, Sparkles, TrendingUp, X } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ClipboardCheck,
+  Download,
+  Eye,
+  ListChecks,
+  Loader2,
+  Route,
+  ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  X,
+  XCircle,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ConfirmModal } from "@/components/modal";
+import { GovernedNarrative } from "@/components/governed-narrative";
+import { ActionRecommendationWorkspace } from "@/components/action-recommendation-workspace";
 import { api, apiDownloadUrl, getErrorMessage } from "@/lib/api";
 import { formatAiReviewDriftValue, isAiReviewLayoutMetadataOnlyDrift } from "@/lib/ai-review";
 import type {
   AiReviewBaseline,
+  AiReviewCanvasDraftSelection,
   AiReviewCategory,
   AiReviewDriftStatus,
   AiReviewFinding,
@@ -18,6 +35,8 @@ import type {
   AiReviewJob,
   AiReviewJobCompare,
   AiReviewProviderStatus,
+  AiReviewRecommendationCandidate,
+  AiReviewRecommendationWorkspace,
   AiReviewScope,
   AiReviewSeverity,
 } from "@/lib/types";
@@ -34,6 +53,7 @@ type AiReviewButtonProps = {
   open?: boolean;
   onOpenChange?: (_open: boolean) => void;
   hideTrigger?: boolean;
+  onPreviewCanvasRecommendation?: (_selection: AiReviewCanvasDraftSelection) => void;
 };
 
 const SEVERITY_STYLES: Record<AiReviewSeverity, string> = {
@@ -172,23 +192,26 @@ function FindingCard({
           ) : null}
         </div>
       </div>
-      <p className="mt-2 text-sm leading-6 opacity-85">{finding.summary}</p>
-
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
         <div className="rounded-xl border border-current/15 bg-white/45 p-3 text-xs dark:bg-black/15">
-          <p className="font-semibold uppercase tracking-[0.12em] opacity-60">Current</p>
-          <p className="mt-2 leading-5">{finding.current_state}</p>
+          <p className="font-semibold uppercase tracking-[0.12em] opacity-60">What we found</p>
+          <p className="mt-2 text-sm leading-6">{finding.summary}</p>
         </div>
         <div className="rounded-xl border border-current/15 bg-white/45 p-3 text-xs dark:bg-black/15">
-          <p className="font-semibold uppercase tracking-[0.12em] opacity-60">Recommended</p>
-          <p className="mt-2 leading-5">{finding.recommended_state}</p>
+          <p className="font-semibold uppercase tracking-[0.12em] opacity-60">Why it matters</p>
+          <p className="mt-2 text-sm leading-6">{finding.current_state}</p>
         </div>
       </div>
 
-      <p className="mt-3 text-sm font-medium leading-6">{finding.recommendation}</p>
+      <div className="mt-3 rounded-xl border border-current/15 bg-white/45 p-3 dark:bg-black/15">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] opacity-60">Recommended action</p>
+        <p className="mt-2 text-sm font-medium leading-6">{finding.recommendation}</p>
+      </div>
 
-      <div className="mt-3 rounded-xl border border-current/15 bg-white/45 p-3 text-xs dark:bg-black/15">
-        <p className="font-semibold uppercase tracking-[0.12em] opacity-60">Architecture diff</p>
+      <details className="mt-3 rounded-xl border border-current/15 bg-white/45 p-3 text-xs dark:bg-black/15">
+        <summary className="cursor-pointer font-semibold uppercase tracking-[0.12em] opacity-70">
+          Technical evidence and architecture diff
+        </summary>
         <div className="mt-2 grid gap-2 md:grid-cols-2">
           <div>
             <p className="font-semibold opacity-70">Current design</p>
@@ -220,11 +243,11 @@ function FindingCard({
             <p className="mt-2 text-[11px] font-medium leading-5 opacity-75">{finding.suggested_patch.safety_note}</p>
           </div>
         ) : null}
-      </div>
+      </details>
 
       {finding.evidence.length > 0 ? (
-        <div className="mt-3 rounded-xl border border-current/15 bg-white/45 p-3 text-xs dark:bg-black/15">
-          <p className="font-semibold uppercase tracking-[0.12em] opacity-60">Evidence IDs</p>
+        <details className="mt-3 rounded-xl border border-current/15 bg-white/45 p-3 text-xs dark:bg-black/15">
+          <summary className="cursor-pointer font-semibold uppercase tracking-[0.12em] opacity-70">Evidence IDs</summary>
           <div className="mt-2 flex flex-wrap gap-2">
             {finding.evidence_ids.map((item) => (
               <span key={item} className="rounded-full bg-current/10 px-2 py-1 font-mono">
@@ -237,7 +260,7 @@ function FindingCard({
               <p key={item}>{item}</p>
             ))}
           </div>
-        </div>
+        </details>
       ) : null}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -294,6 +317,157 @@ function jobResultLabel(job: AiReviewJob): string {
   return "Waiting for review board output";
 }
 
+const RECOMMENDATION_MODE_LABELS: Record<AiReviewRecommendationCandidate["mode"], string> = {
+  minimum_change: "Minimum change",
+  resilience: "Higher resilience",
+  cost_optimized: "Lower service footprint",
+};
+
+function RecommendationWorkspace({
+  job,
+  workspace,
+  selectingCandidateId,
+  onPreviewCandidate,
+}: {
+  job: AiReviewJob;
+  workspace: AiReviewRecommendationWorkspace;
+  selectingCandidateId: string | null;
+  onPreviewCandidate: (_candidate: AiReviewRecommendationCandidate) => void;
+}): JSX.Element {
+  const acceptedCandidateIds = new Set(
+    job.accepted_recommendations
+      .filter((item) => item.recommendation_type === "candidate")
+      .map((item) => item.finding_id),
+  );
+
+  return (
+    <section className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-3xl">
+          <p className="app-label">Recommendation workspace</p>
+          <h4 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
+            Compare governed designs before changing the canvas
+          </h4>
+          <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+            {workspace.recommendation_basis} Previewing records your decision for audit; it does not save the
+            integration. Apply a candidate to the unsaved draft and use Simulate impact before deciding to save.
+          </p>
+        </div>
+        <span className="app-theme-chip">{workspace.candidates.length} alternatives</span>
+      </div>
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-3">
+        {workspace.candidates.map((candidate) => {
+          const recommended = candidate.id === workspace.recommended_candidate_id;
+          const selected = acceptedCandidateIds.has(candidate.id);
+          const blockedChecks = candidate.checks.filter((check) => check.status === "blocked");
+          const reviewChecks = candidate.checks.filter((check) => check.status === "review");
+          return (
+            <article
+              key={candidate.id}
+              className={`flex min-w-0 flex-col rounded-2xl border bg-[var(--color-surface)] p-4 ${
+                recommended ? "border-[var(--color-accent)] shadow-sm" : "border-[var(--color-border)]"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="app-theme-chip">{RECOMMENDATION_MODE_LABELS[candidate.mode]}</span>
+                {recommended ? <span className="app-status-chip active">Recommended</span> : null}
+              </div>
+              <h5 className="mt-3 text-base font-semibold text-[var(--color-text-primary)]">{candidate.title}</h5>
+              <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">{candidate.summary}</p>
+
+              <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-xl bg-[var(--color-surface-2)] p-3">
+                  <p className="font-semibold text-[var(--color-text-primary)]">{candidate.combination_code}</p>
+                  <p className="mt-1 text-[var(--color-text-muted)]">Governed combination</p>
+                </div>
+                <div className="rounded-xl bg-[var(--color-surface-2)] p-3">
+                  <p className="font-semibold capitalize text-[var(--color-text-primary)]">{candidate.confidence}</p>
+                  <p className="mt-1 text-[var(--color-text-muted)]">Evidence confidence</p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-[var(--color-border)] p-3 text-xs">
+                <p className="font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">Canvas diff</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {candidate.change_set.added_tools.map((tool) => (
+                    <span key={`add-${tool}`} className="rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                      + {tool}
+                    </span>
+                  ))}
+                  {candidate.change_set.removed_tools.map((tool) => (
+                    <span key={`remove-${tool}`} className="rounded-full bg-rose-50 px-2 py-1 font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                      - {tool}
+                    </span>
+                  ))}
+                  {candidate.change_set.added_overlays.map((tool) => (
+                    <span key={`overlay-${tool}`} className="rounded-full bg-blue-50 px-2 py-1 font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                      + overlay {tool}
+                    </span>
+                  ))}
+                  {candidate.change_set.added_tools.length === 0 &&
+                  candidate.change_set.removed_tools.length === 0 &&
+                  candidate.change_set.added_overlays.length === 0 ? (
+                    <span className="text-[var(--color-text-secondary)]">No topology change</span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {candidate.checks.map((check) => (
+                  <div key={check.id} className="flex items-start gap-2 text-xs leading-5 text-[var(--color-text-secondary)]">
+                    {check.status === "pass" ? (
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                    ) : check.status === "blocked" ? (
+                      <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" />
+                    ) : (
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                    )}
+                    <span><strong className="text-[var(--color-text-primary)]">{check.label}:</strong> {check.detail}</span>
+                  </div>
+                ))}
+              </div>
+
+              <details className="mt-4 rounded-xl border border-[var(--color-border)] p-3 text-xs">
+                <summary className="cursor-pointer font-semibold text-[var(--color-text-primary)]">Implementation and validation plan</summary>
+                <p className="mt-3 font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">How to implement</p>
+                <ol className="mt-2 space-y-1.5 text-[var(--color-text-secondary)]">
+                  {candidate.implementation_steps.map((step, index) => <li key={step}>{index + 1}. {step}</li>)}
+                </ol>
+                <p className="mt-3 font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">Validate before save</p>
+                <ul className="mt-2 space-y-1.5 text-[var(--color-text-secondary)]">
+                  {candidate.validation_plan.map((step) => <li key={step}>• {step}</li>)}
+                </ul>
+                {candidate.tradeoffs.length > 0 ? (
+                  <p className="mt-3 leading-5 text-[var(--color-text-muted)]">Trade-off: {candidate.tradeoffs.join(" ")}</p>
+                ) : null}
+              </details>
+
+              <div className="mt-auto pt-4">
+                <p className="mb-3 text-xs leading-5 text-[var(--color-text-muted)]">{candidate.cost_impact.detail}</p>
+                <button
+                  type="button"
+                  onClick={() => onPreviewCandidate(candidate)}
+                  disabled={!candidate.applicable || selectingCandidateId !== null}
+                  className="app-button-primary w-full justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {selectingCandidateId === candidate.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                  {selected ? "Preview again on canvas" : blockedChecks.length > 0 ? "Resolve blockers first" : "Preview on canvas"}
+                </button>
+                {reviewChecks.length > 0 ? (
+                  <p className="mt-2 text-center text-[11px] text-[var(--color-text-muted)]">
+                    {reviewChecks.length} architect check{reviewChecks.length === 1 ? "" : "s"} remain
+                  </p>
+                ) : null}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function AiReviewDialog({
   integrationId,
   graphContext,
@@ -318,6 +492,8 @@ function AiReviewDialog({
   onBaselineNoteChange,
   onAccept,
   onApplyPatch,
+  selectingCandidateId,
+  onPreviewCandidate,
   history,
   historyLoading,
   onOpenHistoryJob,
@@ -346,6 +522,8 @@ function AiReviewDialog({
   onBaselineNoteChange: (_value: string) => void;
   onAccept: (_findingId: string) => void;
   onApplyPatch: (_findingId: string) => void;
+  selectingCandidateId: string | null;
+  onPreviewCandidate: (_candidate: AiReviewRecommendationCandidate) => void;
   history: AiReviewJob[];
   historyLoading: boolean;
   onOpenHistoryJob: (_job: AiReviewJob) => void;
@@ -364,6 +542,8 @@ function AiReviewDialog({
     ) ?? [];
   const hasHistoricalLayoutOnlyDrift =
     layoutMetadataOnlyItems.length > 0 && actionableDriftItems.length === 0;
+  const serviceRulesMetric = review?.metrics.find((metric) => metric.label.toLowerCase() === "service rules") ?? null;
+  const evidenceMetrics = review?.metrics.filter((metric) => metric !== serviceRulesMetric) ?? [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/35 px-4 py-8 backdrop-blur-sm">
@@ -398,32 +578,32 @@ function AiReviewDialog({
           </button>
         </div>
 
-        <div className="max-h-[calc(100vh-10rem)] overflow-y-auto px-6 py-5">
+        <div className="flex max-h-[calc(100vh-10rem)] flex-col overflow-y-auto px-6 py-5">
           {providerStatus ? (
-            <section className={`mb-5 rounded-3xl border p-4 ${providerModeTone(providerStatus.mode)}`}>
+            <section className={`mb-5 rounded-2xl border p-4 ${providerModeTone(providerStatus.mode)}`}>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">Provider status</p>
-                  <h4 className="mt-1 text-base font-semibold">{providerStatus.status_message}</h4>
-                  <p className="mt-2 text-xs leading-5 opacity-80">
-                    Model {providerStatus.model} · {providerStatus.region} · Responses-first with Chat fallback ·{" "}
-                    {providerStatus.quota.remaining_jobs_today} of{" "}
-                    {providerStatus.quota.daily_job_limit} jobs remaining today
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="app-theme-chip">
-                      Responses {providerStatus.transport_strategy.responses_capability}
-                    </span>
-                    <span className="app-theme-chip">
-                      Guardrails {providerStatus.safety.guardrails_enabled ? `v${providerStatus.safety.guardrails_version}` : "off"}
-                    </span>
-                    <span className="app-theme-chip">{providerStatus.retry_policy.max_retries} retries</span>
-                  </div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">AI explanation status</p>
+                  <h4 className="mt-1 text-sm font-semibold leading-6">{providerStatus.status_message}</h4>
                 </div>
                 <span className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
                   {providerStatus.mode.replace(/_/g, " ")}
                 </span>
               </div>
+              <details className="mt-3 border-t border-current/15 pt-3 text-xs opacity-80">
+                <summary className="cursor-pointer font-semibold">Technical provider details</summary>
+                <p className="mt-2 leading-5">
+                  Model {providerStatus.model} · {providerStatus.region} · Responses-first with Chat fallback ·{" "}
+                  {providerStatus.quota.remaining_jobs_today} of {providerStatus.quota.daily_job_limit} jobs remaining
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="app-theme-chip">Responses {providerStatus.transport_strategy.responses_capability}</span>
+                  <span className="app-theme-chip">
+                    Guardrails {providerStatus.safety.guardrails_enabled ? `v${providerStatus.safety.guardrails_version}` : "off"}
+                  </span>
+                  <span className="app-theme-chip">{providerStatus.retry_policy.max_retries} retries</span>
+                </div>
+              </details>
             </section>
           ) : null}
 
@@ -590,7 +770,7 @@ function AiReviewDialog({
           ) : null}
 
           {!loading && history.length > 0 ? (
-            <section className="mt-5 rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+            <section className="order-3 mt-5 rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-text-muted)]">
@@ -691,16 +871,37 @@ function AiReviewDialog({
           ) : null}
 
           {review && !loading ? (
-            <div className="space-y-5">
+            <div className="order-2 space-y-5">
+              {job && review.recommendation_workspace ? (
+                <RecommendationWorkspace
+                  job={job}
+                  workspace={review.recommendation_workspace}
+                  selectingCandidateId={selectingCandidateId}
+                  onPreviewCandidate={onPreviewCandidate}
+                />
+              ) : null}
+              {review.action_workspace ? (
+                <ActionRecommendationWorkspace workspace={review.action_workspace} />
+              ) : null}
               <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_14rem]">
-                <article className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                <article className={`rounded-3xl border p-5 ${signoffTone(review.decision_brief.signoff_status)}`}>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-text-muted)]">
-                    Review summary
+                    Decision at a glance
                   </p>
-                  <h4 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">{review.readiness_label}</h4>
-                  <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
-                    {review.llm_summary ?? review.summary}
-                  </p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <div className="rounded-2xl border border-current/15 bg-white/45 p-4 dark:bg-black/15">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] opacity-60">What we found</p>
+                      <p className="mt-2 text-sm font-semibold leading-6">{review.decision_brief.headline}</p>
+                    </div>
+                    <div className="rounded-2xl border border-current/15 bg-white/45 p-4 dark:bg-black/15">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] opacity-60">Why it matters</p>
+                      <p className="mt-2 text-sm leading-6">{review.decision_brief.primary_risk}</p>
+                    </div>
+                    <div className="rounded-2xl border border-current/15 bg-white/45 p-4 dark:bg-black/15">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] opacity-60">What to do next</p>
+                      <p className="mt-2 text-sm leading-6">{review.decision_brief.recommended_next_action}</p>
+                    </div>
+                  </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {review.llm_summary ? (
                       <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
@@ -716,6 +917,16 @@ function AiReviewDialog({
                       </span>
                     ) : null}
                   </div>
+                  {review.llm_summary ? (
+                    <details className="mt-4 rounded-2xl border border-current/15 bg-white/45 p-4 dark:bg-black/15">
+                      <summary className="cursor-pointer text-sm font-semibold">Read the OCI Generative AI explanation</summary>
+                      <div className="mt-3">
+                        <GovernedNarrative content={review.llm_summary} />
+                      </div>
+                    </details>
+                  ) : (
+                    <p className="mt-4 text-sm leading-6 opacity-80">{review.summary}</p>
+                  )}
                   {job?.status === "completed" ? (
                     <a
                       href={apiDownloadUrl(`/api/v1/ai-reviews/${job.id}/export`)}
@@ -731,7 +942,7 @@ function AiReviewDialog({
                     {review.llm_model ? ` (${review.llm_model})` : ""} · Generated {new Date(review.generated_at).toLocaleString()}
                   </p>
                 </article>
-                <article className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5 text-center">
+                <article className="self-start rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5 text-center">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-text-muted)]">
                     Readiness
                   </p>
@@ -742,35 +953,30 @@ function AiReviewDialog({
                 </article>
               </section>
 
-              <section className={`rounded-3xl border p-5 ${signoffTone(review.decision_brief.signoff_status)}`}>
+              <section className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">Executive decision</p>
-                    <h4 className="mt-2 text-xl font-semibold">{review.decision_brief.headline}</h4>
-                    <p className="mt-2 text-sm leading-6 opacity-85">
-                      <span className="font-semibold">Primary risk: </span>
-                      {review.decision_brief.primary_risk}
-                    </p>
-                    <p className="mt-2 text-sm leading-6 opacity-85">
-                      <span className="font-semibold">Next action: </span>
-                      {review.decision_brief.recommended_next_action}
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-text-muted)]">Decision requirements</p>
+                    <h4 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">What must be resolved before sign-off</h4>
+                    <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                      The board separates decisions that need an architect from conditions that directly block approval.
                     </p>
                   </div>
-                  <span className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${signoffTone(review.decision_brief.signoff_status)}`}>
                     {review.decision_brief.signoff_status.replace(/_/g, " ")}
                   </span>
                 </div>
                 <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                  <div className="rounded-2xl border border-current/15 bg-white/45 p-4 text-sm dark:bg-black/15">
-                    <p className="font-semibold uppercase tracking-[0.14em] opacity-60">Decision agenda</p>
+                  <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
+                    <p className="font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">Architect decisions</p>
                     <ul className="mt-3 space-y-2 leading-6">
                       {review.decision_brief.decision_points.slice(0, 4).map((item) => (
                         <li key={item}>• {item}</li>
                       ))}
                     </ul>
                   </div>
-                  <div className="rounded-2xl border border-current/15 bg-white/45 p-4 text-sm dark:bg-black/15">
-                    <p className="font-semibold uppercase tracking-[0.14em] opacity-60">Sign-off blockers</p>
+                  <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
+                    <p className="font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">Sign-off blockers</p>
                     {review.decision_brief.blockers.length > 0 ? (
                       <ul className="mt-3 space-y-2 leading-6">
                         {review.decision_brief.blockers.slice(0, 5).map((item) => (
@@ -857,9 +1063,15 @@ function AiReviewDialog({
                 ) : null}
               </section>
 
-              <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-                {review.metrics.map((metric) => (
-                  <article key={metric.label} className="min-w-0 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+              <section className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-text-muted)]">Evidence coverage</p>
+                <h4 className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">What the review measured</h4>
+                <p className="mt-1 text-sm leading-6 text-[var(--color-text-secondary)]">
+                  Coverage explains how much governed evidence supports the recommendation; it does not replace architectural approval.
+                </p>
+                <div className="mt-4 grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {evidenceMetrics.map((metric) => (
+                  <article key={metric.label} className="min-w-0 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
                       {metric.label}
                     </p>
@@ -867,6 +1079,18 @@ function AiReviewDialog({
                     <p className="mt-2 [overflow-wrap:anywhere] text-xs leading-5 text-[var(--color-text-secondary)]">{metric.detail}</p>
                   </article>
                 ))}
+                </div>
+                {serviceRulesMetric ? (
+                  <div className="mt-3 grid gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 md:grid-cols-[10rem_minmax(0,1fr)] md:items-center">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">Service rules</p>
+                      <p className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">{serviceRulesMetric.value}</p>
+                    </div>
+                    <p className="[overflow-wrap:anywhere] text-sm leading-6 text-[var(--color-text-secondary)]">
+                      {serviceRulesMetric.detail.replace(/\.$/, "")}. These versioned rules provide the OCI limits and compatibility evidence used by this review.
+                    </p>
+                  </div>
+                ) : null}
               </section>
 
               <section className="grid gap-3 md:grid-cols-4">
@@ -1068,6 +1292,7 @@ export function AiReviewButton({
   open: controlledOpen,
   onOpenChange,
   hideTrigger = false,
+  onPreviewCanvasRecommendation,
 }: AiReviewButtonProps): JSX.Element {
   const [internalOpen, setInternalOpen] = useState<boolean>(false);
   const open = controlledOpen ?? internalOpen;
@@ -1079,6 +1304,7 @@ export function AiReviewButton({
   const [error, setError] = useState<string | null>(null);
   const [acceptingFindingId, setAcceptingFindingId] = useState<string | null>(null);
   const [applyingPatchFindingId, setApplyingPatchFindingId] = useState<string | null>(null);
+  const [selectingCandidateId, setSelectingCandidateId] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<AiReviewBaseline | null>(null);
   const [baselineHistory, setBaselineHistory] = useState<AiReviewBaseline[]>([]);
   const [baselineLoading, setBaselineLoading] = useState<boolean>(false);
@@ -1355,6 +1581,31 @@ export function AiReviewButton({
     }
   }
 
+  async function previewCandidate(candidate: AiReviewRecommendationCandidate): Promise<void> {
+    if (!job || !job.result?.recommendation_workspace || !onPreviewCanvasRecommendation) return;
+    setSelectingCandidateId(candidate.id);
+    setError(null);
+    try {
+      const response = await api.selectAiReviewCandidateForDraft(
+        job.id,
+        candidate.id,
+        "Selected for local canvas comparison from the governed review board.",
+      );
+      setJob(response.job);
+      setHistory((current) => current.map((item) => (item.id === response.job.id ? response.job : item)));
+      onPreviewCanvasRecommendation({
+        jobId: response.job.id,
+        candidate: response.candidate,
+        baselineCanvasState: job.result.recommendation_workspace.current_canvas_state,
+      });
+      setOpen(false);
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError, "Unable to prepare the canvas preview."));
+    } finally {
+      setSelectingCandidateId(null);
+    }
+  }
+
   async function openHistoryJob(historyJob: AiReviewJob): Promise<void> {
     setSelectedScope(historyJob.scope);
     setJob(historyJob);
@@ -1397,6 +1648,7 @@ export function AiReviewButton({
           loading={loading}
           acceptingFindingId={acceptingFindingId}
           applyingPatchFindingId={applyingPatchFindingId}
+          selectingCandidateId={selectingCandidateId}
           baseline={baseline}
           baselineHistory={baselineHistory}
           baselineLoading={baselineLoading}
@@ -1423,6 +1675,9 @@ export function AiReviewButton({
           }}
           onApplyPatch={(findingId) => {
             void applyFindingPatch(findingId);
+          }}
+          onPreviewCandidate={(candidate) => {
+            void previewCandidate(candidate);
           }}
           history={history}
           historyLoading={historyLoading}

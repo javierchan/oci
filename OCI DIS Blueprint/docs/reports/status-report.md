@@ -1,6 +1,6 @@
 # OCI DIS Blueprint Status Report
 
-**Validated:** 2026-07-12
+**Validated:** 2026-07-13
 **Branch:** `main`
 **Detailed remediation:** `milestone-progress-20260710-140234.md`
 
@@ -8,11 +8,11 @@
 
 | Area | Status | Evidence |
 |---|---|---|
-| Backend and deterministic engines | complete | 160 tests passed: 103 API, 42 calc-engine, and 15 pricing-engine |
-| Frontend | complete | TypeScript, ESLint, 53 tests, and production build passed |
+| Backend and deterministic engines | complete | 172 tests passed: 108 API, 42 calc-engine, and 22 pricing-engine |
+| Frontend | complete | TypeScript, ESLint, 64 tests, and production build passed |
 | Browser workflows | complete | 16 Playwright E2E tests passed, including provider telemetry and contextual AI |
 | Dependency security | complete | npm audit 0; Docker Scout 0 HIGH/CRITICAL for API and web images |
-| Database | complete | Alembic at `20260712_0022`; seed idempotent |
+| Database | complete | Alembic at `20260712_0023`; seed idempotent |
 | Runtime | complete | 8 Compose services running; no recent error signatures |
 | Effective CI | complete | one root workflow covers code, browser, build, and image gates |
 
@@ -41,6 +41,89 @@
 - A generated workbook was filled and imported through the production service
   path with exact field mapping. All ten visible sheets rendered without formula
   errors, and Playwright verified the App metadata and downloaded filename.
+
+## Monthly Consumption Ramps
+
+- New deployment scenarios capture explicit quantities per environment, product,
+  billing metric, and month instead of treating percentage as a universal unit.
+  Historical percentage scenarios remain readable but are not used for new plans.
+- Governed SKU mappings define packaged, fixed-capacity, hourly, continuous, and
+  manual-monthly behavior, including quantity unit, minimum, and increment.
+- The pure Decimal engine prices every contract month independently, and immutable
+  BOM line periods preserve quantity, hours, price tier, amount, warnings, formula,
+  and provenance for XLSX/JSON/PDF exports.
+- The App exposes monthly run rate, cumulative commitment, first active month,
+  stabilization month, peak, timing effect, environment/product composition,
+  activation timeline, top drivers, and monthly snapshot comparison.
+- The standard editor supports constant and linear real-unit ramps; its monthly
+  matrix edits the same normalized plan and contract-duration changes safely
+  resize period values without preserving invisible payload rows.
+- Browser and Playwright validation completed an approved two-environment,
+  fourteen-metric scenario, persisted exact OIC package quantities, reached a
+  terminal BOM job, rendered monthly insights, and exercised the editable matrix
+  with no page overflow or console errors.
+
+## Explainable Governed AI Reviews
+
+- Architecture Review now leads with the current decision and separates what was
+  found, why it matters, and the next concrete action before review history or
+  technical evidence.
+- One bounded narrative renderer converts optional OCI Generative AI output and
+  malformed historical Markdown tables into readable headings, paragraphs, and
+  actions without changing persisted evidence.
+- Import Quality, BOM Scenario, Service Verification, and the contextual Assistant
+  use the same explanatory hierarchy while deterministic findings, service rules,
+  quantities, prices, and totals remain authoritative.
+- The contextual Assistant resolves project dossiers from the current route,
+  attached context, recent user questions, or the sole active project. Exact
+  portfolio counts and BOM totals remain deterministic; ambiguous portfolios
+  require selection, and unresolved placeholders fail output grounding.
+- Browser inspection covered real Project Review, Import Quality, and BOM data in
+  light, dark, desktop, and mobile layouts with no console errors. Frontend lint,
+  64 tests, the Node 26 production build, 111 API tests, Ruff, mypy,
+  healthy production services, and `git diff --check` passed.
+
+## Prescriptive Integration Recommendations
+
+- Integration-scope reviews now derive up to three governed alternatives from the
+  saved canvas, patterns, G01-G18 combinations, normalized Service Product limits,
+  interoperability, payload, trigger, and frequency evidence.
+- Each alternative explains the exact canvas diff, implementation sequence,
+  prerequisites, validation plan, trade-offs, confidence, and cost boundary. OCI
+  Generative AI compares only these candidates; deterministic engines remain the
+  authority for topology validity, volumetry, quantities, and cost.
+- Selecting `Preview on canvas` writes an audit decision but does not mutate the
+  integration. The canvas displays a dashed candidate overlay, and `Apply to draft`
+  changes only unsaved local state until the architect explicitly saves.
+- Canvas nodes expose governed role, summary, SLA, pricing basis, and key limit
+  context in a persistent editor. Direction markers are clearer and modeled-flow
+  animation communicates direction without claiming runtime telemetry.
+- Validation passed 108 API, 42 calc-engine, 22 pricing-engine, and 64 frontend
+  tests, plus focused AI Review contracts, Ruff, mypy, TypeScript, and ESLint.
+
+## Portfolio Recommendations And Draft Simulation
+
+- Project Review, Topology Investigation, and BOM now share a typed action
+  workspace that leads with the proposed change, implementation sequence,
+  validation, expected impact, evidence, confidence, and the affected App route.
+- Integration Canvas can evaluate a connected unsaved draft before the architect
+  commits it. Saved and proposed designs run through the same in-memory volumetry
+  service used by recalculation jobs; no catalog row or snapshot is mutated.
+- When an approved deployment scenario exists, the same deterministic BOM engine
+  computes current and proposed monthly series and derives monthly run-rate,
+  contractual, and ramp timing deltas. Incomplete pricing is reported as blocked.
+- Explicit-unit demand remains the commercial authority. Existing quantities are
+  preserved and a product introduced only by the draft is identified as a sizing
+  requirement rather than assigned an inferred client quantity.
+- Focused validation passed 108 API, 42 calc-engine, 22 pricing-engine, and 64
+  frontend tests, plus Ruff, mypy, TypeScript, ESLint, and OpenAPI generation.
+- Production browser validation exercised integration candidate preview, local
+  draft application, technical/commercial simulation, Project and Topology action
+  workspaces, and BOM recommendations. Desktop light, desktop dark, and 390 px
+  mobile views remained readable with no page overflow or browser console errors.
+- The controlled draft simulation left persisted evidence unchanged at 14
+  volumetry snapshots, 21 BOM snapshots, and 983 audit events; candidate preview
+  remains the separately audited architect decision defined by M43.
 
 ## Production Runtime
 
@@ -139,8 +222,8 @@
   Delete affordance; remaining disabled controls express real workflow preconditions.
 - Provider banners distinguish configured, verified, degraded, deterministic-only,
   and misconfigured states from persisted jobs and agent runs.
-- Production Docker validation passed 103 API, 42 calc-engine, 15 pricing-engine,
-  53 frontend unit tests, strict TypeScript, ESLint, Ruff, mypy, OpenAPI check,
+- Production Docker validation passed 106 API, 42 calc-engine, 19 pricing-engine,
+  60 frontend unit tests, strict TypeScript, ESLint, Ruff, mypy, OpenAPI check,
   Node 26 production build, and 16 of 16 Playwright flows. Real OCI validation
   covered synthesis, allowlisted Function Calling, and Guardrails prompt-injection
   refusal. Trivy reported zero high or critical findings in both production images.

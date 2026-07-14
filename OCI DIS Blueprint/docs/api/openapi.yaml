@@ -804,6 +804,155 @@
         "title": "AiReviewAcceptRecommendationRequest",
         "type": "object"
       },
+      "AiReviewActionCandidate": {
+        "additionalProperties": false,
+        "description": "One deterministic, evidence-linked action outside the integration canvas.",
+        "properties": {
+          "action_href": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Href"
+          },
+          "action_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Label"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "expected_impact": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Expected Impact",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "implementation_steps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Implementation Steps",
+            "type": "array"
+          },
+          "priority": {
+            "enum": [
+              "now",
+              "next",
+              "monitor"
+            ],
+            "title": "Priority",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "review",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "validation_plan": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Validation Plan",
+            "type": "array"
+          },
+          "what_to_change": {
+            "items": {
+              "type": "string"
+            },
+            "title": "What To Change",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "priority",
+          "status",
+          "title",
+          "summary",
+          "confidence"
+        ],
+        "title": "AiReviewActionCandidate",
+        "type": "object"
+      },
+      "AiReviewActionWorkspace": {
+        "additionalProperties": false,
+        "description": "Prescriptive action plan for project and topology review scopes.",
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/AiReviewActionCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "context": {
+            "enum": [
+              "project",
+              "topology",
+              "bom"
+            ],
+            "title": "Context",
+            "type": "string"
+          },
+          "recommendation_basis": {
+            "title": "Recommendation Basis",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "context",
+          "title",
+          "recommendation_basis"
+        ],
+        "title": "AiReviewActionWorkspace",
+        "type": "object"
+      },
       "AiReviewApplyPatchRequest": {
         "additionalProperties": false,
         "description": "Payload for applying a deterministic AI review patch after human confirmation.",
@@ -1019,6 +1168,49 @@
         "title": "AiReviewBaselineResponse",
         "type": "object"
       },
+      "AiReviewCanvasChangeSet": {
+        "additionalProperties": false,
+        "description": "Typed topology diff between the saved canvas and one candidate.",
+        "properties": {
+          "added_overlays": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Added Overlays",
+            "type": "array"
+          },
+          "added_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Added Tools",
+            "type": "array"
+          },
+          "removed_overlays": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed Overlays",
+            "type": "array"
+          },
+          "removed_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed Tools",
+            "type": "array"
+          },
+          "retained_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Retained Tools",
+            "type": "array"
+          }
+        },
+        "title": "AiReviewCanvasChangeSet",
+        "type": "object"
+      },
       "AiReviewCreateRequest": {
         "additionalProperties": false,
         "description": "Request payload to submit a governed AI review job.",
@@ -1123,6 +1315,369 @@
           "recommended_next_action"
         ],
         "title": "AiReviewDecisionBrief",
+        "type": "object"
+      },
+      "AiReviewDraftCommercialImpact": {
+        "additionalProperties": false,
+        "description": "Commercial preview generated by the governed BOM engine without persistence.",
+        "properties": {
+          "consumption_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumption Model"
+          },
+          "contract_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Delta"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "current_contract": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Contract"
+          },
+          "current_monthly": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Monthly"
+          },
+          "current_ramp_deferred": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Ramp Deferred"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "monthly_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Delta"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/AiReviewDraftCostPeriod"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "proposed_contract": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Contract"
+          },
+          "proposed_monthly": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Monthly"
+          },
+          "proposed_ramp_deferred": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Ramp Deferred"
+          },
+          "ramp_deferred_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ramp Deferred Delta"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Name"
+          },
+          "status": {
+            "enum": [
+              "computed",
+              "scenario_required",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "detail"
+        ],
+        "title": "AiReviewDraftCommercialImpact",
+        "type": "object"
+      },
+      "AiReviewDraftCostPeriod": {
+        "additionalProperties": false,
+        "description": "Current-versus-draft amount for one approved scenario month.",
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "number"
+          },
+          "delta": {
+            "title": "Delta",
+            "type": "number"
+          },
+          "period_index": {
+            "title": "Period Index",
+            "type": "integer"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "proposed": {
+            "title": "Proposed",
+            "type": "number"
+          }
+        },
+        "required": [
+          "period_index",
+          "period_start",
+          "current",
+          "proposed",
+          "delta"
+        ],
+        "title": "AiReviewDraftCostPeriod",
+        "type": "object"
+      },
+      "AiReviewDraftMetricDelta": {
+        "additionalProperties": false,
+        "description": "Current-versus-draft deterministic technical metric.",
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "number"
+          },
+          "delta": {
+            "title": "Delta",
+            "type": "number"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "proposed": {
+            "title": "Proposed",
+            "type": "number"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "current",
+          "proposed",
+          "delta"
+        ],
+        "title": "AiReviewDraftMetricDelta",
+        "type": "object"
+      },
+      "AiReviewDraftSimulationRequest": {
+        "additionalProperties": false,
+        "description": "Unsaved canvas values to calculate without mutating governed state.",
+        "properties": {
+          "canvas_state": {
+            "maxLength": 100000,
+            "minLength": 2,
+            "title": "Canvas State",
+            "type": "string"
+          },
+          "core_tools": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Core Tools",
+            "type": "array"
+          },
+          "deployment_scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deployment Scenario Id"
+          }
+        },
+        "required": [
+          "canvas_state"
+        ],
+        "title": "AiReviewDraftSimulationRequest",
+        "type": "object"
+      },
+      "AiReviewDraftSimulationResponse": {
+        "additionalProperties": false,
+        "description": "Side-effect-free technical and economic comparison for an unsaved canvas.",
+        "properties": {
+          "assumption_set_version": {
+            "title": "Assumption Set Version",
+            "type": "string"
+          },
+          "commercial_impact": {
+            "$ref": "#/components/schemas/AiReviewDraftCommercialImpact"
+          },
+          "current_project": {
+            "$ref": "#/components/schemas/ConsolidatedMetrics"
+          },
+          "current_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Current Warnings",
+            "type": "array"
+          },
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/AiReviewDraftMetricDelta"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "persisted": {
+            "const": false,
+            "default": false,
+            "title": "Persisted",
+            "type": "boolean"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "proposed_project": {
+            "$ref": "#/components/schemas/ConsolidatedMetrics"
+          },
+          "proposed_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Proposed Warnings",
+            "type": "array"
+          },
+          "service_rules_version": {
+            "title": "Service Rules Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "integration_id",
+          "assumption_set_version",
+          "service_rules_version",
+          "current_project",
+          "proposed_project",
+          "commercial_impact"
+        ],
+        "title": "AiReviewDraftSimulationResponse",
         "type": "object"
       },
       "AiReviewDriftItem": {
@@ -2080,6 +2635,15 @@
               }
             ],
             "title": "Note"
+          },
+          "recommendation_type": {
+            "default": "finding",
+            "enum": [
+              "finding",
+              "candidate"
+            ],
+            "title": "Recommendation Type",
+            "type": "string"
           }
         },
         "required": [
@@ -2088,6 +2652,327 @@
           "accepted_at"
         ],
         "title": "AiReviewRecommendationAcceptance",
+        "type": "object"
+      },
+      "AiReviewRecommendationCandidate": {
+        "additionalProperties": false,
+        "description": "One governed, previewable integration-design alternative.",
+        "properties": {
+          "applicable": {
+            "default": true,
+            "title": "Applicable",
+            "type": "boolean"
+          },
+          "canvas_state": {
+            "title": "Canvas State",
+            "type": "string"
+          },
+          "change_set": {
+            "$ref": "#/components/schemas/AiReviewCanvasChangeSet"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/AiReviewRecommendationCheck"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "combination_code": {
+            "title": "Combination Code",
+            "type": "string"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "core_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Core Tools",
+            "type": "array"
+          },
+          "cost_impact": {
+            "$ref": "#/components/schemas/AiReviewRecommendationCostImpact"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "field_diffs": {
+            "items": {
+              "$ref": "#/components/schemas/AiReviewFieldDiff"
+            },
+            "title": "Field Diffs",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "implementation_steps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Implementation Steps",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "minimum_change",
+              "resilience",
+              "cost_optimized"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "overlays": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Overlays",
+            "type": "array"
+          },
+          "pattern_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern Id"
+          },
+          "prerequisites": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Prerequisites",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tradeoffs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tradeoffs",
+            "type": "array"
+          },
+          "validation_plan": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Validation Plan",
+            "type": "array"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "title",
+          "summary",
+          "why",
+          "combination_code",
+          "canvas_state",
+          "change_set",
+          "cost_impact",
+          "confidence"
+        ],
+        "title": "AiReviewRecommendationCandidate",
+        "type": "object"
+      },
+      "AiReviewRecommendationCheck": {
+        "additionalProperties": false,
+        "description": "One deterministic preflight check for a proposed integration design.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "review",
+              "blocked",
+              "not_computable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "status",
+          "detail"
+        ],
+        "title": "AiReviewRecommendationCheck",
+        "type": "object"
+      },
+      "AiReviewRecommendationCostImpact": {
+        "additionalProperties": false,
+        "description": "Commercial impact boundary for a design candidate.",
+        "properties": {
+          "contract_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Delta"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "direction": {
+            "default": "unknown",
+            "enum": [
+              "lower",
+              "similar",
+              "higher",
+              "unknown"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "monthly_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Delta"
+          },
+          "status": {
+            "enum": [
+              "not_applicable",
+              "requires_draft_simulation",
+              "requires_bom_recalculation",
+              "computed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "detail"
+        ],
+        "title": "AiReviewRecommendationCostImpact",
+        "type": "object"
+      },
+      "AiReviewRecommendationWorkspace": {
+        "additionalProperties": false,
+        "description": "Decision workspace derived from current design and governed alternatives.",
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/AiReviewRecommendationCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "current_canvas_state": {
+            "title": "Current Canvas State",
+            "type": "string"
+          },
+          "current_core_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Current Core Tools",
+            "type": "array"
+          },
+          "current_overlays": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Current Overlays",
+            "type": "array"
+          },
+          "current_pattern_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Pattern Id"
+          },
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "recommendation_basis": {
+            "title": "Recommendation Basis",
+            "type": "string"
+          },
+          "recommended_candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Candidate Id"
+          }
+        },
+        "required": [
+          "integration_id",
+          "current_canvas_state",
+          "recommendation_basis"
+        ],
+        "title": "AiReviewRecommendationWorkspace",
         "type": "object"
       },
       "AiReviewRemediationStep": {
@@ -2165,6 +3050,16 @@
         "additionalProperties": false,
         "description": "Governed review assembled from deterministic product evidence plus optional LLM summary.",
         "properties": {
+          "action_workspace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AiReviewActionWorkspace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "decision_brief": {
             "$ref": "#/components/schemas/AiReviewDecisionBrief"
           },
@@ -2285,6 +3180,16 @@
           "readiness_score": {
             "title": "Readiness Score",
             "type": "integer"
+          },
+          "recommendation_workspace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AiReviewRecommendationWorkspace"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "remediation_plan": {
             "items": {
@@ -2418,6 +3323,44 @@
           "output_protections"
         ],
         "title": "AiReviewSafetyStatus",
+        "type": "object"
+      },
+      "AiReviewSelectDraftRequest": {
+        "additionalProperties": false,
+        "description": "Payload for selecting a recommendation as an unsaved canvas draft.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "AiReviewSelectDraftRequest",
+        "type": "object"
+      },
+      "AiReviewSelectDraftResponse": {
+        "additionalProperties": false,
+        "description": "Audited selection of a candidate for local canvas preview.",
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/AiReviewRecommendationCandidate"
+          },
+          "job": {
+            "$ref": "#/components/schemas/AiReviewJobResponse"
+          }
+        },
+        "required": [
+          "job",
+          "candidate"
+        ],
+        "title": "AiReviewSelectDraftResponse",
         "type": "object"
       },
       "AiReviewStressScenario": {
@@ -3048,6 +3991,13 @@
             "title": "Currency",
             "type": "string"
           },
+          "driver_categories": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Driver Categories",
+            "type": "object"
+          },
           "drivers": {
             "items": {
               "type": "string"
@@ -3066,6 +4016,13 @@
             "title": "Monthly Delta",
             "type": "number"
           },
+          "period_deltas": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Period Deltas",
+            "type": "object"
+          },
           "service_monthly_deltas": {
             "additionalProperties": {
               "type": "number"
@@ -3082,7 +4039,9 @@
           "annual_delta",
           "contract_delta",
           "service_monthly_deltas",
-          "environment_monthly_deltas"
+          "environment_monthly_deltas",
+          "period_deltas",
+          "driver_categories"
         ],
         "title": "BomComparisonResponse",
         "type": "object"
@@ -3274,6 +4233,13 @@
             ],
             "title": "Part Number"
           },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/BomLinePeriodResponse"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
           "provenance": {
             "additionalProperties": true,
             "title": "Provenance",
@@ -3325,6 +4291,144 @@
           "provenance"
         ],
         "title": "BomLineItemResponse",
+        "type": "object"
+      },
+      "BomLinePeriodResponse": {
+        "additionalProperties": false,
+        "description": "One immutable monthly amount with pricing provenance.",
+        "properties": {
+          "active_hours": {
+            "title": "Active Hours",
+            "type": "number"
+          },
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "formula": {
+            "title": "Formula",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "inputs": {
+            "additionalProperties": true,
+            "title": "Inputs",
+            "type": "object"
+          },
+          "multiplier": {
+            "title": "Multiplier",
+            "type": "number"
+          },
+          "period_index": {
+            "title": "Period Index",
+            "type": "integer"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "number"
+          },
+          "selected_price_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Price Item Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "unit_price": {
+            "title": "Unit Price",
+            "type": "number"
+          },
+          "warnings": {
+            "items": {},
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "period_index",
+          "period_start",
+          "multiplier",
+          "quantity",
+          "active_hours",
+          "unit_price",
+          "amount",
+          "selected_price_item_id",
+          "formula",
+          "inputs",
+          "status",
+          "warnings",
+          "provenance"
+        ],
+        "title": "BomLinePeriodResponse",
+        "type": "object"
+      },
+      "BomPeriodSummary": {
+        "additionalProperties": false,
+        "description": "Aggregated monthly run rate and composition for charts and exports.",
+        "properties": {
+          "by_environment": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "By Environment",
+            "type": "object"
+          },
+          "by_service": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "By Service",
+            "type": "object"
+          },
+          "cumulative_total": {
+            "title": "Cumulative Total",
+            "type": "number"
+          },
+          "period_index": {
+            "title": "Period Index",
+            "type": "integer"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          }
+        },
+        "required": [
+          "period_index",
+          "period_start",
+          "total",
+          "cumulative_total",
+          "by_environment",
+          "by_service"
+        ],
+        "title": "BomPeriodSummary",
         "type": "object"
       },
       "BomReviewRequest": {
@@ -3428,6 +4532,17 @@
             "title": "Engine Version",
             "type": "string"
           },
+          "first_active_period": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Active Period"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -3443,8 +4558,19 @@
             "title": "Mapping Version",
             "type": "string"
           },
+          "monthly_series": {
+            "items": {
+              "$ref": "#/components/schemas/BomPeriodSummary"
+            },
+            "title": "Monthly Series",
+            "type": "array"
+          },
           "monthly_total": {
             "title": "Monthly Total",
+            "type": "number"
+          },
+          "peak_monthly_total": {
+            "title": "Peak Monthly Total",
             "type": "number"
           },
           "price_catalog_snapshot_id": {
@@ -3459,9 +4585,31 @@
             "title": "Publication Status",
             "type": "string"
           },
+          "ramp_deferred_amount": {
+            "title": "Ramp Deferred Amount",
+            "type": "number"
+          },
+          "recommendation_workspace": {
+            "$ref": "#/components/schemas/AiReviewActionWorkspace"
+          },
           "scenario_id": {
             "title": "Scenario Id",
             "type": "string"
+          },
+          "steady_state_monthly_total": {
+            "title": "Steady State Monthly Total",
+            "type": "number"
+          },
+          "steady_state_period": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steady State Period"
           },
           "summary": {
             "additionalProperties": true,
@@ -3491,6 +4639,12 @@
           "monthly_total",
           "annual_total",
           "contract_total",
+          "steady_state_monthly_total",
+          "peak_monthly_total",
+          "ramp_deferred_amount",
+          "first_active_period",
+          "steady_state_period",
+          "recommendation_workspace",
           "summary",
           "warnings",
           "publication_status",
@@ -5085,13 +6239,6 @@
             "title": "Active Hours Month",
             "type": "number"
           },
-          "active_months_year": {
-            "default": 12,
-            "maximum": 12.0,
-            "minimum": 1.0,
-            "title": "Active Months Year",
-            "type": "integer"
-          },
           "demand_share": {
             "default": 1.0,
             "maximum": 1.0,
@@ -5117,12 +6264,183 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/DeploymentRampPhaseInput"
+            },
+            "maxItems": 100,
+            "title": "Phases",
+            "type": "array"
           }
         },
         "required": [
           "name"
         ],
         "title": "DeploymentEnvironmentInput",
+        "type": "object"
+      },
+      "DeploymentMonthlyQuantityInput": {
+        "additionalProperties": false,
+        "description": "One explicit monthly quantity in the commercial unit of the selected metric.",
+        "properties": {
+          "period_index": {
+            "maximum": 120.0,
+            "minimum": 1.0,
+            "title": "Period Index",
+            "type": "integer"
+          },
+          "quantity": {
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "number"
+          }
+        },
+        "required": [
+          "period_index",
+          "quantity"
+        ],
+        "title": "DeploymentMonthlyQuantityInput",
+        "type": "object"
+      },
+      "DeploymentRampPhaseInput": {
+        "additionalProperties": false,
+        "description": "Inclusive activation phase for an environment or one service override.",
+        "properties": {
+          "end_month": {
+            "maximum": 120.0,
+            "minimum": 1.0,
+            "title": "End Month",
+            "type": "integer"
+          },
+          "end_multiplier": {
+            "default": 1.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "End Multiplier",
+            "type": "number"
+          },
+          "end_quantity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Quantity"
+          },
+          "interpolation": {
+            "default": "step",
+            "pattern": "^(step|linear|monthly)$",
+            "title": "Interpolation",
+            "type": "string"
+          },
+          "metric_key": {
+            "anyOf": [
+              {
+                "maxLength": 150,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Key"
+          },
+          "monthly_quantities": {
+            "items": {
+              "$ref": "#/components/schemas/DeploymentMonthlyQuantityInput"
+            },
+            "maxItems": 120,
+            "title": "Monthly Quantities",
+            "type": "array"
+          },
+          "quantity_unit": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Unit"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "sku_mapping_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku Mapping Id"
+          },
+          "start_month": {
+            "maximum": 120.0,
+            "minimum": 1.0,
+            "title": "Start Month",
+            "type": "integer"
+          },
+          "start_multiplier": {
+            "default": 1.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Start Multiplier",
+            "type": "number"
+          },
+          "start_quantity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Quantity"
+          }
+        },
+        "required": [
+          "start_month",
+          "end_month"
+        ],
+        "title": "DeploymentRampPhaseInput",
         "type": "object"
       },
       "DeploymentScenarioCreateRequest": {
@@ -5133,6 +6451,12 @@
             "additionalProperties": true,
             "title": "Assumptions",
             "type": "object"
+          },
+          "consumption_model": {
+            "default": "explicit_units",
+            "pattern": "^(explicit_units|legacy_share)$",
+            "title": "Consumption Model",
+            "type": "string"
           },
           "contract_months": {
             "default": 12,
@@ -5168,6 +6492,12 @@
             "title": "Price Mode",
             "type": "string"
           },
+          "proration_policy": {
+            "default": "full_month",
+            "pattern": "^full_month$",
+            "title": "Proration Policy",
+            "type": "string"
+          },
           "region": {
             "default": "global",
             "maxLength": 100,
@@ -5182,6 +6512,11 @@
             },
             "title": "Service Config",
             "type": "object"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
           },
           "technical_snapshot_id": {
             "anyOf": [
@@ -5252,6 +6587,10 @@
             "title": "Assumptions",
             "type": "object"
           },
+          "consumption_model": {
+            "title": "Consumption Model",
+            "type": "string"
+          },
           "contract_months": {
             "title": "Contract Months",
             "type": "integer"
@@ -5271,8 +6610,7 @@
           },
           "environments": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/DeploymentEnvironmentInput"
             },
             "title": "Environments",
             "type": "array"
@@ -5293,6 +6631,10 @@
             "title": "Project Id",
             "type": "string"
           },
+          "proration_policy": {
+            "title": "Proration Policy",
+            "type": "string"
+          },
           "region": {
             "title": "Region",
             "type": "string"
@@ -5301,6 +6643,11 @@
             "additionalProperties": true,
             "title": "Service Config",
             "type": "object"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
           },
           "status": {
             "title": "Status",
@@ -5326,6 +6673,9 @@
           "price_mode",
           "technical_snapshot_id",
           "contract_months",
+          "start_date",
+          "proration_policy",
+          "consumption_model",
           "environments",
           "service_config",
           "assumptions",
@@ -8760,6 +10110,13 @@
           "draft": {
             "$ref": "#/components/schemas/DeploymentScenarioCreateRequest"
           },
+          "metric_options": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioMetricOptionResponse"
+            },
+            "title": "Metric Options",
+            "type": "array"
+          },
           "required_questions": {
             "items": {
               "type": "string"
@@ -8778,6 +10135,7 @@
         "required": [
           "draft",
           "detected_services",
+          "metric_options",
           "required_questions",
           "warnings",
           "confidence",
@@ -8785,6 +10143,136 @@
           "ai_summary"
         ],
         "title": "ScenarioAssistantResponse",
+        "type": "object"
+      },
+      "ScenarioMetricOptionResponse": {
+        "additionalProperties": false,
+        "description": "Governed commercial unit and baseline demand available to the ramp editor.",
+        "properties": {
+          "baseline_quantity": {
+            "title": "Baseline Quantity",
+            "type": "number"
+          },
+          "default_sku_mapping_id": {
+            "title": "Default Sku Mapping Id",
+            "type": "string"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "metric_label": {
+            "title": "Metric Label",
+            "type": "string"
+          },
+          "minimum_quantity": {
+            "title": "Minimum Quantity",
+            "type": "number"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "quantity_behavior": {
+            "title": "Quantity Behavior",
+            "type": "string"
+          },
+          "quantity_increment": {
+            "title": "Quantity Increment",
+            "type": "number"
+          },
+          "quantity_unit": {
+            "title": "Quantity Unit",
+            "type": "string"
+          },
+          "service_id": {
+            "title": "Service Id",
+            "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioSkuVariantResponse"
+            },
+            "title": "Variants",
+            "type": "array"
+          }
+        },
+        "required": [
+          "service_id",
+          "product_name",
+          "metric_key",
+          "metric_label",
+          "quantity_unit",
+          "baseline_quantity",
+          "quantity_behavior",
+          "quantity_increment",
+          "minimum_quantity",
+          "default_sku_mapping_id"
+        ],
+        "title": "ScenarioMetricOptionResponse",
+        "type": "object"
+      },
+      "ScenarioSkuVariantResponse": {
+        "additionalProperties": false,
+        "description": "One approved commercial variant selectable for an environment metric.",
+        "properties": {
+          "is_billable": {
+            "title": "Is Billable",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "minimum_quantity": {
+            "title": "Minimum Quantity",
+            "type": "number"
+          },
+          "part_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Number"
+          },
+          "predicates": {
+            "additionalProperties": true,
+            "title": "Predicates",
+            "type": "object"
+          },
+          "quantity_behavior": {
+            "title": "Quantity Behavior",
+            "type": "string"
+          },
+          "quantity_increment": {
+            "title": "Quantity Increment",
+            "type": "number"
+          },
+          "quantity_unit": {
+            "title": "Quantity Unit",
+            "type": "string"
+          },
+          "sku_mapping_id": {
+            "title": "Sku Mapping Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku_mapping_id",
+          "label",
+          "part_number",
+          "predicates",
+          "is_billable",
+          "quantity_behavior",
+          "quantity_increment",
+          "minimum_quantity",
+          "quantity_unit"
+        ],
+        "title": "ScenarioSkuVariantResponse",
         "type": "object"
       },
       "ScopedRecalculationRequest": {
@@ -10214,6 +11702,18 @@
             ],
             "title": "Is Billable"
           },
+          "minimum_quantity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Quantity"
+          },
           "part_number": {
             "anyOf": [
               {
@@ -10236,6 +11736,43 @@
               }
             ],
             "title": "Predicates"
+          },
+          "quantity_behavior": {
+            "anyOf": [
+              {
+                "pattern": "^(packaged|fixed_capacity|hourly|continuous|manual_monthly)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Behavior"
+          },
+          "quantity_increment": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Increment"
+          },
+          "quantity_unit": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Unit"
           },
           "status": {
             "anyOf": [
@@ -10277,6 +11814,10 @@
             "title": "Is Billable",
             "type": "boolean"
           },
+          "minimum_quantity": {
+            "title": "Minimum Quantity",
+            "type": "number"
+          },
           "part_number": {
             "anyOf": [
               {
@@ -10292,6 +11833,18 @@
             "additionalProperties": true,
             "title": "Predicates",
             "type": "object"
+          },
+          "quantity_behavior": {
+            "title": "Quantity Behavior",
+            "type": "string"
+          },
+          "quantity_increment": {
+            "title": "Quantity Increment",
+            "type": "number"
+          },
+          "quantity_unit": {
+            "title": "Quantity Unit",
+            "type": "string"
           },
           "service_id": {
             "title": "Service Id",
@@ -10333,6 +11886,10 @@
           "part_number",
           "billing_metric_key",
           "formula_key",
+          "quantity_behavior",
+          "quantity_increment",
+          "minimum_quantity",
+          "quantity_unit",
           "predicates",
           "is_billable",
           "status",
@@ -12611,6 +14168,78 @@
         ]
       }
     },
+    "/api/v1/ai-reviews/projects/{project_id}/integrations/{integration_id}/simulate-draft": {
+      "post": {
+        "description": "Run the governed calculation engines without writing snapshots or catalog changes.",
+        "operationId": "simulate_integration_canvas_draft_api_v1_ai_reviews_projects__project_id__integrations__integration_id__simulate_draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiReviewDraftSimulationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiReviewDraftSimulationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Simulate technical and commercial impact for an unsaved canvas draft",
+        "tags": [
+          "AI Reviews"
+        ]
+      }
+    },
     "/api/v1/ai-reviews/projects/{project_id}/jobs": {
       "get": {
         "description": "Return recent review history for the selected project.",
@@ -13088,6 +14717,95 @@
           }
         },
         "summary": "Apply one deterministic suggested patch after human confirmation",
+        "tags": [
+          "AI Reviews"
+        ]
+      }
+    },
+    "/api/v1/ai-reviews/{job_id}/recommendations/{candidate_id}/select-draft": {
+      "post": {
+        "description": "Audit candidate selection while leaving the governed integration unchanged.",
+        "operationId": "select_ai_review_candidate_for_draft_api_v1_ai_reviews__job_id__recommendations__candidate_id__select_draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AiReviewSelectDraftRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiReviewSelectDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Select a governed integration recommendation for local canvas preview",
         "tags": [
           "AI Reviews"
         ]
@@ -18915,6 +20633,75 @@
       }
     },
     "/api/v1/support/conversations/{conversation_id}/messages": {
+      "delete": {
+        "operationId": "clear_support_conversation_history_api_v1_support_conversations__conversation_id__messages_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Support-Session-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Support-Session-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "web-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear one isolated support conversation history",
+        "tags": [
+          "Contextual Support"
+        ]
+      },
       "post": {
         "operationId": "create_support_message_api_v1_support_conversations__conversation_id__messages_post",
         "parameters": [

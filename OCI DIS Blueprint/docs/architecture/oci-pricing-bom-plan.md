@@ -210,6 +210,85 @@ Create `packages/pricing-engine/` with typed, pure functions for:
 No network or database access is allowed in this package. Rounding occurs only at
 the output boundary and uses currency precision from the price source.
 
+## Monthly Consumption Ramps
+
+The reference workbook exposes 48 independent monthly quantity columns and 48
+monthly amount columns. The App preserves that commercial meaning without making
+percentage a universal proxy for unlike OCI billing metrics:
+
+- `deployment_environment_plans` owns the physical environment, monthly hours,
+  HA multiplier, and DR role;
+- `service_product_sku_mappings` governs the billing metric, real unit, minimum,
+  increment, and quantity behavior (`packaged`, `fixed_capacity`, `hourly`,
+  `continuous`, or `manual_monthly`);
+- `deployment_ramp_phases` owns one product and metric, inclusive active months,
+  initial/final quantities, a constant, linear, or exact monthly schedule, and
+  the exact approved `service_product_sku_mapping` selected for that environment;
+- `deployment_ramp_period_quantities` is the normalized editable monthly matrix;
+- `bom_line_periods` persists immutable monthly quantities, active hours, unit
+  price, amount, selected price item, formula, warnings, and provenance;
+- `deployment_scenarios.start_date` anchors the calendar, with `full_month` as the
+  only supported and truthful proration policy in this release.
+
+Months outside an explicit product/metric plan have zero demand; they never
+inherit a previous value silently. Plans for the same environment, product, and
+metric cannot overlap or exceed the contract horizon. Existing scenarios remain
+readable through `legacy_share`; new scenarios use `explicit_units` and cannot be
+saved without at least one governed real-unit quantity plan.
+
+The pure pricing engine expands plans into Decimal quantities, applies governed
+package rounding and minimums, and prices each month independently. This
+preserves tier and free-allocation behavior at the period boundary and avoids
+multiplying a rounded monthly result. BOM aggregate semantics are:
+
+- `monthly_total`: final contract-month run rate;
+- `annual_total`: sum of the first 12 contract months;
+- `contract_total`: sum of every persisted monthly period;
+- `peak_monthly_total`: highest monthly run rate;
+- `steady_state_period`: first month from which the final run rate remains stable;
+- `ramp_deferred_amount`: full-capacity-from-month-one contract total minus the
+  approved phased contract total, labeled as timing effect rather than savings.
+
+The project BOM UI provides a multi-environment phase editor and a connected
+Rollout Explorer. Four executive signals identify the first active environment,
+Production start, stabilization month, and rollout timing effect. The stacked
+monthly cost and cumulative commitment chart coordinates with a commercial-name
+driver ranking, progressive product/environment timeline, and contextual
+inspector. Constant, linear, exact-monthly, packaged, and included quantities
+retain distinct visual forms without changing governed calculations. Selecting a
+driver or product highlights the same product throughout the chart, timeline, and
+commercial evidence. XLSX exports add `Monthly Schedule` and `Line Periods`; JSON moves to schema
+`oci-dis-bom-2.0`; PDF includes the key ramp KPIs. The BOM Scenario Agent and the
+contextual assistant receive the same governed series but cannot change any
+quantity, price, phase, or total.
+
+The editor uses three explicit levels:
+
+1. **Environment** identifies DEV, QA, PROD, DR, or another physical runtime and
+   records hours, HA, and DR posture.
+2. **Product metric** selects the governed OCI billing unit, such as OIC message
+   packs, OCPU-hours, GB, requests, or workspaces.
+3. **Commercial variant** selects the approved edition, license model, and part
+   number for that environment and metric. The selector is generated from mapping
+   predicates, so it applies to OIC Standard/Enterprise and BYOL as well as any
+   other OCI product with multiple approved commercial variants.
+4. **Activation schedule** records active months and initial/final quantities for
+   constant or linear plans, or exact quantities in the monthly matrix.
+
+For example, an architect can enter 2 OIC message packs for DEV in months 1-3,
+4 packs for QA in months 3-6, and a Production linear ramp from 10 to 40 packs in
+months 5-8. A Streaming row can independently use transferred GB and an exact
+monthly matrix. Package-based metrics round to whole governed increments while
+continuous metrics preserve their allowed precision. The resulting immutable
+`bom_line_periods` matrix is the App equivalent of the workbook's
+environment/product/month quantity columns.
+
+Scenario-level service configuration is only a drafting default for new plans.
+For explicit-unit scenarios, the persisted phase mapping is authoritative at
+runtime. BOM calculation, timeline, line-item provenance, JSON, XLSX, PDF, and
+assistant evidence therefore preserve the environment-specific commercial
+variant instead of re-resolving a global product default.
+
 ## Current Project Readiness
 
 The active project currently has 480 integrations and a fresh technical snapshot.

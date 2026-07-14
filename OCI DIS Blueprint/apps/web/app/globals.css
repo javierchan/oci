@@ -489,6 +489,22 @@ html.dark {
   }
 }
 
+@keyframes canvas-modeled-flow {
+  to {
+    stroke-dashoffset: -34;
+  }
+}
+
+.canvas-modeled-flow {
+  animation: canvas-modeled-flow 1.15s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-modeled-flow {
+    animation: none;
+  }
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;

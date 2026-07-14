@@ -378,6 +378,147 @@ export interface AiReviewFieldDiff {
   recommended: string | null;
 }
 
+export type AiReviewRecommendationMode = "minimum_change" | "resilience" | "cost_optimized";
+
+export interface AiReviewRecommendationCheck {
+  id: string;
+  label: string;
+  status: "pass" | "review" | "blocked" | "not_computable";
+  detail: string;
+}
+
+export interface AiReviewRecommendationCostImpact {
+  status: "not_applicable" | "requires_draft_simulation" | "requires_bom_recalculation" | "computed";
+  direction: "lower" | "similar" | "higher" | "unknown";
+  monthly_delta: number | null;
+  contract_delta: number | null;
+  currency: string | null;
+  detail: string;
+}
+
+export interface AiReviewCanvasChangeSet {
+  added_tools: string[];
+  removed_tools: string[];
+  retained_tools: string[];
+  added_overlays: string[];
+  removed_overlays: string[];
+}
+
+export interface AiReviewRecommendationCandidate {
+  id: string;
+  mode: AiReviewRecommendationMode;
+  title: string;
+  summary: string;
+  why: string;
+  combination_code: string;
+  pattern_id: string | null;
+  core_tools: string[];
+  overlays: string[];
+  canvas_state: string;
+  change_set: AiReviewCanvasChangeSet;
+  field_diffs: AiReviewFieldDiff[];
+  implementation_steps: string[];
+  prerequisites: string[];
+  validation_plan: string[];
+  tradeoffs: string[];
+  checks: AiReviewRecommendationCheck[];
+  cost_impact: AiReviewRecommendationCostImpact;
+  evidence_ids: string[];
+  confidence: "high" | "medium" | "low";
+  applicable: boolean;
+}
+
+export interface AiReviewRecommendationWorkspace {
+  integration_id: string;
+  current_pattern_id: string | null;
+  current_core_tools: string[];
+  current_overlays: string[];
+  current_canvas_state: string;
+  recommended_candidate_id: string | null;
+  recommendation_basis: string;
+  candidates: AiReviewRecommendationCandidate[];
+}
+
+export interface AiReviewActionCandidate {
+  id: string;
+  priority: "now" | "next" | "monitor";
+  status: "ready" | "review" | "blocked";
+  title: string;
+  summary: string;
+  what_to_change: string[];
+  implementation_steps: string[];
+  validation_plan: string[];
+  expected_impact: string[];
+  evidence_ids: string[];
+  action_label: string | null;
+  action_href: string | null;
+  confidence: "high" | "medium" | "low";
+}
+
+export interface AiReviewActionWorkspace {
+  context: "project" | "topology" | "bom";
+  title: string;
+  recommendation_basis: string;
+  candidates: AiReviewActionCandidate[];
+}
+
+export interface AiReviewDraftMetricDelta {
+  key: string;
+  label: string;
+  unit: string;
+  current: number;
+  proposed: number;
+  delta: number;
+}
+
+export interface AiReviewDraftCostPeriod {
+  period_index: number;
+  period_start: string;
+  current: number;
+  proposed: number;
+  delta: number;
+}
+
+export interface AiReviewDraftCommercialImpact {
+  status: "computed" | "scenario_required" | "blocked";
+  scenario_id: string | null;
+  scenario_name: string | null;
+  consumption_model: string | null;
+  currency: string | null;
+  current_monthly: number | null;
+  proposed_monthly: number | null;
+  monthly_delta: number | null;
+  current_contract: number | null;
+  proposed_contract: number | null;
+  contract_delta: number | null;
+  current_ramp_deferred: number | null;
+  proposed_ramp_deferred: number | null;
+  ramp_deferred_delta: number | null;
+  periods: AiReviewDraftCostPeriod[];
+  warnings: string[];
+  detail: string;
+}
+
+export interface AiReviewDraftSimulation {
+  project_id: string;
+  integration_id: string;
+  persisted: false;
+  assumption_set_version: string;
+  service_rules_version: string;
+  metrics: AiReviewDraftMetricDelta[];
+  current_project: ConsolidatedMetrics;
+  proposed_project: ConsolidatedMetrics;
+  current_warnings: string[];
+  proposed_warnings: string[];
+  commercial_impact: AiReviewDraftCommercialImpact;
+}
+
+export interface AiReviewCanvasDraftSelection {
+  jobId: string;
+  candidate: AiReviewRecommendationCandidate;
+  baselineCanvasState: string;
+}
+
 export interface AiReviewSuggestedPatch {
   integration_id: string;
   label: string;
@@ -471,6 +612,8 @@ export interface AiReviewResponse {
   evidence: AiReviewEvidence[];
   evidence_pack: string[];
   reviewer_personas: AiReviewPersonaSummary[];
+  recommendation_workspace: AiReviewRecommendationWorkspace | null;
+  action_workspace: AiReviewActionWorkspace | null;
   drift: AiReviewDriftReport;
 }
 
@@ -484,6 +627,7 @@ export interface AiReviewJobRequest {
 
 export interface AiReviewRecommendationAcceptance {
   finding_id: string;
+  recommendation_type: "finding" | "candidate";
   accepted_by: string;
   accepted_at: string;
   note: string | null;
@@ -533,6 +677,11 @@ export interface AiReviewApplyPatchResponse {
   job: AiReviewJob;
   integration: Integration;
   applied_patch: AiReviewSuggestedPatch;
+}
+
+export interface AiReviewSelectDraftResponse {
+  job: AiReviewJob;
+  candidate: AiReviewRecommendationCandidate;
 }
 
 export interface SyntheticGenerationPreset {
@@ -1620,6 +1769,10 @@ export interface SkuMapping {
   part_number: string | null;
   billing_metric_key: string;
   formula_key: string;
+  quantity_behavior: "packaged" | "fixed_capacity" | "hourly" | "continuous" | "manual_monthly";
+  quantity_increment: number;
+  minimum_quantity: number;
+  quantity_unit: string;
   predicates: Record<string, unknown>;
   is_billable: boolean;
   status: SkuMappingStatus;
@@ -1640,6 +1793,10 @@ export interface SkuMappingPatch {
   part_number?: string | null;
   billing_metric_key?: string;
   formula_key?: string;
+  quantity_behavior?: SkuMapping["quantity_behavior"];
+  quantity_increment?: number;
+  minimum_quantity?: number;
+  quantity_unit?: string;
   predicates?: Record<string, unknown>;
   is_billable?: boolean;
   status?: SkuMappingStatus;
@@ -1649,10 +1806,31 @@ export interface SkuMappingPatch {
 export interface DeploymentEnvironmentInput {
   name: string;
   active_hours_month: number;
-  active_months_year: number;
   demand_share: number;
   ha_multiplier: number;
   dr_role: "primary" | "standby" | "none";
+  phases: DeploymentRampPhaseInput[];
+}
+
+export interface DeploymentRampPhaseInput {
+  service_id: string | null;
+  metric_key: string | null;
+  sku_mapping_id?: string | null;
+  start_month: number;
+  end_month: number;
+  start_multiplier: number;
+  end_multiplier: number;
+  interpolation: "step" | "linear" | "monthly";
+  start_quantity: number | null;
+  end_quantity: number | null;
+  quantity_unit: string | null;
+  monthly_quantities: DeploymentMonthlyQuantityInput[];
+  rationale: string | null;
+}
+
+export interface DeploymentMonthlyQuantityInput {
+  period_index: number;
+  quantity: number;
 }
 
 export interface DeploymentScenarioCreate {
@@ -1662,6 +1840,9 @@ export interface DeploymentScenarioCreate {
   region: string;
   price_mode: "public_list" | "contract_rate" | "manual_rate_card";
   contract_months: number;
+  start_date: string;
+  proration_policy: "full_month";
+  consumption_model: "explicit_units" | "legacy_share";
   environments: DeploymentEnvironmentInput[];
   service_config: Record<string, Record<string, unknown>>;
   assumptions: Record<string, unknown>;
@@ -1677,7 +1858,10 @@ export interface DeploymentScenario {
   price_mode: string;
   technical_snapshot_id: string;
   contract_months: number;
-  environments: Array<Record<string, unknown>>;
+  start_date: string;
+  proration_policy: string;
+  consumption_model: "explicit_units" | "legacy_share";
+  environments: DeploymentEnvironmentInput[];
   service_config: Record<string, unknown>;
   assumptions: Record<string, unknown>;
   created_by: string;
@@ -1695,11 +1879,38 @@ export interface DeploymentScenarioList {
 export interface ScenarioAssistant {
   draft: DeploymentScenarioCreate;
   detected_services: string[];
+  metric_options: ScenarioMetricOption[];
   required_questions: string[];
   warnings: string[];
   confidence: string;
   ai_status: string;
   ai_summary: string | null;
+}
+
+export interface ScenarioMetricOption {
+  service_id: string;
+  product_name: string;
+  metric_key: string;
+  metric_label: string;
+  quantity_unit: string;
+  baseline_quantity: number;
+  quantity_behavior: SkuMapping["quantity_behavior"];
+  quantity_increment: number;
+  minimum_quantity: number;
+  default_sku_mapping_id: string;
+  variants: ScenarioSkuVariant[];
+}
+
+export interface ScenarioSkuVariant {
+  sku_mapping_id: string;
+  label: string;
+  part_number: string | null;
+  predicates: Record<string, unknown>;
+  is_billable: boolean;
+  quantity_behavior: SkuMapping["quantity_behavior"];
+  quantity_increment: number;
+  minimum_quantity: number;
+  quantity_unit: string;
 }
 
 export interface BomJob {
@@ -1739,6 +1950,33 @@ export interface BomLineItem {
   status: string;
   warnings: unknown[];
   provenance: Record<string, unknown>;
+  periods: BomLinePeriod[];
+}
+
+export interface BomLinePeriod {
+  id: string;
+  period_index: number;
+  period_start: string;
+  multiplier: number;
+  quantity: number;
+  active_hours: number;
+  unit_price: number;
+  amount: number;
+  selected_price_item_id: string | null;
+  formula: string;
+  inputs: Record<string, unknown>;
+  status: string;
+  warnings: unknown[];
+  provenance: Record<string, unknown>;
+}
+
+export interface BomPeriodSummary {
+  period_index: number;
+  period_start: string;
+  total: number;
+  cumulative_total: number;
+  by_environment: Record<string, number>;
+  by_service: Record<string, number>;
 }
 
 export interface BomSnapshot {
@@ -1754,6 +1992,13 @@ export interface BomSnapshot {
   monthly_total: number;
   annual_total: number;
   contract_total: number;
+  steady_state_monthly_total: number;
+  peak_monthly_total: number;
+  ramp_deferred_amount: number;
+  first_active_period: number | null;
+  steady_state_period: number | null;
+  monthly_series: BomPeriodSummary[];
+  recommendation_workspace: AiReviewActionWorkspace;
   summary: Record<string, unknown>;
   warnings: unknown[];
   publication_status: string;
@@ -1777,6 +2022,8 @@ export interface BomComparison {
   contract_delta: number;
   service_monthly_deltas: Record<string, number>;
   environment_monthly_deltas: Record<string, number>;
+  period_deltas: Record<number, number>;
+  driver_categories: Record<string, boolean>;
   drivers: string[];
 }
 

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from decimal import Decimal
 import json
 import math
@@ -13,13 +14,32 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.pricing_engine import CurrencyRule, PriceTier, PricingModel, PricingRequest, price_line
+from app.core.pricing_engine import (
+    CurrencyRule,
+    PriceTier,
+    PricingModel,
+    PricingRequest,
+    QuantityBehavior,
+    QuantityRampPhase,
+    QuantityRule,
+    RampInterpolation,
+    RampPhase,
+    expand_ramp,
+    expand_quantity_ramp,
+    price_line,
+    price_line_quantity_schedule,
+    price_line_schedule,
+)
 from app.models import (
     BomJob,
+    BomLinePeriod,
     BomLineItem,
     BomSnapshot,
     CatalogIntegration,
     DeploymentScenario,
+    DeploymentEnvironmentPlan,
+    DeploymentRampPhase,
+    DeploymentRampPeriodQuantity,
     PriceCatalogSnapshot,
     PriceItem,
     PriceSource,
@@ -32,21 +52,51 @@ from app.schemas.pricing import (
     BomJobResponse,
     BomComparisonResponse,
     BomLineItemResponse,
+    BomLinePeriodResponse,
+    BomPeriodSummary,
     BomReviewRequest,
     BomSnapshotListResponse,
     BomSnapshotResponse,
     DeploymentEnvironmentInput,
+    DeploymentMonthlyQuantityInput,
+    DeploymentRampPhaseInput,
     DeploymentScenarioCreateRequest,
     DeploymentScenarioListResponse,
     DeploymentScenarioResponse,
     ScenarioAssistantResponse,
+    ScenarioMetricOptionResponse,
+    ScenarioSkuVariantResponse,
 )
+from app.schemas.ai_review import AiReviewActionCandidate, AiReviewActionWorkspace
 from app.services import audit_service
 
 
-BOM_ENGINE_VERSION = "pricing-engine-1.0.0"
+BOM_ENGINE_VERSION = "pricing-engine-3.0.0"
 DEFAULT_MONTH_DAYS = 31.0
 DEFAULT_QUEUE_BILLING_UNIT_KB = 64.0
+
+
+@dataclass(frozen=True)
+class BomCalculation:
+    """Complete deterministic BOM calculation before optional persistence."""
+
+    price_snapshot: PriceCatalogSnapshot
+    line_payloads: list[dict[str, object]]
+    period_payloads: list[list[dict[str, object]]]
+    coverage_pct: float
+    monthly_total: float
+    annual_total: float
+    contract_total: float
+    peak_monthly_total: float
+    full_capacity_contract: float
+    ramp_deferred_amount: float
+    first_active_period: int | None
+    steady_state_period: int | None
+    monthly_series: list[dict[str, object]]
+    detected_services: list[str]
+    by_service: dict[str, float]
+    by_environment: dict[str, float]
+    warnings: list[str]
 
 
 def _now() -> datetime:
@@ -75,6 +125,12 @@ def _as_dict(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         return {}
     return {str(key): item for key, item in value.items()}
+
+
+def _as_dict_list(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    return [_as_dict(item) for item in value if isinstance(item, dict)]
 
 
 def _as_string_list(value: object) -> list[str]:
@@ -110,6 +166,17 @@ def _integration_tools(row: CatalogIntegration) -> set[str]:
     return _split_tools(row.core_tools) | _canvas_tools(row.additional_tools_overlays)
 
 
+def _integration_tools_with_overrides(
+    row: CatalogIntegration,
+    tool_overrides: dict[str, tuple[str, str]] | None = None,
+) -> set[str]:
+    override = (tool_overrides or {}).get(row.id)
+    if override is None:
+        return _integration_tools(row)
+    core_tools, canvas_state = override
+    return _split_tools(core_tools) | _canvas_tools(canvas_state)
+
+
 def _mapping_predicates_match(mapping: ServiceProductSkuMapping, config: dict[str, object]) -> bool:
     for key, expected in mapping.predicates.items():
         actual = config.get(key)
@@ -121,7 +188,134 @@ def _mapping_predicates_match(mapping: ServiceProductSkuMapping, config: dict[st
     return True
 
 
-def serialize_scenario(scenario: DeploymentScenario) -> DeploymentScenarioResponse:
+def _mapping_variant_label(mapping: ServiceProductSkuMapping) -> str:
+    """Return a concise commercial label without assuming OIC-only predicates."""
+
+    parts: list[str] = []
+    ordered_predicates = sorted(
+        mapping.predicates.items(),
+        key=lambda item: ({"edition": 0, "byol": 1, "license_model": 2}.get(item[0], 10), item[0]),
+    )
+    for key, value in ordered_predicates:
+        if key == "byol":
+            parts.append("BYOL" if bool(value) else "PAYG")
+        elif isinstance(value, bool):
+            parts.append(key.replace("_", " ").title() if value else f"No {key.replace('_', ' ')}")
+        else:
+            parts.append(str(value).replace("_", " ").title())
+    if not parts:
+        parts.append("Default")
+    if mapping.part_number:
+        parts.append(mapping.part_number)
+    return " · ".join(parts)
+
+
+def _mapping_provenance(mapping: ServiceProductSkuMapping) -> dict[str, object]:
+    return {
+        "mapping_id": mapping.id,
+        "mapping_version": mapping.version,
+        "commercial_variant": _mapping_variant_label(mapping),
+        "mapping_predicates": mapping.predicates,
+        "part_number": mapping.part_number,
+    }
+
+
+def _environment_phase_payloads(environment: dict[str, object]) -> list[dict[str, object]]:
+    value = environment.get("phases")
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _add_months(value: date, months: int) -> date:
+    month_index = value.month - 1 + months
+    return date(value.year + month_index // 12, month_index % 12 + 1, 1)
+
+
+async def _scenario_environments(
+    scenario_id: str,
+    db: AsyncSession,
+) -> list[DeploymentEnvironmentInput]:
+    plans = list(
+        (
+            await db.scalars(
+                select(DeploymentEnvironmentPlan)
+                .where(DeploymentEnvironmentPlan.scenario_id == scenario_id)
+                .order_by(DeploymentEnvironmentPlan.sequence, DeploymentEnvironmentPlan.name)
+            )
+        ).all()
+    )
+    if not plans:
+        return []
+    phases = list(
+        (
+            await db.scalars(
+                select(DeploymentRampPhase)
+                .where(DeploymentRampPhase.environment_plan_id.in_([plan.id for plan in plans]))
+                .order_by(
+                    DeploymentRampPhase.environment_plan_id,
+                    DeploymentRampPhase.service_id,
+                    DeploymentRampPhase.start_month,
+                )
+            )
+        ).all()
+    )
+    phases_by_plan: dict[str, list[DeploymentRampPhaseInput]] = defaultdict(list)
+    quantities = list(
+        (
+            await db.scalars(
+                select(DeploymentRampPeriodQuantity)
+                .where(DeploymentRampPeriodQuantity.ramp_phase_id.in_([phase.id for phase in phases]))
+                .order_by(
+                    DeploymentRampPeriodQuantity.ramp_phase_id,
+                    DeploymentRampPeriodQuantity.period_index,
+                )
+            )
+        ).all()
+    ) if phases else []
+    quantities_by_phase: dict[str, list[DeploymentMonthlyQuantityInput]] = defaultdict(list)
+    for quantity in quantities:
+        quantities_by_phase[quantity.ramp_phase_id].append(
+            DeploymentMonthlyQuantityInput(
+                period_index=quantity.period_index,
+                quantity=quantity.quantity,
+            )
+        )
+    for phase in phases:
+        phases_by_plan[phase.environment_plan_id].append(
+            DeploymentRampPhaseInput(
+                service_id=phase.service_id,
+                metric_key=phase.metric_key,
+                sku_mapping_id=phase.sku_mapping_id,
+                start_month=phase.start_month,
+                end_month=phase.end_month,
+                start_multiplier=phase.start_multiplier,
+                end_multiplier=phase.end_multiplier,
+                interpolation=phase.interpolation,
+                start_quantity=phase.start_quantity,
+                end_quantity=phase.end_quantity,
+                quantity_unit=phase.quantity_unit,
+                monthly_quantities=quantities_by_phase[phase.id],
+                rationale=phase.rationale,
+            )
+        )
+    return [
+        DeploymentEnvironmentInput(
+            name=plan.name,
+            active_hours_month=plan.active_hours_month,
+            demand_share=plan.demand_share,
+            ha_multiplier=plan.ha_multiplier,
+            dr_role=plan.dr_role,
+            phases=phases_by_plan[plan.id],
+        )
+        for plan in plans
+    ]
+
+
+async def serialize_scenario(
+    scenario: DeploymentScenario,
+    db: AsyncSession,
+) -> DeploymentScenarioResponse:
     """Serialize one deployment scenario."""
 
     return DeploymentScenarioResponse(
@@ -134,7 +328,10 @@ def serialize_scenario(scenario: DeploymentScenario) -> DeploymentScenarioRespon
         price_mode=scenario.price_mode,
         technical_snapshot_id=scenario.technical_snapshot_id,
         contract_months=scenario.contract_months,
-        environments=[dict(item) for item in scenario.environments if isinstance(item, dict)],
+        start_date=scenario.start_date,
+        proration_policy=scenario.proration_policy,
+        consumption_model=scenario.consumption_model,
+        environments=await _scenario_environments(scenario.id, db),
         service_config=scenario.service_config,
         assumptions=scenario.scenario_assumptions,
         created_by=scenario.created_by,
@@ -163,7 +360,31 @@ def serialize_bom_job(job: BomJob) -> BomJobResponse:
     )
 
 
-def serialize_bom_line(line: BomLineItem) -> BomLineItemResponse:
+def serialize_bom_period(period: BomLinePeriod) -> BomLinePeriodResponse:
+    """Serialize one immutable monthly BOM period."""
+
+    return BomLinePeriodResponse(
+        id=period.id,
+        period_index=period.period_index,
+        period_start=period.period_start,
+        multiplier=period.multiplier,
+        quantity=period.quantity,
+        active_hours=period.active_hours,
+        unit_price=period.unit_price,
+        amount=period.amount,
+        selected_price_item_id=period.selected_price_item_id,
+        formula=period.formula,
+        inputs=period.inputs,
+        status=period.status,
+        warnings=period.warnings,
+        provenance=period.provenance,
+    )
+
+
+def serialize_bom_line(
+    line: BomLineItem,
+    periods: Iterable[BomLinePeriod] = (),
+) -> BomLineItemResponse:
     """Serialize one BOM line item."""
 
     return BomLineItemResponse(
@@ -184,10 +405,15 @@ def serialize_bom_line(line: BomLineItem) -> BomLineItemResponse:
         status=line.status,
         warnings=line.warnings,
         provenance=line.provenance,
+        periods=[serialize_bom_period(period) for period in periods],
     )
 
 
-def serialize_bom_snapshot(snapshot: BomSnapshot, lines: Iterable[BomLineItem]) -> BomSnapshotResponse:
+def serialize_bom_snapshot(
+    snapshot: BomSnapshot,
+    lines: Iterable[BomLineItem],
+    periods_by_line: dict[str, list[BomLinePeriod]] | None = None,
+) -> BomSnapshotResponse:
     """Serialize a BOM snapshot and its line items."""
 
     return BomSnapshotResponse(
@@ -203,13 +429,147 @@ def serialize_bom_snapshot(snapshot: BomSnapshot, lines: Iterable[BomLineItem]) 
         monthly_total=snapshot.monthly_total,
         annual_total=snapshot.annual_total,
         contract_total=snapshot.contract_total,
+        steady_state_monthly_total=snapshot.steady_state_monthly_total,
+        peak_monthly_total=snapshot.peak_monthly_total,
+        ramp_deferred_amount=snapshot.ramp_deferred_amount,
+        first_active_period=snapshot.first_active_period,
+        steady_state_period=snapshot.steady_state_period,
+        monthly_series=[
+            BomPeriodSummary.model_validate(
+                {
+                    **item,
+                    "period_start": (
+                        date.fromisoformat(str(item["period_start"]))
+                        if isinstance(item.get("period_start"), str)
+                        else item.get("period_start")
+                    ),
+                }
+            )
+            for item in _as_dict_list(snapshot.summary.get("monthly_series"))
+        ],
+        recommendation_workspace=_bom_action_workspace(snapshot),
         summary=snapshot.summary,
         warnings=snapshot.warnings,
         publication_status=snapshot.publication_status,
         approved_by=snapshot.approved_by,
         approved_at=snapshot.approved_at,
-        line_items=[serialize_bom_line(line) for line in lines],
+        line_items=[
+            serialize_bom_line(line, (periods_by_line or {}).get(line.id, []))
+            for line in lines
+        ],
         created_at=snapshot.created_at,
+    )
+
+
+def _bom_action_workspace(snapshot: BomSnapshot) -> AiReviewActionWorkspace:
+    """Translate immutable BOM evidence into a bounded commercial action plan."""
+
+    candidates: list[AiReviewActionCandidate] = []
+    blocked_count = int(_as_float(snapshot.summary.get("blocked_line_count")))
+    if snapshot.coverage_pct < 100 or blocked_count:
+        candidates.append(
+            AiReviewActionCandidate(
+                id="bom-action-coverage",
+                priority="now",
+                status="blocked",
+                title="Close pricing coverage before commercial sign-off",
+                summary=(
+                    f"{blocked_count} BOM line(s) remain blocked and governed coverage is "
+                    f"{snapshot.coverage_pct:.1f}%."
+                ),
+                what_to_change=[
+                    "Map every detected Service Product to an approved SKU and billing metric.",
+                    "Capture missing real-unit monthly quantities for every active environment.",
+                ],
+                implementation_steps=[
+                    "Open the blocked BOM lines and identify missing SKU mappings, price items, or quantities.",
+                    "Update the governed mapping or deployment scenario; do not patch published line totals.",
+                    "Generate a new BOM snapshot and compare it with this immutable estimate.",
+                ],
+                validation_plan=[
+                    "Require 100% governed line coverage before approval.",
+                    "Verify each line retains price-catalog, mapping, formula, and period provenance.",
+                ],
+                expected_impact=["Removes unpriced architecture from the contractual estimate."],
+                evidence_ids=[snapshot.id, snapshot.price_catalog_snapshot_id, snapshot.mapping_version],
+                action_label="Review BOM coverage",
+                action_href=f"/projects/{snapshot.project_id}/bom",
+                confidence="high",
+            )
+        )
+    by_service = {
+        str(key): _as_float(value)
+        for key, value in _as_dict(snapshot.summary.get("by_service_monthly")).items()
+    }
+    if by_service:
+        service_id, amount = max(by_service.items(), key=lambda item: item[1])
+        share = amount / snapshot.monthly_total * 100 if snapshot.monthly_total else 0.0
+        candidates.append(
+            AiReviewActionCandidate(
+                id="bom-action-top-driver",
+                priority="next" if candidates else "now",
+                status="review",
+                title=f"Validate the {service_id} cost driver",
+                summary=f"{service_id} contributes {share:.1f}% of steady-state monthly cost.",
+                what_to_change=[
+                    "Confirm the selected SKU, billing metric, quantity behavior, and environment allocation.",
+                    "Compare the current sizing with one lower-footprint alternative before approval.",
+                ],
+                implementation_steps=[
+                    "Open the service line and inspect its monthly quantity and formula provenance.",
+                    "Validate workload evidence against payload, executions, active hours, HA, and DR posture.",
+                    "Create a governed comparison scenario if an alternative is operationally valid.",
+                ],
+                validation_plan=[
+                    "Compare monthly and contract deltas without changing the original snapshot.",
+                    "Confirm the alternative still passes service limits and resilience requirements.",
+                ],
+                expected_impact=["Focuses architecture review on the material cost driver without optimizing blindly."],
+                evidence_ids=[snapshot.id, snapshot.technical_snapshot_id, snapshot.price_catalog_snapshot_id],
+                action_label="Inspect cost driver",
+                action_href=f"/projects/{snapshot.project_id}/bom",
+                confidence="high",
+            )
+        )
+    candidates.append(
+        AiReviewActionCandidate(
+            id="bom-action-ramp",
+            priority="next" if len(candidates) < 2 else "monitor",
+            status="ready" if snapshot.first_active_period is not None else "review",
+            title="Validate environment activation and consumption ramp",
+            summary=(
+                f"Consumption starts in month {snapshot.first_active_period or 'not set'}, reaches steady state in "
+                f"month {snapshot.steady_state_period or 'not set'}, and defers {snapshot.currency} "
+                f"{snapshot.ramp_deferred_amount:,.2f} versus day-one full capacity."
+            ),
+            what_to_change=[
+                "Align DEV, QA, PROD, and DR activation months with the delivery plan.",
+                "Use real SKU units per product and month; keep timing effects separate from negotiated savings.",
+            ],
+            implementation_steps=[
+                "Review the monthly matrix by environment and Service Product.",
+                "Confirm overlap months, package increments, minimum quantities, HA, and DR multipliers.",
+                "Regenerate the BOM whenever the implementation calendar changes.",
+            ],
+            validation_plan=[
+                "Check peak month, steady-state month, contract bridge, and environment subtotals.",
+                "Confirm the exported monthly BOM reproduces the approved in-App scenario.",
+            ],
+            expected_impact=["Makes phased consumption explicit and prevents a day-one capacity overstatement."],
+            evidence_ids=[snapshot.id, snapshot.scenario_id],
+            action_label="Review monthly ramp",
+            action_href=f"/projects/{snapshot.project_id}/bom",
+            confidence="high" if snapshot.first_active_period is not None else "medium",
+        )
+    )
+    return AiReviewActionWorkspace(
+        context="bom",
+        title="BOM decision workspace",
+        recommendation_basis=(
+            "Actions are derived from immutable monthly line periods, governed SKU mappings, pricing coverage, "
+            "Service Product concentration, and the approved environment ramp."
+        ),
+        candidates=candidates[:3],
     )
 
 
@@ -262,10 +622,11 @@ async def _active_mappings(db: AsyncSession) -> list[ServiceProductSkuMapping]:
 def _detected_services(
     integrations: Iterable[CatalogIntegration],
     mappings: Iterable[ServiceProductSkuMapping],
+    tool_overrides: dict[str, tuple[str, str]] | None = None,
 ) -> tuple[list[str], set[str]]:
     tool_keys: set[str] = set()
     for row in integrations:
-        tool_keys.update(_integration_tools(row))
+        tool_keys.update(_integration_tools_with_overrides(row, tool_overrides))
     service_ids = sorted({mapping.service_id for mapping in mappings if mapping.tool_key in tool_keys})
     return service_ids, tool_keys
 
@@ -291,7 +652,9 @@ def _default_service_config(service_ids: Iterable[str]) -> dict[str, dict[str, o
 def _required_questions(service_ids: Iterable[str]) -> list[str]:
     services = set(service_ids)
     questions = [
-        "Which environments, active hours, demand shares, and HA/DR multipliers should the estimate include?",
+        "Which environments, active hours, and HA/DR roles should the estimate include?",
+        "In which contract month does each product activate, and what real SKU quantity is required in each environment?",
+        "Which products remain constant, ramp linearly, or require an explicit monthly step schedule?",
         "Can this estimate consume tenancy-level Free Tier allowances, or are they already allocated elsewhere?",
     ]
     if "OIC3" in services:
@@ -303,6 +666,75 @@ def _required_questions(service_ids: Iterable[str]) -> list[str]:
     if "STREAMING" in services:
         questions.append("What Streaming retention period and PUT/GET transfer multiplier should be used?")
     return questions
+
+
+def _metric_label(metric_key: str) -> str:
+    return metric_key.replace("_", " ").replace(" 10k ", " 10K ").title()
+
+
+def _metric_options(
+    service_ids: list[str],
+    mappings: list[ServiceProductSkuMapping],
+    technical: dict[str, object],
+    integrations: list[CatalogIntegration],
+    service_config: dict[str, dict[str, object]],
+) -> list[ScenarioMetricOptionResponse]:
+    """Resolve governed commercial metrics and their full-demand baseline quantities."""
+
+    environment = {
+        "name": "Production",
+        "active_hours_month": 744.0,
+        "demand_share": 1.0,
+        "ha_multiplier": 1.0,
+        "dr_role": "primary",
+    }
+    options: list[ScenarioMetricOptionResponse] = []
+    grouped: dict[tuple[str, str], list[ServiceProductSkuMapping]] = defaultdict(list)
+    for mapping in mappings:
+        if mapping.service_id in service_ids:
+            grouped[(mapping.service_id, mapping.billing_metric_key)].append(mapping)
+    for key, variants in grouped.items():
+        config = service_config.get(key[0], {})
+        mapping = next(
+            (candidate for candidate in variants if _mapping_predicates_match(candidate, config)),
+            variants[0],
+        )
+        quantity, resolved_unit, _ = _demand_for_metric(
+            mapping.billing_metric_key,
+            environment,
+            technical,
+            integrations,
+            config,
+        )
+        options.append(
+            ScenarioMetricOptionResponse(
+                service_id=mapping.service_id,
+                product_name=mapping.tool_key,
+                metric_key=mapping.billing_metric_key,
+                metric_label=_metric_label(mapping.billing_metric_key),
+                quantity_unit=mapping.quantity_unit or resolved_unit,
+                baseline_quantity=max(quantity or 0.0, 0.0),
+                quantity_behavior=mapping.quantity_behavior,
+                quantity_increment=mapping.quantity_increment,
+                minimum_quantity=mapping.minimum_quantity,
+                default_sku_mapping_id=mapping.id,
+                variants=[
+                    ScenarioSkuVariantResponse(
+                        sku_mapping_id=variant.id,
+                        label=_mapping_variant_label(variant),
+                        part_number=variant.part_number,
+                        predicates=variant.predicates,
+                        is_billable=variant.is_billable,
+                        quantity_behavior=variant.quantity_behavior,
+                        quantity_increment=variant.quantity_increment,
+                        minimum_quantity=variant.minimum_quantity,
+                        quantity_unit=variant.quantity_unit,
+                    )
+                    for variant in variants
+                ],
+            )
+        )
+    return sorted(options, key=lambda item: (item.product_name, item.metric_label))
 
 
 async def build_scenario_assistant(
@@ -318,6 +750,14 @@ async def build_scenario_assistant(
     integrations = await _project_integrations(project_id, db)
     mappings = await _active_mappings(db)
     service_ids, _ = _detected_services(integrations, mappings)
+    service_config = _default_service_config(service_ids)
+    metric_options = _metric_options(
+        service_ids,
+        mappings,
+        snapshot.consolidated,
+        integrations,
+        service_config,
+    )
     warnings = [
         "The draft is a deployment proposal, not an Oracle quote.",
         "Free Tier is disabled until tenancy-level allocation is confirmed.",
@@ -333,8 +773,29 @@ async def build_scenario_assistant(
         region="global",
         price_mode="public_list",
         contract_months=12,
-        environments=[DeploymentEnvironmentInput(name="Production")],
-        service_config=_default_service_config(service_ids),
+        start_date=date.today().replace(day=1),
+        environments=[
+            DeploymentEnvironmentInput(
+                name="Production",
+                phases=[
+                    DeploymentRampPhaseInput(
+                        service_id=option.service_id,
+                        metric_key=option.metric_key,
+                        sku_mapping_id=option.default_sku_mapping_id,
+                        start_month=1,
+                        end_month=12,
+                        interpolation="step",
+                        start_quantity=option.baseline_quantity,
+                        end_quantity=option.baseline_quantity,
+                        quantity_unit=option.quantity_unit,
+                        rationale="Governed full-demand baseline in the commercial metric unit.",
+                    )
+                    for option in metric_options
+                ],
+            )
+        ],
+        consumption_model="explicit_units",
+        service_config=service_config,
         assumptions={"free_tier_enabled": False, "drafted_from": snapshot.id},
     )
     ai_status = "skipped"
@@ -365,6 +826,7 @@ async def build_scenario_assistant(
     return ScenarioAssistantResponse(
         draft=draft,
         detected_services=service_ids,
+        metric_options=metric_options,
         required_questions=_required_questions(service_ids),
         warnings=warnings,
         confidence="medium" if service_ids else "low",
@@ -384,7 +846,17 @@ async def create_scenario(
     _, snapshot = await _project_and_snapshot(project_id, db, request.technical_snapshot_id)
     environments = request.environments or [DeploymentEnvironmentInput(name="Production")]
     demand_share_total = sum(environment.demand_share for environment in environments)
-    if abs(demand_share_total - 1.0) > 0.0001:
+    if request.consumption_model == "explicit_units" and not any(
+        environment.phases for environment in environments
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "detail": "At least one explicit product quantity plan is required",
+                "error_code": "SCENARIO_EXPLICIT_QUANTITY_REQUIRED",
+            },
+        )
+    if request.consumption_model == "legacy_share" and abs(demand_share_total - 1.0) > 0.0001:
         raise HTTPException(
             status_code=422,
             detail={
@@ -392,6 +864,8 @@ async def create_scenario(
                 "error_code": "SCENARIO_DEMAND_SHARE_INVALID",
             },
         )
+    approved_mappings = await _active_mappings(db)
+    mappings_by_id = {mapping.id: mapping for mapping in approved_mappings}
     scenario = DeploymentScenario(
         project_id=project_id,
         name=request.name,
@@ -401,13 +875,104 @@ async def create_scenario(
         price_mode=request.price_mode,
         technical_snapshot_id=snapshot.id,
         contract_months=request.contract_months,
-        environments=[environment.model_dump(mode="json") for environment in environments],
+        start_date=request.start_date.replace(day=1),
+        proration_policy=request.proration_policy,
+        consumption_model=request.consumption_model,
         service_config=request.service_config,
         scenario_assumptions=request.assumptions,
         created_by=actor_id,
     )
     db.add(scenario)
     await db.flush()
+    environment_payloads: list[dict[str, object]] = []
+    for sequence, environment in enumerate(environments, start=1):
+        plan = DeploymentEnvironmentPlan(
+            scenario_id=scenario.id,
+            name=environment.name,
+            sequence=sequence,
+            active_hours_month=environment.active_hours_month,
+            demand_share=environment.demand_share,
+            ha_multiplier=environment.ha_multiplier,
+            dr_role=environment.dr_role,
+        )
+        db.add(plan)
+        await db.flush()
+        phases = environment.phases or ([
+            DeploymentRampPhaseInput(
+                start_month=1,
+                end_month=request.contract_months,
+                start_multiplier=1.0,
+                end_multiplier=1.0,
+                rationale="Default full-capacity schedule.",
+            )
+        ] if request.consumption_model == "legacy_share" else [])
+        for phase in phases:
+            selected_mapping: ServiceProductSkuMapping | None = None
+            if phase.service_id and phase.metric_key:
+                if phase.sku_mapping_id:
+                    selected_mapping = mappings_by_id.get(phase.sku_mapping_id)
+                    if (
+                        selected_mapping is None
+                        or selected_mapping.service_id != phase.service_id
+                        or selected_mapping.billing_metric_key != phase.metric_key
+                    ):
+                        raise HTTPException(
+                            status_code=422,
+                            detail={
+                                "detail": "The selected SKU does not govern this product metric",
+                                "error_code": "SCENARIO_SKU_MAPPING_INVALID",
+                            },
+                        )
+                else:
+                    candidates = [
+                        mapping
+                        for mapping in approved_mappings
+                        if mapping.service_id == phase.service_id
+                        and mapping.billing_metric_key == phase.metric_key
+                    ]
+                    config = request.service_config.get(phase.service_id, {})
+                    matches = [
+                        mapping for mapping in candidates if _mapping_predicates_match(mapping, config)
+                    ]
+                    selected_mapping = matches[0] if len(matches) == 1 else None
+                    if selected_mapping is None and len(candidates) == 1:
+                        selected_mapping = candidates[0]
+                    if candidates and selected_mapping is None and request.consumption_model == "explicit_units":
+                        raise HTTPException(
+                            status_code=422,
+                            detail={
+                                "detail": "Select an approved commercial variant for every product metric",
+                                "error_code": "SCENARIO_SKU_MAPPING_REQUIRED",
+                            },
+                        )
+            phase_row = DeploymentRampPhase(
+                environment_plan_id=plan.id,
+                service_id=phase.service_id,
+                metric_key=phase.metric_key,
+                sku_mapping_id=selected_mapping.id if selected_mapping else None,
+                start_month=phase.start_month,
+                end_month=phase.end_month,
+                start_multiplier=phase.start_multiplier,
+                end_multiplier=phase.end_multiplier,
+                interpolation=phase.interpolation,
+                start_quantity=phase.start_quantity,
+                end_quantity=phase.end_quantity,
+                quantity_unit=phase.quantity_unit,
+                rationale=phase.rationale,
+            )
+            db.add(phase_row)
+            await db.flush()
+            for monthly_quantity in phase.monthly_quantities:
+                db.add(
+                    DeploymentRampPeriodQuantity(
+                        ramp_phase_id=phase_row.id,
+                        period_index=monthly_quantity.period_index,
+                        quantity=monthly_quantity.quantity,
+                    )
+                )
+        environment_payloads.append(
+            environment.model_copy(update={"phases": phases}).model_dump(mode="json")
+        )
     await audit_service.emit(
         event_type="deployment_scenario_created",
         entity_type="deployment_scenario",
@@ -418,13 +983,15 @@ async def create_scenario(
             "name": scenario.name,
             "technical_snapshot_id": snapshot.id,
             "currency": scenario.currency,
-            "environments": scenario.environments,
+            "start_date": scenario.start_date.isoformat(),
+            "consumption_model": scenario.consumption_model,
+            "environments": environment_payloads,
         },
         project_id=project_id,
         db=db,
     )
     await db.refresh(scenario)
-    return serialize_scenario(scenario)
+    return await serialize_scenario(scenario, db)
 
 
 async def list_scenarios(project_id: str, db: AsyncSession) -> DeploymentScenarioListResponse:
@@ -438,7 +1005,10 @@ async def list_scenarios(project_id: str, db: AsyncSession) -> DeploymentScenari
             .order_by(DeploymentScenario.created_at.desc())
         )
     ).all()
-    return DeploymentScenarioListResponse(scenarios=[serialize_scenario(row) for row in rows], total=len(rows))
+    return DeploymentScenarioListResponse(
+        scenarios=[await serialize_scenario(row, db) for row in rows],
+        total=len(rows),
+    )
 
 
 async def approve_scenario(
@@ -473,7 +1043,7 @@ async def approve_scenario(
     )
     await db.flush()
     await db.refresh(scenario)
-    return serialize_scenario(scenario)
+    return await serialize_scenario(scenario, db)
 
 
 async def create_bom_job(project_id: str, scenario_id: str, actor_id: str, db: AsyncSession) -> BomJobResponse:
@@ -518,11 +1088,12 @@ def _config_for(scenario: DeploymentScenario, service_id: str) -> dict[str, obje
 def _queue_request_millions(
     integrations: Iterable[CatalogIntegration],
     config: dict[str, object],
+    tool_overrides: dict[str, tuple[str, str]] | None = None,
 ) -> float:
     operations = max(_as_float(config.get("request_operations_per_message"), 2.0), 1.0)
     total = 0.0
     for row in integrations:
-        if "OCI Queue" not in _integration_tools(row):
+        if "OCI Queue" not in _integration_tools_with_overrides(row, tool_overrides):
             continue
         executions = _as_float(row.executions_per_day)
         payload = _as_float(row.payload_per_execution_kb)
@@ -533,10 +1104,13 @@ def _queue_request_millions(
     return total / 1_000_000.0
 
 
-def _api_call_millions(integrations: Iterable[CatalogIntegration]) -> float:
+def _api_call_millions(
+    integrations: Iterable[CatalogIntegration],
+    tool_overrides: dict[str, tuple[str, str]] | None = None,
+) -> float:
     total = 0.0
     for row in integrations:
-        if "OCI API Gateway" not in _integration_tools(row):
+        if "OCI API Gateway" not in _integration_tools_with_overrides(row, tool_overrides):
             continue
         total += _as_float(row.executions_per_day) * DEFAULT_MONTH_DAYS
     return total / 1_000_000.0
@@ -544,11 +1118,11 @@ def _api_call_millions(integrations: Iterable[CatalogIntegration]) -> float:
 
 def _demand_for_metric(
     metric_key: str,
-    scenario: DeploymentScenario,
     environment: dict[str, object],
     technical: dict[str, object],
     integrations: list[CatalogIntegration],
     service_config: dict[str, object],
+    tool_overrides: dict[str, tuple[str, str]] | None = None,
 ) -> tuple[float | None, str, list[str]]:
     share = _as_float(environment.get("demand_share"), 1.0)
     ha = _as_float(environment.get("ha_multiplier"), 1.0)
@@ -585,13 +1159,17 @@ def _demand_for_metric(
         return daily_gb * retention_days * 24.0 * share, "GB-hours", warnings
     if metric_key == "queue_request_millions":
         warnings.append("Queue requests are derived from payload billing units and enqueue/dequeue operations.")
-        return _queue_request_millions(integrations, service_config) * share, "million requests", warnings
+        return (
+            _queue_request_millions(integrations, service_config, tool_overrides) * share,
+            "million requests",
+            warnings,
+        )
     if metric_key == "goldengate_ocpu_hours":
         if "ocpu_count" not in service_config:
             return None, "OCPU-hours", ["GoldenGate OCPU count is required."]
         return _as_float(service_config.get("ocpu_count")) * active_hours * ha, "OCPU-hours", warnings
     if metric_key == "api_gateway_call_millions":
-        return _api_call_millions(integrations) * share, "million API calls", warnings
+        return _api_call_millions(integrations, tool_overrides) * share, "million API calls", warnings
     if metric_key in {"events", "process_automation"}:
         return 0.0, "included", warnings
     return None, "unknown", [f"No demand resolver exists for {metric_key}."]
@@ -618,6 +1196,114 @@ def _selected_price_tiers(items: list[PriceItem]) -> tuple[tuple[PriceTier, ...]
     return tiers, free_tier, paid_items
 
 
+def _ramp_multipliers(
+    environment: dict[str, object],
+    service_id: str,
+    contract_months: int,
+) -> tuple[Decimal, ...]:
+    raw_phases = environment.get("phases")
+    phase_rows = [item for item in raw_phases if isinstance(item, dict)] if isinstance(raw_phases, list) else []
+    service_phases = [item for item in phase_rows if item.get("service_id") == service_id]
+    selected = service_phases or [item for item in phase_rows if not item.get("service_id")]
+    if not selected:
+        selected = [
+            {
+                "start_month": 1,
+                "end_month": contract_months,
+                "start_multiplier": 1,
+                "end_multiplier": 1,
+                "interpolation": "step",
+            }
+        ]
+    phases = tuple(
+        RampPhase(
+            start_month=_as_int(item.get("start_month")),
+            end_month=_as_int(item.get("end_month")),
+            start_multiplier=Decimal(str(_as_float(item.get("start_multiplier")))),
+            end_multiplier=Decimal(str(_as_float(item.get("end_multiplier")))),
+            interpolation=RampInterpolation(str(item.get("interpolation") or "step")),
+        )
+        for item in selected
+    )
+    return expand_ramp(phases, contract_months)
+
+
+def _explicit_quantity_schedule(
+    environment: dict[str, object],
+    service_id: str,
+    metric_key: str,
+    contract_months: int,
+) -> tuple[Decimal, ...] | None:
+    """Expand an explicit service metric plan, including normalized monthly overrides."""
+
+    raw_phases = environment.get("phases")
+    phase_rows = [item for item in raw_phases if isinstance(item, dict)] if isinstance(raw_phases, list) else []
+    selected = [
+        item
+        for item in phase_rows
+        if item.get("service_id") == service_id and item.get("metric_key") == metric_key
+    ]
+    if not selected:
+        return None
+    values = [Decimal("0") for _ in range(contract_months)]
+    assigned: set[int] = set()
+    regular_phases: list[QuantityRampPhase] = []
+    for item in selected:
+        interpolation = str(item.get("interpolation") or "step")
+        if interpolation == "monthly":
+            for monthly in _as_dict_list(item.get("monthly_quantities")):
+                period_index = _as_int(monthly.get("period_index"))
+                if period_index < 1 or period_index > contract_months or period_index in assigned:
+                    raise ValueError(f"Invalid or overlapping monthly quantity at month {period_index}")
+                assigned.add(period_index)
+                values[period_index - 1] = Decimal(str(_as_float(monthly.get("quantity"))))
+            continue
+        regular_phases.append(
+            QuantityRampPhase(
+                start_month=_as_int(item.get("start_month")),
+                end_month=_as_int(item.get("end_month")),
+                start_quantity=Decimal(str(_as_float(item.get("start_quantity")))),
+                end_quantity=Decimal(str(_as_float(item.get("end_quantity")))),
+                interpolation=RampInterpolation(interpolation),
+            )
+        )
+    if regular_phases:
+        expanded = expand_quantity_ramp(tuple(regular_phases), contract_months)
+        for index, quantity in enumerate(expanded, start=1):
+            if quantity == 0:
+                continue
+            if index in assigned:
+                raise ValueError(f"Explicit quantity phases overlap at month {index}")
+            assigned.add(index)
+            values[index - 1] = quantity
+    return tuple(values)
+
+
+def _zero_period_payloads(
+    contract_months: int,
+    multipliers: tuple[Decimal, ...],
+    line: dict[str, object],
+    quantities: tuple[Decimal, ...] | None = None,
+) -> list[dict[str, object]]:
+    return [
+        {
+            "period_index": index,
+            "multiplier": float(multiplier),
+            "quantity": float(quantities[index - 1]) if quantities is not None else 0.0,
+            "active_hours": 0.0,
+            "unit_price": 0.0,
+            "amount": 0.0,
+            "selected_price_item_id": None,
+            "formula": str(line["formula"]),
+            "inputs": _as_dict(line.get("inputs")),
+            "status": str(line["status"]),
+            "warnings": _as_string_list(line.get("warnings")),
+            "provenance": _as_dict(line.get("provenance")),
+        }
+        for index, multiplier in enumerate(multipliers[:contract_months], start=1)
+    ]
+
+
 def _price_mapping_line(
     mapping: ServiceProductSkuMapping,
     items: list[PriceItem],
@@ -626,15 +1312,21 @@ def _price_mapping_line(
     environment: dict[str, object],
     scenario: DeploymentScenario,
     demand_warnings: list[str],
-) -> dict[str, object]:
+    multipliers: tuple[Decimal, ...],
+    explicit_quantities: tuple[Decimal, ...] | None = None,
+) -> tuple[dict[str, object], list[dict[str, object]]]:
+    effective_quantity = max(
+        [Decimal(str(quantity)), *(explicit_quantities or ())],
+        default=Decimal("0"),
+    )
     if not mapping.is_billable:
-        return {
+        line: dict[str, object] = {
             "environment": str(environment.get("name") or "Unspecified"),
             "service_id": mapping.service_id,
             "part_number": None,
             "description": f"{mapping.tool_key} - included or non-billable",
             "metric_name": mapping.billing_metric_key,
-            "quantity": quantity,
+            "quantity": float(effective_quantity),
             "unit": unit,
             "unit_price": 0.0,
             "monthly_amount": 0.0,
@@ -642,20 +1334,28 @@ def _price_mapping_line(
             "contract_amount": 0.0,
             "price_item_id": None,
             "formula": "non_billable",
-            "inputs": {"quantity": quantity},
+            "inputs": {"quantity": float(effective_quantity)},
             "status": "non_billable",
             "warnings": demand_warnings,
-            "provenance": {"mapping_id": mapping.id, "mapping_version": mapping.version},
+            "provenance": _mapping_provenance(mapping),
         }
+        return line, _zero_period_payloads(
+            scenario.contract_months,
+            multipliers,
+            line,
+            explicit_quantities,
+        )
     if not items:
-        return _blocked_line(mapping, environment, quantity, unit, [*demand_warnings, "Approved price item not found."])
+        line = _blocked_line(mapping, environment, float(effective_quantity), unit, [*demand_warnings, "Approved price item not found."])
+        return line, _zero_period_payloads(scenario.contract_months, multipliers, line, explicit_quantities)
 
     tiers, free_tier, paid_items = _selected_price_tiers(items)
     primary_item = paid_items[0] if paid_items else items[0]
-    if not paid_items and quantity > free_tier:
-        return _blocked_line(mapping, environment, quantity, unit, [*demand_warnings, "No paid price tier covers this demand."])
+    if not paid_items and effective_quantity > Decimal(str(free_tier)):
+        line = _blocked_line(mapping, environment, float(effective_quantity), unit, [*demand_warnings, "No paid price tier covers this demand."])
+        return line, _zero_period_payloads(scenario.contract_months, multipliers, line, explicit_quantities)
     use_free_tier = _as_bool(scenario.scenario_assumptions.get("free_tier_enabled"), False)
-    free_allocation = min(quantity, free_tier) if use_free_tier else 0.0
+    free_allocation = min(float(effective_quantity), free_tier) if use_free_tier else 0.0
     if tiers and not use_free_tier and free_tier > 0:
         tiers = tuple(
             PriceTier(
@@ -667,42 +1367,90 @@ def _price_mapping_line(
             for index, tier in enumerate(tiers)
         )
     pricing_model = PricingModel.HOURLY if mapping.formula_key == "hourly_capacity" else PricingModel.MONTHLY
-    annual_months = _as_int(environment.get("active_months_year"), 12)
     request = PricingRequest(
         sku=mapping.part_number or mapping.service_id,
         model=pricing_model,
         currency=CurrencyRule(scenario.currency, 2),
-        quantity=Decimal(str(quantity)),
+        quantity=effective_quantity,
         unit_price=(Decimal(str(primary_item.value)) if not tiers else None),
         billing_unit=Decimal("1"),
         hours=(Decimal(str(_as_float(environment.get("active_hours_month"), 744.0))) if pricing_model is PricingModel.HOURLY else None),
         free_tier_allocation=Decimal(str(free_allocation)),
         tiers=tiers,
-        tier_basis_quantity=Decimal(str(quantity)) if tiers else None,
-        annual_active_months=annual_months,
+        tier_basis_quantity=effective_quantity if tiers else None,
+        annual_active_months=12,
         contract_months=scenario.contract_months,
     )
-    result = price_line(request)
-    selected_item_id = result.selected_tier.source_item_id if result.selected_tier else primary_item.id
-    return {
+    full_capacity_result = price_line(request)
+    schedule = (
+        price_line_quantity_schedule(
+            request,
+            explicit_quantities,
+            rule=QuantityRule(
+                behavior=QuantityBehavior(mapping.quantity_behavior),
+                increment=Decimal(str(mapping.quantity_increment)),
+                minimum=Decimal(str(mapping.minimum_quantity)),
+            ),
+        )
+        if explicit_quantities is not None
+        else price_line_schedule(request, multipliers)
+    )
+    final_result = schedule.periods[-1].result
+    selected_item_id = final_result.selected_tier.source_item_id if final_result.selected_tier else primary_item.id
+    line = {
         "environment": str(environment.get("name") or "Unspecified"),
         "service_id": mapping.service_id,
         "part_number": mapping.part_number,
         "description": primary_item.display_name,
         "metric_name": primary_item.metric_name,
-        "quantity": quantity,
+        "quantity": float(effective_quantity),
         "unit": unit,
-        "unit_price": float(result.unit_price),
-        "monthly_amount": float(result.totals.monthly),
-        "annual_amount": float(result.totals.annual),
-        "contract_amount": float(result.totals.contract),
+        "unit_price": float(final_result.unit_price),
+        "monthly_amount": float(final_result.totals.monthly),
+        "annual_amount": float(schedule.annual_totals[0]),
+        "contract_amount": float(schedule.contract_total),
         "price_item_id": selected_item_id,
-        "formula": result.formula,
-        "inputs": {**result.inputs, "gross_quantity": str(result.gross_quantity), "free_quantity": str(result.free_quantity_applied)},
+        "formula": final_result.formula,
+        "inputs": {**final_result.inputs, "gross_quantity": str(effective_quantity), "free_quantity": str(final_result.free_quantity_applied)},
         "status": "priced",
         "warnings": demand_warnings,
-        "provenance": {"mapping_id": mapping.id, "mapping_version": mapping.version},
+        "provenance": {
+            **_mapping_provenance(mapping),
+            "quantity_source": "explicit_units" if explicit_quantities is not None else "legacy_multiplier",
+            "quantity_behavior": mapping.quantity_behavior,
+            "quantity_increment": str(mapping.quantity_increment),
+        },
+        "_full_capacity_monthly": float(full_capacity_result.totals.monthly),
     }
+    periods: list[dict[str, object]] = [
+        {
+            "period_index": period.period_index,
+            "multiplier": float(period.multiplier),
+            "quantity": float(period.result.gross_quantity),
+            "active_hours": _as_float(period.result.inputs.get("hours")),
+            "unit_price": float(period.result.unit_price),
+            "amount": float(period.result.totals.monthly),
+            "selected_price_item_id": (
+                period.result.selected_tier.source_item_id
+                if period.result.selected_tier
+                else primary_item.id
+            ),
+            "formula": period.result.formula,
+            "inputs": period.result.inputs,
+            "status": "priced",
+            "warnings": demand_warnings,
+            "provenance": {
+                **_mapping_provenance(mapping),
+                "price_catalog_item_id": (
+                    period.result.selected_tier.source_item_id
+                    if period.result.selected_tier
+                    else primary_item.id
+                ),
+            },
+        }
+        for period in schedule.periods
+    ]
+    return line, periods
 
 
 def _blocked_line(
@@ -729,7 +1477,7 @@ def _blocked_line(
         "inputs": {"quantity": quantity},
         "status": "blocked",
         "warnings": warnings,
-        "provenance": {"mapping_id": mapping.id, "mapping_version": mapping.version},
+        "provenance": _mapping_provenance(mapping),
     }
 
 
@@ -757,18 +1505,16 @@ def _blocked_service_line(service_id: str, environment: dict[str, object], warni
     }
 
 
-async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
-    """Generate an immutable, coverage-aware BOM snapshot."""
+async def calculate_bom(
+    *,
+    project_id: str,
+    scenario: DeploymentScenario,
+    technical: dict[str, object],
+    db: AsyncSession,
+    tool_overrides: dict[str, tuple[str, str]] | None = None,
+) -> BomCalculation:
+    """Calculate a complete BOM in memory using the same governed pricing path as persistence."""
 
-    job = await db.get(BomJob, job_id)
-    if job is None:
-        raise ValueError("BOM job not found")
-    scenario = await db.get(DeploymentScenario, job.scenario_id)
-    if scenario is None or scenario.status != "approved":
-        raise ValueError("Approved deployment scenario not found")
-    technical = await db.get(VolumetrySnapshot, scenario.technical_snapshot_id)
-    if technical is None:
-        raise ValueError("Technical snapshot not found")
     allowed_source_types = {
         "public_list": {"public_list"},
         "contract_rate": {"manual_rate_card", "contract_rate"},
@@ -787,13 +1533,15 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
     if price_snapshot is None:
         raise ValueError(f"No approved {scenario.currency} price catalog is available")
 
-    job.status = "running"
-    job.started_at = _now()
-    await db.flush()
-    integrations = await _project_integrations(job.project_id, db)
+    integrations = await _project_integrations(project_id, db)
     mappings = await _active_mappings(db)
-    detected_services, _ = _detected_services(integrations, mappings)
-    selected_mappings: list[ServiceProductSkuMapping] = []
+    detected_services, _ = _detected_services(integrations, mappings, tool_overrides)
+    mappings_by_id = {mapping.id: mapping for mapping in mappings}
+    environments = [
+        item.model_dump(mode="json")
+        for item in await _scenario_environments(scenario.id, db)
+    ]
+    default_mappings: list[ServiceProductSkuMapping] = []
     unmapped_services: list[str] = []
     for service_id in detected_services:
         config = _config_for(scenario, service_id)
@@ -801,7 +1549,21 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
         matched = [mapping for mapping in candidates if _mapping_predicates_match(mapping, config)]
         if not matched:
             unmapped_services.append(service_id)
-        selected_mappings.extend(matched)
+        default_mappings.extend(matched)
+
+    explicit_mapping_ids = {
+        str(phase.get("sku_mapping_id"))
+        for environment in environments
+        for phase in _environment_phase_payloads(environment)
+        if phase.get("sku_mapping_id")
+    }
+    selected_mappings = list({
+        mapping.id: mapping
+        for mapping in [
+            *default_mappings,
+            *(mappings_by_id[mapping_id] for mapping_id in explicit_mapping_ids if mapping_id in mappings_by_id),
+        ]
+    }.values())
 
     part_numbers = {mapping.part_number for mapping in selected_mappings if mapping.part_number}
     price_rows = (
@@ -817,79 +1579,287 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
         prices_by_part[price.part_number].append(price)
 
     line_payloads: list[dict[str, object]] = []
-    environments = [item for item in scenario.environments if isinstance(item, dict)]
+    period_payloads: list[list[dict[str, object]]] = []
     for environment in environments:
-        for service_id in unmapped_services:
-            line_payloads.append(
-                _blocked_service_line(
-                    service_id,
-                    environment,
-                    "No approved SKU mapping matches the deployment scenario configuration.",
-                )
+        explicit_phase_mappings = {
+            str(phase.get("sku_mapping_id")): (
+                str(phase.get("service_id") or ""),
+                str(phase.get("metric_key") or ""),
             )
-        for mapping in selected_mappings:
-            config = _config_for(scenario, mapping.service_id)
+            for phase in _environment_phase_payloads(environment)
+            if phase.get("sku_mapping_id")
+        }
+        explicitly_mapped_services = {key[0] for key in explicit_phase_mappings.values()}
+        for service_id in unmapped_services:
+            if service_id in explicitly_mapped_services:
+                continue
+            multipliers = (
+                tuple(Decimal("0") for _ in range(scenario.contract_months))
+                if scenario.consumption_model == "explicit_units"
+                else _ramp_multipliers(environment, service_id, scenario.contract_months)
+            )
+            line = _blocked_service_line(
+                service_id,
+                environment,
+                "No approved SKU mapping matches the deployment scenario configuration.",
+            )
+            line_payloads.append(line)
+            period_payloads.append(_zero_period_payloads(scenario.contract_months, multipliers, line))
+        explicit_keys = set(explicit_phase_mappings.values())
+        environment_mappings = [
+            mapping
+            for mapping in default_mappings
+            if (mapping.service_id, mapping.billing_metric_key) not in explicit_keys
+        ]
+        environment_mappings.extend(
+            mappings_by_id[mapping_id]
+            for mapping_id in explicit_phase_mappings
+            if mapping_id in mappings_by_id
+        )
+        environment_mappings = list({mapping.id: mapping for mapping in environment_mappings}.values())
+        for mapping in environment_mappings:
+            config = {
+                **_config_for(scenario, mapping.service_id),
+                **mapping.predicates,
+            }
             quantity, unit, warnings = _demand_for_metric(
                 mapping.billing_metric_key,
-                scenario,
                 environment,
-                technical.consolidated,
+                technical,
                 integrations,
                 config,
+                tool_overrides,
             )
-            if quantity is None:
-                line_payloads.append(_blocked_line(mapping, environment, 0.0, unit, warnings))
-                continue
-            line_payloads.append(
-                _price_mapping_line(
-                    mapping,
-                    prices_by_part.get(mapping.part_number or "", []),
-                    quantity,
-                    unit,
+            explicit_quantities = None
+            if scenario.consumption_model == "explicit_units":
+                explicit_quantities = _explicit_quantity_schedule(
                     environment,
-                    scenario,
-                    warnings,
+                    mapping.service_id,
+                    mapping.billing_metric_key,
+                    scenario.contract_months,
                 )
+                if explicit_quantities is None:
+                    explicit_quantities = tuple(Decimal("0") for _ in range(scenario.contract_months))
+                    warnings = [
+                        *warnings,
+                        "No explicit monthly quantity plan exists for this product metric; all months remain at zero.",
+                    ]
+                peak_quantity = max(explicit_quantities, default=Decimal("0"))
+                multipliers = tuple(
+                    current / peak_quantity if peak_quantity > 0 else Decimal("0")
+                    for current in explicit_quantities
+                )
+                unit = mapping.quantity_unit
+            else:
+                multipliers = _ramp_multipliers(environment, mapping.service_id, scenario.contract_months)
+            if quantity is None and explicit_quantities is not None:
+                quantity = float(max(explicit_quantities, default=Decimal("0")))
+                warnings = [
+                    *warnings,
+                    "Technical demand was unavailable; pricing uses the explicitly approved monthly quantities.",
+                ]
+            if quantity is None:
+                line = _blocked_line(mapping, environment, 0.0, unit, warnings)
+                line_payloads.append(line)
+                period_payloads.append(
+                    _zero_period_payloads(
+                        scenario.contract_months,
+                        multipliers,
+                        line,
+                        explicit_quantities,
+                    )
+                )
+                continue
+            line, periods = _price_mapping_line(
+                mapping,
+                prices_by_part.get(mapping.part_number or "", []),
+                quantity,
+                unit,
+                environment,
+                scenario,
+                warnings,
+                multipliers,
+                explicit_quantities,
             )
+            line_payloads.append(line)
+            period_payloads.append(periods)
 
     blocked = [line for line in line_payloads if line["status"] == "blocked"]
     covered = len(line_payloads) - len(blocked)
     coverage_pct = round((covered / len(line_payloads) * 100.0), 1) if line_payloads else 0.0
-    monthly_total = round(sum(_as_float(line["monthly_amount"]) for line in line_payloads), 2)
-    annual_total = round(sum(_as_float(line["annual_amount"]) for line in line_payloads), 2)
-    contract_total = round(sum(_as_float(line["contract_amount"]) for line in line_payloads), 2)
+    monthly_series: list[dict[str, object]] = []
+    cumulative = 0.0
+    for period_index in range(1, scenario.contract_months + 1):
+        by_service_period: dict[str, float] = defaultdict(float)
+        by_environment_period: dict[str, float] = defaultdict(float)
+        for line, periods in zip(line_payloads, period_payloads):
+            period = periods[period_index - 1]
+            amount = _as_float(period["amount"])
+            by_service_period[str(line["service_id"])] += amount
+            by_environment_period[str(line["environment"])] += amount
+        total = round(sum(by_service_period.values()), 2)
+        cumulative = round(cumulative + total, 2)
+        monthly_series.append(
+            {
+                "period_index": period_index,
+                "period_start": _add_months(scenario.start_date, period_index - 1).isoformat(),
+                "total": total,
+                "cumulative_total": cumulative,
+                "by_service": {key: round(value, 2) for key, value in sorted(by_service_period.items())},
+                "by_environment": {
+                    key: round(value, 2) for key, value in sorted(by_environment_period.items())
+                },
+            }
+        )
+    monthly_total = _as_float(monthly_series[-1]["total"]) if monthly_series else 0.0
+    annual_total = round(sum(_as_float(item["total"]) for item in monthly_series[:12]), 2)
+    contract_total = round(sum(_as_float(item["total"]) for item in monthly_series), 2)
+    peak_monthly_total = round(max((_as_float(item["total"]) for item in monthly_series), default=0.0), 2)
+    full_capacity_contract = round(
+        sum(_as_float(line.get("_full_capacity_monthly")) for line in line_payloads)
+        * scenario.contract_months,
+        2,
+    )
+    ramp_deferred_amount = round(max(full_capacity_contract - contract_total, 0.0), 2)
+    first_active_period = next(
+        (_as_int(item["period_index"]) for item in monthly_series if _as_float(item["total"]) > 0),
+        None,
+    )
+    steady_state_period = next(
+        (
+            _as_int(item["period_index"])
+            for index, item in enumerate(monthly_series)
+            if _as_float(item["total"]) > 0
+            and all(
+                abs(_as_float(later["total"]) - monthly_total) < 0.01
+                for later in monthly_series[index:]
+            )
+        ),
+        None,
+    )
     by_service: dict[str, float] = defaultdict(float)
     by_environment: dict[str, float] = defaultdict(float)
-    for line in line_payloads:
-        by_service[str(line["service_id"])] += _as_float(line["monthly_amount"])
-        by_environment[str(line["environment"])] += _as_float(line["monthly_amount"])
-    snapshot = BomSnapshot(
-        project_id=job.project_id,
-        scenario_id=scenario.id,
-        technical_snapshot_id=technical.id,
-        price_catalog_snapshot_id=price_snapshot.id,
-        mapping_version="sku-mappings-1.0.0",
-        engine_version=BOM_ENGINE_VERSION,
-        currency=scenario.currency,
+    if monthly_series:
+        by_service.update(
+            {
+                str(key): _as_float(value)
+                for key, value in _as_dict(monthly_series[-1]["by_service"]).items()
+            }
+        )
+        by_environment.update(
+            {
+                str(key): _as_float(value)
+                for key, value in _as_dict(monthly_series[-1]["by_environment"]).items()
+            }
+        )
+    return BomCalculation(
+        price_snapshot=price_snapshot,
+        line_payloads=line_payloads,
+        period_payloads=period_payloads,
         coverage_pct=coverage_pct,
         monthly_total=monthly_total,
         annual_total=annual_total,
         contract_total=contract_total,
+        peak_monthly_total=peak_monthly_total,
+        full_capacity_contract=full_capacity_contract,
+        ramp_deferred_amount=ramp_deferred_amount,
+        first_active_period=first_active_period,
+        steady_state_period=steady_state_period,
+        monthly_series=monthly_series,
+        detected_services=detected_services,
+        by_service=dict(by_service),
+        by_environment=dict(by_environment),
+        warnings=[warning for line in blocked for warning in _as_string_list(line.get("warnings"))],
+    )
+
+
+async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
+    """Generate an immutable, coverage-aware BOM snapshot."""
+
+    job = await db.get(BomJob, job_id)
+    if job is None:
+        raise ValueError("BOM job not found")
+    scenario = await db.get(DeploymentScenario, job.scenario_id)
+    if scenario is None or scenario.status != "approved":
+        raise ValueError("Approved deployment scenario not found")
+    technical = await db.get(VolumetrySnapshot, scenario.technical_snapshot_id)
+    if technical is None:
+        raise ValueError("Technical snapshot not found")
+    job.status = "running"
+    job.started_at = _now()
+    await db.flush()
+    calculation = await calculate_bom(
+        project_id=job.project_id,
+        scenario=scenario,
+        technical=technical.consolidated,
+        db=db,
+    )
+    line_payloads = calculation.line_payloads
+    period_payloads = calculation.period_payloads
+    blocked = [line for line in line_payloads if line["status"] == "blocked"]
+    covered = len(line_payloads) - len(blocked)
+    snapshot = BomSnapshot(
+        project_id=job.project_id,
+        scenario_id=scenario.id,
+        technical_snapshot_id=technical.id,
+        price_catalog_snapshot_id=calculation.price_snapshot.id,
+        mapping_version="sku-mappings-1.1.0-environment",
+        engine_version=BOM_ENGINE_VERSION,
+        currency=scenario.currency,
+        coverage_pct=calculation.coverage_pct,
+        monthly_total=calculation.monthly_total,
+        annual_total=calculation.annual_total,
+        contract_total=calculation.contract_total,
+        steady_state_monthly_total=calculation.monthly_total,
+        peak_monthly_total=calculation.peak_monthly_total,
+        ramp_deferred_amount=calculation.ramp_deferred_amount,
+        first_active_period=calculation.first_active_period,
+        steady_state_period=calculation.steady_state_period,
         summary={
             "line_count": len(line_payloads),
             "priced_line_count": covered,
             "blocked_line_count": len(blocked),
-            "detected_services": detected_services,
-            "by_service_monthly": {key: round(value, 2) for key, value in sorted(by_service.items())},
-            "by_environment_monthly": {key: round(value, 2) for key, value in sorted(by_environment.items())},
+            "detected_services": calculation.detected_services,
+            "by_service_monthly": {
+                key: round(value, 2) for key, value in sorted(calculation.by_service.items())
+            },
+            "by_environment_monthly": {
+                key: round(value, 2) for key, value in sorted(calculation.by_environment.items())
+            },
+            "monthly_series": calculation.monthly_series,
+            "full_capacity_contract": calculation.full_capacity_contract,
+            "ramp_insights": {
+                "first_active_period": calculation.first_active_period,
+                "steady_state_period": calculation.steady_state_period,
+                "peak_monthly_total": calculation.peak_monthly_total,
+                "ramp_deferred_amount": calculation.ramp_deferred_amount,
+                "deferred_spend_notice": "Timing effect versus day-one full capacity; not a negotiated saving.",
+            },
             "estimate_notice": "Planning estimate only; not an Oracle quote.",
         },
-        warnings=[warning for line in blocked for warning in _as_string_list(line.get("warnings"))],
+        warnings=calculation.warnings,
         publication_status="draft",
     )
     db.add(snapshot)
     await db.flush()
-    db.add_all([BomLineItem(bom_snapshot_id=snapshot.id, **payload) for payload in line_payloads])
+    for line_payload, periods in zip(line_payloads, period_payloads):
+        persisted_payload = {key: value for key, value in line_payload.items() if not key.startswith("_")}
+        persisted_line = BomLineItem(bom_snapshot_id=snapshot.id, **persisted_payload)
+        db.add(persisted_line)
+        await db.flush()
+        db.add_all(
+            [
+                BomLinePeriod(
+                    bom_line_item_id=persisted_line.id,
+                    period_start=_add_months(
+                        scenario.start_date,
+                        _as_int(period["period_index"]) - 1,
+                    ),
+                    **period,
+                )
+                for period in periods
+            ]
+        )
     job.status = "completed"
     job.completed_at = _now()
     job.bom_snapshot_id = snapshot.id
@@ -902,9 +1872,12 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
         new_value={
             "scenario_id": scenario.id,
             "technical_snapshot_id": technical.id,
-            "price_catalog_snapshot_id": price_snapshot.id,
-            "coverage_pct": coverage_pct,
-            "monthly_total": monthly_total,
+            "price_catalog_snapshot_id": calculation.price_snapshot.id,
+            "coverage_pct": calculation.coverage_pct,
+            "monthly_total": calculation.monthly_total,
+            "first_active_period": calculation.first_active_period,
+            "steady_state_period": calculation.steady_state_period,
+            "ramp_deferred_amount": calculation.ramp_deferred_amount,
             "publication_status": snapshot.publication_status,
         },
         project_id=job.project_id,
@@ -965,7 +1938,17 @@ async def get_bom_snapshot(project_id: str, snapshot_id: str, db: AsyncSession) 
             .order_by(BomLineItem.environment, BomLineItem.service_id, BomLineItem.part_number)
         )
     ).all()
-    return serialize_bom_snapshot(snapshot, lines)
+    periods = (
+        await db.scalars(
+            select(BomLinePeriod)
+            .where(BomLinePeriod.bom_line_item_id.in_([line.id for line in lines]))
+            .order_by(BomLinePeriod.bom_line_item_id, BomLinePeriod.period_index)
+        )
+    ).all() if lines else []
+    periods_by_line: dict[str, list[BomLinePeriod]] = defaultdict(list)
+    for period in periods:
+        periods_by_line[period.bom_line_item_id].append(period)
+    return serialize_bom_snapshot(snapshot, lines, periods_by_line)
 
 
 async def list_bom_snapshots(project_id: str, db: AsyncSession, limit: int = 20) -> BomSnapshotListResponse:
@@ -1030,6 +2013,21 @@ async def compare_bom_snapshots(
         drivers.append("Deployment scenario changed.")
     if baseline.technical_snapshot_id != comparison.technical_snapshot_id:
         drivers.append("Technical demand snapshot changed.")
+    baseline_periods = {item.period_index: item.total for item in baseline.monthly_series}
+    comparison_periods = {item.period_index: item.total for item in comparison.monthly_series}
+    period_deltas = {
+        period: round(comparison_periods.get(period, 0.0) - baseline_periods.get(period, 0.0), 2)
+        for period in sorted(set(baseline_periods) | set(comparison_periods))
+        if round(comparison_periods.get(period, 0.0) - baseline_periods.get(period, 0.0), 2) != 0
+    }
+    driver_categories = {
+        "price": baseline.price_catalog_snapshot_id != comparison.price_catalog_snapshot_id,
+        "timing_or_environment": baseline.scenario_id != comparison.scenario_id,
+        "technical_demand": baseline.technical_snapshot_id != comparison.technical_snapshot_id,
+        "service_mix": bool(service_deltas),
+    }
+    if period_deltas:
+        drivers.append(f"Monthly rollout changed in {len(period_deltas)} contract period(s).")
     return BomComparisonResponse(
         baseline_snapshot_id=baseline.id,
         comparison_snapshot_id=comparison.id,
@@ -1039,6 +2037,8 @@ async def compare_bom_snapshots(
         contract_delta=round(comparison.contract_total - baseline.contract_total, 2),
         service_monthly_deltas=service_deltas,
         environment_monthly_deltas=environment_deltas,
+        period_deltas=period_deltas,
+        driver_categories=driver_categories,
         drivers=drivers,
     )
 

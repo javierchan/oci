@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from typing import Any, cast
 
 from fastapi import HTTPException
@@ -42,6 +42,26 @@ from app.services import audit_service, service_rule_service
 from app.services.canvas_interoperability import build_design_constraint_messages
 from app.services.service_rule_service import ServiceRuleBundle
 from app.workers.celery_app import celery_app
+
+
+@dataclass(frozen=True)
+class DraftIntegrationOverride:
+    """Unsaved integration design values used by an in-memory recalculation."""
+
+    integration_id: str
+    core_tools: str
+    additional_tools_overlays: str
+
+
+@dataclass(frozen=True)
+class ProjectVolumetryCalculation:
+    """Deterministic project volumetry result before persistence concerns."""
+
+    assumption_set_version: str
+    integrations: list[CatalogIntegration]
+    row_results: dict[str, dict[str, object]]
+    consolidated: dict[str, object]
+    metadata: dict[str, object]
 
 
 def _to_assumptions(
@@ -109,6 +129,7 @@ def _resolved_payload_per_hour_kb(
 def _integration_input_with_overrides(
     row: CatalogIntegration,
     executions_day: float | None,
+    core_tools: str | None = None,
 ) -> IntegrationInput:
     base = _integration_input(row)
     return IntegrationInput(
@@ -117,7 +138,7 @@ def _integration_input_with_overrides(
         executions_per_day=executions_day,
         trigger_type=base.trigger_type,
         is_real_time=base.is_real_time,
-        core_tools=base.core_tools,
+        core_tools=core_tools if core_tools is not None else base.core_tools,
         response_size_kb=base.response_size_kb,
         is_fan_out=base.is_fan_out,
         fan_out_targets=base.fan_out_targets,
@@ -128,10 +149,13 @@ def _design_constraint_warnings(
     row: CatalogIntegration,
     assumptions: Assumptions,
     service_rules: ServiceRuleBundle,
+    override: DraftIntegrationOverride | None = None,
 ) -> list[str]:
     return build_design_constraint_messages(
-        core_tools=row.core_tools,
-        additional_tools_overlays=row.additional_tools_overlays,
+        core_tools=override.core_tools if override else row.core_tools,
+        additional_tools_overlays=(
+            override.additional_tools_overlays if override else row.additional_tools_overlays
+        ),
         assumptions=assumptions,
         payload_kb=row.payload_per_execution_kb,
         trigger_type=row.trigger_type,
@@ -160,6 +184,12 @@ def _serialize_consolidated(consolidated: dict[str, object]) -> ConsolidatedMetr
         streaming=StreamingMetrics(**streaming),
         queue=QueueMetrics(**queue),
     )
+
+
+def serialize_consolidated_calculation(consolidated: dict[str, object]) -> ConsolidatedMetrics:
+    """Expose a typed consolidated result for side-effect-free calculation consumers."""
+
+    return _serialize_consolidated(consolidated)
 
 
 def serialize_snapshot(snapshot: VolumetrySnapshot) -> VolumetrySnapshotResponse:
@@ -192,8 +222,12 @@ def serialize_snapshot_summary(snapshot: VolumetrySnapshot) -> VolumetrySnapshot
     )
 
 
-async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) -> VolumetrySnapshot:
-    """Compute a fresh immutable volumetry snapshot for the whole project."""
+async def calculate_project_volumetry(
+    project_id: str,
+    db: AsyncSession,
+    draft_override: DraftIntegrationOverride | None = None,
+) -> ProjectVolumetryCalculation:
+    """Calculate project volumetry, optionally replacing one unsaved canvas design."""
 
     project = await db.get(Project, project_id)
     if project is None:
@@ -228,7 +262,14 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
             row.payload_per_hour_kb,
         )
         derived_inputs[row.id] = (executions_day, payload_hour)
-        row_inputs.append(_integration_input_with_overrides(row, executions_day))
+        override = draft_override if draft_override and draft_override.integration_id == row.id else None
+        row_inputs.append(
+            _integration_input_with_overrides(
+                row,
+                executions_day,
+                override.core_tools if override else None,
+            )
+        )
     consolidated = consolidate_project(row_inputs, assumptions)
     row_results: dict[str, dict[str, object]] = {}
 
@@ -238,6 +279,7 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
 
     for row in integrations:
         executions_day, payload_hour = derived_inputs[row.id]
+        override = draft_override if draft_override and draft_override.integration_id == row.id else None
         monthly_payload_kb = (
             payload_per_month_kb(row.payload_per_execution_kb, executions_day, assumptions).value
             if row.payload_per_execution_kb is not None and executions_day is not None
@@ -254,7 +296,12 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
             else None
         )
         functions_invocations = functions_invocations_per_month(
-            _integration_input_with_overrides(row, executions_day), assumptions
+            _integration_input_with_overrides(
+                row,
+                executions_day,
+                override.core_tools if override else None,
+            ),
+            assumptions,
         ).value
         functions_units = (
             functions_execution_units(
@@ -285,7 +332,12 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
         if streaming_partitions:
             peak_streaming_partitions = max(peak_streaming_partitions, int(streaming_partitions))
 
-        design_constraint_warnings = _design_constraint_warnings(row, assumptions, service_rules)
+        design_constraint_warnings = _design_constraint_warnings(
+            row,
+            assumptions,
+            service_rules,
+            override,
+        )
         row_results[row.id] = {
             "executions_per_day": executions_day,
             "payload_per_hour_kb": payload_hour,
@@ -302,15 +354,34 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
     consolidated["streaming"]["total_gb_month"] = streaming_total_gb
     consolidated["streaming"]["partition_count"] = peak_streaming_partitions
 
-    snapshot = VolumetrySnapshot(
-        project_id=project_id,
+    return ProjectVolumetryCalculation(
         assumption_set_version=assumption_set.version,
-        triggered_by=actor_id,
+        integrations=list(integrations),
         row_results=row_results,
         consolidated=consolidated,
-        snapshot_metadata={
+        metadata={
             "integration_count": len(integrations),
             "service_rules": service_rules.metadata(),
+            "draft_override_integration_id": draft_override.integration_id if draft_override else None,
+            "persisted": False,
+        },
+    )
+
+
+async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) -> VolumetrySnapshot:
+    """Compute and persist a fresh immutable volumetry snapshot for the whole project."""
+
+    calculation = await calculate_project_volumetry(project_id, db)
+
+    snapshot = VolumetrySnapshot(
+        project_id=project_id,
+        assumption_set_version=calculation.assumption_set_version,
+        triggered_by=actor_id,
+        row_results=calculation.row_results,
+        consolidated=calculation.consolidated,
+        snapshot_metadata={
+            "integration_count": calculation.metadata["integration_count"],
+            "service_rules": calculation.metadata["service_rules"],
         },
     )
     db.add(snapshot)
@@ -323,8 +394,8 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
         old_value=None,
         new_value={
             "snapshot_id": snapshot.id,
-            "assumption_set_version": assumption_set.version,
-            "service_rules": service_rules.metadata(),
+            "assumption_set_version": calculation.assumption_set_version,
+            "service_rules": calculation.metadata["service_rules"],
         },
         project_id=project_id,
         db=db,

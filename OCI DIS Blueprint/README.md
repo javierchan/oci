@@ -65,13 +65,15 @@ source of truth; OCI GenAI receives only redacted, governed evidence and produce
 an optional decision summary.
 
 ```bash
-OCI_GENAI_PROJECT_ID=ocid1.generativeaiproject... \
-OCI_GENAI_API_KEY_FILE_HOST="$HOME/.oci-genai/api_key" \
-  docker compose -f docker-compose.yml -f docker-compose.oci-genai.yml \
-  up -d --build --wait
+# Configure these non-secret values and the secret-file path in .env first:
+# OCI_GENAI_PROJECT_ID=ocid1.generativeaiproject...
+# OCI_GENAI_COMPARTMENT_ID=ocid1.compartment...
+# OCI_GENAI_API_KEY_FILE_HOST=/absolute/path/to/.oci-genai/api_key  # optional override
+docker compose up -d --build --wait
 ```
 
-The override mounts the OCI Generative AI `sk-` secret read-only under
+The production Compose contract mounts the OCI Generative AI `sk-` secret from
+`$HOME/.oci-genai/api_key` by default (or `OCI_GENAI_API_KEY_FILE_HOST` when set) read-only under
 `/oci-genai-host`. The production entrypoint copies it to
 `/tmp/oci-dis-home/.oci-genai/api_key` with mode `0400`, then immediately drops
 API and worker execution to `app:10001`. Never store the secret in `.env` or Git.
@@ -104,6 +106,9 @@ governance, import, BOM, and topology evidence, accepts explicitly added App
 contexts, and refuses unrelated questions. Model history is not evidence, and an
 output-grounding gate replaces unsupported synthesis with a concise governed brief. See
 [`docs/architecture/contextual-support-assistant.md`](./docs/architecture/contextual-support-assistant.md).
+Users can clear their current browser-session transcript from the assistant header;
+the App removes messages and attached contexts while retaining sanitized AgentRun
+audit evidence.
 
 ## Offline Capture Workbook
 
@@ -126,6 +131,16 @@ refreshes the documented Oracle public product-price endpoint, reviews immutable
 price snapshots, imports authorized contractual CSV rate cards, and governs
 Service Product-to-SKU mappings. Every BOM line preserves formula, demand,
 environment, mapping, price-item, and snapshot provenance.
+
+Deployment scenarios also own a normalized monthly activation calendar. Each
+environment can start in a different contract month, ramp linearly or in steps,
+and override the default schedule for a specific OCI service. BOM snapshots
+persist every monthly quantity, selected price tier, unit price, amount, and
+provenance record. The connected Rollout Explorer visualizes monthly run rate,
+cumulative commitment, environment/product mix, activation timing, commercial
+drivers, product-level SKU evidence, steady state, and the timing effect versus
+day-one full capacity. Product, chart, driver, and inspector selections remain
+coordinated; that timing effect is explicitly not labeled as a negotiated saving.
 
 The technical dashboard remains cost-free. Commercial totals are visible only
 inside the explicit BOM workflow, and publication is blocked until pricing
@@ -337,6 +352,14 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M36 | OCI GenAI Resilience + Safety | ✅ Complete | 2026-07-12 |
 | M37 | OCI GenAI Operational Telemetry | ✅ Complete | 2026-07-12 |
 | M38 | Contextual Assistant UX + App-wide Grounding | ✅ Complete | 2026-07-12 |
+| M39 | Session-Isolated Assistant History Clearing | ✅ Complete | 2026-07-12 |
+| M40 | Monthly Consumption Ramps + Cost Insights | ✅ Complete | 2026-07-12 |
+| M41 | Explainable Governed AI Review UX | ✅ Complete | 2026-07-13 |
+| M42 | Governed Real-Unit Consumption Planning | ✅ Complete | 2026-07-13 |
+| M43 | Prescriptive Integration Recommendation Workspace | ✅ Complete | 2026-07-13 |
+| M44 | Portfolio Recommendations + Draft Impact Simulation | ✅ Complete | 2026-07-13 |
+| M45 | Environment-Specific Commercial Product Variants | ✅ Complete | 2026-07-14 |
+| M46 | Connected BOM Rollout Explorer | ✅ Complete | 2026-07-14 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -346,8 +369,8 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
 - Import parity: `157` TBQ=`Y` rows, `13` excluded `Duplicado 2`, `144` loaded rows in source order
 - Reference seed data: `17` patterns, client-only assumption sets, governed dictionaries, and `18` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine + pricing-engine: `160 passed` (`103` API, `42` calc-engine, `15` pricing-engine)
-- Frontend: `53 passed`, strict TypeScript, ESLint, and production build green
+- Backend + calc-engine + pricing-engine: `172 passed` (`108` API, `42` calc-engine, `22` pricing-engine)
+- Frontend: `66 passed`, strict TypeScript, ESLint, and production build green
 - Pricing/BOM E2E: public sync and BOM jobs reach terminal `completed` states
 - Production images: Trivy reports `0 HIGH` and `0 CRITICAL` for API and web
 - Browser E2E: `16 passed`, including OCI provider telemetry refresh, contextual AI,

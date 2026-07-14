@@ -47,6 +47,8 @@ from app.schemas.ai_review import (
     AiReviewRecommendationAcceptance,
     AiReviewRemediationStep,
     AiReviewResponse,
+    AiReviewSelectDraftRequest,
+    AiReviewSelectDraftResponse,
     AiReviewSeverity,
     AiReviewStressScenario,
     AiReviewSuggestedPatch,
@@ -54,6 +56,10 @@ from app.schemas.ai_review import (
 )
 from app.schemas.catalog import CatalogIntegrationPatch
 from app.services import audit_service, catalog_service, service_rule_service
+from app.services.ai_review_recommendations import (
+    build_integration_recommendation_workspace,
+    build_review_action_workspace,
+)
 from app.services.canvas_interoperability import CanvasDesignValidationError, parse_canvas_state
 from app.services.genai_client import GenAiResult, provider_status_payload, synthesize_review_summary
 from app.services.pattern_support import get_pattern_support
@@ -1676,7 +1682,7 @@ async def build_review_result(
         entity_id=project_id,
         href=_catalog_href(project_id),
     )
-    _evidence(
+    ev_service_rules = _evidence(
         evidence,
         label="Service Product rules",
         detail=(
@@ -2111,6 +2117,26 @@ async def build_review_result(
     topology_insights = _topology_insights(project_id=project_id, rows=rows, warning_map=warning_map)
     stress_scenarios = _stress_scenarios(rows=rows, warning_map=warning_map)
     remediation_plan = _remediation_plan(findings)
+    recommendation_workspace = (
+        build_integration_recommendation_workspace(
+            row=rows[0],
+            service_rules=service_rules,
+            evidence_ids=[ev_design.id, ev_coverage.id, ev_service_rules.id],
+        )
+        if scope == "integration" and len(rows) == 1
+        else None
+    )
+    action_workspace = (
+        build_review_action_workspace(
+            project_id=project_id,
+            graph_context=graph_context,
+            findings=findings,
+            topology_insights=topology_insights,
+            remediation_plan=remediation_plan,
+        )
+        if scope == "project"
+        else None
+    )
     evidence_pack = [
         f"project_id={project_id}",
         f"scope={scope}",
@@ -2133,6 +2159,18 @@ async def build_review_result(
         f"service_rules_open_findings={service_rules.open_findings_count}",
         f"formal_evidence_ids={','.join(item.id for item in evidence)}",
     ]
+    if recommendation_workspace is not None:
+        evidence_pack.extend(
+            [
+                f"recommendation_candidate_count={len(recommendation_workspace.candidates)}",
+                f"recommended_candidate_id={recommendation_workspace.recommended_candidate_id or 'none'}",
+                *(
+                    f"candidate={candidate.id}; combination={candidate.combination_code}; "
+                    f"applicable={candidate.applicable}; tools={','.join(candidate.core_tools)}"
+                    for candidate in recommendation_workspace.candidates
+                ),
+            ]
+        )
     deterministic_summary = _summary(score, label, findings)
     llm_result = (
         await synthesize_review_summary(
@@ -2183,6 +2221,8 @@ async def build_review_result(
             findings=findings,
             metrics=metrics,
         ),
+        recommendation_workspace=recommendation_workspace,
+        action_workspace=action_workspace,
         drift=drift,
     )
 
@@ -2307,6 +2347,89 @@ async def accept_ai_review_finding(
         correlation_id=job.id,
     )
     return response
+
+
+async def select_ai_review_candidate_for_draft(
+    job_id: str,
+    candidate_id: str,
+    body: AiReviewSelectDraftRequest,
+    actor_id: str,
+    db: AsyncSession,
+) -> AiReviewSelectDraftResponse:
+    """Audit a candidate selection without mutating the governed integration."""
+
+    job = await _load_job(job_id, db)
+    if _status_value(job) != "completed" or job.result_payload is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Only completed integration reviews can preview a recommendation.",
+                "error_code": "AI_REVIEW_JOB_NOT_COMPLETED",
+            },
+        )
+    review = _review_from_payload(job.result_payload)
+    workspace = review.recommendation_workspace if review else None
+    if workspace is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "This review does not contain an integration recommendation workspace.",
+                "error_code": "AI_REVIEW_RECOMMENDATION_WORKSPACE_MISSING",
+            },
+        )
+    candidate = next((item for item in workspace.candidates if item.id == candidate_id), None)
+    if candidate is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "detail": "Recommendation candidate not found in this review job.",
+                "error_code": "AI_REVIEW_CANDIDATE_NOT_FOUND",
+            },
+        )
+    if not candidate.applicable:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Resolve the candidate's deterministic blockers before applying it to a draft.",
+                "error_code": "AI_REVIEW_CANDIDATE_BLOCKED",
+            },
+        )
+
+    accepted = [
+        item.model_dump(mode="json")
+        for item in _accepted_recommendations(job)
+        if not (item.recommendation_type == "candidate" and item.finding_id == candidate_id)
+    ]
+    acceptance = AiReviewRecommendationAcceptance(
+        finding_id=candidate_id,
+        recommendation_type="candidate",
+        accepted_by=actor_id or AI_REVIEW_ACTOR_FALLBACK,
+        accepted_at=datetime.now(UTC),
+        note=body.note or "Selected for local canvas preview; governed integration remains unchanged.",
+    )
+    old_value: dict[str, object] = {"accepted_recommendations": job.accepted_recommendations or []}
+    accepted.append(acceptance.model_dump(mode="json"))
+    job.accepted_recommendations = accepted
+    await db.flush()
+    await db.refresh(job)
+    await audit_service.emit(
+        event_type="ai_review_candidate_selected_for_draft",
+        entity_type="ai_review_job",
+        entity_id=job.id,
+        actor_id=acceptance.accepted_by,
+        old_value=old_value,
+        new_value={
+            "candidate_id": candidate.id,
+            "combination_code": candidate.combination_code,
+            "integration_id": workspace.integration_id,
+            "change_set": candidate.change_set.model_dump(mode="json"),
+            "catalog_mutated": False,
+        },
+        project_id=job.project_id,
+        db=db,
+        correlation_id=job.id,
+    )
+    return AiReviewSelectDraftResponse(job=serialize_ai_review_job(job), candidate=candidate)
 
 
 async def apply_ai_review_finding_patch(

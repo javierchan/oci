@@ -8,10 +8,11 @@ from types import SimpleNamespace
 
 import pytest
 from httpx import AsyncClient, Request, Response
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.models import AiReviewBaseline, CatalogIntegration, Project, VolumetrySnapshot
+from app.models import AiReviewBaseline, AssumptionSet, CatalogIntegration, Project, VolumetrySnapshot
 from app.routers import ai_reviews
 from app.schemas.ai_review import AiReviewGraphContext
 from app.services import ai_review_service, genai_client
@@ -119,7 +120,15 @@ async def _seed_review_fixture(test_engine: AsyncEngine) -> tuple[str, str]:
             },
             snapshot_metadata={"integration_count": 2},
         )
-        session.add_all([project, review_row, ok_row, snapshot])
+        assumptions = AssumptionSet(
+            id="assumptions-review-1",
+            version="review-test-1.0.0",
+            label="Review test assumptions",
+            is_default=True,
+            assumptions={},
+            notes=None,
+        )
+        session.add_all([project, review_row, ok_row, snapshot, assumptions])
         await session.commit()
         return project.id, review_row.id
 
@@ -190,6 +199,11 @@ async def test_project_ai_review_job_create_run_get_and_accept(
     assert result.stress_scenarios[-1].multiplier == 10.0
     assert result.remediation_plan
     assert result.remediation_plan[0].finding_ids
+    assert result.action_workspace is not None
+    assert result.action_workspace.context == "project"
+    assert result.action_workspace.candidates
+    assert result.action_workspace.candidates[0].implementation_steps
+    assert result.action_workspace.candidates[0].validation_plan
     assert result.llm_status == "skipped"
 
     get_response = await api_client.get(f"/api/v1/ai-reviews/{job_id}")
@@ -266,6 +280,66 @@ async def test_integration_scoped_ai_review_requires_and_uses_integration_id(
             completed = await ai_review_service.run_ai_review_job(job_id, session)
 
     assert completed.result is not None
+    workspace = completed.result.recommendation_workspace
+    assert workspace is not None
+    assert workspace.integration_id == integration_id
+    assert workspace.candidates
+    assert len(workspace.candidates) <= 3
+    assert workspace.recommended_candidate_id is not None
+    assert all(candidate.canvas_state for candidate in workspace.candidates)
+    assert all(
+        candidate.cost_impact.status == "requires_draft_simulation"
+        for candidate in workspace.candidates
+    )
+    candidate = next(
+        item for item in workspace.candidates if item.id == workspace.recommended_candidate_id
+    )
+
+    select_response = await api_client.post(
+        f"/api/v1/ai-reviews/{job_id}/recommendations/{candidate.id}/select-draft",
+        headers=_admin_headers(),
+        json={"note": "Preview governed route without saving it."},
+    )
+    assert select_response.status_code == 200
+    selected = select_response.json()
+    assert selected["candidate"]["id"] == candidate.id
+    candidate_acceptance = next(
+        item
+        for item in selected["job"]["accepted_recommendations"]
+        if item["recommendation_type"] == "candidate"
+    )
+    assert candidate_acceptance["finding_id"] == candidate.id
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        unchanged_row = await session.get(CatalogIntegration, integration_id)
+        assert unchanged_row is not None
+    assert unchanged_row.additional_tools_overlays is None
+    assert unchanged_row.core_tools == "OCI Streaming"
+
+    simulation_response = await api_client.post(
+        f"/api/v1/ai-reviews/projects/{project_id}/integrations/{integration_id}/simulate-draft",
+        headers=_admin_headers(),
+        json={
+            "core_tools": candidate.core_tools,
+            "canvas_state": candidate.canvas_state,
+        },
+    )
+    assert simulation_response.status_code == 200, simulation_response.text
+    simulation = simulation_response.json()
+    assert simulation["persisted"] is False
+    assert simulation["integration_id"] == integration_id
+    assert simulation["commercial_impact"]["status"] == "scenario_required"
+    assert simulation["assumption_set_version"] == "review-test-1.0.0"
+
+    async with session_factory() as session:
+        snapshots = (
+            await session.execute(
+                select(VolumetrySnapshot).where(VolumetrySnapshot.project_id == project_id)
+            )
+        ).scalars().all()
+        assert len(snapshots) == 1
+
     finding = next(item for item in completed.result.findings if item.suggested_patch is not None)
     assert finding.suggested_patch is not None
     assert finding.suggested_patch.integration_id == integration_id
@@ -278,8 +352,12 @@ async def test_integration_scoped_ai_review_requires_and_uses_integration_id(
     )
     assert apply_response.status_code == 200
     applied = apply_response.json()
-    assert applied["job"]["accepted_recommendations"][0]["finding_id"] == finding.id
-    assert applied["job"]["accepted_recommendations"][0]["applied_patch"]["integration_id"] == integration_id
+    finding_acceptance = next(
+        item
+        for item in applied["job"]["accepted_recommendations"]
+        if item["recommendation_type"] == "finding" and item["finding_id"] == finding.id
+    )
+    assert finding_acceptance["applied_patch"]["integration_id"] == integration_id
     assert "AI Review finding" in applied["integration"]["comments"]
 
 
@@ -600,6 +678,9 @@ async def test_graph_context_scopes_project_ai_review_evidence(
     assert review.topology_insights
     assert review.topology_insights[0].system_name in {"CRM", "ERP"}
     assert review.stress_scenarios[0].confidence in {"medium", "low"}
+    assert review.action_workspace is not None
+    assert review.action_workspace.context == "topology"
+    assert review.action_workspace.candidates[0].what_to_change
 
 
 def test_oci_chat_completions_payload_extracts_text_and_usage() -> None:

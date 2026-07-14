@@ -55,6 +55,7 @@ services:
   # ─────────────────────────────────────────
   api:
     <<: *api-runtime
+    user: root
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -79,10 +80,15 @@ services:
       OCI_GENAI_GUARDRAILS_ENABLED: ${OCI_GENAI_GUARDRAILS_ENABLED:-true}
       OCI_GENAI_GUARDRAILS_VERSION: ${OCI_GENAI_GUARDRAILS_VERSION:-1.0.1}
       OCI_GENAI_GUARDRAILS_FAILURE_MODE: ${OCI_GENAI_GUARDRAILS_FAILURE_MODE:-closed}
+      OCI_GENAI_API_KEY_FILE: /tmp/oci-dis-home/.oci-genai/api_key
     ports:
       - "8000:8000"
     volumes:
       - uploads_data:/app/uploads
+      - type: bind
+        source: ${OCI_GENAI_API_KEY_FILE_HOST:-${HOME}/.oci-genai/api_key}
+        target: /oci-genai-host/api_key
+        read_only: true
     depends_on:
       db:
         condition: service_healthy
@@ -99,6 +105,7 @@ services:
   # ─────────────────────────────────────────
   worker:
     <<: *api-runtime
+    user: root
     restart: unless-stopped
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
     env_file: .env
@@ -119,8 +126,13 @@ services:
       OCI_GENAI_GUARDRAILS_ENABLED: ${OCI_GENAI_GUARDRAILS_ENABLED:-true}
       OCI_GENAI_GUARDRAILS_VERSION: ${OCI_GENAI_GUARDRAILS_VERSION:-1.0.1}
       OCI_GENAI_GUARDRAILS_FAILURE_MODE: ${OCI_GENAI_GUARDRAILS_FAILURE_MODE:-closed}
+      OCI_GENAI_API_KEY_FILE: /tmp/oci-dis-home/.oci-genai/api_key
     volumes:
       - uploads_data:/app/uploads
+      - type: bind
+        source: ${OCI_GENAI_API_KEY_FILE_HOST:-${HOME}/.oci-genai/api_key}
+        target: /oci-genai-host/api_key
+        read_only: true
     depends_on:
       db:
         condition: service_healthy
@@ -131,6 +143,7 @@ services:
   # image but consumes only the isolated agents queue.
   agent-worker:
     <<: *api-runtime
+    user: root
     restart: unless-stopped
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2 -Q agents
     env_file: .env
@@ -151,8 +164,13 @@ services:
       OCI_GENAI_GUARDRAILS_ENABLED: ${OCI_GENAI_GUARDRAILS_ENABLED:-true}
       OCI_GENAI_GUARDRAILS_VERSION: ${OCI_GENAI_GUARDRAILS_VERSION:-1.0.1}
       OCI_GENAI_GUARDRAILS_FAILURE_MODE: ${OCI_GENAI_GUARDRAILS_FAILURE_MODE:-closed}
+      OCI_GENAI_API_KEY_FILE: /tmp/oci-dis-home/.oci-genai/api_key
     volumes:
       - uploads_data:/app/uploads
+      - type: bind
+        source: ${OCI_GENAI_API_KEY_FILE_HOST:-${HOME}/.oci-genai/api_key}
+        target: /oci-genai-host/api_key
+        read_only: true
     depends_on:
       db:
         condition: service_healthy

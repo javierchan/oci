@@ -628,6 +628,10 @@ async def create_bom_xlsx_export(
     summary.append(["Currency", bom.currency])
     summary.append(["Coverage", f"{bom.coverage_pct:.1f}%"])
     summary.append(["Monthly estimate", bom.monthly_total])
+    summary.append(["Peak monthly estimate", bom.peak_monthly_total])
+    summary.append(["Steady-state month", bom.steady_state_period])
+    summary.append(["First active month", bom.first_active_period])
+    summary.append(["Deferred spend from phased activation", bom.ramp_deferred_amount])
     summary.append(["Annual estimate", bom.annual_total])
     summary.append(["Contract estimate", bom.contract_total])
     summary.append(["Notice", "Planning estimate only; not an Oracle quote."])
@@ -635,18 +639,56 @@ async def create_bom_xlsx_export(
     lines = workbook.create_sheet("Line Items")
     lines.append(
         [
-            "Environment", "Service", "Part Number", "Description", "Metric", "Quantity", "Unit",
+            "Environment", "Service", "Commercial Variant", "Part Number", "Description", "Metric", "Quantity", "Unit",
             "Unit Price", "Monthly", "Annual", "Contract", "Status", "Formula", "Warnings",
         ]
     )
     for line in bom.line_items:
         lines.append(
             [
-                line.environment, line.service_id, line.part_number, line.description, line.metric_name,
+                line.environment, line.service_id, line.provenance.get("commercial_variant"), line.part_number, line.description, line.metric_name,
                 line.quantity, line.unit, line.unit_price, line.monthly_amount, line.annual_amount,
                 line.contract_amount, line.status, line.formula, _excel_cell_value(line.warnings),
             ]
         )
+
+    schedule = workbook.create_sheet("Monthly Schedule")
+    schedule.append(
+        [
+            "Month", "Period Start", "Monthly Total", "Cumulative Total",
+            "Environment Mix", "Service Mix",
+        ]
+    )
+    for summary_period in bom.monthly_series:
+        schedule.append(
+            [
+                summary_period.period_index,
+                summary_period.period_start,
+                summary_period.total,
+                summary_period.cumulative_total,
+                _excel_cell_value(summary_period.by_environment),
+                _excel_cell_value(summary_period.by_service),
+            ]
+        )
+
+    line_periods = workbook.create_sheet("Line Periods")
+    line_periods.append(
+        [
+            "Line ID", "Environment", "Service", "Part Number", "Month", "Period Start",
+            "Normalized Quantity Ratio", "Billed Quantity", "Active Hours", "Unit Price", "Amount", "Status",
+        ]
+    )
+    for line in bom.line_items:
+        for line_period in line.periods:
+            line_periods.append(
+                [
+                    line.id, line.environment, line.service_id, line.part_number,
+                    line_period.period_index, line_period.period_start,
+                    line_period.multiplier, line_period.quantity,
+                    line_period.active_hours, line_period.unit_price,
+                    line_period.amount, line_period.status,
+                ]
+            )
 
     provenance = workbook.create_sheet("Provenance")
     provenance.append(["Key", "Value"])
@@ -662,7 +704,15 @@ async def create_bom_xlsx_export(
         "Engine version": bom.engine_version,
         "Scenario assumptions": scenario.scenario_assumptions if scenario else {},
         "Service configuration": scenario.service_config if scenario else {},
-        "Environments": scenario.environments if scenario else [],
+        "Start date": scenario.start_date if scenario else None,
+        "Proration policy": scenario.proration_policy if scenario else None,
+        "Environments": (
+            [
+                item.model_dump(mode="json")
+                for item in (await bom_service.serialize_scenario(scenario, db)).environments
+            ]
+            if scenario else []
+        ),
     }
     for key, value in provenance_rows.items():
         provenance.append([key, _excel_cell_value(value)])
@@ -709,10 +759,10 @@ async def create_bom_json_export(
     source = await db.get(PriceSource, price_snapshot.source_id) if price_snapshot else None
     payload = sanitize_for_json(
         {
-            "schema_version": "oci-dis-bom-1.0",
+            "schema_version": "oci-dis-bom-2.0",
             "project": {"id": project.id, "name": project.name},
             "bom": bom.model_dump(),
-            "scenario": bom_service.serialize_scenario(scenario).model_dump() if scenario else None,
+            "scenario": (await bom_service.serialize_scenario(scenario, db)).model_dump() if scenario else None,
             "price_provenance": {
                 "snapshot_id": price_snapshot.id if price_snapshot else None,
                 "source_id": source.id if source else None,
@@ -754,6 +804,10 @@ async def create_bom_pdf_export(
         f"Scenario: {scenario.name if scenario else bom.scenario_id}",
         f"Status: {bom.publication_status} | Coverage: {bom.coverage_pct:.1f}%",
         f"Monthly: {bom.currency} {bom.monthly_total:,.2f}",
+        f"Peak month: {bom.currency} {bom.peak_monthly_total:,.2f}",
+        f"First active month: {bom.first_active_period or 'N/A'}",
+        f"Steady-state month: {bom.steady_state_period or 'N/A'}",
+        f"Phased activation timing effect: {bom.currency} {bom.ramp_deferred_amount:,.2f}",
         f"Annual: {bom.currency} {bom.annual_total:,.2f}",
         f"Contract: {bom.currency} {bom.contract_total:,.2f}",
         "",
@@ -761,7 +815,8 @@ async def create_bom_pdf_export(
     ]
     for item in sorted(bom.line_items, key=lambda line: line.monthly_amount, reverse=True)[:20]:
         lines.append(
-            f"{item.environment} | {item.service_id} | {item.part_number or 'N/A'} | "
+            f"{item.environment} | {item.service_id} | {item.provenance.get('commercial_variant', 'Governed default')} | {item.part_number or 'N/A'} | "
+            f"{item.quantity:,.3f} {item.unit} | "
             f"{bom.currency} {item.monthly_amount:,.2f}/month | {item.status}"
         )
     lines.extend(["", "Planning estimate only; not an Oracle quote."])

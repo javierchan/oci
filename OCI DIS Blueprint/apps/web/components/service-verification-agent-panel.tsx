@@ -244,9 +244,13 @@ export function ServiceVerificationAgentPanel({
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                     <div>
                       <p className="font-semibold">{finding.title}</p>
+                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] opacity-65">What changed</p>
                       <p className="mt-1 leading-6">{finding.summary}</p>
                       {finding.recommended_action ? (
-                        <p className="mt-2 leading-6">{finding.recommended_action}</p>
+                        <div className="mt-3 rounded-xl border border-current/15 bg-white/45 p-3 dark:bg-black/15">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] opacity-65">What to review next</p>
+                          <p className="mt-1 leading-6">{finding.recommended_action}</p>
+                        </div>
                       ) : null}
                       {finding.source_url ? (
                         <a className="mt-2 inline-flex text-xs font-semibold underline" href={finding.source_url} target="_blank" rel="noreferrer">

@@ -16,14 +16,17 @@ from app.schemas.ai_review import (
     AiReviewBaselineLookupResponse,
     AiReviewBaselineResponse,
     AiReviewCreateRequest,
+    AiReviewDraftSimulationRequest,
+    AiReviewDraftSimulationResponse,
     AiReviewJobCompareResponse,
     AiReviewJobListResponse,
     AiReviewJobResponse,
     AiReviewProviderStatus,
+    AiReviewSelectDraftRequest,
+    AiReviewSelectDraftResponse,
     AiReviewScope,
 )
-from app.services import ai_review_service
-from app.services import agent_service
+from app.services import agent_service, ai_review_service, ai_review_simulation
 from app.schemas.agent import AgentCreateRequest, AgentType
 from app.services.authz import require_ai_review_mutation, require_ai_review_read, require_ai_review_run
 from app.workers.agent_worker import execute_agent_run_task
@@ -45,6 +48,29 @@ async def get_ai_review_provider_status(
 
     require_ai_review_read(actor_role)
     return await ai_review_service.get_ai_review_provider_status(actor_id, db)
+
+
+@router.post(
+    "/projects/{project_id}/integrations/{integration_id}/simulate-draft",
+    response_model=AiReviewDraftSimulationResponse,
+    summary="Simulate technical and commercial impact for an unsaved canvas draft",
+)
+async def simulate_integration_canvas_draft(
+    project_id: str,
+    integration_id: str,
+    body: AiReviewDraftSimulationRequest,
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
+) -> AiReviewDraftSimulationResponse:
+    """Run the governed calculation engines without writing snapshots or catalog changes."""
+
+    require_ai_review_read(actor_role)
+    return await ai_review_simulation.simulate_canvas_draft(
+        project_id=project_id,
+        integration_id=integration_id,
+        body=body,
+        db=db,
+    )
 
 
 @router.get(
@@ -271,6 +297,33 @@ async def accept_ai_review_finding(
     request = body or AiReviewAcceptRecommendationRequest()
     async with db.begin():
         return await ai_review_service.accept_ai_review_finding(job_id, finding_id, request, actor_id, db)
+
+
+@router.post(
+    "/{job_id}/recommendations/{candidate_id}/select-draft",
+    response_model=AiReviewSelectDraftResponse,
+    summary="Select a governed integration recommendation for local canvas preview",
+)
+async def select_ai_review_candidate_for_draft(
+    job_id: str,
+    candidate_id: str,
+    body: AiReviewSelectDraftRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
+) -> AiReviewSelectDraftResponse:
+    """Audit candidate selection while leaving the governed integration unchanged."""
+
+    require_ai_review_mutation(actor_role)
+    request = body or AiReviewSelectDraftRequest()
+    async with db.begin():
+        return await ai_review_service.select_ai_review_candidate_for_draft(
+            job_id,
+            candidate_id,
+            request,
+            actor_id,
+            db,
+        )
 
 
 @router.post(

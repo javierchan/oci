@@ -20,6 +20,82 @@ class PricingModel(StrEnum):
     HOUR_UTILIZED = "hour_utilized"
 
 
+class RampInterpolation(StrEnum):
+    """Supported deterministic interpolation methods for deployment ramps."""
+
+    STEP = "step"
+    LINEAR = "linear"
+
+
+class QuantityBehavior(StrEnum):
+    """Governed commercial behavior for a captured OCI quantity."""
+
+    PACKAGED = "packaged"
+    FIXED_CAPACITY = "fixed_capacity"
+    HOURLY = "hourly"
+    CONTINUOUS = "continuous"
+    MANUAL_MONTHLY = "manual_monthly"
+
+
+@dataclass(frozen=True, slots=True)
+class QuantityRule:
+    """Minimum and increment used to normalize an explicit commercial quantity."""
+
+    behavior: QuantityBehavior
+    increment: Decimal = ONE
+    minimum: Decimal = ZERO
+
+    def __post_init__(self) -> None:
+        if self.increment <= ZERO:
+            raise ValueError("quantity increment must be greater than zero")
+        if self.minimum < ZERO:
+            raise ValueError("quantity minimum must be non-negative")
+
+
+@dataclass(frozen=True, slots=True)
+class RampPhase:
+    """An inclusive contract-month interval with bounded demand multipliers."""
+
+    start_month: int
+    end_month: int
+    start_multiplier: Decimal
+    end_multiplier: Decimal
+    interpolation: RampInterpolation = RampInterpolation.STEP
+
+    def __post_init__(self) -> None:
+        if self.start_month < 1:
+            raise ValueError("ramp phase start month must be at least 1")
+        if self.end_month < self.start_month:
+            raise ValueError("ramp phase end month must not precede start month")
+        if self.start_multiplier < ZERO or self.end_multiplier < ZERO:
+            raise ValueError("ramp multipliers must be non-negative")
+        if self.start_multiplier > ONE or self.end_multiplier > ONE:
+            raise ValueError("ramp multipliers must not exceed 1")
+        if self.interpolation is RampInterpolation.STEP and self.start_multiplier != self.end_multiplier:
+            raise ValueError("step ramp phases require equal start and end multipliers")
+
+
+@dataclass(frozen=True, slots=True)
+class QuantityRampPhase:
+    """An inclusive contract interval expressed in the real commercial unit."""
+
+    start_month: int
+    end_month: int
+    start_quantity: Decimal
+    end_quantity: Decimal
+    interpolation: RampInterpolation = RampInterpolation.STEP
+
+    def __post_init__(self) -> None:
+        if self.start_month < 1:
+            raise ValueError("quantity ramp start month must be at least 1")
+        if self.end_month < self.start_month:
+            raise ValueError("quantity ramp end month must not precede start month")
+        if self.start_quantity < ZERO or self.end_quantity < ZERO:
+            raise ValueError("quantity ramp values must be non-negative")
+        if self.interpolation is RampInterpolation.STEP and self.start_quantity != self.end_quantity:
+            raise ValueError("constant quantity phases require equal start and end quantities")
+
+
 @dataclass(frozen=True, slots=True)
 class CurrencyRule:
     """Currency code and output precision supplied by the price source."""
@@ -164,6 +240,24 @@ class PricingResult:
     selected_tier: PriceTier | None
     formula: str
     inputs: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledPricePeriod:
+    """One explainable priced month in a deployment schedule."""
+
+    period_index: int
+    multiplier: Decimal
+    result: PricingResult
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledPricingResult:
+    """Monthly line results and horizon totals for a deployment schedule."""
+
+    periods: tuple[ScheduledPricePeriod, ...]
+    annual_totals: tuple[Decimal, ...]
+    contract_total: Decimal
 
 
 @dataclass(frozen=True, slots=True)

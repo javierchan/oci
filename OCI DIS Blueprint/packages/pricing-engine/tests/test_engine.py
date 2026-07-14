@@ -10,8 +10,17 @@ from pricing_engine import (
     PriceTier,
     PricingModel,
     PricingRequest,
+    QuantityBehavior,
+    QuantityRule,
+    QuantityRampPhase,
+    RampInterpolation,
+    RampPhase,
     allocate_free_tier,
+    expand_ramp,
+    expand_quantity_ramp,
     price_line,
+    price_line_quantity_schedule,
+    price_line_schedule,
     quantize_currency,
     reconcile_monthly_results,
     select_tier,
@@ -289,3 +298,170 @@ def test_invalid_hour_utilization_is_rejected() -> None:
             utilization_ratio=Decimal("1.1"),
             unit_price=Decimal("1"),
         )
+
+
+def test_flat_ramp_preserves_existing_contract_parity() -> None:
+    """A 100% phase is identical to the pre-ramp constant monthly extension."""
+
+    request = PricingRequest(
+        sku="FLAT",
+        model=PricingModel.MONTHLY,
+        currency=USD,
+        quantity=Decimal("3"),
+        unit_price=Decimal("26.6683333333"),
+        contract_months=12,
+    )
+    legacy = price_line(request)
+    schedule = price_line_schedule(
+        request,
+        expand_ramp((RampPhase(1, 12, Decimal("1"), Decimal("1")),), 12),
+    )
+
+    assert schedule.periods[0].result.totals.monthly == legacy.totals.monthly
+    assert schedule.annual_totals == (legacy.totals.annual,)
+    assert schedule.contract_total == legacy.totals.contract
+
+
+def test_delayed_linear_ramp_prices_each_month_independently() -> None:
+    """Gaps stay at zero and linear phases include both declared endpoints."""
+
+    multipliers = expand_ramp(
+        (
+            RampPhase(
+                3,
+                5,
+                Decimal("0.25"),
+                Decimal("0.75"),
+                RampInterpolation.LINEAR,
+            ),
+            RampPhase(6, 6, Decimal("1"), Decimal("1")),
+        ),
+        6,
+    )
+    schedule = price_line_schedule(
+        PricingRequest(
+            sku="RAMP",
+            model=PricingModel.MONTHLY,
+            currency=USD,
+            quantity=Decimal("100"),
+            unit_price=Decimal("1"),
+            contract_months=6,
+        ),
+        multipliers,
+    )
+
+    assert multipliers == (
+        Decimal("0"), Decimal("0"), Decimal("0.25"),
+        Decimal("0.50"), Decimal("0.75"), Decimal("1"),
+    )
+    assert [period.result.totals.monthly for period in schedule.periods] == [
+        Decimal("0.00"), Decimal("0.00"), Decimal("25.00"),
+        Decimal("50.00"), Decimal("75.00"), Decimal("100.00"),
+    ]
+    assert schedule.contract_total == Decimal("250.00")
+
+
+def test_monthly_ramp_preserves_the_full_monthly_free_tier_allowance() -> None:
+    """A partial rollout does not proportionally shrink a monthly OCI allowance."""
+
+    schedule = price_line_schedule(
+        PricingRequest(
+            sku="FREE-TIER-RAMP",
+            model=PricingModel.PER_ITEM,
+            currency=USD,
+            quantity=Decimal("500"),
+            free_tier_allocation=Decimal("400"),
+            unit_price=Decimal("1"),
+            contract_months=2,
+        ),
+        (Decimal("0.25"), Decimal("1")),
+    )
+
+    assert schedule.periods[0].result.gross_quantity == Decimal("125.00")
+    assert schedule.periods[0].result.free_quantity_applied == Decimal("125.00")
+    assert schedule.periods[0].result.totals.monthly == Decimal("0.00")
+    assert schedule.periods[1].result.free_quantity_applied == Decimal("400")
+    assert schedule.periods[1].result.totals.monthly == Decimal("100.00")
+
+
+def test_overlapping_or_out_of_horizon_ramps_are_rejected() -> None:
+    """Ambiguous phase calendars fail before any commercial total is produced."""
+
+    with pytest.raises(ValueError, match="overlap"):
+        expand_ramp(
+            (
+                RampPhase(1, 3, Decimal("0.5"), Decimal("0.5")),
+                RampPhase(3, 4, Decimal("1"), Decimal("1")),
+            ),
+            6,
+        )
+    with pytest.raises(ValueError, match="horizon"):
+        expand_ramp((RampPhase(1, 7, Decimal("1"), Decimal("1")),), 6)
+
+
+def test_explicit_package_schedule_rounds_up_each_month() -> None:
+    """Package demand is captured in business units and never underprices a partial pack."""
+
+    schedule = price_line_quantity_schedule(
+        PricingRequest(
+            sku="OIC-PACK",
+            model=PricingModel.HOURLY,
+            currency=USD,
+            quantity=Decimal("1"),
+            unit_price=Decimal("0.25"),
+            hours=Decimal("10"),
+            contract_months=3,
+        ),
+        (Decimal("0"), Decimal("0.2"), Decimal("1.1")),
+        rule=QuantityRule(QuantityBehavior.PACKAGED, increment=Decimal("1"), minimum=Decimal("1")),
+    )
+
+    assert [period.result.gross_quantity for period in schedule.periods] == [
+        Decimal("0"), Decimal("1"), Decimal("2"),
+    ]
+    assert [period.result.totals.monthly for period in schedule.periods] == [
+        Decimal("0.00"), Decimal("2.50"), Decimal("5.00"),
+    ]
+
+
+def test_explicit_continuous_schedule_preserves_governed_precision() -> None:
+    """Continuous usage rounds only to its governed metering increment."""
+
+    schedule = price_line_quantity_schedule(
+        PricingRequest(
+            sku="REQUESTS",
+            model=PricingModel.MONTHLY,
+            currency=USD,
+            quantity=Decimal("1"),
+            unit_price=Decimal("3"),
+            contract_months=2,
+        ),
+        (Decimal("0.0000001"), Decimal("1.2345671")),
+        rule=QuantityRule(QuantityBehavior.CONTINUOUS, increment=Decimal("0.000001")),
+    )
+
+    assert [period.result.gross_quantity for period in schedule.periods] == [
+        Decimal("0.000001"), Decimal("1.234568"),
+    ]
+
+
+def test_real_unit_linear_ramp_keeps_inactive_months_at_zero() -> None:
+    """A product can activate after its environment and grow in its own billing unit."""
+
+    quantities = expand_quantity_ramp(
+        (
+            QuantityRampPhase(
+                3,
+                5,
+                Decimal("10"),
+                Decimal("30"),
+                RampInterpolation.LINEAR,
+            ),
+        ),
+        6,
+    )
+
+    assert quantities == (
+        Decimal("0"), Decimal("0"), Decimal("10"),
+        Decimal("20"), Decimal("30"), Decimal("0"),
+    )

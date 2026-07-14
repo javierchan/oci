@@ -65,7 +65,7 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Link
           href="/admin/patterns"
-          className="app-card p-6 transition hover:-translate-y-0.5 hover:shadow-md"
+          className="app-card flex h-full flex-col p-6 transition hover:-translate-y-0.5 hover:shadow-md"
         >
           <div className="flex items-start justify-between gap-3">
             <p className="app-label">Integration Patterns</p>
@@ -78,12 +78,12 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
           <p className="mt-3 text-xs text-[var(--color-text-muted)]">
             Last modified: {latestPatternUpdate ? formatDate(latestPatternUpdate) : "—"}
           </p>
-          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage</span>
+          <span data-testid="library-card-action" className="mt-auto inline-flex pt-5 text-sm font-semibold text-[var(--color-accent)]">Manage</span>
         </Link>
 
         <Link
           href="/admin/dictionaries"
-          className="app-card p-6 transition hover:-translate-y-0.5 hover:shadow-md"
+          className="app-card flex h-full flex-col p-6 transition hover:-translate-y-0.5 hover:shadow-md"
         >
           <div className="flex items-start justify-between gap-3">
             <p className="app-label">Dictionaries</p>
@@ -96,12 +96,12 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
           <p className="mt-3 text-xs text-[var(--color-text-muted)]">
             Last modified: {latestDictionaryUpdate ? formatDate(latestDictionaryUpdate) : "—"}
           </p>
-          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage</span>
+          <span data-testid="library-card-action" className="mt-auto inline-flex pt-5 text-sm font-semibold text-[var(--color-accent)]">Manage</span>
         </Link>
 
         <Link
           href="/admin/services"
-          className="app-card p-6 transition hover:-translate-y-0.5 hover:shadow-md"
+          className="app-card flex h-full flex-col p-6 transition hover:-translate-y-0.5 hover:shadow-md"
         >
           <div className="flex items-start justify-between gap-3">
             <p className="app-label">Service Products</p>
@@ -116,12 +116,12 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
           <p className="mt-3 text-xs text-[var(--color-text-muted)]">
             Last modified: {latestServiceUpdate ? formatDate(latestServiceUpdate) : "—"}
           </p>
-          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage</span>
+          <span data-testid="library-card-action" className="mt-auto inline-flex pt-5 text-sm font-semibold text-[var(--color-accent)]">Manage</span>
         </Link>
 
         <Link
           href="/admin/assumptions"
-          className="app-card p-6 transition hover:-translate-y-0.5 hover:shadow-md"
+          className="app-card flex h-full flex-col p-6 transition hover:-translate-y-0.5 hover:shadow-md"
         >
           <div className="flex items-start justify-between gap-3">
             <p className="app-label">Assumptions</p>
@@ -136,12 +136,12 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
           <p className="mt-3 text-xs text-[var(--color-text-muted)]">
             Last modified: {latestAssumptionUpdate ? formatDate(latestAssumptionUpdate) : "—"}
           </p>
-          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">Manage</span>
+          <span data-testid="library-card-action" className="mt-auto inline-flex pt-5 text-sm font-semibold text-[var(--color-accent)]">Manage</span>
         </Link>
 
         <Link
           href="/admin/synthetic"
-          className="app-card p-6 transition hover:-translate-y-0.5 hover:shadow-md"
+          className="app-card flex h-full flex-col p-6 transition hover:-translate-y-0.5 hover:shadow-md"
         >
           <div className="flex items-start justify-between gap-3">
             <p className="app-label">Synthetic Lab</p>
@@ -154,7 +154,7 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
           <p className="mt-3 text-xs text-[var(--color-text-muted)]">
             Latest activity: {latestSyntheticUpdate ? formatDate(latestSyntheticUpdate) : "No synthetic jobs yet."}
           </p>
-          <span className="mt-5 inline-flex text-sm font-semibold text-[var(--color-accent)]">
+          <span data-testid="library-card-action" className="mt-auto inline-flex pt-5 text-sm font-semibold text-[var(--color-accent)]">
             Open Lab
           </span>
         </Link>

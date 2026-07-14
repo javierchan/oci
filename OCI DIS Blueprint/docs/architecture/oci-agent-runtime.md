@@ -50,7 +50,9 @@ Agent calls require the existing read-only `sk-` secret file,
 `OCI_GENAI_BASE_URL`, `OCI_GENAI_PROJECT_ID` sent as `OpenAI-Project`, and
 the canonical `openai.gpt-oss-20b` model name configured by `OCI_GENAI_MODEL_ID`.
 
-The project OCID is not a secret. It supplies OCI retention and isolation
+API-key authenticated Responses calls use OCI's versioned
+`/20231130/actions/v1/responses` route; Chat fallback remains on
+`/openai/v1/chat/completions`. The project OCID is not a secret. It supplies OCI retention and isolation
 settings. Long-term memory is disabled by application policy; every run sends a
 bounded context and stores authoritative evidence in PostgreSQL.
 

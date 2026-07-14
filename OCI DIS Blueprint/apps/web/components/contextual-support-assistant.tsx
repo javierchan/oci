@@ -4,11 +4,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, Bot, Check, Loader2, MessageCircle, Paperclip, Send, X } from "lucide-react";
+import { ArrowUpRight, Bot, Check, Loader2, MessageCircle, Paperclip, Send, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { api, getErrorMessage } from "@/lib/api";
+import { GovernedNarrative } from "@/components/governed-narrative";
 import { deriveSupportRouteContext, sameSupportAttachment } from "@/lib/support-context";
 import type { SupportAttachmentInput, SupportConversation } from "@/lib/types";
 
@@ -23,39 +24,6 @@ function sessionId(): string {
   return created;
 }
 
-function AssistantMessageBody({ content }: { content: string }): JSX.Element {
-  const lines = content.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  return (
-    <div className="space-y-2.5 [overflow-wrap:anywhere]">
-      {lines.map((line, index) => {
-        const tableCells = line.startsWith("|") && line.endsWith("|")
-          ? line.slice(1, -1).split("|").map((cell) => cell.trim())
-          : [];
-        if (tableCells.length && tableCells.every((cell) => /^:?-{3,}:?$/.test(cell))) return null;
-        if (tableCells.length > 1) {
-          return (
-            <div key={`${index}-${line}`} className="border-l-2 border-[var(--color-accent-border)] pl-3">
-              <p className="font-medium">{tableCells[0]}</p>
-              <p className="text-[var(--color-text-secondary)]">{tableCells.slice(1).join(" · ")}</p>
-            </div>
-          );
-        }
-        const bullet = line.match(/^[-•]\s+(.+)$/);
-        const ordered = line.match(/^\d+[.)]\s+(.+)$/);
-        if (bullet || ordered) {
-          return (
-            <div key={`${index}-${line}`} className="flex gap-2.5">
-              <span className="mt-[0.6rem] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-accent)]" />
-              <p>{(bullet ?? ordered)?.[1]}</p>
-            </div>
-          );
-        }
-        return <p key={`${index}-${line}`}>{line}</p>;
-      })}
-    </div>
-  );
-}
-
 export function ContextualSupportAssistant(): JSX.Element {
   const pathname = usePathname();
   const routeContext = useMemo(() => deriveSupportRouteContext(pathname), [pathname]);
@@ -67,9 +35,12 @@ export function ContextualSupportAssistant(): JSX.Element {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const clearCancelRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -84,6 +55,7 @@ export function ContextualSupportAssistant(): JSX.Element {
   }, []);
 
   const pending = conversation?.messages.some((message) => message.status === "pending") ?? false;
+  const latestMessage = conversation?.messages.at(-1);
   const currentContextAdded = attachments.some((item) => sameSupportAttachment(item, routeContext.attachment));
 
   useEffect(() => {
@@ -101,15 +73,32 @@ export function ContextualSupportAssistant(): JSX.Element {
   }, [conversation, pending, supportSessionId]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [conversation?.messages.length, open]);
+    const frame = window.requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [latestMessage?.content, latestMessage?.id, latestMessage?.status, open]);
 
   useEffect(() => {
     if (open && !loading) inputRef.current?.focus();
   }, [loading, open]);
 
+  useEffect(() => {
+    if (clearConfirmOpen) clearCancelRef.current?.focus();
+  }, [clearConfirmOpen]);
+
+  useEffect(() => {
+    if (!clearConfirmOpen) return;
+    function closeConfirmation(event: KeyboardEvent): void {
+      if (event.key === "Escape") setClearConfirmOpen(false);
+    }
+    document.addEventListener("keydown", closeConfirmation);
+    return () => document.removeEventListener("keydown", closeConfirmation);
+  }, [clearConfirmOpen]);
+
   function updateOpen(next: boolean): void {
     setOpen(next);
+    if (!next) setClearConfirmOpen(false);
     window.localStorage.setItem(OPEN_KEY, String(next));
   }
 
@@ -146,6 +135,24 @@ export function ContextualSupportAssistant(): JSX.Element {
     }
   }
 
+  async function clearHistory(): Promise<void> {
+    if (!conversation || !supportSessionId || clearing || pending) return;
+    setClearing(true);
+    setError(null);
+    try {
+      const next = await api.clearSupportConversationHistory(conversation.id, supportSessionId);
+      setConversation(next);
+      setAttachments([]);
+      setInput("");
+      setClearConfirmOpen(false);
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+    } catch (caught) {
+      setError(getErrorMessage(caught, "Unable to clear the assistant history."));
+    } finally {
+      setClearing(false);
+    }
+  }
+
   if (!mounted) return <></>;
 
   return createPortal((
@@ -167,10 +174,62 @@ export function ContextualSupportAssistant(): JSX.Element {
                 <span className="truncate">Using {routeContext.pageTitle}</span>
               </p>
             </div>
+            <button
+              type="button"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-transparent text-[var(--color-text-muted)] transition hover:border-[var(--color-border)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-35"
+              onClick={() => setClearConfirmOpen(true)}
+              disabled={loading || clearing || pending || !conversation?.messages.length}
+              aria-label="Clear assistant history"
+              title={conversation?.messages.length ? "Clear history" : "No history to clear"}
+            >
+              <Trash2 className="h-[17px] w-[17px]" />
+            </button>
             <button type="button" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-transparent text-[var(--color-text-muted)] transition hover:border-[var(--color-border)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)]" onClick={() => updateOpen(false)} aria-label="Close App Assistant" title="Close">
               <X className="h-[18px] w-[18px]" />
             </button>
           </header>
+
+          {clearConfirmOpen ? (
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
+              <div
+                className="w-full max-w-sm rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-2xl"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="clear-assistant-history-title"
+                aria-describedby="clear-assistant-history-description"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-toast-error-bg)] text-[var(--color-toast-error-text)]">
+                  <Trash2 className="h-5 w-5" />
+                </span>
+                <h3 id="clear-assistant-history-title" className="mt-4 text-base font-semibold text-[var(--color-text-primary)]">
+                  Clear assistant history?
+                </h3>
+                <p id="clear-assistant-history-description" className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                  This removes this browser session’s messages and attached contexts. Governed agent execution records remain available for audit.
+                </p>
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    ref={clearCancelRef}
+                    type="button"
+                    className="app-button-secondary h-10 px-4 text-sm"
+                    onClick={() => setClearConfirmOpen(false)}
+                    disabled={clearing}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[var(--color-toast-error-text)] px-4 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => void clearHistory()}
+                    disabled={clearing}
+                  >
+                    {clearing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    {clearing ? "Clearing" : "Clear history"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div ref={scrollRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-5" aria-live="polite">
             {loading ? (
@@ -182,7 +241,7 @@ export function ContextualSupportAssistant(): JSX.Element {
                     {message.status === "pending" ? (
                       <span className="inline-flex items-center gap-2 text-[var(--color-text-secondary)]"><Loader2 className="h-4 w-4 animate-spin" />Looking through the governed context</span>
                     ) : message.role === "assistant" ? (
-                      <AssistantMessageBody content={message.content} />
+                      <GovernedNarrative content={message.content} compact />
                     ) : (
                       <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{message.content}</p>
                     )}

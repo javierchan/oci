@@ -14,12 +14,14 @@ import type {
   AiReviewBaselineList,
   AiReviewBaselineLookup,
   AiReviewBaselineRequest,
+  AiReviewDraftSimulation,
   AiReviewJob,
   AiReviewJobCompare,
   AiReviewApplyPatchResponse,
   AiReviewJobList,
   AiReviewJobRequest,
   AiReviewProviderStatus,
+  AiReviewSelectDraftResponse,
   AiReviewScope,
   AuditPage,
   BomJob,
@@ -491,6 +493,18 @@ export const api = {
       { headers: supportHeaders(sessionId) },
     ),
 
+  clearSupportConversationHistory: (
+    conversationId: string,
+    sessionId: string,
+  ): Promise<SupportConversation> =>
+    apiFetch<SupportConversation>(
+      `/api/v1/support/conversations/${encodeURIComponent(conversationId)}/messages`,
+      {
+        method: "DELETE",
+        headers: supportHeaders(sessionId),
+      },
+    ),
+
   sendSupportMessage: (
     conversationId: string,
     sessionId: string,
@@ -572,6 +586,34 @@ export const api = {
       headers: adminHeaders(),
       body: JSON.stringify({ note }),
     }),
+
+  selectAiReviewCandidateForDraft: (
+    jobId: string,
+    candidateId: string,
+    note?: string,
+  ): Promise<AiReviewSelectDraftResponse> =>
+    apiFetch<AiReviewSelectDraftResponse>(
+      `/api/v1/ai-reviews/${jobId}/recommendations/${candidateId}/select-draft`,
+      {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ note }),
+      },
+    ),
+
+  simulateAiReviewCanvasDraft: (
+    projectId: string,
+    integrationId: string,
+    body: { core_tools: string[]; canvas_state: string; deployment_scenario_id?: string },
+  ): Promise<AiReviewDraftSimulation> =>
+    apiFetch<AiReviewDraftSimulation>(
+      `/api/v1/ai-reviews/projects/${projectId}/integrations/${integrationId}/simulate-draft`,
+      {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify(body),
+      },
+    ),
 
   getProject: (projectId: string): Promise<Project> =>
     apiFetch<Project>(`/api/v1/projects/${projectId}`),

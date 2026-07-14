@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Download, FileUp, Loader2 } from "lucide-react";
 
 import { ConfirmModal } from "@/components/modal";
+import { GovernedNarrative } from "@/components/governed-narrative";
 import { emitToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
@@ -587,7 +588,8 @@ export function ImportUpload({
                   Batch {initialQualityAssistant.batch_id.slice(0, 8)} evidence check
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-                  {initialQualityAssistant.recommended_next_action}
+                  The assistant separates workbook evidence from recommendations so you can see what was imported,
+                  why quality gaps matter, and which records need attention.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -599,12 +601,20 @@ export function ImportUpload({
               </div>
             </div>
             {qualityAgentRun?.result?.summary ? (
-              <div className="mt-4 rounded-lg border border-[var(--color-accent)]/35 bg-[var(--color-surface-2)] p-4">
-                <p className="app-label text-[var(--color-accent)]">Agent brief</p>
-                <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">{qualityAgentRun.result.summary}</p>
-              </div>
+              <details className="mt-4 rounded-2xl border border-[var(--color-accent)]/35 bg-[var(--color-surface-2)] p-4">
+                <summary className="cursor-pointer text-sm font-semibold text-[var(--color-text-primary)]">
+                  Read the OCI Generative AI explanation
+                </summary>
+                <div className="mt-3"><GovernedNarrative content={qualityAgentRun.result.summary} /></div>
+              </details>
             ) : null}
-            <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+              <p className="app-label">What to do next</p>
+              <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                {initialQualityAssistant.recommended_next_action}
+              </p>
+            </div>
+            <div className="mt-5 grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {initialQualityAssistant.metrics.slice(0, 9).map((metric) => (
                 <article
                   key={metric.label}
@@ -629,7 +639,9 @@ export function ImportUpload({
                       {finding.severity}
                     </p>
                     <h3 className="mt-1 font-semibold">{finding.title}</h3>
-                    <p className="mt-2 text-sm leading-6 opacity-85">{finding.summary}</p>
+                    <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] opacity-60">What was detected</p>
+                    <p className="mt-1 text-sm leading-6 opacity-85">{finding.summary}</p>
+                    <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] opacity-60">What to review next</p>
                     <Link href={finding.action_href} className="mt-3 inline-flex text-sm font-semibold underline underline-offset-4">
                       {finding.action_label}
                     </Link>

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.catalog import CatalogIntegrationResponse
+from app.schemas.volumetry import ConsolidatedMetrics
 
 
 AiReviewScope = Literal["project", "integration"]
@@ -39,6 +40,7 @@ AiReviewProviderMode = Literal[
     "misconfigured",
 ]
 AiReviewPersona = Literal["architect", "security", "operations", "executive"]
+AiReviewRecommendationMode = Literal["minimum_change", "resilience", "cost_optimized"]
 
 
 def default_reviewer_personas() -> list[AiReviewPersona]:
@@ -311,6 +313,198 @@ class AiReviewFieldDiff(BaseModel):
     recommended: Optional[str] = None
 
 
+class AiReviewRecommendationCheck(BaseModel):
+    """One deterministic preflight check for a proposed integration design."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    label: str
+    status: Literal["pass", "review", "blocked", "not_computable"]
+    detail: str
+
+
+class AiReviewRecommendationCostImpact(BaseModel):
+    """Commercial impact boundary for a design candidate."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    status: Literal[
+        "not_applicable",
+        "requires_draft_simulation",
+        "requires_bom_recalculation",
+        "computed",
+    ]
+    direction: Literal["lower", "similar", "higher", "unknown"] = "unknown"
+    monthly_delta: Optional[float] = None
+    contract_delta: Optional[float] = None
+    currency: Optional[str] = None
+    detail: str
+
+
+class AiReviewCanvasChangeSet(BaseModel):
+    """Typed topology diff between the saved canvas and one candidate."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    added_tools: list[str] = Field(default_factory=list)
+    removed_tools: list[str] = Field(default_factory=list)
+    retained_tools: list[str] = Field(default_factory=list)
+    added_overlays: list[str] = Field(default_factory=list)
+    removed_overlays: list[str] = Field(default_factory=list)
+
+
+class AiReviewRecommendationCandidate(BaseModel):
+    """One governed, previewable integration-design alternative."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    mode: AiReviewRecommendationMode
+    title: str
+    summary: str
+    why: str
+    combination_code: str
+    pattern_id: Optional[str] = None
+    core_tools: list[str] = Field(default_factory=list)
+    overlays: list[str] = Field(default_factory=list)
+    canvas_state: str
+    change_set: AiReviewCanvasChangeSet
+    field_diffs: list[AiReviewFieldDiff] = Field(default_factory=list)
+    implementation_steps: list[str] = Field(default_factory=list)
+    prerequisites: list[str] = Field(default_factory=list)
+    validation_plan: list[str] = Field(default_factory=list)
+    tradeoffs: list[str] = Field(default_factory=list)
+    checks: list[AiReviewRecommendationCheck] = Field(default_factory=list)
+    cost_impact: AiReviewRecommendationCostImpact
+    evidence_ids: list[str] = Field(default_factory=list)
+    confidence: Literal["high", "medium", "low"]
+    applicable: bool = True
+
+
+class AiReviewRecommendationWorkspace(BaseModel):
+    """Decision workspace derived from current design and governed alternatives."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    integration_id: str
+    current_pattern_id: Optional[str] = None
+    current_core_tools: list[str] = Field(default_factory=list)
+    current_overlays: list[str] = Field(default_factory=list)
+    current_canvas_state: str
+    recommended_candidate_id: Optional[str] = None
+    recommendation_basis: str
+    candidates: list[AiReviewRecommendationCandidate] = Field(default_factory=list)
+
+
+class AiReviewActionCandidate(BaseModel):
+    """One deterministic, evidence-linked action outside the integration canvas."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    priority: Literal["now", "next", "monitor"]
+    status: Literal["ready", "review", "blocked"]
+    title: str
+    summary: str
+    what_to_change: list[str] = Field(default_factory=list)
+    implementation_steps: list[str] = Field(default_factory=list)
+    validation_plan: list[str] = Field(default_factory=list)
+    expected_impact: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    action_label: Optional[str] = None
+    action_href: Optional[str] = None
+    confidence: Literal["high", "medium", "low"]
+
+
+class AiReviewActionWorkspace(BaseModel):
+    """Prescriptive action plan for project and topology review scopes."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    context: Literal["project", "topology", "bom"]
+    title: str
+    recommendation_basis: str
+    candidates: list[AiReviewActionCandidate] = Field(default_factory=list)
+
+
+class AiReviewDraftSimulationRequest(BaseModel):
+    """Unsaved canvas values to calculate without mutating governed state."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    core_tools: list[str] = Field(default_factory=list, max_length=32)
+    canvas_state: str = Field(min_length=2, max_length=100_000)
+    deployment_scenario_id: Optional[str] = None
+
+
+class AiReviewDraftMetricDelta(BaseModel):
+    """Current-versus-draft deterministic technical metric."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    key: str
+    label: str
+    unit: str
+    current: float
+    proposed: float
+    delta: float
+
+
+class AiReviewDraftCostPeriod(BaseModel):
+    """Current-versus-draft amount for one approved scenario month."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    period_index: int
+    period_start: date
+    current: float
+    proposed: float
+    delta: float
+
+
+class AiReviewDraftCommercialImpact(BaseModel):
+    """Commercial preview generated by the governed BOM engine without persistence."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    status: Literal["computed", "scenario_required", "blocked"]
+    scenario_id: Optional[str] = None
+    scenario_name: Optional[str] = None
+    consumption_model: Optional[str] = None
+    currency: Optional[str] = None
+    current_monthly: Optional[float] = None
+    proposed_monthly: Optional[float] = None
+    monthly_delta: Optional[float] = None
+    current_contract: Optional[float] = None
+    proposed_contract: Optional[float] = None
+    contract_delta: Optional[float] = None
+    current_ramp_deferred: Optional[float] = None
+    proposed_ramp_deferred: Optional[float] = None
+    ramp_deferred_delta: Optional[float] = None
+    periods: list[AiReviewDraftCostPeriod] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    detail: str
+
+
+class AiReviewDraftSimulationResponse(BaseModel):
+    """Side-effect-free technical and economic comparison for an unsaved canvas."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    project_id: str
+    integration_id: str
+    persisted: Literal[False] = False
+    assumption_set_version: str
+    service_rules_version: str
+    metrics: list[AiReviewDraftMetricDelta] = Field(default_factory=list)
+    current_project: ConsolidatedMetrics
+    proposed_project: ConsolidatedMetrics
+    current_warnings: list[str] = Field(default_factory=list)
+    proposed_warnings: list[str] = Field(default_factory=list)
+    commercial_impact: AiReviewDraftCommercialImpact
+
+
 class AiReviewSuggestedPatch(BaseModel):
     """A bounded, deterministic, human-approved patch candidate."""
 
@@ -377,6 +571,7 @@ class AiReviewRecommendationAcceptance(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     finding_id: str
+    recommendation_type: Literal["finding", "candidate"] = "finding"
     accepted_by: str
     accepted_at: datetime
     note: Optional[str] = None
@@ -393,6 +588,14 @@ class AiReviewAcceptRecommendationRequest(BaseModel):
 
 class AiReviewApplyPatchRequest(BaseModel):
     """Payload for applying a deterministic AI review patch after human confirmation."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    note: Optional[str] = Field(default=None, max_length=1000)
+
+
+class AiReviewSelectDraftRequest(BaseModel):
+    """Payload for selecting a recommendation as an unsaved canvas draft."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
@@ -434,6 +637,8 @@ class AiReviewResponse(BaseModel):
     evidence: list[AiReviewEvidence] = Field(default_factory=list)
     evidence_pack: list[str] = Field(default_factory=list)
     reviewer_personas: list[AiReviewPersonaSummary] = Field(default_factory=list)
+    recommendation_workspace: Optional[AiReviewRecommendationWorkspace] = None
+    action_workspace: Optional[AiReviewActionWorkspace] = None
     drift: AiReviewDriftReport = Field(
         default_factory=lambda: AiReviewDriftReport(
             status="no_baseline",
@@ -501,3 +706,12 @@ class AiReviewApplyPatchResponse(BaseModel):
     job: AiReviewJobResponse
     integration: CatalogIntegrationResponse
     applied_patch: AiReviewSuggestedPatch
+
+
+class AiReviewSelectDraftResponse(BaseModel):
+    """Audited selection of a candidate for local canvas preview."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    job: AiReviewJobResponse
+    candidate: AiReviewRecommendationCandidate

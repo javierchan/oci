@@ -119,7 +119,7 @@ async def test_auto_transport_caches_responses_404_and_falls_back_to_chat(
             del headers, json
             urls.append(url)
             request = Request("POST", url)
-            if url.endswith("/responses"):
+            if url.endswith("/20231130/actions/v1/responses"):
                 return Response(404, request=request, json={"code": "NotAuthorizedOrNotFound"})
             return Response(200, request=request, json={"choices": [{"message": {"content": "Chat fallback."}}]})
 
@@ -139,7 +139,7 @@ async def test_auto_transport_caches_responses_404_and_falls_back_to_chat(
 
     assert first.transport == "chat_completions"
     assert second.transport == "chat_completions"
-    assert sum(url.endswith("/responses") for url in urls) == 1
+    assert sum(url.endswith("/20231130/actions/v1/responses") for url in urls) == 1
     assert sum(url.endswith("/chat/completions") for url in urls) == 2
     metrics = await get_genai_metrics(settings)
     counters = metrics["counters"]
@@ -320,7 +320,7 @@ async def test_responses_tool_flow_executes_governed_function_and_summary(
 
         async def post(self, url: str, *, headers: dict[str, str], json: dict[str, object]) -> Response:
             del headers
-            assert url.endswith("/responses")
+            assert url.endswith("/20231130/actions/v1/responses")
             payloads.append(json)
             request = Request("POST", url)
             if len(payloads) == 1:

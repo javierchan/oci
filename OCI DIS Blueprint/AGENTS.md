@@ -462,6 +462,129 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       healthy Docker stack, real OCI contextual answer, grounding fallback,
       cross-route persistence, mobile/desktop light/dark visuals, and console pass
 
+### M40 — Monthly Consumption Ramps + Cost Insights
+- [x] Normalize deployment environments and service-aware activation phases; do
+      not retain the legacy scenario JSON as a second runtime source
+- [x] Expand step and linear phases in the pure Decimal pricing engine and price
+      every contract month independently
+- [x] Persist immutable BOM line periods with quantity, tier, unit price, amount,
+      formula, warnings, and provenance
+- [x] Expose monthly series, peak, first active month, steady state, and phased
+      activation timing effect through typed API, comparison, assistant, and exports
+- [x] Add the multi-environment ramp editor, environment/product composition,
+      cumulative cost, activation timeline, top drivers, and contract bridge
+- [x] **Exit criteria**: migration head `20260712_0023`, engine/API/frontend tests,
+      OpenAPI, production Docker stack, phased BOM E2E, XLSX/JSON/PDF exports, and
+      desktop/mobile light/dark browser validation pass
+
+### M39 — Session-Isolated Assistant History Clearing
+- [x] Add a typed DELETE endpoint that clears only messages and attached contexts
+      owned by the current conversation and opaque browser-session UUID
+- [x] Preserve governed AgentRun, step, and artifact records while emitting an
+      AuditEvent containing counts only and no prompt or response content
+- [x] Reject cross-session clearing with `404` and block clearing with `409` while
+      an assistant response remains pending
+- [x] Add a discoverable header command, explicit destructive confirmation,
+      keyboard-safe cancellation, pending/empty disabled states, and truthful copy
+- [x] Preserve the active empty conversation across App navigation and reload so
+      a cleared transcript cannot reappear from stale client state
+- [x] **Exit criteria**: focused backend tests, Ruff, mypy, frontend tests,
+      TypeScript/ESLint, Node 26 production build, regenerated OpenAPI, healthy
+      Docker stack, desktop/mobile Playwright, light/dark visual inspection,
+      persisted audit evidence, and browser console pass
+
+### M41 — Explainable Governed AI Review UX
+- [x] Render current Architecture Review results before historical jobs and organize
+      the decision into what was found, why it matters, and the next concrete action
+- [x] Normalize optional OCI Generative AI narratives, including malformed historical
+      Markdown tables, into bounded headings, paragraphs, and scan-friendly actions
+- [x] Keep provider diagnostics and raw technical evidence progressively disclosed
+      while preserving deterministic findings as the authoritative decision record
+- [x] Apply the same explanatory hierarchy to Import Quality, BOM Scenario, Service
+      Verification, and the contextual App Assistant without changing their data contracts
+- [x] Replace the orphan Service Rules metric card with a full-width provenance statement
+      and keep evidence metrics aligned across desktop, mobile, light, and dark modes
+- [x] **Exit criteria**: Architecture Review prompt-contract tests, 63 frontend tests,
+      TypeScript/ESLint, Node 26 production build, healthy production Docker services,
+      real project/import/BOM browser inspection, responsive light/dark screenshots,
+      normalized historical narratives, and zero browser console errors pass
+
+### M42 — Governed Real-Unit Consumption Planning
+- [x] Replace percentage as the universal planning input for new scenarios with
+      explicit environment, product, billing metric, period, and quantity units
+- [x] Govern packaged, fixed-capacity, hourly, continuous, and manual-monthly
+      quantity behavior with SKU-level increments, minimums, and display units
+- [x] Store standard constant/linear ramps and an exact editable monthly matrix
+      through one normalized phase and period-quantity model
+- [x] Preserve historical percentage scenarios as read-only-compatible
+      `legacy_share` inputs while defaulting new scenarios to `explicit_units`
+- [x] Price governed real quantities independently per contract month and expose
+      the same quantities through BOM provenance, timeline, assistant, and exports
+- [x] **Exit criteria**: migration head `20260713_0024`, 108 API, 42 calc-engine,
+      22 pricing-engine, and 64 frontend tests; OpenAPI, Node 26 production build,
+      pricing/BOM E2E, healthy Docker stack, persisted monthly evidence, responsive
+      overflow checks, dark theme readability, and zero browser console errors pass
+
+### M43 — Prescriptive Integration Recommendation Workspace
+- [x] Generate at most three typed integration-design candidates from the saved
+      Canvas V4 route, G01-G18 combinations, patterns, normalized Service Product
+      limits, interoperability, trigger, payload, and frequency evidence
+- [x] Keep OCI Generative AI bounded to comparing and explaining deterministic
+      candidates; never let synthesis invent a topology, limit, quantity, or price
+- [x] Expose what to change, how to implement it, prerequisites, validation steps,
+      trade-offs, confidence, evidence IDs, and truthful BOM recalculation boundaries
+- [x] Audit candidate selection without mutating the catalog and render a read-only
+      canvas overlay before an architect applies it to an unsaved local draft
+- [x] Improve canvas usability with larger directional markers, reduced-motion-aware
+      modeled-flow animation, readable service context, and a persistent component editor
+- [x] **Exit criteria**: AI Review API contract, Ruff, mypy, API/calc/pricing/frontend
+      suites, TypeScript/ESLint, generated OpenAPI, Node 26 production build, healthy
+      Docker stack, and real-browser preview/apply/discard validation pass
+
+### M44 — Portfolio Recommendations + Draft Impact Simulation
+- [x] Extract side-effect-free project volumetry and BOM calculation services so
+      previews and persisted jobs execute the same deterministic formulas
+- [x] Simulate an unsaved connected integration canvas against the saved design
+      without writing catalog rows, volumetry snapshots, BOM snapshots, or audit events
+- [x] Report saved-versus-proposed technical metrics plus approved-scenario monthly,
+      contract, and ramp cost deltas with explicit pricing and quantity boundaries
+- [x] Extend typed prescriptive actions to Project Review, Topology Investigation,
+      and BOM workspaces with implementation, validation, impact, evidence, and deep links
+- [x] Preserve governed explicit-unit demand as authoritative and identify newly
+      introduced products as sizing requirements instead of inventing client quantities
+- [x] **Exit criteria**: 108 API, 42 calc-engine, 22 pricing-engine, and 64 frontend
+      tests; Ruff, mypy, TypeScript/ESLint, generated OpenAPI, Node 26 production build,
+      healthy Docker stack, mutation-free API smoke, and responsive browser validation pass
+
+### M45 — Environment-Specific Commercial Product Variants
+- [x] Persist the exact approved SKU mapping on each environment, product, and
+      billing-metric consumption phase instead of applying one scenario-wide edition
+- [x] Expose every approved mapping variant generically, including edition,
+      license predicates, part number, unit behavior, increment, and minimum
+- [x] Allow QA, DEV, Production, and DR to select different commercial variants
+      of the same product while retaining scenario defaults only for initial drafting
+- [x] Price each environment from its persisted mapping and carry the commercial
+      identity through BOM provenance, activation timeline, line items, and exports
+- [x] Preserve historical scenarios through governed default resolution when an
+      older phase has no explicit SKU mapping
+- [x] **Exit criteria**: migration head `20260714_0025`, 112 API, 42 calc-engine,
+      22 pricing-engine, and 64 frontend tests; mixed-environment SKU calculation,
+      API schema checks, Ruff, mypy, frontend lint/build,
+      OpenAPI, production Docker migration, and light/dark browser validation pass
+
+### M46 — Connected BOM Rollout Explorer
+- [x] Replace the flat activation list with an executive rollout summary, coordinated
+      monthly chart, progressive product/environment timeline, and product inspector
+- [x] Distinguish constant, linear, exact-monthly, packaged, and included consumption
+      shapes while preserving governed snapshot and scenario calculations
+- [x] Connect commercial driver, chart, timeline, SKU evidence, and scenario-edit
+      interactions through one product selection model
+- [x] Use commercial product names, restrained environment color, and responsive
+      timeline/inspector tabs without introducing a second data source
+- [x] **Exit criteria**: focused frontend tests, TypeScript/ESLint, Node 26 production
+      build, healthy production Docker stack, targeted BOM E2E, and desktop/mobile
+      light/dark browser validation pass
+
 ### M26 — Topology Decision Workspace
 - [x] Separate statistical majority from conservative edge risk so mixed paths
       cannot render as healthy when review or pending integrations are present

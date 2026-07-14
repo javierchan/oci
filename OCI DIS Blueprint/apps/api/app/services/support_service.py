@@ -9,7 +9,7 @@ from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -27,12 +27,14 @@ from app.models import (
     SupportConversation,
     SupportMessage,
 )
+from app.models.project import ProjectStatus
 from app.schemas.agent import (
     SupportAttachmentResponse,
     SupportConversationResponse,
     SupportMessageCreateRequest,
     SupportMessageResponse,
 )
+from app.services import audit_service
 from app.services.serializers import sanitize_for_json
 
 
@@ -44,7 +46,8 @@ OUT_OF_SCOPE_RESPONSE = (
 APP_DOMAIN_PATTERN = re.compile(
     r"\b(oci|dis|architect|app|application|project|integration|interface|catalog|capture|import|dashboard|"
     r"map|topology|canvas|pattern|service|product|volumetry|payload|frequency|qa|governance|assumption|"
-    r"pricing|price|cost|bom|bill of materials|sku|scenario|agent|review|export|workbook|oracle|streaming|"
+    r"pricing|price|cost|precio|costo|bom|bill of materials|sku|scenario|escenario|agent|review|export|"
+    r"workbook|oracle|proyecto|proyectos|streaming|"
     r"queue|functions|goldengate|data integrator|api gateway)\b",
     re.IGNORECASE,
 )
@@ -58,6 +61,10 @@ OUTSIDE_TOPIC_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MARKDOWN_TABLE_PATTERN = re.compile(r"(?m)^\s*\|.+\|\s*$")
+INTERNAL_PLACEHOLDER_PATTERN = re.compile(
+    r"\[(?:redacted|removed)\]|\{(?:project|integration)_id\}",
+    re.IGNORECASE,
+)
 UNGROUNDED_SENSITIVE_TERMS: tuple[str, ...] = (
     "gdpr",
     "hipaa",
@@ -84,6 +91,17 @@ SPANISH_QUESTION_PATTERN = re.compile(
     r"[¿¡áéíóúñ]|\b(qué|que|cómo|como|cuál|cual|dónde|donde|esta|este|integración|proceso|ayuda|siguiente)\b",
     re.IGNORECASE,
 )
+PROJECT_PORTFOLIO_PATTERN = re.compile(
+    r"\b(how many|list|show|which|cu[aá]ntos|lista|muestra|cu[aá]les)\b.{0,28}\b(projects?|proyectos?)\b",
+    re.IGNORECASE,
+)
+PROJECT_SCOPE_PATTERN = re.compile(
+    r"\b(this|current|selected|active|este|esta|actual|seleccionado|activo)\b.{0,24}\b(project|proyecto)\b|"
+    r"\b(project|proyecto|pricing|price|cost|precio|costo|bom|bill of materials|dashboard|qa|risk|riesgo|"
+    r"scenario|escenario|import|importaci[oó]n|business process|proceso de negocio)\b",
+    re.IGNORECASE,
+)
+PROJECT_ROUTE_PATTERN = re.compile(r"/projects/([0-9a-f-]{36})(?:/|$)", re.IGNORECASE)
 
 APP_SECTIONS: tuple[dict[str, str], ...] = (
     {"name": "Projects", "route": "/projects", "purpose": "Open and manage independent architecture assessments."},
@@ -130,7 +148,11 @@ def support_summary_is_grounded(summary: str, evidence: dict[str, object]) -> bo
 
     normalized_summary = summary.casefold()
     serialized_evidence = str(sanitize_for_json(evidence)).casefold()
-    if len(summary.split()) > 280 or MARKDOWN_TABLE_PATTERN.search(summary):
+    if (
+        len(summary.split()) > 280
+        or MARKDOWN_TABLE_PATTERN.search(summary)
+        or INTERNAL_PLACEHOLDER_PATTERN.search(summary)
+    ):
         return False
     if any(term in normalized_summary and term not in serialized_evidence for term in UNGROUNDED_SENSITIVE_TERMS):
         return False
@@ -142,6 +164,61 @@ def support_summary_is_grounded(summary: str, evidence: dict[str, object]) -> bo
         term in normalized_summary and term not in recommended_action
         for term in UNGROUNDED_ACTION_TERMS
     )
+
+
+def _question_needs_project_scope(question: str) -> bool:
+    """Distinguish project dossiers from portfolio-level discovery questions."""
+
+    return not bool(PROJECT_PORTFOLIO_PATTERN.search(question)) and bool(
+        PROJECT_SCOPE_PATTERN.search(question)
+    )
+
+
+def _project_id_from_attachments(attachments: list[object]) -> str | None:
+    """Read only explicit App-owned project references from attached route context."""
+
+    for attachment in reversed(attachments[:8]):
+        if not isinstance(attachment, dict):
+            continue
+        attachment_type = str(attachment.get("attachment_type") or "")
+        entity_id = attachment.get("entity_id")
+        if attachment_type == "project" and isinstance(entity_id, str):
+            return entity_id
+        context = attachment.get("context")
+        if isinstance(context, dict) and isinstance(context.get("project_id"), str):
+            return str(context["project_id"])
+        href = str(attachment.get("href") or "")
+        match = PROJECT_ROUTE_PATTERN.search(href)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _project_name_match(
+    projects: list[Project],
+    question: str,
+    transcript: list[object],
+) -> Project | None:
+    """Resolve an explicitly named project from the current or recent user questions."""
+
+    user_text = " ".join(
+        str(item.get("content") or "")
+        for item in transcript[:12]
+        if isinstance(item, dict) and item.get("role") == "user"
+    )
+    searchable = f"{question} {user_text}".casefold()
+    matches = [project for project in projects if project.name.casefold() in searchable]
+    return max(matches, key=lambda item: len(item.name)) if matches else None
+
+
+def _money(value: object, currency: object) -> str:
+    """Format governed commercial values without assuming a currency symbol."""
+
+    try:
+        amount = float(value) if isinstance(value, (int, float, str)) else 0.0
+    except (TypeError, ValueError):
+        amount = 0.0
+    return f"{str(currency or 'USD').upper()} {amount:,.2f}"
 
 
 def _support_fallback_answer(evidence: dict[str, object]) -> str:
@@ -212,11 +289,75 @@ def _support_fallback_answer(evidence: dict[str, object]) -> str:
         return "\n\n".join(lines)
     project = evidence.get("project")
     if isinstance(project, dict):
+        latest_bom = project.get("latest_bom")
+        if evidence.get("question_intent") == "project_cost":
+            if isinstance(latest_bom, dict):
+                currency = latest_bom.get("currency")
+                contract_total = _money(latest_bom.get("contract_total"), currency)
+                monthly_total = _money(latest_bom.get("monthly_total"), currency)
+                peak_total = _money(latest_bom.get("peak_monthly_total"), currency)
+                coverage = float(latest_bom.get("coverage_pct") or 0)
+                status = str(latest_bom.get("publication_status") or "draft")
+                if spanish:
+                    return (
+                        f"El último BOM de {project.get('name')} estima **{contract_total}** para el contrato.\n\n"
+                        f"- Consumo mensual inicial: {monthly_total}\n"
+                        f"- Pico mensual: {peak_total}\n"
+                        f"- Cobertura de precios: {coverage:.0f}%\n"
+                        f"- Estado: {status}\n\n"
+                        "Siguiente paso: abre BOM & Cost para revisar el escenario, la rampa mensual y los SKU antes de usar esta estimación en una propuesta."
+                    )
+                return (
+                    f"The latest BOM for {project.get('name')} estimates **{contract_total}** for the contract.\n\n"
+                    f"- Initial monthly run rate: {monthly_total}\n"
+                    f"- Peak monthly run rate: {peak_total}\n"
+                    f"- Price coverage: {coverage:.0f}%\n"
+                    f"- Status: {status}\n\n"
+                    "Next: open BOM & Cost to review the scenario, monthly ramp, and SKUs before using this estimate in a proposal."
+                )
+            return (
+                f"{project.get('name')} todavía no tiene un BOM calculado. Abre BOM & Cost, selecciona un escenario aprobado y ejecuta el cálculo."
+                if spanish
+                else f"{project.get('name')} does not have a calculated BOM yet. Open BOM & Cost, select an approved scenario, and run the calculation."
+            )
+        if spanish:
+            return (
+                f"{project.get('name')} contiene {project.get('integration_count')} integraciones gobernadas. "
+                "Puedo ayudarte a revisar su distribución de QA, procesos de negocio, topología o último BOM.\n\n"
+                "Dime qué decisión necesitas tomar."
+            )
         return (
             f"{project.get('name')} contains {project.get('integration_count')} governed integrations. "
             "I can help you inspect its QA distribution, business processes, topology, or latest BOM.\n\n"
             "Tell me which decision you are working through, or add the relevant App context."
         )
+    project_workspaces = evidence.get("project_workspaces")
+    if isinstance(project_workspaces, list):
+        active = [
+            item
+            for item in project_workspaces
+            if isinstance(item, dict) and str(item.get("status") or "").casefold() == "active"
+        ]
+        if evidence.get("question_intent") == "project_portfolio":
+            count = len(active)
+            names = ", ".join(str(item.get("name")) for item in active[:5])
+            if spanish:
+                return (
+                    f"La App tiene **{count} proyecto{'s' if count != 1 else ''} activo{'s' if count != 1 else ''}**."
+                    + (f"\n\n{names}." if names else "")
+                )
+            return (
+                f"The App has **{count} active project{'s' if count != 1 else ''}**."
+                + (f"\n\n{names}." if names else "")
+            )
+        resolution = evidence.get("project_resolution")
+        if isinstance(resolution, dict) and resolution.get("ambiguous"):
+            names = ", ".join(str(item.get("name")) for item in active[:5])
+            return (
+                f"Encontré varios proyectos activos: {names}. Indica el proyecto o abre su workspace para consultar su evidencia."
+                if spanish
+                else f"I found multiple active projects: {names}. Name the project or open its workspace so I can use the right evidence."
+            )
     return (
         "I can help you move through OCI DIS Architect and explain the governed evidence behind an integration, "
         "business process, topology path, Service Product, or BOM.\n\n"
@@ -345,6 +486,77 @@ async def get_conversation(
             status_code=404,
             detail={"detail": "Support conversation not found", "error_code": "SUPPORT_CONVERSATION_NOT_FOUND"},
         )
+    return await serialize_conversation(conversation, db)
+
+
+async def clear_conversation_history(
+    conversation_id: str,
+    session_id: str,
+    actor_id: str,
+    db: AsyncSession,
+) -> SupportConversationResponse:
+    """Clear one session-owned visible transcript while retaining agent-run audit records."""
+
+    normalized_session = validate_support_session_id(session_id)
+    conversation = await db.get(SupportConversation, conversation_id)
+    if conversation is None or conversation.session_id != normalized_session or conversation.status != "active":
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Support conversation not found", "error_code": "SUPPORT_CONVERSATION_NOT_FOUND"},
+        )
+    pending_count = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(SupportMessage)
+            .where(
+                SupportMessage.conversation_id == conversation.id,
+                SupportMessage.status == "pending",
+            )
+        )
+        or 0
+    )
+    if pending_count:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Wait for the current support response before clearing history",
+                "error_code": "SUPPORT_TURN_PENDING",
+            },
+        )
+    message_count = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(SupportMessage)
+            .where(SupportMessage.conversation_id == conversation.id)
+        )
+        or 0
+    )
+    attachment_count = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(SupportAttachment)
+            .where(SupportAttachment.conversation_id == conversation.id)
+        )
+        or 0
+    )
+    await db.execute(
+        delete(SupportAttachment).where(SupportAttachment.conversation_id == conversation.id)
+    )
+    await db.execute(
+        delete(SupportMessage).where(SupportMessage.conversation_id == conversation.id)
+    )
+    conversation.updated_at = datetime.now(UTC)
+    await audit_service.emit(
+        event_type="support_conversation_history_cleared",
+        entity_type="support_conversation",
+        entity_id=conversation.id,
+        actor_id=actor_id or conversation.actor_id,
+        old_value={"message_count": message_count, "attachment_count": attachment_count},
+        new_value={"message_count": 0, "attachment_count": 0},
+        project_id=None,
+        correlation_id=conversation.id,
+        db=db,
+    )
     return await serialize_conversation(conversation, db)
 
 
@@ -485,6 +697,43 @@ async def build_support_evidence(
 
     route = str(context.get("route") or "/projects")
     citations: list[dict[str, str]] = [{"label": "Current context", "href": route}]
+    projects = list(
+        (
+            await db.scalars(
+                select(Project).order_by(Project.updated_at.desc()).limit(50)
+            )
+        ).all()
+    )
+    projects_by_id = {item.id: item for item in projects}
+    active_projects = [item for item in projects if item.status == ProjectStatus.ACTIVE]
+    resolved_project_id = project_id
+    project_resolution = "route" if project_id else None
+    if resolved_project_id is None:
+        attached_project_id = _project_id_from_attachments(attachments)
+        if attached_project_id in projects_by_id:
+            resolved_project_id = attached_project_id
+            project_resolution = "attached_context"
+    if resolved_project_id is None:
+        named_project = _project_name_match(projects, question, transcript)
+        if named_project is not None:
+            resolved_project_id = named_project.id
+            project_resolution = "named_in_conversation"
+    needs_project_scope = _question_needs_project_scope(question)
+    if resolved_project_id is None and needs_project_scope and len(active_projects) == 1:
+        resolved_project_id = active_projects[0].id
+        project_resolution = "single_active_project"
+    question_intent = (
+        "project_cost"
+        if any(
+            term in question_lower
+            for term in ("pricing", "price", "cost", "precio", "costo", "bom", "bill of materials")
+        )
+        else "project_portfolio"
+        if PROJECT_PORTFOLIO_PATTERN.search(question)
+        else "project_context"
+        if needs_project_scope
+        else "app_guidance"
+    )
     pattern_count = int(
         await db.scalar(
             select(func.count()).select_from(PatternDefinition).where(PatternDefinition.is_active.is_(True))
@@ -518,6 +767,13 @@ async def build_support_evidence(
         "current_context": {
             "route": route,
             "page_title": context.get("page_title"),
+        },
+        "question_intent": question_intent,
+        "project_resolution": {
+            "resolved_project_id": resolved_project_id,
+            "method": project_resolution,
+            "ambiguous": bool(needs_project_scope and resolved_project_id is None and len(active_projects) > 1),
+            "active_project_count": len(active_projects),
         },
         "attached_components": attachments[:8],
         "conversation_questions": [
@@ -595,8 +851,14 @@ async def build_support_evidence(
     integration: CatalogIntegration | None = None
     if integration_id:
         candidate = await db.get(CatalogIntegration, integration_id)
-        if candidate is not None and (project_id is None or candidate.project_id == project_id):
+        if candidate is not None and (resolved_project_id is None or candidate.project_id == resolved_project_id):
             integration = candidate
+            if resolved_project_id is None:
+                resolved_project_id = candidate.project_id
+                project_resolution = "integration_context"
+                cast(dict[str, object], evidence["project_resolution"])["resolved_project_id"] = resolved_project_id
+                cast(dict[str, object], evidence["project_resolution"])["method"] = project_resolution
+                cast(dict[str, object], evidence["project_resolution"])["ambiguous"] = False
             integration_needs_attention = str(integration.qa_status or "").upper() not in {"OK", "QA OK"}
             evidence["integration"] = {
                 "id": integration.id,
@@ -648,8 +910,8 @@ async def build_support_evidence(
                 }
             )
 
-    if project_id:
-        project = await db.get(Project, project_id)
+    if resolved_project_id:
+        project = projects_by_id.get(resolved_project_id) or await db.get(Project, resolved_project_id)
         if project is not None:
             integration_count = int(
                 await db.scalar(
@@ -768,6 +1030,12 @@ async def build_support_evidence(
                         "currency": latest_bom.currency,
                         "coverage_pct": latest_bom.coverage_pct,
                         "monthly_total": latest_bom.monthly_total,
+                        "peak_monthly_total": latest_bom.peak_monthly_total,
+                        "contract_total": latest_bom.contract_total,
+                        "first_active_period": latest_bom.first_active_period,
+                        "steady_state_period": latest_bom.steady_state_period,
+                        "ramp_deferred_amount": latest_bom.ramp_deferred_amount,
+                        "monthly_series": latest_bom.summary.get("monthly_series", []),
                     }
                     if latest_bom
                     else None
@@ -789,6 +1057,8 @@ async def build_support_evidence(
                 ),
             }
             citations.append({"label": project.name, "href": f"/projects/{project.id}"})
+            if latest_bom is not None and question_intent == "project_cost":
+                citations.append({"label": "BOM & Cost", "href": f"/projects/{project.id}/bom"})
 
             focus_process = integration.business_process if integration else None
             if focus_process is None:
@@ -854,13 +1124,6 @@ async def build_support_evidence(
                     }
                 )
     else:
-        projects = list(
-            (
-                await db.scalars(
-                    select(Project).order_by(Project.updated_at.desc()).limit(20)
-                )
-            ).all()
-        )
         evidence["project_workspaces"] = [
             {
                 "id": item.id,
@@ -868,10 +1131,13 @@ async def build_support_evidence(
                 "description": item.description,
                 "status": item.status.value if hasattr(item.status, "value") else str(item.status),
             }
-            for item in projects
+            for item in projects[:20]
         ]
+        citations.append({"label": "Projects", "href": "/projects"})
 
     evidence["fallback_answer"] = _support_fallback_answer(evidence)
+    if question_intent in {"project_portfolio", "project_cost"}:
+        evidence["direct_answer"] = evidence["fallback_answer"]
     return cast(dict[str, object], sanitize_for_json(evidence))
 
 

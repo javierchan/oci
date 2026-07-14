@@ -7,9 +7,10 @@ from typing import cast
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.models import CatalogIntegration, PatternDefinition, Project, ServiceCapabilityProfile
+from app.models import AuditEvent, CatalogIntegration, PatternDefinition, Project, ServiceCapabilityProfile
 from app.routers import support as support_router
 from app.services import agent_service, support_service
 
@@ -25,6 +26,105 @@ def test_support_domain_boundary_is_conservative() -> None:
     assert support_service.question_is_in_scope("What does this mean?", has_context=True)
     assert not support_service.question_is_in_scope("What is the weather today?", has_context=True)
     assert not support_service.question_is_in_scope("Write a poem", has_context=False)
+    assert not support_service._question_needs_project_scope("¿Cuántos proyectos tenemos?")
+    assert support_service._question_needs_project_scope("¿Cuál es el precio total de este proyecto?")
+
+
+@pytest.mark.asyncio
+async def test_support_resolves_single_active_project_for_global_cost_question(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            project = Project(
+                name="Only Active Support Project",
+                description="Commercial context must be available outside the BOM route.",
+                status="active",
+                owner_id="support-owner",
+            )
+            session.add(project)
+            await session.flush()
+            evidence = await support_service.build_support_evidence(
+                None,
+                None,
+                {
+                    "question": "¿Cuál es el precio total de este proyecto?",
+                    "route": "/admin/agents",
+                    "page_title": "Governance · Agents",
+                    "attachments": [],
+                    "transcript": [
+                        {"role": "user", "content": "¿Cuántos proyectos tenemos?"},
+                    ],
+                },
+                session,
+            )
+
+    resolution = cast(dict[str, object], evidence["project_resolution"])
+    project_evidence = cast(dict[str, object], evidence["project"])
+    citations = cast(list[dict[str, str]], evidence["citations"])
+    assert evidence["question_intent"] == "project_cost"
+    assert resolution["method"] == "single_active_project"
+    assert resolution["resolved_project_id"] == project.id
+    assert resolution["ambiguous"] is False
+    assert project_evidence["name"] == "Only Active Support Project"
+    assert project_evidence["latest_bom"] is None
+    assert any(item["href"] == f"/projects/{project.id}" for item in citations)
+    assert "todavía no tiene un BOM calculado" in str(evidence["fallback_answer"])
+    assert evidence["direct_answer"] == evidence["fallback_answer"]
+
+
+@pytest.mark.asyncio
+async def test_support_keeps_multiple_active_projects_ambiguous_until_named(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            first = Project(
+                name="Northwind Architecture",
+                status="active",
+                owner_id="support-owner",
+            )
+            second = Project(
+                name="Contoso Architecture",
+                status="active",
+                owner_id="support-owner",
+            )
+            session.add_all([first, second])
+            await session.flush()
+            ambiguous = await support_service.build_support_evidence(
+                None,
+                None,
+                {
+                    "question": "¿Cuál es el costo de este proyecto?",
+                    "route": "/admin/agents",
+                    "attachments": [],
+                    "transcript": [],
+                },
+                session,
+            )
+            named = await support_service.build_support_evidence(
+                None,
+                None,
+                {
+                    "question": "¿Cuál es el costo de Contoso Architecture?",
+                    "route": "/admin/agents",
+                    "attachments": [],
+                    "transcript": [],
+                },
+                session,
+            )
+
+    ambiguous_resolution = cast(dict[str, object], ambiguous["project_resolution"])
+    named_resolution = cast(dict[str, object], named["project_resolution"])
+    assert ambiguous_resolution["ambiguous"] is True
+    assert ambiguous_resolution["resolved_project_id"] is None
+    assert "project" not in ambiguous
+    assert len(cast(list[object], ambiguous["project_workspaces"])) == 2
+    assert named_resolution["method"] == "named_in_conversation"
+    assert named_resolution["resolved_project_id"] == second.id
+    assert cast(dict[str, object], named["project"])["name"] == "Contoso Architecture"
 
 
 @pytest.mark.asyncio
@@ -80,6 +180,28 @@ async def test_support_conversation_is_isolated_and_out_of_scope_is_refused(
     assert final_message["status"] == "refused"
     assert "help with OCI DIS Architect" in final_message["content"]
 
+    isolated_clear = await api_client.delete(
+        f"/api/v1/support/conversations/{conversation_id}/messages", headers=HEADERS_B
+    )
+    assert isolated_clear.status_code == 404
+    cleared = await api_client.delete(
+        f"/api/v1/support/conversations/{conversation_id}/messages", headers=HEADERS_A
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["id"] == conversation_id
+    assert cleared.json()["messages"] == []
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        event = await session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.event_type == "support_conversation_history_cleared",
+                AuditEvent.entity_id == conversation_id,
+            )
+        )
+    assert event is not None
+    assert event.old_value == {"message_count": 2, "attachment_count": 0}
+    assert event.new_value == {"message_count": 0, "attachment_count": 0}
+
 
 @pytest.mark.asyncio
 async def test_support_turn_persists_explicit_component_context(
@@ -115,6 +237,11 @@ async def test_support_turn_persists_explicit_component_context(
     user_message = submitted.json()["messages"][-2]
     assert user_message["attachments"][0]["label"] == "Integration Detail"
     assert user_message["attachments"][0]["context"] == {"selected_tab": "canvas"}
+    pending_clear = await api_client.delete(
+        f"/api/v1/support/conversations/{conversation_id}/messages", headers=HEADERS_B
+    )
+    assert pending_clear.status_code == 409
+    assert pending_clear.json()["detail"]["error_code"] == "SUPPORT_TURN_PENDING"
 
 
 @pytest.mark.asyncio
@@ -234,6 +361,9 @@ def test_support_summary_grounding_rejects_unsupported_actions_and_sensitive_cla
     assert not support_service.support_summary_is_grounded(
         "This avoids GDPR sanctions.", evidence
     )
+    assert not support_service.support_summary_is_grounded(
+        "Open /projects/{project_id} for [REDACTED] details.", evidence
+    )
     spanish_fallback = support_service._support_fallback_answer(
         {
             "response_language": "es",
@@ -250,3 +380,23 @@ def test_support_summary_grounding_rejects_unsupported_actions_and_sensitive_cla
     )
     assert "mueve datos gobernados" in spanish_fallback
     assert "Siguiente paso" in spanish_fallback
+    cost_fallback = support_service._support_fallback_answer(
+        {
+            "response_language": "es",
+            "question_intent": "project_cost",
+            "project": {
+                "name": "Proyecto Comercial",
+                "latest_bom": {
+                    "currency": "USD",
+                    "contract_total": 42081.7,
+                    "monthly_total": 6875.9,
+                    "peak_monthly_total": 7112.25,
+                    "coverage_pct": 100,
+                    "publication_status": "approved",
+                },
+            },
+        }
+    )
+    assert "USD 42,081.70" in cost_fallback
+    assert "Pico mensual: USD 7,112.25" in cost_fallback
+    assert "Cobertura de precios: 100%" in cost_fallback

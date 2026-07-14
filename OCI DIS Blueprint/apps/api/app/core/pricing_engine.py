@@ -29,7 +29,17 @@ from pricing_engine import (  # noqa: E402
     PricingModel,
     PricingRequest,
     PricingResult,
+    QuantityBehavior,
+    QuantityRule,
+    QuantityRampPhase,
+    RampInterpolation,
+    RampPhase,
+    ScheduledPricingResult,
+    expand_ramp,
+    expand_quantity_ramp,
     price_line,
+    price_line_quantity_schedule,
+    price_line_schedule,
 )
 
 __all__ = [
@@ -38,5 +48,15 @@ __all__ = [
     "PricingModel",
     "PricingRequest",
     "PricingResult",
+    "QuantityBehavior",
+    "QuantityRule",
+    "QuantityRampPhase",
+    "RampInterpolation",
+    "RampPhase",
+    "ScheduledPricingResult",
+    "expand_ramp",
+    "expand_quantity_ramp",
     "price_line",
+    "price_line_quantity_schedule",
+    "price_line_schedule",
 ]

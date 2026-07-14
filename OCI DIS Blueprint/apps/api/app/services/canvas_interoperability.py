@@ -1051,6 +1051,35 @@ def _evaluate_toolset_interoperability(
     )
 
 
+def evaluate_toolset_interoperability(
+    *,
+    core_tool_keys: Sequence[str],
+    overlay_tool_keys: Sequence[str],
+    assumptions: Assumptions,
+    payload_kb: float | None,
+    trigger_type: str | None,
+    is_real_time: bool | None,
+    source_technology: str | None,
+    destination_technology: str | None,
+    integration_type: str | None,
+    service_rules: ServiceRuleBundle = EMPTY_SERVICE_RULE_BUNDLE,
+) -> CanvasInteroperabilityReport:
+    """Evaluate a governed tool-stack candidate before a canvas is materialized."""
+
+    return _evaluate_toolset_interoperability(
+        core_tool_keys=core_tool_keys,
+        overlay_tool_keys=overlay_tool_keys,
+        assumptions=assumptions,
+        payload_kb=payload_kb,
+        trigger_type=trigger_type,
+        is_real_time=is_real_time,
+        source_technology=source_technology,
+        destination_technology=destination_technology,
+        integration_type=integration_type,
+        service_rules=service_rules,
+    )
+
+
 def serialize_canvas_state(
     nodes: Sequence[CanvasNode],
     edges: Sequence[CanvasEdge],

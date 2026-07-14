@@ -41,6 +41,7 @@ import {
   type CanvasNode,
 } from "@/lib/canvas-governance";
 import type {
+  AiReviewCanvasDraftSelection,
   CanvasCombination,
   CanvasServiceProfile,
   DictionaryOption,
@@ -58,7 +59,7 @@ type SelectedElement =
 const MIN_CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 560;
 const MIN_SCALE = 0.5;
-const MIN_READABLE_AUTO_SCALE = 0.68;
+const MIN_READABLE_AUTO_SCALE = 0.76;
 const MAX_SCALE = 2;
 const ROUTE_NODE_GAP = 64;
 const TOOL_NODE_WIDTH = 184;
@@ -67,8 +68,8 @@ const SYSTEM_NODE_WIDTH = 218;
 const SYSTEM_NODE_HEIGHT = 96;
 const HANDLE_RADIUS = 5;
 const EDGE_HIT_STROKE = 14;
-const EDGE_STROKE = 2.4;
-const EDGE_SELECTED_STROKE = 3.2;
+const EDGE_STROKE = 3;
+const EDGE_SELECTED_STROKE = 3.8;
 
 type FixedNodeMeta = {
   subtitle: string | null;
@@ -123,6 +124,7 @@ type IntegrationCanvasProps = {
   triggerType?: string | null;
   isRealTime?: boolean | null;
   integrationType?: string | null;
+  recommendationPreview?: AiReviewCanvasDraftSelection | null;
 };
 
 const TOOL_KINDS: Record<string, ToolKind> = {
@@ -903,11 +905,17 @@ function renderedSubtitle(node: FlowNode): string {
   return truncateLabel(value, node.fixed ? 24 : 26);
 }
 
-function renderedPayload(node: FlowNode): string {
+function renderedPayload(node: FlowNode, payloadKb: number | null, frequency: string | null): string {
   if (node.fixed) {
     return "";
   }
-  return truncateLabel(node.payloadNote || "No payload note", 36);
+  const modeledContext = [
+    payloadKb !== null ? `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(payloadKb)} KB` : null,
+    frequency,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return truncateLabel(node.payloadNote || modeledContext || "Add payload context", 36);
 }
 
 function dominantHandle(source: FlowNode, target: FlowNode, outgoing: boolean): HandlePosition {
@@ -994,6 +1002,7 @@ export function IntegrationCanvas({
   triggerType = null,
   isRealTime = null,
   integrationType = null,
+  recommendationPreview = null,
 }: IntegrationCanvasProps): JSX.Element {
   const overlayToolKeys = useMemo(
     () => overlayOptions.map((option) => option.value),
@@ -1363,6 +1372,44 @@ export function IntegrationCanvas({
       sourceTechnology,
     ],
   );
+  const previewParsedState = useMemo(
+    () =>
+      recommendationPreview
+        ? parseCanvasState(
+            recommendationPreview.candidate.canvas_state,
+            recommendationPreview.candidate.core_tools,
+          )
+        : null,
+    [recommendationPreview],
+  );
+  const previewFlowNodes = useMemo(
+    () =>
+      previewParsedState
+        ? mergedNodes(
+            sourceSystem,
+            sourceTechnology,
+            destinationSystem,
+            destinationTechnology,
+            renderCanvasWidth,
+            previewParsedState.nodes,
+            previewParsedState.endpointPositions,
+          )
+        : null,
+    [
+      destinationSystem,
+      destinationTechnology,
+      previewParsedState,
+      renderCanvasWidth,
+      sourceSystem,
+      sourceTechnology,
+    ],
+  );
+  const selectedFlowNode =
+    selectedElement?.kind === "node" ? flowNodes[selectedElement.id] ?? null : null;
+  const selectedServiceProfile =
+    selectedFlowNode && !selectedFlowNode.fixed
+      ? resolveServiceProfile(selectedFlowNode.toolKey, serviceProfilesById)
+      : null;
   const fitTargetNodes = useMemo(
     () => nodesForViewportFit(flowNodes, nodes, edges),
     [edges, flowNodes, nodes],
@@ -1736,6 +1783,12 @@ export function IntegrationCanvas({
               {semantics.disconnectedNodeIds.length === 1 ? "" : "s"}
             </span>
           ) : null}
+          {recommendationPreview ? (
+            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-accent)] bg-[var(--color-surface)] px-3 py-1 font-semibold text-[var(--color-accent)]">
+              <span className="h-2 w-5 border-t-2 border-dashed border-current" />
+              Recommendation preview
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -1749,7 +1802,7 @@ export function IntegrationCanvas({
         </section>
       ) : null}
 
-      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div ref={canvasShellRef} className="relative min-w-0">
           <div className="absolute left-5 top-5 z-10 flex flex-wrap items-center gap-2">
             <div className="pointer-events-none inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] shadow-sm backdrop-blur">
@@ -1815,15 +1868,15 @@ export function IntegrationCanvas({
                   <marker
                     key={markerId}
                     id={markerId}
-                    markerWidth="11"
-                    markerHeight="11"
-                    refX="10"
-                    refY="5.5"
+                    markerWidth="13"
+                    markerHeight="13"
+                    refX="12"
+                    refY="6.5"
                     orient="auto"
                     markerUnits="userSpaceOnUse"
                   >
                     <path
-                      d="M1,1 L10,5.5 L1,10 z"
+                      d="M1,1 L12,6.5 L1,12 z"
                       fill={markerColor}
                       stroke="var(--color-surface)"
                       strokeWidth="0.75"
@@ -1843,6 +1896,55 @@ export function IntegrationCanvas({
               />
 
               <g transform={`translate(${viewport.x}, ${viewport.y}) scale(${viewport.scale})`}>
+                {previewParsedState && previewFlowNodes ? (
+                  <g aria-hidden="true" pointerEvents="none" opacity={0.7}>
+                    {previewParsedState.edges.map((edge) => {
+                      const source = previewFlowNodes[edge.sourceInstanceId];
+                      const target = previewFlowNodes[edge.targetInstanceId];
+                      if (!source || !target) return null;
+                      const geometry = edgePath(source, target);
+                      return (
+                        <path
+                          key={`preview-edge-${edge.edgeId}`}
+                          d={geometry.path}
+                          fill="none"
+                          stroke="var(--color-accent)"
+                          strokeWidth={4}
+                          strokeDasharray="10 8"
+                          markerEnd="url(#canvas-arrowhead-valid)"
+                          strokeLinecap="round"
+                        />
+                      );
+                    })}
+                    {previewParsedState.nodes.map((node) => {
+                      const flowNode = previewFlowNodes[node.instanceId];
+                      if (!flowNode) return null;
+                      return (
+                        <g key={`preview-node-${node.instanceId}`} transform={`translate(${flowNode.x}, ${flowNode.y})`}>
+                          <rect
+                            width={TOOL_NODE_WIDTH}
+                            height={TOOL_NODE_HEIGHT}
+                            rx={16}
+                            fill="var(--color-surface)"
+                            fillOpacity={0.72}
+                            stroke="var(--color-accent)"
+                            strokeWidth={3}
+                            strokeDasharray="10 7"
+                          />
+                          <text x={14} y={28} fontSize={12} fontWeight={700} fill="var(--color-accent)">
+                            PROPOSED
+                          </text>
+                          <text x={14} y={54} fontSize={14} fontWeight={700} fill="var(--canvas-node-label)">
+                            {truncateLabel(flowNode.label, 22)}
+                          </text>
+                          <text x={14} y={78} fontSize={11.5} fill="var(--canvas-node-sub)">
+                            {truncateLabel(flowNode.toolKey, 26)}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </g>
+                ) : null}
                 {edges.map((edge) => {
                   const source = flowNodes[edge.sourceInstanceId];
                   const target = flowNodes[edge.targetInstanceId];
@@ -1880,6 +1982,18 @@ export function IntegrationCanvas({
                         strokeLinecap="round"
                         pointerEvents="none"
                       />
+                      {activeEdgeIds.has(edge.edgeId) ? (
+                        <path
+                          d={geometry.path}
+                          fill="none"
+                          stroke="var(--color-surface)"
+                          strokeWidth={2.2}
+                          strokeDasharray="2 15"
+                          strokeLinecap="round"
+                          pointerEvents="none"
+                          className="canvas-modeled-flow"
+                        />
+                      ) : null}
                       {selected ? (
                         <path
                           d={geometry.path}
@@ -1991,8 +2105,8 @@ export function IntegrationCanvas({
                   const subtitleText = node.fixed
                     ? renderedSubtitle(node)
                     : isOverlayNode
-                      ? `${renderedSubtitle(node)} · Overlay`
-                      : renderedSubtitle(node);
+                      ? `${serviceProfile?.architecture_role ?? renderedSubtitle(node)} · Overlay`
+                      : serviceProfile?.architecture_role ?? renderedSubtitle(node);
                   const labelLines = renderedLabelLines(node);
                   const labelX = node.fixed ? 60 : 58;
                   const subtitleY = labelLines.length > 1 ? 58 : 56;
@@ -2003,6 +2117,9 @@ export function IntegrationCanvas({
                     <g
                       key={node.instanceId}
                       transform={`translate(${node.x}, ${node.y})`}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${node.label}, ${subtitleText}`}
                       onMouseEnter={() => setHoveredNodeId(node.instanceId)}
                       onMouseLeave={() => setHoveredNodeId((current) => (current === node.instanceId ? null : current))}
                       onMouseDown={(event) => {
@@ -2031,9 +2148,15 @@ export function IntegrationCanvas({
                         event.stopPropagation();
                         setSelectedElement({ kind: "node", id: node.instanceId });
                       }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedElement({ kind: "node", id: node.instanceId });
+                        }
+                      }}
                     >
                       <title>
-                        {[node.label, subtitleText, node.payloadNote].filter(Boolean).join(" · ")}
+                        {[node.label, subtitleText, node.payloadNote, serviceProfile?.summary].filter(Boolean).join(" · ")}
                       </title>
                       <rect
                         width={width}
@@ -2170,7 +2293,7 @@ export function IntegrationCanvas({
                             beginTextEdit("payload", node.instanceId, node.payloadNote);
                           }}
                         >
-                          {renderedPayload(node)}
+                          {renderedPayload(node, payloadKb, frequency)}
                         </text>
                       ) : null}
 
@@ -2275,6 +2398,121 @@ export function IntegrationCanvas({
         </div>
 
         <aside className="min-w-0 space-y-4">
+          {selectedFlowNode ? (
+            <section className="app-card-muted p-4 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="app-label">Selected component</p>
+                  <p className="mt-2 truncate font-semibold text-[var(--color-text-primary)]">
+                    {selectedFlowNode.label}
+                  </p>
+                </div>
+                {!selectedFlowNode.fixed ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNodes((current) => current.filter((node) => node.instanceId !== selectedFlowNode.instanceId));
+                      setEdges((current) =>
+                        current.filter(
+                          (edge) =>
+                            edge.sourceInstanceId !== selectedFlowNode.instanceId &&
+                            edge.targetInstanceId !== selectedFlowNode.instanceId,
+                        ),
+                      );
+                      setSelectedElement(null);
+                    }}
+                    className="rounded-lg border border-rose-300 p-2 text-rose-600 transition hover:bg-rose-50 dark:border-rose-900 dark:hover:bg-rose-950/30"
+                    title="Remove component"
+                    aria-label="Remove selected component"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+
+              {!selectedFlowNode.fixed ? (
+                <div className="mt-4 space-y-3">
+                  <label className="block">
+                    <span className="text-xs font-semibold text-[var(--color-text-secondary)]">Canvas label</span>
+                    <input
+                      value={selectedFlowNode.label}
+                      onChange={(event) =>
+                        setNodes((current) =>
+                          current.map((node) =>
+                            node.instanceId === selectedFlowNode.instanceId
+                              ? { ...node, label: event.target.value }
+                              : node,
+                          ),
+                        )
+                      }
+                      className="mt-1.5 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold text-[var(--color-text-secondary)]">Payload or routing note</span>
+                    <textarea
+                      value={selectedFlowNode.payloadNote}
+                      onChange={(event) =>
+                        setNodes((current) =>
+                          current.map((node) =>
+                            node.instanceId === selectedFlowNode.instanceId
+                              ? { ...node, payloadNote: event.target.value }
+                              : node,
+                          ),
+                        )
+                      }
+                      rows={3}
+                      placeholder="Optional implementation context"
+                      className="mt-1.5 w-full resize-none rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+                    />
+                  </label>
+                  {selectedServiceProfile ? (
+                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                      <p className="font-semibold text-[var(--color-text-primary)]">{selectedServiceProfile.name}</p>
+                      <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">
+                        {selectedServiceProfile.summary ?? selectedServiceProfile.architecture_role ?? "Governed OCI service component."}
+                      </p>
+                      <dl className="mt-3 space-y-3 text-xs">
+                        <div className="min-w-0">
+                          <dt className="text-[var(--color-text-muted)]">Service role</dt>
+                          <dd className="mt-1 break-words font-semibold text-[var(--color-text-primary)] [overflow-wrap:anywhere]">
+                            {selectedServiceProfile.architecture_role ?? selectedServiceProfile.category}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-[var(--color-text-muted)]">Pricing basis</dt>
+                          <dd className="mt-1 break-words font-semibold leading-5 text-[var(--color-text-primary)] [overflow-wrap:anywhere]">
+                            {selectedServiceProfile.pricing_model ?? "See BOM mapping"}
+                          </dd>
+                        </div>
+                        <div className="grid min-w-0 grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-3">
+                          <div className="min-w-0">
+                            <dt className="text-[var(--color-text-muted)]">Availability</dt>
+                            <dd className="mt-1 break-words font-semibold text-[var(--color-text-primary)] [overflow-wrap:anywhere]">
+                              {selectedServiceProfile.sla_uptime_pct !== null
+                                ? `${selectedServiceProfile.sla_uptime_pct}% SLA`
+                                : "Not documented"}
+                            </dd>
+                          </div>
+                          <div className="min-w-0">
+                            <dt className="text-[var(--color-text-muted)]">Key constraint</dt>
+                            <dd className="mt-1 break-words font-semibold text-[var(--color-text-primary)] [overflow-wrap:anywhere]">
+                              {topConstraintLabel(selectedServiceProfile)}
+                            </dd>
+                          </div>
+                        </div>
+                      </dl>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-3 text-xs leading-5 text-[var(--color-text-secondary)]">
+                  {selectedFlowNode.subtitle ?? "System endpoint"}. Endpoints inherit their identity from the captured integration.
+                </p>
+              )}
+            </section>
+          ) : null}
+
           <section className="app-card-muted p-4 text-sm">
             <span className="font-medium text-[var(--color-text-primary)]">Governed route</span>
             <p className="mt-2 text-[var(--color-text-secondary)]">

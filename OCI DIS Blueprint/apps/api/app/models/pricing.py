@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, UUIDMixin
@@ -91,6 +91,10 @@ class ServiceProductSkuMapping(Base, UUIDMixin, TimestampMixin):
     part_number: Mapped[Optional[str]] = mapped_column(String(50))
     billing_metric_key: Mapped[str] = mapped_column(String(150), nullable=False)
     formula_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    quantity_behavior: Mapped[str] = mapped_column(String(32), default="continuous", nullable=False)
+    quantity_increment: Mapped[float] = mapped_column(Numeric(28, 8, asdecimal=False), default=0.000001, nullable=False)
+    minimum_quantity: Mapped[float] = mapped_column(Numeric(28, 8, asdecimal=False), default=0, nullable=False)
+    quantity_unit: Mapped[str] = mapped_column(String(100), default="units", nullable=False)
     predicates: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
     is_billable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="approved", nullable=False)
@@ -112,12 +116,70 @@ class DeploymentScenario(Base, UUIDMixin, TimestampMixin):
     price_mode: Mapped[str] = mapped_column(String(50), default="public_list", nullable=False)
     technical_snapshot_id: Mapped[str] = mapped_column(ForeignKey("volumetry_snapshots.id"), nullable=False)
     contract_months: Mapped[int] = mapped_column(Integer, default=12, nullable=False)
-    environments: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    proration_policy: Mapped[str] = mapped_column(String(32), default="full_month", nullable=False)
+    consumption_model: Mapped[str] = mapped_column(String(32), default="explicit_units", nullable=False)
     service_config: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
     scenario_assumptions: Mapped[dict[str, object]] = mapped_column("assumptions", JSON, nullable=False, default=dict)
     created_by: Mapped[str] = mapped_column(String(100), nullable=False)
     approved_by: Mapped[Optional[str]] = mapped_column(String(100))
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class DeploymentEnvironmentPlan(Base, UUIDMixin, TimestampMixin):
+    """Normalized environment runtime posture owned by a deployment scenario."""
+
+    __tablename__ = "deployment_environment_plans"
+    __table_args__ = (UniqueConstraint("scenario_id", "name", name="uq_deployment_environment_scenario_name"),)
+
+    scenario_id: Mapped[str] = mapped_column(
+        ForeignKey("deployment_scenarios.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    active_hours_month: Mapped[float] = mapped_column(Numeric(10, 2, asdecimal=False), nullable=False)
+    demand_share: Mapped[float] = mapped_column(Numeric(12, 8, asdecimal=False), nullable=False)
+    ha_multiplier: Mapped[float] = mapped_column(Numeric(12, 8, asdecimal=False), nullable=False)
+    dr_role: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+class DeploymentRampPhase(Base, UUIDMixin, TimestampMixin):
+    """Inclusive real-unit quantity phase, with legacy multiplier compatibility."""
+
+    __tablename__ = "deployment_ramp_phases"
+
+    environment_plan_id: Mapped[str] = mapped_column(
+        ForeignKey("deployment_environment_plans.id", ondelete="CASCADE"), nullable=False
+    )
+    service_id: Mapped[Optional[str]] = mapped_column(String(80))
+    metric_key: Mapped[Optional[str]] = mapped_column(String(150))
+    sku_mapping_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("service_product_sku_mappings.id", ondelete="RESTRICT")
+    )
+    start_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_multiplier: Mapped[float] = mapped_column(Numeric(8, 6, asdecimal=False), nullable=False)
+    end_multiplier: Mapped[float] = mapped_column(Numeric(8, 6, asdecimal=False), nullable=False)
+    interpolation: Mapped[str] = mapped_column(String(16), nullable=False)
+    start_quantity: Mapped[Optional[float]] = mapped_column(Numeric(28, 8, asdecimal=False))
+    end_quantity: Mapped[Optional[float]] = mapped_column(Numeric(28, 8, asdecimal=False))
+    quantity_unit: Mapped[Optional[str]] = mapped_column(String(100))
+    rationale: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class DeploymentRampPeriodQuantity(Base, UUIDMixin, TimestampMixin):
+    """One normalized explicit monthly quantity inside a deployment ramp plan."""
+
+    __tablename__ = "deployment_ramp_period_quantities"
+    __table_args__ = (
+        UniqueConstraint("ramp_phase_id", "period_index", name="uq_deployment_ramp_period"),
+    )
+
+    ramp_phase_id: Mapped[str] = mapped_column(
+        ForeignKey("deployment_ramp_phases.id", ondelete="CASCADE"), nullable=False
+    )
+    period_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity: Mapped[float] = mapped_column(Numeric(28, 8, asdecimal=False), nullable=False)
 
 
 class BomJob(Base, UUIDMixin, TimestampMixin):
@@ -153,6 +215,11 @@ class BomSnapshot(Base, UUIDMixin, TimestampMixin):
     monthly_total: Mapped[float] = mapped_column(Numeric(24, 2, asdecimal=False), nullable=False)
     annual_total: Mapped[float] = mapped_column(Numeric(24, 2, asdecimal=False), nullable=False)
     contract_total: Mapped[float] = mapped_column(Numeric(24, 2, asdecimal=False), nullable=False)
+    steady_state_monthly_total: Mapped[float] = mapped_column(Numeric(24, 2, asdecimal=False), nullable=False)
+    peak_monthly_total: Mapped[float] = mapped_column(Numeric(24, 2, asdecimal=False), nullable=False)
+    ramp_deferred_amount: Mapped[float] = mapped_column(Numeric(24, 2, asdecimal=False), nullable=False)
+    first_active_period: Mapped[Optional[int]] = mapped_column(Integer)
+    steady_state_period: Mapped[Optional[int]] = mapped_column(Integer)
     summary: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
     warnings: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
     publication_status: Mapped[str] = mapped_column(String(50), default="draft", nullable=False)
@@ -181,5 +248,29 @@ class BomLineItem(Base, UUIDMixin, TimestampMixin):
     formula: Mapped[str] = mapped_column(Text, nullable=False)
     inputs: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(String(50), default="priced", nullable=False)
+    warnings: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    provenance: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class BomLinePeriod(Base, UUIDMixin, TimestampMixin):
+    """Immutable monthly quantity, price, and amount for one BOM line."""
+
+    __tablename__ = "bom_line_periods"
+    __table_args__ = (UniqueConstraint("bom_line_item_id", "period_index", name="uq_bom_line_period"),)
+
+    bom_line_item_id: Mapped[str] = mapped_column(
+        ForeignKey("bom_line_items.id", ondelete="CASCADE"), nullable=False
+    )
+    period_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    multiplier: Mapped[float] = mapped_column(Numeric(8, 6, asdecimal=False), nullable=False)
+    quantity: Mapped[float] = mapped_column(Numeric(28, 8, asdecimal=False), nullable=False)
+    active_hours: Mapped[float] = mapped_column(Numeric(12, 4, asdecimal=False), nullable=False)
+    unit_price: Mapped[float] = mapped_column(Numeric(24, 10, asdecimal=False), nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(24, 2, asdecimal=False), nullable=False)
+    selected_price_item_id: Mapped[Optional[str]] = mapped_column(ForeignKey("price_items.id"))
+    formula: Mapped[str] = mapped_column(Text, nullable=False)
+    inputs: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
     warnings: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
     provenance: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)

@@ -163,10 +163,22 @@ def _resolved_oci_config(settings: Settings) -> OciGenAiRuntimeConfig:
     )
 
 
+def _responses_url(runtime: OciGenAiRuntimeConfig) -> str:
+    """Return OCI's API-key Responses endpoint for the configured inference host."""
+
+    openai_suffix = "/openai/v1"
+    if runtime.base_url.endswith(openai_suffix):
+        origin = runtime.base_url[: -len(openai_suffix)]
+        return f"{origin}/20231130/actions/v1/responses"
+    if runtime.base_url.endswith("/20231130/actions/v1"):
+        return f"{runtime.base_url}/responses"
+    return f"{runtime.base_url}/responses"
+
+
 def _capability_cache_key(runtime: OciGenAiRuntimeConfig, settings: Settings) -> str:
     """Return a non-secret cache key for one OCI Responses capability scope."""
 
-    return f"{runtime.base_url}|{runtime.model_id}|{settings.OCI_GENAI_PROJECT_ID.strip()}"
+    return f"{_responses_url(runtime)}|{runtime.model_id}|{settings.OCI_GENAI_PROJECT_ID.strip()}"
 
 
 def _cached_responses_capability(
@@ -456,7 +468,7 @@ async def _post_model_request(
     if transport == "responses":
         response, response_retries = await _post_with_retry(
             client,
-            url=f"{runtime.base_url}/responses",
+            url=_responses_url(runtime),
             headers=headers,
             json_payload=responses_payload,
             settings=settings,

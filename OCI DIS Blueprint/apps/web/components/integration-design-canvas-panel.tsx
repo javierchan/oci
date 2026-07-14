@@ -3,6 +3,7 @@
 /* Full-width integration design canvas panel with dedicated persistence for flow editing. */
 
 import { useRouter } from "next/navigation";
+import { Calculator, Check, GitCompare, Loader2, X } from "lucide-react";
 import { startTransition, useEffect, useMemo, useState } from "react";
 
 import { AiReviewButton } from "@/components/ai-review-button";
@@ -15,6 +16,8 @@ import {
   serializeCanvasState,
 } from "@/lib/canvas-governance";
 import type {
+  AiReviewCanvasDraftSelection,
+  AiReviewDraftSimulation,
   CanvasCombination,
   CanvasServiceProfile,
   DictionaryOption,
@@ -165,6 +168,13 @@ export function IntegrationDesignCanvasPanel({
   const [error, setError] = useState<string>("");
   const [hasConnectedRoute, setHasConnectedRoute] = useState<boolean>(normalizedCanvasSeed.hasConnectedRoute);
   const [hasBlockingIssues, setHasBlockingIssues] = useState<boolean>(normalizedCanvasSeed.hasBlockingIssues);
+  const [recommendationPreview, setRecommendationPreview] = useState<AiReviewCanvasDraftSelection | null>(null);
+  const [simulation, setSimulation] = useState<AiReviewDraftSimulation | null>(null);
+  const [simulating, setSimulating] = useState<boolean>(false);
+  const maxPeriodDelta = useMemo(
+    () => Math.max(...(simulation?.commercial_impact.periods.map((item) => Math.abs(item.delta)) ?? []), 1),
+    [simulation],
+  );
   const canvasDirty =
     canvasState !== normalizedCanvasSeed.serializedValue ||
     toolKeys.join("|") !== normalizedCanvasSeed.coreToolKeys.join("|");
@@ -176,7 +186,13 @@ export function IntegrationDesignCanvasPanel({
     setHasBlockingIssues(normalizedCanvasSeed.hasBlockingIssues);
     setStatusMessage("");
     setError("");
+    setRecommendationPreview(null);
+    setSimulation(null);
   }, [normalizedCanvasSeed]);
+
+  useEffect(() => {
+    setSimulation(null);
+  }, [canvasState, toolKeys]);
 
   if (!integration.source_system) {
     return null;
@@ -224,6 +240,28 @@ export function IntegrationDesignCanvasPanel({
     }
   }
 
+  async function handleSimulateDraft(): Promise<void> {
+    if (!hasConnectedRoute) {
+      setError("Connect the source and destination before simulating the draft.");
+      return;
+    }
+    setSimulating(true);
+    setStatusMessage("");
+    setError("");
+    try {
+      const result = await api.simulateAiReviewCanvasDraft(projectId, integration.id, {
+        core_tools: toolKeys,
+        canvas_state: canvasState,
+      });
+      setSimulation(result);
+      setStatusMessage("Draft impact calculated without changing the integration or creating snapshots.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Unable to simulate the canvas draft.");
+    } finally {
+      setSimulating(false);
+    }
+  }
+
   return (
     <section className="app-card min-w-0 overflow-hidden space-y-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -237,6 +275,16 @@ export function IntegrationDesignCanvasPanel({
           </p>
         </div>
         <div className="hidden flex-wrap items-center gap-3 sm:flex">
+          <button
+            type="button"
+            onClick={() => void handleSimulateDraft()}
+            disabled={saving || simulating || !canvasDirty || !hasConnectedRoute}
+            className="app-button-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+            title={canvasDirty ? "Calculate technical and commercial impact without saving" : "Change the canvas to simulate a draft"}
+          >
+            {simulating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
+            {simulating ? "Simulating…" : "Simulate impact"}
+          </button>
           <AiReviewButton
             projectId={projectId}
             integrationId={integration.id}
@@ -244,6 +292,7 @@ export function IntegrationDesignCanvasPanel({
             label="Review current canvas"
             disabled={saving || !hasConnectedRoute || hasBlockingIssues}
             beforeOpen={() => handleSaveCanvas(false)}
+            onPreviewCanvasRecommendation={setRecommendationPreview}
           />
           <button
             type="button"
@@ -257,6 +306,162 @@ export function IntegrationDesignCanvasPanel({
           </button>
         </div>
       </div>
+
+      {recommendationPreview ? (
+        <section className="rounded-2xl border border-[var(--color-accent)] bg-[var(--color-surface-2)] p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <GitCompare className="h-4 w-4 text-[var(--color-accent)]" />
+                <p className="app-label">Canvas recommendation preview</p>
+                <span className="app-theme-chip">{recommendationPreview.candidate.combination_code}</span>
+              </div>
+              <h3 className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">
+                {recommendationPreview.candidate.title}
+              </h3>
+              <p className="mt-2 max-w-4xl text-sm leading-6 text-[var(--color-text-secondary)]">
+                The dashed overlay compares this governed candidate with the saved route. Apply it to the local draft
+                to edit or validate it; the integration remains unchanged until you explicitly save the canvas.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                {recommendationPreview.candidate.change_set.added_tools.map((tool) => (
+                  <span key={`preview-add-${tool}`} className="app-status-chip active">+ {tool}</span>
+                ))}
+                {recommendationPreview.candidate.change_set.removed_tools.map((tool) => (
+                  <span key={`preview-remove-${tool}`} className="app-status-chip archived">- {tool}</span>
+                ))}
+                {recommendationPreview.candidate.pattern_id !== integration.selected_pattern ? (
+                  <span className="app-theme-chip">
+                    Pattern proposal: {recommendationPreview.candidate.pattern_id ?? "None"} (confirm separately)
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setCanvasState(recommendationPreview.candidate.canvas_state);
+                  setToolKeys(recommendationPreview.candidate.core_tools);
+                  setRecommendationPreview(null);
+                  setStatusMessage("Recommendation applied to the unsaved canvas draft. Validate it, then save when ready.");
+                  setError("");
+                }}
+                className="app-button-primary gap-2"
+              >
+                <Check className="h-4 w-4" />
+                Apply to draft
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecommendationPreview(null)}
+                className="app-button-secondary gap-2"
+              >
+                <X className="h-4 w-4" />
+                Discard preview
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {simulation ? (
+        <section className="space-y-5 border-t border-[var(--color-border)] pt-5" aria-live="polite">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="app-label">Unsaved draft simulation</p>
+              <h3 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
+                Technical and commercial impact before save
+              </h3>
+              <p className="mt-2 max-w-4xl text-sm leading-6 text-[var(--color-text-secondary)]">
+                Calculated with assumptions {simulation.assumption_set_version} and Service Product rules {simulation.service_rules_version}.
+                No catalog record, snapshot, or approved BOM was changed.
+              </p>
+            </div>
+            <span className={`app-status-chip ${simulation.commercial_impact.status === "computed" ? "active" : "archived"}`}>
+              {simulation.commercial_impact.status.replaceAll("_", " ")}
+            </span>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {simulation.metrics.map((metric) => (
+              <article key={metric.key} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+                <p className="app-label">{metric.label}</p>
+                <p className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">
+                  {new Intl.NumberFormat("en-US", { maximumFractionDigits: 2, notation: "compact" }).format(metric.proposed)}
+                </p>
+                <p className={`mt-1 text-xs font-semibold ${metric.delta > 0 ? "text-amber-600" : metric.delta < 0 ? "text-emerald-600" : "text-[var(--color-text-muted)]"}`}>
+                  {metric.delta > 0 ? "+" : ""}{new Intl.NumberFormat("en-US", { maximumFractionDigits: 2, notation: "compact" }).format(metric.delta)} {metric.unit}
+                </p>
+              </article>
+            ))}
+            {simulation.metrics.length === 0 ? (
+              <p className="text-sm text-[var(--color-text-secondary)]">The draft does not change consolidated technical demand.</p>
+            ) : null}
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+            <article className="rounded-2xl border border-[var(--color-border)] p-4">
+              <p className="app-label">Approved scenario impact</p>
+              {simulation.commercial_impact.currency ? (
+                <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                  {[
+                    ["Monthly", simulation.commercial_impact.monthly_delta],
+                    ["Contract", simulation.commercial_impact.contract_delta],
+                    ["Ramp timing", simulation.commercial_impact.ramp_deferred_delta],
+                  ].map(([label, value]) => (
+                    <div key={String(label)}>
+                      <p className="text-xs text-[var(--color-text-muted)]">{label}</p>
+                      <p className="mt-1 font-semibold text-[var(--color-text-primary)]">
+                        {new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: simulation.commercial_impact.currency ?? "USD",
+                          maximumFractionDigits: 0,
+                          signDisplay: "always",
+                        }).format(Number(value ?? 0))}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">{simulation.commercial_impact.detail}</p>
+              {simulation.commercial_impact.scenario_name ? (
+                <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+                  Scenario: {simulation.commercial_impact.scenario_name} · {simulation.commercial_impact.consumption_model?.replaceAll("_", " ")}
+                </p>
+              ) : null}
+            </article>
+
+            <article className="rounded-2xl border border-[var(--color-border)] p-4">
+              <p className="app-label">Monthly contract delta</p>
+              {simulation.commercial_impact.periods.length > 0 ? (
+                <div className="mt-4 flex h-28 items-end gap-1 overflow-hidden" aria-label="Monthly draft cost delta">
+                  {simulation.commercial_impact.periods.map((period) => {
+                    const height = Math.max(4, Math.abs(period.delta) / maxPeriodDelta * 100);
+                    return (
+                      <div key={period.period_index} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1" title={`Month ${period.period_index}: ${period.delta >= 0 ? "+" : ""}${period.delta.toFixed(2)}`}>
+                        <div className={`w-full rounded-t-sm ${period.delta > 0 ? "bg-amber-500" : period.delta < 0 ? "bg-emerald-500" : "bg-[var(--color-border)]"}`} style={{ height: `${height}%` }} />
+                        <span className="text-[9px] text-[var(--color-text-muted)]">{period.period_index}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Approve a deployment scenario to display monthly deltas.</p>
+              )}
+            </article>
+          </div>
+
+          {simulation.proposed_warnings.length > 0 || simulation.commercial_impact.warnings.length > 0 ? (
+            <details className="rounded-xl border border-amber-400/45 p-4 text-sm">
+              <summary className="cursor-pointer font-semibold text-amber-700 dark:text-amber-300">Review simulation caveats</summary>
+              <ul className="mt-3 space-y-1.5 text-[var(--color-text-secondary)]">
+                {[...simulation.proposed_warnings, ...simulation.commercial_impact.warnings].map((warning) => <li key={warning}>• {warning}</li>)}
+              </ul>
+            </details>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className="sm:hidden rounded-[1.75rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5 text-center">
         <p className="text-base font-semibold text-[var(--color-text-primary)]">
@@ -306,6 +511,7 @@ export function IntegrationDesignCanvasPanel({
           onToolsChange={setToolKeys}
           onConnectionValidityChange={setHasConnectedRoute}
           onBlockingIssuesChange={setHasBlockingIssues}
+          recommendationPreview={recommendationPreview}
         />
       </div>
 
