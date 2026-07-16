@@ -12,6 +12,14 @@ from app.models.project import ImportStatus
 from app.services import import_service
 
 
+def test_previous_v2_template_contract_remains_supported() -> None:
+    """Keep already-downloaded v2 workbooks importable after the v3 rollout."""
+
+    compatibility = import_service._validate_template_version({"template_version": "2.0.0"})
+
+    assert compatibility == "older_supported"
+
+
 def test_build_raw_column_values_preserves_header_labels() -> None:
     raw_headers = import_service._build_raw_header_labels([None, "Interfaz", None])
     raw_values = import_service._build_raw_column_values(
@@ -114,7 +122,7 @@ def test_normalized_payload_value_keeps_kb_string_values() -> None:
     assert payload_event is None
 
 
-def test_build_catalog_integration_marks_reference_only_patterns_for_review() -> None:
+def test_build_catalog_integration_enforces_certified_pattern_requirements() -> None:
     header_map = {
         import_service.RAW_HEADERS_METADATA_KEY: json.dumps(
             {
@@ -156,7 +164,11 @@ def test_build_catalog_integration_marks_reference_only_patterns_for_review() ->
 
     assert integration.qa_status == "REVISAR"
     assert integration.qa_reasons is not None
-    assert "PATTERN_REFERENCE_ONLY" in integration.qa_reasons
+    assert "PATTERN_NOT_CERTIFIED" not in integration.qa_reasons
+    assert "RETRY_POLICY_REQUIRED" in integration.qa_reasons
+    assert "IDEMPOTENCY_REQUIRED" in integration.qa_reasons
+    assert "MISSING_FAN_OUT_TARGETS" in integration.qa_reasons
+    assert "PATTERN_OVERLAYS_NOT_CERTIFIED" in integration.qa_reasons
 
 
 @pytest.mark.asyncio

@@ -103,6 +103,42 @@ export function CaptureStepTechnical({
           />
         </label>
         <label className="block">
+          <span className="app-label mb-2 block">Business Criticality</span>
+          <select value={form.business_criticality ?? ""} onChange={(event) => updateField("business_criticality", event.target.value)} className="app-input">
+            <option value="">Not assessed</option>
+            <option value="Baja">Low</option>
+            <option value="Media">Medium</option>
+            <option value="Alta">High</option>
+            <option value="Crítica">Critical</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="app-label mb-2 block">SLA / Target Latency</span>
+          <input value={form.target_latency_sla ?? ""} onChange={(event) => updateField("target_latency_sla", event.target.value)} className="app-input" placeholder="p95 under 5 seconds" />
+        </label>
+        <label className="block">
+          <span className="app-label mb-2 block">Data Classification</span>
+          <select value={form.data_security_classification ?? ""} onChange={(event) => updateField("data_security_classification", event.target.value)} className="app-input">
+            <option value="">Not assessed</option>
+            <option value="Pública">Public</option>
+            <option value="Interna">Internal</option>
+            <option value="Confidencial">Confidential</option>
+            <option value="Restringida">Restricted</option>
+          </select>
+        </label>
+        <label className="block md:col-span-2">
+          <span className="app-label mb-2 block">Retention / Processing Window</span>
+          <input value={form.retention_processing_window ?? ""} onChange={(event) => updateField("retention_processing_window", event.target.value)} className="app-input" placeholder="Retain 7 days; process 22:00-02:00" />
+        </label>
+        <label className="block md:col-span-2">
+          <span className="app-label mb-2 block">Retry Policy</span>
+          <textarea value={form.retry_policy ?? ""} onChange={(event) => updateField("retry_policy", event.target.value)} rows={3} className="app-input" placeholder="3 attempts; exponential backoff; DLQ" />
+        </label>
+        <label className="block md:col-span-2">
+          <span className="app-label mb-2 block">Idempotency</span>
+          <textarea value={form.idempotency ?? ""} onChange={(event) => updateField("idempotency", event.target.value)} rows={3} className="app-input" placeholder="Use orderId as deduplication key" />
+        </label>
+        <label className="block">
           <span className="app-label mb-2 block">Pattern</span>
           <select
             value={form.selected_pattern ?? ""}
@@ -133,7 +169,7 @@ export function CaptureStepTechnical({
         <div
           className={[
             "rounded-2xl border p-4 text-sm",
-            selectedPatternDefinition.support.parity_ready
+            selectedPatternDefinition.support.certification_status === "certified"
               ? "border-emerald-200 bg-emerald-50/80 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200"
               : "border-amber-200 bg-amber-50/90 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200",
           ].join(" ")}

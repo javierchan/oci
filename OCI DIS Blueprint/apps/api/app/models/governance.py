@@ -11,7 +11,7 @@ from .base import Base, TimestampMixin, UUIDMixin
 
 
 class PatternDefinition(Base, UUIDMixin, TimestampMixin):
-    """17 OCI integration patterns from TPL - Patrones."""
+    """Governed, tool-agnostic integration patterns available to the App."""
 
     __tablename__ = "pattern_definitions"
 

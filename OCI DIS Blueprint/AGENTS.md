@@ -702,6 +702,23 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       plus a focused one-to-two-day OCI Pricing review. See
       `docs/architecture/oci-full-catalog-commercial-coverage-plan.md`
 
+### M52 — Governed Pattern Certification
+- [x] Certify all 21 system patterns through one versioned deterministic registry
+      covering evidence, sizing, approved compositions, OCI services, external
+      dependencies, and validation controls
+- [x] Evaluate certification evidence and canvas composition during import,
+      capture, patch, recalculation, Architecture Review, and export workflows
+- [x] Expand canvas governance with the overlays and combinations required by
+      Zero Trust, Data Mesh, AI, Integration Mesh, batch, correlation, Claim Check,
+      DLQ/replay, and event-contract patterns
+- [x] Expose the certification contract in Pattern Library, integration detail,
+      canvas, narratives, snapshots, offline workbook, and typed API contracts
+- [x] Keep unknown custom patterns explicitly unverified and prevent them from
+      producing certified sizing or architecture-readiness evidence
+- [x] **Exit criteria**: migration head `20260716_0032`; all 21 profiles have
+      deterministic fixtures; API, calc-engine, frontend, OpenAPI, Docker,
+      export, browser, light/dark, and console validation pass
+
 ### M26 — Topology Decision Workspace
 - [x] Separate statistical majority from conservative edge risk so mixed paths
       cannot render as healthy when review or pending integrations are present

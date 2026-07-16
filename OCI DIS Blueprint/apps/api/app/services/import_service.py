@@ -174,8 +174,8 @@ def _assert_no_capture_formulas(sheet: Any) -> None:
                 )
 
 
-def _validate_v2_headers(all_rows: list[list], manifest: dict[str, str]) -> None:
-    """Keep the v2 capture contract exact while preserving legacy workbook compatibility."""
+def _validate_current_headers(all_rows: list[list], manifest: dict[str, str]) -> None:
+    """Keep the current capture contract exact while preserving older workbooks."""
 
     if manifest.get("template_version") != TEMPLATE_VERSION:
         return
@@ -184,7 +184,7 @@ def _validate_v2_headers(all_rows: list[list], manifest: dict[str, str]) -> None
     expected_headers = [column.header for column in TEMPLATE_COLUMNS]
     if actual_headers[: len(expected_headers)] != expected_headers:
         raise _bad_request(
-            "The governed v2 capture headers were renamed, removed, or reordered. Download a fresh template and paste values only into its capture rows.",
+            f"The governed v{TEMPLATE_VERSION} capture headers were renamed, removed, or reordered. Download a fresh template and paste values only into its capture rows.",
             "IMPORT_TEMPLATE_HEADERS_CHANGED",
         )
 
@@ -442,6 +442,21 @@ def _build_catalog_integration(
         fan_out_targets=parse_int(_extract_raw_value(raw_data, header_map, "fan_out_targets")),
         uncertainty=parse_text(_extract_raw_value(raw_data, header_map, "uncertainty")) or None,
         is_active_row=True,
+        retry_policy=parse_text(_extract_raw_value(raw_data, header_map, "retry_policy")),
+        idempotency=parse_text(_extract_raw_value(raw_data, header_map, "idempotency")),
+        target_latency_sla=parse_text(_extract_raw_value(raw_data, header_map, "target_latency_sla")),
+        data_security_classification=parse_text(
+            _extract_raw_value(raw_data, header_map, "data_security_classification")
+        ),
+        retention_processing_window=parse_text(
+            _extract_raw_value(raw_data, header_map, "retention_processing_window")
+        ),
+        business_criticality=parse_text(
+            _extract_raw_value(raw_data, header_map, "business_criticality")
+        ),
+        additional_tools_overlays=parse_text(
+            _extract_raw_value(raw_data, header_map, "additional_tools_overlays")
+        ),
     )
     qa_reasons = list(qa_result.reasons)
     support_reason = support_reason_code(
@@ -459,6 +474,7 @@ def _build_catalog_integration(
         business_process=parse_text(_extract_raw_value(raw_data, header_map, "business_process")),
         interface_name=parse_text(_extract_raw_value(raw_data, header_map, "interface_name")),
         description=parse_text(_extract_raw_value(raw_data, header_map, "description")),
+        business_criticality=parse_text(_extract_raw_value(raw_data, header_map, "business_criticality")),
         status=parse_text(_extract_raw_value(raw_data, header_map, "status")),
         mapping_status=parse_text(_extract_raw_value(raw_data, header_map, "mapping_status")),
         initial_scope=parse_text(_extract_raw_value(raw_data, header_map, "initial_scope")),
@@ -468,6 +484,7 @@ def _build_catalog_integration(
         base=parse_text(_extract_raw_value(raw_data, header_map, "base")),
         interface_status=parse_text(_extract_raw_value(raw_data, header_map, "interface_status")),
         is_real_time=parse_bool(_extract_raw_value(raw_data, header_map, "is_real_time")),
+        target_latency_sla=parse_text(_extract_raw_value(raw_data, header_map, "target_latency_sla")),
         trigger_type=parse_text(_extract_raw_value(raw_data, header_map, "trigger_type")),
         response_size_kb=parse_float(_extract_raw_value(raw_data, header_map, "response_size_kb")),
         payload_per_execution_kb=payload_value,
@@ -481,12 +498,16 @@ def _build_catalog_integration(
         destination_technology_1=destination_technology_1,
         destination_technology_2=destination_technology_2,
         destination_owner=parse_text(_extract_raw_value(raw_data, header_map, "destination_owner")),
+        data_security_classification=parse_text(
+            _extract_raw_value(raw_data, header_map, "data_security_classification")
+        ),
         executions_per_day=execs_per_day,
         payload_per_hour_kb=payload_hour_result.value if payload_hour_result else None,
         selected_pattern=parse_text(_extract_raw_value(raw_data, header_map, "selected_pattern")),
         pattern_rationale=parse_text(_extract_raw_value(raw_data, header_map, "pattern_rationale")),
         comments=parse_text(_extract_raw_value(raw_data, header_map, "comments")),
         retry_policy=parse_text(_extract_raw_value(raw_data, header_map, "retry_policy")),
+        idempotency=parse_text(_extract_raw_value(raw_data, header_map, "idempotency")),
         core_tools=parse_text(_extract_raw_value(raw_data, header_map, "core_tools")),
         additional_tools_overlays=parse_text(
             _extract_raw_value(raw_data, header_map, "additional_tools_overlays")
@@ -494,6 +515,9 @@ def _build_catalog_integration(
         qa_status="OK" if not qa_reasons else "REVISAR",
         qa_reasons=qa_reasons,
         calendarization=parse_text(_extract_raw_value(raw_data, header_map, "calendarization")),
+        retention_processing_window=parse_text(
+            _extract_raw_value(raw_data, header_map, "retention_processing_window")
+        ),
         uncertainty=parse_text(_extract_raw_value(raw_data, header_map, "uncertainty")),
     )
 
@@ -553,7 +577,7 @@ async def process_import(batch_id: str, source_reference: str, db: AsyncSession)
     sheet = workbook[SOURCE_SHEET_NAME]
     _assert_no_capture_formulas(sheet)
     all_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
-    _validate_v2_headers(all_rows, manifest)
+    _validate_current_headers(all_rows, manifest)
     import_result = parse_rows(all_rows)
     header_row_index = detect_header_row(all_rows)
     raw_header_labels = _build_raw_header_labels(all_rows[header_row_index] if all_rows else [])

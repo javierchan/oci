@@ -542,6 +542,85 @@ PATTERNS: list[dict[str, str]] = [
             "subscribers are never overwhelmed regardless of inbound event rate."
         ),
     },
+    {
+        "pattern_id": "#18",
+        "name": "Scheduled Batch / File Transfer",
+        "category": "BATCH / DATA",
+        "description": "Move governed datasets or files on a schedule with explicit processing windows and reprocessing controls.",
+        "oci_components": "OIC Gen3 scheduled orchestration | OCI Data Integration | OCI Object Storage | SFTP endpoints",
+        "when_to_use": (
+            "- End-of-day, end-of-month, payroll, statement, or catalog exchanges where hours are acceptable.\n"
+            "- High-volume ETL/ELT and file transfers that benefit from predictable batch windows.\n"
+            "- Legacy endpoints that expose files rather than transactional APIs."
+        ),
+        "when_not_to_use": (
+            "Do not use when the business requires minute-level latency. Define the batch window, "
+            "retention, restart point, reconciliation, and reprocessing procedure before approval."
+        ),
+        "technical_flow": (
+            "1. A governed scheduler starts the batch.\n2. Data is extracted to a staging location.\n"
+            "3. The batch is validated and transformed.\n4. The file or dataset is loaded to the target.\n"
+            "5. Completion, reconciliation, and restart evidence is recorded."
+        ),
+        "business_value": "Predictable windows and low operational cost for high-volume or legacy exchanges.",
+    },
+    {
+        "pattern_id": "#19",
+        "name": "Async Request-Reply (Correlation)",
+        "category": "ASYNCHRONOUS",
+        "description": "Accept a request immediately, process it asynchronously, and correlate a later callback or response.",
+        "oci_components": "OCI Queue | OIC Gen3 | OCI Functions | callback or webhook endpoint",
+        "when_to_use": (
+            "- Processing can exceed synchronous timeout limits.\n"
+            "- Slow backends or peak traffic require buffering and independent scaling.\n"
+            "- The caller can receive a correlation ID and poll or accept a callback."
+        ),
+        "when_not_to_use": "Do not use when the caller requires an immediate result or when correlation, idempotency, retries, and response expiry are undefined.",
+        "technical_flow": (
+            "1. Accept and validate the request.\n2. Persist a correlation ID and enqueue work.\n"
+            "3. A worker processes the request.\n4. The result is published or delivered by callback.\n"
+            "5. The caller correlates the final response and expiry is enforced."
+        ),
+        "business_value": "Eliminates long-running request timeouts while absorbing bursts and isolating backend latency.",
+    },
+    {
+        "pattern_id": "#20",
+        "name": "Claim Check",
+        "category": "DELIVERY / PERFORMANCE",
+        "description": "Store a large payload securely and move a governed reference through the integration path.",
+        "oci_components": "OCI Object Storage | OCI Streaming or OCI Queue | OIC Gen3",
+        "when_to_use": (
+            "- Payloads or attachments exceed message-service limits.\n"
+            "- Large binary content should not be replicated through every intermediary.\n"
+            "- Retention, encryption, and access expiry can be governed independently."
+        ),
+        "when_not_to_use": "Do not add storage indirection for small payloads. Security classification, object lifecycle, access expiry, and orphan cleanup must be explicit.",
+        "technical_flow": (
+            "1. Store the payload in OCI Object Storage.\n2. Create a short-lived governed reference.\n"
+            "3. Send the reference through Queue, Streaming, or OIC.\n4. The consumer retrieves and verifies the object.\n"
+            "5. Lifecycle policy expires or archives the payload."
+        ),
+        "business_value": "Avoids payload limits and reduces message duplication while preserving secure lifecycle control.",
+    },
+    {
+        "pattern_id": "#21",
+        "name": "DLQ / Retry with Backoff",
+        "category": "RESILIENCE / DELIVERY GUARANTEES",
+        "description": "Retry transient failures with bounded backoff, then isolate terminal failures in a governed dead-letter queue.",
+        "oci_components": "OCI Queue | OIC Gen3 error handling | OCI Notifications | OCI Monitoring",
+        "when_to_use": (
+            "- Asynchronous delivery can encounter transient endpoint or network failures.\n"
+            "- Failed messages must remain recoverable without blocking healthy traffic.\n"
+            "- Operations need measurable retry, alerting, triage, and replay behavior."
+        ),
+        "when_not_to_use": "Do not retry business validation errors or use unbounded retries. Consumers must be idempotent and DLQ ownership and replay SLA must be assigned.",
+        "technical_flow": (
+            "1. Attempt delivery.\n2. Retry transient failures with exponential backoff and jitter.\n"
+            "3. Stop after the governed attempt limit.\n4. Move the message to a DLQ and alert the owner.\n"
+            "5. Correct, replay, and audit the final outcome."
+        ),
+        "business_value": "Prevents message loss and cascading retries while making recovery ownership and evidence explicit.",
+    },
 ]
 
 ASSUMPTION_SET = {
@@ -1728,6 +1807,14 @@ def _pattern_capture_guidance(pattern_data: dict[str, str]) -> tuple[list[str], 
         required_inputs.extend(["Retention or processing window", "Idempotency and retry/DLQ"])
     if pattern_data["pattern_id"] in {"#02", "#07", "#17"}:
         required_inputs.append("Fan-out and destination count")
+    if pattern_data["pattern_id"] == "#18":
+        required_inputs.extend(["File format", "Batch window and reprocessing procedure"])
+    if pattern_data["pattern_id"] == "#19":
+        required_inputs.extend(["Target latency", "Correlation mechanism", "Response expiry"])
+    if pattern_data["pattern_id"] == "#20":
+        required_inputs.extend(["Retention", "Data/security classification", "Reference expiry"])
+    if pattern_data["pattern_id"] == "#21":
+        required_inputs.extend(["Retry policy", "DLQ owner", "Replay SLA"])
     return examples, questions, required_inputs
 
 

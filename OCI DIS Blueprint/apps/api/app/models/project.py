@@ -113,6 +113,7 @@ class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
     business_process: Mapped[Optional[str]] = mapped_column(String(500))
     interface_name: Mapped[Optional[str]] = mapped_column(String(500))
     description: Mapped[Optional[str]] = mapped_column(String(2000))
+    business_criticality: Mapped[Optional[str]] = mapped_column(String(100))
 
     status: Mapped[Optional[str]] = mapped_column(String(100))
     mapping_status: Mapped[Optional[str]] = mapped_column(String(100))
@@ -124,6 +125,7 @@ class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
     base: Mapped[Optional[str]] = mapped_column(String(255))
     interface_status: Mapped[Optional[str]] = mapped_column(String(100))
     is_real_time: Mapped[Optional[bool]] = mapped_column(Boolean)
+    target_latency_sla: Mapped[Optional[str]] = mapped_column(String(255))
     trigger_type: Mapped[Optional[str]] = mapped_column(String(100))
 
     response_size_kb: Mapped[Optional[float]] = mapped_column(Float)
@@ -140,6 +142,7 @@ class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
     destination_technology_1: Mapped[Optional[str]] = mapped_column(String(255))
     destination_technology_2: Mapped[Optional[str]] = mapped_column(String(255))
     destination_owner: Mapped[Optional[str]] = mapped_column(String(255))
+    data_security_classification: Mapped[Optional[str]] = mapped_column(String(255))
 
     executions_per_day: Mapped[Optional[float]] = mapped_column(Float)
     payload_per_hour_kb: Mapped[Optional[float]] = mapped_column(Float)
@@ -148,6 +151,7 @@ class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
     pattern_rationale: Mapped[Optional[str]] = mapped_column(String(2000))
     comments: Mapped[Optional[str]] = mapped_column(String(4000))
     retry_policy: Mapped[Optional[str]] = mapped_column(String(500))
+    idempotency: Mapped[Optional[str]] = mapped_column(String(500))
     core_tools: Mapped[Optional[str]] = mapped_column(String(1000))
     additional_tools_overlays: Mapped[Optional[str]] = mapped_column(String(1000))
 
@@ -155,6 +159,7 @@ class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
     qa_reasons: Mapped[Optional[list]] = mapped_column(JSON)
 
     calendarization: Mapped[Optional[str]] = mapped_column(String(255))
+    retention_processing_window: Mapped[Optional[str]] = mapped_column(String(500))
     uncertainty: Mapped[Optional[str]] = mapped_column(String(255))
 
     project: Mapped["Project"] = relationship(back_populates="catalog_integrations")

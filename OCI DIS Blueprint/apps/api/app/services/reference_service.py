@@ -60,10 +60,17 @@ def serialize_pattern(pattern: PatternDefinition) -> PatternDefinitionResponse:
         is_active=pattern.is_active,
         version=pattern.version,
         support=PatternSupportResponse(
-            level=support.level,
             badge_label=support.badge_label,
             summary=support.summary,
-            parity_ready=support.parity_ready,
+            certification_status=support.certification_status,
+            certification_version=support.certification_version,
+            sizing_strategy=support.sizing_strategy,
+            required_evidence=list(support.required_evidence),
+            approved_core_tool_groups=[list(group) for group in support.approved_core_tool_groups],
+            approved_overlay_groups=[list(group) for group in support.approved_overlay_groups],
+            commercial_service_ids=list(support.commercial_service_ids),
+            external_dependencies=list(support.external_dependencies),
+            validation_controls=list(support.validation_controls),
             dimensions=PatternSupportDimensionsResponse(
                 capture_selection=support.dimensions.capture_selection,
                 qa_validation=support.dimensions.qa_validation,
@@ -366,13 +373,15 @@ def normalize_dictionary_category(category: str) -> str:
 def _governed_canvas_option_filter(category: str):
     """Limit canvas palettes to coded, described, active governance records."""
 
-    return (
+    filters = (
         DictionaryOption.category == category,
         DictionaryOption.is_active.is_(True),
         DictionaryOption.code.is_not(None),
         DictionaryOption.description.is_not(None),
-        DictionaryOption.is_volumetric.is_(True),
     )
+    if category == "TOOLS":
+        return (*filters, DictionaryOption.is_volumetric.is_(True))
+    return filters
 
 
 async def list_dictionary_options(

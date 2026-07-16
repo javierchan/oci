@@ -25,6 +25,13 @@ _ensure_calc_engine_path()
 
 from engine.importer import HEADER_ALIASES, ImportResult, NormalizationEvent, ParsedRow, detect_header_row, parse_rows  # noqa: E402
 from engine.qa import QAResult, evaluate_qa, normalize_trigger_type  # noqa: E402
+from engine.pattern_certification import (  # noqa: E402
+    CERTIFICATION_VERSION,
+    PATTERN_CERTIFICATIONS,
+    PatternCertificationProfile,
+    composition_issues,
+    get_pattern_certification,
+)
 from engine.volumetry import (  # noqa: E402
     Assumptions,
     CalcResult,
@@ -51,8 +58,12 @@ __all__ = [
     "ImportResult",
     "IntegrationInput",
     "NormalizationEvent",
+    "PATTERN_CERTIFICATIONS",
     "ParsedRow",
+    "PatternCertificationProfile",
     "QAResult",
+    "CERTIFICATION_VERSION",
+    "composition_issues",
     "consolidate_project",
     "detect_header_row",
     "di_data_processed_gb",
@@ -60,6 +71,7 @@ __all__ = [
     "executions_per_day",
     "functions_execution_units",
     "functions_invocations_per_month",
+    "get_pattern_certification",
     "normalize_trigger_type",
     "normalize_payload_to_kb",
     "oic_billing_messages_per_execution",

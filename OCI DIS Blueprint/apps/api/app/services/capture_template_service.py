@@ -9,6 +9,7 @@ from io import BytesIO
 from typing import Any, Iterable
 
 from openpyxl import Workbook
+from openpyxl.chart import BarChart, Reference
 from openpyxl.comments import Comment
 from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Protection, Side
@@ -31,11 +32,12 @@ from app.schemas.export import CaptureTemplateMetadata, CaptureTemplateColumnMet
 from app.services.pattern_support import get_pattern_support
 
 
-TEMPLATE_VERSION = "2.0.0"
-IMPORTER_MIN_VERSION = "2.0.0"
+TEMPLATE_VERSION = "3.0.0"
+IMPORTER_MIN_VERSION = "3.0.0"
 TEMPLATE_FILENAME = f"oci-dis-import-template-v{TEMPLATE_VERSION}.xlsx"
 CAPTURE_SHEET_NAME = "Catálogo de Integraciones"
 MANIFEST_SHEET_NAME = "_Listas"
+CLIENT_CATALOGS_SHEET_NAME = "Catálogos del Cliente"
 CAPTURE_ROW_LIMIT = 501
 
 
@@ -59,11 +61,12 @@ class TemplateColumnSpec:
 COLUMNS: tuple[TemplateColumnSpec, ...] = (
     TemplateColumnSpec("seq_number", "#", "Identidad", "Opcional", "Entero", "Orden visible de la integración.", "1", "Uno", "Conserva el orden de captura."),
     TemplateColumnSpec("interface_id", "ID de Interfaz", "Identidad", "Recomendado", "Texto", "Identificador único y estable de la integración.", "INT-001", "Integración nueva", "Permite trazabilidad, duplicados y cobertura."),
-    TemplateColumnSpec("owner", "Owner", "Identidad", "Opcional", "Texto", "Persona responsable de completar o gobernar el registro.", "Finance Architect", "Equipo", "Facilita seguimiento operativo."),
-    TemplateColumnSpec("brand", "Marca", "Negocio", "Requerido", "Texto", "Unidad, marca o entidad de negocio propietaria.", "Retail", "N/A", "Segmenta dashboard y catálogo."),
-    TemplateColumnSpec("business_process", "Proceso de Negocio", "Negocio", "Requerido", "Texto", "Proceso de negocio que habilita la integración.", "Order to Cash", "Integración", "Agrupa riesgo y cobertura por proceso."),
+    TemplateColumnSpec("owner", "Owner", "Identidad", "Opcional", "Texto", "Persona responsable de completar o gobernar el registro.", "Finance Architect", "Equipo", "Facilita seguimiento operativo.", "CLIENT_OWNERS"),
+    TemplateColumnSpec("brand", "Marca", "Negocio", "Requerido", "Texto", "Unidad, marca o entidad de negocio propietaria.", "Retail", "N/A", "Segmenta dashboard y catálogo.", "CLIENT_BRANDS"),
+    TemplateColumnSpec("business_process", "Proceso de Negocio", "Negocio", "Requerido", "Texto", "Proceso de negocio que habilita la integración.", "Order to Cash", "Integración", "Agrupa riesgo y cobertura por proceso.", "CLIENT_PROCESSES"),
     TemplateColumnSpec("interface_name", "Interfaz", "Identidad", "Requerido", "Texto", "Nombre funcional que explica qué información se mueve.", "Publicar pedido confirmado", "INT-001", "Es el nombre principal mostrado por la App."),
     TemplateColumnSpec("description", "Descripción", "Negocio", "Recomendado", "Texto", "Descripción breve del propósito y resultado esperado.", "Publica pedidos confirmados al fulfillment.", "TBD", "Aporta contexto a QA y revisión de arquitectura."),
+    TemplateColumnSpec("business_criticality", "Criticidad de Negocio", "Negocio", "Recomendado", "Lista", "Impacto operativo o financiero si la integración deja de funcionar.", "Alta", "Importante", "Prioriza riesgo, resiliencia y secuencia de remediación.", "BUSINESS_CRITICALITY"),
     TemplateColumnSpec("status", "Estado", "Gobernanza", "Opcional", "Texto", "Estado general del registro en el assessment.", "En Progreso", "Bien", "Conserva evidencia del levantamiento."),
     TemplateColumnSpec("mapping_status", "Estado de Mapeo", "Gobernanza", "Opcional", "Texto", "Avance del mapeo de campos origen-destino.", "Pendiente", "50", "Ayuda a priorizar trabajo de definición."),
     TemplateColumnSpec("initial_scope", "Alcance Inicial", "Negocio", "Opcional", "Texto", "Indica si la integración pertenece al alcance inicial.", "Sí", "Tal vez", "Preserva el alcance acordado."),
@@ -72,25 +75,29 @@ COLUMNS: tuple[TemplateColumnSpec, ...] = (
     TemplateColumnSpec("type", "Tipo", "Ejecución", "Opcional", "Texto", "Clasificación heredada del inventario fuente.", "Batch", "Proceso", "Mantiene fidelidad con workbooks existentes."),
     TemplateColumnSpec("interface_status", "Estado Interfaz", "Gobernanza", "Opcional", "Texto", "Estado específico de la interfaz; Duplicado 2 se excluye.", "Activo", "Duplicado", "Controla exclusiones heredadas."),
     TemplateColumnSpec("is_real_time", "Tiempo Real (Si/No)", "Ejecución", "Recomendado", "Lista", "Indica si el negocio requiere procesamiento en tiempo real.", "Sí", "Realtime", "Aporta semántica de latencia a QA.", "YES_NO"),
+    TemplateColumnSpec("target_latency_sla", "SLA / Latencia Objetivo", "Ejecución", "Recomendado", "Texto", "Objetivo medible de latencia o tiempo máximo de procesamiento.", "p95 < 5 segundos", "Rápido", "Permite validar patrón, timeout y desacoplamiento."),
     TemplateColumnSpec("trigger_type", "Tipo Trigger OIC", "Ejecución", "Recomendado", "Lista", "Mecanismo que inicia la integración.", "REST Trigger", "API", "Activa reglas de QA y sizing.", "TRIGGER_TYPE"),
     TemplateColumnSpec("response_size_kb", "Response Size (KB)", "Volumetría", "Opcional", "Decimal", "Tamaño promedio de respuesta en KB; use 0 solo si realmente no hay respuesta.", "12.5", "12 MB", "Dimensiona respuestas síncronas.", unit="KB"),
     TemplateColumnSpec("payload_per_execution_kb", "Payload por Ejecución (KB)", "Volumetría", "Recomendado", "Decimal", "Tamaño promedio de la solicitud o mensaje en KB.", "150", "1.5 MB", "Alimenta OIC, Streaming, Queue y Functions.", unit="KB"),
     TemplateColumnSpec("is_fan_out", "Fan-out (Si/No)", "Ejecución", "Recomendado", "Lista", "Indica si una ejecución entrega a más de un destino.", "No", "N/A", "Activa validación de número de destinos.", "YES_NO"),
     TemplateColumnSpec("fan_out_targets", "# Destinos", "Ejecución", "Recomendado", "Entero", "Cantidad de destinos cuando Fan-out es Sí; use 1 en una ruta simple.", "3", "Varios", "Ajusta carga y QA de distribución."),
-    TemplateColumnSpec("source_system", "Sistema de Origen", "Origen", "Requerido", "Texto", "Sistema que produce el dato o inicia la interacción.", "Oracle ERP Cloud", "Origen", "Construye linaje y topología."),
-    TemplateColumnSpec("source_technology", "Tecnología de Origen", "Origen", "Recomendado", "Texto", "Producto, protocolo o tecnología del origen.", "REST API", "Oracle", "Ayuda a validar conectividad."),
+    TemplateColumnSpec("source_system", "Sistema de Origen", "Origen", "Requerido", "Texto", "Sistema que produce el dato o inicia la interacción.", "Oracle ERP Cloud", "Origen", "Construye linaje y topología.", "CLIENT_SYSTEMS"),
+    TemplateColumnSpec("source_technology", "Tecnología de Origen", "Origen", "Recomendado", "Texto", "Producto, protocolo o tecnología del origen.", "REST API", "Oracle", "Ayuda a validar conectividad.", "CLIENT_TECHNOLOGIES"),
     TemplateColumnSpec("source_api_reference", "API Reference", "Origen", "Opcional", "Texto", "URL, operación o referencia técnica del contrato origen.", "/orders/{id}", "Ver documento", "Preserva evidencia técnica."),
-    TemplateColumnSpec("source_owner", "Propietario de Origen", "Origen", "Opcional", "Texto", "Equipo responsable del sistema origen.", "ERP Platform Team", "Javier", "Facilita validación con responsables."),
-    TemplateColumnSpec("destination_system", "Sistema de Destino", "Destino", "Requerido", "Texto", "Sistema que recibe o consume el dato.", "Order Fulfillment", "Destino", "Construye linaje y topología."),
-    TemplateColumnSpec("destination_technology_1", "Tecnología de Destino #1", "Destino", "Recomendado", "Texto", "Tecnología principal del destino.", "Oracle ATP", "Base de datos", "Ayuda a validar adaptadores y servicios."),
-    TemplateColumnSpec("destination_technology_2", "Tecnología de Destino #2", "Destino", "Opcional", "Texto", "Tecnología secundaria cuando el destino combina dos componentes.", "OCI Streaming", "N/A", "Conserva una segunda tecnología sin inventarla."),
-    TemplateColumnSpec("destination_owner", "Propietario de Destino", "Destino", "Opcional", "Texto", "Equipo responsable del sistema destino.", "Fulfillment Team", "Usuario final", "Facilita validación y ownership."),
+    TemplateColumnSpec("source_owner", "Propietario de Origen", "Origen", "Opcional", "Texto", "Equipo responsable del sistema origen.", "ERP Platform Team", "Javier", "Facilita validación con responsables.", "CLIENT_OWNERS"),
+    TemplateColumnSpec("destination_system", "Sistema de Destino", "Destino", "Requerido", "Texto", "Sistema que recibe o consume el dato.", "Order Fulfillment", "Destino", "Construye linaje y topología.", "CLIENT_SYSTEMS"),
+    TemplateColumnSpec("destination_technology_1", "Tecnología de Destino #1", "Destino", "Recomendado", "Texto", "Tecnología principal del destino.", "Oracle ATP", "Base de datos", "Ayuda a validar adaptadores y servicios.", "CLIENT_TECHNOLOGIES"),
+    TemplateColumnSpec("destination_technology_2", "Tecnología de Destino #2", "Destino", "Opcional", "Texto", "Tecnología secundaria cuando el destino combina dos componentes.", "OCI Streaming", "N/A", "Conserva una segunda tecnología sin inventarla.", "CLIENT_TECHNOLOGIES"),
+    TemplateColumnSpec("destination_owner", "Propietario de Destino", "Destino", "Opcional", "Texto", "Equipo responsable del sistema destino.", "Fulfillment Team", "Usuario final", "Facilita validación y ownership.", "CLIENT_OWNERS"),
+    TemplateColumnSpec("data_security_classification", "Clasificación de Datos / Seguridad", "Seguridad", "Recomendado", "Lista", "Clasificación que gobierna cifrado, acceso, retención y evidencia.", "Confidencial", "Segura", "Activa controles y revisión de seguridad proporcionales.", "DATA_CLASSIFICATION"),
     TemplateColumnSpec("calendarization", "Calendarización", "Ejecución", "Opcional", "Texto", "Horario, ventana o restricción de calendario.", "L-V 22:00 America/Mexico_City", "Noche", "Documenta ventanas operativas."),
+    TemplateColumnSpec("retention_processing_window", "Retención / Ventana de Procesamiento", "Operación", "Recomendado", "Texto", "Retención de mensajes u objetos y ventana disponible para procesar o reprocesar.", "Retener 7 días; procesar 22:00-02:00", "Una semana", "Valida batch, replay, Claim Check y recuperación."),
     TemplateColumnSpec("tbq", "TBQ", "Gobernanza", "Requerido", "Lista", "Use Y para incluir el registro en el catálogo; N lo conserva como excluido.", "Y", "Sí", "Es la regla explícita de inclusión.", "TBQ"),
     TemplateColumnSpec("selected_pattern", "Patrón Seleccionado (Manual)", "Arquitectura", "Recomendado", "Lista", "Patrón gobernado propuesto por el arquitecto.", "#02", "Event Driven", "Activa QA, narrativas y agrupación.", "PATTERNS"),
     TemplateColumnSpec("pattern_rationale", "Racional del Patrón (Manual)", "Arquitectura", "Recomendado", "Texto", "Explica por qué el patrón satisface el escenario.", "Desacopla productor y tres consumidores.", "Es mejor", "Permite revisión y aprobación trazable."),
     TemplateColumnSpec("comments", "Comentarios / Observaciones", "Gobernanza", "Opcional", "Texto", "Restricciones, decisiones o información pendiente.", "Confirmar retención con Security.", "N/A", "Preserva incertidumbre y decisiones."),
     TemplateColumnSpec("retry_policy", "Retry Policy", "Arquitectura", "Recomendado", "Texto", "Política de reintentos, backoff y manejo final de error.", "3 intentos; backoff 1m/5m/15m; DLQ", "Automático", "Permite revisar resiliencia."),
+    TemplateColumnSpec("idempotency", "Idempotencia", "Arquitectura", "Recomendado", "Texto", "Mecanismo que evita aplicar dos veces el mismo evento o comando.", "Clave orderId; conservar 7 días", "Sí", "Es requisito para retries, eventos, correlación y replay."),
     TemplateColumnSpec("core_tools", "Herramientas Core Cuantificables / Volumétricas", "Arquitectura", "Recomendado", "Texto", "Servicios que procesan la carga; separe múltiples valores con |.", "OCI Streaming | OIC Gen3", "Oracle", "Define la ruta que se dimensiona."),
     TemplateColumnSpec("additional_tools_overlays", "Herramientas Adicionales / Overlays (Complemento Manual)", "Arquitectura", "Opcional", "Texto", "Servicios de seguridad, observabilidad o contexto; separe con |.", "OCI API Gateway | OCI APM", "Monitoring", "Documenta overlays sin inflar volumetría."),
     TemplateColumnSpec("uncertainty", "Incertidumbre", "Gobernanza", "Recomendado", "Texto", "Dato faltante, hipótesis o nivel de confianza que aún debe validarse.", "Payload estimado; validar con ERP Team.", "Ninguna", "Evita convertir supuestos en hechos."),
@@ -313,6 +320,18 @@ def _add_validation(sheet: Any, range_ref: str, formula: str, prompt: str) -> No
     sheet.add_data_validation(validation)
 
 
+def _add_client_validation(sheet: Any, range_ref: str, formula: str, prompt: str) -> None:
+    """Offer customer-maintained suggestions without rejecting a new valid value."""
+
+    validation = DataValidation(type="list", formula1=f"={formula}", allow_blank=True)
+    validation.prompt = f"{prompt} Add reusable values in {CLIENT_CATALOGS_SHEET_NAME}."
+    validation.promptTitle = "Catálogo del cliente"
+    validation.showErrorMessage = False
+    validation.showInputMessage = True
+    validation.add(range_ref)
+    sheet.add_data_validation(validation)
+
+
 def _add_numeric_validation(sheet: Any, range_ref: str, data_type: str, prompt: str) -> None:
     """Require non-negative numeric capture values while allowing blanks."""
 
@@ -342,6 +361,8 @@ def _create_lists_sheet(workbook: Workbook, context: TemplateContext, generated_
         "FREQUENCY": [option.value for option in context.dictionaries.get("FREQUENCY", [])],
         "TRIGGER_TYPE": [option.value for option in context.dictionaries.get("TRIGGER_TYPE", [])],
         "COMPLEXITY": [option.value for option in context.dictionaries.get("COMPLEXITY", [])],
+        "BUSINESS_CRITICALITY": ["Baja", "Media", "Alta", "Crítica"],
+        "DATA_CLASSIFICATION": ["Pública", "Interna", "Confidencial", "Restringida"],
         "YES_NO": ["Sí", "No"],
         "TBQ": ["Y", "N"],
         "PATTERNS": [_pattern_list_value(pattern) for pattern in context.patterns],
@@ -377,12 +398,44 @@ def _create_lists_sheet(workbook: Workbook, context: TemplateContext, generated_
     return name_map
 
 
+def _create_client_catalogs_sheet(workbook: Workbook) -> dict[str, str]:
+    """Create editable customer suggestions used by the capture dropdowns."""
+
+    sheet = workbook.create_sheet(CLIENT_CATALOGS_SHEET_NAME)
+    _style_title(
+        sheet,
+        "Catálogos del Cliente",
+        "Reemplace o amplíe estas sugerencias. La captura también acepta valores nuevos; esta hoja sólo mejora consistencia y velocidad.",
+        5,
+    )
+    catalogs = {
+        "CLIENT_BRANDS": ("Marcas / unidades", ["Retail", "Finance", "Human Capital", "Supply Chain"]),
+        "CLIENT_PROCESSES": ("Procesos de negocio", ["Order to Cash", "Procure to Pay", "Hire to Retire", "Record to Report", "Inventory Synchronization"]),
+        "CLIENT_SYSTEMS": ("Sistemas", ["Oracle ERP Cloud", "Oracle HCM Cloud", "Salesforce", "SAP S/4HANA", "Custom Application"]),
+        "CLIENT_TECHNOLOGIES": ("Tecnologías", ["REST API", "SOAP API", "SFTP", "JDBC", "Kafka", "Oracle ATP"]),
+        "CLIENT_OWNERS": ("Owners / equipos", ["Enterprise Architecture", "Integration Platform Team", "Application Owner", "Data Platform Team"]),
+    }
+    name_map: dict[str, str] = {}
+    for column, (defined_name, (header, values)) in enumerate(catalogs.items(), start=1):
+        sheet.cell(4, column, header)
+        for row, value in enumerate(values, start=5):
+            sheet.cell(row, column, value)
+        target = f"'{CLIENT_CATALOGS_SHEET_NAME}'!${get_column_letter(column)}$5:${get_column_letter(column)}$104"
+        workbook.defined_names.add(DefinedName(defined_name, attr_text=target))
+        name_map[defined_name] = defined_name
+    _style_table_header(sheet[4], fill=TEAL)
+    _set_widths(sheet, {1: 24, 2: 30, 3: 30, 4: 28, 5: 28})
+    sheet.freeze_panes = "A5"
+    sheet.sheet_view.showGridLines = False
+    return name_map
+
+
 def _create_start_sheet(workbook: Workbook, context: TemplateContext, generated_at: datetime) -> None:
     sheet = workbook.active
     sheet.title = "Inicio"
     _style_title(
         sheet,
-        "OCI DIS Blueprint · Captura Offline",
+        "OCI DIS Architect · Captura Offline",
         "Plantilla gobernada para documentar integraciones antes de importarlas a la App.",
         8,
     )
@@ -402,7 +455,7 @@ def _create_start_sheet(workbook: Workbook, context: TemplateContext, generated_
         ("2", "Capture", "Agregue una integración por fila en Catálogo de Integraciones."),
         ("3", "Valide", "Revise Validación Previa; corrija filas No importable."),
         ("4", "Consulte", "Use Guía de Campos, Patrones y Servicios OCI cuando tenga dudas."),
-        ("5", "Importe", "Suba este mismo .xlsx en Projects > Import de OCI DIS Blueprint."),
+        ("5", "Importe", "Suba este mismo .xlsx en Projects > Import de OCI DIS Architect."),
     ]
     sheet["A8"] = "Flujo recomendado"
     sheet["A8"].font = Font(size=14, bold=True, color=NAVY)
@@ -439,7 +492,7 @@ def _create_start_sheet(workbook: Workbook, context: TemplateContext, generated_
     sheet["A25"] = "Leyenda de captura"
     sheet["A25"].font = Font(size=14, bold=True, color=NAVY)
     legend = [
-        ("Requerido", BLUE, "Sin este dato la fila no es importable desde la plantilla v2."),
+        ("Requerido", BLUE, f"Sin este dato la fila no es importable desde la plantilla v{TEMPLATE_VERSION.split('.')[0]}."),
         ("Recomendado", TEAL, "La fila puede importar, pero QA, sizing o revisión tendrán menor confianza."),
         ("Opcional", "6B7280", "Contexto útil para linaje, ownership y operación."),
     ]
@@ -462,13 +515,13 @@ def _create_start_sheet(workbook: Workbook, context: TemplateContext, generated_
     sheet["A34"] = "Navegación rápida"
     sheet["A34"].font = Font(size=14, bold=True, color=NAVY)
     navigation = [
-        ("A35:B35", "Capturar integraciones", CAPTURE_SHEET_NAME),
-        ("C35:D35", "Validación previa", "Validación Previa"),
-        ("E35:F35", "Guía de campos", "Guía de Campos"),
-        ("G35:H35", "Patrones", "Patrones"),
-        ("A36:B36", "Ejemplos guiados", "Ejemplos Guiados"),
-        ("C36:D36", "Servicios OCI", "Servicios OCI"),
-        ("E36:F36", "Límites OCI", "Límites OCI"),
+        ("A35:B35", "Dashboard", "Dashboard"),
+        ("C35:D35", "Capturar integraciones", CAPTURE_SHEET_NAME),
+        ("E35:F35", "Validación previa", "Validación Previa"),
+        ("G35:H35", "Catálogos del cliente", CLIENT_CATALOGS_SHEET_NAME),
+        ("A36:B36", "Guía de campos", "Guía de Campos"),
+        ("C36:D36", "Patrones", "Patrones"),
+        ("E36:F36", "Servicios OCI", "Servicios OCI"),
         ("G36:H36", "Interoperabilidad", "Interoperabilidad"),
     ]
     for cell_range, label, target_sheet in navigation:
@@ -493,7 +546,7 @@ def _create_capture_sheet(workbook: Workbook, list_names: dict[str, str]) -> Non
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.comment = Comment(
             f"{column.requirement}. {column.description}\nEjemplo correcto: {column.good_example}\nLa App lo usa para: {column.app_usage}",
-            "OCI DIS Blueprint",
+            "OCI DIS Architect",
         )
     sheet.row_dimensions[1].height = 48
     sheet.freeze_panes = "F2"
@@ -510,7 +563,8 @@ def _create_capture_sheet(workbook: Workbook, list_names: dict[str, str]) -> Non
             width = 34
         sheet.column_dimensions[get_column_letter(index)].width = width
         if column.validation_key and column.validation_key in list_names:
-            _add_validation(
+            validation_writer = _add_client_validation if column.validation_key.startswith("CLIENT_") else _add_validation
+            validation_writer(
                 sheet,
                 f"{get_column_letter(index)}2:{get_column_letter(index)}{CAPTURE_ROW_LIMIT}",
                 list_names[column.validation_key],
@@ -551,6 +605,20 @@ def _create_preflight_sheet(workbook: Workbook) -> None:
     for column, header in enumerate(headers, start=1):
         sheet.cell(4, column, header)
     _style_table_header(sheet[4])
+    sheet["I4"] = "Resumen"
+    sheet["J4"] = "Valor"
+    _style_table_header(sheet[4][8:10], fill=TEAL)
+    summary_rows = [
+        ("Filas capturadas", f'=COUNTIF(D5:D{CAPTURE_ROW_LIMIT + 3},"<>Sin captura")'),
+        ("Listas para importar", f'=COUNTIF(D5:D{CAPTURE_ROW_LIMIT + 3},"Listo")'),
+        ("No importables", f'=COUNTIF(D5:D{CAPTURE_ROW_LIMIT + 3},"No importable")'),
+        ("Con observaciones", f'=COUNTIF(F5:F{CAPTURE_ROW_LIMIT + 3},"?*")'),
+        ("Estado general", '=IF(J7>0,"CORREGIR",IF(J5=0,"SIN CAPTURA","LISTO"))'),
+    ]
+    for row, (label, formula) in enumerate(summary_rows, start=5):
+        sheet.cell(row, 9, label)
+        sheet.cell(row, 10, formula)
+        sheet.cell(row, 10).data_type = "f"
     field_to_letter = {column.field: get_column_letter(index) for index, column in enumerate(COLUMNS, start=1)}
     last_letter = get_column_letter(len(COLUMNS))
     required = [column for column in COLUMNS if column.requirement == "Requerido"]
@@ -617,8 +685,81 @@ def _create_preflight_sheet(workbook: Workbook) -> None:
     sheet.conditional_formatting.add(f"D5:D{CAPTURE_ROW_LIMIT + 3}", FormulaRule(formula=['D5="Listo"'], fill=PatternFill("solid", fgColor=LIGHT_TEAL)))
     sheet.conditional_formatting.add(f"D5:D{CAPTURE_ROW_LIMIT + 3}", FormulaRule(formula=['D5="No importable"'], fill=PatternFill("solid", fgColor="FEE2E2")))
     sheet.conditional_formatting.add(f"D5:D{CAPTURE_ROW_LIMIT + 3}", FormulaRule(formula=['D5="Sin captura"'], fill=PatternFill("solid", fgColor=LIGHT_GRAY)))
-    _set_widths(sheet, {1: 8, 2: 16, 3: 30, 4: 18, 5: 42, 6: 52, 7: 24})
+    _set_widths(sheet, {1: 8, 2: 16, 3: 30, 4: 18, 5: 42, 6: 52, 7: 24, 8: 3, 9: 24, 10: 18})
     sheet.sheet_view.zoomScale = 85
+
+
+def _create_dashboard_sheet(workbook: Workbook) -> None:
+    """Add a formula-driven offline summary without becoming an authority source."""
+
+    sheet = workbook.create_sheet("Dashboard")
+    _style_title(
+        sheet,
+        "Dashboard de Captura Offline",
+        "Resumen orientativo. La App recalcula QA, volumetría, topología y arquitectura después de importar.",
+        12,
+    )
+    fields = {column.field: get_column_letter(index) for index, column in enumerate(COLUMNS, start=1)}
+    capture = f"'{CAPTURE_SHEET_NAME}'"
+    metrics = [
+        ("Filas capturadas", f'=COUNTIF({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{CAPTURE_ROW_LIMIT},"?*")'),
+        ("Incluidas (TBQ=Y)", f'=COUNTIF({capture}!{fields["tbq"]}2:{fields["tbq"]}{CAPTURE_ROW_LIMIT},"Y")'),
+        ("Con patrón", f'=COUNTIF({capture}!{fields["selected_pattern"]}2:{fields["selected_pattern"]}{CAPTURE_ROW_LIMIT},"#??")'),
+        ("Con payload", f'=COUNT({capture}!{fields["payload_per_execution_kb"]}2:{fields["payload_per_execution_kb"]}{CAPTURE_ROW_LIMIT})'),
+    ]
+    for index, (label, formula) in enumerate(metrics):
+        start = 1 + index * 3
+        sheet.merge_cells(start_row=4, start_column=start, end_row=4, end_column=start + 1)
+        sheet.cell(4, start, label)
+        sheet.cell(4, start).font = Font(bold=True, color=TEXT_GRAY)
+        sheet.merge_cells(start_row=5, start_column=start, end_row=6, end_column=start + 1)
+        sheet.cell(5, start, formula)
+        sheet.cell(5, start).data_type = "f"
+        sheet.cell(5, start).font = Font(size=24, bold=True, color=NAVY)
+        sheet.cell(5, start).fill = PatternFill("solid", fgColor=LIGHT_BLUE if index < 2 else LIGHT_TEAL)
+        sheet.cell(5, start).alignment = Alignment(horizontal="center", vertical="center")
+
+    sheet["A9"] = "Cobertura de criticidad"
+    sheet["A9"].font = Font(size=14, bold=True, color=NAVY)
+    sheet["A10"] = "Nivel"
+    sheet["B10"] = "Integraciones"
+    _style_table_header(sheet[10][0:2], fill=TEAL)
+    for row, level in enumerate(("Crítica", "Alta", "Media", "Baja"), start=11):
+        sheet.cell(row, 1, level)
+        sheet.cell(
+            row,
+            2,
+            f'=COUNTIF({capture}!{fields["business_criticality"]}2:{fields["business_criticality"]}{CAPTURE_ROW_LIMIT},A{row})',
+        )
+        sheet.cell(row, 2).data_type = "f"
+
+    chart = BarChart()
+    chart.type = "bar"
+    chart.style = 10
+    chart.title = "Integraciones por criticidad"
+    chart.legend = None
+    chart.y_axis.title = "Nivel"
+    chart.x_axis.title = "Integraciones"
+    chart.height = 7
+    chart.width = 13
+    chart.add_data(Reference(sheet, min_col=2, min_row=10, max_row=14), titles_from_data=True)
+    chart.set_categories(Reference(sheet, min_col=1, min_row=11, max_row=14))
+    sheet.add_chart(chart, "D9")
+
+    sheet["A18"] = "Decisiones pendientes"
+    sheet["A18"].font = Font(size=14, bold=True, color=NAVY)
+    pending = [
+        ("Sin patrón", f'=COUNTIFS({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{CAPTURE_ROW_LIMIT},"?*",{capture}!{fields["selected_pattern"]}2:{fields["selected_pattern"]}{CAPTURE_ROW_LIMIT},"")'),
+        ("Sin SLA / latencia", f'=COUNTIFS({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{CAPTURE_ROW_LIMIT},"?*",{capture}!{fields["target_latency_sla"]}2:{fields["target_latency_sla"]}{CAPTURE_ROW_LIMIT},"")'),
+        ("Sin clasificación", f'=COUNTIFS({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{CAPTURE_ROW_LIMIT},"?*",{capture}!{fields["data_security_classification"]}2:{fields["data_security_classification"]}{CAPTURE_ROW_LIMIT},"")'),
+        ("Sin idempotencia", f'=COUNTIFS({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{CAPTURE_ROW_LIMIT},"?*",{capture}!{fields["idempotency"]}2:{fields["idempotency"]}{CAPTURE_ROW_LIMIT},"")'),
+    ]
+    for row, (label, formula) in enumerate(pending, start=19):
+        sheet.cell(row, 1, label)
+        sheet.cell(row, 2, formula)
+        sheet.cell(row, 2).data_type = "f"
+    _set_widths(sheet, {1: 24, 2: 18, 3: 3, 4: 18, 5: 18, 6: 18, 7: 18, 8: 18, 9: 18, 10: 18, 11: 18, 12: 18})
+    sheet.sheet_view.showGridLines = False
 
 
 def _create_examples_sheet(workbook: Workbook, context: TemplateContext) -> None:
@@ -688,8 +829,36 @@ def _create_field_guide_sheet(workbook: Workbook) -> None:
 
 def _create_patterns_sheet(workbook: Workbook, context: TemplateContext) -> None:
     sheet = workbook.create_sheet("Patrones")
-    _style_title(sheet, "Patrones de Integración", "Biblioteca gobernada aplicable a cualquier herramienta; los componentes OCI muestran una implementación posible.", 14)
-    headers = ["ID", "Nombre", "Categoría", "Soporte", "Descripción simple", "Cuándo usar", "Cuándo no usar", "Flujo técnico", "Componentes OCI", "Valor de negocio", "Ejemplos de aplicabilidad", "Preguntas de selección", "Inputs requeridos", "Versión"]
+    _style_title(
+        sheet,
+        "Patrones de Integración Certificados",
+        "Cada patrón incluye un contrato versionado de evidencia, composición, sizing y validación; la integración concreta debe cumplirlo antes de quedar lista.",
+        22,
+    )
+    headers = [
+        "ID",
+        "Nombre",
+        "Categoría",
+        "Certificación",
+        "Versión certificación",
+        "Estrategia de sizing",
+        "Evidencia requerida",
+        "Composiciones core certificadas",
+        "Overlays requeridos",
+        "Servicios comerciales",
+        "Dependencias externas",
+        "Controles de validación",
+        "Descripción simple",
+        "Cuándo usar",
+        "Cuándo no usar",
+        "Flujo técnico",
+        "Componentes OCI",
+        "Valor de negocio",
+        "Ejemplos de aplicabilidad",
+        "Preguntas de selección",
+        "Inputs requeridos",
+        "Versión biblioteca",
+    ]
     for column, header in enumerate(headers, start=1):
         sheet.cell(4, column, header)
     _style_table_header(sheet[4])
@@ -700,6 +869,14 @@ def _create_patterns_sheet(workbook: Workbook, context: TemplateContext) -> None
             pattern.name,
             pattern.category,
             support.badge_label,
+            support.certification_version,
+            (support.sizing_strategy or "").replace("_", " "),
+            "\n".join(item.replace("_", " ") for item in support.required_evidence),
+            "\n".join(" + ".join(group) for group in support.approved_core_tool_groups),
+            "\n".join(" + ".join(group) for group in support.approved_overlay_groups),
+            "\n".join(support.commercial_service_ids),
+            "\n".join(support.external_dependencies),
+            "\n".join(support.validation_controls),
             _safe_text(pattern.description),
             _safe_text(pattern.when_to_use),
             _safe_text(pattern.when_not_to_use),
@@ -714,9 +891,35 @@ def _create_patterns_sheet(workbook: Workbook, context: TemplateContext) -> None
         for cell in sheet[row]:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
         sheet.row_dimensions[row].height = 180
-    sheet.freeze_panes = "E5"
-    sheet.auto_filter.ref = f"A4:N{sheet.max_row}"
-    _set_widths(sheet, {1: 8, 2: 26, 3: 22, 4: 18, 5: 38, 6: 44, 7: 54, 8: 54, 9: 44, 10: 44, 11: 42, 12: 42, 13: 36, 14: 12})
+    sheet.freeze_panes = "G5"
+    sheet.auto_filter.ref = f"A4:V{sheet.max_row}"
+    _set_widths(
+        sheet,
+        {
+            1: 8,
+            2: 26,
+            3: 22,
+            4: 18,
+            5: 16,
+            6: 22,
+            7: 30,
+            8: 34,
+            9: 32,
+            10: 28,
+            11: 30,
+            12: 34,
+            13: 38,
+            14: 44,
+            15: 54,
+            16: 54,
+            17: 44,
+            18: 44,
+            19: 42,
+            20: 42,
+            21: 36,
+            22: 14,
+        },
+    )
 
 
 def _latest_evidence_by_profile(context: TemplateContext) -> dict[str, ServiceEvidenceSource]:
@@ -836,7 +1039,7 @@ def _create_interoperability_sheet(workbook: Workbook, context: TemplateContext)
 
 
 def _protect_reference_sheets(workbook: Workbook) -> None:
-    for sheet_name in ["Ejemplos Guiados", "Guía de Campos", "Patrones", "Servicios OCI", "Límites OCI", "Interoperabilidad"]:
+    for sheet_name in ["Dashboard", "Ejemplos Guiados", "Guía de Campos", "Patrones", "Servicios OCI", "Límites OCI", "Interoperabilidad"]:
         sheet = workbook[sheet_name]
         for row in sheet.iter_rows():
             for cell in row:
@@ -847,9 +1050,9 @@ def _protect_reference_sheets(workbook: Workbook) -> None:
 
 
 def _set_properties(workbook: Workbook, generated_at: datetime) -> None:
-    workbook.properties.creator = "OCI DIS Blueprint"
-    workbook.properties.lastModifiedBy = "OCI DIS Blueprint"
-    workbook.properties.title = "OCI DIS Blueprint Governed Offline Capture Workbook"
+    workbook.properties.creator = "OCI DIS Architect"
+    workbook.properties.lastModifiedBy = "OCI DIS Architect"
+    workbook.properties.title = "OCI DIS Architect Governed Offline Capture Workbook"
     workbook.properties.subject = f"Template v{TEMPLATE_VERSION}"
     workbook.properties.description = "Offline integration capture with governed patterns and OCI Service Product Library references."
     workbook.properties.created = generated_at
@@ -905,7 +1108,9 @@ async def generate_capture_template(db: AsyncSession) -> tuple[bytes, CaptureTem
     workbook = Workbook()
     _set_properties(workbook, generated_at)
     _create_start_sheet(workbook, context, generated_at)
+    _create_dashboard_sheet(workbook)
     list_names = _create_lists_sheet(workbook, context, generated_at)
+    list_names.update(_create_client_catalogs_sheet(workbook))
     _create_capture_sheet(workbook, list_names)
     _create_preflight_sheet(workbook)
     _create_examples_sheet(workbook, context)

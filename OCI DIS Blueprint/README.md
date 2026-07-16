@@ -9,6 +9,7 @@ Replaces `Catalogo_Integracion.xlsx` with a governed platform enabling architect
 - Generate deterministic technical dashboards and justification narratives
 - Export results for delivery teams and clients
 - Download a self-documenting governed workbook for offline capture and safe re-import
+- Apply versioned certification contracts to all 21 governed integration patterns
 - Refresh official OCI public prices and produce governed, traceable Bills of Materials
 - Ask a session-isolated contextual assistant about App workflows and governed architecture evidence
 
@@ -121,16 +122,20 @@ audit evidence.
 
 ## Offline Capture Workbook
 
-The Import workflow downloads template `v2.0.0` directly from the API. The
-workbook includes a blank governed capture sheet, novice instructions, preflight
-checks, field guidance, pattern examples, and current Service Product Library
-references. Its `_Listas` manifest records the template/importer contract and
-governed-source freshness. Examples are never placed in the importable sheet.
+The Import workflow downloads the official template `v3.0.0` as
+`oci-dis-import-template-v3.0.0.xlsx` directly from the API. The workbook includes
+a blank governed capture sheet, an executive dashboard, editable client catalogs,
+novice instructions, preflight checks, field guidance, pattern examples, and
+current Service Product Library references. Its `_Listas` manifest records the
+template/importer contract and governed-source freshness. Examples are never
+placed in the importable sheet.
 
-Existing unversioned v1 workbooks remain importable with a legacy warning.
-Template v2 rejects formulas and changed headers so offline capture cannot hide
-logic or silently drift from the App contract. See
-[`docs/architecture/offline-capture-workbook-v2.md`](./docs/architecture/offline-capture-workbook-v2.md).
+Existing unversioned v1 and governed v2 workbooks remain importable. Template v3
+rejects formulas and changed headers so offline capture cannot hide logic or
+silently drift from the App contract. See
+[`docs/architecture/offline-capture-workbook-v3.md`](./docs/architecture/offline-capture-workbook-v3.md).
+Pattern certification semantics are documented in
+[`docs/architecture/pattern-certification-matrix.md`](./docs/architecture/pattern-certification-matrix.md).
 
 ## Governed OCI Pricing And BOM
 
@@ -384,6 +389,7 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M49 | OCI Metering Policy Alignment | ✅ Complete | 2026-07-15 |
 | M50 | Full Service Product Commercial Coverage | ✅ Complete | 2026-07-15 |
 | M51 | Full OCI Public Catalog Commercial Coverage | 📋 Planned | — |
+| M52 | Governed Pattern Certification | ✅ Complete | 2026-07-16 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -391,16 +397,17 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 Phase 1 parity has been validated in Docker against the benchmark workbook rules:
 
 - Import parity: `157` TBQ=`Y` rows, `13` excluded `Duplicado 2`, `144` loaded rows in source order
-- Reference seed data: `17` patterns, client-only assumption sets, governed dictionaries, and `20` normalized service products
+- Reference seed data: `21` certified patterns, `9` architectural overlays, `27` governed canvas combinations, client-only assumption sets, governed dictionaries, and `20` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine + pricing-engine: `191 passed` (`125` API, `42` calc-engine, `24` pricing-engine)
-- Frontend: `66 passed`, strict TypeScript, ESLint, and production build green
+- Backend + calc-engine + pricing-engine: `206 passed` (`133` API, `49` calc-engine, `24` pricing-engine)
+- Frontend: `68 passed`, strict TypeScript, ESLint, and production build green
 - Pricing/BOM E2E: public sync and BOM jobs reach terminal `completed` states
 - Production images: Trivy reports `0 HIGH` and `0 CRITICAL` for API and web
 - Browser E2E: `18 passed`, including OCI provider telemetry refresh, contextual AI,
   workbook download, terminal job state, BOM, topology, and cleanup validation
 - Dependency audit: `0` vulnerabilities
 - Web and API stack: all eight production services running and healthy in Docker Compose
+- Pattern certification browser contract: `21/21` certified cards, `9/9` governed overlays, desktop light/dark and `390 px` mobile views, zero horizontal overflow, and zero console errors
 
 The current validated state is recorded in
 [`docs/reports/status-report.md`](./docs/reports/status-report.md). Historical

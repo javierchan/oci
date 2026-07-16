@@ -372,6 +372,78 @@ export default function AdminPatternsPage(): JSX.Element {
                   {viewingPattern.description ?? viewingPattern.support.summary}
                 </p>
               </section>
+              <section className="md:col-span-2 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="app-label">Governed Certification</p>
+                    <h3 className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">
+                      {viewingPattern.support.certification_status === "certified"
+                        ? `Certified contract v${viewingPattern.support.certification_version}`
+                        : "No certification contract"}
+                    </h3>
+                  </div>
+                  <PatternSupportBadge support={viewingPattern.support} />
+                </div>
+                <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
+                  {viewingPattern.support.summary}
+                </p>
+                {viewingPattern.support.certification_status === "certified" ? (
+                  <div className="mt-5 grid gap-5 md:grid-cols-2">
+                    <div>
+                      <p className="app-label">Sizing Strategy</p>
+                      <p className="mt-2 text-sm font-medium capitalize text-[var(--color-text-primary)]">
+                        {viewingPattern.support.sizing_strategy?.replaceAll("_", " ")}
+                      </p>
+                      <p className="app-label mt-4">Commercial Scope</p>
+                      <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                        {viewingPattern.support.commercial_service_ids.join(" · ")}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="app-label">Required Evidence</p>
+                      <ul className="mt-2 space-y-1 text-sm text-[var(--color-text-secondary)]">
+                        {viewingPattern.support.required_evidence.map((item) => (
+                          <li key={item}>• {item.replaceAll("_", " ")}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="app-label">Certified Core Compositions</p>
+                      <ul className="mt-2 space-y-1 text-sm text-[var(--color-text-secondary)]">
+                        {viewingPattern.support.approved_core_tool_groups.map((group) => (
+                          <li key={group.join("+")}>• {group.join(" + ")}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="app-label">Validation Controls</p>
+                      <ul className="mt-2 space-y-1 text-sm text-[var(--color-text-secondary)]">
+                        {viewingPattern.support.validation_controls.map((item) => (
+                          <li key={item}>• {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    {viewingPattern.support.approved_overlay_groups.length > 0 ? (
+                      <div>
+                        <p className="app-label">Required Overlays</p>
+                        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                          {viewingPattern.support.approved_overlay_groups
+                            .map((group) => group.join(" + "))
+                            .join(" or ")}
+                        </p>
+                      </div>
+                    ) : null}
+                    {viewingPattern.support.external_dependencies.length > 0 ? (
+                      <div>
+                        <p className="app-label">External Capacity Dependencies</p>
+                        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                          {viewingPattern.support.external_dependencies.join(" · ")}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
               <section className="rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
                 <p className="app-label">When to Use</p>
                 <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-text-secondary)]">

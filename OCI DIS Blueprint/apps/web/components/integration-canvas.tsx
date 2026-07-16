@@ -2620,6 +2620,11 @@ export function IntegrationCanvas({
                   <p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">
                     {selectedPatternDefinition.support.summary}
                   </p>
+                  {selectedPatternDefinition.support.certification_version ? (
+                    <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+                      Certification v{selectedPatternDefinition.support.certification_version} · {selectedPatternDefinition.support.sizing_strategy?.replaceAll("_", " ")}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               {suggestedPatterns.length > 0 ? (
@@ -2639,7 +2644,7 @@ export function IntegrationCanvas({
                   <p className="font-semibold">Potential anti-pattern</p>
                   <p className="mt-2">
                     The active route aligns with {semantics.suggestedPatternIds.join(", ")}, but the selected pattern is{" "}
-                    {selectedPatternDefinition.pattern_id}. Review the designed tool stack before treating this pipeline as parity-ready.
+                    {selectedPatternDefinition.pattern_id}. Review the designed tool stack before treating this integration as certification-compliant.
                   </p>
                   {selectedPatternDefinition.when_not_to_use ? (
                     <p className="mt-2">{selectedPatternDefinition.when_not_to_use}</p>
@@ -2667,9 +2672,10 @@ export function IntegrationCanvas({
           <p className="text-[var(--color-text-secondary)]">{semantics.processingSummary}</p>
           <p className="text-[var(--color-text-secondary)]">Overlays: {semantics.overlaySummary}</p>
           <p className="text-[var(--color-text-secondary)]">Pattern: {selectedPattern ?? "unassigned"}</p>
-          {selectedPatternDefinition && !selectedPatternDefinition.support.parity_ready ? (
+          {selectedPatternDefinition &&
+          selectedPatternDefinition.support.certification_status !== "certified" ? (
             <p className="text-[var(--color-text-secondary)]">
-              Pattern support note: this selection remains reference-only, so technical estimates stay directional.
+              Certification note: this custom pattern has no governed sizing or validation contract, so estimates stay directional.
             </p>
           ) : null}
           {includesOicGen3 ? (

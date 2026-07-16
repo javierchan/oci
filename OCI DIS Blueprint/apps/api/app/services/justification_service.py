@@ -147,9 +147,16 @@ def _narrative_from_row(
     ]
     methodology_blocks.append(
         MethodologyBlock(
-            title="Pattern Support Boundary",
+            title="Pattern Certification",
             body=(
-                f"{pattern_support.badge_label}. {pattern_support.summary}"
+                f"{pattern_support.badge_label}"
+                + (
+                    f" v{pattern_support.certification_version} using "
+                    f"{pattern_support.sizing_strategy.replace('_', ' ')} sizing. "
+                    if pattern_support.certification_version and pattern_support.sizing_strategy
+                    else ". "
+                )
+                + pattern_support.summary
             ),
         )
     )
@@ -161,7 +168,9 @@ def _narrative_from_row(
         f"frequency={_text(row.frequency)}",
         f"payload_kb={row.payload_per_execution_kb if row.payload_per_execution_kb is not None else 'N/A'}",
         f"selected_pattern={row.selected_pattern or 'UNASSIGNED'}",
-        f"pattern_support_level={pattern_support.level}",
+        f"pattern_certification_status={pattern_support.certification_status}",
+        f"pattern_certification_version={pattern_support.certification_version or 'N/A'}",
+        f"pattern_sizing_strategy={pattern_support.sizing_strategy or 'N/A'}",
     ]
     if row.source_row is not None and row.source_row.import_batch is not None:
         evidence.extend(

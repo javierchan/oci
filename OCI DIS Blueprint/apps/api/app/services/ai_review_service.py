@@ -1600,10 +1600,19 @@ async def build_review_result(
     missing_route = [row for row in rows if not _has_text(row.source_system) or not _has_text(row.destination_system)]
     missing_trigger = [row for row in rows if not _has_text(row.trigger_type)]
     missing_design = [row for row in rows if not _has_text(row.core_tools)]
-    reference_only = [
+    uncertified_patterns = [
         row
         for row in rows
-        if row.selected_pattern and get_pattern_support(row.selected_pattern).level == "reference"
+        if row.selected_pattern
+        and get_pattern_support(row.selected_pattern).certification_status == "unverified"
+    ]
+    certification_noncompliant = [
+        row
+        for row in rows
+        if {
+            "PATTERN_CORE_TOOLS_NOT_CERTIFIED",
+            "PATTERN_OVERLAYS_NOT_CERTIFIED",
+        }.intersection(row.qa_reasons or [])
     ]
     review_rows = [row for row in rows if (row.qa_status or "").upper() == "REVISAR"]
     pending_rows = [row for row in rows if (row.qa_status or "").upper() == "PENDING"]
@@ -1864,23 +1873,45 @@ async def build_review_result(
                 _first_ids(warning_rows),
             )
         )
-    if reference_only:
+    if uncertified_patterns:
         ids = [ev_catalog.id]
         findings.append(
             _finding(
-                "reference-only-patterns",
+                "uncertified-patterns",
                 "high",
                 "governance",
-                "Reference-only patterns are selected",
-                "Some rows use patterns documented for reference but not treated as fully parity-ready.",
+                "Uncertified patterns are selected",
+                "Some rows use custom patterns without a versioned evidence, composition, sizing, and validation contract.",
                 ids,
-                [*_evidence_lines(evidence, ids), *[_display_name(row) for row in reference_only[:3]]],
-                f"reference_only_rows={len(reference_only)}",
-                "Production-ready reviews should distinguish fully supported patterns from reference-library patterns.",
-                "Review those rows and either select supported patterns or document explicit architect acceptance.",
+                [*_evidence_lines(evidence, ids), *[_display_name(row) for row in uncertified_patterns[:3]]],
+                f"uncertified_pattern_rows={len(uncertified_patterns)}",
+                "Production-ready reviews require a published certification contract for every selected pattern.",
+                "Select a certified system pattern or govern and publish a certification contract for the custom pattern.",
                 "Review patterns",
                 _catalog_href(project_id),
-                _first_ids(reference_only),
+                _first_ids(uncertified_patterns),
+            )
+        )
+    if certification_noncompliant:
+        ids = [ev_catalog.id, ev_design.id]
+        findings.append(
+            _finding(
+                "pattern-certification-noncompliance",
+                "high",
+                "canvas_consistency",
+                "Pattern certification requirements are not satisfied",
+                "The selected patterns are certified, but one or more integrations lack a certified core-tool composition or required architectural overlay.",
+                ids,
+                [
+                    *_evidence_lines(evidence, ids),
+                    *[_display_name(row) for row in certification_noncompliant[:3]],
+                ],
+                f"noncompliant_rows={len(certification_noncompliant)}",
+                "A certified pattern only produces reliable sizing and readiness evidence when its integration-specific composition is compliant.",
+                "Open each affected canvas, apply a certified composition, capture required evidence, then recalculate and rerun the review.",
+                "Open catalog",
+                _catalog_href(project_id),
+                _first_ids(certification_noncompliant),
             )
         )
     if missing_payload and total:

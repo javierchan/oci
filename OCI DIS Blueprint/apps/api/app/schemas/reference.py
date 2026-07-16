@@ -63,11 +63,18 @@ class PatternSupportResponse(BaseModel):
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    level: Literal["full", "partial", "reference"]
     badge_label: str
     summary: str
-    parity_ready: bool
     dimensions: PatternSupportDimensionsResponse
+    certification_status: Literal["certified", "unverified"]
+    certification_version: Optional[str]
+    sizing_strategy: Optional[str]
+    required_evidence: list[str]
+    approved_core_tool_groups: list[list[str]]
+    approved_overlay_groups: list[list[str]]
+    commercial_service_ids: list[str]
+    external_dependencies: list[str]
+    validation_controls: list[str]
 
 
 class PatternDefinitionResponse(BaseModel):

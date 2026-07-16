@@ -60,9 +60,9 @@ function buildRules(form: ManualIntegrationCreate, patterns: PatternDefinition[]
       pass: Boolean(form.selected_pattern),
     },
     {
-      code: "PATTERN_REFERENCE_ONLY",
-      label: "Pattern is parity-ready",
-      pass: !selectedPattern || selectedPattern.support.parity_ready,
+      code: "PATTERN_NOT_CERTIFIED",
+      label: "Pattern has a governed certification",
+      pass: !selectedPattern || selectedPattern.support.certification_status === "certified",
     },
     {
       code: "MISSING_RATIONALE",
@@ -112,10 +112,10 @@ function buildCoverageSignals(form: ManualIntegrationCreate, patterns: PatternDe
     });
   }
 
-  if (selectedPattern && !selectedPattern.support.parity_ready) {
+  if (selectedPattern && selectedPattern.support.certification_status !== "certified") {
     signals.push({
-      title: "Reference-only pattern",
-      detail: "This pattern stays in architect review because the current release does not yet provide pattern-specific parity sizing.",
+      title: "Pattern is not certified",
+      detail: "This custom pattern has no versioned evidence, composition, sizing, and validation contract in the Pattern Library.",
     });
   }
 

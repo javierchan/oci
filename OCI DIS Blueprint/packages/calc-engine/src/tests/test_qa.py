@@ -110,7 +110,7 @@ def test_functions_payload_exceeds_6mb() -> None:
     assert "FUNCTIONS_PAYLOAD_EXCEEDS_6MB_LIMIT" in result.reasons
 
 
-def test_reference_pattern_needs_rationale() -> None:
+def test_certified_data_mesh_requires_governed_evidence_and_overlays() -> None:
     result = evaluate_qa(
         interface_id="TEST-004",
         trigger_type="REST",
@@ -123,4 +123,44 @@ def test_reference_pattern_needs_rationale() -> None:
         uncertainty=None,
     )
 
-    assert "REFERENCE_PATTERN_NEEDS_EXPLICIT_RATIONALE" in result.reasons
+    assert "BUSINESS_CRITICALITY_REQUIRED" in result.reasons
+    assert "RETENTION_POLICY_REQUIRED" in result.reasons
+    assert "DATA_CLASSIFICATION_REQUIRED" in result.reasons
+    assert "PATTERN_OVERLAYS_NOT_CERTIFIED" in result.reasons
+
+
+def test_claim_check_requires_retention_and_classification() -> None:
+    result = evaluate_qa(
+        interface_id="TEST-020",
+        trigger_type="Event",
+        selected_pattern="#20",
+        pattern_rationale="Externalize large attachments and send only a governed object reference.",
+        core_tools="OCI Object Storage, OCI Queue, OIC Gen3",
+        payload_per_execution_kb=8192.0,
+        is_fan_out=False,
+        fan_out_targets=None,
+        uncertainty=None,
+    )
+
+    assert "INVALID_PATTERN" not in result.reasons
+    assert "RETENTION_POLICY_REQUIRED" in result.reasons
+    assert "DATA_CLASSIFICATION_REQUIRED" in result.reasons
+
+
+def test_dlq_pattern_is_ok_with_retry_and_idempotency_evidence() -> None:
+    result = evaluate_qa(
+        interface_id="TEST-021",
+        trigger_type="Event",
+        selected_pattern="#21",
+        pattern_rationale="Bounded delivery retries isolate terminal failures for governed replay.",
+        core_tools="OCI Queue, OIC Gen3",
+        payload_per_execution_kb=100.0,
+        is_fan_out=False,
+        fan_out_targets=None,
+        uncertainty=None,
+        retry_policy="3 attempts; exponential backoff; DLQ",
+        idempotency="Deduplicate by eventId for 7 days",
+        additional_tools_overlays="OCI Observability",
+    )
+
+    assert result.status == "OK"

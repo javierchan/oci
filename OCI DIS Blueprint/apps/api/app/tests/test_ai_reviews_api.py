@@ -77,7 +77,10 @@ async def _seed_review_fixture(test_engine: AsyncEngine) -> tuple[str, str]:
             selected_pattern="#17",
             core_tools="OCI Streaming",
             qa_status="REVISAR",
-            qa_reasons=["PATTERN_REFERENCE_ONLY"],
+            qa_reasons=[
+                "PATTERN_CORE_TOOLS_NOT_CERTIFIED",
+                "PATTERN_OVERLAYS_NOT_CERTIFIED",
+            ],
         )
         ok_row = CatalogIntegration(
             id="integration-ok-1",
@@ -179,7 +182,7 @@ async def test_project_ai_review_job_create_run_get_and_accept(
     assert result.project_id == project_id
     assert result.readiness_label == "Needs architecture review"
     assert "qa-review-open" in finding_ids
-    assert "reference-only-patterns" in finding_ids
+    assert "pattern-certification-noncompliance" in finding_ids
     assert "payload-coverage-gap" in finding_ids
     assert "design-constraints-open" in finding_ids
     assert "ten-x-stress-review" in finding_ids

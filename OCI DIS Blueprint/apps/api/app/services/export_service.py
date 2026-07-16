@@ -172,16 +172,23 @@ def _excel_cell_value(value: object) -> object:
 def _pattern_support_payload(pattern_ids: list[str]) -> dict[str, object]:
     selected_pattern_ids = sorted({pattern_id for pattern_id in pattern_ids if pattern_id})
     return {
-        "fully_supported_pattern_ids": [
+        "certified_pattern_ids": [
             pattern_id
             for pattern_id in selected_pattern_ids
-            if get_pattern_support(pattern_id).parity_ready
+            if get_pattern_support(pattern_id).certification_status == "certified"
         ],
-        "reference_only_pattern_ids": [
+        "uncertified_pattern_ids": [
             pattern_id
             for pattern_id in selected_pattern_ids
-            if not get_pattern_support(pattern_id).parity_ready
+            if get_pattern_support(pattern_id).certification_status != "certified"
         ],
+        "certification_versions": sorted(
+            {
+                version
+                for pattern_id in selected_pattern_ids
+                if (version := get_pattern_support(pattern_id).certification_version)
+            }
+        ),
     }
 
 
@@ -259,10 +266,31 @@ async def create_xlsx_export(
         "data_integration_gb_month",
         "streaming_gb_month",
         "streaming_partition_count",
+        "pattern_certification_status",
+        "pattern_certification_version",
+        "pattern_sizing_strategy",
+        "pattern_composition_compliant",
+        "pattern_composition_issues",
     ]
     volumetry_sheet.append(volumetry_headers)
     for integration_id, metrics in snapshot.row_results.items():
-        volumetry_sheet.append([integration_id, *[metrics.get(header) for header in volumetry_headers[1:]]])
+        raw_certification = metrics.get("pattern_certification", {})
+        certification = (
+            cast(dict[str, object], raw_certification)
+            if isinstance(raw_certification, dict)
+            else {}
+        )
+        volumetry_sheet.append(
+            [
+                integration_id,
+                *[metrics.get(header) for header in volumetry_headers[1:9]],
+                certification.get("status"),
+                certification.get("version"),
+                certification.get("sizing_strategy"),
+                certification.get("composition_compliant"),
+                _excel_cell_value(certification.get("composition_issues", [])),
+            ]
+        )
 
     consolidated_sheet = workbook.create_sheet("Consolidated")
     consolidated_sheet.append(["domain", "metric", "value"])
@@ -277,8 +305,22 @@ async def create_xlsx_export(
     for key, value in sorted(service_rules.items()):
         provenance_sheet.append([key, _excel_cell_value(value)])
 
-    support_sheet = workbook.create_sheet("Pattern Support")
-    support_sheet.append(["Pattern ID", "Support", "Parity Ready", "Summary"])
+    support_sheet = workbook.create_sheet("Pattern Certification")
+    support_sheet.append(
+        [
+            "Pattern ID",
+            "Certification",
+            "Version",
+            "Sizing Strategy",
+            "Required Evidence",
+            "Certified Core Compositions",
+            "Required Overlays",
+            "Commercial Services",
+            "External Dependencies",
+            "Validation Controls",
+            "Summary",
+        ]
+    )
     selected_pattern_ids = sorted(
         {
             str(row.get("selected_pattern"))
@@ -290,10 +332,22 @@ async def create_xlsx_export(
         for pattern_id in selected_pattern_ids:
             support = get_pattern_support(pattern_id)
             support_sheet.append(
-                [pattern_id, support.badge_label, "Yes" if support.parity_ready else "No", support.summary]
+                [
+                    pattern_id,
+                    support.badge_label,
+                    support.certification_version,
+                    support.sizing_strategy,
+                    ", ".join(support.required_evidence),
+                    " | ".join(" + ".join(group) for group in support.approved_core_tool_groups),
+                    " | ".join(" + ".join(group) for group in support.approved_overlay_groups),
+                    ", ".join(support.commercial_service_ids),
+                    ", ".join(support.external_dependencies),
+                    ", ".join(support.validation_controls),
+                    support.summary,
+                ]
             )
     else:
-        support_sheet.append(["—", "No assigned patterns", "—", "This export does not include any selected pattern IDs."])
+        support_sheet.append(["—", "No assigned patterns", "—", "—", "—", "—", "—", "—", "—", "—", "This export does not include any selected pattern IDs."])
 
     _ensure_export_dirs()
     job_id = str(uuid4())
@@ -333,7 +387,7 @@ async def create_json_export(
             "dashboard": dashboard_snapshot.model_dump(),
             "catalog": catalog_page.model_dump(),
             "justifications": justifications.model_dump(),
-            "pattern_support_boundary": _pattern_support_payload(
+            "pattern_certification": _pattern_support_payload(
                 [item.selected_pattern for item in catalog_page.integrations if item.selected_pattern]
             ),
             "exported_at": _utc_now(),
@@ -384,15 +438,15 @@ async def create_pdf_export(
         f"Service rules version: {dashboard_snapshot.charts.service_rules.version}",
         f"Service rules freshness: {dashboard_snapshot.charts.service_rules.freshness_status}",
     ]
-    if support_boundary["reference_only_pattern_ids"]:
+    if support_boundary["uncertified_pattern_ids"]:
         lines.append(
-            "Reference-only patterns in use: "
-            + ", ".join(cast(list[str], support_boundary["reference_only_pattern_ids"]))
+            "Uncertified patterns in use: "
+            + ", ".join(cast(list[str], support_boundary["uncertified_pattern_ids"]))
         )
-    if support_boundary["fully_supported_pattern_ids"]:
+    if support_boundary["certified_pattern_ids"]:
         lines.append(
-            "Parity-ready patterns in use: "
-            + ", ".join(cast(list[str], support_boundary["fully_supported_pattern_ids"]))
+            "Certified patterns in use: "
+            + ", ".join(cast(list[str], support_boundary["certified_pattern_ids"]))
         )
     for risk in dashboard_snapshot.risks[:5]:
         lines.append(f"Risk {risk.label}: {risk.count}")
@@ -573,12 +627,12 @@ async def create_brief_export(project_id: str, db: AsyncSession) -> ExportJobRes
     lines.extend(
         [
             "",
-        "## Pattern Support Boundary",
+        "## Pattern Certification",
         "",
-        "- Parity-ready patterns in use: "
-        + ", ".join(cast(list[str], support_boundary["fully_supported_pattern_ids"]) or ["None"]),
-        "- Reference-only patterns in use: "
-        + ", ".join(cast(list[str], support_boundary["reference_only_pattern_ids"]) or ["None"]),
+        "- Certified patterns in use: "
+        + ", ".join(cast(list[str], support_boundary["certified_pattern_ids"]) or ["None"]),
+        "- Uncertified patterns in use: "
+        + ", ".join(cast(list[str], support_boundary["uncertified_pattern_ids"]) or ["None"]),
         "",
         "## Top Risks",
         "",

@@ -907,6 +907,7 @@ export interface Integration {
   business_process: string | null;
   interface_name: string | null;
   description: string | null;
+  business_criticality: string | null;
   status: string | null;
   mapping_status: string | null;
   initial_scope: string | null;
@@ -916,6 +917,7 @@ export interface Integration {
   base: string | null;
   interface_status: string | null;
   is_real_time: boolean | null;
+  target_latency_sla: string | null;
   trigger_type: string | null;
   response_size_kb: number | null;
   payload_per_execution_kb: number | null;
@@ -929,17 +931,20 @@ export interface Integration {
   destination_technology_1: string | null;
   destination_technology_2: string | null;
   destination_owner: string | null;
+  data_security_classification: string | null;
   executions_per_day: number | null;
   payload_per_hour_kb: number | null;
   selected_pattern: string | null;
   pattern_rationale: string | null;
   comments: string | null;
   retry_policy: string | null;
+  idempotency: string | null;
   core_tools: string | null;
   additional_tools_overlays: string | null;
   qa_status: "OK" | "REVISAR" | "PENDING" | string | null;
   qa_reasons: string[];
   calendarization: string | null;
+  retention_processing_window: string | null;
   uncertainty: string | null;
   created_at: string;
   updated_at: string;
@@ -968,6 +973,11 @@ export interface IntegrationPatch {
   pattern_rationale?: string;
   comments?: string;
   retry_policy?: string;
+  business_criticality?: string;
+  target_latency_sla?: string;
+  data_security_classification?: string;
+  retention_processing_window?: string;
+  idempotency?: string;
   core_tools?: string[];
   additional_tools_overlays?: string;
   raw_column_values?: Record<string, unknown>;
@@ -1023,10 +1033,17 @@ export interface PatternDefinition {
   version: string;
   is_system: boolean;
   support: {
-    level: "full" | "partial" | "reference";
     badge_label: string;
     summary: string;
-    parity_ready: boolean;
+    certification_status: "certified" | "unverified";
+    certification_version: string | null;
+    sizing_strategy: string | null;
+    required_evidence: string[];
+    approved_core_tool_groups: string[][];
+    approved_overlay_groups: string[][];
+    commercial_service_ids: string[];
+    external_dependencies: string[];
+    validation_controls: string[];
     dimensions: {
       capture_selection: boolean;
       qa_validation: boolean;
@@ -1490,6 +1507,7 @@ export interface ManualIntegrationCreate {
   business_process: string;
   interface_name: string;
   description?: string;
+  business_criticality?: string;
   source_system: string;
   source_technology?: string;
   source_api_reference?: string;
@@ -1498,10 +1516,15 @@ export interface ManualIntegrationCreate {
   destination_technology?: string;
   destination_owner?: string;
   type?: string;
+  target_latency_sla?: string;
   frequency?: string;
   payload_per_execution_kb?: number;
   complexity?: string;
   uncertainty?: string;
+  data_security_classification?: string;
+  retention_processing_window?: string;
+  retry_policy?: string;
+  idempotency?: string;
   selected_pattern?: string;
   pattern_rationale?: string;
   core_tools?: string[];

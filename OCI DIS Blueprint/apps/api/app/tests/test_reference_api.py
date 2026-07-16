@@ -39,8 +39,7 @@ async def test_patterns_api_returns_enriched_metadata(
     assert payload["when_to_use"] == "Use for low-latency APIs"
     assert payload["when_not_to_use"] == "Avoid for long-running jobs"
     assert payload["business_value"] == "Fast partner SLA support"
-    assert payload["support"]["level"] == "full"
-    assert payload["support"]["parity_ready"] is True
+    assert payload["support"]["certification_status"] == "certified"
     assert payload["support"]["dimensions"]["volumetry"] is True
 
 
@@ -172,6 +171,15 @@ async def test_canvas_governance_api_returns_combinations(
                     sort_order=1,
                     version="1.0.0",
                 ),
+                DictionaryOption(
+                    category="OVERLAYS",
+                    code="AO05",
+                    value="OCI IAM and Security Services",
+                    description="Identity and zero-trust boundary",
+                    is_volumetric=False,
+                    sort_order=5,
+                    version="1.0.0",
+                ),
             ]
         )
         await session.commit()
@@ -180,7 +188,10 @@ async def test_canvas_governance_api_returns_combinations(
     assert response.status_code == 200
     payload = response.json()
     assert [option["value"] for option in payload["tools"]] == ["OIC Gen3"]
-    assert payload["overlays"][0]["value"] == "OCI API Gateway"
+    assert [option["value"] for option in payload["overlays"]] == [
+        "OCI API Gateway",
+        "OCI IAM and Security Services",
+    ]
 
     combination = next(
         item for item in payload["combinations"] if item["code"] == "G04"
@@ -224,7 +235,7 @@ async def test_dictionary_tool_alias_returns_canonical_tools_category(
 
 
 @pytest.mark.asyncio
-async def test_reference_only_patterns_are_explicit_in_pattern_api(
+async def test_pattern_certification_is_explicit_in_pattern_api(
     api_client: AsyncClient,
     test_engine: AsyncEngine,
 ) -> None:
@@ -239,14 +250,35 @@ async def test_reference_only_patterns_are_explicit_in_pattern_api(
                 is_system=True,
             )
         )
+        session.add(
+            PatternDefinition(
+                pattern_id="#22",
+                name="Custom Experimental Pattern",
+                category="CUSTOM",
+                description="A project-defined pattern without a published certification contract",
+                is_system=False,
+            )
+        )
         await session.commit()
 
     response = await api_client.get("/api/v1/patterns/%2317")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["support"]["level"] == "reference"
-    assert payload["support"]["parity_ready"] is False
-    assert payload["support"]["badge_label"] == "Reference only"
+    assert payload["support"]["badge_label"] == "Certified"
+    assert payload["support"]["certification_status"] == "certified"
+    assert payload["support"]["certification_version"] == "1.0.0"
+    assert payload["support"]["sizing_strategy"] == "webhook_fanout"
+    assert payload["support"]["required_evidence"] == [
+        "fan_out_targets",
+        "retry_policy",
+        "idempotency",
+    ]
+
+    custom_response = await api_client.get("/api/v1/patterns/%2322")
+    assert custom_response.status_code == 200
+    custom_support = custom_response.json()["support"]
+    assert custom_support["certification_status"] == "unverified"
+    assert custom_support["badge_label"] == "Not certified"
 
 
 @pytest.mark.asyncio

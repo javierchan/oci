@@ -1,6 +1,6 @@
 # OCI DIS Blueprint Status Report
 
-**Validated:** 2026-07-15
+**Validated:** 2026-07-16
 **Branch:** `main`
 **Detailed remediation:** `milestone-progress-20260710-140234.md`
 
@@ -8,11 +8,11 @@
 
 | Area | Status | Evidence |
 |---|---|---|
-| Backend and deterministic engines | complete | 191 tests passed: 125 API, 42 calc-engine, and 24 pricing-engine |
-| Frontend | complete | TypeScript, ESLint, 66 tests, and production build passed |
-| Browser workflows | complete | Pricing/BOM terminal E2E and live desktop inspection passed; broader 18-test regression remains recorded by the canonical quality workflow |
+| Backend and deterministic engines | complete | 206 tests passed: 133 API, 49 calc-engine, and 24 pricing-engine |
+| Frontend | complete | TypeScript, ESLint, 68 tests, and production build passed |
+| Browser workflows | complete | Pattern certification passed on desktop light/dark and 390 px mobile with zero overflow or console errors; Pricing/BOM terminal E2E and the broader 18-test regression remain recorded by the canonical quality workflow |
 | Dependency security | complete | npm audit 0; Docker Scout 0 HIGH/CRITICAL for API and web images |
-| Database | complete | Alembic at `20260715_0030`; 20/20 Service Products have normalized commercial policy and zero orphan mappings |
+| Database | complete | Alembic at `20260716_0032`; 21/21 patterns are certified, canvas governance exposes 9 overlays and 27 combinations, and 20/20 Service Products retain normalized commercial policy |
 | Object Storage | complete | MinIO ready; 54 legacy artifacts migrated; import/recalc/export/delete smoke passed |
 | Runtime | complete | 8 Compose services running; API, database, Redis, MinIO, workers, beat, and web healthy |
 | Effective CI | complete | one root workflow covers code, browser, build, and image gates |
@@ -48,18 +48,45 @@
 
 ## Governed Offline Capture Workbook
 
-- Import downloads template `v2.0.0` from one backend-owned column and version
-  contract, with 500 blank capture rows and no example data in the import surface.
-- Ten workbook sheets provide novice instructions, preflight checks, guided
-  examples, field definitions, patterns, OCI products, limits, interoperability,
-  evidence freshness, and official source URLs.
+- Import downloads the official template `v3.0.0` from one backend-owned column
+  and version contract, with 500 blank capture rows and no example data in the
+  import surface.
+- Twelve workbook sheets provide novice instructions, an executive dashboard,
+  editable client catalogs, preflight checks, guided examples, field definitions,
+  patterns, OCI products, limits, interoperability, evidence freshness, and
+  official source URLs.
 - Named validation ranges and a very-hidden manifest keep dropdowns, headers,
   source counts, generation time, and compatibility metadata deterministic.
-- Existing unversioned v1 workbooks remain supported with a legacy warning;
-  future major versions, changed v2 headers, and formulas are rejected.
-- A generated workbook was filled and imported through the production service
-  path with exact field mapping. All ten visible sheets rendered without formula
-  errors, and Playwright verified the App metadata and downloaded filename.
+- Existing unversioned v1 and governed v2 workbooks remain supported; future major
+  versions, changed v3 headers, and formulas are rejected.
+- A generated workbook is filled and imported through the production service path
+  with exact field mapping, including the v3 operational-design fields. All twelve
+  sheets are rendered and the App metadata plus downloaded filename are verified.
+
+## Governed Pattern Certification
+
+- One deterministic registry certifies patterns `#01`–`#21` under contract
+  `v1.0.0`, including sizing strategy, required evidence, approved core-tool
+  compositions, required overlays, commercial services, external dependencies,
+  controls, and an architect-facing summary.
+- Import, capture, catalog patches, recalculation, Architecture Review, exports,
+  Pattern Library, integration detail, canvas, and the offline workbook consume
+  the same certification projection. Unknown custom patterns remain explicitly
+  unverified and cannot produce certified readiness evidence.
+- Canvas governance now exposes 9 overlays (`AO01`–`AO09`) and 27 certified
+  combinations (`G01`–`G27`). Non-volumetric identity, observability, catalog,
+  AI, and mesh overlays remain selectable because architectural certification is
+  independent from volumetric ownership.
+- The active 480-row project was recalculated through job
+  `d339944d-cdf0-44f0-b5e8-56cbf46a92cb`, producing snapshot
+  `76287de1-d78b-4dca-adbe-eba33e1aea2c`. All used patterns are certified;
+  60 rows are truthfully flagged for missing composition evidence and require
+  architect data remediation rather than a code fallback.
+- Validation passed 133 API, 49 calc-engine, 24 pricing-engine, and 68 frontend
+  tests; Ruff, mypy, TypeScript, ESLint, npm audit, OpenAPI, the Node 26
+  production build, migration head `20260716_0032`, and all eight production
+  services passed. Playwright observed 21/21 certified cards, 9/9 overlays, zero
+  console errors, and zero horizontal overflow at 390 px.
 
 ## Monthly Consumption Ramps
 

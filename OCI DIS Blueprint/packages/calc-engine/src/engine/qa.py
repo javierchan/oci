@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+from .pattern_certification import composition_issues, get_pattern_certification
+
 
 @dataclass(frozen=True)
 class QAResult:
@@ -39,6 +41,7 @@ VALID_TRIGGER_TYPES = {
 VALID_PATTERN_IDS = {
     "#01", "#02", "#03", "#04", "#05", "#06", "#07", "#08",
     "#09", "#10", "#11", "#12", "#13", "#14", "#15", "#16", "#17",
+    "#18", "#19", "#20", "#21",
 }
 
 
@@ -60,6 +63,13 @@ def evaluate_qa(
     fan_out_targets: Optional[int],
     uncertainty: Optional[str],
     is_active_row: bool = True,
+    retry_policy: Optional[str] = None,
+    idempotency: Optional[str] = None,
+    target_latency_sla: Optional[str] = None,
+    data_security_classification: Optional[str] = None,
+    retention_processing_window: Optional[str] = None,
+    business_criticality: Optional[str] = None,
+    additional_tools_overlays: Optional[str] = None,
 ) -> QAResult:
     if not is_active_row:
         return QAResult(status="PENDING", reasons=[])
@@ -133,10 +143,41 @@ def evaluate_qa(
         ):
             reasons.append("QUEUE_PAYLOAD_EXCEEDS_256KB_LIMIT")
 
-    if selected_pattern in {"#12", "#13", "#16"} and (
-        not pattern_rationale or len(pattern_rationale.strip()) < 30
+    certification = get_pattern_certification(selected_pattern)
+    evidence_values: dict[str, object | None] = {
+        "business_criticality": business_criticality,
+        "target_latency_sla": target_latency_sla,
+        "data_security_classification": data_security_classification,
+        "retention_processing_window": retention_processing_window,
+        "retry_policy": retry_policy,
+        "idempotency": idempotency,
+        "fan_out_targets": fan_out_targets if fan_out_targets is not None and fan_out_targets >= 2 else None,
+    }
+    evidence_reason_codes = {
+        "business_criticality": "BUSINESS_CRITICALITY_REQUIRED",
+        "target_latency_sla": "TARGET_LATENCY_REQUIRED",
+        "data_security_classification": "DATA_CLASSIFICATION_REQUIRED",
+        "retention_processing_window": (
+            "BATCH_WINDOW_REQUIRED" if selected_pattern == "#18" else "RETENTION_POLICY_REQUIRED"
+        ),
+        "retry_policy": "RETRY_POLICY_REQUIRED",
+        "idempotency": "IDEMPOTENCY_REQUIRED",
+        "fan_out_targets": "MISSING_FAN_OUT_TARGETS",
+    }
+    if certification is not None:
+        for field_name in certification.required_evidence:
+            if not evidence_values.get(field_name):
+                reason_code = evidence_reason_codes[field_name]
+                if reason_code not in reasons:
+                    reasons.append(reason_code)
+
+    for reason_code in composition_issues(
+        selected_pattern,
+        core_tools,
+        additional_tools_overlays,
     ):
-        reasons.append("REFERENCE_PATTERN_NEEDS_EXPLICIT_RATIONALE")
+        if reason_code not in reasons:
+            reasons.append(reason_code)
 
     status = "OK" if not reasons else "REVISAR"
     return QAResult(status=status, reasons=reasons)

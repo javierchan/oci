@@ -43,7 +43,7 @@ class ImportResult:
     loaded_count: int
     header_map: dict[str, str]
     rows: list[ParsedRow]
-    parser_version: str = "2.0.0"
+    parser_version: str = "3.0.0"
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +58,7 @@ HEADER_ALIASES: dict[str, list[str]] = {
     "business_process": ["proceso de negocio", "proceso", "process"],
     "interface_name": ["interfaz", "interface", "interface name", "nombre interfaz"],
     "description": ["descripción", "descripcion", "description"],
+    "business_criticality": ["criticidad de negocio", "business criticality"],
     "type": ["tipo", "type"],
     "base": ["base"],
     "interface_status": ["estado interfaz", "interface status"],
@@ -84,8 +85,20 @@ HEADER_ALIASES: dict[str, list[str]] = {
         "destination technology #2",
     ],
     "destination_owner": ["propietario de destino", "destination owner"],
+    "data_security_classification": [
+        "clasificación de datos / seguridad",
+        "clasificacion de datos / seguridad",
+        "data / security classification",
+        "data classification",
+    ],
     "frequency": ["frecuencia", "frequency"],
     "is_real_time": ["tiempo real (si/no)", "tiempo real", "real time (yes/no)", "real time"],
+    "target_latency_sla": [
+        "sla / latencia objetivo",
+        "sla/latencia objetivo",
+        "sla / target latency",
+        "target latency",
+    ],
     "trigger_type": ["tipo trigger oic", "trigger type", "tipo de trigger"],
     "response_size_kb": ["response size (kb)", "response size", "tamaño respuesta kb"],
     "payload_per_execution_kb": [
@@ -123,6 +136,13 @@ HEADER_ALIASES: dict[str, list[str]] = {
         "comments",
     ],
     "retry_policy": ["retry policy"],
+    "idempotency": ["idempotencia", "idempotency"],
+    "retention_processing_window": [
+        "retención / ventana de procesamiento",
+        "retencion / ventana de procesamiento",
+        "retention / processing window",
+        "processing window",
+    ],
     "core_tools": [
         "herramientas core cuantificables / volumétricas",
         "herramientas core cuantificables / volumetricas",

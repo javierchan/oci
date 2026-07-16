@@ -11,12 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.calc_engine import (
     Assumptions,
+    CERTIFICATION_VERSION,
     IntegrationInput,
+    composition_issues,
     consolidate_project,
     executions_per_day as calc_executions_per_day,
     di_data_processed_gb,
     functions_execution_units,
     functions_invocations_per_month,
+    get_pattern_certification,
     oic_billing_messages_per_month,
     payload_per_hour_kb as calc_payload_per_hour_kb,
     payload_per_month_kb,
@@ -276,6 +279,9 @@ async def calculate_project_volumetry(
     di_total_gb = 0.0
     streaming_total_gb = 0.0
     peak_streaming_partitions = 0
+    certified_pattern_ids: set[str] = set()
+    uncertified_pattern_ids: set[str] = set()
+    noncompliant_integration_count = 0
 
     for row in integrations:
         executions_day, payload_hour = derived_inputs[row.id]
@@ -338,6 +344,20 @@ async def calculate_project_volumetry(
             service_rules,
             override,
         )
+        certification = get_pattern_certification(row.selected_pattern)
+        effective_core_tools = override.core_tools if override else row.core_tools
+        effective_overlays = (
+            override.additional_tools_overlays if override else row.additional_tools_overlays
+        )
+        certification_issues = list(
+            composition_issues(row.selected_pattern, effective_core_tools, effective_overlays)
+        )
+        if certification is not None:
+            certified_pattern_ids.add(certification.pattern_id)
+        elif row.selected_pattern:
+            uncertified_pattern_ids.add(row.selected_pattern)
+        if certification_issues:
+            noncompliant_integration_count += 1
         row_results[row.id] = {
             "executions_per_day": executions_day,
             "payload_per_hour_kb": payload_hour,
@@ -348,6 +368,19 @@ async def calculate_project_volumetry(
             "streaming_gb_month": streaming_gb_month,
             "streaming_partition_count": streaming_partitions,
             "design_constraint_warnings": design_constraint_warnings,
+            "pattern_certification": {
+                "status": "certified" if certification is not None else "unverified",
+                "version": certification.certification_version if certification else None,
+                "sizing_strategy": certification.sizing_strategy if certification else None,
+                "commercial_service_ids": (
+                    list(certification.commercial_service_ids) if certification else []
+                ),
+                "external_dependencies": (
+                    list(certification.external_dependencies) if certification else []
+                ),
+                "composition_compliant": not certification_issues,
+                "composition_issues": certification_issues,
+            },
         }
 
     consolidated["data_integration"]["data_processed_gb_month"] = di_total_gb
@@ -362,6 +395,12 @@ async def calculate_project_volumetry(
         metadata={
             "integration_count": len(integrations),
             "service_rules": service_rules.metadata(),
+            "pattern_certification": {
+                "version": CERTIFICATION_VERSION,
+                "certified_pattern_ids": sorted(certified_pattern_ids),
+                "uncertified_pattern_ids": sorted(uncertified_pattern_ids),
+                "noncompliant_integration_count": noncompliant_integration_count,
+            },
             "draft_override_integration_id": draft_override.integration_id if draft_override else None,
             "persisted": False,
         },
@@ -382,6 +421,7 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
         snapshot_metadata={
             "integration_count": calculation.metadata["integration_count"],
             "service_rules": calculation.metadata["service_rules"],
+            "pattern_certification": calculation.metadata["pattern_certification"],
         },
     )
     db.add(snapshot)

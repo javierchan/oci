@@ -5179,6 +5179,17 @@
             ],
             "title": "Additional Tools Overlays"
           },
+          "business_criticality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Criticality"
+          },
           "comments": {
             "anyOf": [
               {
@@ -5200,6 +5211,28 @@
               }
             ],
             "title": "Core Tools"
+          },
+          "data_security_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Security Classification"
+          },
+          "idempotency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency"
           },
           "pattern_rationale": {
             "anyOf": [
@@ -5224,6 +5257,17 @@
             ],
             "title": "Raw Column Values"
           },
+          "retention_processing_window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Processing Window"
+          },
           "retry_policy": {
             "anyOf": [
               {
@@ -5245,6 +5289,17 @@
               }
             ],
             "title": "Selected Pattern"
+          },
+          "target_latency_sla": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Latency Sla"
           }
         },
         "title": "CatalogIntegrationPatch",
@@ -5286,6 +5341,17 @@
               }
             ],
             "title": "Brand"
+          },
+          "business_criticality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Criticality"
           },
           "business_process": {
             "anyOf": [
@@ -5346,6 +5412,17 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "data_security_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Security Classification"
           },
           "description": {
             "anyOf": [
@@ -5438,6 +5515,17 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "idempotency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency"
           },
           "initial_scope": {
             "anyOf": [
@@ -5593,6 +5681,17 @@
             ],
             "title": "Response Size Kb"
           },
+          "retention_processing_window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Processing Window"
+          },
           "retry_policy": {
             "anyOf": [
               {
@@ -5685,6 +5784,17 @@
             ],
             "title": "Status"
           },
+          "target_latency_sla": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Latency Sla"
+          },
           "trigger_type": {
             "anyOf": [
               {
@@ -5735,6 +5845,7 @@
           "business_process",
           "interface_name",
           "description",
+          "business_criticality",
           "status",
           "mapping_status",
           "initial_scope",
@@ -5744,6 +5855,7 @@
           "base",
           "interface_status",
           "is_real_time",
+          "target_latency_sla",
           "trigger_type",
           "response_size_kb",
           "payload_per_execution_kb",
@@ -5757,16 +5869,19 @@
           "destination_technology_1",
           "destination_technology_2",
           "destination_owner",
+          "data_security_classification",
           "executions_per_day",
           "payload_per_hour_kb",
           "selected_pattern",
           "pattern_rationale",
           "comments",
           "retry_policy",
+          "idempotency",
           "core_tools",
           "additional_tools_overlays",
           "qa_status",
           "calendarization",
+          "retention_processing_window",
           "uncertainty",
           "created_at",
           "updated_at"
@@ -8167,6 +8282,17 @@
             "title": "Brand",
             "type": "string"
           },
+          "business_criticality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Criticality"
+          },
           "business_process": {
             "title": "Business Process",
             "type": "string"
@@ -8195,6 +8321,17 @@
               }
             ],
             "title": "Core Tools"
+          },
+          "data_security_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Security Classification"
           },
           "description": {
             "anyOf": [
@@ -8243,6 +8380,17 @@
               }
             ],
             "title": "Frequency"
+          },
+          "idempotency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency"
           },
           "initial_scope": {
             "anyOf": [
@@ -8303,6 +8451,28 @@
             ],
             "title": "Payload Per Execution Kb"
           },
+          "retention_processing_window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Processing Window"
+          },
+          "retry_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Policy"
+          },
           "selected_pattern": {
             "anyOf": [
               {
@@ -8350,6 +8520,17 @@
               }
             ],
             "title": "Source Technology"
+          },
+          "target_latency_sla": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Latency Sla"
           },
           "tbq": {
             "default": "Y",
@@ -9152,37 +9333,109 @@
         "additionalProperties": false,
         "description": "Serialized support boundary for one pattern.",
         "properties": {
+          "approved_core_tool_groups": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Approved Core Tool Groups",
+            "type": "array"
+          },
+          "approved_overlay_groups": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Approved Overlay Groups",
+            "type": "array"
+          },
           "badge_label": {
             "title": "Badge Label",
             "type": "string"
           },
+          "certification_status": {
+            "enum": [
+              "certified",
+              "unverified"
+            ],
+            "title": "Certification Status",
+            "type": "string"
+          },
+          "certification_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Certification Version"
+          },
+          "commercial_service_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Commercial Service Ids",
+            "type": "array"
+          },
           "dimensions": {
             "$ref": "#/components/schemas/PatternSupportDimensionsResponse"
           },
-          "level": {
-            "enum": [
-              "full",
-              "partial",
-              "reference"
-            ],
-            "title": "Level",
-            "type": "string"
+          "external_dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "External Dependencies",
+            "type": "array"
           },
-          "parity_ready": {
-            "title": "Parity Ready",
-            "type": "boolean"
+          "required_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Evidence",
+            "type": "array"
+          },
+          "sizing_strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizing Strategy"
           },
           "summary": {
             "title": "Summary",
             "type": "string"
+          },
+          "validation_controls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Validation Controls",
+            "type": "array"
           }
         },
         "required": [
-          "level",
           "badge_label",
           "summary",
-          "parity_ready",
-          "dimensions"
+          "dimensions",
+          "certification_status",
+          "certification_version",
+          "sizing_strategy",
+          "required_evidence",
+          "approved_core_tool_groups",
+          "approved_overlay_groups",
+          "commercial_service_ids",
+          "external_dependencies",
+          "validation_controls"
         ],
         "title": "PatternSupportResponse",
         "type": "object"

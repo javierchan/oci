@@ -21,7 +21,7 @@ def test_reference_seed_is_idempotent_and_workbook_complete() -> None:
         second_dictionary_count = seed_dictionary_options(session)
         session.commit()
 
-        assert first_pattern_count == 17
+        assert first_pattern_count == 21
         assert second_pattern_count == 0
         assert first_dictionary_count == len(DICTIONARY_OPTIONS)
         assert second_dictionary_count == 0
@@ -65,9 +65,22 @@ def test_reference_seed_is_idempotent_and_workbook_complete() -> None:
         for option in session.scalars(select(DictionaryOption)).all():
             description = option.description or ""
             assert not any(term in description for term in spanish_metadata_terms)
-        assert len(CANVAS_COMBINATIONS) == 18
+        assert len(CANVAS_COMBINATIONS) == 27
         assert CANVAS_COMBINATIONS[3]["code"] == "G04"
         assert CANVAS_COMBINATIONS[3]["recommended_overlays"] == []
+        covered_pattern_ids = {
+            pattern_id
+            for combination in CANVAS_COMBINATIONS
+            for pattern_id in combination["compatible_pattern_ids"]
+        }
+        assert covered_pattern_ids == {f"#{index:02d}" for index in range(1, 22)}
+        governed_overlay_codes = {
+            option.code
+            for option in session.scalars(
+                select(DictionaryOption).where(DictionaryOption.category == "OVERLAYS")
+            ).all()
+        }
+        assert governed_overlay_codes == {f"AO{index:02d}" for index in range(1, 10)}
 
     Base.metadata.drop_all(engine)
 

@@ -49,6 +49,12 @@ export function IntegrationPatchForm({
   const [selectedPattern, setSelectedPattern] = useState<string>(integration.selected_pattern ?? "");
   const [patternRationale, setPatternRationale] = useState<string>(integration.pattern_rationale ?? "");
   const [comments, setComments] = useState<string>(integration.comments ?? "");
+  const [businessCriticality, setBusinessCriticality] = useState<string>(integration.business_criticality ?? "");
+  const [targetLatencySla, setTargetLatencySla] = useState<string>(integration.target_latency_sla ?? "");
+  const [dataClassification, setDataClassification] = useState<string>(integration.data_security_classification ?? "");
+  const [retentionWindow, setRetentionWindow] = useState<string>(integration.retention_processing_window ?? "");
+  const [retryPolicy, setRetryPolicy] = useState<string>(integration.retry_policy ?? "");
+  const [idempotency, setIdempotency] = useState<string>(integration.idempotency ?? "");
   const [saving, setSaving] = useState<boolean>(false);
   const [deleting, setDeleting] = useState<boolean>(false);
   const [deleteOpen, setDeleteOpen] = useState<boolean>(false);
@@ -92,6 +98,12 @@ export function IntegrationPatchForm({
       selected_pattern: selectedPattern || undefined,
       pattern_rationale: patternRationale || undefined,
       comments: comments || undefined,
+      business_criticality: businessCriticality,
+      target_latency_sla: targetLatencySla,
+      data_security_classification: dataClassification,
+      retention_processing_window: retentionWindow,
+      retry_policy: retryPolicy,
+      idempotency,
     };
 
     try {
@@ -196,11 +208,53 @@ export function IntegrationPatchForm({
         </select>
       </label>
 
+      <fieldset className="space-y-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+        <legend className="app-label px-1">Operational Design</legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="app-label mb-2 block">Business Criticality</span>
+            <select value={businessCriticality} onChange={(event) => setBusinessCriticality(event.target.value)} className="app-input">
+              <option value="">Not assessed</option>
+              <option value="Baja">Low</option>
+              <option value="Media">Medium</option>
+              <option value="Alta">High</option>
+              <option value="Crítica">Critical</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="app-label mb-2 block">Data Classification</span>
+            <select value={dataClassification} onChange={(event) => setDataClassification(event.target.value)} className="app-input">
+              <option value="">Not assessed</option>
+              <option value="Pública">Public</option>
+              <option value="Interna">Internal</option>
+              <option value="Confidencial">Confidential</option>
+              <option value="Restringida">Restricted</option>
+            </select>
+          </label>
+        </div>
+        <label className="block">
+          <span className="app-label mb-2 block">SLA / Target Latency</span>
+          <input value={targetLatencySla} onChange={(event) => setTargetLatencySla(event.target.value)} className="app-input" placeholder="p95 under 5 seconds" />
+        </label>
+        <label className="block">
+          <span className="app-label mb-2 block">Retention / Processing Window</span>
+          <input value={retentionWindow} onChange={(event) => setRetentionWindow(event.target.value)} className="app-input" placeholder="Retain 7 days; process 22:00-02:00" />
+        </label>
+        <label className="block">
+          <span className="app-label mb-2 block">Retry Policy</span>
+          <textarea value={retryPolicy} onChange={(event) => setRetryPolicy(event.target.value)} rows={3} className="app-input" placeholder="3 attempts; exponential backoff; DLQ" />
+        </label>
+        <label className="block">
+          <span className="app-label mb-2 block">Idempotency</span>
+          <textarea value={idempotency} onChange={(event) => setIdempotency(event.target.value)} rows={3} className="app-input" placeholder="Use orderId as key; retain deduplication state for 7 days" />
+        </label>
+      </fieldset>
+
       {selectedPatternDefinition ? (
         <div
           className={[
             "rounded-2xl border p-4 text-sm",
-            selectedPatternDefinition.support.parity_ready
+            selectedPatternDefinition.support.certification_status === "certified"
               ? "border-emerald-200 bg-emerald-50/80 text-emerald-900 dark:border-[#30d158]/45 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]"
               : "border-amber-200 bg-amber-50/90 text-amber-900 dark:border-[#ffd60a]/45 dark:bg-[var(--color-surface-2)] dark:text-[var(--color-text-primary)]",
           ].join(" ")}

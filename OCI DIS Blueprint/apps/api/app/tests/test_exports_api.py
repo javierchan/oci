@@ -45,10 +45,12 @@ async def test_capture_template_export_returns_valid_workbook(api_client: AsyncC
     assert sheet.freeze_panes == "F2"
     assert sheet.max_row <= 2
     assert all(cell.value is None for cell in sheet[2])
-    assert sheet.auto_filter.ref == "A1:AN501"
+    assert sheet.auto_filter.ref == "A1:AS501"
     assert workbook.sheetnames == [
         "Inicio",
+        "Dashboard",
         "_Listas",
+        "Catálogos del Cliente",
         "Catálogo de Integraciones",
         "Validación Previa",
         "Ejemplos Guiados",
@@ -62,7 +64,13 @@ async def test_capture_template_export_returns_valid_workbook(api_client: AsyncC
     assert "LIST_FREQUENCY" in workbook.defined_names
     assert "LIST_PATTERNS" in workbook.defined_names
     assert len(sheet.data_validations.dataValidation) >= 6
-    assert "v2.0.0" in response.headers["content-disposition"]
+    pattern_sheet = workbook["Patrones"]
+    assert pattern_sheet["D4"].value == "Certificación"
+    assert pattern_sheet["E4"].value == "Versión certificación"
+    assert pattern_sheet["G4"].value == "Evidencia requerida"
+    assert pattern_sheet["L4"].value == "Controles de validación"
+    assert pattern_sheet.auto_filter.ref.endswith(f"V{pattern_sheet.max_row}")
+    assert "v3.0.0" in response.headers["content-disposition"]
 
 
 @pytest.mark.asyncio
@@ -72,11 +80,11 @@ async def test_capture_template_metadata_matches_download_contract(api_client: A
     response = await api_client.get("/api/v1/exports/template/metadata")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["template_version"] == "2.0.0"
-    assert payload["filename"] == "oci-dis-import-template-v2.0.0.xlsx"
+    assert payload["template_version"] == "3.0.0"
+    assert payload["filename"] == "oci-dis-import-template-v3.0.0.xlsx"
     assert payload["capture_sheet"] == "Catálogo de Integraciones"
     assert payload["capture_row_limit"] == 500
-    assert len(payload["columns"]) == 40
+    assert len(payload["columns"]) == 45
     required = {item["field"] for item in payload["columns"] if item["requirement"] == "Requerido"}
     assert required == {"brand", "business_process", "interface_name", "frequency", "source_system", "destination_system", "tbq"}
 
@@ -103,23 +111,28 @@ async def test_capture_template_round_trip_imports_exactly_one_row(
             "Marca": "Retail",
             "Proceso de Negocio": "Order to Cash",
             "Interfaz": "Publicar pedido confirmado",
+            "Criticidad de Negocio": "Alta",
             "Frecuencia": "Cada 1 hora",
             "Tipo Trigger OIC": "Event Trigger",
+            "SLA / Latencia Objetivo": "p95 < 5 seconds",
             "Payload por Ejecución (KB)": 150,
             "Fan-out (Si/No)": "Sí",
             "# Destinos": 3,
             "Sistema de Origen": "Oracle ERP Cloud",
             "Sistema de Destino": "Order Fulfillment",
+            "Clasificación de Datos / Seguridad": "Confidencial",
+            "Retención / Ventana de Procesamiento": "Retain 7 days",
             "TBQ": "Y",
             "Patrón Seleccionado (Manual)": "#02",
             "Racional del Patrón (Manual)": "Decouples the producer from three consumers.",
             "Retry Policy": "3 attempts; exponential backoff; DLQ",
+            "Idempotencia": "Use orderId for deduplication",
             "Herramientas Core Cuantificables / Volumétricas": "OCI Streaming | OIC Gen3",
             "Herramientas Adicionales / Overlays (Complemento Manual)": "OCI API Gateway | OCI APM",
         }
         for header, value in values.items():
             sheet.cell(2, header_columns[header], value)
-        file_path = tmp_path / "capture-v2.xlsx"
+        file_path = tmp_path / "capture-v3.xlsx"
         workbook.save(file_path)
 
         batch = await import_service.create_import_batch(project.id, file_path.name, session)
@@ -130,7 +143,7 @@ async def test_capture_template_round_trip_imports_exactly_one_row(
         assert processed.source_row_count == 1
         assert processed.loaded_count == 1
         assert processed.header_map is not None
-        assert processed.header_map["__template_version__"] == "2.0.0"
+        assert processed.header_map["__template_version__"] == "3.0.0"
         assert processed.header_map["__template_compatibility__"] == "current"
         assert len(integrations) == 1
         integration = integrations[0]
@@ -139,6 +152,11 @@ async def test_capture_template_round_trip_imports_exactly_one_row(
         assert integration.selected_pattern == "#02"
         assert integration.fan_out_targets == 3
         assert integration.core_tools == "OCI Streaming | OIC Gen3"
+        assert integration.business_criticality == "Alta"
+        assert integration.target_latency_sla == "p95 < 5 seconds"
+        assert integration.data_security_classification == "Confidencial"
+        assert integration.retention_processing_window == "Retain 7 days"
+        assert integration.idempotency == "Use orderId for deduplication"
 
 
 @pytest.mark.asyncio
@@ -203,11 +221,11 @@ async def test_unversioned_v1_workbook_remains_supported(
 
 
 @pytest.mark.asyncio
-async def test_v2_workbook_rejects_changed_headers(
+async def test_v3_workbook_rejects_changed_headers(
     test_engine: AsyncEngine,
     tmp_path: Path,
 ) -> None:
-    """A governed v2 manifest cannot be paired with silently changed capture headers."""
+    """A governed v3 manifest cannot be paired with silently changed capture headers."""
 
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as session:

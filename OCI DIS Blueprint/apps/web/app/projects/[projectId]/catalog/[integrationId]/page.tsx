@@ -48,6 +48,11 @@ const AUDIT_LABELS: Record<string, string> = {
   pattern_rationale: "Pattern rationale",
   comments: "Comments",
   retry_policy: "Retry policy",
+  idempotency: "Idempotency",
+  business_criticality: "Business criticality",
+  target_latency_sla: "SLA / target latency",
+  data_security_classification: "Data classification",
+  retention_processing_window: "Retention / processing window",
   core_tools: "Core tools",
   raw_column_values: "Raw column values",
   source_system: "Source system",
@@ -81,9 +86,17 @@ const QA_REASON_LABELS: Record<string, { title: string; hint: string }> = {
     title: "No tools selected in canvas",
     hint: "Use the Integration Design Canvas to add at least one tool to this integration.",
   },
-  PATTERN_REFERENCE_ONLY: {
-    title: "Pattern is reference-only in phase parity",
-    hint: "This workbook pattern is documented and selectable, but the current release does not yet provide pattern-specific sizing parity. Treat estimates as directional and keep the row in architect review.",
+  PATTERN_NOT_CERTIFIED: {
+    title: "Pattern is not certified",
+    hint: "Select a certified system pattern or publish a versioned certification contract before treating this architecture as ready.",
+  },
+  PATTERN_CORE_TOOLS_NOT_CERTIFIED: {
+    title: "Core tools do not match the pattern certification",
+    hint: "Open the Integration Design Canvas and use one of the certified core-tool compositions documented for this pattern.",
+  },
+  PATTERN_OVERLAYS_NOT_CERTIFIED: {
+    title: "Required architectural overlays are missing",
+    hint: "Open the Integration Design Canvas and add the identity, API, storage, catalog, observability, AI, or mesh overlays required by this certification.",
   },
   MISSING_PAYLOAD: {
     title: "Payload evidence missing",
@@ -121,6 +134,34 @@ const QA_REASON_LABELS: Record<string, { title: string; hint: string }> = {
     title: "Reference pattern needs explicit rationale",
     hint: "Reference-only patterns require a substantive architect explanation before the row can be treated as governed.",
   },
+  BATCH_WINDOW_REQUIRED: {
+    title: "Batch window not defined",
+    hint: "Scheduled Batch requires a processing window, retention, and reprocessing expectation before approval.",
+  },
+  TARGET_LATENCY_REQUIRED: {
+    title: "Target latency not defined",
+    hint: "Define the expected completion time or callback SLA so the asynchronous design can be validated.",
+  },
+  RETRY_POLICY_REQUIRED: {
+    title: "Retry policy not defined",
+    hint: "Specify bounded attempts, backoff, terminal handling, and DLQ ownership for this pattern.",
+  },
+  IDEMPOTENCY_REQUIRED: {
+    title: "Idempotency control not defined",
+    hint: "Document the deduplication key and retention window before enabling retries or replay.",
+  },
+  RETENTION_POLICY_REQUIRED: {
+    title: "Payload retention not defined",
+    hint: "Claim Check requires an explicit object lifecycle, access expiry, and orphan-cleanup policy.",
+  },
+  DATA_CLASSIFICATION_REQUIRED: {
+    title: "Data classification not defined",
+    hint: "Classify the payload so encryption, access, retention, and audit controls can be reviewed.",
+  },
+  BUSINESS_CRITICALITY_REQUIRED: {
+    title: "Business criticality not defined",
+    hint: "Classify the business impact so resilience, recovery, and operating controls can be validated against the pattern certification.",
+  },
 };
 
 const SOURCE_ROW_FIELD_NAMES = [
@@ -131,6 +172,7 @@ const SOURCE_ROW_FIELD_NAMES = [
   "Business Process",
   "Interface Name",
   "Description",
+  "Business Criticality",
   "Status",
   "Mapping Status",
   "Initial Scope",
@@ -140,6 +182,7 @@ const SOURCE_ROW_FIELD_NAMES = [
   "Base",
   "Interface Status",
   "Real Time",
+  "SLA / Target Latency",
   "Trigger Type",
   "Response Size KB",
   "Payload per Execution KB",
@@ -153,7 +196,9 @@ const SOURCE_ROW_FIELD_NAMES = [
   "Destination Technology 1",
   "Destination Technology 2",
   "Destination Owner",
+  "Data / Security Classification",
   "Calendarization",
+  "Retention / Processing Window",
 ];
 
 function isEqualAuditValue(left: unknown, right: unknown): boolean {
@@ -502,6 +547,30 @@ export default async function IntegrationDetailPage({
                   <dt className="app-label">Uncertainty</dt>
                   <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.uncertainty)}</dd>
                 </div>
+                <div className="min-w-0">
+                  <dt className="app-label">Business Criticality</dt>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.business_criticality)}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="app-label">SLA / Target Latency</dt>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.target_latency_sla)}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="app-label">Data Classification</dt>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.data_security_classification)}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="app-label">Retention / Processing Window</dt>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.retention_processing_window)}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="app-label">Retry Policy</dt>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.retry_policy)}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="app-label">Idempotency</dt>
+                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.idempotency)}</dd>
+                </div>
               </div>
             </dl>
           </article>
@@ -603,12 +672,30 @@ export default async function IntegrationDetailPage({
 
           {selectedPatternDefinition ? (
             <section className="app-card p-6">
-              <p className="app-label">Pattern Support</p>
+              <p className="app-label">Pattern Certification</p>
               <div className="mt-4 space-y-3">
                 <PatternSupportBadge support={selectedPatternDefinition.support} />
                 <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
                   {selectedPatternDefinition.support.summary}
                 </p>
+                {selectedPatternDefinition.support.certification_version ? (
+                  <div className="grid gap-4 border-y border-[var(--color-border)] py-4 sm:grid-cols-2">
+                    <div>
+                      <p className="app-label">Contract</p>
+                      <p className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">
+                        v{selectedPatternDefinition.support.certification_version} · {selectedPatternDefinition.support.sizing_strategy?.replaceAll("_", " ")}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="app-label">Required Evidence</p>
+                      <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                        {selectedPatternDefinition.support.required_evidence
+                          .map((item) => item.replaceAll("_", " "))
+                          .join(" · ") || "No additional evidence"}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
                 {selectedPatternDefinition.when_not_to_use ? (
                   <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
                     <p className="font-semibold text-[var(--color-text-primary)]">Anti-pattern guidance</p>

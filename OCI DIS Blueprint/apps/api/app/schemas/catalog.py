@@ -17,6 +17,11 @@ class CatalogIntegrationPatch(BaseModel):
     pattern_rationale: Optional[str] = None
     comments: Optional[str] = None
     retry_policy: Optional[str] = None
+    business_criticality: Optional[str] = None
+    target_latency_sla: Optional[str] = None
+    data_security_classification: Optional[str] = None
+    retention_processing_window: Optional[str] = None
+    idempotency: Optional[str] = None
     core_tools: Optional[str] = None
     additional_tools_overlays: Optional[str] = None
     raw_column_values: Optional[dict[str, Any]] = None
@@ -32,6 +37,7 @@ class ManualIntegrationCreate(BaseModel):
     business_process: str
     interface_name: str
     description: Optional[str] = None
+    business_criticality: Optional[str] = None
     source_system: str
     source_technology: Optional[str] = None
     source_api_reference: Optional[str] = None
@@ -40,10 +46,15 @@ class ManualIntegrationCreate(BaseModel):
     destination_technology: Optional[str] = None
     destination_owner: Optional[str] = None
     type: Optional[str] = None
+    target_latency_sla: Optional[str] = None
     frequency: Optional[str] = None
     payload_per_execution_kb: Optional[float] = None
     complexity: Optional[str] = None
     uncertainty: Optional[str] = None
+    data_security_classification: Optional[str] = None
+    retention_processing_window: Optional[str] = None
+    retry_policy: Optional[str] = None
+    idempotency: Optional[str] = None
     selected_pattern: Optional[str] = None
     pattern_rationale: Optional[str] = None
     core_tools: Optional[list[str]] = None
@@ -89,6 +100,7 @@ class CatalogIntegrationResponse(BaseModel):
     business_process: Optional[str]
     interface_name: Optional[str]
     description: Optional[str]
+    business_criticality: Optional[str]
     status: Optional[str]
     mapping_status: Optional[str]
     initial_scope: Optional[str]
@@ -98,6 +110,7 @@ class CatalogIntegrationResponse(BaseModel):
     base: Optional[str]
     interface_status: Optional[str]
     is_real_time: Optional[bool]
+    target_latency_sla: Optional[str]
     trigger_type: Optional[str]
     response_size_kb: Optional[float]
     payload_per_execution_kb: Optional[float]
@@ -111,17 +124,20 @@ class CatalogIntegrationResponse(BaseModel):
     destination_technology_1: Optional[str]
     destination_technology_2: Optional[str]
     destination_owner: Optional[str]
+    data_security_classification: Optional[str]
     executions_per_day: Optional[float]
     payload_per_hour_kb: Optional[float]
     selected_pattern: Optional[str]
     pattern_rationale: Optional[str]
     comments: Optional[str]
     retry_policy: Optional[str]
+    idempotency: Optional[str]
     core_tools: Optional[str]
     additional_tools_overlays: Optional[str]
     qa_status: Optional[str]
     qa_reasons: list[str] = Field(default_factory=list)
     calendarization: Optional[str]
+    retention_processing_window: Optional[str]
     uncertainty: Optional[str]
     created_at: datetime
     updated_at: datetime
