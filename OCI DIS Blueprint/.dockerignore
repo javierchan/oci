@@ -13,6 +13,7 @@
 **/test-results
 output
 docs/audit-screenshots
+apps/api/generated-reports
 *.log
 *.pid
 .DS_Store

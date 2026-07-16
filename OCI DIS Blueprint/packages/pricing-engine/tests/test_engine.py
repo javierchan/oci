@@ -224,6 +224,31 @@ def test_monthly_and_hour_utilized_models() -> None:
     assert utilized.totals.monthly == Decimal("25.00")
 
 
+def test_quantity_schedule_applies_distinct_monthly_free_tier_allocations() -> None:
+    """Shared tenancy allowances can be allocated once per month before pricing."""
+
+    result = price_line_quantity_schedule(
+        PricingRequest(
+            sku="TENANT-FREE",
+            model=PricingModel.MONTHLY,
+            currency=USD,
+            quantity=Decimal("10"),
+            unit_price=Decimal("2"),
+        ),
+        (Decimal("10"), Decimal("10")),
+        rule=QuantityRule(
+            behavior=QuantityBehavior.CONTINUOUS,
+            increment=Decimal("0.000001"),
+            minimum=Decimal("0"),
+        ),
+        free_tier_allocations=(Decimal("10"), Decimal("4")),
+    )
+
+    assert result.periods[0].result.totals.monthly == Decimal("0.00")
+    assert result.periods[1].result.totals.monthly == Decimal("12.00")
+    assert result.periods[1].result.free_quantity_applied == Decimal("4")
+
+
 def test_zero_usage_tiered_line_does_not_require_a_matching_tier() -> None:
     """A fully free or zero-usage line is valid even when tiers start above zero."""
 
@@ -422,6 +447,26 @@ def test_explicit_package_schedule_rounds_up_each_month() -> None:
     assert [period.result.totals.monthly for period in schedule.periods] == [
         Decimal("0.00"), Decimal("2.50"), Decimal("5.00"),
     ]
+
+
+def test_api_gateway_quote_uses_whole_million_call_units() -> None:
+    """A sub-million measured demand remains visible but quotes one commercial unit."""
+
+    schedule = price_line_quantity_schedule(
+        PricingRequest(
+            sku="B92072",
+            model=PricingModel.MONTHLY,
+            currency=USD,
+            quantity=Decimal("0.291152"),
+            unit_price=Decimal("3"),
+            contract_months=1,
+        ),
+        (Decimal("0.291152"),),
+        rule=QuantityRule(QuantityBehavior.PACKAGED, increment=Decimal("1"), minimum=Decimal("1")),
+    )
+
+    assert schedule.periods[0].result.gross_quantity == Decimal("1")
+    assert schedule.periods[0].result.totals.monthly == Decimal("3.00")
 
 
 def test_explicit_continuous_schedule_preserves_governed_precision() -> None:

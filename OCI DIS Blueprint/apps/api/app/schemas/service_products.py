@@ -115,6 +115,12 @@ class ServiceProductSummaryResponse(BaseModel):
     evidence_count: int = 0
     interoperability_count: int = 0
     verification_status: str = "seeded_pending_verification"
+    commercial_classification: str
+    commercial_readiness: str
+    publication_policy: str
+    approved_mapping_count: int = 0
+    commercial_guidance: str
+    commercial_required_inputs: list[str] = Field(default_factory=list)
     last_verified_at: Optional[datetime] = None
     updated_at: datetime
 

@@ -12,9 +12,11 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from fastapi import HTTPException
 import json
+import tempfile
 from pathlib import Path
 import random
 from typing import Literal, cast
+from uuid import uuid4
 
 from openpyxl import Workbook
 from sqlalchemy import func, select
@@ -42,13 +44,10 @@ from app.services import (
     justification_service,
     project_service,
     recalc_service,
+    storage_service,
 )
 from app.services.serializers import sanitize_for_json
 
-API_ROOT = Path(__file__).resolve().parents[2]
-REPORT_ROOT = API_ROOT / "generated-reports"
-UPLOAD_ROOT = API_ROOT / "uploads" / "synthetic"
-EXPORT_ROOT = API_ROOT / "uploads" / "exports"
 SOURCE_SHEET_NAME = "Catálogo de Integraciones"
 SYNTHETIC_ACTOR_ID = "synthetic-generator"
 DEFAULT_PRESET_CODE = "enterprise-default"
@@ -941,13 +940,8 @@ def validate_synthetic_dataset(dataset: SyntheticDataset) -> SyntheticDatasetVal
     )
 
 
-def _ensure_report_dirs() -> None:
-    REPORT_ROOT.mkdir(parents=True, exist_ok=True)
-    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
-
-
 def _workbook_path(project_name: str, seed: int) -> Path:
-    return UPLOAD_ROOT / f"{_slugify(project_name)}-{seed}.xlsx"
+    return Path(tempfile.gettempdir()) / f"{_slugify(project_name)}-{seed}-{uuid4()}.xlsx"
 
 
 def write_synthetic_workbook(dataset: SyntheticDataset, destination: Path) -> Path:
@@ -1055,13 +1049,16 @@ async def _approve_all_justifications(project_id: str, db: AsyncSession) -> int:
 async def _export_job_payload(
     job: ExportJobResponse,
 ) -> dict[str, str]:
-    file_path, _ = export_service.get_export_file(job.project_id, job.job_id)
+    file_reference, metadata_reference = export_service.get_export_references(
+        job.project_id,
+        job.job_id,
+    )
     return {
         "job_id": job.job_id,
         "filename": job.filename,
         "download_url": job.download_url,
-        "file_path": str(file_path),
-        "job_file_path": str(export_service.JOBS_DIR / f"{job.job_id}.json"),
+        "file_path": file_reference,
+        "job_file_path": metadata_reference,
     }
 
 
@@ -1087,7 +1084,6 @@ async def create_synthetic_enterprise_project(
     if missing_patterns:
         raise ValueError(f"Reference seed is incomplete. Missing patterns: {', '.join(missing_patterns)}")
 
-    _ensure_report_dirs()
     workbook_path = _workbook_path(spec.project_name, spec.seed)
     write_synthetic_workbook(dataset, workbook_path)
 
@@ -1125,8 +1121,21 @@ async def create_synthetic_enterprise_project(
         db=db,
     )
 
-    import_batch = await import_service.create_import_batch(project.id, workbook_path.name, db)
-    await import_service.process_import(import_batch.id, str(workbook_path), db)
+    try:
+        workbook_reference = await import_service.save_upload_file(
+            workbook_path.name,
+            workbook_path.read_bytes(),
+            project_id=project.id,
+        )
+        import_batch = await import_service.create_import_batch(
+            project.id,
+            workbook_path.name,
+            db,
+            storage_reference=workbook_reference,
+        )
+        await import_service.process_import(import_batch.id, workbook_reference, db)
+    finally:
+        workbook_path.unlink(missing_ok=True)
 
     imported_rows = await _load_project_rows(project.id, db)
     await _apply_import_follow_up_patches(project.id, imported_rows, dataset, db)
@@ -1214,7 +1223,7 @@ async def create_synthetic_enterprise_project(
                     "final": final_dashboard.snapshot_id,
                 },
                 "artifacts": {
-                    "workbook_path": str(workbook_path),
+                    "workbook_path": workbook_reference,
                     "xlsx_export": export_jobs_payload.get("xlsx"),
                     "json_export": export_jobs_payload.get("json"),
                     "pdf_export": export_jobs_payload.get("pdf"),
@@ -1231,10 +1240,18 @@ async def create_synthetic_enterprise_project(
         ),
     )
 
-    report_json_path = REPORT_ROOT / f"synthetic-enterprise-{project.id}.json"
-    report_markdown_path = REPORT_ROOT / f"synthetic-enterprise-{project.id}.md"
-    report_json_path.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")
-    report_markdown_path.write_text(_report_markdown(report_payload), encoding="utf-8")
+    report_json_path = storage_service.put_bytes(
+        f"synthetic/{project.id}/reports/synthetic-enterprise-{project.id}.json",
+        json.dumps(report_payload, indent=2).encode("utf-8"),
+        content_type="application/json",
+        metadata={"project-id": project.id},
+    )
+    report_markdown_path = storage_service.put_bytes(
+        f"synthetic/{project.id}/reports/synthetic-enterprise-{project.id}.md",
+        _report_markdown(report_payload).encode("utf-8"),
+        content_type="text/markdown",
+        metadata={"project-id": project.id},
+    )
 
     return SyntheticGenerationResult(
         project_id=project.id,
@@ -1253,9 +1270,9 @@ async def create_synthetic_enterprise_project(
         design_warning_rows=design_warning_rows,
         approved_justifications=approved_justifications,
         artifacts=SyntheticArtifactManifest(
-            workbook_path=str(workbook_path),
-            report_json_path=str(report_json_path),
-            report_markdown_path=str(report_markdown_path),
+            workbook_path=workbook_reference,
+            report_json_path=report_json_path,
+            report_markdown_path=report_markdown_path,
             export_jobs=export_jobs_payload,
         ),
     )
@@ -1874,26 +1891,10 @@ async def run_synthetic_generation_job(
     return serialize_synthetic_job(job)
 
 
-def _resolve_artifact_path(path_value: str) -> Path:
-    path = Path(path_value)
-    return path.resolve() if path.is_absolute() else (API_ROOT / path).resolve()
-
-
-def _artifact_roots() -> tuple[Path, ...]:
-    return (
-        REPORT_ROOT.resolve(),
-        UPLOAD_ROOT.resolve(),
-        EXPORT_ROOT.resolve(),
-    )
-
-
 def _remove_artifact_file(path_value: str, removed_paths: list[str]) -> None:
-    resolved_path = _resolve_artifact_path(path_value)
-    if not any(root == resolved_path or root in resolved_path.parents for root in _artifact_roots()):
-        return
-    if resolved_path.exists():
-        resolved_path.unlink()
-        removed_paths.append(str(resolved_path))
+    if storage_service.exists(path_value):
+        storage_service.delete(path_value)
+        removed_paths.append(path_value)
 
 
 def _cleanup_artifact_manifest(manifest: dict[str, object] | None) -> list[str]:

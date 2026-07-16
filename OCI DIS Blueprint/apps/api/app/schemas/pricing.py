@@ -134,6 +134,16 @@ class PriceItemListResponse(BaseModel):
     page_size: int
 
 
+class QuantityPresetResponse(BaseModel):
+    """Governed planning shortcut expressed in the SKU's commercial unit."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    label: str
+    quantity: float
+    description: str
+
+
 class SkuMappingResponse(BaseModel):
     """Approved mapping from service demand to OCI SKU."""
 
@@ -149,6 +159,17 @@ class SkuMappingResponse(BaseModel):
     quantity_increment: float
     minimum_quantity: float
     quantity_unit: str
+    usage_basis: str
+    quote_rounding: str
+    aggregation_window: str
+    proration_policy: str
+    free_tier_scope: str
+    planning_envelope_increment: Optional[float]
+    metering_policy: dict[str, Any]
+    selection_policy: str
+    requires_explicit_quantity: bool
+    entry_guidance: str
+    quantity_presets: list[QuantityPresetResponse] = Field(default_factory=list)
     predicates: dict[str, Any]
     is_billable: bool
     status: str
@@ -184,6 +205,17 @@ class SkuMappingPatchRequest(BaseModel):
     quantity_increment: Optional[float] = Field(default=None, gt=0)
     minimum_quantity: Optional[float] = Field(default=None, ge=0)
     quantity_unit: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    usage_basis: Optional[str] = Field(default=None, min_length=1, max_length=40)
+    quote_rounding: Optional[str] = Field(default=None, min_length=1, max_length=40)
+    aggregation_window: Optional[str] = Field(default=None, min_length=1, max_length=40)
+    proration_policy: Optional[str] = Field(default=None, min_length=1, max_length=40)
+    free_tier_scope: Optional[str] = Field(default=None, min_length=1, max_length=40)
+    planning_envelope_increment: Optional[float] = Field(default=None, gt=0)
+    metering_policy: Optional[dict[str, Any]] = None
+    selection_policy: Optional[str] = Field(default=None, pattern="^(required|optional|dependent)$")
+    requires_explicit_quantity: Optional[bool] = None
+    entry_guidance: Optional[str] = Field(default=None, min_length=1, max_length=2000)
+    quantity_presets: Optional[list[QuantityPresetResponse]] = None
     predicates: Optional[dict[str, Any]] = None
     is_billable: Optional[bool] = None
     status: Optional[str] = Field(default=None, pattern="^(draft|approved|retired)$")
@@ -346,11 +378,24 @@ class ScenarioMetricOptionResponse(BaseModel):
     metric_key: str
     metric_label: str
     quantity_unit: str
+    source_baseline_quantity: float
     baseline_quantity: float
+    planning_envelope_quantity: Optional[float]
     quantity_behavior: str
     quantity_increment: float
     minimum_quantity: float
+    usage_basis: str
+    quote_rounding: str
+    aggregation_window: str
+    proration_policy: str
+    free_tier_scope: str
+    planning_envelope_increment: Optional[float]
+    metering_policy: dict[str, Any]
+    requires_explicit_quantity: bool
+    entry_guidance: str
+    quantity_presets: list[QuantityPresetResponse] = Field(default_factory=list)
     default_sku_mapping_id: str
+    default_selected: bool
     variants: list["ScenarioSkuVariantResponse"] = Field(default_factory=list)
 
 
@@ -364,10 +409,39 @@ class ScenarioSkuVariantResponse(BaseModel):
     part_number: Optional[str]
     predicates: dict[str, Any]
     is_billable: bool
+    selection_policy: str
     quantity_behavior: str
     quantity_increment: float
     minimum_quantity: float
     quantity_unit: str
+    usage_basis: str
+    quote_rounding: str
+    aggregation_window: str
+    proration_policy: str
+    free_tier_scope: str
+    planning_envelope_increment: Optional[float]
+    metering_policy: dict[str, Any]
+    requires_explicit_quantity: bool
+    entry_guidance: str
+    quantity_presets: list[QuantityPresetResponse] = Field(default_factory=list)
+
+
+class ScenarioCommercialCoverageResponse(BaseModel):
+    """Product-level commercial readiness for a detected architecture service."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    service_id: str
+    product_name: str
+    classification: str
+    readiness: str
+    publication_policy: str
+    approved_mapping_count: int
+    required_inputs: list[str]
+    dependent_service_ids: list[str]
+    dependencies_present: list[str]
+    guidance: str
+    source_urls: list[str]
 
 
 class ScenarioAssistantResponse(BaseModel):
@@ -378,6 +452,7 @@ class ScenarioAssistantResponse(BaseModel):
     draft: DeploymentScenarioCreateRequest
     detected_services: list[str]
     metric_options: list[ScenarioMetricOptionResponse]
+    commercial_coverage: list[ScenarioCommercialCoverageResponse]
     required_questions: list[str]
     warnings: list[str]
     confidence: str

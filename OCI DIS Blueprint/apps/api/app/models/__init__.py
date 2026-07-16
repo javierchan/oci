@@ -40,6 +40,7 @@ from app.models.pricing import (
     PriceSource,
     PriceSyncJob,
     ServiceProductSkuMapping,
+    ServiceCommercialPolicy,
 )
 from app.models.snapshot import AuditEvent, DashboardSnapshot, JustificationRecord, VolumetrySnapshot
 from app.models.synthetic import SyntheticGenerationJob
@@ -84,6 +85,7 @@ __all__ = [
     "ServiceLimit",
     "ServiceProductVersion",
     "ServiceProductSkuMapping",
+    "ServiceCommercialPolicy",
     "ServiceVerificationFinding",
     "ServiceVerificationJob",
     "SourceIntegrationRow",

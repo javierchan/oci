@@ -1,6 +1,6 @@
 # OCI DIS Blueprint Status Report
 
-**Validated:** 2026-07-13
+**Validated:** 2026-07-15
 **Branch:** `main`
 **Detailed remediation:** `milestone-progress-20260710-140234.md`
 
@@ -8,18 +8,37 @@
 
 | Area | Status | Evidence |
 |---|---|---|
-| Backend and deterministic engines | complete | 172 tests passed: 108 API, 42 calc-engine, and 22 pricing-engine |
-| Frontend | complete | TypeScript, ESLint, 64 tests, and production build passed |
-| Browser workflows | complete | 16 Playwright E2E tests passed, including provider telemetry and contextual AI |
+| Backend and deterministic engines | complete | 191 tests passed: 125 API, 42 calc-engine, and 24 pricing-engine |
+| Frontend | complete | TypeScript, ESLint, 66 tests, and production build passed |
+| Browser workflows | complete | Pricing/BOM terminal E2E and live desktop inspection passed; broader 18-test regression remains recorded by the canonical quality workflow |
 | Dependency security | complete | npm audit 0; Docker Scout 0 HIGH/CRITICAL for API and web images |
-| Database | complete | Alembic at `20260712_0023`; seed idempotent |
-| Runtime | complete | 8 Compose services running; no recent error signatures |
+| Database | complete | Alembic at `20260715_0030`; 20/20 Service Products have normalized commercial policy and zero orphan mappings |
+| Object Storage | complete | MinIO ready; 54 legacy artifacts migrated; import/recalc/export/delete smoke passed |
+| Runtime | complete | 8 Compose services running; API, database, Redis, MinIO, workers, beat, and web healthy |
 | Effective CI | complete | one root workflow covers code, browser, build, and image gates |
+
+## Planned Backlog
+
+- **M51 — Full OCI Public Catalog Commercial Coverage** is planned, not part of
+  the current validated production scope. It extends the completed 20-product DIS
+  coverage to every SKU returned by the OCI public Cloud Estimator endpoints.
+- The measured 2026-07-15 baseline is 668 unique SKUs, 728 USD price rows, 123
+  service categories, 234 metrics, and 117 product presets. The current approved
+  App snapshot contains 652 SKUs and 712 price rows; 34 governed mappings cover
+  32 SKUs in the DIS-focused product model.
+- Autonomous implementation is estimated at 8–12 working days / 60–90 effective
+  hours, followed by a focused one-to-two-day OCI Pricing review. The complete
+  scope and acceptance criteria are in
+  `docs/architecture/oci-full-catalog-commercial-coverage-plan.md`.
+- Its mandatory order is: atomically import products, metrics, and presets;
+  generate draft mappings by price family and metric; classify commercial
+  behavior deterministically; route exceptions to human review; and pass
+  independent quotation fixtures before approving any rule family.
 
 ## Governed Rule Ownership
 
 - Service Product Library normalized tables are the operational source for
-  service profiles, interoperability, evidence, findings, and 131 active limits.
+  service profiles, interoperability, evidence, findings, and 137 active limits.
 - Assumption sets contain client/business workload inputs only. Versions
   `1.0.0` and `1.0.1` contain no migrated OIC or Queue service-limit keys.
 - Calc-engine static defaults remain deterministic fallbacks for pure isolated
@@ -63,6 +82,52 @@
   terminal BOM job, rendered monthly insights, and exercised the editable matrix
   with no page overflow or console errors.
 
+## Commercial Quantity Policies
+
+- Governed SKU mappings distinguish source demand, canonical billable quantity, and
+  an optional non-billable planning envelope,
+  usage basis, rounding policy, explicit-input requirements, guidance, and presets.
+- API Gateway retains the exact measured million-call fraction as the canonical
+  billable quantity because Oracle prorates partial million-call units. A rounded
+  whole-million planning envelope is optional context and never changes the BOM total.
+- SKU mappings now carry aggregation window, proration policy, Free Tier scope,
+  minimum runtime, billing increment, and structured metering evidence into both
+  line-level and monthly-period provenance.
+- Tenancy-level Free Tier is allocated once per SKU and month across environments;
+  the rollout comparison consumes that same allocation instead of restarting it per line.
+- Data Integration processed GB remains traffic-derived. Workspace running hours
+  and Pipeline Operator execution hours are independent explicit inputs; neither
+  is inferred from the environment's maximum runtime.
+- Data Integration Workspace provides 160-hour business, 360-hour extended, and
+  744-hour always-on shortcuts. Selecting 744 renders a confirmation warning rather
+  than treating the workbook convention as the default client workload.
+- Queue quantities require evidenced push/get/delete/update operations with 64 KB
+  request-block rounding. Streaming transfer and storage require explicit PUT/GET
+  and retention inputs; no generic operation multiplier or retention default is quoted.
+- The BOM editor groups metrics by product, supports product/metric/SKU search,
+  exposes commercial policy only when expanded, and groups the monthly matrix by
+  product. Browser validation covered desktop light/dark and 430 px mobile views.
+
+## Full Service Product Commercial Coverage
+
+- All 20 governed Service Products now have an explicit commercial classification,
+  readiness state, publication policy, required-input contract, and entry guidance.
+- Product detection is independent from SKU mappings. A used but unmapped product is
+  reported as blocked instead of being omitted from scenario assistance or the BOM.
+- The normalized catalog contains 34 approved mappings: 22 required defaults and
+  12 optional add-ons. Optional IAM and observability meters are never selected by
+  default; dependent products require approved architecture inputs.
+- Events remains visible as included/non-billable evidence. Process Automation is
+  gated by OIC edition and contractual entitlement. Both are normalized Library
+  products with version, limits, official evidence, interoperability, and mappings.
+  Data Flow, GoldenGate Data Transforms, and Connector Hub require their governed
+  dependencies; Enterprise Data Quality requires an approved external rate card.
+- Library, Service Product detail, Pricing Admin, BOM coverage, exports, and assistant
+  evidence expose the same policy and meter ownership contract.
+- Validation passed 125 API, 42 calc-engine, 24 pricing-engine, and 66 frontend tests,
+  OpenAPI consistency, npm audit, the Node 26 production build, healthy Docker runtime,
+  and the terminal Pricing/BOM browser E2E with responsive and console assertions.
+
 ## Explainable Governed AI Reviews
 
 - Architecture Review now leads with the current decision and separates what was
@@ -101,6 +166,25 @@
 - Validation passed 108 API, 42 calc-engine, 22 pricing-engine, and 64 frontend
   tests, plus focused AI Review contracts, Ruff, mypy, TypeScript, and ESLint.
 
+## Governed Agent Outcomes
+
+- All seven agents now pass through one backend-owned output contract before their
+  synthesis is persisted or rendered. Meta-reasoning, Markdown tables, internal
+  placeholders, unsupported material numbers, unverified mutation claims, and
+  source-verification assertions without source evidence trigger a deterministic fallback.
+- Every run now carries a structured brief with the finding, why it matters, next
+  actions, validation, evidence identifiers, confidence, and auditable output-quality state.
+- Service Verification, Import Quality, Topology Investigation, and BOM Scenario
+  definitions were tightened to produce bounded what/why/how/validate answers.
+  Existing M43-M44 integration, project, topology, and BOM action workspaces remain
+  the typed prescriptive authority and were not duplicated.
+- Agent Operations separates OCI resilience counters from product outcome signals.
+  The latest-50 window reports grounding, evidence completeness, actionable briefs,
+  human acceptance, post-approval reruns, and median runtime without inventing
+  unmeasured time savings.
+- Validation passed 132 API, 42 calc-engine, 24 pricing-engine, and 68 frontend
+  tests, plus Ruff, mypy, TypeScript, ESLint, and regenerated OpenAPI.
+
 ## Portfolio Recommendations And Draft Simulation
 
 - Project Review, Topology Investigation, and BOM now share a typed action
@@ -133,8 +217,8 @@
 - API, worker, and beat share one non-root API image. The OCI GenAI override
   mounts the API key only into API and worker, copies it internally with mode
   `0400`, and immediately drops both runtime processes to `app:10001`.
-- API and worker share only the persistent `uploads_data` volume required for
-  imports and exports; source code never enters that writable volume.
+- API and workers use MinIO through the S3-compatible artifact service; no shared
+  writable filesystem volume is used for imports, exports, rate cards, or reports.
 
 ## Production Dependency Cleanup
 
@@ -142,8 +226,8 @@
   quality sets. The CI aggregate installs both, while the production image
   installs only `requirements-runtime.txt`.
 - The API production image excludes pytest, mypy, Ruff, aiosqlite, API tests,
-  calc-engine tests, generated reports, and dependency manifests. It retains an
-  empty writable `generated-reports` runtime directory required by Synthetic Lab.
+  calc-engine tests, generated reports, and dependency manifests. Synthetic Lab
+  persists workbooks and reports to Object Storage.
 - The API production image now uses `python:3.12-alpine`. Docker inspect reports
   approximately 194 MB of image content for API and 73 MB for web; Docker
   Desktop reports approximately 689 MB and 302 MB of local virtual size,
@@ -210,6 +294,12 @@
   workers, with a privacy-safe process fallback. Agent Operations exposes retries,
   Guardrails blocks, `429`, `5xx`, Responses fallbacks, and provider degradations
   without storing identity or prompt dimensions.
+- Agent Operations retains the latest 50 terminal executions globally. Pending,
+  running, and approval-waiting work is never purged; retained support transcripts
+  are detached from expired runs before dependent steps, artifacts, approvals, and
+  correlated execution-audit records are removed transactionally. The API applies
+  the same idempotent policy before accepting traffic and after every terminal
+  agent transition, so existing and newly produced history stay bounded.
 - Dated reports and files under `docs/prompts/` are historical evidence and are
   explicitly non-normative; this report and the repository contracts above are current.
 

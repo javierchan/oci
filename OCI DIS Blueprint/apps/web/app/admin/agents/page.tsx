@@ -5,10 +5,11 @@ import { AgentOperations } from "@/components/agent-operations";
 import { api } from "@/lib/api";
 
 export default async function AgentOperationsPage(): Promise<JSX.Element> {
-  const [definitions, providerStatus, providerMetrics, runList] = await Promise.all([
+  const [definitions, providerStatus, providerMetrics, valueMetrics, runList] = await Promise.all([
     api.listAgents(),
     api.getAgentProviderStatus(),
     api.getAgentProviderMetrics(),
+    api.getAgentValueMetrics(),
     api.listAgentRuns({ limit: 50 }).catch(() => ({ runs: [], total: 0 })),
   ]);
   return (
@@ -25,6 +26,7 @@ export default async function AgentOperationsPage(): Promise<JSX.Element> {
         definitions={definitions}
         providerStatus={providerStatus}
         initialMetrics={providerMetrics}
+        initialValueMetrics={valueMetrics}
         initialRuns={runList.runs}
       />
     </div>

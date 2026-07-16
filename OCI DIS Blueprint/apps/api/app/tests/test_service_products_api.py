@@ -34,8 +34,11 @@ def test_seed_service_products_cover_oracle_data_integration_portfolio() -> None
         "ODI",
         "STREAM_ANALYTICS",
         "ENTERPRISE_DATA_QUALITY",
+        "EVENTS",
+        "PROCESS_AUTOMATION",
     }
     assert expected_products.issubset(service_ids)
+    assert len(service_ids) == 20
 
     rules = {
         (str(rule["source_service_id"]), str(rule["target_service_id"]), str(rule["relationship_type"]))

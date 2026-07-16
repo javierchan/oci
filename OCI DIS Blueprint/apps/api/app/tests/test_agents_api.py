@@ -2,14 +2,26 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
 from httpx import AsyncClient, Request, Response
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.models import Project
+from app.models import (
+    AgentApproval,
+    AgentArtifact,
+    AgentRun,
+    AgentRunStatus,
+    AgentStep,
+    AuditEvent,
+    Project,
+    SupportConversation,
+    SupportMessage,
+)
 from app.core.config import Settings
 from app.routers import agents as agents_router
 from app.services import agent_service
@@ -17,6 +29,18 @@ from app.services import genai_client
 
 
 HEADERS = {"X-Actor-Id": "architect-user", "X-Actor-Role": "Admin"}
+
+
+def test_production_api_prunes_agent_history_before_uvicorn_start() -> None:
+    """Keep the import-safe module invocation in the production entrypoint contract."""
+
+    repo_root = Path("/contracts")
+    if not repo_root.is_dir():
+        repo_root = Path(__file__).resolve().parents[4]
+    entrypoint = (repo_root / "apps/api/production-entrypoint.sh").read_text(encoding="utf-8")
+
+    assert 'if [ "${1:-}" = "uvicorn" ]' in entrypoint
+    assert "su-exec app python -m scripts.prune_agent_history" in entrypoint
 
 
 def test_guardrail_refusal_does_not_degrade_provider_health() -> None:
@@ -123,6 +147,10 @@ async def test_agent_catalog_create_execute_and_read(
     assert completed.result["authority"] == "governed_deterministic_evidence"
     assert completed.result["provider_status"] == "skipped"
     assert completed.steps[0].tool_name == "load_architecture_review_evidence"
+    assert completed.steps[0].output_summary == (
+        "Provider synthesis was unavailable; governed deterministic evidence was used."
+    )
+    assert "we need" not in (completed.steps[0].output_summary or "").lower()
 
     read_response = await api_client.get(f"/api/v1/agents/runs/{run_id}", headers=HEADERS)
     assert read_response.status_code == 200
@@ -155,6 +183,236 @@ async def test_pending_agent_can_be_cancelled(
     assert response.status_code == 200
     assert response.json()["status"] == "cancelled"
     assert response.json()["cancel_requested"] is True
+
+
+@pytest.mark.asyncio
+async def test_agent_value_metrics_report_observed_quality_and_human_follow_up(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Value telemetry uses retained execution facts rather than invented time savings."""
+
+    project_id = await _seed_project(test_engine)
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    started = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    async with session_factory() as session:
+        first = AgentRun(
+            id="agent-value-first",
+            agent_type="architecture_review",
+            definition_version="1.1.0",
+            project_id=project_id,
+            requested_by="architect-user",
+            status=AgentRunStatus.COMPLETED,
+            context_payload={},
+            result_payload={
+                "provider_status": "completed",
+                "brief": {"next_actions": ["Resolve the governed finding."]},
+                "output_quality": {
+                    "grounded": True,
+                    "fallback_used": False,
+                    "evidence_completeness_pct": 100,
+                },
+            },
+            started_at=started,
+            finished_at=started + timedelta(seconds=10),
+            created_at=started,
+            updated_at=started,
+        )
+        follow_up = AgentRun(
+            id="agent-value-follow-up",
+            agent_type="architecture_review",
+            definition_version="1.1.0",
+            project_id=project_id,
+            requested_by="architect-user",
+            status=AgentRunStatus.COMPLETED,
+            context_payload={},
+            result_payload={
+                "provider_status": "completed",
+                "brief": {"next_actions": ["Confirm closure."]},
+                "output_quality": {
+                    "grounded": False,
+                    "fallback_used": True,
+                    "evidence_completeness_pct": 70,
+                },
+            },
+            started_at=started + timedelta(minutes=2),
+            finished_at=started + timedelta(minutes=2, seconds=20),
+            created_at=started + timedelta(minutes=2),
+            updated_at=started + timedelta(minutes=2),
+        )
+        session.add_all([first, follow_up])
+        await session.flush()
+        session.add(
+            AgentApproval(
+                id="agent-value-approval",
+                run_id=first.id,
+                action_type="review_action",
+                status="approved",
+                proposed_payload={"candidate_id": "candidate-1"},
+                reviewed_by="architect-user",
+                reviewed_at=started + timedelta(minutes=1),
+            )
+        )
+        await session.commit()
+
+    response = await api_client.get("/api/v1/agents/value-metrics", headers=HEADERS)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["retained_runs"] == 2
+    assert payload["quality_evaluated_runs"] == 2
+    assert payload["grounded_output_rate_pct"] == 50.0
+    assert payload["high_evidence_completeness_rate_pct"] == 50.0
+    assert payload["acceptance_rate_pct"] == 100.0
+    assert payload["approval_follow_up_rate_pct"] == 100.0
+    assert payload["median_execution_seconds"] == 15.0
+
+    viewer_response = await api_client.get(
+        "/api/v1/agents/value-metrics",
+        headers={"X-Actor-Role": "Viewer"},
+    )
+    assert viewer_response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_agent_history_retains_latest_50_terminal_runs_and_preserves_active_work(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Retention removes complete execution evidence without deleting active work or support text."""
+
+    project_id = await _seed_project(test_engine)
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    base_time = datetime(2026, 1, 1, tzinfo=UTC)
+    expired_run_ids = ["agent-retention-000", "agent-retention-001"]
+    active_run_id = "agent-retention-active"
+    message_id = "support-message-retention"
+
+    async with session_factory() as session:
+        conversation = SupportConversation(
+            id="support-conversation-retention",
+            session_id="12345678-1234-4234-8234-123456789012",
+            actor_id="architect-user",
+            title="Retention fixture",
+            status="active",
+        )
+        session.add(conversation)
+        for index in range(52):
+            run_id = f"agent-retention-{index:03d}"
+            session.add(
+                AgentRun(
+                    id=run_id,
+                    agent_type="architecture_review",
+                    definition_version="1.0.0",
+                    project_id=project_id,
+                    requested_by="architect-user",
+                    status=AgentRunStatus.COMPLETED,
+                    context_payload={},
+                    result_payload={"summary": f"Run {index}"},
+                    step_count=1,
+                    max_steps=4,
+                    created_at=base_time + timedelta(minutes=index),
+                    updated_at=base_time + timedelta(minutes=index),
+                    finished_at=base_time + timedelta(minutes=index),
+                )
+            )
+        session.add(
+            AgentRun(
+                id=active_run_id,
+                agent_type="architecture_review",
+                definition_version="1.0.0",
+                project_id=project_id,
+                requested_by="architect-user",
+                status=AgentRunStatus.RUNNING,
+                context_payload={},
+                step_count=0,
+                max_steps=4,
+                created_at=base_time - timedelta(days=1),
+                updated_at=base_time - timedelta(days=1),
+                started_at=base_time - timedelta(days=1),
+            )
+        )
+        await session.flush()
+        session.add_all(
+            [
+                AgentStep(
+                    id="agent-step-retention",
+                    run_id=expired_run_ids[0],
+                    sequence=1,
+                    step_type="tool",
+                    status="completed",
+                ),
+                AgentArtifact(
+                    id="agent-artifact-retention",
+                    run_id=expired_run_ids[0],
+                    artifact_type="governed_evidence",
+                    label="Expired evidence",
+                    payload={"status": "expired"},
+                ),
+                AgentApproval(
+                    id="agent-approval-retention",
+                    run_id=expired_run_ids[0],
+                    action_type="apply_patch",
+                    status="pending",
+                    proposed_payload={"status": "expired"},
+                ),
+                SupportMessage(
+                    id=message_id,
+                    conversation_id=conversation.id,
+                    role="assistant",
+                    content="This support answer must survive run retention.",
+                    status="completed",
+                    agent_run_id=expired_run_ids[0],
+                    context_snapshot={},
+                    citations=[],
+                ),
+                AuditEvent(
+                    id="audit-event-retention",
+                    project_id=project_id,
+                    actor_id="architect-user",
+                    event_type="agent_run_completed",
+                    entity_type="agent_run",
+                    entity_id=expired_run_ids[0],
+                    correlation_id=expired_run_ids[0],
+                ),
+            ]
+        )
+        await session.commit()
+
+        async with session.begin():
+            deleted = await agent_service.prune_agent_run_history(session)
+
+        assert deleted == 2
+        terminal_count = await session.scalar(
+            select(func.count())
+            .select_from(AgentRun)
+            .where(AgentRun.status.in_(agent_service.TERMINAL_STATUSES))
+        )
+        assert terminal_count == agent_service.AGENT_RUN_HISTORY_LIMIT
+        assert await session.get(AgentRun, active_run_id) is not None
+        assert await session.get(AgentRun, expired_run_ids[0]) is None
+        assert await session.get(AgentRun, expired_run_ids[1]) is None
+        assert await session.get(AgentStep, "agent-step-retention") is None
+        assert await session.get(AgentArtifact, "agent-artifact-retention") is None
+        assert await session.get(AgentApproval, "agent-approval-retention") is None
+        assert await session.get(AuditEvent, "audit-event-retention") is None
+        support_message = await session.get(SupportMessage, message_id)
+        assert support_message is not None
+        assert support_message.content == "This support answer must survive run retention."
+        assert support_message.agent_run_id is None
+
+    oversized_response = await api_client.get("/api/v1/agents/runs?limit=51", headers=HEADERS)
+    assert oversized_response.status_code == 422
+    history_response = await api_client.get("/api/v1/agents/runs?limit=50", headers=HEADERS)
+    assert history_response.status_code == 200
+    retained_runs = history_response.json()["runs"]
+    assert len(retained_runs) == 50
+    assert {
+        run["result"]["summary"]
+        for run in retained_runs
+        if run["result"] is not None
+    } == {
+        "Legacy execution predates the governed output contract; inspect its audit evidence if needed."
+    }
 
 
 @pytest.mark.asyncio

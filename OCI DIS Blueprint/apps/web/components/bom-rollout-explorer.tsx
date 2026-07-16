@@ -26,6 +26,7 @@ import {
 import {
   buildBomChartData,
   buildRolloutSignals,
+  linePeriodMonthlyQuantities,
   phaseMonthlyQuantities,
   serviceProductLabel,
 } from "@/lib/bom-ramp";
@@ -131,6 +132,24 @@ function quantityLabel(phase: DeploymentRampPhaseInput): string {
   return `${phase.interpolation === "linear" ? `${start} → ${end}` : start} ${phase.quantity_unit ?? "units"}`;
 }
 
+function lineQuantityLabel(line: BomLineItem): string {
+  const active = line.periods.filter((period) => period.quantity > 0 || period.amount > 0);
+  if (active.length === 0) {
+    return line.status === "non_billable" ? "Included / no metered charge" : `0 ${line.unit}`;
+  }
+  const quantities = [...new Set(active.map((period) => period.quantity))];
+  if (quantities.length === 1) return `${formatNumber(quantities[0])} ${line.unit} / month`;
+  return `Monthly quantities · ${line.unit}`;
+}
+
+function productContractMonths(product: RolloutProduct, scenario: DeploymentScenario | null): number {
+  const snapshotMonths = Math.max(
+    0,
+    ...product.lines.flatMap((line) => line.periods.map((period) => period.period_index)),
+  );
+  return snapshotMonths || scenario?.contract_months || 12;
+}
+
 function MonthAxis({ months }: { months: number }): JSX.Element {
   return (
     <div
@@ -207,20 +226,80 @@ function RampShape({
   );
 }
 
+function LinePeriodShape({
+  line,
+  months,
+  currencyCode,
+}: {
+  line: BomLineItem;
+  months: number;
+  currencyCode: string;
+}): JSX.Element {
+  const quantities = linePeriodMonthlyQuantities(line.periods, months);
+  const amounts = Array.from({ length: months }, (_, index) => (
+    line.periods.find((period) => period.period_index === index + 1)?.amount ?? 0
+  ));
+  const maximumQuantity = Math.max(...quantities, 0);
+  const maximumAmount = Math.max(...amounts, 0);
+  const included = line.status === "non_billable" && maximumQuantity === 0 && maximumAmount === 0;
+
+  return (
+    <div
+      className="relative h-12 overflow-hidden border-b border-[var(--color-border)] bg-[var(--color-surface-2)]"
+      data-rollout-monthly-evidence={line.id}
+      aria-label={`${line.metric_name} monthly consumption`}
+    >
+      <div
+        className="absolute inset-0 grid items-end"
+        style={{ gridTemplateColumns: `repeat(${months}, minmax(2.5rem, 1fr))` }}
+      >
+        {quantities.map((quantity, index) => {
+          const amount = amounts[index];
+          const value = maximumQuantity > 0 ? quantity : amount;
+          const maximum = maximumQuantity > 0 ? maximumQuantity : maximumAmount;
+          const active = quantity > 0 || amount > 0;
+          return (
+            <span
+              key={index}
+              className="relative h-full border-l border-[var(--color-border)] first:border-l-0"
+              title={`M${index + 1}: ${formatNumber(quantity)} ${line.unit} · ${currency(amount, currencyCode)}`}
+            >
+              <span
+                className="absolute inset-x-1 bottom-1 block min-h-0.5 rounded-t-sm bg-[#0A84FF]"
+                style={{
+                  height: `${maximum > 0 ? Math.max((value / maximum) * 36, active ? 4 : 1) : 1}px`,
+                  opacity: active ? 0.9 : 0.12,
+                }}
+              />
+            </span>
+          );
+        })}
+      </div>
+      {included ? (
+        <span className="absolute left-3 top-3 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text-secondary)]">
+          Included / no metered charge
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function ProductTimeline({
   product,
   scenario,
+  currencyCode,
   metricOptions,
   openEnvironment,
   onToggleEnvironment,
 }: {
   product: RolloutProduct;
   scenario: DeploymentScenario | null;
+  currencyCode: string;
   metricOptions: ScenarioMetricOption[];
   openEnvironment: string | null;
   onToggleEnvironment: (_environment: string) => void;
 }): JSX.Element {
-  const months = scenario?.contract_months ?? 12;
+  const months = productContractMonths(product, scenario);
   return (
     <div className="border-t border-[var(--color-border)] bg-[var(--color-surface-2)]/40 px-4 py-3 sm:px-5">
       <div className="space-y-2">
@@ -252,7 +331,22 @@ function ProductTimeline({
                 <div className="overflow-x-auto border-t border-[var(--color-border)]">
                   <div style={{ minWidth: `${Math.max(680, months * 44)}px` }}>
                     <MonthAxis months={months} />
-                    {phases.length > 0 ? phases.map(({ phase }, phaseIndex) => {
+                    {lines.some((line) => line.periods.length > 0) ? lines.map((line) => (
+                      <div key={line.id} className="grid grid-cols-[13rem_minmax(0,1fr)] border-b border-[var(--color-border)] last:border-b-0">
+                        <div className="px-3 py-2">
+                          <p className="truncate text-xs font-semibold text-[var(--color-text-primary)]" title={line.metric_name}>{line.metric_name}</p>
+                          <p className="mt-0.5 truncate text-[11px] text-[var(--color-text-muted)]" title={commercialVariant(line)}>{commercialVariant(line)}</p>
+                          <p className="mt-0.5 truncate text-[11px] text-[var(--color-text-secondary)]" title={lineQuantityLabel(line)}>{lineQuantityLabel(line)}</p>
+                        </div>
+                        {line.periods.length > 0 ? (
+                          <LinePeriodShape line={line} months={months} currencyCode={currencyCode} />
+                        ) : (
+                          <div className="flex items-center border-b border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 text-xs text-[var(--color-text-muted)]">
+                            This historical line has no monthly period evidence.
+                          </div>
+                        )}
+                      </div>
+                    )) : phases.length > 0 ? phases.map(({ phase }, phaseIndex) => {
                       const option = metricOptions.find((item) => item.service_id === product.serviceId && item.metric_key === phase.metric_key);
                       const variant = option?.variants.find((item) => item.sku_mapping_id === phase.sku_mapping_id);
                       const matchedLine = lines.find((line) => (
@@ -272,7 +366,7 @@ function ProductTimeline({
                         </div>
                       );
                     }) : (
-                      <div className="px-3 py-4 text-xs text-[var(--color-text-muted)]">Historical line items have no editable phase definition.</div>
+                      <div className="px-3 py-4 text-xs text-[var(--color-text-muted)]">This snapshot has no monthly period evidence or editable phase definition.</div>
                     )}
                   </div>
                 </div>
@@ -455,7 +549,7 @@ export function BomRolloutExplorer({
                       <span className="min-w-0"><span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">{product.label}</span><span className="mt-1 block text-xs text-[var(--color-text-muted)]">{product.environments.join(" · ")} · {product.firstPeriod ? `M${product.firstPeriod}–M${product.lastPeriod}` : "included"}</span></span>
                       <span className="flex items-center gap-4"><span className="text-right"><span className="block font-mono text-sm font-semibold text-[var(--color-text-primary)]">{currency(product.contractAmount, snapshot.currency)}</span><span className="block text-xs text-[var(--color-text-muted)]">{product.sharePct.toFixed(1)}%</span></span><ChevronDown className={`h-4 w-4 text-[var(--color-text-muted)] transition-transform ${expanded ? "rotate-180" : ""}`} /></span>
                     </button>
-                    {expanded ? <ProductTimeline product={product} scenario={scenario} metricOptions={metricOptions} openEnvironment={openEnvironment} onToggleEnvironment={(environment) => setOpenEnvironment((current) => current === environment ? null : environment)} /> : null}
+                    {expanded ? <ProductTimeline product={product} scenario={scenario} currencyCode={snapshot.currency} metricOptions={metricOptions} openEnvironment={openEnvironment} onToggleEnvironment={(environment) => setOpenEnvironment((current) => current === environment ? null : environment)} /> : null}
                   </div>
                 );
               })}

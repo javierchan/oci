@@ -1,0 +1,126 @@
+%%{init: {
+  "theme": "base",
+  "flowchart": {
+    "curve": "basis",
+    "nodeSpacing": 42,
+    "rankSpacing": 62,
+    "htmlLabels": true,
+    "useMaxWidth": false
+  },
+  "themeVariables": {
+    "fontFamily": "Inter, SF Pro Display, Arial, sans-serif",
+    "fontSize": "21px",
+    "lineColor": "#667085",
+    "primaryTextColor": "#17202A",
+    "clusterBkg": "#FFFFFF00",
+    "clusterBorder": "#B8C0CC"
+  }
+}}%%
+flowchart TB
+    User(["ARCHITECT · ANALYST · ADMIN"])
+
+    subgraph WEB["WEB CONTAINER · Next.js 15 · Node.js 26"]
+        direction LR
+        UI1["Projects<br/>Dashboard"]
+        UI2["Import · Capture<br/>Catalog"]
+        UI3["Topology Map<br/>Integration Canvas"]
+        UI4["BOM · Cost<br/>Monthly Rollout"]
+        UI5["Library · Pricing<br/>Agent Operations"]
+        UI6["Contextual<br/>App Assistant"]
+    end
+
+    subgraph API["API CONTAINER · FastAPI · Python 3.12"]
+        direction LR
+        REST["REST API v1<br/>OpenAPI · RBAC"]
+        D1["Catalog · Governance<br/>Dashboard · Graph"]
+        D2["Pricing · BOM<br/>Exports · Storage"]
+        D3["AI Review · Support<br/>Agent Orchestration"]
+        CALC["CALC ENGINE<br/>Import · QA · Volumetry"]
+        PRICE["PRICING ENGINE<br/>Decimal · SKU · Tiers"]
+        RULES["SERVICE RULES<br/>Limits · Interoperability"]
+    end
+
+    subgraph RUNTIME["PRODUCTION RUNTIME"]
+        direction LR
+
+        subgraph ASYNC["ASYNCHRONOUS CONTAINERS"]
+            direction TB
+            Worker["WORKER<br/>Import · Recalculate<br/>Pricing · BOM · Verify"]
+            AgentWorker["AGENT-WORKER<br/>Isolated agents queue<br/>Function Calling"]
+            Beat["BEAT<br/>Scheduled verification"]
+        end
+
+        subgraph DATA["PERSISTENCE CONTAINERS"]
+            direction TB
+            DB[("POSTGRESQL 16<br/>Governed data · Audit<br/>Snapshots · Agent runs")]
+            Redis[("REDIS 7<br/>Broker · Results<br/>Provider telemetry")]
+            MinIO[("MINIO<br/>Imports · Exports<br/>Rate cards · Reports")]
+        end
+
+        subgraph OCI["GOVERNED OCI SERVICES"]
+            direction TB
+            GenAI["OCI GENERATIVE AI<br/>Responses-first<br/>Advisory synthesis"]
+            Guardrails["OCI GUARDRAILS<br/>Injection · PII · Safety"]
+            Sources["OFFICIAL SOURCES<br/>Pricing · Limits<br/>Product evidence"]
+            ObjectStorage["OCI OBJECT STORAGE<br/>Deployment artifact store"]
+        end
+    end
+
+    User --> WEB
+    WEB -->|"HTTPS · typed contracts"| REST
+
+    REST --> D1
+    REST --> D2
+    REST --> D3
+    D1 --> CALC
+    D1 --> RULES
+    D2 --> PRICE
+    D2 --> RULES
+
+    REST -->|"Long-running jobs"| Worker
+    D3 -->|"AgentRun"| AgentWorker
+    Beat --> Worker
+
+    Worker -->|"Deterministic engines"| CALC
+    Worker --> PRICE
+    Worker --> RULES
+
+    REST <--> DB
+    Worker <--> Redis
+    AgentWorker <--> Redis
+    D2 <--> MinIO
+
+    AgentWorker -->|"Redacted evidence"| GenAI
+    AgentWorker --> Guardrails
+    Worker --> Sources
+    MinIO -. "Same S3 contract in OCI" .-> ObjectStorage
+
+    DB -.- Truth["SYSTEM OF RECORD"]
+    CALC -.- Authority["TECHNICAL AUTHORITY"]
+    PRICE -.- CostAuthority["COMMERCIAL MATH AUTHORITY"]
+    GenAI -.- Advisory["ADVISORY ONLY"]
+
+    classDef actor fill:#D7462F,stroke:#B73522,color:#FFFFFF,stroke-width:2px;
+    classDef ui fill:#EFF7FF,stroke:#3287D5,color:#17202A,stroke-width:1.7px;
+    classDef api fill:#F6F2FF,stroke:#7B61B2,color:#17202A,stroke-width:1.7px;
+    classDef engine fill:#FFF7E8,stroke:#D38A24,color:#17202A,stroke-width:1.7px;
+    classDef async fill:#EEF9F3,stroke:#258A57,color:#17202A,stroke-width:1.7px;
+    classDef data fill:#FFFFFF,stroke:#475467,color:#17202A,stroke-width:2px;
+    classDef external fill:#FFF2F0,stroke:#D7462F,color:#17202A,stroke-width:1.7px;
+    classDef note fill:#FFFFFF,stroke:#98A2B3,color:#475467,stroke-dasharray:4 3,font-size:15px;
+
+    class User actor;
+    class UI1,UI2,UI3,UI4,UI5,UI6 ui;
+    class REST,D1,D2,D3 api;
+    class CALC,PRICE,RULES engine;
+    class Worker,AgentWorker,Beat async;
+    class DB,Redis,MinIO data;
+    class GenAI,Guardrails,Sources,ObjectStorage external;
+    class Truth,Authority,CostAuthority,Advisory note;
+
+    style WEB fill:#F8FBFF,stroke:#8CBCE8,stroke-width:2px
+    style API fill:#FCFAFF,stroke:#A997D0,stroke-width:2px
+    style RUNTIME fill:#FFFFFF00,stroke:#98A2B3,stroke-width:2px
+    style ASYNC fill:#F8FCFA,stroke:#79B89A,stroke-width:2px
+    style DATA fill:#FAFBFC,stroke:#98A2B3,stroke-width:2px
+    style OCI fill:#FFFAF9,stroke:#E39B8F,stroke-width:2px

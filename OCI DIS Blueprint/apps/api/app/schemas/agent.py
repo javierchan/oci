@@ -22,6 +22,32 @@ AgentRunStatusValue = Literal[
 ]
 
 
+class AgentOutputBrief(BaseModel):
+    """Shared explainable hierarchy rendered for every governed agent."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    headline: str
+    finding: str
+    why: str
+    next_actions: list[str] = Field(default_factory=list)
+    validation: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    confidence: Literal["high", "medium", "low"]
+
+
+class AgentOutputQuality(BaseModel):
+    """Auditable normalization and grounding decision for one agent answer."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    normalized: bool
+    grounded: bool
+    fallback_used: bool
+    fallback_reason: Optional[str]
+    evidence_completeness_pct: int = Field(ge=0, le=100)
+
+
 class AgentDefinitionResponse(BaseModel):
     """Versioned, immutable runtime definition exposed to authorized clients."""
 
@@ -86,6 +112,31 @@ class AgentProviderMetricsResponse(BaseModel):
     last_event_at: Optional[datetime]
     last_degradation_at: Optional[datetime]
     counters: AgentProviderMetricCounters
+
+
+class AgentValueMetricsResponse(BaseModel):
+    """Observable product-value signals from the bounded retained run window."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    retained_runs: int
+    completed_runs: int
+    quality_evaluated_runs: int
+    grounded_output_runs: int
+    grounding_fallback_runs: int
+    high_evidence_completeness_runs: int
+    recommendation_runs: int
+    provider_synthesis_runs: int
+    approval_decisions: int
+    approved_decisions: int
+    rejected_decisions: int
+    follow_up_runs_after_approval: int
+    provider_synthesis_rate_pct: float
+    grounded_output_rate_pct: float
+    high_evidence_completeness_rate_pct: float
+    acceptance_rate_pct: Optional[float]
+    approval_follow_up_rate_pct: Optional[float]
+    median_execution_seconds: Optional[float]
 
 
 class AgentCreateRequest(BaseModel):

@@ -95,11 +95,48 @@ class ServiceProductSkuMapping(Base, UUIDMixin, TimestampMixin):
     quantity_increment: Mapped[float] = mapped_column(Numeric(28, 8, asdecimal=False), default=0.000001, nullable=False)
     minimum_quantity: Mapped[float] = mapped_column(Numeric(28, 8, asdecimal=False), default=0, nullable=False)
     quantity_unit: Mapped[str] = mapped_column(String(100), default="units", nullable=False)
+    usage_basis: Mapped[str] = mapped_column(String(40), default="metered_usage", nullable=False)
+    quote_rounding: Mapped[str] = mapped_column(String(40), default="metered", nullable=False)
+    aggregation_window: Mapped[str] = mapped_column(String(40), default="calendar_month", nullable=False)
+    proration_policy: Mapped[str] = mapped_column(String(40), default="prorated", nullable=False)
+    free_tier_scope: Mapped[str] = mapped_column(String(40), default="none", nullable=False)
+    planning_envelope_increment: Mapped[Optional[float]] = mapped_column(Numeric(28, 8, asdecimal=False))
+    metering_policy: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    selection_policy: Mapped[str] = mapped_column(String(32), default="required", nullable=False)
+    requires_explicit_quantity: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    entry_guidance: Mapped[str] = mapped_column(Text, default="Enter the expected monthly usage.", nullable=False)
+    quantity_presets: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
     predicates: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
     is_billable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="approved", nullable=False)
     version: Mapped[str] = mapped_column(String(50), default="1.0.0", nullable=False)
     source_url: Mapped[Optional[str]] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+
+
+class ServiceCommercialPolicy(Base, UUIDMixin, TimestampMixin):
+    """Authoritative product-level rule for detection and BOM publication."""
+
+    __tablename__ = "service_commercial_policies"
+    __table_args__ = (
+        UniqueConstraint("service_profile_id", name="uq_service_commercial_policy_profile"),
+        UniqueConstraint("service_id", name="uq_service_commercial_policy_service"),
+    )
+
+    service_profile_id: Mapped[str] = mapped_column(
+        ForeignKey("service_capability_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    service_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    classification: Mapped[str] = mapped_column(String(40), nullable=False)
+    readiness: Mapped[str] = mapped_column(String(32), nullable=False)
+    publication_policy: Mapped[str] = mapped_column(String(40), nullable=False)
+    tool_aliases: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    dependent_service_ids: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    required_inputs: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    guidance: Mapped[str] = mapped_column(Text, nullable=False)
+    source_urls: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(32), default="approved", nullable=False)
+    version: Mapped[str] = mapped_column(String(50), default="1.0.0", nullable=False)
     confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
 
 

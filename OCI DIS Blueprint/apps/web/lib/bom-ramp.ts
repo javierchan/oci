@@ -2,6 +2,7 @@
 
 import type {
   BomComparison,
+  BomLinePeriod,
   BomSnapshot,
   DeploymentEnvironmentInput,
   DeploymentRampPhaseInput,
@@ -22,7 +23,7 @@ export type BomRolloutSignals = {
 export type BomRampSnapshot = {
   currency: BomSnapshot["currency"];
   monthly_series: BomSnapshot["monthly_series"];
-  line_items: Array<Pick<BomSnapshot["line_items"][number], "service_id" | "contract_amount">>;
+  line_items: Array<Pick<BomSnapshot["line_items"][number], "service_id" | "environment" | "contract_amount" | "periods">>;
 };
 
 const SERVICE_PRODUCT_LABELS: Record<string, string> = {
@@ -103,6 +104,19 @@ export function phaseMonthlyQuantities(
   return values;
 }
 
+export function linePeriodMonthlyQuantities(
+  periods: Array<Pick<BomLinePeriod, "period_index" | "quantity">>,
+  contractMonths: number,
+): number[] {
+  const values = Array.from({ length: contractMonths }, () => 0);
+  for (const period of periods) {
+    if (period.period_index >= 1 && period.period_index <= contractMonths) {
+      values[period.period_index - 1] = period.quantity;
+    }
+  }
+  return values;
+}
+
 export function withMonthlyQuantity(
   phase: DeploymentRampPhaseInput,
   contractMonths: number,
@@ -176,9 +190,12 @@ export function buildBomChartData(
   snapshot: BomRampSnapshot,
   mode: BomCompositionMode,
 ): { keys: string[]; rows: Array<Record<string, number | string>> } {
+  const monthlySeries = snapshot.monthly_series.length > 0
+    ? snapshot.monthly_series
+    : rebuildMonthlySeries(snapshot.line_items);
   const source = mode === "environment" ? "by_environment" : "by_service";
   const keys = Array.from(
-    new Set(snapshot.monthly_series.flatMap((period) => Object.keys(period[source]))),
+    new Set(monthlySeries.flatMap((period) => Object.keys(period[source]))),
   ).sort();
   const formatter = new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -187,12 +204,48 @@ export function buildBomChartData(
   });
   return {
     keys,
-    rows: snapshot.monthly_series.map((period) => ({
+    rows: monthlySeries.map((period) => ({
       month: formatter.format(new Date(`${period.period_start}T00:00:00Z`)),
       cumulative: period.cumulative_total,
       ...(mode === "environment" ? period.by_environment : period.by_service),
     })),
   };
+}
+
+function rebuildMonthlySeries(
+  lines: BomRampSnapshot["line_items"],
+): BomSnapshot["monthly_series"] {
+  const periods = new Map<number, BomSnapshot["monthly_series"][number]>();
+  for (const line of lines) {
+    for (const linePeriod of line.periods) {
+      const current = periods.get(linePeriod.period_index) ?? {
+        period_index: linePeriod.period_index,
+        period_start: linePeriod.period_start,
+        total: 0,
+        cumulative_total: 0,
+        by_environment: {},
+        by_service: {},
+      };
+      current.total += linePeriod.amount;
+      current.by_environment[line.environment] = (current.by_environment[line.environment] ?? 0) + linePeriod.amount;
+      current.by_service[line.service_id] = (current.by_service[line.service_id] ?? 0) + linePeriod.amount;
+      periods.set(linePeriod.period_index, current);
+    }
+  }
+  let cumulative = 0;
+  return [...periods.values()]
+    .sort((left, right) => left.period_index - right.period_index)
+    .map((period) => {
+      const total = Math.round(period.total * 100) / 100;
+      cumulative = Math.round((cumulative + total) * 100) / 100;
+      return {
+        ...period,
+        total,
+        cumulative_total: cumulative,
+        by_environment: Object.fromEntries(Object.entries(period.by_environment).map(([key, value]) => [key, Math.round(value * 100) / 100])),
+        by_service: Object.fromEntries(Object.entries(period.by_service).map(([key, value]) => [key, Math.round(value * 100) / 100])),
+      };
+    });
 }
 
 export function topContractDrivers(snapshot: BomRampSnapshot, limit = 6): Array<[string, number]> {

@@ -37,7 +37,9 @@ from app.schemas.pricing import (
     SkuMappingListResponse,
     SkuMappingPatchRequest,
     SkuMappingResponse,
+    QuantityPresetResponse,
 )
+from app.services import storage_service
 from app.services import audit_service
 
 
@@ -155,7 +157,6 @@ def _catalog_hash(items: list[dict[str, object]]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-RATE_CARD_ROOT = Path("uploads/pricing/rate-cards")
 MAX_RATE_CARD_BYTES = 20 * 1024 * 1024
 
 
@@ -368,6 +369,21 @@ def serialize_sku_mapping(mapping: ServiceProductSkuMapping) -> SkuMappingRespon
         quantity_increment=mapping.quantity_increment,
         minimum_quantity=mapping.minimum_quantity,
         quantity_unit=mapping.quantity_unit,
+        usage_basis=mapping.usage_basis,
+        quote_rounding=mapping.quote_rounding,
+        aggregation_window=mapping.aggregation_window,
+        proration_policy=mapping.proration_policy,
+        free_tier_scope=mapping.free_tier_scope,
+        planning_envelope_increment=mapping.planning_envelope_increment,
+        metering_policy=mapping.metering_policy,
+        selection_policy=str(getattr(mapping, "selection_policy", None) or "required"),
+        requires_explicit_quantity=mapping.requires_explicit_quantity,
+        entry_guidance=mapping.entry_guidance,
+        quantity_presets=[
+            QuantityPresetResponse.model_validate(item)
+            for item in mapping.quantity_presets
+            if isinstance(item, dict)
+        ],
         predicates=mapping.predicates,
         is_billable=mapping.is_billable,
         status=mapping.status,
@@ -464,10 +480,16 @@ async def import_rate_card(
     )
     db.add(snapshot)
     await db.flush()
-    RATE_CARD_ROOT.mkdir(parents=True, exist_ok=True)
-    stored_path = RATE_CARD_ROOT / f"{snapshot.id}.csv"
-    stored_path.write_bytes(contents)
-    snapshot.snapshot_metadata = {**snapshot.snapshot_metadata, "stored_path": str(stored_path)}
+    stored_reference = storage_service.put_bytes(
+        f"pricing/rate-cards/{snapshot.id}.csv",
+        contents,
+        content_type="text/csv",
+        metadata={"snapshot-id": snapshot.id, "currency": normalized_currency},
+    )
+    snapshot.snapshot_metadata = {
+        **snapshot.snapshot_metadata,
+        "storage_reference": stored_reference,
+    }
     db.add_all([PriceItem(snapshot_id=snapshot.id, **item) for item in normalized])
     source.currency = normalized_currency
     source.last_synced_at = now

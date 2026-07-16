@@ -187,11 +187,15 @@ def expand_quantity_ramp(
 def price_line_schedule(
     request: PricingRequest,
     multipliers: Sequence[Decimal],
+    *,
+    free_tier_allocations: Sequence[Decimal] | None = None,
 ) -> ScheduledPricingResult:
     """Price a line independently for each month in a governed demand schedule."""
 
     if not multipliers:
         raise ValueError("at least one schedule multiplier is required")
+    if free_tier_allocations is not None and len(free_tier_allocations) != len(multipliers):
+        raise ValueError("free-tier allocation schedule must match the pricing schedule")
     periods: list[ScheduledPricePeriod] = []
     for index, multiplier in enumerate(multipliers, start=1):
         if multiplier < ZERO or multiplier > ONE:
@@ -206,7 +210,11 @@ def price_line_schedule(
             billing_unit=request.billing_unit,
             hours=request.hours,
             utilization_ratio=request.utilization_ratio,
-            free_tier_allocation=request.free_tier_allocation,
+            free_tier_allocation=(
+                free_tier_allocations[index - 1]
+                if free_tier_allocations is not None
+                else request.free_tier_allocation
+            ),
             tiers=request.tiers,
             tier_basis_quantity=(
                 request.tier_basis_quantity * multiplier
@@ -249,11 +257,14 @@ def price_line_quantity_schedule(
     quantities: Sequence[Decimal],
     *,
     rule: QuantityRule,
+    free_tier_allocations: Sequence[Decimal] | None = None,
 ) -> ScheduledPricingResult:
     """Price explicit monthly quantities after applying governed commercial rounding."""
 
     if not quantities:
         raise ValueError("at least one scheduled quantity is required")
+    if free_tier_allocations is not None and len(free_tier_allocations) != len(quantities):
+        raise ValueError("free-tier allocation schedule must match the quantity schedule")
     normalized = tuple(normalize_quantity(quantity, rule) for quantity in quantities)
     baseline = request.quantity
     multipliers = tuple(
@@ -271,7 +282,11 @@ def price_line_quantity_schedule(
             billing_unit=request.billing_unit,
             hours=request.hours,
             utilization_ratio=request.utilization_ratio,
-            free_tier_allocation=request.free_tier_allocation,
+            free_tier_allocation=(
+                free_tier_allocations[index - 1]
+                if free_tier_allocations is not None
+                else request.free_tier_allocation
+            ),
             tiers=request.tiers,
             tier_basis_quantity=quantity if request.tier_basis_quantity is not None else None,
             annual_active_months=1,

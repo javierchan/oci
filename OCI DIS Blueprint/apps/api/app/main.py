@@ -8,6 +8,7 @@ API surface implements all route groups from PRD-043:
 
 OpenAPI 3.1 spec auto-generated at /docs and /openapi.json.
 """
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,7 +40,8 @@ from app.routers import (
     bom_router,
     pricing_router,
 )
-from app.schemas.readiness import ReadinessResponse
+from app.schemas.readiness import ObjectStorageReadinessResponse, ReadinessResponse
+from app.services import storage_service
 
 settings = get_settings()
 
@@ -108,12 +110,27 @@ async def health():
 @app.get(f"{API_PREFIX}/readiness", response_model=ReadinessResponse, tags=["Health"], include_in_schema=False)
 async def readiness(db: AsyncSession = Depends(get_db)) -> ReadinessResponse | JSONResponse:
     migration_state = await check_migration_readiness(db)
+    storage_ready = True
+    storage_hint = None
+    try:
+        await asyncio.to_thread(storage_service.ensure_bucket)
+    except Exception:
+        storage_ready = False
+        storage_hint = "Verify the S3-compatible endpoint, bucket, network, and Customer Secret Key."
+    endpoint = settings.STORAGE_ENDPOINT.lower()
+    storage_provider = "MinIO" if "minio" in endpoint or "localhost" in endpoint else "OCI Object Storage"
     payload = ReadinessResponse(
-        status="ready" if migration_state.ready else "not_ready",
+        status="ready" if migration_state.ready and storage_ready else "not_ready",
         version=settings.APP_VERSION,
         database_migrations=migration_state,
+        object_storage=ObjectStorageReadinessResponse(
+            ready=storage_ready,
+            bucket=settings.STORAGE_BUCKET,
+            provider=storage_provider,
+            recovery_hint=storage_hint,
+        ),
     )
-    if migration_state.ready:
+    if migration_state.ready and storage_ready:
         return payload
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

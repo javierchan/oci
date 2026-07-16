@@ -18,7 +18,6 @@ def _settings(key_path: Path, **overrides: object) -> Settings:
         "OCI_GENAI_PROJECT_ID": "ocid1.generativeaiproject.oc1.test",
         "OCI_GENAI_COMPARTMENT_ID": "ocid1.compartment.oc1..test",
         "OCI_GENAI_BASE_URL": "https://example.test/openai/v1",
-        "SECRET_KEY": "unit-test-safety-secret",
         "OCI_GENAI_METRICS_REDIS_ENABLED": False,
     }
     values.update(overrides)

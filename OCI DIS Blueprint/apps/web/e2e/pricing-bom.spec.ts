@@ -2,7 +2,6 @@
 
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
-type ProjectList = { projects: Array<{ id: string }> };
 type PriceSourceList = { sources: Array<{ id: string; source_type: string }> };
 type PriceJob = { id: string; status: string; snapshot_id: string | null; item_count: number };
 type Scenario = { id: string; status: string };
@@ -10,7 +9,10 @@ type MetricOption = {
   service_id: string;
   metric_key: string;
   quantity_unit: string;
+  source_baseline_quantity: number;
   baseline_quantity: number;
+  planning_envelope_quantity: number | null;
+  requires_explicit_quantity: boolean;
   default_sku_mapping_id: string;
 };
 type ScenarioAssistant = {
@@ -28,28 +30,15 @@ type BomSnapshot = {
   monthly_series: Array<{ period_index: number; total: number }>;
   summary: { line_count: number };
 };
+type SyntheticJob = {
+  id: string;
+  status: string;
+  project_id: string | null;
+};
 
 const apiBase = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8000";
 const adminHeaders = { "X-Actor-Id": "pricing-e2e-admin", "X-Actor-Role": "Admin" };
 const architectHeaders = { "X-Actor-Id": "pricing-e2e-architect", "X-Actor-Role": "Architect" };
-
-async function findPricableProject(
-  request: APIRequestContext,
-): Promise<{ projectId: string; assistant: ScenarioAssistant }> {
-  const projectsResponse = await request.get(`${apiBase}/api/v1/projects`);
-  expect(projectsResponse.ok()).toBe(true);
-  const projects = (await projectsResponse.json()) as ProjectList;
-  for (const project of projects.projects) {
-    const response = await request.get(
-      `${apiBase}/api/v1/projects/${project.id}/deployment-scenarios/assistant?include_llm=false`,
-      { headers: architectHeaders },
-    );
-    if (!response.ok()) continue;
-    const assistant = (await response.json()) as ScenarioAssistant;
-    if (assistant.detected_services.length > 0) return { projectId: project.id, assistant };
-  }
-  throw new Error("Pricing E2E requires a project with a technical snapshot");
-}
 
 async function readPriceJob(request: APIRequestContext, jobId: string): Promise<PriceJob> {
   const response = await request.get(`${apiBase}/api/v1/pricing/sync-jobs/${jobId}`, {
@@ -67,8 +56,44 @@ async function readBomJob(request: APIRequestContext, projectId: string, jobId: 
   return (await response.json()) as BomJob;
 }
 
+async function readSyntheticJob(request: APIRequestContext, jobId: string): Promise<SyntheticJob> {
+  const response = await request.get(`${apiBase}/api/v1/admin/synthetic/jobs/${jobId}`, {
+    headers: adminHeaders,
+  });
+  expect(response.ok()).toBe(true);
+  return (await response.json()) as SyntheticJob;
+}
+
+let syntheticJobId: string | null = null;
+
+test.afterEach(async ({ request }) => {
+  if (!syntheticJobId) return;
+  const jobId = syntheticJobId;
+  syntheticJobId = null;
+  await expect
+    .poll(async () => (await readSyntheticJob(request, jobId)).status, {
+      timeout: 120_000,
+      intervals: [1_000, 2_000, 5_000],
+      message: "isolated pricing fixture should reach a cleanable terminal state",
+    })
+    .toMatch(/^(completed|failed|cleaned_up)$/);
+  const terminal = await readSyntheticJob(request, jobId);
+  if (terminal.status !== "cleaned_up") {
+    const cleanup = await request.post(`${apiBase}/api/v1/admin/synthetic/jobs/${jobId}/cleanup`, {
+      headers: adminHeaders,
+    });
+    expect(cleanup.ok()).toBe(true);
+    expect(((await cleanup.json()) as SyntheticJob).status).toBe("cleaned_up");
+  }
+});
+
 test("reaches terminal pricing and BOM jobs and renders the governed estimate", async ({ page, request }) => {
-  test.setTimeout(150_000);
+  test.setTimeout(240_000);
+  const browserErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => browserErrors.push(error.message));
   const sourcesResponse = await request.get(`${apiBase}/api/v1/pricing/sources`, { headers: adminHeaders });
   expect(sourcesResponse.ok()).toBe(true);
   const sources = (await sourcesResponse.json()) as PriceSourceList;
@@ -96,8 +121,42 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(page.getByText("Oracle OCI Public List Pricing", { exact: true })).toBeVisible();
   await expect(page.getByText(`${completedSync.item_count} items`, { exact: true }).first()).toBeVisible();
 
-  const { projectId, assistant } = await findPricableProject(request);
+  const syntheticResponse = await request.post(`${apiBase}/api/v1/admin/synthetic/jobs`, {
+    headers: adminHeaders,
+    data: {
+      preset_code: "retained-smoke",
+      project_name: `Pricing BOM E2E ${Date.now()}`,
+    },
+  });
+  expect(syntheticResponse.status()).toBe(202);
+  const synthetic = (await syntheticResponse.json()) as SyntheticJob;
+  syntheticJobId = synthetic.id;
+  await expect
+    .poll(async () => (await readSyntheticJob(request, synthetic.id)).status, {
+      timeout: 120_000,
+      intervals: [1_000, 2_000, 5_000],
+      message: "isolated pricing fixture should reach completed",
+    })
+    .toBe("completed");
+  const completedSynthetic = await readSyntheticJob(request, synthetic.id);
+  expect(completedSynthetic.project_id).toMatch(/^[0-9a-f-]{36}$/i);
+  const projectId = completedSynthetic.project_id as string;
+  const assistantResponse = await request.get(
+    `${apiBase}/api/v1/projects/${projectId}/deployment-scenarios/assistant?include_llm=false`,
+    { headers: architectHeaders },
+  );
+  expect(assistantResponse.ok()).toBe(true);
+  const assistant = (await assistantResponse.json()) as ScenarioAssistant;
+  expect(assistant.detected_services.length).toBeGreaterThan(0);
   expect(assistant.metric_options.length).toBeGreaterThan(0);
+  const apiGatewayCalls = assistant.metric_options.find((option) => option.metric_key === "api_gateway_call_millions");
+  expect(apiGatewayCalls?.source_baseline_quantity).toBeGreaterThan(0);
+  expect(apiGatewayCalls?.source_baseline_quantity).toBeLessThan(1);
+  expect(apiGatewayCalls?.baseline_quantity).toBe(apiGatewayCalls?.source_baseline_quantity);
+  expect(apiGatewayCalls?.planning_envelope_quantity).toBe(1);
+  const dataIntegrationWorkspace = assistant.metric_options.find((option) => option.metric_key === "di_workspace_hours");
+  expect(dataIntegrationWorkspace?.requires_explicit_quantity).toBe(true);
+  expect(dataIntegrationWorkspace?.baseline_quantity).toBe(0);
   const quantityPhases = (scale: number, startMonth: number) => assistant.metric_options.map((option) => ({
     service_id: option.service_id,
     metric_key: option.metric_key,
@@ -189,6 +248,20 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(page.getByRole("heading", { name: "Demand, commercial variant, price and provenance" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "When capacity starts, what drives cost, and where it lands" })).toBeVisible();
 
+  const productSearch = page.getByPlaceholder("Find product, metric, or SKU...");
+  await productSearch.fill("B92598");
+  const dataIntegrationProduct = page.locator("article").filter({ hasText: "OCI Data Integration" }).first();
+  await expect(dataIntegrationProduct).toBeVisible();
+  await expect(dataIntegrationProduct.getByRole("button", { name: "Business hours · 160h" })).toBeVisible();
+  const workspaceQuantity = dataIntegrationProduct.getByLabel(/workspace hours initial quantity/i);
+  await dataIntegrationProduct.getByRole("button", { name: "Always on · 744h" }).click();
+  await expect(workspaceQuantity).toHaveValue("744");
+  await expect(dataIntegrationProduct.getByText("Always-on assumption", { exact: false })).toBeVisible();
+  await dataIntegrationProduct.getByRole("button", { name: "Business hours · 160h" }).click();
+  await expect(workspaceQuantity).toHaveValue("160");
+  await expect(dataIntegrationProduct.getByText("Always-on assumption", { exact: false })).toHaveCount(0);
+  await productSearch.clear();
+
   await page.getByRole("button", { name: "Add environment" }).click();
   const environmentNames = page.getByLabel(/Environment \d+ name/);
   const environmentNameCount = await environmentNames.count();
@@ -197,9 +270,8 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await newEnvironmentName.pressSequentially("Disaster Recovery", { delay: 15 });
   await expect(newEnvironmentName).toHaveValue("Disaster Recovery");
   const disasterRecovery = page.getByRole("region", { name: "Disaster Recovery consumption plan" });
-  await disasterRecovery.getByRole("button", { name: "Add product metric" }).click();
-  const productSelect = disasterRecovery.getByRole("combobox", { name: "Product" });
-  await expect(productSelect).not.toHaveValue("");
+  await disasterRecovery.getByRole("button", { name: "Add metric" }).click();
+  await expect(disasterRecovery.locator("article").first()).toBeVisible();
   await page.getByRole("button", { name: "Monthly matrix" }).click();
   const firstMonthlyQuantity = disasterRecovery.locator('input[aria-label$=" month 1"]');
   await firstMonthlyQuantity.fill("3");
@@ -210,6 +282,8 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(page.getByLabel("Monthly cost ramp chart").locator("svg").first()).toBeVisible();
   await expect(page.getByText("Products and activation", { exact: true })).toBeVisible();
   await expect(page.getByText("Top contract drivers", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-rollout-monthly-evidence]").first()).toBeVisible();
+  await expect(page.getByText("Historical line items have no editable phase definition.", { exact: true })).toHaveCount(0);
   const productMode = page.getByRole("group", { name: "Group monthly consumption" }).getByRole("button", { name: "Product" });
   await productMode.click();
   await expect(productMode).toHaveAttribute("aria-pressed", "true");
@@ -232,4 +306,5 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await page.getByRole("tab", { name: "Inspector" }).click();
   await expect(page.getByText("Selected Product", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+  expect(browserErrors).toEqual([]);
 });

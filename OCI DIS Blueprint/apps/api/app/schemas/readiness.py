@@ -17,6 +17,17 @@ class MigrationReadinessResponse(BaseModel):
     recovery_hint: str | None = None
 
 
+class ObjectStorageReadinessResponse(BaseModel):
+    """Connectivity state for the authoritative artifact store."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    ready: bool
+    bucket: str
+    provider: str
+    recovery_hint: str | None = None
+
+
 class ReadinessResponse(BaseModel):
     """API readiness contract for operators and frontend diagnostics."""
 
@@ -25,3 +36,4 @@ class ReadinessResponse(BaseModel):
     status: str
     version: str
     database_migrations: MigrationReadinessResponse
+    object_storage: ObjectStorageReadinessResponse

@@ -23,6 +23,8 @@ from app.models import (
     PatternDefinition,
     Project,
     ServiceCapabilityProfile,
+    ServiceCommercialPolicy,
+    ServiceProductSkuMapping,
     SupportAttachment,
     SupportConversation,
     SupportMessage,
@@ -836,6 +838,37 @@ async def build_support_evidence(
                 )
             ).all()
         )
+        service_ids = [item.service_id for item in services]
+        commercial_policies = list(
+            (
+                await db.scalars(
+                    select(ServiceCommercialPolicy).where(
+                        ServiceCommercialPolicy.service_id.in_(service_ids),
+                        ServiceCommercialPolicy.status == "approved",
+                    )
+                )
+            ).all()
+        )
+        commercial_policy_by_service = {
+            item.service_id: item for item in commercial_policies
+        }
+        approved_mapping_rows = (
+            await db.execute(
+                select(
+                    ServiceProductSkuMapping.service_id,
+                    func.count(ServiceProductSkuMapping.id),
+                )
+                .where(
+                    ServiceProductSkuMapping.service_id.in_(service_ids),
+                    ServiceProductSkuMapping.status == "approved",
+                )
+                .group_by(ServiceProductSkuMapping.service_id)
+            )
+        ).all()
+        mapping_count_by_service = {
+            str(service_id): int(count)
+            for service_id, count in approved_mapping_rows
+        }
         evidence["service_product_library"] = [
             {
                 "id": item.service_id,
@@ -843,6 +876,32 @@ async def build_support_evidence(
                 "category": item.category,
                 "architectural_fit": item.architectural_fit,
                 "interoperability_notes": item.interoperability_notes,
+                "commercial_classification": (
+                    commercial_policy_by_service[item.service_id].classification
+                    if item.service_id in commercial_policy_by_service
+                    else "unclassified"
+                ),
+                "commercial_readiness": (
+                    commercial_policy_by_service[item.service_id].readiness
+                    if item.service_id in commercial_policy_by_service
+                    else "blocked"
+                ),
+                "publication_policy": (
+                    commercial_policy_by_service[item.service_id].publication_policy
+                    if item.service_id in commercial_policy_by_service
+                    else "policy_required"
+                ),
+                "governed_meter_count": mapping_count_by_service.get(item.service_id, 0),
+                "required_commercial_inputs": (
+                    commercial_policy_by_service[item.service_id].required_inputs
+                    if item.service_id in commercial_policy_by_service
+                    else ["approved commercial policy"]
+                ),
+                "commercial_guidance": (
+                    commercial_policy_by_service[item.service_id].guidance
+                    if item.service_id in commercial_policy_by_service
+                    else "Commercial policy is missing; BOM publication is blocked."
+                ),
             }
             for item in services
         ]

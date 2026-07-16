@@ -95,6 +95,45 @@ export interface AgentProviderMetrics {
   };
 }
 
+export interface AgentValueMetrics {
+  retained_runs: number;
+  completed_runs: number;
+  quality_evaluated_runs: number;
+  grounded_output_runs: number;
+  grounding_fallback_runs: number;
+  high_evidence_completeness_runs: number;
+  recommendation_runs: number;
+  provider_synthesis_runs: number;
+  approval_decisions: number;
+  approved_decisions: number;
+  rejected_decisions: number;
+  follow_up_runs_after_approval: number;
+  provider_synthesis_rate_pct: number;
+  grounded_output_rate_pct: number;
+  high_evidence_completeness_rate_pct: number;
+  acceptance_rate_pct: number | null;
+  approval_follow_up_rate_pct: number | null;
+  median_execution_seconds: number | null;
+}
+
+export interface AgentOutputBrief {
+  headline: string;
+  finding: string;
+  why: string;
+  next_actions: string[];
+  validation: string[];
+  evidence_ids: string[];
+  confidence: "high" | "medium" | "low";
+}
+
+export interface AgentOutputQuality {
+  normalized: boolean;
+  grounded: boolean;
+  fallback_used: boolean;
+  fallback_reason: string | null;
+  evidence_completeness_pct: number;
+}
+
 export interface AgentStep {
   id: string;
   sequence: number;
@@ -126,7 +165,14 @@ export interface AgentRun {
   requested_by: string;
   status: AgentRunStatus;
   context: Record<string, unknown>;
-  result: { summary?: string; evidence?: unknown; provider_status?: string; authority?: string } | null;
+  result: {
+    summary?: string;
+    brief?: AgentOutputBrief;
+    output_quality?: AgentOutputQuality;
+    evidence?: unknown;
+    provider_status?: string;
+    authority?: string;
+  } | null;
   error: Record<string, unknown> | null;
   model: string | null;
   provider_response_id: string | null;
@@ -1098,6 +1144,12 @@ export interface ServiceProductSummary {
   evidence_count: number;
   interoperability_count: number;
   verification_status: string;
+  commercial_classification: string;
+  commercial_readiness: string;
+  publication_policy: string;
+  approved_mapping_count: number;
+  commercial_guidance: string;
+  commercial_required_inputs: string[];
   last_verified_at: string | null;
   updated_at: string;
 }
@@ -1762,6 +1814,12 @@ export interface PriceItemList {
 
 export type SkuMappingStatus = "draft" | "approved" | "retired";
 
+export interface QuantityPreset {
+  label: string;
+  quantity: number;
+  description: string;
+}
+
 export interface SkuMapping {
   id: string;
   service_id: string;
@@ -1773,6 +1831,17 @@ export interface SkuMapping {
   quantity_increment: number;
   minimum_quantity: number;
   quantity_unit: string;
+  usage_basis: string;
+  quote_rounding: string;
+  aggregation_window: string;
+  proration_policy: string;
+  free_tier_scope: string;
+  planning_envelope_increment: number | null;
+  metering_policy: Record<string, unknown>;
+  selection_policy: "required" | "optional" | "dependent";
+  requires_explicit_quantity: boolean;
+  entry_guidance: string;
+  quantity_presets: QuantityPreset[];
   predicates: Record<string, unknown>;
   is_billable: boolean;
   status: SkuMappingStatus;
@@ -1797,6 +1866,17 @@ export interface SkuMappingPatch {
   quantity_increment?: number;
   minimum_quantity?: number;
   quantity_unit?: string;
+  usage_basis?: string;
+  quote_rounding?: string;
+  aggregation_window?: string;
+  proration_policy?: string;
+  free_tier_scope?: string;
+  planning_envelope_increment?: number | null;
+  metering_policy?: Record<string, unknown>;
+  selection_policy?: SkuMapping["selection_policy"];
+  requires_explicit_quantity?: boolean;
+  entry_guidance?: string;
+  quantity_presets?: QuantityPreset[];
   predicates?: Record<string, unknown>;
   is_billable?: boolean;
   status?: SkuMappingStatus;
@@ -1880,6 +1960,7 @@ export interface ScenarioAssistant {
   draft: DeploymentScenarioCreate;
   detected_services: string[];
   metric_options: ScenarioMetricOption[];
+  commercial_coverage: ScenarioCommercialCoverage[];
   required_questions: string[];
   warnings: string[];
   confidence: string;
@@ -1893,11 +1974,24 @@ export interface ScenarioMetricOption {
   metric_key: string;
   metric_label: string;
   quantity_unit: string;
+  source_baseline_quantity: number;
   baseline_quantity: number;
+  planning_envelope_quantity: number | null;
   quantity_behavior: SkuMapping["quantity_behavior"];
   quantity_increment: number;
   minimum_quantity: number;
+  usage_basis: string;
+  quote_rounding: string;
+  aggregation_window: string;
+  proration_policy: string;
+  free_tier_scope: string;
+  planning_envelope_increment: number | null;
+  metering_policy: Record<string, unknown>;
+  requires_explicit_quantity: boolean;
+  entry_guidance: string;
+  quantity_presets: QuantityPreset[];
   default_sku_mapping_id: string;
+  default_selected: boolean;
   variants: ScenarioSkuVariant[];
 }
 
@@ -1907,10 +2001,35 @@ export interface ScenarioSkuVariant {
   part_number: string | null;
   predicates: Record<string, unknown>;
   is_billable: boolean;
+  selection_policy: SkuMapping["selection_policy"];
   quantity_behavior: SkuMapping["quantity_behavior"];
   quantity_increment: number;
   minimum_quantity: number;
   quantity_unit: string;
+  usage_basis: string;
+  quote_rounding: string;
+  aggregation_window: string;
+  proration_policy: string;
+  free_tier_scope: string;
+  planning_envelope_increment: number | null;
+  metering_policy: Record<string, unknown>;
+  requires_explicit_quantity: boolean;
+  entry_guidance: string;
+  quantity_presets: QuantityPreset[];
+}
+
+export interface ScenarioCommercialCoverage {
+  service_id: string;
+  product_name: string;
+  classification: string;
+  readiness: string;
+  publication_policy: string;
+  approved_mapping_count: number;
+  required_inputs: string[];
+  dependent_service_ids: string[];
+  dependencies_present: string[];
+  guidance: string;
+  source_urls: string[];
 }
 
 export interface BomJob {

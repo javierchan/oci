@@ -14,6 +14,7 @@ from app.schemas.agent import (
     AgentProviderStatusResponse,
     AgentRunListResponse,
     AgentRunResponse,
+    AgentValueMetricsResponse,
 )
 from app.services import agent_service
 from app.services.authz import require_roles
@@ -37,6 +38,23 @@ async def get_agent_provider_metrics(
         error_code="AGENT_PROVIDER_METRICS_ROLE_REQUIRED",
     )
     return await agent_service.get_agent_provider_metrics()
+
+
+@router.get(
+    "/value-metrics",
+    response_model=AgentValueMetricsResponse,
+    summary="Inspect observable agent product-value signals",
+)
+async def get_agent_value_metrics(
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
+    db: AsyncSession = Depends(get_db),
+) -> AgentValueMetricsResponse:
+    require_roles(
+        actor_role,
+        {"Admin", "Architect"},
+        error_code="AGENT_VALUE_METRICS_ROLE_REQUIRED",
+    )
+    return await agent_service.get_agent_value_metrics(db)
 
 
 @router.get("/provider-status", response_model=AgentProviderStatusResponse, summary="Inspect agent provider readiness")
@@ -79,7 +97,7 @@ async def create_agent_run(
 
 @router.get("/runs", response_model=AgentRunListResponse, summary="List governed agent runs")
 async def list_agent_runs(
-    project_id: str | None = Query(None), limit: int = Query(20, ge=1, le=100),
+    project_id: str | None = Query(None), limit: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
     actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> AgentRunListResponse:

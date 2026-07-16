@@ -445,7 +445,8 @@ Slice 3:
 - reusable backend synthetic service implemented
 - executable synthetic seed script implemented
 - final deterministic synthetic project generated successfully
-- reports written to `apps/api/generated-reports/`
+- reports persisted under the project-owned `synthetic/{project_id}/reports/`
+  Object Storage prefix
 - API smoke routes verified against the created project
 - focused backend validation and quality gates green
 

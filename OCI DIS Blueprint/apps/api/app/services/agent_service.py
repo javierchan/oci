@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from statistics import median
 from typing import Literal, cast
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.registry import AGENT_DEFINITIONS, AgentDefinition, get_agent_definition
@@ -20,8 +21,10 @@ from app.models import (
     AgentStep,
     AiReviewJob,
     AiReviewJobStatus,
+    AuditEvent,
     CatalogIntegration,
     Project,
+    SupportMessage,
 )
 from app.schemas.agent import (
     AgentApprovalDecisionRequest,
@@ -36,8 +39,10 @@ from app.schemas.agent import (
     AgentStepResponse,
     AgentRunStatusValue,
     AgentType,
+    AgentValueMetricsResponse,
 )
 from app.services import audit_service, support_service
+from app.services.agent_output_service import govern_agent_output
 from app.services.authz import normalize_role, require_roles
 from app.services.genai_client import GenAiAgentResult, run_governed_tool_agent
 from app.services.genai_client import provider_status_payload
@@ -50,6 +55,53 @@ TERMINAL_STATUSES = {
     AgentRunStatus.FAILED,
     AgentRunStatus.CANCELLED,
 }
+AGENT_RUN_HISTORY_LIMIT = 50
+
+
+async def prune_agent_run_history(
+    db: AsyncSession,
+    *,
+    retention_limit: int = AGENT_RUN_HISTORY_LIMIT,
+) -> int:
+    """Delete terminal runs beyond the global bounded execution-history window."""
+
+    if retention_limit < 1:
+        raise ValueError("Agent run retention_limit must be at least 1.")
+    expired_ids = list(
+        (
+            await db.scalars(
+                select(AgentRun.id)
+                .where(AgentRun.status.in_(TERMINAL_STATUSES))
+                .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+                .offset(retention_limit)
+            )
+        ).all()
+    )
+    if not expired_ids:
+        return 0
+
+    await db.execute(
+        update(SupportMessage)
+        .where(SupportMessage.agent_run_id.in_(expired_ids))
+        .values(agent_run_id=None)
+    )
+    await db.execute(delete(AgentApproval).where(AgentApproval.run_id.in_(expired_ids)))
+    await db.execute(delete(AgentArtifact).where(AgentArtifact.run_id.in_(expired_ids)))
+    await db.execute(delete(AgentStep).where(AgentStep.run_id.in_(expired_ids)))
+    await db.execute(
+        delete(AuditEvent).where(
+            or_(
+                and_(
+                    AuditEvent.entity_type == "agent_run",
+                    AuditEvent.entity_id.in_(expired_ids),
+                ),
+                AuditEvent.correlation_id.in_(expired_ids),
+            )
+        )
+    )
+    await db.execute(delete(AgentRun).where(AgentRun.id.in_(expired_ids)))
+    await db.flush()
+    return len(expired_ids)
 
 
 def observed_provider_status(
@@ -190,6 +242,103 @@ async def get_agent_provider_metrics() -> AgentProviderMetricsResponse:
     )
 
 
+def _rate(numerator: int, denominator: int) -> float:
+    return round(numerator / denominator * 100, 1) if denominator else 0.0
+
+
+async def get_agent_value_metrics(db: AsyncSession) -> AgentValueMetricsResponse:
+    """Compute honest value signals from the bounded retained execution window."""
+
+    runs = list(
+        (
+            await db.scalars(
+                select(AgentRun)
+                .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+                .limit(AGENT_RUN_HISTORY_LIMIT)
+            )
+        ).all()
+    )
+    run_ids = [run.id for run in runs]
+    approvals = (
+        list(
+            (
+                await db.scalars(
+                    select(AgentApproval)
+                    .where(
+                        AgentApproval.run_id.in_(run_ids),
+                        AgentApproval.status.in_({"approved", "rejected"}),
+                    )
+                    .order_by(AgentApproval.reviewed_at)
+                )
+            ).all()
+        )
+        if run_ids
+        else []
+    )
+    completed = [run for run in runs if run.status == AgentRunStatus.COMPLETED]
+    quality_payloads: list[dict[str, object]] = []
+    recommendation_runs = 0
+    provider_synthesis_runs = 0
+    durations: list[float] = []
+    for run in completed:
+        payload = cast(dict[str, object], run.result_payload or {})
+        quality = payload.get("output_quality")
+        if isinstance(quality, dict):
+            quality_payloads.append(cast(dict[str, object], quality))
+        brief = payload.get("brief")
+        if isinstance(brief, dict) and isinstance(brief.get("next_actions"), list) and brief["next_actions"]:
+            recommendation_runs += 1
+        if payload.get("provider_status") == "completed":
+            provider_synthesis_runs += 1
+        if run.started_at is not None and run.finished_at is not None:
+            durations.append(max((run.finished_at - run.started_at).total_seconds(), 0.0))
+
+    grounded_output_runs = sum(item.get("grounded") is True for item in quality_payloads)
+    grounding_fallback_runs = sum(item.get("fallback_used") is True for item in quality_payloads)
+    high_evidence_runs = sum(
+        isinstance(item.get("evidence_completeness_pct"), int)
+        and cast(int, item["evidence_completeness_pct"]) >= 80
+        for item in quality_payloads
+    )
+    approved = [approval for approval in approvals if approval.status == "approved"]
+    rejected = [approval for approval in approvals if approval.status == "rejected"]
+    runs_by_id = {run.id: run for run in runs}
+    follow_up_runs = 0
+    for approval in approved:
+        source_run = runs_by_id.get(approval.run_id)
+        decision_at = approval.reviewed_at
+        if source_run is None or decision_at is None:
+            continue
+        if any(
+            candidate.created_at > decision_at
+            and candidate.agent_type == source_run.agent_type
+            and candidate.project_id == source_run.project_id
+            for candidate in runs
+        ):
+            follow_up_runs += 1
+
+    return AgentValueMetricsResponse(
+        retained_runs=len(runs),
+        completed_runs=len(completed),
+        quality_evaluated_runs=len(quality_payloads),
+        grounded_output_runs=grounded_output_runs,
+        grounding_fallback_runs=grounding_fallback_runs,
+        high_evidence_completeness_runs=high_evidence_runs,
+        recommendation_runs=recommendation_runs,
+        provider_synthesis_runs=provider_synthesis_runs,
+        approval_decisions=len(approvals),
+        approved_decisions=len(approved),
+        rejected_decisions=len(rejected),
+        follow_up_runs_after_approval=follow_up_runs,
+        provider_synthesis_rate_pct=_rate(provider_synthesis_runs, len(completed)),
+        grounded_output_rate_pct=_rate(grounded_output_runs, len(quality_payloads)),
+        high_evidence_completeness_rate_pct=_rate(high_evidence_runs, len(quality_payloads)),
+        acceptance_rate_pct=_rate(len(approved), len(approvals)) if approvals else None,
+        approval_follow_up_rate_pct=_rate(follow_up_runs, len(approved)) if approved else None,
+        median_execution_seconds=round(float(median(durations)), 1) if durations else None,
+    )
+
+
 async def _load_run(run_id: str, db: AsyncSession) -> AgentRun:
     run = await db.get(AgentRun, run_id)
     if run is None:
@@ -208,6 +357,16 @@ def _step_summary(step: AgentStep) -> str | None:
     if isinstance(summary, str):
         return summary[:500]
     return None
+
+
+def _provider_diagnostic_summary(*, provider_status: str, fallback_used: bool) -> str:
+    """Return a bounded operational status without persisting model prose."""
+
+    if provider_status != "completed":
+        return "Provider synthesis was unavailable; governed deterministic evidence was used."
+    if fallback_used:
+        return "Provider synthesis completed but did not pass the output contract; governed deterministic evidence was used."
+    return "Provider synthesis completed and passed the governed output contract."
 
 
 async def serialize_agent_run(run: AgentRun, db: AsyncSession, *, compact: bool = False) -> AgentRunResponse:
@@ -229,11 +388,18 @@ async def serialize_agent_run(run: AgentRun, db: AsyncSession, *, compact: bool 
     )
     result_payload = cast(dict[str, object] | None, run.result_payload)
     if compact and result_payload is not None:
+        legacy_summary = (
+            "Legacy execution predates the governed output contract; inspect its audit evidence if needed."
+            if not isinstance(result_payload.get("output_quality"), dict)
+            else result_payload.get("summary")
+        )
         result_payload = {
             key: result_payload[key]
-            for key in ("summary", "provider_status", "authority", "tool")
+            for key in ("provider_status", "authority", "tool", "output_quality")
             if key in result_payload
         }
+        if isinstance(legacy_summary, str):
+            result_payload["summary"] = legacy_summary
     return AgentRunResponse(
         id=run.id,
         agent_type=cast(AgentType, run.agent_type),
@@ -352,7 +518,8 @@ async def list_agent_runs(
     if project_id is not None:
         query = query.where(AgentRun.project_id == project_id)
         count_query = count_query.where(AgentRun.project_id == project_id)
-    runs = list((await db.scalars(query.order_by(AgentRun.created_at.desc()).limit(limit))).all())
+    effective_limit = min(limit, AGENT_RUN_HISTORY_LIMIT)
+    runs = list((await db.scalars(query.order_by(AgentRun.created_at.desc()).limit(effective_limit))).all())
     return AgentRunListResponse(
         runs=[await serialize_agent_run(run, db, compact=True) for run in runs],
         total=int(await db.scalar(count_query) or 0),
@@ -442,7 +609,7 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         else "fallback"
     )
     provider_step.output_payload = {
-        "summary": result.summary if result else "Deterministic evidence generated without provider synthesis.",
+        "summary": "Provider output is pending governed normalization.",
         "provider_status": result.status if result else "skipped",
         "transport": result.transport if result else None,
         "retry_count": result.retry_count if result else 0,
@@ -486,7 +653,19 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
     ):
         summary = str(evidence.get("fallback_answer") or _deterministic_summary(definition, evidence))
         grounding_fallback = True
+    governed_output = govern_agent_output(definition, summary, evidence)
+    if grounding_fallback and not governed_output.quality.fallback_used:
+        governed_output.quality.fallback_used = True
+        governed_output.quality.grounded = False
+        governed_output.quality.fallback_reason = "support_grounding_gate"
+    summary = governed_output.summary
+    grounding_fallback = governed_output.quality.fallback_used
+    provider_step.output_payload["summary"] = _provider_diagnostic_summary(
+        provider_status=result.status if result else "skipped",
+        fallback_used=grounding_fallback,
+    )
     provider_step.output_payload["grounding_fallback"] = grounding_fallback
+    provider_step.output_payload["output_quality"] = governed_output.quality.model_dump(mode="json")
     provider_status = result.status if result else "skipped"
     if definition.type == "support_assistant":
         message_id = context.get("support_assistant_message_id")
@@ -514,7 +693,7 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
             legacy_evidence = dict(evidence)
             legacy_evidence["llm_status"] = provider_status
             legacy_evidence["llm_model"] = result.model if result else None
-            legacy_evidence["llm_summary"] = result.summary if result else None
+            legacy_evidence["llm_summary"] = summary if result else None
             legacy_job.result_payload = cast(dict[str, object], sanitize_for_json(legacy_evidence))
             legacy_job.status = AiReviewJobStatus.COMPLETED
             legacy_job.finished_at = datetime.now(UTC)
@@ -537,6 +716,8 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         "provider_retry_count": result.retry_count if result else 0,
         "guardrails_status": result.guardrails_status if result else "skipped",
         "grounding_fallback": grounding_fallback,
+        "brief": governed_output.brief.model_dump(mode="json"),
+        "output_quality": governed_output.quality.model_dump(mode="json"),
         "tool": tool_name,
         "evidence": sanitize_for_json(evidence),
         "authority": "governed_deterministic_evidence",
@@ -557,7 +738,9 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         new_value={"status": _status_value(run), "tool": tool_name, "provider_status": run.result_payload["provider_status"]},
         project_id=run.project_id, correlation_id=run.id, db=db,
     )
-    return await serialize_agent_run(run, db)
+    response = await serialize_agent_run(run, db)
+    await prune_agent_run_history(db)
+    return response
 
 
 def _deterministic_summary(definition: AgentDefinition, evidence: dict[str, object]) -> str:
@@ -598,7 +781,9 @@ async def mark_agent_run_failed(run_id: str, error: dict[str, object], db: Async
     if run.agent_type == "support_assistant" and isinstance(message_id, str):
         await support_service.fail_support_message(message_id, db)
     await db.flush()
-    return await serialize_agent_run(run, db)
+    response = await serialize_agent_run(run, db)
+    await prune_agent_run_history(db)
+    return response
 
 
 async def request_agent_cancellation(run_id: str, actor_id: str, actor_role: str, db: AsyncSession) -> AgentRunResponse:
@@ -617,7 +802,10 @@ async def request_agent_cancellation(run_id: str, actor_id: str, actor_role: str
         actor_id=actor_id, old_value=None, new_value={"status": _status_value(run)},
         project_id=run.project_id, correlation_id=run.id, db=db,
     )
-    return await serialize_agent_run(run, db)
+    response = await serialize_agent_run(run, db)
+    if run.status in TERMINAL_STATUSES:
+        await prune_agent_run_history(db)
+    return response
 
 
 async def decide_agent_approval(

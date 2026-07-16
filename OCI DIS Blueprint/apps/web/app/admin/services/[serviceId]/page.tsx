@@ -151,11 +151,34 @@ export default async function AdminServiceDetailPage({
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Limits" value={service.limits.length} />
         <StatCard label="Evidence Sources" value={service.evidence_sources.length} />
         <StatCard label="Interoperability Rules" value={service.interoperability_rules.length} />
         <StatCard label="SLA Uptime" value={service.sla_uptime_pct === null ? "Not captured" : `${service.sla_uptime_pct}%`} />
+        <StatCard label="Commercial Meters" value={service.approved_mapping_count} />
+      </section>
+
+      <section className="app-card p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-4xl">
+            <p className="app-label">Commercial Coverage</p>
+            <h2 className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">How this product enters a governed BOM</h2>
+            <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">{service.commercial_guidance}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="app-theme-chip">{labelize(service.commercial_classification)}</span>
+            <span className="app-theme-chip">{labelize(service.commercial_readiness)}</span>
+            <span className="app-theme-chip">{labelize(service.publication_policy)}</span>
+          </div>
+        </div>
+        {service.commercial_required_inputs.length > 0 ? (
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {service.commercial_required_inputs.map((item) => (
+              <div key={item} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-text-secondary)]">{item}</div>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">

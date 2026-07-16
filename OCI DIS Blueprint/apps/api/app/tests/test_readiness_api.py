@@ -17,7 +17,7 @@ def test_repository_heads_are_independent_of_working_directory(
     """Resolve Alembic revisions from the API root even when CI runs elsewhere."""
 
     monkeypatch.chdir(tmp_path)
-    assert _repository_heads() == {"20260714_0025"}
+    assert _repository_heads() == {"20260715_0030"}
 
 
 @pytest.mark.asyncio
@@ -30,3 +30,9 @@ async def test_readiness_reports_metadata_created_test_database(api_client: Asyn
     assert payload["status"] == "ready"
     assert payload["database_migrations"]["ready"] is True
     assert payload["database_migrations"]["pending_revisions"] == []
+    assert payload["object_storage"] == {
+        "ready": True,
+        "bucket": "oci-dis-files",
+        "provider": "MinIO",
+        "recovery_hint": None,
+    }

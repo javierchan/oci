@@ -23,7 +23,7 @@ Full requirements are in `TLP - PRD` tab of `Catalogo_Integracion.xlsx` (PRD-001
 | API | FastAPI (Python 3.12) | `apps/api/` |
 | Database | PostgreSQL 16 | via Docker |
 | Job queue | Celery + Redis | import and recalc jobs |
-| Object storage | MinIO (dev) / OCI Object Storage (prod) | files + exports |
+| Object storage | MinIO (local) / OCI Object Storage (deployed) | imports, exports, rate cards, synthetic artifacts |
 | Calc engine | Pure Python (no DB, no HTTP) | `packages/calc-engine/` |
 | Web API types | TypeScript contract projections | `apps/web/lib/types.ts` |
 
@@ -50,9 +50,9 @@ apps/
     requirements-quality.txt  Test and static-analysis dependencies
     requirements.txt          Complete CI dependency aggregate
   web/                  Next.js app
-    src/app/            App Router pages (dashboard, catalog, imports …)
-    src/components/     Shared UI components
-    src/lib/            API client, utils
+    app/                App Router pages (dashboard, catalog, imports …)
+    components/         Shared UI components
+    lib/                API client, utils
     Dockerfile
     package.json
 
@@ -64,9 +64,6 @@ packages/
       importer.py       XLSX/CSV parser + inclusion rules
     src/tests/          Pytest parity tests — MUST pass before milestone done
   test-fixtures/        Seed data, benchmark files, parity snapshots
-
-infra/
-  migrations/           SQL init scripts
 
 docs/
   adr/                  Architecture Decision Records
@@ -318,8 +315,8 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 - [x] Persist and validate downstream artifacts from supported product routes:
       at least one volumetry snapshot, at least one dashboard snapshot,
       persisted justifications, and generated XLSX/JSON/PDF exports
-- [x] Write machine-readable and human-readable run reports under
-      `apps/api/generated-reports/` summarizing the created project, counts,
+- [x] Write machine-readable and human-readable run reports to governed Object
+      Storage under `synthetic/{project_id}/reports/`, summarizing counts,
       pattern/tool coverage, snapshot IDs, export artifacts, and smoke-test URLs
 - [x] Document the productization path for the future Admin Synthetic Lab without
       implementing the full admin module yet. The design doc must cover:
@@ -585,6 +582,126 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       build, healthy production Docker stack, targeted BOM E2E, and desktop/mobile
       light/dark browser validation pass
 
+### M47 — Authoritative Object Storage Artifacts
+- [x] Make one S3-compatible service authoritative for import workbooks, exports,
+      contractual rate cards, Synthetic Lab workbooks, and generated reports
+- [x] Use project-owned prefixes, canonical `s3://` references, bounded temporary
+      generation files, and lifecycle cleanup when imports, jobs, or projects are deleted
+- [x] Run MinIO in the production Docker topology while retaining the same client
+      contract for OCI Object Storage deployments
+- [x] Migrate resolvable legacy upload/export artifacts idempotently and retain
+      local-path reads only as a bounded migration compatibility path
+- [x] Remove the shared uploads volume, generated report directories, stale
+      filesystem test contracts, and versioned runtime artifacts
+- [x] **Exit criteria**: migration head `20260714_0026`, API/calc/pricing/frontend
+      gates, OpenAPI, production Docker health, real import/recalc/export lifecycle,
+      MinIO prefix cleanup, and zero runtime writes to persistent container paths pass
+
+### M48 — Governed Commercial Quantity Policies + BOM Product Navigation
+- [x] Separate measured service demand from the commercial quantity carried into
+      the BOM, preserving both values and the applied rounding rule in provenance
+- [x] Add governed usage basis, quote rounding, explicit-input requirements,
+      entry guidance, and reusable quantity presets to SKU mappings
+- [x] Preserve API Gateway measured demand and expose whole 1M-call planning units
+      only as a conservative envelope pending authoritative metering alignment
+- [x] Stop inferring Data Integration workspace and operator runtime from a generic
+      744-hour environment ceiling; require explicit quantities and expose bounded
+      business-hours, extended-hours, and always-on planning shortcuts
+- [x] Replace the flat BOM product form with searchable, grouped, progressively
+      disclosed product sections and a product-grouped monthly matrix
+- [x] **Exit criteria**: migration head `20260715_0027`, 118 API, 42 calc-engine,
+      23 pricing-engine, and 66 frontend tests; OpenAPI, Node 26 production build,
+      pricing/BOM E2E policy assertions, healthy Docker stack, and desktop/mobile
+      light/dark visual inspection pass
+
+### M49 — OCI Metering Policy Alignment
+- [x] Separate measured usage, canonical billable quantity, and optional planning
+      envelope so advisory capacity reserves never change deterministic totals
+- [x] Correct API Gateway `B92072` to preserve exact prorated million-call usage
+      while displaying a whole-million reserve only as non-billable planning context
+- [x] Govern aggregation window, proration, Free Tier scope, minimum runtime,
+      increments, and metering evidence on every Service Product-to-SKU mapping
+- [x] Allocate tenancy-level Free Tier once per SKU and contract month across all
+      ordered environment lines and apply the same allocation to rollout comparisons
+- [x] Require explicit Queue operation evidence, Streaming PUT/GET and retention
+      evidence, Data Integration runtime, and GoldenGate runtime/OCPU inputs instead
+      of applying workbook convenience assumptions as billable facts
+- [x] Surface the policies in the scenario assistant, BOM editor, Admin Pricing,
+      immutable line provenance, period provenance, and typed frontend contracts
+- [x] **Exit criteria**: migration head `20260715_0028`, 122 API, 42 calc-engine,
+      24 pricing-engine, and 66 frontend tests; Ruff, mypy, TypeScript, ESLint,
+      Node 26 production build, terminal pricing/BOM E2E, healthy Docker stack,
+      exact API scenario evidence, and real-browser functional/visual inspection pass
+
+### M50 — Full Service Product Commercial Coverage
+- [x] Classify all 20 governed Service Products with an explicit commercial path:
+      direct metering, included non-billable capability, dependent cost, external
+      rate card, or explicit metric selection
+- [x] Detect the project product footprint independently from existing SKU mappings
+      so missing commercial governance is blocked instead of silently omitted
+- [x] Separate required default meters from optional add-ons and dependency-owned
+      meters; optional IAM and observability products never enter a scenario implicitly
+- [x] Keep included products visible as zero-amount BOM evidence and require design
+      inputs before pricing dependent or externally licensed products
+- [x] Surface product coverage, required inputs, publication policy, governed meter
+      count, and quote guidance in Library, product detail, BOM, Pricing Admin,
+      assistant evidence, exports, and typed API contracts
+- [x] Normalize OCI Events and Oracle Integration Process Automation as first-class
+      Service Products with versions, limits, official evidence, interoperability,
+      commercial policy, and non-orphaned SKU mappings; no mapping-owned fallback remains
+- [x] **Exit criteria**: migration head `20260715_0030`, 125 API, 42 calc-engine,
+      24 pricing-engine, and 66 frontend tests; Ruff, mypy, TypeScript, ESLint,
+      npm audit, OpenAPI, Node 26 production build, terminal Pricing/BOM E2E,
+      healthy eight-service Docker stack, and desktop/mobile light/dark browser
+      inspection pass
+
+### M50A — Governed Agent Outcomes + Observable Value
+- [x] Apply one backend-owned output contract to all seven agents with bounded
+      normalization, meta-reasoning and Markdown-table rejection, numeric grounding,
+      mutation-claim blocking, and deterministic fallback
+- [x] Persist an explainable brief for every run with what was found, why it matters,
+      next actions, validation, confidence, and evidence identifiers
+- [x] Strengthen Service Verification, Import Quality, Topology Investigation, and
+      BOM Scenario prompt contracts without weakening deterministic tool authority
+- [x] Measure only observable value signals across the retained execution window:
+      synthesis, grounding, evidence completeness, actionable briefs, human decisions,
+      approval follow-up, and median runtime; do not invent time-saved estimates
+- [x] Separate provider resilience telemetry from outcome quality in Agent Operations
+- [x] **Exit criteria**: shared output-contract tests, 132 API, 42 calc-engine,
+      24 pricing-engine, and 68 frontend tests; Ruff, mypy, TypeScript, ESLint,
+      OpenAPI, Node 26 production build, Docker runtime, and responsive browser
+      validation pass
+
+### M51 — Full OCI Public Catalog Commercial Coverage (Planned)
+- [ ] Import the complete official products, metrics, and product-presets sources
+      as one atomic immutable catalog snapshot; partial refreshes must retain the
+      previous approved snapshot
+- [ ] Generate versioned draft mappings by deterministic price family and metric;
+      every source SKU must receive one candidate or an explicit unmapped exception
+- [ ] Automatically classify every product as directly metered, included
+      non-billable, dependent entitlement, external rate card, or blocked pending
+      explicit input
+- [ ] Route ambiguous BYOL, edition, entitlement, private-rate, dependency, tier,
+      metric, and source-drift cases to auditable human review; generated mappings
+      must never self-approve
+- [ ] Execute independent quotation fixtures for boundaries, tiers, proration,
+      Free Tier, predicates, environments, ramps, provenance, and exports before
+      approving each rule family
+- [ ] Govern all public `HOUR`, `HOUR_UTILIZED`, `MONTH`, `DAY`, and `PER-ITEM`
+      products, including tiers, proration, minimums, Free Tier, dependencies,
+      editions, licenses, and explicit-input requirements
+- [ ] Extend Library, Pricing, BOM, exports, assistant evidence, agents, and audit
+      to use one consistent full-catalog product identity without adding irrelevant
+      SKUs to project-scoped architecture flows
+- [ ] **Planned exit criteria**: every public SKU has an approved disposition or
+      truthful blocked state; source counts and hashes reconcile; deterministic
+      formula-family, tier, migration, backend, frontend, OpenAPI, export, E2E,
+      visual, security, and production-image gates pass; OCI Pricing review records
+      approval or an explicit exception
+- [ ] **Estimated autonomous delivery**: 8–12 working days / 60–90 effective hours,
+      plus a focused one-to-two-day OCI Pricing review. See
+      `docs/architecture/oci-full-catalog-commercial-coverage-plan.md`
+
 ### M26 — Topology Decision Workspace
 - [x] Separate statistical majority from conservative edge risk so mixed paths
       cannot render as healthy when review or pending integrations are present
@@ -763,9 +880,7 @@ docker compose up -d --build --wait
 # Build the non-deployable quality image, then run API and calc-engine tests
 docker build --target quality -t ocidisblueprint-api-quality:local \
   -f apps/api/Dockerfile .
-docker run --rm \
-  --tmpfs /app/uploads:rw,uid=10001,gid=10001,mode=0770 \
-  ocidisblueprint-api-quality:local \
+docker run --rm ocidisblueprint-api-quality:local \
   python -m pytest -p no:cacheprovider app/tests -q
 docker run --rm -w /calc-engine ocidisblueprint-api-quality:local \
   python -m pytest -p no:cacheprovider src/tests -q
@@ -782,8 +897,9 @@ open http://localhost:8000/docs
 # Open web app
 open http://localhost:3000
 
-# MinIO console (object storage)
+# MinIO console (local Object Storage runtime)
 open http://localhost:9001  # user: minio / pass: minio123
+
 ```
 
 ---

@@ -70,6 +70,7 @@ output/playwright/
 # Uploads / exports (runtime generated)
 uploads/
 exports/
+apps/api/generated-reports/
 
 # Test fixtures — generated snapshots (not seed data)
 packages/test-fixtures/snapshots/*.json

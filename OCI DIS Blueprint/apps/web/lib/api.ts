@@ -7,6 +7,7 @@ import type {
   AgentRun,
   AgentRunList,
   AgentRunRequest,
+  AgentValueMetrics,
   AssumptionList,
   AssumptionSet,
   AssumptionSetCreate,
@@ -461,6 +462,9 @@ export const api = {
 
   getAgentProviderMetrics: (): Promise<AgentProviderMetrics> =>
     apiFetch<AgentProviderMetrics>("/api/v1/agents/provider-metrics", { headers: adminHeaders() }),
+
+  getAgentValueMetrics: (): Promise<AgentValueMetrics> =>
+    apiFetch<AgentValueMetrics>("/api/v1/agents/value-metrics", { headers: adminHeaders() }),
 
   listAgentRuns: (params: { project_id?: string; limit?: number } = {}): Promise<AgentRunList> =>
     apiFetch<AgentRunList>(`/api/v1/agents/runs${withQuery(params)}`, { headers: adminHeaders() }),

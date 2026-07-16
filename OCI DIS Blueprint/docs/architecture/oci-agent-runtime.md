@@ -41,6 +41,14 @@ sources and creates findings; an Admin must accept any governed rule update.
 - `agent_approvals`: explicit human decision records for proposed mutations.
 - `AuditEvent`: run creation, completion, cancellation, and approval decisions.
 
+Every completed run stores two additional result contracts without changing the
+authoritative evidence tables:
+
+- `brief`: headline, finding, why it matters, next actions, validation, evidence
+  identifiers, and confidence.
+- `output_quality`: normalization state, grounding decision, deterministic fallback
+  reason, and evidence-completeness percentage.
+
 Static definitions in `app/agents/registry.py` are version controlled. Runtime
 prompts cannot be edited through the database or UI.
 
@@ -83,6 +91,29 @@ terminal degradations. Agent Operations reads these counters from the restricted
 the endpoint switches to a clearly labeled process-local fallback. No user,
 session, project, prompt, response, request ID, or tool name is a metric label.
 
+Outcome value is a separate concern. The restricted
+`/api/v1/agents/value-metrics` endpoint calculates only observable facts over the
+latest 50 retained runs: completed executions, OCI synthesis, grounding fallback,
+high-completeness briefs, actionable recommendations, approval decisions,
+post-approval reruns, and median runtime. It does not estimate labor saved or
+business benefit that the App has not measured.
+
+## Output Governance
+
+All seven agents use one server-side output gate after OCI inference and before
+UI persistence. It rejects internal tool/prompt narration, Markdown tables,
+internal placeholders, unsupported material numeric claims, unverified mutation
+claims, excess length, verification freshness without retrieved sources, and BOM
+commercial claims without priced evidence. The deterministic tool output then
+builds the same explainable hierarchy for the UI. Provider text remains advisory;
+the structured brief and evidence artifact are generated from App-owned data.
+
+Service Verification, Import Quality, Topology Investigation, and BOM Scenario
+definitions explicitly require what/why/how/validate answers. Integration Design
+and Architecture Review continue to use the prescriptive candidate and action
+workspaces implemented by M43-M44. Human approval and `Apply to draft` behavior
+remain on existing explicit endpoints.
+
 ## Execution
 
 1. A contextual product action creates its specialized compatibility job when needed.
@@ -93,8 +124,10 @@ session, project, prompt, response, request ID, or tool name is a metric label.
 5. The Docker worker executes the deterministic tool and returns bounded evidence.
 6. OCI Guardrails evaluates input and output; provider or safety failure falls back
    to an honest deterministic summary or explicit refusal.
-7. The worker persists evidence, diagnostics, terminal state, and audit.
-8. Mutations remain on existing explicit review/apply endpoints.
+7. The shared output gate grounds and structures the result or replaces it with a
+   deterministic explainable brief.
+8. The worker persists evidence, output quality, diagnostics, terminal state, and audit.
+9. Mutations remain on existing explicit review/apply endpoints.
 
 ## Deployment
 

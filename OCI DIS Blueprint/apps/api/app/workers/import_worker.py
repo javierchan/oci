@@ -9,14 +9,18 @@ from app.workers.celery_app import celery_app
 
 
 @celery_app.task(name="app.workers.import_worker.process_import_task")
-def process_import_task(batch_id: str, file_path: str) -> dict[str, object]:
+def process_import_task(batch_id: str, source_reference: str) -> dict[str, object]:
     """Execute an import inside a dedicated async DB session."""
 
     async def _run() -> dict[str, object]:
         async with AsyncSessionLocal() as db:
             try:
                 async with db.begin():
-                    batch = await import_service.process_import(batch_id=batch_id, file_path=file_path, db=db)
+                    batch = await import_service.process_import(
+                        batch_id=batch_id,
+                        source_reference=source_reference,
+                        db=db,
+                    )
                     return {"batch_id": batch.id, "status": batch.status.value}
             except Exception as exc:  # pragma: no cover - defensive worker path
                 async with db.begin():

@@ -784,6 +784,127 @@
         "title": "AgentStepResponse",
         "type": "object"
       },
+      "AgentValueMetricsResponse": {
+        "additionalProperties": false,
+        "description": "Observable product-value signals from the bounded retained run window.",
+        "properties": {
+          "acceptance_rate_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptance Rate Pct"
+          },
+          "approval_decisions": {
+            "title": "Approval Decisions",
+            "type": "integer"
+          },
+          "approval_follow_up_rate_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Follow Up Rate Pct"
+          },
+          "approved_decisions": {
+            "title": "Approved Decisions",
+            "type": "integer"
+          },
+          "completed_runs": {
+            "title": "Completed Runs",
+            "type": "integer"
+          },
+          "follow_up_runs_after_approval": {
+            "title": "Follow Up Runs After Approval",
+            "type": "integer"
+          },
+          "grounded_output_rate_pct": {
+            "title": "Grounded Output Rate Pct",
+            "type": "number"
+          },
+          "grounded_output_runs": {
+            "title": "Grounded Output Runs",
+            "type": "integer"
+          },
+          "grounding_fallback_runs": {
+            "title": "Grounding Fallback Runs",
+            "type": "integer"
+          },
+          "high_evidence_completeness_rate_pct": {
+            "title": "High Evidence Completeness Rate Pct",
+            "type": "number"
+          },
+          "high_evidence_completeness_runs": {
+            "title": "High Evidence Completeness Runs",
+            "type": "integer"
+          },
+          "median_execution_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Execution Seconds"
+          },
+          "provider_synthesis_rate_pct": {
+            "title": "Provider Synthesis Rate Pct",
+            "type": "number"
+          },
+          "provider_synthesis_runs": {
+            "title": "Provider Synthesis Runs",
+            "type": "integer"
+          },
+          "quality_evaluated_runs": {
+            "title": "Quality Evaluated Runs",
+            "type": "integer"
+          },
+          "recommendation_runs": {
+            "title": "Recommendation Runs",
+            "type": "integer"
+          },
+          "rejected_decisions": {
+            "title": "Rejected Decisions",
+            "type": "integer"
+          },
+          "retained_runs": {
+            "title": "Retained Runs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retained_runs",
+          "completed_runs",
+          "quality_evaluated_runs",
+          "grounded_output_runs",
+          "grounding_fallback_runs",
+          "high_evidence_completeness_runs",
+          "recommendation_runs",
+          "provider_synthesis_runs",
+          "approval_decisions",
+          "approved_decisions",
+          "rejected_decisions",
+          "follow_up_runs_after_approval",
+          "provider_synthesis_rate_pct",
+          "grounded_output_rate_pct",
+          "high_evidence_completeness_rate_pct",
+          "acceptance_rate_pct",
+          "approval_follow_up_rate_pct",
+          "median_execution_seconds"
+        ],
+        "title": "AgentValueMetricsResponse",
+        "type": "object"
+      },
       "AiReviewAcceptRecommendationRequest": {
         "additionalProperties": false,
         "description": "Bounded payload for accepting one recommendation without catalog mutation.",
@@ -8488,6 +8609,42 @@
         "title": "OICMetrics",
         "type": "object"
       },
+      "ObjectStorageReadinessResponse": {
+        "additionalProperties": false,
+        "description": "Connectivity state for the authoritative artifact store.",
+        "properties": {
+          "bucket": {
+            "title": "Bucket",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "recovery_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Hint"
+          }
+        },
+        "required": [
+          "ready",
+          "bucket",
+          "provider"
+        ],
+        "title": "ObjectStorageReadinessResponse",
+        "type": "object"
+      },
       "OverrideJustificationRequest": {
         "additionalProperties": false,
         "description": "Override request payload.",
@@ -9967,6 +10124,31 @@
         "title": "PromptTemplateVersionUpdate",
         "type": "object"
       },
+      "QuantityPresetResponse": {
+        "additionalProperties": false,
+        "description": "Governed planning shortcut expressed in the SKU's commercial unit.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "number"
+          }
+        },
+        "required": [
+          "label",
+          "quantity",
+          "description"
+        ],
+        "title": "QuantityPresetResponse",
+        "type": "object"
+      },
       "QueueMetrics": {
         "additionalProperties": false,
         "description": "OCI Queue consolidated metrics.",
@@ -9987,6 +10169,9 @@
           "database_migrations": {
             "$ref": "#/components/schemas/MigrationReadinessResponse"
           },
+          "object_storage": {
+            "$ref": "#/components/schemas/ObjectStorageReadinessResponse"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -9999,7 +10184,8 @@
         "required": [
           "status",
           "version",
-          "database_migrations"
+          "database_migrations",
+          "object_storage"
         ],
         "title": "ReadinessResponse",
         "type": "object"
@@ -10096,6 +10282,13 @@
             ],
             "title": "Ai Summary"
           },
+          "commercial_coverage": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioCommercialCoverageResponse"
+            },
+            "title": "Commercial Coverage",
+            "type": "array"
+          },
           "confidence": {
             "title": "Confidence",
             "type": "string"
@@ -10136,6 +10329,7 @@
           "draft",
           "detected_services",
           "metric_options",
+          "commercial_coverage",
           "required_questions",
           "warnings",
           "confidence",
@@ -10145,17 +10339,115 @@
         "title": "ScenarioAssistantResponse",
         "type": "object"
       },
+      "ScenarioCommercialCoverageResponse": {
+        "additionalProperties": false,
+        "description": "Product-level commercial readiness for a detected architecture service.",
+        "properties": {
+          "approved_mapping_count": {
+            "title": "Approved Mapping Count",
+            "type": "integer"
+          },
+          "classification": {
+            "title": "Classification",
+            "type": "string"
+          },
+          "dependencies_present": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependencies Present",
+            "type": "array"
+          },
+          "dependent_service_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependent Service Ids",
+            "type": "array"
+          },
+          "guidance": {
+            "title": "Guidance",
+            "type": "string"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "publication_policy": {
+            "title": "Publication Policy",
+            "type": "string"
+          },
+          "readiness": {
+            "title": "Readiness",
+            "type": "string"
+          },
+          "required_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Inputs",
+            "type": "array"
+          },
+          "service_id": {
+            "title": "Service Id",
+            "type": "string"
+          },
+          "source_urls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Urls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "service_id",
+          "product_name",
+          "classification",
+          "readiness",
+          "publication_policy",
+          "approved_mapping_count",
+          "required_inputs",
+          "dependent_service_ids",
+          "dependencies_present",
+          "guidance",
+          "source_urls"
+        ],
+        "title": "ScenarioCommercialCoverageResponse",
+        "type": "object"
+      },
       "ScenarioMetricOptionResponse": {
         "additionalProperties": false,
         "description": "Governed commercial unit and baseline demand available to the ramp editor.",
         "properties": {
+          "aggregation_window": {
+            "title": "Aggregation Window",
+            "type": "string"
+          },
           "baseline_quantity": {
             "title": "Baseline Quantity",
             "type": "number"
           },
+          "default_selected": {
+            "title": "Default Selected",
+            "type": "boolean"
+          },
           "default_sku_mapping_id": {
             "title": "Default Sku Mapping Id",
             "type": "string"
+          },
+          "entry_guidance": {
+            "title": "Entry Guidance",
+            "type": "string"
+          },
+          "free_tier_scope": {
+            "title": "Free Tier Scope",
+            "type": "string"
+          },
+          "metering_policy": {
+            "additionalProperties": true,
+            "title": "Metering Policy",
+            "type": "object"
           },
           "metric_key": {
             "title": "Metric Key",
@@ -10169,8 +10461,34 @@
             "title": "Minimum Quantity",
             "type": "number"
           },
+          "planning_envelope_increment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planning Envelope Increment"
+          },
+          "planning_envelope_quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planning Envelope Quantity"
+          },
           "product_name": {
             "title": "Product Name",
+            "type": "string"
+          },
+          "proration_policy": {
+            "title": "Proration Policy",
             "type": "string"
           },
           "quantity_behavior": {
@@ -10181,12 +10499,35 @@
             "title": "Quantity Increment",
             "type": "number"
           },
+          "quantity_presets": {
+            "items": {
+              "$ref": "#/components/schemas/QuantityPresetResponse"
+            },
+            "title": "Quantity Presets",
+            "type": "array"
+          },
           "quantity_unit": {
             "title": "Quantity Unit",
             "type": "string"
           },
+          "quote_rounding": {
+            "title": "Quote Rounding",
+            "type": "string"
+          },
+          "requires_explicit_quantity": {
+            "title": "Requires Explicit Quantity",
+            "type": "boolean"
+          },
           "service_id": {
             "title": "Service Id",
+            "type": "string"
+          },
+          "source_baseline_quantity": {
+            "title": "Source Baseline Quantity",
+            "type": "number"
+          },
+          "usage_basis": {
+            "title": "Usage Basis",
             "type": "string"
           },
           "variants": {
@@ -10203,11 +10544,23 @@
           "metric_key",
           "metric_label",
           "quantity_unit",
+          "source_baseline_quantity",
           "baseline_quantity",
+          "planning_envelope_quantity",
           "quantity_behavior",
           "quantity_increment",
           "minimum_quantity",
-          "default_sku_mapping_id"
+          "usage_basis",
+          "quote_rounding",
+          "aggregation_window",
+          "proration_policy",
+          "free_tier_scope",
+          "planning_envelope_increment",
+          "metering_policy",
+          "requires_explicit_quantity",
+          "entry_guidance",
+          "default_sku_mapping_id",
+          "default_selected"
         ],
         "title": "ScenarioMetricOptionResponse",
         "type": "object"
@@ -10216,6 +10569,18 @@
         "additionalProperties": false,
         "description": "One approved commercial variant selectable for an environment metric.",
         "properties": {
+          "aggregation_window": {
+            "title": "Aggregation Window",
+            "type": "string"
+          },
+          "entry_guidance": {
+            "title": "Entry Guidance",
+            "type": "string"
+          },
+          "free_tier_scope": {
+            "title": "Free Tier Scope",
+            "type": "string"
+          },
           "is_billable": {
             "title": "Is Billable",
             "type": "boolean"
@@ -10223,6 +10588,11 @@
           "label": {
             "title": "Label",
             "type": "string"
+          },
+          "metering_policy": {
+            "additionalProperties": true,
+            "title": "Metering Policy",
+            "type": "object"
           },
           "minimum_quantity": {
             "title": "Minimum Quantity",
@@ -10239,10 +10609,25 @@
             ],
             "title": "Part Number"
           },
+          "planning_envelope_increment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planning Envelope Increment"
+          },
           "predicates": {
             "additionalProperties": true,
             "title": "Predicates",
             "type": "object"
+          },
+          "proration_policy": {
+            "title": "Proration Policy",
+            "type": "string"
           },
           "quantity_behavior": {
             "title": "Quantity Behavior",
@@ -10252,12 +10637,35 @@
             "title": "Quantity Increment",
             "type": "number"
           },
+          "quantity_presets": {
+            "items": {
+              "$ref": "#/components/schemas/QuantityPresetResponse"
+            },
+            "title": "Quantity Presets",
+            "type": "array"
+          },
           "quantity_unit": {
             "title": "Quantity Unit",
             "type": "string"
           },
+          "quote_rounding": {
+            "title": "Quote Rounding",
+            "type": "string"
+          },
+          "requires_explicit_quantity": {
+            "title": "Requires Explicit Quantity",
+            "type": "boolean"
+          },
+          "selection_policy": {
+            "title": "Selection Policy",
+            "type": "string"
+          },
           "sku_mapping_id": {
             "title": "Sku Mapping Id",
+            "type": "string"
+          },
+          "usage_basis": {
+            "title": "Usage Basis",
             "type": "string"
           }
         },
@@ -10267,10 +10675,20 @@
           "part_number",
           "predicates",
           "is_billable",
+          "selection_policy",
           "quantity_behavior",
           "quantity_increment",
           "minimum_quantity",
-          "quantity_unit"
+          "quantity_unit",
+          "usage_basis",
+          "quote_rounding",
+          "aggregation_window",
+          "proration_policy",
+          "free_tier_scope",
+          "planning_envelope_increment",
+          "metering_policy",
+          "requires_explicit_quantity",
+          "entry_guidance"
         ],
         "title": "ScenarioSkuVariantResponse",
         "type": "object"
@@ -10673,6 +11091,11 @@
             ],
             "title": "Anti Patterns"
           },
+          "approved_mapping_count": {
+            "default": 0,
+            "title": "Approved Mapping Count",
+            "type": "integer"
+          },
           "architectural_fit": {
             "anyOf": [
               {
@@ -10698,6 +11121,25 @@
           "category": {
             "title": "Category",
             "type": "string"
+          },
+          "commercial_classification": {
+            "title": "Commercial Classification",
+            "type": "string"
+          },
+          "commercial_guidance": {
+            "title": "Commercial Guidance",
+            "type": "string"
+          },
+          "commercial_readiness": {
+            "title": "Commercial Readiness",
+            "type": "string"
+          },
+          "commercial_required_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Commercial Required Inputs",
+            "type": "array"
           },
           "current_version": {
             "anyOf": [
@@ -10802,6 +11244,10 @@
             ],
             "title": "Pricing Model"
           },
+          "publication_policy": {
+            "title": "Publication Policy",
+            "type": "string"
+          },
           "service_id": {
             "title": "Service Id",
             "type": "string"
@@ -10854,6 +11300,10 @@
           "sla_uptime_pct",
           "version",
           "is_active",
+          "commercial_classification",
+          "commercial_readiness",
+          "publication_policy",
+          "commercial_guidance",
           "updated_at",
           "architectural_fit",
           "anti_patterns",
@@ -10900,6 +11350,11 @@
         "additionalProperties": false,
         "description": "List-card summary for one service product.",
         "properties": {
+          "approved_mapping_count": {
+            "default": 0,
+            "title": "Approved Mapping Count",
+            "type": "integer"
+          },
           "architecture_role": {
             "anyOf": [
               {
@@ -10914,6 +11369,25 @@
           "category": {
             "title": "Category",
             "type": "string"
+          },
+          "commercial_classification": {
+            "title": "Commercial Classification",
+            "type": "string"
+          },
+          "commercial_guidance": {
+            "title": "Commercial Guidance",
+            "type": "string"
+          },
+          "commercial_readiness": {
+            "title": "Commercial Readiness",
+            "type": "string"
+          },
+          "commercial_required_inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Commercial Required Inputs",
+            "type": "array"
           },
           "evidence_count": {
             "default": 0,
@@ -10965,6 +11439,10 @@
             ],
             "title": "Pricing Model"
           },
+          "publication_policy": {
+            "title": "Publication Policy",
+            "type": "string"
+          },
           "service_id": {
             "title": "Service Id",
             "type": "string"
@@ -11017,6 +11495,10 @@
           "sla_uptime_pct",
           "version",
           "is_active",
+          "commercial_classification",
+          "commercial_readiness",
+          "publication_policy",
+          "commercial_guidance",
           "updated_at"
         ],
         "title": "ServiceProductSummaryResponse",
@@ -11656,6 +12138,19 @@
         "additionalProperties": false,
         "description": "Admin change to an existing mapping decision.",
         "properties": {
+          "aggregation_window": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aggregation Window"
+          },
           "billing_metric_key": {
             "anyOf": [
               {
@@ -11680,6 +12175,19 @@
             ],
             "title": "Confidence"
           },
+          "entry_guidance": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Guidance"
+          },
           "formula_key": {
             "anyOf": [
               {
@@ -11691,6 +12199,19 @@
             ],
             "title": "Formula Key"
           },
+          "free_tier_scope": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Tier Scope"
+          },
           "is_billable": {
             "anyOf": [
               {
@@ -11701,6 +12222,18 @@
               }
             ],
             "title": "Is Billable"
+          },
+          "metering_policy": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metering Policy"
           },
           "minimum_quantity": {
             "anyOf": [
@@ -11725,6 +12258,18 @@
             ],
             "title": "Part Number"
           },
+          "planning_envelope_increment": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planning Envelope Increment"
+          },
           "predicates": {
             "anyOf": [
               {
@@ -11736,6 +12281,19 @@
               }
             ],
             "title": "Predicates"
+          },
+          "proration_policy": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proration Policy"
           },
           "quantity_behavior": {
             "anyOf": [
@@ -11761,6 +12319,20 @@
             ],
             "title": "Quantity Increment"
           },
+          "quantity_presets": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QuantityPresetResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Presets"
+          },
           "quantity_unit": {
             "anyOf": [
               {
@@ -11774,6 +12346,42 @@
             ],
             "title": "Quantity Unit"
           },
+          "quote_rounding": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote Rounding"
+          },
+          "requires_explicit_quantity": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requires Explicit Quantity"
+          },
+          "selection_policy": {
+            "anyOf": [
+              {
+                "pattern": "^(required|optional|dependent)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Policy"
+          },
           "status": {
             "anyOf": [
               {
@@ -11785,6 +12393,19 @@
               }
             ],
             "title": "Status"
+          },
+          "usage_basis": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Basis"
           }
         },
         "title": "SkuMappingPatchRequest",
@@ -11794,6 +12415,10 @@
         "additionalProperties": false,
         "description": "Approved mapping from service demand to OCI SKU.",
         "properties": {
+          "aggregation_window": {
+            "title": "Aggregation Window",
+            "type": "string"
+          },
           "billing_metric_key": {
             "title": "Billing Metric Key",
             "type": "string"
@@ -11802,8 +12427,16 @@
             "title": "Confidence",
             "type": "number"
           },
+          "entry_guidance": {
+            "title": "Entry Guidance",
+            "type": "string"
+          },
           "formula_key": {
             "title": "Formula Key",
+            "type": "string"
+          },
+          "free_tier_scope": {
+            "title": "Free Tier Scope",
             "type": "string"
           },
           "id": {
@@ -11813,6 +12446,11 @@
           "is_billable": {
             "title": "Is Billable",
             "type": "boolean"
+          },
+          "metering_policy": {
+            "additionalProperties": true,
+            "title": "Metering Policy",
+            "type": "object"
           },
           "minimum_quantity": {
             "title": "Minimum Quantity",
@@ -11829,10 +12467,25 @@
             ],
             "title": "Part Number"
           },
+          "planning_envelope_increment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planning Envelope Increment"
+          },
           "predicates": {
             "additionalProperties": true,
             "title": "Predicates",
             "type": "object"
+          },
+          "proration_policy": {
+            "title": "Proration Policy",
+            "type": "string"
           },
           "quantity_behavior": {
             "title": "Quantity Behavior",
@@ -11842,8 +12495,27 @@
             "title": "Quantity Increment",
             "type": "number"
           },
+          "quantity_presets": {
+            "items": {
+              "$ref": "#/components/schemas/QuantityPresetResponse"
+            },
+            "title": "Quantity Presets",
+            "type": "array"
+          },
           "quantity_unit": {
             "title": "Quantity Unit",
+            "type": "string"
+          },
+          "quote_rounding": {
+            "title": "Quote Rounding",
+            "type": "string"
+          },
+          "requires_explicit_quantity": {
+            "title": "Requires Explicit Quantity",
+            "type": "boolean"
+          },
+          "selection_policy": {
+            "title": "Selection Policy",
             "type": "string"
           },
           "service_id": {
@@ -11874,6 +12546,10 @@
             "title": "Updated At",
             "type": "string"
           },
+          "usage_basis": {
+            "title": "Usage Basis",
+            "type": "string"
+          },
           "version": {
             "title": "Version",
             "type": "string"
@@ -11890,6 +12566,16 @@
           "quantity_increment",
           "minimum_quantity",
           "quantity_unit",
+          "usage_basis",
+          "quote_rounding",
+          "aggregation_window",
+          "proration_policy",
+          "free_tier_scope",
+          "planning_envelope_increment",
+          "metering_policy",
+          "selection_policy",
+          "requires_explicit_quantity",
+          "entry_guidance",
           "predicates",
           "is_billable",
           "status",
@@ -13531,7 +14217,7 @@
             "required": false,
             "schema": {
               "default": 20,
-              "maximum": 100,
+              "maximum": 50,
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
@@ -13827,6 +14513,49 @@
           }
         },
         "summary": "Request agent cancellation",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
+    "/api/v1/agents/value-metrics": {
+      "get": {
+        "operationId": "get_agent_value_metrics_api_v1_agents_value_metrics_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentValueMetricsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect observable agent product-value signals",
         "tags": [
           "Agents"
         ]

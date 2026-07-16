@@ -1,7 +1,5 @@
 """Import router — upload, queue, and inspect import batches."""
 
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +12,7 @@ from app.schemas.imports import (
     SourceRowListResponse,
 )
 from app.schemas.agent import AgentCreateRequest, AgentRunResponse
-from app.services import agent_service, import_service
+from app.services import agent_service, import_service, storage_service
 from app.workers.agent_worker import execute_agent_run_task
 from app.workers.import_worker import process_import_task
 
@@ -33,19 +31,24 @@ async def upload_and_import(
     db: AsyncSession = Depends(get_db),
 ) -> ImportBatchResponse:
     contents = await file.read()
-    upload_path = await import_service.save_upload_file(
+    upload_reference = await import_service.save_upload_file(
         file_name=file.filename or "upload.xlsx",
         contents=contents,
-        upload_dir=Path("uploads"),
+        project_id=project_id,
     )
-    async with db.begin():
-        batch = await import_service.create_import_batch(
-            project_id=project_id,
-            filename=file.filename or "upload.xlsx",
-            db=db,
-        )
     try:
-        process_import_task.delay(batch.id, upload_path)
+        async with db.begin():
+            batch = await import_service.create_import_batch(
+                project_id=project_id,
+                filename=file.filename or "upload.xlsx",
+                db=db,
+                storage_reference=upload_reference,
+            )
+    except Exception:
+        storage_service.delete(upload_reference)
+        raise
+    try:
+        process_import_task.delay(batch.id, upload_reference)
     except Exception as exc:
         async with db.begin():
             await import_service.mark_import_failed(

@@ -5,9 +5,8 @@ set -eu
 
 if [ "$(id -u)" -eq 0 ]; then
     runtime_genai_dir="${OCI_GENAI_RUNTIME_DIR:-${HOME}/.oci-genai}"
-    mkdir -p /app/uploads "$runtime_genai_dir"
-    chown app:app /app/uploads "$HOME" "$runtime_genai_dir"
-    chmod 0770 /app/uploads
+    mkdir -p "$runtime_genai_dir"
+    chown app:app "$HOME" "$runtime_genai_dir"
     chmod 0700 "$HOME" "$runtime_genai_dir"
 
     # Docker Compose may materialize a missing optional bind source as a
@@ -17,6 +16,10 @@ if [ "$(id -u)" -eq 0 ]; then
         cp /oci-genai-host/api_key "$runtime_genai_dir/api_key"
         chown app:app "$runtime_genai_dir/api_key"
         chmod 0400 "$runtime_genai_dir/api_key"
+    fi
+
+    if [ "${1:-}" = "uvicorn" ]; then
+        su-exec app python -m scripts.prune_agent_history
     fi
 
     exec su-exec app "$@"

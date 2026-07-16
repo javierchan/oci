@@ -22,19 +22,16 @@ class Settings(BaseSettings):
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
 
-    # Security / Auth
-    SECRET_KEY: str = "change-me-in-production"
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
-
     # Redis / Celery
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # Object Storage (OCI or S3-compatible)
+    # S3-compatible artifact storage (MinIO locally, OCI Object Storage when deployed)
     STORAGE_BUCKET: str = "oci-dis-files"
-    STORAGE_ENDPOINT: str = ""
-    STORAGE_ACCESS_KEY: str = ""
-    STORAGE_SECRET_KEY: str = ""
+    STORAGE_ENDPOINT: str = "http://localhost:9000"
+    STORAGE_REGION: str = "us-ashburn-1"
+    STORAGE_ACCESS_KEY: str = "minio"
+    STORAGE_SECRET_KEY: str = "minio123"
+    STORAGE_ADDRESSING_STYLE: Literal["path", "virtual"] = "path"
 
     # Governed OCI Generative AI provider
     OCI_GENAI_REGION: str = "us-chicago-1"
@@ -76,8 +73,7 @@ class Settings(BaseSettings):
     IMPORT_EXCLUDE_ESTADO: list[str] = ["Duplicado 2"]
     IMPORT_SOURCE_DATA_START_ROW: int = 6  # Headers at row 5, data at row 6
 
-    # Observability
-    OTLP_ENDPOINT: str = ""
+    # Logging
     LOG_LEVEL: str = "INFO"
 
 

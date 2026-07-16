@@ -182,6 +182,74 @@ Parity tests therefore pass 744 explicitly. Production deployment scenarios may
 override billable hours, but must preserve the selected value in the immutable BOM
 snapshot and must never silently call a calendar function.
 
+The convention is not a universal Data Integration sizing rule. A Data Integration
+workspace is billed for accumulated time while it is running; stopping it makes it
+unavailable and stops workspace billing until it is started again. The App therefore
+keeps the environment runtime ceiling separate from each product metric, requires an
+explicit workspace-hour quantity, and treats `744` only as an `Always on` shortcut.
+Pipeline Operator execution hours are also explicit and independent from workspace
+runtime. Partial operator hours use the governed one-minute increment and the price
+tiers retain the tenant-level free allowance evidence.
+
+## Commercial quantity policy evidence
+
+The authorized `ORACLE PAAS AND IAAS PUBLIC CLOUD` localizable XLS, global PDF, and
+global supplement are policy evidence, not a bundled price source. The current
+Oracle pricing adapter remains authoritative for rates and immutable price snapshots.
+The reference files establish these quoting semantics for the governed mappings:
+
+- API Gateway part `B92072` is priced per one million API calls and the global list
+  explicitly states that partial millions are prorated. The trailing note reference
+  in the localizable list is not a commercial minimum. The App therefore preserves
+  the exact million-call fraction as the canonical billable quantity. A whole-million
+  planning envelope may be displayed as an optional reserve, but it never changes
+  the deterministic BOM total.
+- Data Integration part `B92598` is workspace usage per hour. The quantity must be
+  the planned running hours for each workspace and environment, not an inherited
+  744-hour calendar constant.
+- Data Integration part `B92599` is processed GB and remains a continuous measured
+  quantity independent from workspace runtime.
+- Data Integration part `B93306` is Pipeline Operator execution time. Partial hours
+  use a one-minute minimum and governed tiers represent the first 30 execution hours
+  per tenant and month.
+
+Every normalized BOM period retains measured quantity, billable quantity, optional
+planning envelope, increment, minimum, aggregation window, proration policy, free-tier
+scope, usage basis, and source policy evidence. This prevents product selection,
+pricing, and client workload assumptions from collapsing into one opaque number.
+
+Tenant-level allowances are allocated once per SKU and contract month, in persisted
+environment order. They never restart for each environment or BOM line. Streaming
+PUT/GET operations, Streaming retention, and Queue push/get/delete/update operations
+require explicit evidence; no universal multiplier is supplied by the App.
+
+## Product-level commercial coverage
+
+Every normalized Service Product has one governed publication policy even when it
+does not own a standalone OCI SKU. Product-footprint detection is independent from
+SKU mappings, so an unmapped product cannot disappear from a scenario or BOM.
+
+The supported policies are:
+
+- `direct_mapping_required`: approved meters must price the product directly;
+- `included_zero`: retain a visible included/non-billable line with zero amount;
+- `dependencies_required`: price approved Compute, storage, network, or adjacent
+  dependencies after the architect supplies the required design inputs;
+- `external_rate_required`: require an approved contractual or external rate card;
+- `explicit_metric_selection`: require the architect to select the applicable
+  optional meter rather than automatically quoting every available add-on.
+
+Each approved mapping also declares `required`, `optional`, or `dependency` scenario
+selection. Required mappings seed new plans. Optional IAM and observability meters
+remain available but start unselected. Dependency-owned meters can only be introduced
+through the product's governed dependency path. Publication remains blocked when a
+detected product lacks its policy, required mappings, inputs, or approved price evidence.
+
+The contract covers 20 normalized products. OCI Events is included with downstream
+targets priced separately; Oracle Integration Process Automation is dependency-owned
+and requires OIC edition and entitlement evidence. Neither relies on a mapping-owned
+fallback, and both retain normalized limits, sources, and interoperability rules.
+
 ## Compute modifier behavior
 
 `CalcRate` starts at 1 and applies these rules in order:
@@ -248,7 +316,7 @@ reconcile with an explicit rounding variance.
 | Tier boundary resolution depends on row order. | Tiers use explicit lower-exclusive/upper-inclusive bounds and reject ambiguity. |
 | A user selects a range-specific display name. | The engine selects the tier from governed usage and records the selected source price item. |
 | Free tiers can be reused on multiple rows. | Free allocations are tenancy/scenario scoped and consumed once in deterministic order. |
-| `744` is inserted automatically. | Hours are explicit deployment-scenario inputs, defaulting to 744 only when the user accepts that convention. |
+| `744` is inserted automatically. | Environment runtime is an explicit ceiling; product runtime is planned independently and `744` is only an acknowledged always-on shortcut. |
 | A single mutable currency setting controls refresh. | Currency is part of the price snapshot; currencies are never silently converted or mixed. |
 | Discounts are editable cells. | Public list, contract rate, and approved manual rate are separate provenance modes; discounts cannot be inferred. |
 | Summary uses worksheet mutation and hidden columns. | BOM inputs/results are typed records with immutable provenance and audit events. |

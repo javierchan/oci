@@ -60,6 +60,12 @@ function statusTone(status: string): string {
   return "border-amber-400/45 text-amber-700 dark:text-amber-300";
 }
 
+function readinessTone(status: string): string {
+  if (status === "quote_ready") return "border-emerald-400/45 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300";
+  if (status === "input_required") return "border-amber-400/45 bg-amber-500/5 text-amber-700 dark:text-amber-300";
+  return "border-rose-400/45 bg-rose-500/5 text-rose-700 dark:text-rose-300";
+}
+
 function currency(value: number, code: string): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -356,6 +362,26 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
             <label className="text-sm font-semibold text-[var(--color-text-primary)]">Price source<select className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.price_mode} onChange={(event) => patchDraft({ price_mode: event.target.value as DeploymentScenarioCreate["price_mode"] })}><option value="public_list">Public list</option><option value="contract_rate">Contract rate</option><option value="manual_rate_card">Manual rate card</option></select></label>
             <label className="text-sm font-semibold text-[var(--color-text-primary)]">Contract months<input type="number" min={1} max={120} className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.contract_months} onChange={(event) => { const contractMonths = Math.min(Math.max(Number(event.target.value), 1), 120); patchDraft({ contract_months: contractMonths, environments: resizeConsumptionPlan(draft.environments, contractMonths) }); }} /></label>
             <label className="text-sm font-semibold text-[var(--color-text-primary)]">Contract start<input type="date" className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.start_date} onChange={(event) => patchDraft({ start_date: event.target.value })} /></label>
+            <div className="md:col-span-2 xl:col-span-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div><p className="app-label">Commercial Coverage</p><h3 className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">Every detected product has an explicit quote path</h3></div>
+                <span className="text-xs text-[var(--color-text-muted)]">{assistant?.commercial_coverage?.length ?? 0} products evaluated</span>
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                {assistant?.commercial_coverage?.map((coverage) => (
+                  <div key={coverage.service_id} className={`rounded-lg border p-4 ${readinessTone(coverage.readiness)}`}>
+                    <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[var(--color-text-primary)]">{coverage.product_name}</p><p className="mt-1 text-xs uppercase tracking-[0.12em]">{coverage.classification.replaceAll("_", " ")}</p></div><span className="rounded-full border border-current/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]">{coverage.readiness.replaceAll("_", " ")}</span></div>
+                    <p className="mt-3 text-sm leading-5 text-[var(--color-text-secondary)]">{coverage.guidance}</p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--color-text-muted)]">
+                      <span>
+                        {coverage.approved_mapping_count} governed {coverage.approved_mapping_count === 1 ? "meter" : "meters"}
+                      </span>
+                      {coverage.dependencies_present.length ? <span>Dependencies present: {coverage.dependencies_present.join(", ")}</span> : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
             <div className="md:col-span-2 xl:col-span-4">
               <BomConsumptionEditor
                 contractMonths={draft.contract_months}

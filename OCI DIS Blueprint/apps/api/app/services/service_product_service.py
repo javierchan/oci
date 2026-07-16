@@ -19,6 +19,8 @@ from app.models import (
     ServiceEvidenceSource,
     ServiceInteroperabilityRule,
     ServiceLimit,
+    ServiceCommercialPolicy,
+    ServiceProductSkuMapping,
     ServiceProductVersion,
     ServiceVerificationFinding,
     ServiceVerificationJob,
@@ -416,6 +418,8 @@ def serialize_service_summary(
     limits: list[ServiceLimit],
     evidence_sources: list[ServiceEvidenceSource],
     interoperability_rules: list[ServiceInteroperabilityRule],
+    commercial_policy: ServiceCommercialPolicy | None = None,
+    approved_mapping_count: int = 0,
 ) -> ServiceProductSummaryResponse:
     """Serialize one service product list summary."""
 
@@ -434,6 +438,12 @@ def serialize_service_summary(
         evidence_count=len(evidence_sources),
         interoperability_count=len(interoperability_rules),
         verification_status=_verification_status(evidence_sources),
+        commercial_classification=(commercial_policy.classification if commercial_policy else "unclassified"),
+        commercial_readiness=(commercial_policy.readiness if commercial_policy else "blocked"),
+        publication_policy=(commercial_policy.publication_policy if commercial_policy else "policy_required"),
+        approved_mapping_count=approved_mapping_count,
+        commercial_guidance=(commercial_policy.guidance if commercial_policy else "Commercial policy is missing; BOM publication is blocked."),
+        commercial_required_inputs=[str(item) for item in (commercial_policy.required_inputs if commercial_policy else [])],
         last_verified_at=_last_datetime(
             [source.last_checked_at for source in evidence_sources]
             + [rule.last_verified_at for rule in interoperability_rules]
@@ -525,12 +535,20 @@ async def list_service_products(db: AsyncSession) -> ServiceProductListResponse:
     """Return all governed service products."""
 
     profiles, limits_by_profile, evidence_by_profile, rules_by_profile, _, _ = await _load_service_library(db)
+    policies = list((await db.scalars(select(ServiceCommercialPolicy).where(ServiceCommercialPolicy.status == "approved"))).all())
+    mappings = list((await db.scalars(select(ServiceProductSkuMapping).where(ServiceProductSkuMapping.status == "approved"))).all())
+    policy_by_service = {item.service_id: item for item in policies}
+    mapping_counts: dict[str, int] = defaultdict(int)
+    for mapping in mappings:
+        mapping_counts[mapping.service_id] += 1
     products = [
         serialize_service_summary(
             profile,
             limits_by_profile.get(profile.id, []),
             evidence_by_profile.get(profile.id, []),
             rules_by_profile.get(profile.id, []),
+            policy_by_service.get(profile.service_id),
+            mapping_counts.get(profile.service_id, 0),
         )
         for profile in profiles
     ]
@@ -575,11 +593,15 @@ async def get_service_product(service_id: str, db: AsyncSession) -> ServiceProdu
             status_code=404,
             detail={"detail": "Service product not found", "error_code": "SERVICE_PRODUCT_NOT_FOUND"},
         )
+    commercial_policy = await db.scalar(select(ServiceCommercialPolicy).where(ServiceCommercialPolicy.service_id == profile.service_id, ServiceCommercialPolicy.status == "approved"))
+    approved_mapping_count = len(list((await db.scalars(select(ServiceProductSkuMapping).where(ServiceProductSkuMapping.service_id == profile.service_id, ServiceProductSkuMapping.status == "approved"))).all()))
     summary = serialize_service_summary(
         profile,
         limits_by_profile.get(profile.id, []),
         evidence_by_profile.get(profile.id, []),
         rules_by_profile.get(profile.id, []),
+        commercial_policy,
+        approved_mapping_count,
     )
     rules = [
         serialize_interoperability_rule(rule, profiles_by_id)
@@ -626,12 +648,20 @@ async def get_interoperability_matrix(db: AsyncSession) -> ServiceInteroperabili
     """Return all services and active service-to-service rules."""
 
     profiles, limits_by_profile, evidence_by_profile, rules_by_profile, _, profiles_by_id = await _load_service_library(db)
+    policies = list((await db.scalars(select(ServiceCommercialPolicy).where(ServiceCommercialPolicy.status == "approved"))).all())
+    mappings = list((await db.scalars(select(ServiceProductSkuMapping).where(ServiceProductSkuMapping.status == "approved"))).all())
+    policy_by_service = {item.service_id: item for item in policies}
+    mapping_counts: dict[str, int] = defaultdict(int)
+    for mapping in mappings:
+        mapping_counts[mapping.service_id] += 1
     summaries = [
         serialize_service_summary(
             profile,
             limits_by_profile.get(profile.id, []),
             evidence_by_profile.get(profile.id, []),
             rules_by_profile.get(profile.id, []),
+            policy_by_service.get(profile.service_id),
+            mapping_counts.get(profile.service_id, 0),
         )
         for profile in profiles
     ]

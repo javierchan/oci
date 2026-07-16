@@ -64,6 +64,7 @@ class ImportBatch(Base, UUIDMixin, TimestampMixin):
 
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    storage_reference: Mapped[Optional[str]] = mapped_column(String(2048))
     parser_version: Mapped[str] = mapped_column(String(50), nullable=False)
     prompt_version: Mapped[Optional[str]] = mapped_column(String(50))
     status: Mapped[ImportStatus] = mapped_column(

@@ -1,7 +1,7 @@
 """Exports router — synchronous artifact generation for M7."""
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
@@ -47,14 +47,14 @@ async def export_xlsx(
 async def download_xlsx(
     project_id: str,
     db: AsyncSession = Depends(get_db),
-) -> FileResponse:
+) -> Response:
     snapshot_id = await export_service.latest_snapshot_id(project_id, db)
     job = await export_service.create_xlsx_export(project_id, snapshot_id, db)
-    file_path, _ = export_service.get_export_file(project_id, job.job_id)
-    return FileResponse(
-        path=file_path,
+    contents, _ = export_service.get_export_content(project_id, job.job_id)
+    return Response(
+        content=contents,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=job.filename,
+        headers={"Content-Disposition": f'attachment; filename="{job.filename}"'},
     )
 
 
@@ -62,13 +62,13 @@ async def download_xlsx(
 async def download_project_brief(
     project_id: str,
     db: AsyncSession = Depends(get_db),
-) -> FileResponse:
+) -> Response:
     job = await export_service.create_brief_export(project_id, db)
-    file_path, _ = export_service.get_export_file(project_id, job.job_id)
-    return FileResponse(
-        path=file_path,
+    contents, _ = export_service.get_export_content(project_id, job.job_id)
+    return Response(
+        content=contents,
         media_type="text/markdown; charset=utf-8",
-        filename=job.filename,
+        headers={"Content-Disposition": f'attachment; filename="{job.filename}"'},
     )
 
 
@@ -96,16 +96,16 @@ async def get_export_job(project_id: str, job_id: str) -> ExportJobResponse:
 
 
 @router.get("/{project_id}/jobs/{job_id}/download", summary="Download generated export artifact")
-async def download_export(project_id: str, job_id: str) -> FileResponse:
-    file_path, job = export_service.get_export_file(project_id, job_id)
+async def download_export(project_id: str, job_id: str) -> Response:
+    contents, job = export_service.get_export_content(project_id, job_id)
     media_types = {
         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "json": "application/json",
         "pdf": "application/pdf",
         "md": "text/markdown; charset=utf-8",
     }
-    return FileResponse(
-        path=file_path,
+    return Response(
+        content=contents,
         media_type=media_types.get(job.format, "application/octet-stream"),
-        filename=job.filename,
+        headers={"Content-Disposition": f'attachment; filename="{job.filename}"'},
     )

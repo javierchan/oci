@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
@@ -24,15 +25,17 @@ from app.models import (
     VolumetrySnapshot,
 )
 from app.schemas.export import ExportJobResponse
-from app.services import bom_service, dashboard_service, justification_service, recalc_service
+from app.services import bom_service, dashboard_service, justification_service, recalc_service, storage_service
 from app.services.catalog_service import list_integrations
 from app.services.pattern_support import get_pattern_support
 from app.services.serializers import sanitize_for_json
 
 
-EXPORT_ROOT = Path("uploads/exports")
+EXPORT_ROOT = Path(tempfile.gettempdir()) / "oci-dis-exports"
 FILES_DIR = EXPORT_ROOT / "files"
 JOBS_DIR = EXPORT_ROOT / "jobs"
+
+
 def _ensure_export_dirs() -> None:
     FILES_DIR.mkdir(parents=True, exist_ok=True)
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
@@ -91,20 +94,35 @@ def _file_path(job_id: str, extension: str) -> Path:
     return FILES_DIR / f"{job_id}.{extension}"
 
 
-def _write_job_metadata(job: ExportJobResponse, file_path: Path) -> None:
+def _artifact_key(project_id: str, job_id: str, extension: str) -> str:
+    return f"exports/{project_id}/files/{job_id}.{extension}"
+
+
+def _metadata_key(project_id: str, job_id: str) -> str:
+    return f"exports/{project_id}/jobs/{job_id}.json"
+
+
+def _write_job_metadata(job: ExportJobResponse, file_reference: str) -> str:
     payload = sanitize_for_json(
         {
             **job.model_dump(),
             "created_at": job.created_at,
-            "file_path": str(file_path),
+            "file_reference": file_reference,
         }
     )
-    _job_file(job.job_id).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return storage_service.put_json(
+        _metadata_key(job.project_id, job.job_id),
+        cast(dict[str, object], payload),
+    )
 
 
 def _job_from_payload(payload: dict[str, object]) -> ExportJobResponse:
     created_at = payload.get("created_at")
-    normalized = {key: value for key, value in payload.items() if key != "file_path"}
+    normalized = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"file_path", "file_reference"}
+    }
     if isinstance(created_at, str):
         normalized["created_at"] = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
     return ExportJobResponse(**cast(dict[str, Any], normalized))
@@ -129,7 +147,14 @@ async def _build_job(
         download_url=f"/api/v1/exports/{project_id}/jobs/{job_id}/download",
         created_at=created_at,
     )
-    _write_job_metadata(job, file_path)
+    extension = file_path.suffix.lstrip(".")
+    file_reference = storage_service.put_bytes(
+        _artifact_key(project_id, job_id, extension),
+        file_path.read_bytes(),
+        metadata={"project-id": project_id, "snapshot-id": snapshot_id},
+    )
+    file_path.unlink(missing_ok=True)
+    _write_job_metadata(job, file_reference)
     return job
 
 
@@ -834,15 +859,9 @@ async def create_bom_pdf_export(
 
 
 async def get_export_job(project_id: str, job_id: str) -> ExportJobResponse:
-    """Load export metadata from the local export store."""
+    """Load export metadata from authoritative Object Storage."""
 
-    metadata_path = _job_file(job_id)
-    if not metadata_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail={"detail": "Export job not found", "error_code": "EXPORT_JOB_NOT_FOUND"},
-        )
-    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    payload = _load_export_payload(project_id, job_id)
     if payload.get("project_id") != project_id:
         raise HTTPException(
             status_code=404,
@@ -851,26 +870,52 @@ async def get_export_job(project_id: str, job_id: str) -> ExportJobResponse:
     return _job_from_payload(payload)
 
 
-def get_export_file(project_id: str, job_id: str) -> tuple[Path, ExportJobResponse]:
-    """Resolve a generated artifact for download."""
-
+def _load_export_payload(project_id: str, job_id: str) -> dict[str, object]:
+    reference = storage_service.object_reference(_metadata_key(project_id, job_id))
+    try:
+        return storage_service.read_json(reference)
+    except FileNotFoundError:
+        try:
+            return storage_service.read_json(
+                storage_service.object_reference(f"exports/jobs/{job_id}.json")
+            )
+        except FileNotFoundError:
+            pass
     metadata_path = _job_file(job_id)
-    if not metadata_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail={"detail": "Export job not found", "error_code": "EXPORT_JOB_NOT_FOUND"},
-        )
-    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if metadata_path.is_file():
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            return cast(dict[str, object], payload)
+    raise HTTPException(
+        status_code=404,
+        detail={"detail": "Export job not found", "error_code": "EXPORT_JOB_NOT_FOUND"},
+    )
+
+
+def get_export_content(project_id: str, job_id: str) -> tuple[bytes, ExportJobResponse]:
+    """Resolve a generated artifact without materializing it on persistent disk."""
+
+    payload = _load_export_payload(project_id, job_id)
     if payload.get("project_id") != project_id:
         raise HTTPException(
             status_code=404,
             detail={"detail": "Export job not found", "error_code": "EXPORT_JOB_NOT_FOUND"},
         )
-    file_path = Path(payload["file_path"])
-    if not file_path.exists():
+    reference = str(payload.get("file_reference") or payload.get("file_path") or "")
+    try:
+        contents = storage_service.read_bytes(reference)
+    except (FileNotFoundError, ValueError):
         raise HTTPException(
             status_code=404,
             detail={"detail": "Export file not found", "error_code": "EXPORT_FILE_NOT_FOUND"},
         )
     job = _job_from_payload(payload)
-    return file_path, job
+    return contents, job
+
+
+def get_export_references(project_id: str, job_id: str) -> tuple[str, str]:
+    """Return artifact and metadata references for synthetic-run provenance."""
+
+    payload = _load_export_payload(project_id, job_id)
+    artifact = str(payload.get("file_reference") or payload.get("file_path") or "")
+    return artifact, storage_service.object_reference(_metadata_key(project_id, job_id))

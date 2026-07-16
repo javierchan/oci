@@ -1358,9 +1358,98 @@ SERVICE_PROFILES: list[dict[str, object]] = [
             "https://www.oracle.com/contracts/docs/paas_iaas_pub_cld_srvs_pillar_4021422.pdf"
         ),
     },
+    {
+        "service_id": "EVENTS",
+        "name": "OCI Events",
+        "category": "EVENT_ROUTING",
+        "sla_uptime_pct": None,
+        "pricing_model": "No standalone Events service charge. Price invoked targets and downstream services separately.",
+        "limits": {
+            "delivery_model": "At-least-once event delivery to supported targets",
+            "rule_scope": "Rules match OCI service events and custom CloudEvents",
+            "billable_dependencies": ["FUNCTIONS", "STREAMING", "OBJECT_STORAGE", "NOTIFICATIONS"],
+            "label": "documented",
+        },
+        "architectural_fit": (
+            "Event routing for OCI resource-state changes and custom CloudEvents. Use rules to fan events "
+            "into Functions, Streaming, Notifications, or other supported targets without treating Events "
+            "as a durable message broker or integration orchestrator."
+        ),
+        "anti_patterns": (
+            "NOT a durable work queue, ordered event log, or business-process orchestrator. Consumers must "
+            "be idempotent and downstream delivery, retention, retries, and cost must be designed explicitly."
+        ),
+        "interoperability_notes": (
+            "Routes matching events to OCI Functions, Streaming, Notifications, and other supported targets. "
+            "Downstream products retain their own limits, billing meters, IAM policies, and availability model."
+        ),
+        "oracle_docs_urls": (
+            "https://docs.oracle.com/en-us/iaas/Content/Events/Concepts/eventsoverview.htm|"
+            "https://docs.oracle.com/en-us/iaas/Content/Events/Concepts/eventsgetstarted.htm|"
+            "https://www.oracle.com/cloud/price-list/"
+        ),
+    },
+    {
+        "service_id": "PROCESS_AUTOMATION",
+        "name": "Oracle Integration Process Automation",
+        "category": "BUSINESS_PROCESS_AUTOMATION",
+        "sla_uptime_pct": None,
+        "pricing_model": "Capability governed with Oracle Integration commercial entitlement; edition and contract eligibility require review.",
+        "limits": {
+            "commercial_dependency": "OIC3",
+            "edition_review_required": True,
+            "process_scope": "Human workflow and business process automation",
+            "label": "documented",
+        },
+        "architectural_fit": (
+            "Human-centric workflow, approvals, forms, and business process automation associated with "
+            "Oracle Integration. Use it when the integration flow requires governed human decisions or "
+            "long-running business state beyond technical message orchestration."
+        ),
+        "anti_patterns": (
+            "NOT a replacement for high-volume system integration, streaming, queues, or batch data movement. "
+            "Do not assume entitlement independently of the selected Oracle Integration edition and contract."
+        ),
+        "interoperability_notes": (
+            "Works with Oracle Integration application integrations and governed human tasks. The BOM must "
+            "preserve the OIC edition, BYOL decision, and any contract-specific Process Automation entitlement."
+        ),
+        "oracle_docs_urls": (
+            "https://docs.oracle.com/en/cloud/paas/process-automation/|"
+            "https://docs.oracle.com/en-us/iaas/application-integration/index.html|"
+            "https://www.oracle.com/integration/pricing/"
+        ),
+    },
 ]
 
 SERVICE_INTEROPERABILITY_RULES: list[dict[str, object]] = [
+    {
+        "source_service_id": "EVENTS",
+        "target_service_id": "FUNCTIONS",
+        "relationship_type": "event_target",
+        "patterns": ["#02", "#17"],
+        "required_components": ["event rule", "Functions target", "idempotent handler"],
+        "constraints": {"delivery_model": "at_least_once"},
+        "risk_notes": "Handlers must be idempotent and retain downstream failure evidence.",
+    },
+    {
+        "source_service_id": "EVENTS",
+        "target_service_id": "STREAMING",
+        "relationship_type": "event_target",
+        "patterns": ["#02", "#15"],
+        "required_components": ["event rule", "Streaming target", "partition strategy"],
+        "constraints": {"downstream_limits_apply": True},
+        "risk_notes": "Events does not replace Streaming retention, ordering, or partition design.",
+    },
+    {
+        "source_service_id": "PROCESS_AUTOMATION",
+        "target_service_id": "OIC3",
+        "relationship_type": "workflow_integration",
+        "patterns": ["#04", "#05"],
+        "required_components": ["approved OIC edition", "process entitlement", "human-task design"],
+        "constraints": {"commercial_entitlement_review": True},
+        "risk_notes": "Confirm edition and contractual entitlement before treating Process Automation as included.",
+    },
     {
         "source_service_id": "API_GATEWAY",
         "target_service_id": "OIC3",

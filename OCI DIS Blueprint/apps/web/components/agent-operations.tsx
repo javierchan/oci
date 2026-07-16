@@ -9,7 +9,13 @@ import { emitToast } from "@/hooks/use-toast";
 import { agentExecutionIndicatorTone, type AgentExecutionIndicatorTone } from "@/lib/agent-status";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
-import type { AgentDefinition, AgentProviderMetrics, AgentProviderStatus, AgentRun } from "@/lib/types";
+import type {
+  AgentDefinition,
+  AgentProviderMetrics,
+  AgentProviderStatus,
+  AgentRun,
+  AgentValueMetrics,
+} from "@/lib/types";
 
 function isActive(status: AgentRun["status"]): boolean {
   return status === "pending" || status === "running" || status === "waiting_approval";
@@ -33,26 +39,31 @@ export function AgentOperations({
   definitions,
   providerStatus,
   initialMetrics,
+  initialValueMetrics,
   initialRuns,
 }: {
   definitions: AgentDefinition[];
   providerStatus: AgentProviderStatus;
   initialMetrics: AgentProviderMetrics;
+  initialValueMetrics: AgentValueMetrics;
   initialRuns: AgentRun[];
 }): JSX.Element {
   const [runs, setRuns] = useState<AgentRun[]>(initialRuns);
   const [metrics, setMetrics] = useState<AgentProviderMetrics>(initialMetrics);
+  const [valueMetrics, setValueMetrics] = useState<AgentValueMetrics>(initialValueMetrics);
   const [refreshing, setRefreshing] = useState(false);
 
   async function refresh(silent = false): Promise<void> {
     if (!silent) setRefreshing(true);
     try {
-      const [runResult, metricResult] = await Promise.all([
+      const [runResult, metricResult, valueResult] = await Promise.all([
         api.listAgentRuns({ limit: 50 }),
         api.getAgentProviderMetrics(),
+        api.getAgentValueMetrics(),
       ]);
       setRuns(runResult.runs);
       setMetrics(metricResult);
+      setValueMetrics(valueResult);
     } catch (error) {
       if (!silent) emitToast("error", error instanceof Error ? error.message : "Unable to refresh agent runs.");
     } finally {
@@ -122,6 +133,40 @@ export function AgentOperations({
           ))}
         </div>
       </section>
+      <section aria-label="Agent outcome quality" className="app-table-shell p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="app-label">Observed product value</p>
+            <h2 className="mt-1 text-xl font-semibold text-[var(--color-text-primary)]">Outcome quality in the retained window</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+              Measured from the latest {valueMetrics.retained_runs} executions. These signals report grounded output,
+              actionable briefs, human decisions, and runtime duration; they do not estimate unmeasured time savings.
+            </p>
+          </div>
+          <span className="app-theme-chip">{valueMetrics.quality_evaluated_runs} quality-evaluated</span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          {[
+            ["Grounded outputs", valueMetrics.quality_evaluated_runs ? `${valueMetrics.grounded_output_rate_pct.toFixed(1)}%` : "Not evaluated", `${valueMetrics.grounded_output_runs} of ${valueMetrics.quality_evaluated_runs}`],
+            ["High evidence", valueMetrics.quality_evaluated_runs ? `${valueMetrics.high_evidence_completeness_rate_pct.toFixed(1)}%` : "Not evaluated", `${valueMetrics.high_evidence_completeness_runs} complete briefs`],
+            ["Actionable briefs", `${valueMetrics.recommendation_runs}`, `${valueMetrics.completed_runs} completed runs`],
+            ["Human acceptance", valueMetrics.acceptance_rate_pct === null ? "No decisions" : `${valueMetrics.acceptance_rate_pct.toFixed(1)}%`, `${valueMetrics.approval_decisions} recorded decisions`],
+            ["Approval follow-up", valueMetrics.approval_follow_up_rate_pct === null ? "No approvals" : `${valueMetrics.approval_follow_up_rate_pct.toFixed(1)}%`, `${valueMetrics.follow_up_runs_after_approval} follow-up runs`],
+            ["Median runtime", valueMetrics.median_execution_seconds === null ? "No data" : `${valueMetrics.median_execution_seconds.toFixed(1)}s`, `${valueMetrics.provider_synthesis_rate_pct.toFixed(1)}% OCI synthesis`],
+          ].map(([label, value, detail]) => (
+            <article key={label} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+              <p className="text-xs font-semibold text-[var(--color-text-muted)]">{label}</p>
+              <p className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">{value}</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--color-text-muted)]">{detail}</p>
+            </article>
+          ))}
+        </div>
+        {valueMetrics.grounding_fallback_runs > 0 ? (
+          <p className="mt-4 text-sm text-[var(--color-text-secondary)]">
+            {valueMetrics.grounding_fallback_runs} response(s) were replaced with deterministic briefs because provider output did not pass the shared grounding contract.
+          </p>
+        ) : null}
+      </section>
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {definitions.map((definition) => (
           <article key={definition.type} className="app-card p-5">
@@ -147,9 +192,12 @@ export function AgentOperations({
             <p className="app-label">Docker Agent Runtime</p>
             <h2 className="mt-1 text-xl font-semibold text-[var(--color-text-primary)]">Execution history</h2>
           </div>
-          <button type="button" className="app-button-secondary gap-2" disabled={refreshing} onClick={() => void refresh()}>
-            <RefreshCcw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} /> Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="app-theme-chip">Last 50 retained</span>
+            <button type="button" className="app-button-secondary gap-2" disabled={refreshing} onClick={() => void refresh()}>
+              <RefreshCcw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} /> Refresh
+            </button>
+          </div>
         </div>
         {runs.length === 0 ? (
           <div className="px-5 py-12 text-center text-sm text-[var(--color-text-secondary)]">No agent runs yet. Contextual actions in Dashboard, Map, Import, Canvas, Service Products, and BOM create runs here.</div>
@@ -160,6 +208,11 @@ export function AgentOperations({
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 font-semibold text-[var(--color-text-primary)]">{statusIcon(run)} {run.agent_type.replaceAll("_", " ")}</p>
                   <p className="mt-1 truncate text-sm text-[var(--color-text-secondary)]">{run.result?.summary ?? "Waiting for governed evidence."}</p>
+                  {run.result?.output_quality ? (
+                    <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                      Evidence {run.result.output_quality.evidence_completeness_pct}% · {run.result.output_quality.fallback_used ? "deterministic fallback" : "grounded synthesis"}
+                    </p>
+                  ) : null}
                 </div>
                 <div><p className="app-label">Status</p><p className="mt-1 text-sm font-semibold capitalize text-[var(--color-text-primary)]">{run.status.replaceAll("_", " ")}</p></div>
                 <div><p className="app-label">Created</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{formatDate(run.created_at)}</p></div>

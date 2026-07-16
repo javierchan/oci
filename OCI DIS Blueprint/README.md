@@ -23,7 +23,7 @@ Replaces `Catalogo_Integracion.xlsx` with a governed platform enabling architect
 - **Web:** Next.js 15 (TypeScript, Node.js 26.0.0) — `apps/web/`
 - **Database:** PostgreSQL 16
 - **Jobs:** Celery + Redis
-- **Storage:** MinIO (local runtime) / OCI Object Storage (deployed runtime)
+- **Object storage:** MinIO locally / OCI Object Storage when deployed, through one S3-compatible artifact service
 - **Calc engine:** `packages/calc-engine/` (pure Python, no I/O)
 - **Pricing engine:** `packages/pricing-engine/` (pure Decimal calculations, no I/O)
 - **Service rules:** normalized Service Product tables; Assumptions contain client workload inputs only
@@ -98,6 +98,15 @@ blocks, `429`, `5xx`, Responses fallbacks, and terminal degradation counts. No
 prompt, response, actor, session, project, or integration identity is used as a
 metric dimension. If Redis is unavailable, inference remains operational and
 the endpoint truthfully reports process-local fallback metrics.
+
+Every agent answer also passes one repository-owned outcome contract. The API
+rejects provider meta-reasoning, Markdown tables, unsupported material numbers,
+claims that a proposal was applied, and source-verification claims without
+retrieved evidence. Rejected synthesis is replaced by a deterministic brief that
+always separates the finding, why it matters, next actions, validation, evidence,
+and confidence. Agent Operations reports provider health and observed outcome
+quality separately; value signals come only from retained executions and human
+decisions, never estimated time savings.
 See [`docs/architecture/oci-agent-runtime.md`](./docs/architecture/oci-agent-runtime.md).
 
 The global OCI DIS App Assistant persists across navigation, understands the
@@ -149,6 +158,12 @@ Oracle quotes. See
 [`docs/architecture/oci-pricing-bom-plan.md`](./docs/architecture/oci-pricing-bom-plan.md)
 and [`docs/architecture/oci-pricing-parity-spec.md`](./docs/architecture/oci-pricing-parity-spec.md).
 
+Planned M51 full-catalog coverage follows a mandatory five-stage strategy:
+atomic official-source import, draft mapping generation by price family and
+metric, deterministic commercial classification, auditable human exception
+review, and independent quotation fixtures before rule-family approval. See
+[`docs/architecture/oci-full-catalog-commercial-coverage-plan.md`](./docs/architecture/oci-full-catalog-commercial-coverage-plan.md).
+
 ---
 
 ## Running Tests
@@ -158,10 +173,8 @@ and [`docs/architecture/oci-pricing-parity-spec.md`](./docs/architecture/oci-pri
 docker build --target quality -t ocidisblueprint-api-quality:local \
   -f apps/api/Dockerfile .
 
-# API integration tests with ephemeral export storage
-docker run --rm \
-  --tmpfs /app/uploads:rw,uid=10001,gid=10001,mode=0770 \
-  ocidisblueprint-api-quality:local \
+# API integration tests (Object Storage is replaced by an in-memory fixture)
+docker run --rm ocidisblueprint-api-quality:local \
   python -m pytest -p no:cacheprovider app/tests -q
 
 # Pure calc-engine parity tests
@@ -189,6 +202,13 @@ docker build --target production -t ocidisblueprint-web:latest \
 docker run --rm -v "$PWD":/workspace -w /workspace node:26.0.0-alpine \
   npm audit --audit-level=high
 ```
+
+Persistent application artifacts never use container filesystems or shared file
+volumes. Imports, exports, contractual rate cards, Synthetic Lab workbooks, and
+generated reports use the S3-compatible storage service: MinIO in this Docker
+stack and OCI Object Storage when deployed. Local files are allowed only as
+bounded temporary generation buffers and are deleted after upload. The OCI
+Generative AI API key remains a read-only mounted secret and is not an artifact.
 
 ## Schema-Dependent Admin Smoke Check
 
@@ -294,7 +314,6 @@ apps/web/          Next.js frontend
 packages/
   calc-engine/     Deterministic volumetry + QA engine
   test-fixtures/   Benchmark data and parity expectations
-infra/             SQL/bootstrap infrastructure
 docs/
   adr/             Architecture Decision Records
   architecture/    System diagrams
@@ -360,6 +379,11 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M44 | Portfolio Recommendations + Draft Impact Simulation | ✅ Complete | 2026-07-13 |
 | M45 | Environment-Specific Commercial Product Variants | ✅ Complete | 2026-07-14 |
 | M46 | Connected BOM Rollout Explorer | ✅ Complete | 2026-07-14 |
+| M47 | Authoritative Object Storage Artifacts | ✅ Complete | 2026-07-14 |
+| M48 | Governed Commercial Quantity Policies + BOM Product Navigation | ✅ Complete | 2026-07-15 |
+| M49 | OCI Metering Policy Alignment | ✅ Complete | 2026-07-15 |
+| M50 | Full Service Product Commercial Coverage | ✅ Complete | 2026-07-15 |
+| M51 | Full OCI Public Catalog Commercial Coverage | 📋 Planned | — |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -367,13 +391,13 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 Phase 1 parity has been validated in Docker against the benchmark workbook rules:
 
 - Import parity: `157` TBQ=`Y` rows, `13` excluded `Duplicado 2`, `144` loaded rows in source order
-- Reference seed data: `17` patterns, client-only assumption sets, governed dictionaries, and `18` normalized service products
+- Reference seed data: `17` patterns, client-only assumption sets, governed dictionaries, and `20` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine + pricing-engine: `172 passed` (`108` API, `42` calc-engine, `22` pricing-engine)
+- Backend + calc-engine + pricing-engine: `191 passed` (`125` API, `42` calc-engine, `24` pricing-engine)
 - Frontend: `66 passed`, strict TypeScript, ESLint, and production build green
 - Pricing/BOM E2E: public sync and BOM jobs reach terminal `completed` states
 - Production images: Trivy reports `0 HIGH` and `0 CRITICAL` for API and web
-- Browser E2E: `16 passed`, including OCI provider telemetry refresh, contextual AI,
+- Browser E2E: `18 passed`, including OCI provider telemetry refresh, contextual AI,
   workbook download, terminal job state, BOM, topology, and cleanup validation
 - Dependency audit: `0` vulnerabilities
 - Web and API stack: all eight production services running and healthy in Docker Compose

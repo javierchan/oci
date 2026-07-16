@@ -37,6 +37,7 @@ from app.schemas.project import (
     ProjectPatchRequest,
     ProjectResponse,
 )
+from app.services import storage_service
 from app.services import audit_service
 
 
@@ -261,4 +262,10 @@ async def delete_project(project_id: str, actor_id: str, db: AsyncSession) -> Pr
     await db.execute(delete(AuditEvent).where(AuditEvent.project_id == project_id))
     await db.delete(project)
     await db.flush()
+    for batch in import_batches:
+        if batch.storage_reference:
+            storage_service.delete(batch.storage_reference)
+    storage_service.delete_prefix(f"imports/{project_id}")
+    storage_service.delete_prefix(f"exports/{project_id}")
+    storage_service.delete_prefix(f"synthetic/{project_id}")
     return response

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from pathlib import Path
+from io import BytesIO
 from typing import Any, cast
 from unicodedata import normalize
 
@@ -36,7 +36,7 @@ from app.schemas.imports import (
     SourceRowListResponse,
     SourceRowResponse,
 )
-from app.services import audit_service, recalc_service
+from app.services import audit_service, recalc_service, storage_service
 from app.services.capture_template_service import (
     CAPTURE_SHEET_NAME,
     COLUMNS as TEMPLATE_COLUMNS,
@@ -498,7 +498,12 @@ def _build_catalog_integration(
     )
 
 
-async def create_import_batch(project_id: str, filename: str, db: AsyncSession) -> ImportBatch:
+async def create_import_batch(
+    project_id: str,
+    filename: str,
+    db: AsyncSession,
+    storage_reference: str | None = None,
+) -> ImportBatch:
     """Create a pending import batch."""
 
     project = await db.get(Project, project_id)
@@ -510,6 +515,7 @@ async def create_import_batch(project_id: str, filename: str, db: AsyncSession) 
     batch = ImportBatch(
         project_id=project_id,
         filename=filename,
+        storage_reference=storage_reference,
         parser_version=IMPORTER_MIN_VERSION,
         status=ImportStatus.PENDING,
     )
@@ -519,7 +525,7 @@ async def create_import_batch(project_id: str, filename: str, db: AsyncSession) 
     return batch
 
 
-async def process_import(batch_id: str, file_path: str, db: AsyncSession) -> ImportBatch:
+async def process_import(batch_id: str, source_reference: str, db: AsyncSession) -> ImportBatch:
     """Parse the workbook, persist all source rows, and materialize included catalog rows."""
 
     batch = await db.get(ImportBatch, batch_id)
@@ -532,7 +538,11 @@ async def process_import(batch_id: str, file_path: str, db: AsyncSession) -> Imp
     batch.status = ImportStatus.PROCESSING
     await db.flush()
 
-    workbook = load_workbook(filename=file_path, data_only=False, read_only=True)
+    workbook = load_workbook(
+        filename=BytesIO(storage_service.read_bytes(source_reference)),
+        data_only=False,
+        read_only=True,
+    )
     manifest = _read_template_manifest(workbook)
     compatibility = _validate_template_version(manifest)
     if SOURCE_SHEET_NAME not in workbook.sheetnames:
@@ -843,13 +853,21 @@ async def get_import_quality_assistant(
     )
 
 
-async def save_upload_file(file_name: str, contents: bytes, upload_dir: Path) -> str:
-    """Persist an uploaded source workbook to local storage."""
+async def save_upload_file(
+    file_name: str,
+    contents: bytes,
+    *,
+    project_id: str = "unassigned",
+) -> str:
+    """Persist an uploaded source workbook in authoritative Object Storage."""
 
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    destination = upload_dir / f"{uuid.uuid4()}-{file_name}"
-    destination.write_bytes(contents)
-    return str(destination)
+    key = f"imports/{project_id}/{uuid.uuid4()}-{storage_service.safe_filename(file_name)}"
+    return storage_service.put_bytes(
+        key,
+        contents,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        metadata={"project-id": project_id},
+    )
 
 
 async def delete_import_batch(
@@ -886,6 +904,7 @@ async def delete_import_batch(
         )
 
     old_value = serialize_batch(batch).model_dump()
+    storage_reference = batch.storage_reference
     source_rows = list(batch.source_rows)
     source_row_ids = [row.id for row in source_rows]
     integrations = (
@@ -933,6 +952,8 @@ async def delete_import_batch(
         await db.delete(source_row)
     await db.delete(batch)
     await db.flush()
+    if storage_reference:
+        storage_service.delete(storage_reference)
 
     snapshot = await recalc_service.recalculate_project(project_id=project_id, actor_id=actor_id, db=db)
     response = ImportBatchDeleteResponse(

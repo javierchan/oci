@@ -87,7 +87,7 @@ Catalog + canvases
   interoperability, and evidence owner for OCI products.
 - `VolumetrySnapshot` remains the immutable source of technical demand.
 - Celery runs price synchronization and BOM generation as terminal jobs.
-- MinIO / OCI Object Storage stores source payloads and generated exports.
+- MinIO / OCI Object Storage stores source payloads and generated exports through the shared S3-compatible artifact service.
 - Existing AuditEvent, evidence verification, exports, and AI Review patterns
   are reused.
 - The pure-engine contract remains: services assemble immutable inputs and a
@@ -289,6 +289,53 @@ runtime. BOM calculation, timeline, line-item provenance, JSON, XLSX, PDF, and
 assistant evidence therefore preserve the environment-specific commercial
 variant instead of re-resolving a global product default.
 
+### Measured demand, billable quantity, and planning envelope
+
+`service_product_sku_mappings` also owns the commercial entry policy. Each mapping
+declares its usage basis, quote-rounding behavior, whether client input is required,
+entry guidance, and optional quantity presets. The scenario assistant returns both
+`source_baseline_quantity` and `baseline_quantity`: the first is the technical demand
+evidence and the second is the governed quantity initially placed in a quote plan.
+
+This distinction is material for API Gateway. A measured `0.291152` million calls is
+also the canonical billable quantity because Oracle prorates partial million-call
+units. The App may show `1` million calls as a conservative planning envelope, but
+that reserve is advisory and is excluded from deterministic totals. The App never
+overwrites measured or billable demand simply to make the presentation integer.
+
+For Data Integration, processed GB can be estimated from integration demand, but
+workspace running hours and Pipeline Operator execution hours cannot. New plans use
+zero until the architect supplies a value. Workspace shortcuts provide `160` business
+hours, `360` extended hours, and `744` always-on hours; choosing `744` produces an
+explicit confirmation warning. Historical scenarios remain immutable and are not
+silently rewritten.
+
+The editor exposes these policies through a product/metric/SKU search, one collapsed
+row per product, progressively disclosed metric editors, and a product-grouped monthly
+matrix. Product color identifies selection and grouping only; semantic status colors
+remain reserved for readiness and warnings.
+
+### Full Service Product commercial coverage
+
+Scenario assistance begins from the detected project product footprint, not from the
+set of SKU mappings that happen to exist. All 20 Service Products therefore carry an
+explicit classification, readiness state, publication policy, required design inputs,
+and governed entry guidance. The BOM can distinguish direct metering, included
+capabilities, dependency-owned cost, external rate cards, and products that require
+explicit optional-meter selection.
+
+Required mappings seed a new environment. Optional add-ons remain discoverable but
+unselected, and dependency mappings require an approved architecture decision before
+they enter the quote. Included products produce traceable zero-amount lines rather
+than disappearing. This contract is shared by Library, product detail, Pricing Admin,
+BOM coverage, exports, and contextual assistant evidence.
+
+OCI Events and Oracle Integration Process Automation are normalized products rather
+than mapping-only exceptions. Events remains visible as an included zero-amount line
+while its billable targets are priced separately. Process Automation requires an OIC
+dependency plus explicit edition and contractual-entitlement evidence. Both retain
+versioned limits, official sources, interoperability rules, and attached mappings.
+
 ## Current Project Readiness
 
 The active project currently has 480 integrations and a fresh technical snapshot.
@@ -303,14 +350,19 @@ It already provides useful demand for:
 
 It is not yet sufficient for a complete defensible BOM:
 
-- Queue lacks request-unit calculation.
-- Data Integration lacks operator execution hours and explicit workspace hours.
-- Streaming needs storage GB-hours distinct from transfer GB.
+- Queue request units require the actual push/get/delete/update operations and apply
+  a 64 KB ceiling to each operation; the App does not assume a universal operation count.
+- Data Integration operator execution hours and workspace running hours require
+  explicit client planning; the App intentionally does not synthesize them.
+- Streaming needs explicit PUT/GET transfer evidence and storage GB-hours derived
+  from an approved retention policy; the App does not assume a 2x transfer multiplier.
 - GoldenGate lacks OCPU/deployment sizing and BYOL choice.
-- API Gateway lacks API call count.
+- API Gateway call demand can be derived as a planning baseline, but the client must
+  validate expected monthly calls; partial million-call units remain prorated.
 - OIC needs approved edition, BYOL choice, environment count, and shared-instance
   allocation.
-- Events and Process Automation need explicit billable/non-billable resolution.
+- Events and Process Automation are governed included/non-billable capabilities and
+  remain visible as zero-amount BOM evidence.
 - The catalog has no governed physical environment/deployment topology.
 
 The first generated BOM must show coverage and blockers, not fabricate missing

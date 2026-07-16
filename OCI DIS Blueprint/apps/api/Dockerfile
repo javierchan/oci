@@ -39,9 +39,6 @@ COPY --chown=app:app packages/pricing-engine/src/pricing_engine /pricing-engine/
 COPY --chown=app:app docs/api/openapi.yaml /docs/api/openapi.yaml
 COPY apps/api/production-entrypoint.sh /usr/local/bin/oci-dis-entrypoint
 RUN rm -rf /app/app/tests \
-    && mkdir -p /app/uploads /app/generated-reports \
-    && chown app:app /app/uploads /app/generated-reports \
-    && chmod 0770 /app/uploads /app/generated-reports \
     && chmod 0755 /usr/local/bin/oci-dis-entrypoint
 USER app
 EXPOSE 8000
@@ -61,4 +58,6 @@ RUN pip install --no-cache-dir /tmp/quality-wheels/* && rm -rf /tmp/quality-whee
 COPY --chown=app:app apps/api/app/tests ./app/tests
 COPY --chown=app:app packages/calc-engine/src/tests /calc-engine/src/tests
 COPY --chown=app:app packages/pricing-engine/tests /pricing-engine/tests
+COPY --chown=app:app docker-compose.yml package.json /contracts/
+COPY --chown=app:app apps/api/Dockerfile apps/api/production-entrypoint.sh /contracts/apps/api/
 USER app

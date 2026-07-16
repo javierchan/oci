@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
@@ -218,14 +218,14 @@ async def download_bom_xlsx(
     snapshot_id: str,
     db: AsyncSession = Depends(get_db),
     actor_role: str = Header(..., alias="X-Actor-Role"),
-) -> FileResponse:
+) -> Response:
     _require_bom_read(actor_role)
     job = await export_service.create_bom_xlsx_export(project_id, snapshot_id, db)
-    file_path, _ = export_service.get_export_file(project_id, job.job_id)
-    return FileResponse(
-        path=file_path,
+    contents, _ = export_service.get_export_content(project_id, job.job_id)
+    return Response(
+        content=contents,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=job.filename,
+        headers={"Content-Disposition": f'attachment; filename="{job.filename}"'},
     )
 
 
@@ -235,11 +235,15 @@ async def download_bom_json(
     snapshot_id: str,
     db: AsyncSession = Depends(get_db),
     actor_role: str = Header(..., alias="X-Actor-Role"),
-) -> FileResponse:
+) -> Response:
     _require_bom_read(actor_role)
     job = await export_service.create_bom_json_export(project_id, snapshot_id, db)
-    file_path, _ = export_service.get_export_file(project_id, job.job_id)
-    return FileResponse(path=file_path, media_type="application/json", filename=job.filename)
+    contents, _ = export_service.get_export_content(project_id, job.job_id)
+    return Response(
+        content=contents,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{job.filename}"'},
+    )
 
 
 @router.get("/bom-snapshots/{snapshot_id}/exports/pdf", summary="Download governed BOM as PDF")
@@ -248,11 +252,15 @@ async def download_bom_pdf(
     snapshot_id: str,
     db: AsyncSession = Depends(get_db),
     actor_role: str = Header(..., alias="X-Actor-Role"),
-) -> FileResponse:
+) -> Response:
     _require_bom_read(actor_role)
     job = await export_service.create_bom_pdf_export(project_id, snapshot_id, db)
-    file_path, _ = export_service.get_export_file(project_id, job.job_id)
-    return FileResponse(path=file_path, media_type="application/pdf", filename=job.filename)
+    contents, _ = export_service.get_export_content(project_id, job.job_id)
+    return Response(
+        content=contents,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{job.filename}"'},
+    )
 
 
 @router.post(

@@ -22,6 +22,12 @@ function compactCategory(value: string): string {
   return value.replace(/_/g, " ").toLowerCase();
 }
 
+function commercialTone(status: string): string {
+  if (status === "quote_ready") return "border-emerald-400/45 text-emerald-700 dark:text-emerald-300";
+  if (status === "input_required") return "border-amber-400/45 text-amber-700 dark:text-amber-300";
+  return "border-rose-400/45 text-rose-700 dark:text-rose-300";
+}
+
 export default async function AdminServicesPage(): Promise<JSX.Element> {
   const [serviceProducts, matrix, verificationJobs, verificationAlerts] = await Promise.all([
     api.listServiceProducts(),
@@ -108,6 +114,14 @@ export default async function AdminServicesPage(): Promise<JSX.Element> {
                 <span>{service.limits_count} limits</span>
                 <span>{service.interoperability_count} rules</span>
                 <span>{service.evidence_count} sources</span>
+              </div>
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-[var(--color-border)] pt-4">
+                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${commercialTone(service.commercial_readiness)}`}>
+                  {service.commercial_readiness.replaceAll("_", " ")}
+                </span>
+                <span className="text-xs text-[var(--color-text-muted)]">
+                  {service.approved_mapping_count} governed {service.approved_mapping_count === 1 ? "meter" : "meters"}
+                </span>
               </div>
               <span className="mt-auto inline-flex items-center gap-2 pt-5 text-sm font-semibold text-[var(--color-accent)]">
                 Open product
