@@ -18,15 +18,15 @@ the sole deterministic authorities.
 
 ## Agent Catalog
 
-| Agent | Product location | Authorized tool |
+| Agent | Product location | Governed capability |
 |---|---|---|
-| Architecture Review | Dashboard, Catalog, Integration | `load_architecture_review_evidence` |
-| Service Product Verification | Library > Service Products | `verify_official_service_sources` |
-| Import Quality | Import Review | `inspect_import_quality` |
-| Integration Design | Integration Canvas | `inspect_integration_design` |
-| Topology Investigation | Map | `inspect_topology_context` |
-| BOM Scenario | BOM & Cost | `inspect_bom_scenario` |
-| OCI DIS App Assistant | Global floating assistant | `answer_app_support_question` |
+| Architecture Remediation | Dashboard, Catalog, Integration | Compare blockers, prepare remediation drafts, approve, execute, and post-validate |
+| Official Source Governance | Library > Service Products | Compare official evidence, prepare governed updates, and validate quote fixtures |
+| Import Correction | Import Review | Prioritize quality gaps, prepare correction drafts, and validate downstream impact |
+| Integration Design Optimizer | Integration Canvas | Compare deterministic candidates and simulate an approved draft before explicit save |
+| Topology Resilience | Map | Analyze blast radius and prepare auditable mitigation drafts |
+| BOM Scenario Optimizer | BOM & Cost | Compare baseline, phased, and availability alternatives and create an approved scenario draft |
+| OCI DIS Decision Assistant | Global floating assistant | Answer from App evidence and route material decisions to the specialized workspace |
 
 Canvas and topology are specialized architecture scopes, not duplicate engines.
 The Service Verification tool may retrieve only registered Oracle-controlled
@@ -38,7 +38,8 @@ sources and creates findings; an Admin must accept any governed rule update.
   token totals, cancellation, and compatibility-job linkage.
 - `agent_steps`: sanitized progress and tool-call diagnostics.
 - `agent_artifacts`: governed evidence used by the run.
-- `agent_approvals`: explicit human decision records for proposed mutations.
+- `agent_approvals`: explicit human decisions, execution status, bounded execution
+  results, and post-validation evidence for proposed changes.
 - `AuditEvent`: run creation, completion, cancellation, and approval decisions.
 
 Every completed run stores two additional result contracts without changing the
@@ -48,6 +49,14 @@ authoritative evidence tables:
   identifiers, and confidence.
 - `output_quality`: normalization state, grounding decision, deterministic fallback
   reason, and evidence-completeness percentage.
+- `decision_workspace`: up to three typed alternatives with changes, impact,
+  missing inputs, implementation steps, validation, confidence, and completion contract.
+
+The worker also persists proposal artifacts for alternatives that can become a
+governed draft. Approval and execution are separate commands. Execution is
+idempotent, emits audit evidence, and creates a post-validation artifact. Canvas
+execution remains a simulation until an architect explicitly saves the draft;
+BOM execution creates a draft deployment scenario, never an approved quote.
 
 Static definitions in `app/agents/registry.py` are version controlled. Runtime
 prompts cannot be edited through the database or UI.
@@ -108,26 +117,29 @@ commercial claims without priced evidence. The deterministic tool output then
 builds the same explainable hierarchy for the UI. Provider text remains advisory;
 the structured brief and evidence artifact are generated from App-owned data.
 
-Service Verification, Import Quality, Topology Investigation, and BOM Scenario
-definitions explicitly require what/why/how/validate answers. Integration Design
-and Architecture Review continue to use the prescriptive candidate and action
-workspaces implemented by M43-M44. Human approval and `Apply to draft` behavior
-remain on existing explicit endpoints.
+All specialized agents use the shared decision workspace. Human approval never
+executes a change. The separate execution command calls only an allowlisted,
+typed application action and records a post-validation result. Existing domain
+approval and explicit Canvas save behavior remain authoritative.
 
 ## Execution
 
 1. A contextual product action creates its specialized compatibility job when needed.
 2. The API validates service-layer RBAC and creates `AgentRun`.
 3. Celery routes the task exclusively to the `agents` queue.
-4. OCI Responses is attempted first to call the one allowlisted tool; an endpoint-level
-   compatibility failure uses Chat Completions without changing the tool contract.
-5. The Docker worker executes the deterministic tool and returns bounded evidence.
-6. OCI Guardrails evaluates input and output; provider or safety failure falls back
+4. The worker loads bounded deterministic evidence and builds a typed decision
+   workspace from valid application candidates.
+5. OCI Responses is attempted first for grounded synthesis; an endpoint-level
+   compatibility failure uses Chat Completions without changing the evidence contract.
+6. The worker prepares approval-gated proposal artifacts for executable alternatives.
+7. OCI Guardrails evaluates input and output; provider or safety failure falls back
    to an honest deterministic summary or explicit refusal.
-7. The shared output gate grounds and structures the result or replaces it with a
+8. The shared output gate grounds and structures the result or replaces it with a
    deterministic explainable brief.
-8. The worker persists evidence, output quality, diagnostics, terminal state, and audit.
-9. Mutations remain on existing explicit review/apply endpoints.
+9. The worker persists evidence, alternatives, proposals, output quality,
+   diagnostics, terminal state, and audit.
+10. A human approves or rejects a proposal. A second explicit command executes an
+    allowlisted action and persists post-validation; domain approval remains separate.
 
 ## Deployment
 
@@ -138,8 +150,9 @@ to OCIR and used by OCI Hosted Agentic Applications without changing tool contra
 
 ## Validation
 
-- API tests cover catalog visibility, RBAC, run persistence, deterministic
-  completion, cancellation, project headers, tool calls, evidence return, and token accounting.
+- API tests cover catalog visibility, RBAC, four-stage run persistence,
+  cancellation, evidence return, alternatives, proposal decisions, idempotent
+  execution, post-validation, and token accounting.
 - Docker tests cover backend, frontend, migration, and image contracts.
 - `scripts/smoke_oci_agent.py` performs a sanitized real-provider Function Calling smoke.
 - Browser validation covers Agent Operations, global project selection, direct

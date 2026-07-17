@@ -40,6 +40,40 @@
             "title": "Action Type",
             "type": "string"
           },
+          "executed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executed At"
+          },
+          "execution_result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Result"
+          },
+          "execution_status": {
+            "enum": [
+              "not_started",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Execution Status",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -95,7 +129,10 @@
           "proposed_payload",
           "reviewed_by",
           "review_note",
-          "reviewed_at"
+          "reviewed_at",
+          "execution_status",
+          "execution_result",
+          "executed_at"
         ],
         "title": "AgentApprovalResponse",
         "type": "object"
@@ -822,6 +859,17 @@
             "title": "Completed Runs",
             "type": "integer"
           },
+          "execution_rate_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Rate Pct"
+          },
           "follow_up_runs_after_approval": {
             "title": "Follow Up Runs After Approval",
             "type": "integer"
@@ -856,6 +904,18 @@
               }
             ],
             "title": "Median Execution Seconds"
+          },
+          "post_validations_completed": {
+            "title": "Post Validations Completed",
+            "type": "integer"
+          },
+          "proposals_created": {
+            "title": "Proposals Created",
+            "type": "integer"
+          },
+          "proposals_executed": {
+            "title": "Proposals Executed",
+            "type": "integer"
           },
           "provider_synthesis_rate_pct": {
             "title": "Provider Synthesis Rate Pct",
@@ -894,12 +954,16 @@
           "approval_decisions",
           "approved_decisions",
           "rejected_decisions",
+          "proposals_created",
+          "proposals_executed",
+          "post_validations_completed",
           "follow_up_runs_after_approval",
           "provider_synthesis_rate_pct",
           "grounded_output_rate_pct",
           "high_evidence_completeness_rate_pct",
           "acceptance_rate_pct",
           "approval_follow_up_rate_pct",
+          "execution_rate_pct",
           "median_execution_seconds"
         ],
         "title": "AgentValueMetricsResponse",
@@ -2410,6 +2474,17 @@
             },
             "title": "Accepted Recommendations",
             "type": "array"
+          },
+          "agent_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Run Id"
           },
           "created_at": {
             "format": "date-time",
@@ -5300,6 +5375,21 @@
               }
             ],
             "title": "Target Latency Sla"
+          },
+          "tbq": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Y",
+                  "N"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tbq"
           }
         },
         "title": "CatalogIntegrationPatch",
@@ -5385,6 +5475,10 @@
               }
             ],
             "title": "Comments"
+          },
+          "commercially_eligible": {
+            "title": "Commercially Eligible",
+            "type": "boolean"
           },
           "complexity": {
             "anyOf": [
@@ -5795,6 +5889,14 @@
             ],
             "title": "Target Latency Sla"
           },
+          "tbq": {
+            "enum": [
+              "Y",
+              "N"
+            ],
+            "title": "Tbq",
+            "type": "string"
+          },
           "trigger_type": {
             "anyOf": [
               {
@@ -5817,17 +5919,6 @@
             ],
             "title": "Type"
           },
-          "uncertainty": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Uncertainty"
-          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -5838,6 +5929,8 @@
           "id",
           "project_id",
           "source_row_id",
+          "tbq",
+          "commercially_eligible",
           "seq_number",
           "interface_id",
           "owner",
@@ -5882,7 +5975,6 @@
           "qa_status",
           "calendarization",
           "retention_processing_window",
-          "uncertainty",
           "created_at",
           "updated_at"
         ],
@@ -7323,6 +7415,276 @@
         "title": "FunctionsMetrics",
         "type": "object"
       },
+      "GovernanceChangeSetListResponse": {
+        "additionalProperties": false,
+        "description": "Recent continuous OCI verification decisions.",
+        "properties": {
+          "change_sets": {
+            "items": {
+              "$ref": "#/components/schemas/GovernanceChangeSetResponse"
+            },
+            "title": "Change Sets",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "GovernanceChangeSetListResponse",
+        "type": "object"
+      },
+      "GovernanceChangeSetResponse": {
+        "additionalProperties": false,
+        "description": "Atomic OCI source, drift, regression, and approval decision.",
+        "properties": {
+          "approval_status": {
+            "title": "Approval Status",
+            "type": "string"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/GovernanceSourceArtifactResponse"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "drift_classification": {
+            "title": "Drift Classification",
+            "type": "string"
+          },
+          "drift_summary": {
+            "additionalProperties": true,
+            "title": "Drift Summary",
+            "type": "object"
+          },
+          "error_details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Details"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "impact_summary": {
+            "additionalProperties": true,
+            "title": "Impact Summary",
+            "type": "object"
+          },
+          "materiality_score": {
+            "title": "Materiality Score",
+            "type": "number"
+          },
+          "previous_change_set_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Change Set Id"
+          },
+          "price_snapshot_id": {
+            "title": "Price Snapshot Id",
+            "type": "string"
+          },
+          "price_source_id": {
+            "title": "Price Source Id",
+            "type": "string"
+          },
+          "promoted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted At"
+          },
+          "regression_summary": {
+            "additionalProperties": true,
+            "title": "Regression Summary",
+            "type": "object"
+          },
+          "regressions": {
+            "items": {
+              "$ref": "#/components/schemas/QuotationRegressionRunResponse"
+            },
+            "title": "Regressions",
+            "type": "array"
+          },
+          "source_manifest": {
+            "additionalProperties": true,
+            "title": "Source Manifest",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "sync_job_id": {
+            "title": "Sync Job Id",
+            "type": "string"
+          },
+          "trigger_type": {
+            "title": "Trigger Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "validation_status": {
+            "title": "Validation Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sync_job_id",
+          "price_source_id",
+          "price_snapshot_id",
+          "previous_change_set_id",
+          "trigger_type",
+          "currency",
+          "status",
+          "drift_classification",
+          "materiality_score",
+          "source_manifest",
+          "drift_summary",
+          "impact_summary",
+          "validation_status",
+          "regression_summary",
+          "approval_status",
+          "approved_by",
+          "approved_at",
+          "promoted_at",
+          "error_details",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "GovernanceChangeSetResponse",
+        "type": "object"
+      },
+      "GovernanceSourceArtifactResponse": {
+        "additionalProperties": false,
+        "description": "Immutable official-source artifact captured for one verification run.",
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "record_count": {
+            "title": "Record Count",
+            "type": "integer"
+          },
+          "retrieval_status": {
+            "title": "Retrieval Status",
+            "type": "string"
+          },
+          "retrieved_at": {
+            "format": "date-time",
+            "title": "Retrieved At",
+            "type": "string"
+          },
+          "source_kind": {
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "source_last_updated": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Last Updated"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "storage_reference": {
+            "title": "Storage Reference",
+            "type": "string"
+          },
+          "validation_summary": {
+            "additionalProperties": true,
+            "title": "Validation Summary",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "source_kind",
+          "source_url",
+          "content_hash",
+          "record_count",
+          "storage_reference",
+          "source_last_updated",
+          "retrieval_status",
+          "validation_summary",
+          "retrieved_at"
+        ],
+        "title": "GovernanceSourceArtifactResponse",
+        "type": "object"
+      },
       "GraphEdge": {
         "description": "One directed source-to-destination relationship in the dependency graph.",
         "properties": {
@@ -7885,6 +8247,17 @@
             "title": "Status",
             "type": "string"
           },
+          "tbq_n_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tbq N Count"
+          },
           "tbq_y_count": {
             "anyOf": [
               {
@@ -7967,6 +8340,10 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "technical_only_count": {
+            "title": "Technical Only Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -7977,6 +8354,7 @@
           "row_count",
           "included_count",
           "excluded_count",
+          "technical_only_count",
           "normalization_event_count",
           "recommended_next_action"
         ],
@@ -8534,6 +8912,10 @@
           },
           "tbq": {
             "default": "Y",
+            "enum": [
+              "Y",
+              "N"
+            ],
             "title": "Tbq",
             "type": "string"
           },
@@ -8547,17 +8929,6 @@
               }
             ],
             "title": "Type"
-          },
-          "uncertainty": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Uncertainty"
           }
         },
         "required": [
@@ -10413,6 +10784,69 @@
           }
         },
         "title": "QueueMetrics",
+        "type": "object"
+      },
+      "QuotationRegressionRunResponse": {
+        "additionalProperties": false,
+        "description": "One family-level deterministic quotation regression result.",
+        "properties": {
+          "completed_at": {
+            "format": "date-time",
+            "title": "Completed At",
+            "type": "string"
+          },
+          "failed_count": {
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "family_key": {
+            "title": "Family Key",
+            "type": "string"
+          },
+          "findings": {
+            "items": {},
+            "title": "Findings",
+            "type": "array"
+          },
+          "fixture_count": {
+            "title": "Fixture Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mapping_count": {
+            "title": "Mapping Count",
+            "type": "integer"
+          },
+          "passed_count": {
+            "title": "Passed Count",
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "family_key",
+          "status",
+          "fixture_count",
+          "passed_count",
+          "failed_count",
+          "mapping_count",
+          "findings",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "QuotationRegressionRunResponse",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -14704,6 +15138,77 @@
           }
         },
         "summary": "Decide an agent proposal",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
+    "/api/v1/agents/runs/{run_id}/approvals/{approval_id}/execute": {
+      "post": {
+        "operationId": "execute_agent_approval_api_v1_agents_runs__run_id__approvals__approval_id__execute_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute an approved deterministic agent proposal",
         "tags": [
           "Agents"
         ]
@@ -19206,6 +19711,109 @@
           }
         },
         "summary": "List normalized price items",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/governance-change-sets": {
+      "get": {
+        "operationId": "list_governance_change_sets_api_v1_pricing_governance_change_sets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceChangeSetListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List official OCI source verification decisions",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/governance-change-sets/{change_set_id}": {
+      "get": {
+        "operationId": "get_governance_change_set_api_v1_pricing_governance_change_sets__change_set_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_set_id",
+            "required": true,
+            "schema": {
+              "title": "Change Set Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceChangeSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get one official OCI source verification decision",
         "tags": [
           "Pricing"
         ]

@@ -458,6 +458,9 @@ export function CatalogTable({
                     />
                     <ComplexityBadge value={integration.complexity} />
                     <QaBadge status={integration.qa_status} />
+                    {!integration.commercially_eligible ? (
+                      <span className="app-theme-chip">Technical only</span>
+                    ) : null}
                   </div>
 
                   <div className="mt-4 flex items-center justify-between gap-3">
@@ -539,6 +542,9 @@ export function CatalogTable({
                             <span className="font-mono">{integration.interface_id ?? integration.id.slice(0, 8)}</span>
                             {integration.business_process ? ` · ${integration.business_process}` : ""}
                           </p>
+                          {!integration.commercially_eligible ? (
+                            <span className="app-theme-chip mt-2">Technical only</span>
+                          ) : null}
                         </td>
                         <td className="overflow-hidden px-3 py-3">
                           <span className="inline-flex w-full min-w-0 items-center gap-1.5 overflow-hidden text-xs text-[var(--color-text-secondary)]">
@@ -690,6 +696,9 @@ export function CatalogTable({
                   <div className="mt-4 flex flex-wrap gap-2">
                     <QaBadge status={selectedIntegration.qa_status} />
                     <ComplexityBadge value={selectedIntegration.complexity} />
+                    {!selectedIntegration.commercially_eligible ? (
+                      <span className="app-theme-chip">Technical only</span>
+                    ) : null}
                     <PatternBadge
                       patternId={selectedIntegration.selected_pattern}
                       name={

@@ -103,6 +103,80 @@ class PriceCatalogSnapshotListResponse(BaseModel):
     total: int
 
 
+class GovernanceSourceArtifactResponse(BaseModel):
+    """Immutable official-source artifact captured for one verification run."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    source_kind: str
+    source_url: str
+    content_hash: str
+    record_count: int
+    storage_reference: str
+    source_last_updated: Optional[datetime]
+    retrieval_status: str
+    validation_summary: dict[str, Any]
+    retrieved_at: datetime
+
+
+class QuotationRegressionRunResponse(BaseModel):
+    """One family-level deterministic quotation regression result."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    family_key: str
+    status: str
+    fixture_count: int
+    passed_count: int
+    failed_count: int
+    mapping_count: int
+    findings: list[Any]
+    started_at: datetime
+    completed_at: datetime
+
+
+class GovernanceChangeSetResponse(BaseModel):
+    """Atomic OCI source, drift, regression, and approval decision."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    sync_job_id: str
+    price_source_id: str
+    price_snapshot_id: str
+    previous_change_set_id: Optional[str]
+    trigger_type: str
+    currency: str
+    status: str
+    drift_classification: str
+    materiality_score: float
+    source_manifest: dict[str, Any]
+    drift_summary: dict[str, Any]
+    impact_summary: dict[str, Any]
+    validation_status: str
+    regression_summary: dict[str, Any]
+    approval_status: str
+    approved_by: Optional[str]
+    approved_at: Optional[datetime]
+    promoted_at: Optional[datetime]
+    error_details: Optional[dict[str, Any]]
+    artifacts: list[GovernanceSourceArtifactResponse] = Field(default_factory=list)
+    regressions: list[QuotationRegressionRunResponse] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class GovernanceChangeSetListResponse(BaseModel):
+    """Recent continuous OCI verification decisions."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    change_sets: list[GovernanceChangeSetResponse] = Field(default_factory=list)
+    total: int
+
+
 class PriceItemResponse(BaseModel):
     """Normalized price item or tier."""
 

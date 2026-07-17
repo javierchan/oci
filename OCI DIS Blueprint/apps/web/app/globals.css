@@ -2,8 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: "Oracle Sans";
+  src: url("/fonts/oracle-sans/OracleSans_Lt.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Oracle Sans";
+  src: url("/fonts/oracle-sans/OracleSans_Rg.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Oracle Sans";
+  src: url("/fonts/oracle-sans/OracleSans_SBd.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
 :root {
   --font-sans: "Inter Tight", "Aptos", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-brand: "Oracle Sans", var(--font-sans);
   --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Mono", ui-monospace, monospace;
   --color-page-bg: #fafaf7;
   --color-hover: #f0eee7;
@@ -236,6 +261,28 @@ html.dark {
 }
 
 @layer components {
+  .app-brand-name {
+    font-family: var(--font-brand);
+    font-size: 1rem;
+    font-weight: 600;
+    font-kerning: normal;
+    letter-spacing: 0;
+    line-height: 1.15;
+  }
+
+  .app-brand-name-mobile {
+    font-size: 0.8125rem;
+  }
+
+  .app-brand-tagline {
+    font-family: var(--font-brand);
+    font-size: 0.6875rem;
+    font-weight: 300;
+    font-kerning: normal;
+    letter-spacing: 0;
+    line-height: 1.25;
+  }
+
   .console-page {
     @apply mx-auto w-full max-w-[90rem] space-y-6;
   }

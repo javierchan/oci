@@ -20,6 +20,7 @@ import { formatDate, formatNumber } from "@/lib/format";
 import { isPriceSyncTerminal } from "@/lib/types";
 import type {
   PriceCatalogSnapshot,
+  GovernanceChangeSet,
   PriceItem,
   PriceSource,
   PriceSyncJob,
@@ -29,10 +30,10 @@ import type {
 } from "@/lib/types";
 
 function statusClasses(status: string): string {
-  if (status === "approved" || status === "completed" || status === "active") {
+  if (["approved", "completed", "active", "passed", "promoted", "no_change", "not_required"].includes(status)) {
     return "border-emerald-400/45 text-emerald-700 dark:text-emerald-300";
   }
-  if (status === "failed" || status === "retired") {
+  if (["failed", "retired", "blocked"].includes(status)) {
     return "border-rose-400/45 text-rose-700 dark:text-rose-300";
   }
   return "border-amber-400/45 text-amber-700 dark:text-amber-300";
@@ -57,6 +58,7 @@ export function PricingAdminPanel(): JSX.Element {
   const [sources, setSources] = useState<PriceSource[]>([]);
   const [jobs, setJobs] = useState<PriceSyncJob[]>([]);
   const [snapshots, setSnapshots] = useState<PriceCatalogSnapshot[]>([]);
+  const [changeSets, setChangeSets] = useState<GovernanceChangeSet[]>([]);
   const [mappings, setMappings] = useState<SkuMapping[]>([]);
   const [items, setItems] = useState<PriceItem[]>([]);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("");
@@ -75,16 +77,18 @@ export function PricingAdminPanel(): JSX.Element {
       setLoading(true);
     }
     try {
-      const [sourceResult, jobResult, snapshotResult, mappingResult] = await Promise.all([
+      const [sourceResult, jobResult, snapshotResult, mappingResult, changeSetResult] = await Promise.all([
         api.listPriceSources(),
         api.listPriceSyncJobs(12),
         api.listPriceCatalogSnapshots(12),
         api.listSkuMappings(),
+        api.listGovernanceChangeSets(12),
       ]);
       setSources(sourceResult.sources);
       setJobs(jobResult.jobs);
       setSnapshots(snapshotResult.snapshots);
       setMappings(mappingResult.mappings);
+      setChangeSets(changeSetResult.change_sets);
       setSelectedSnapshotId((current) => current || snapshotResult.snapshots[0]?.id || "");
       setError("");
     } catch (caughtError) {
@@ -142,7 +146,11 @@ export function PricingAdminPanel(): JSX.Element {
   async function runSync(): Promise<void> {
     setBusyAction("sync");
     try {
-      await api.createPriceSyncJob({ source_id: sources[0]?.id, currency: currency.toUpperCase() });
+      const publicSource = sources.find((source) => source.source_type === "public_list");
+      if (!publicSource) {
+        throw new Error("No active Oracle public price source is configured.");
+      }
+      await api.createPriceSyncJob({ source_id: publicSource.id, currency: currency.toUpperCase() });
       emitToast("info", "Price synchronization queued.");
       await load(true);
     } catch (caughtError) {
@@ -233,28 +241,47 @@ export function PricingAdminPanel(): JSX.Element {
   }
 
   const approvedMappings = mappings.filter((mapping) => mapping.status === "approved").length;
+  const latestChangeSet = changeSets[0];
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       {error ? (
         <div role="alert" className="rounded-lg border border-rose-400/45 bg-[var(--color-surface-2)] p-4 text-sm text-rose-700 dark:text-rose-300">
           {error}
         </div>
       ) : null}
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(20rem,0.7fr)]">
-        <div className="app-card p-5">
+      <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(20rem,0.7fr)]">
+        <div className="app-card min-w-0 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="app-label">Provider Status</p>
               <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Governed price sources</h2>
             </div>
-            <button className="app-button-primary gap-2" type="button" disabled={busyAction !== null || hasActiveJob} onClick={() => void runSync()}>
+            <button className="app-button-primary gap-2" type="button" disabled={busyAction !== null || hasActiveJob || !sources.some((source) => source.source_type === "public_list")} onClick={() => void runSync()}>
               {busyAction === "sync" || hasActiveJob ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
               {hasActiveJob ? "Sync running" : "Sync public prices"}
             </button>
           </div>
-          <div className="mt-5 overflow-x-auto">
+          <div className="mt-5 grid gap-3 sm:hidden">
+            {sources.map((source) => (
+              <article key={source.id} className="rounded-lg border border-[var(--color-border)] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="break-words font-semibold text-[var(--color-text-primary)]">{source.name}</p>
+                    <p className="mt-1 text-xs capitalize text-[var(--color-text-muted)]">
+                      {source.source_type.replace(/_/g, " ")} · {source.currency}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses(source.status)}`}>{source.status}</span>
+                </div>
+                <p className="mt-3 text-xs text-[var(--color-text-secondary)]">
+                  Last sync: {source.last_synced_at ? formatDate(source.last_synced_at) : "Never"}
+                </p>
+              </article>
+            ))}
+          </div>
+          <div className="mt-5 hidden overflow-x-auto sm:block">
             <table className="w-full min-w-[620px] text-left text-sm">
               <thead className="text-xs uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
                 <tr><th className="pb-3">Source</th><th className="pb-3">Type</th><th className="pb-3">Currency</th><th className="pb-3">Status</th><th className="pb-3">Last sync</th></tr>
@@ -274,7 +301,7 @@ export function PricingAdminPanel(): JSX.Element {
           </div>
         </div>
 
-        <div className="app-card p-5">
+        <div className="app-card min-w-0 overflow-hidden p-5">
           <p className="app-label">Contract Rate Card</p>
           <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Import reviewed CSV</h2>
           <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">Creates an immutable commercial source without replacing public list prices.</p>
@@ -288,7 +315,7 @@ export function PricingAdminPanel(): JSX.Element {
           </label>
           <label className="mt-3 block text-sm font-semibold text-[var(--color-text-primary)]">
             CSV rate card
-            <input className="mt-2 block w-full text-sm text-[var(--color-text-secondary)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-surface-3)] file:px-3 file:py-2 file:font-semibold file:text-[var(--color-text-primary)]" type="file" accept=".csv,text/csv" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />
+            <input className="mt-2 block min-w-0 max-w-full text-sm text-[var(--color-text-secondary)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-surface-3)] file:px-3 file:py-2 file:font-semibold file:text-[var(--color-text-primary)]" type="file" accept=".csv,text/csv" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />
           </label>
           <button className="app-button-secondary mt-4 w-full gap-2" type="button" disabled={!uploadFile || !rateCardName.trim() || busyAction !== null} onClick={() => void uploadRateCard()}>
             {busyAction === "upload" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
@@ -297,7 +324,68 @@ export function PricingAdminPanel(): JSX.Element {
         </div>
       </section>
 
-      <section className="app-card p-5">
+      <section className="app-card min-w-0 overflow-hidden">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--color-border)] px-5 py-5">
+          <div>
+            <p className="app-label">OCI Verification Center</p>
+            <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Official sources and quote regressions</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+              Products, metrics, presets, and public prices are captured together. A catalog can be promoted only after every governed commercial family passes its deterministic fixture.
+            </p>
+          </div>
+          {latestChangeSet ? (
+            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusClasses(latestChangeSet.validation_status)}`}>
+              {latestChangeSet.validation_status.replaceAll("_", " ")}
+            </span>
+          ) : null}
+        </div>
+        {latestChangeSet ? (
+          <div className="grid gap-px bg-[var(--color-border)] md:grid-cols-4">
+            <div className="bg-[var(--color-surface)] p-5">
+              <p className="app-label">Source evidence</p>
+              <p className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{latestChangeSet.artifacts.length} / 4</p>
+              <p className="mt-1 text-sm text-[var(--color-text-secondary)]">verified artifacts in Object Storage</p>
+            </div>
+            <div className="bg-[var(--color-surface)] p-5">
+              <p className="app-label">Quote coverage</p>
+              <p className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{String(latestChangeSet.regression_summary.coverage_pct ?? 0)}%</p>
+              <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{String(latestChangeSet.regression_summary.passed ?? 0)} of {String(latestChangeSet.regression_summary.families ?? 0)} families passed</p>
+            </div>
+            <div className="bg-[var(--color-surface)] p-5">
+              <p className="app-label">Detected drift</p>
+              <p className="mt-2 text-lg font-semibold capitalize text-[var(--color-text-primary)]">{latestChangeSet.drift_classification.replaceAll("_", " ")}</p>
+              <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{String(latestChangeSet.drift_summary.price_signature_changes ?? 0)} price signature changes</p>
+            </div>
+            <div className="bg-[var(--color-surface)] p-5">
+              <p className="app-label">Promotion</p>
+              <p className="mt-2 text-lg font-semibold capitalize text-[var(--color-text-primary)]">{latestChangeSet.approval_status.replaceAll("_", " ")}</p>
+              <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{formatDate(latestChangeSet.created_at)} · {latestChangeSet.trigger_type}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="px-5 py-8 text-sm text-[var(--color-text-secondary)]">
+            Run public-source verification to establish the first governed baseline.
+          </div>
+        )}
+        {changeSets.length > 0 ? (
+          <div className="border-t border-[var(--color-border)] px-5 py-4">
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {changeSets.slice(0, 6).map((changeSet) => (
+                <div key={changeSet.id} className="rounded-lg border border-[var(--color-border)] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-mono text-xs text-[var(--color-text-muted)]">{compactId(changeSet.id)}</span>
+                    <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClasses(changeSet.validation_status)}`}>{changeSet.status.replaceAll("_", " ")}</span>
+                  </div>
+                  <p className="mt-2 text-sm font-semibold capitalize text-[var(--color-text-primary)]">{changeSet.drift_classification.replaceAll("_", " ")}</p>
+                  <p className="mt-1 text-xs text-[var(--color-text-muted)]">{changeSet.artifacts.length} sources · {String(changeSet.regression_summary.passed ?? 0)} families passed</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="app-card min-w-0 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><p className="app-label">Immutable Catalogs</p><h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Review and approval queue</h2></div>
           <span className="text-sm text-[var(--color-text-secondary)]">{snapshots.length} recent snapshots</span>
@@ -310,24 +398,24 @@ export function PricingAdminPanel(): JSX.Element {
                 <p className="mt-3 text-2xl font-semibold text-[var(--color-text-primary)]">{formatNumber(snapshot.item_count)} items</p>
                 <p className="mt-1 text-xs text-[var(--color-text-muted)]">{snapshot.currency} · {formatDate(snapshot.retrieved_at)}</p>
               </button>
-              {snapshot.approval_status !== "approved" ? <button type="button" className="app-button-secondary mt-4 w-full gap-2" disabled={busyAction !== null} onClick={() => void approveSnapshot(snapshot.id)}>{busyAction === snapshot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}Approve</button> : null}
+              {snapshot.approval_status !== "approved" && snapshot.approval_status !== "superseded" ? <button type="button" className="app-button-secondary mt-4 w-full gap-2" disabled={busyAction !== null || changeSets.find((item) => item.price_snapshot_id === snapshot.id)?.validation_status !== "passed"} onClick={() => void approveSnapshot(snapshot.id)}>{busyAction === snapshot.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}Approve verified change</button> : null}
             </div>
           ))}
           {!loading && snapshots.length === 0 ? <p className="text-sm text-[var(--color-text-secondary)]">No price snapshots exist yet.</p> : null}
         </div>
       </section>
 
-      <section className="app-table-shell">
+      <section className="app-table-shell min-w-0 overflow-hidden">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4">
           <div><p className="app-label">Normalized Price Items</p><h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Selected catalog evidence</h2></div>
-          <label className="relative block min-w-[18rem] text-sm"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[var(--color-text-muted)]" /><input aria-label="Search price items" className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3" placeholder="Part number, product or metric" value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} /></label>
+          <label className="relative block w-full min-w-0 text-sm sm:w-auto sm:min-w-[18rem]"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[var(--color-text-muted)]" /><input aria-label="Search price items" className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3" placeholder="Part number, product or metric" value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} /></label>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-[var(--color-surface-2)] text-xs uppercase tracking-[0.12em] text-[var(--color-text-muted)]"><tr><th className="px-5 py-3">Part number</th><th className="px-5 py-3">Product</th><th className="px-5 py-3">Metric</th><th className="px-5 py-3">Model</th><th className="px-5 py-3 text-right">Unit price</th><th className="px-5 py-3">Tier</th></tr></thead><tbody className="divide-y divide-[var(--color-border)]">{items.map((item) => <tr key={item.id}><td className="px-5 py-3 font-mono text-[var(--color-text-primary)]">{item.part_number}</td><td className="px-5 py-3 font-medium text-[var(--color-text-primary)]">{item.display_name}</td><td className="px-5 py-3 text-[var(--color-text-secondary)]">{item.metric_name}</td><td className="px-5 py-3 text-[var(--color-text-secondary)]">{item.model}</td><td className="px-5 py-3 text-right font-mono text-[var(--color-text-primary)]">{item.currency} {item.value.toFixed(6)}</td><td className="px-5 py-3 text-[var(--color-text-muted)]">{item.range_min ?? "–"} to {item.range_max ?? "∞"}</td></tr>)}</tbody></table>
         </div>
       </section>
 
-      <section className="app-table-shell">
+      <section className="app-table-shell min-w-0 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4"><div><p className="app-label">SKU Mapping Coverage</p><h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Service demand to commercial SKU</h2></div><p className="text-sm font-semibold text-[var(--color-text-primary)]">{approvedMappings} of {mappings.length} approved</p></div>
         <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-[var(--color-surface-2)] text-xs uppercase tracking-[0.12em] text-[var(--color-text-muted)]"><tr><th className="px-5 py-3">Service / tool</th><th className="px-5 py-3">Part number</th><th className="px-5 py-3">Metric / formula</th><th className="px-5 py-3">Predicates</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-[var(--color-border)]">{mappings.map((mapping) => {
           const editing = editingMappingId === mapping.id && mappingDraft !== null;

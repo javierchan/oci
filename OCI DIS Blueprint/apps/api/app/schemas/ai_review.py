@@ -658,6 +658,7 @@ class AiReviewJobResponse(BaseModel):
     status: Literal["pending", "running", "completed", "failed"]
     scope: AiReviewScope
     integration_id: Optional[str] = None
+    agent_run_id: Optional[str] = None
     input_payload: dict[str, object]
     result: Optional[AiReviewResponse] = None
     accepted_recommendations: list[AiReviewRecommendationAcceptance] = Field(default_factory=list)

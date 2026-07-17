@@ -48,6 +48,7 @@ from app.services.pattern_support import support_reason_code
 from app.services.serializers import parse_bool, parse_float, parse_int, parse_text, sanitize_for_json
 
 SOURCE_SHEET_NAME = CAPTURE_SHEET_NAME
+LEGACY_SOURCE_SHEET_NAMES = ("Catálogo de Integraciones", "TPL - Catálogo")
 RAW_HEADERS_METADATA_KEY = "__raw_headers__"
 TEMPLATE_VERSION_METADATA_KEY = "__template_version__"
 TEMPLATE_COMPATIBILITY_METADATA_KEY = "__template_compatibility__"
@@ -90,7 +91,6 @@ FALLBACK_COLUMN_INDEXES: dict[str, int] = {
     "core_tools": 37,
     "additional_tools_overlays": 38,
     "qa_status": 39,
-    "uncertainty": 40,
 }
 _MISSING = object()
 _PAYLOAD_WITH_UNIT_PATTERN = re.compile(
@@ -200,6 +200,7 @@ def serialize_batch(batch: ImportBatch) -> ImportBatchResponse:
         status=batch.status.value,
         source_row_count=batch.source_row_count,
         tbq_y_count=batch.tbq_y_count,
+        tbq_n_count=batch.tbq_n_count,
         excluded_count=batch.excluded_count,
         loaded_count=batch.loaded_count,
         header_map=batch.header_map,
@@ -440,7 +441,6 @@ def _build_catalog_integration(
         payload_per_execution_kb=payload_value,
         is_fan_out=parse_bool(_extract_raw_value(raw_data, header_map, "is_fan_out")),
         fan_out_targets=parse_int(_extract_raw_value(raw_data, header_map, "fan_out_targets")),
-        uncertainty=parse_text(_extract_raw_value(raw_data, header_map, "uncertainty")) or None,
         is_active_row=True,
         retry_policy=parse_text(_extract_raw_value(raw_data, header_map, "retry_policy")),
         idempotency=parse_text(_extract_raw_value(raw_data, header_map, "idempotency")),
@@ -467,6 +467,11 @@ def _build_catalog_integration(
     return CatalogIntegration(
         project_id=project_id,
         source_row_id=source_row_id,
+        tbq=(
+            "Y"
+            if (parse_text(_extract_raw_value(raw_data, header_map, "tbq")) or "").strip().upper() == "Y"
+            else "N"
+        ),
         seq_number=parse_int(_extract_raw_value(raw_data, header_map, "seq_number")) or 0,
         interface_id=parse_text(_extract_raw_value(raw_data, header_map, "interface_id")),
         owner=parse_text(_extract_raw_value(raw_data, header_map, "owner")),
@@ -518,7 +523,6 @@ def _build_catalog_integration(
         retention_processing_window=parse_text(
             _extract_raw_value(raw_data, header_map, "retention_processing_window")
         ),
-        uncertainty=parse_text(_extract_raw_value(raw_data, header_map, "uncertainty")),
     )
 
 
@@ -569,12 +573,20 @@ async def process_import(batch_id: str, source_reference: str, db: AsyncSession)
     )
     manifest = _read_template_manifest(workbook)
     compatibility = _validate_template_version(manifest)
-    if SOURCE_SHEET_NAME not in workbook.sheetnames:
+    source_sheet_name = next(
+        (
+            name
+            for name in (SOURCE_SHEET_NAME, *LEGACY_SOURCE_SHEET_NAMES)
+            if name in workbook.sheetnames
+        ),
+        None,
+    )
+    if source_sheet_name is None:
         raise _bad_request(
             f"Required sheet '{SOURCE_SHEET_NAME}' not found in workbook.",
             "IMPORT_SHEET_NOT_FOUND",
         )
-    sheet = workbook[SOURCE_SHEET_NAME]
+    sheet = workbook[source_sheet_name]
     _assert_no_capture_formulas(sheet)
     all_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
     _validate_current_headers(all_rows, manifest)
@@ -640,6 +652,7 @@ async def process_import(batch_id: str, source_reference: str, db: AsyncSession)
 
     batch.source_row_count = import_result.source_row_count
     batch.tbq_y_count = import_result.tbq_y_count
+    batch.tbq_n_count = import_result.tbq_n_count
     batch.excluded_count = import_result.excluded_count
     batch.loaded_count = import_result.loaded_count
     batch.header_map = stored_header_map
@@ -782,6 +795,15 @@ async def get_import_quality_assistant(
     included_rows = [row for row in source_rows if row.included]
     excluded_rows = [row for row in source_rows if not row.included]
     header_map = cast(dict[str, str], batch.header_map or {})
+    technical_only_rows = [
+        row
+        for row in included_rows
+        if str(
+            _extract_raw_value(cast(dict[str, object], row.raw_data or {}), header_map, "tbq")
+            or "N"
+        ).strip().upper()
+        != "Y"
+    ]
     normalization_event_count = sum(len(row.normalization_events or []) for row in source_rows)
     included_total = len(included_rows)
     coverage_fields = {
@@ -798,6 +820,11 @@ async def get_import_quality_assistant(
     metrics = [
         _quality_metric("Rows parsed", str(len(source_rows)), "Source rows persisted from this workbook batch."),
         _quality_metric("Included rows", str(len(included_rows)), "Rows that entered the governed catalog flow."),
+        _quality_metric(
+            "Technical only",
+            str(len(technical_only_rows)),
+            "TBQ=N integrations included in technical governance and excluded from BOM and pricing.",
+        ),
         _quality_metric("Excluded rows", str(len(excluded_rows)), "Rows excluded by import rules or workbook evidence."),
         _quality_metric(
             "Normalizations",
@@ -833,6 +860,16 @@ async def get_import_quality_assistant(
                 import_href,
             )
         )
+    if technical_only_rows:
+        findings.append(
+            _quality_finding(
+                "positive",
+                "Technical integrations retained outside the quote",
+                f"{len(technical_only_rows)} TBQ=N integration(s) remain available for architecture analysis and are excluded from the economic exercise.",
+                "Open governed catalog",
+                catalog_href,
+            )
+        )
     for label, count in coverage_counts.items():
         if included_total and count < included_total:
             severity = "high" if label in {"Payload", "Pattern", "Trigger"} else "medium"
@@ -859,7 +896,7 @@ async def get_import_quality_assistant(
     if any(finding.severity in {"critical", "high"} for finding in findings):
         next_action = "Resolve high-priority import evidence gaps before using forecasts or AI Review for sign-off."
     elif findings:
-        next_action = "Review excluded rows and normalization evidence, then continue catalog governance."
+        next_action = "Review import evidence, then continue technical governance; move TBQ to Y only when an integration is ready for the economic exercise."
     else:
         next_action = "Import quality is clean; continue with catalog QA, canvas design, and recalculation."
     return ImportQualityAssistantResponse(
@@ -870,6 +907,7 @@ async def get_import_quality_assistant(
         row_count=len(source_rows),
         included_count=len(included_rows),
         excluded_count=len(excluded_rows),
+        technical_only_count=len(technical_only_rows),
         normalization_event_count=normalization_event_count,
         recommended_next_action=next_action,
         metrics=metrics,

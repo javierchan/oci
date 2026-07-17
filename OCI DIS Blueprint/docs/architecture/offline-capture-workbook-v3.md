@@ -1,93 +1,78 @@
-# Governed Offline Capture Workbook v3
+# Governed Offline Capture Workbook v3.1
 
 ## Purpose
 
-The workbook downloaded from `GET /api/v1/exports/template/xlsx` is the formal
-offline capture surface for OCI DIS Blueprint. It is generated on demand from
-the same governed patterns, dictionaries, Service Product Library records,
-limits, interoperability rules, and evidence freshness used by the App.
+`GET /api/v1/exports/template/xlsx` returns the formal en-US offline capture
+surface for OCI DIS Architect. It is generated from the same governed patterns,
+dictionaries, Service Product Library, limits, interoperability rules, and
+reviewed evidence used by the App.
 
-The workbook is intentionally usable by an analyst who does not yet understand
-integration architecture, OCI services, or OCI DIS Blueprint. It explains the
-workflow, provides examples outside the importable sheet, validates the most
-important inputs, and preserves uncertainty rather than encouraging invented
-values.
+The workbook is designed for users who may not yet understand integration
+architecture, OCI services, or the App. It explains the workflow, keeps examples
+outside the importable sheet, validates important inputs, and preserves missing
+information without inventing values.
 
 ## Workbook Contract
 
 | Sheet | Purpose | Imported |
 |---|---|---|
-| `Inicio` | Plain-language workflow, rules, and capture legend | No |
-| `Dashboard` | Offline capture progress, criticality distribution, and pending decisions | No |
-| `Catálogos del Cliente` | Editable customer vocabulary used as dropdown suggestions | No |
-| `Catálogo de Integraciones` | Blank 500-row governed capture surface | Yes |
-| `Validación Previa` | Formula-driven readiness and conditional checks | No |
-| `Ejemplos Guiados` | One practical applicability example per active pattern | No |
-| `Guía de Campos` | Field definition, examples, App usage, and missing-data impact | No |
-| `Patrones` | Active tool-agnostic pattern library and OCI implementation guidance | No |
-| `Servicios OCI` | Active normalized Service Product Library snapshot | No |
-| `Límites OCI` | Active normalized service limits and official sources | No |
-| `Interoperabilidad` | Active directional service compatibility rules | No |
-| `_Listas` | Very-hidden validation lists and template manifest | No |
+| `Start Here` | Plain-language workflow, rules, and capture legend | No |
+| `Dashboard` | Offline progress, criticality distribution, and pending decisions | No |
+| `Client Catalogs` | Editable customer vocabulary used as dropdown suggestions | No |
+| `Integration Catalog` | Blank 500-row governed capture surface | Yes |
+| `Preflight Validation` | Formula-driven readiness and conditional checks | No |
+| `Guided Examples` | Practical applicability example per active pattern | No |
+| `Field Guide` | Definitions, examples, App usage, and missing-data impact | No |
+| `Patterns` | Certified tool-agnostic patterns and OCI implementation guidance | No |
+| `OCI Services` | Active normalized Service Product Library snapshot | No |
+| `OCI Limits` | Active normalized service limits and official sources | No |
+| `Interoperability` | Active directional service compatibility rules | No |
+| `_Lists` | Very-hidden validation lists and template manifest | No |
 
-The capture sheet name and headers are a versioned contract. Template v3
-workbooks with renamed or reordered headers are rejected. Unversioned v1 and
-governed v2 workbooks remain accepted and are labeled with their compatibility
-state in import-batch metadata.
+The capture sheet and headers are a versioned contract. Current v3.1 workbooks
+with renamed or reordered headers are rejected. Unversioned v1, governed v2, and
+Spanish v3.0 workbooks remain accepted and receive an explicit compatibility
+label in import metadata.
 
-Template v3 extends the governed capture contract with business criticality,
-target latency/SLA, data security classification, retention/processing window,
-and idempotency. These fields feed pattern-specific QA and remain visible in
-integration detail and architect-owned patch workflows.
+`TBQ` controls commercial eligibility, not technical inclusion. `Y` includes the
+integration in governance and BOM/pricing. `N` keeps it in Catalog, QA, topology,
+Canvas, and technical volumetry while excluding it from the economic exercise.
+The known `Duplicado 2` source defect is rejected from the active catalog and
+retained only in immutable source lineage.
 
-## Pattern Certification
-
-The App library contains 21 tool-agnostic patterns. Every pattern has an
-internal certification profile with a versioned sizing strategy, required
-evidence, approved core-tool and overlay compositions, commercial service
-coverage, external dependencies, and validation controls.
-
-The workbook `Patrones` sheet exports that complete contract. Fields such as
-business criticality, target latency, data classification, processing window,
-retry policy, idempotency, and fan-out provide the evidence required by the
-selected pattern. Missing evidence is preserved and places the integration in
-architect review; the template never invents values to make certification pass.
-
-See [`pattern-certification-matrix.md`](./pattern-certification-matrix.md) for the
-governed boundary of patterns `#01` through `#21`.
+Legacy `Uncertainty` and `Proceso de Negocio DueDiligence` columns are accepted
+for backward compatibility but ignored. Business Process is the sole canonical
+business-process field, and evidence gaps are represented by missing governed
+inputs and QA findings rather than a free-form confidence field.
 
 ## Data Ownership
 
 - Column metadata: `capture_template_service.COLUMNS`.
-- Pattern narratives and structured selection aids: `pattern_definitions`.
-- Dropdowns: active `dictionary_options`, active pattern IDs, and editable client
-  catalog suggestions for business vocabulary.
+- Pattern narratives and selection aids: `pattern_definitions`.
+- Dropdowns: active dictionaries, pattern IDs, and editable client catalogs.
 - Product documentation: normalized Service Product Library tables.
-- Limits: active `service_limits` only.
-- Compatibility: active `service_interoperability_rules` only.
+- Limits: active `service_limits`.
+- Compatibility: active `service_interoperability_rules`.
 - Evidence dates and URLs: `service_evidence_sources`.
 
-The download path never calls the internet. Verification Agent refreshes the
-governed database separately; the workbook exports that reviewed snapshot.
-Customer catalogs affect only workbook suggestions and never become governed
-reference data until the imported row passes App validation.
+The download path does not call the internet. The Service Verification Agent
+refreshes governed evidence separately; the workbook exports only the reviewed
+database snapshot.
 
 ## Safety And Integrity
 
 - The importable sheet contains no example rows.
 - Capture formulas are rejected before parsing.
-- Generated reference text is neutralized when it begins with an Excel formula prefix.
+- Generated reference text is neutralized when it starts with a formula prefix.
 - List validation uses workbook-defined names rather than inline CSV formulas.
-- The `_Listas` manifest records template version, minimum importer version,
-  generation timestamp, row capacity, and governed-source counts.
+- `_Lists` records template version, minimum importer version, generation time,
+  capacity, and governed-source counts.
 - Reference sheets are protected; the capture sheet remains editable.
-- No macros, external workbook connections, credentials, or live web queries are present.
+- No macros, external connections, credentials, or live web queries are present.
 
 ## Round-Trip Acceptance
 
-The automated contract test generates the workbook, populates one capture row,
-imports it through the real service, and asserts exactly one source/catalog row
-with trigger, pattern, fan-out, payload, operational design, core tools, and
-overlays mapped. Compatibility tests keep prior v2 workbooks supported. Browser
-E2E additionally verifies metadata visibility and the downloaded filename from
-the production-mode App.
+Automated contract tests generate v3.1, populate a Y and an N row, import both,
+assert technical inclusion and commercial eligibility, and verify that the two
+removed legacy columns are absent. Separate fixtures prove that historical
+Spanish workbooks still import while those fields are ignored.

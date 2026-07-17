@@ -4,8 +4,10 @@ Import parity tests (PRD-051).
 Benchmark expectations from workbook TBQ Audit tab:
   - 157 source rows with TBQ=Y
   - 13 excluded (Duplicado 2)
-  - 144 loaded in exact order
+  - 157 loaded in exact order (144 economic + 13 technical-only)
 """
+import pytest
+
 from ..engine.importer import parse_rows, should_include, normalize_frequency, build_header_map
 
 
@@ -143,12 +145,31 @@ def test_include_tbq_y():
     assert reason is None
 
 
-def test_exclude_tbq_n():
+def test_include_tbq_n_as_technical_catalog_row():
     headers = _make_header_row()
     hmap = build_header_map(headers)
     row = _make_valid_row(tbq="N")
     included, reason = should_include(row, hmap)
-    assert included is False
+    assert included is True
+    assert reason is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Every 5 minutes", "Cada 5 minutos"),
+        ("Every 15 minutes", "Cada 15 minutos"),
+        ("Every 20 minutes", "Cada 20 minutos"),
+        ("Every 30 minutes", "Cada 30 minutos"),
+    ],
+)
+def test_normalize_en_us_frequencies(raw, expected):
+    """Official en-US template frequencies retain governed volumetry semantics."""
+
+    normalized, event = normalize_frequency(raw)
+
+    assert normalized == expected
+    assert event is not None
 
 
 def test_exclude_duplicado_2():
@@ -157,7 +178,18 @@ def test_exclude_duplicado_2():
     row = _make_valid_row(tbq="Y", estado="Duplicado 2")
     included, reason = should_include(row, hmap)
     assert included is False
-    assert "Duplicado 2" in reason
+    assert reason == "Interface Status = Duplicate 2"
+
+
+def test_exclude_english_duplicate_2():
+    headers = _make_header_row()
+    hmap = build_header_map(headers)
+    row = _make_valid_row(tbq="Y", estado="Duplicate 2")
+
+    included, reason = should_include(row, hmap)
+
+    assert included is False
+    assert reason == "Interface Status = Duplicate 2"
 
 
 def test_include_duplicado_1():
@@ -199,7 +231,7 @@ def _build_parity_dataset():
     Simulate 170 source rows:
       - 157 with TBQ=Y (13 of which are Duplicado 2)
       - 13 with TBQ=N
-    Expected: loaded = 157 - 13 = 144
+    Expected: loaded = 170 - 13 duplicate defects = 157
     """
     header_row = _make_header_row()
     rows = [
@@ -224,7 +256,9 @@ def _build_parity_dataset():
 def test_parity_loaded_count():
     rows = _build_parity_dataset()
     result = parse_rows(rows)
-    assert result.loaded_count == 144, f"Expected 144, got {result.loaded_count}"
+    assert result.loaded_count == 157, f"Expected 157, got {result.loaded_count}"
+    assert result.tbq_y_count == 144
+    assert result.tbq_n_count == 13
 
 
 def test_parity_excluded_count():

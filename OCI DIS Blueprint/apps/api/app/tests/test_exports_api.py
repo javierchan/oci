@@ -37,40 +37,40 @@ async def test_capture_template_export_returns_valid_workbook(api_client: AsyncC
     )
 
     workbook = load_workbook(filename=BytesIO(response.content))
-    assert workbook.active.title == "Inicio"
-    sheet = workbook["Catálogo de Integraciones"]
+    assert workbook.active.title == "Start Here"
+    sheet = workbook["Integration Catalog"]
     assert sheet["A1"].value == "#"
-    assert sheet["B1"].value == "ID de Interfaz"
+    assert sheet["B1"].value == "Interface ID"
     assert sheet["A2"].value is None
     assert sheet.freeze_panes == "F2"
     assert sheet.max_row <= 2
     assert all(cell.value is None for cell in sheet[2])
-    assert sheet.auto_filter.ref == "A1:AS501"
+    assert sheet.auto_filter.ref == "A1:AQ501"
     assert workbook.sheetnames == [
-        "Inicio",
+        "Start Here",
         "Dashboard",
-        "_Listas",
-        "Catálogos del Cliente",
-        "Catálogo de Integraciones",
-        "Validación Previa",
-        "Ejemplos Guiados",
-        "Guía de Campos",
-        "Patrones",
-        "Servicios OCI",
-        "Límites OCI",
-        "Interoperabilidad",
+        "_Lists",
+        "Client Catalogs",
+        "Integration Catalog",
+        "Preflight Validation",
+        "Guided Examples",
+        "Field Guide",
+        "Patterns",
+        "OCI Services",
+        "OCI Limits",
+        "Interoperability",
     ]
-    assert workbook["_Listas"].sheet_state == "veryHidden"
+    assert workbook["_Lists"].sheet_state == "veryHidden"
     assert "LIST_FREQUENCY" in workbook.defined_names
     assert "LIST_PATTERNS" in workbook.defined_names
     assert len(sheet.data_validations.dataValidation) >= 6
-    pattern_sheet = workbook["Patrones"]
-    assert pattern_sheet["D4"].value == "Certificación"
-    assert pattern_sheet["E4"].value == "Versión certificación"
-    assert pattern_sheet["G4"].value == "Evidencia requerida"
-    assert pattern_sheet["L4"].value == "Controles de validación"
+    pattern_sheet = workbook["Patterns"]
+    assert pattern_sheet["D4"].value == "Certification"
+    assert pattern_sheet["E4"].value == "Certification Version"
+    assert pattern_sheet["G4"].value == "Required Evidence"
+    assert pattern_sheet["L4"].value == "Validation Controls"
     assert pattern_sheet.auto_filter.ref.endswith(f"V{pattern_sheet.max_row}")
-    assert "v3.0.0" in response.headers["content-disposition"]
+    assert "v3.1.0" in response.headers["content-disposition"]
 
 
 @pytest.mark.asyncio
@@ -80,21 +80,21 @@ async def test_capture_template_metadata_matches_download_contract(api_client: A
     response = await api_client.get("/api/v1/exports/template/metadata")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["template_version"] == "3.0.0"
-    assert payload["filename"] == "oci-dis-import-template-v3.0.0.xlsx"
-    assert payload["capture_sheet"] == "Catálogo de Integraciones"
+    assert payload["template_version"] == "3.1.0"
+    assert payload["filename"] == "oci-dis-import-template-v3.1.0.xlsx"
+    assert payload["capture_sheet"] == "Integration Catalog"
     assert payload["capture_row_limit"] == 500
-    assert len(payload["columns"]) == 45
-    required = {item["field"] for item in payload["columns"] if item["requirement"] == "Requerido"}
+    assert len(payload["columns"]) == 43
+    required = {item["field"] for item in payload["columns"] if item["requirement"] == "Required"}
     assert required == {"brand", "business_process", "interface_name", "frequency", "source_system", "destination_system", "tbq"}
 
 
 @pytest.mark.asyncio
-async def test_capture_template_round_trip_imports_exactly_one_row(
+async def test_capture_template_round_trip_imports_tbq_y_and_n_rows(
     test_engine: AsyncEngine,
     tmp_path: Path,
 ) -> None:
-    """Download-fill-import round trip maps the productive capture fields exactly."""
+    """Current en-US template keeps TBQ Y and N rows in the technical catalog."""
 
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as session:
@@ -103,35 +103,44 @@ async def test_capture_template_round_trip_imports_exactly_one_row(
         await session.flush()
         workbook_bytes, _ = await capture_template_service.generate_capture_template(session)
         workbook = load_workbook(BytesIO(workbook_bytes))
-        sheet = workbook["Catálogo de Integraciones"]
+        sheet = workbook["Integration Catalog"]
         header_columns = {cell.value: cell.column for cell in sheet[1]}
         values = {
             "#": 1,
-            "ID de Interfaz": "INT-ROUNDTRIP-001",
-            "Marca": "Retail",
-            "Proceso de Negocio": "Order to Cash",
-            "Interfaz": "Publicar pedido confirmado",
-            "Criticidad de Negocio": "Alta",
-            "Frecuencia": "Cada 1 hora",
-            "Tipo Trigger OIC": "Event Trigger",
-            "SLA / Latencia Objetivo": "p95 < 5 seconds",
-            "Payload por Ejecución (KB)": 150,
-            "Fan-out (Si/No)": "Sí",
-            "# Destinos": 3,
-            "Sistema de Origen": "Oracle ERP Cloud",
-            "Sistema de Destino": "Order Fulfillment",
-            "Clasificación de Datos / Seguridad": "Confidencial",
-            "Retención / Ventana de Procesamiento": "Retain 7 days",
+            "Interface ID": "INT-ROUNDTRIP-001",
+            "Brand": "Retail",
+            "Business Process": "Order to Cash",
+            "Interface Name": "Publish confirmed order",
+            "Business Criticality": "High",
+            "Frequency": "Every hour",
+            "Trigger Type": "Event Trigger",
+            "Target Latency SLA": "p95 < 5 seconds",
+            "Payload per Execution (KB)": 150,
+            "Fan-out (Yes/No)": "Yes",
+            "# Destinations": 3,
+            "Source System": "Oracle ERP Cloud",
+            "Destination System": "Order Fulfillment",
+            "Data / Security Classification": "Confidential",
+            "Retention / Processing Window": "Retain 7 days",
             "TBQ": "Y",
-            "Patrón Seleccionado (Manual)": "#02",
-            "Racional del Patrón (Manual)": "Decouples the producer from three consumers.",
+            "Selected Pattern (Manual)": "#02",
+            "Pattern Rationale (Manual)": "Decouples the producer from three consumers.",
             "Retry Policy": "3 attempts; exponential backoff; DLQ",
-            "Idempotencia": "Use orderId for deduplication",
-            "Herramientas Core Cuantificables / Volumétricas": "OCI Streaming | OIC Gen3",
-            "Herramientas Adicionales / Overlays (Complemento Manual)": "OCI API Gateway | OCI APM",
+            "Idempotency": "Use orderId for deduplication",
+            "Quantifiable Core Tools": "OCI Streaming | OIC Gen3",
+            "Architectural Overlays": "OCI API Gateway | OCI APM",
         }
         for header, value in values.items():
             sheet.cell(2, header_columns[header], value)
+        technical_only_values = {
+            **values,
+            "#": 2,
+            "Interface ID": "INT-ROUNDTRIP-002",
+            "Interface Name": "Publish unquoted order exception",
+            "TBQ": "N",
+        }
+        for header, value in technical_only_values.items():
+            sheet.cell(3, header_columns[header], value)
         file_path = tmp_path / "capture-v3.xlsx"
         workbook.save(file_path)
 
@@ -140,23 +149,27 @@ async def test_capture_template_round_trip_imports_exactly_one_row(
         await session.flush()
         integrations = list((await session.scalars(select(CatalogIntegration).where(CatalogIntegration.project_id == project.id))).all())
 
-        assert processed.source_row_count == 1
-        assert processed.loaded_count == 1
+        assert processed.source_row_count == 2
+        assert processed.loaded_count == 2
+        assert processed.tbq_y_count == 1
+        assert processed.tbq_n_count == 1
         assert processed.header_map is not None
-        assert processed.header_map["__template_version__"] == "3.0.0"
+        assert processed.header_map["__template_version__"] == "3.1.0"
         assert processed.header_map["__template_compatibility__"] == "current"
-        assert len(integrations) == 1
-        integration = integrations[0]
+        assert len(integrations) == 2
+        integration = next(item for item in integrations if item.interface_id == "INT-ROUNDTRIP-001")
         assert integration.interface_id == "INT-ROUNDTRIP-001"
         assert integration.trigger_type == "Event Trigger"
         assert integration.selected_pattern == "#02"
         assert integration.fan_out_targets == 3
         assert integration.core_tools == "OCI Streaming | OIC Gen3"
-        assert integration.business_criticality == "Alta"
+        assert integration.business_criticality == "High"
         assert integration.target_latency_sla == "p95 < 5 seconds"
-        assert integration.data_security_classification == "Confidencial"
+        assert integration.data_security_classification == "Confidential"
         assert integration.retention_processing_window == "Retain 7 days"
         assert integration.idempotency == "Use orderId for deduplication"
+        technical_only = next(item for item in integrations if item.interface_id == "INT-ROUNDTRIP-002")
+        assert technical_only.tbq == "N"
 
 
 @pytest.mark.asyncio
@@ -173,7 +186,7 @@ async def test_capture_template_rejects_formulas(
         await session.flush()
         workbook_bytes, _ = await capture_template_service.generate_capture_template(session)
         workbook = load_workbook(BytesIO(workbook_bytes))
-        workbook["Catálogo de Integraciones"]["E2"] = '=HYPERLINK("https://example.com","Open")'
+        workbook["Integration Catalog"]["E2"] = '=HYPERLINK("https://example.com","Open")'
         file_path = tmp_path / "capture-formula.xlsx"
         workbook.save(file_path)
         batch = await import_service.create_import_batch(project.id, file_path.name, session)
@@ -234,7 +247,7 @@ async def test_v3_workbook_rejects_changed_headers(
         await session.flush()
         workbook_bytes, _ = await capture_template_service.generate_capture_template(session)
         workbook = load_workbook(BytesIO(workbook_bytes))
-        workbook["Catálogo de Integraciones"]["E1"] = "Nombre inventado"
+        workbook["Integration Catalog"]["E1"] = "Invented Name"
         file_path = tmp_path / "capture-renamed.xlsx"
         workbook.save(file_path)
         batch = await import_service.create_import_batch(project.id, file_path.name, session)

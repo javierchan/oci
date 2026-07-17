@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 import { ConfirmModal } from "@/components/modal";
 import { GovernedNarrative } from "@/components/governed-narrative";
 import { ActionRecommendationWorkspace } from "@/components/action-recommendation-workspace";
+import { AgentDecisionWorkspace } from "@/components/agent-decision-workspace";
 import { api, apiDownloadUrl, getErrorMessage } from "@/lib/api";
 import { formatAiReviewDriftValue, isAiReviewLayoutMetadataOnlyDrift } from "@/lib/ai-review";
 import type {
@@ -39,6 +40,7 @@ import type {
   AiReviewRecommendationWorkspace,
   AiReviewScope,
   AiReviewSeverity,
+  AgentRun,
 } from "@/lib/types";
 
 type AiReviewButtonProps = {
@@ -474,6 +476,7 @@ function AiReviewDialog({
   selectedScope,
   setSelectedScope,
   job,
+  agentRun,
   loading,
   acceptingFindingId,
   applyingPatchFindingId,
@@ -498,12 +501,14 @@ function AiReviewDialog({
   historyLoading,
   onOpenHistoryJob,
   onClose,
+  onAgentRunChange,
 }: {
   integrationId?: string;
   graphContext?: AiReviewGraphContext;
   selectedScope: AiReviewScope;
   setSelectedScope: (_scope: AiReviewScope) => void;
   job: AiReviewJob | null;
+  agentRun: AgentRun | null;
   loading: boolean;
   acceptingFindingId: string | null;
   applyingPatchFindingId: string | null;
@@ -528,6 +533,7 @@ function AiReviewDialog({
   historyLoading: boolean;
   onOpenHistoryJob: (_job: AiReviewJob) => void;
   onClose: () => void;
+  onAgentRunChange: (_run: AgentRun) => void;
 }): JSX.Element {
   const review = job?.result ?? null;
   const acceptedIds = new Set(job?.accepted_recommendations.map((item) => item.finding_id) ?? []);
@@ -872,6 +878,11 @@ function AiReviewDialog({
 
           {review && !loading ? (
             <div className="order-2 space-y-5">
+              {agentRun ? (
+                <section className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+                  <AgentDecisionWorkspace run={agentRun} onRunChange={onAgentRunChange} />
+                </section>
+              ) : null}
               {job && review.recommendation_workspace ? (
                 <RecommendationWorkspace
                   job={job}
@@ -1299,6 +1310,7 @@ export function AiReviewButton({
   const [selectedScope, setSelectedScope] = useState<AiReviewScope>(defaultScope);
   const [loading, setLoading] = useState<boolean>(false);
   const [job, setJob] = useState<AiReviewJob | null>(null);
+  const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
   const [history, setHistory] = useState<AiReviewJob[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -1484,6 +1496,7 @@ export function AiReviewButton({
   async function runReview(): Promise<void> {
     setLoading(true);
     setJob(null);
+    setAgentRun(null);
     setError(null);
     try {
       const created = await api.runAiReview(projectId, {
@@ -1494,6 +1507,9 @@ export function AiReviewButton({
       });
       setJob(created);
       const completed = await pollJob(created.id);
+      if (completed.agent_run_id) {
+        setAgentRun(await api.getAgentRun(completed.agent_run_id));
+      }
       if (completed.status === "failed") {
         setError("The AI review job failed. Check the job evidence or API logs for details.");
       }
@@ -1609,6 +1625,7 @@ export function AiReviewButton({
   async function openHistoryJob(historyJob: AiReviewJob): Promise<void> {
     setSelectedScope(historyJob.scope);
     setJob(historyJob);
+    setAgentRun(historyJob.agent_run_id ? await api.getAgentRun(historyJob.agent_run_id).catch(() => null) : null);
     setError(null);
     if (historyJob.status === "pending" || historyJob.status === "running") {
       setLoading(true);
@@ -1645,6 +1662,7 @@ export function AiReviewButton({
           selectedScope={selectedScope}
           setSelectedScope={setSelectedScope}
           job={job}
+          agentRun={agentRun}
           loading={loading}
           acceptingFindingId={acceptingFindingId}
           applyingPatchFindingId={applyingPatchFindingId}
@@ -1684,6 +1702,7 @@ export function AiReviewButton({
           onOpenHistoryJob={(historyJob) => {
             void openHistoryJob(historyJob);
           }}
+          onAgentRunChange={setAgentRun}
           onClose={() => setOpen(false)}
         />
       ) : null}

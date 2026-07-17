@@ -520,14 +520,11 @@ def derive_canvas_semantics(
     active_core_tool_keys = _unique_sorted(
         [node.tool_key for node in nodes if node.instance_id in active_node_ids and node.tool_key not in overlay_tool_set]
     )
-    active_overlay_keys = _unique_sorted(
-        [node.tool_key for node in nodes if node.instance_id in active_node_ids and node.tool_key in overlay_tool_set]
-    )
     return CanvasSemantics(
         has_directed_route=has_directed_route,
         has_connected_route=has_directed_route and len(active_core_tool_keys) > 0,
         core_tool_keys=active_core_tool_keys,
-        overlay_keys=active_overlay_keys,
+        overlay_keys=_unique_sorted(overlay_tool_keys),
     )
 
 

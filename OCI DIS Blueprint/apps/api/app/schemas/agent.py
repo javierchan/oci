@@ -48,6 +48,54 @@ class AgentOutputQuality(BaseModel):
     evidence_completeness_pct: int = Field(ge=0, le=100)
 
 
+class AgentDecisionImpact(BaseModel):
+    """Deterministic impact statement for one decision alternative."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    technical: list[str] = Field(default_factory=list)
+    commercial: list[str] = Field(default_factory=list)
+    governance: list[str] = Field(default_factory=list)
+    operational: list[str] = Field(default_factory=list)
+
+
+class AgentDecisionAlternative(BaseModel):
+    """One evidence-linked alternative that can be compared before approval."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    title: str
+    summary: str
+    status: Literal["ready", "review", "blocked"]
+    recommended: bool
+    changes: list[str] = Field(default_factory=list)
+    implementation_steps: list[str] = Field(default_factory=list)
+    validation_steps: list[str] = Field(default_factory=list)
+    missing_inputs: list[str] = Field(default_factory=list)
+    impact: AgentDecisionImpact
+    evidence_ids: list[str] = Field(default_factory=list)
+    confidence: Literal["high", "medium", "low"]
+    action_type: Optional[str] = None
+    action_label: Optional[str] = None
+    action_href: Optional[str] = None
+
+
+class AgentDecisionWorkspace(BaseModel):
+    """Shared decision contract rendered across all specialized agents."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    workspace_type: Literal["architecture", "data_quality", "commercial", "support"]
+    goal: str
+    current_state: str
+    recommendation_basis: str
+    recommended_alternative_id: Optional[str]
+    alternatives: list[AgentDecisionAlternative] = Field(default_factory=list)
+    outcome_metrics: list[dict[str, object]] = Field(default_factory=list)
+    post_validation: list[str] = Field(default_factory=list)
+
+
 class AgentDefinitionResponse(BaseModel):
     """Versioned, immutable runtime definition exposed to authorized clients."""
 
@@ -130,12 +178,16 @@ class AgentValueMetricsResponse(BaseModel):
     approval_decisions: int
     approved_decisions: int
     rejected_decisions: int
+    proposals_created: int
+    proposals_executed: int
+    post_validations_completed: int
     follow_up_runs_after_approval: int
     provider_synthesis_rate_pct: float
     grounded_output_rate_pct: float
     high_evidence_completeness_rate_pct: float
     acceptance_rate_pct: Optional[float]
     approval_follow_up_rate_pct: Optional[float]
+    execution_rate_pct: Optional[float]
     median_execution_seconds: Optional[float]
 
 
@@ -180,6 +232,9 @@ class AgentApprovalResponse(BaseModel):
     reviewed_by: Optional[str]
     review_note: Optional[str]
     reviewed_at: Optional[datetime]
+    execution_status: Literal["not_started", "running", "completed", "failed"]
+    execution_result: Optional[dict[str, object]]
+    executed_at: Optional[datetime]
 
 
 class AgentApprovalDecisionRequest(BaseModel):

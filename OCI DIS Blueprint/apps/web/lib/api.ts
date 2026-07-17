@@ -50,6 +50,8 @@ import type {
   DeploymentScenarioList,
   GraphParams,
   GraphResponse,
+  GovernanceChangeSet,
+  GovernanceChangeSetList,
   ImportBatch,
   ImportBatchDeleteResponse,
   ImportBatchList,
@@ -481,6 +483,19 @@ export const api = {
 
   cancelAgentRun: (runId: string): Promise<AgentRun> =>
     apiFetch<AgentRun>(`/api/v1/agents/runs/${encodeURIComponent(runId)}/cancel`, {
+      method: "POST",
+      headers: adminHeaders(),
+    }),
+
+  decideAgentApproval: (runId: string, approvalId: string, decision: "approved" | "rejected", note?: string): Promise<AgentRun> =>
+    apiFetch<AgentRun>(`/api/v1/agents/runs/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(approvalId)}`, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ decision, note }),
+    }),
+
+  executeAgentApproval: (runId: string, approvalId: string): Promise<AgentRun> =>
+    apiFetch<AgentRun>(`/api/v1/agents/runs/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(approvalId)}/execute`, {
       method: "POST",
       headers: adminHeaders(),
     }),
@@ -936,6 +951,18 @@ export const api = {
     apiFetch<PriceSyncJob>(`/api/v1/pricing/sync-jobs/${encodeURIComponent(jobId)}`, {
       headers: adminHeaders(),
     }),
+
+  listGovernanceChangeSets: (limit = 20): Promise<GovernanceChangeSetList> =>
+    apiFetch<GovernanceChangeSetList>(
+      `/api/v1/pricing/governance-change-sets${withQuery({ limit })}`,
+      { headers: adminHeaders() },
+    ),
+
+  getGovernanceChangeSet: (changeSetId: string): Promise<GovernanceChangeSet> =>
+    apiFetch<GovernanceChangeSet>(
+      `/api/v1/pricing/governance-change-sets/${encodeURIComponent(changeSetId)}`,
+      { headers: adminHeaders() },
+    ),
 
   listPriceCatalogSnapshots: (limit = 20): Promise<PriceCatalogSnapshotList> =>
     apiFetch<PriceCatalogSnapshotList>(`/api/v1/pricing/catalog-snapshots${withQuery({ limit })}`, {

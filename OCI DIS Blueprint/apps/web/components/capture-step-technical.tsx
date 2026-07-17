@@ -94,15 +94,6 @@ export function CaptureStepTechnical({
           </select>
         </label>
         <label className="block">
-          <span className="app-label mb-2 block">Uncertainty</span>
-          <input
-            value={form.uncertainty ?? ""}
-            onChange={(event) => updateField("uncertainty", event.target.value)}
-            className="app-input"
-            placeholder="Resolved, TBD, medium confidence…"
-          />
-        </label>
-        <label className="block">
           <span className="app-label mb-2 block">Business Criticality</span>
           <select value={form.business_criticality ?? ""} onChange={(event) => updateField("business_criticality", event.target.value)} className="app-input">
             <option value="">Not assessed</option>

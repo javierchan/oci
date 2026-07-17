@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.schemas.pricing import (
+    GovernanceChangeSetListResponse,
+    GovernanceChangeSetResponse,
     PriceCatalogSnapshotListResponse,
     PriceCatalogSnapshotResponse,
     PriceItemListResponse,
@@ -121,6 +123,34 @@ async def get_price_sync_job(
 ) -> PriceSyncJobResponse:
     _require_pricing_read(actor_role)
     return await pricing_service.get_sync_job(job_id, db)
+
+
+@router.get(
+    "/governance-change-sets",
+    response_model=GovernanceChangeSetListResponse,
+    summary="List official OCI source verification decisions",
+)
+async def list_governance_change_sets(
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> GovernanceChangeSetListResponse:
+    _require_pricing_read(actor_role)
+    return await pricing_service.list_governance_change_sets(db, limit)
+
+
+@router.get(
+    "/governance-change-sets/{change_set_id}",
+    response_model=GovernanceChangeSetResponse,
+    summary="Get one official OCI source verification decision",
+)
+async def get_governance_change_set(
+    change_set_id: str,
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> GovernanceChangeSetResponse:
+    _require_pricing_read(actor_role)
+    return await pricing_service.get_governance_change_set(change_set_id, db)
 
 
 @router.get(

@@ -72,6 +72,14 @@ uploads/
 exports/
 apps/api/generated-reports/
 
+# Historical working material and generated visual artifacts
+# The active repository contract lives in README, AGENTS, docs/architecture,
+# docs/adr, and docs/api. Dated audits, agent prompts, and rendered diagrams
+# are retained locally or in external artifact storage, not in Git.
+docs/reports/
+docs/prompts/
+output/
+
 # Test fixtures — generated snapshots (not seed data)
 packages/test-fixtures/snapshots/*.json
 

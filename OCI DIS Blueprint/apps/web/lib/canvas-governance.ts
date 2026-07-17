@@ -539,9 +539,9 @@ export function deriveCanvasSemantics(args: {
       .filter((node) => activeNodeIdSet.has(node.instanceId) && !overlayToolSet.has(node.toolKey))
       .map((node) => node.toolKey),
   );
-  const activeOverlayKeys = uniqueSorted(
+  const architecturalOverlayKeys = uniqueSorted(
     sanitized.nodes
-      .filter((node) => activeNodeIdSet.has(node.instanceId) && overlayToolSet.has(node.toolKey))
+      .filter((node) => overlayToolSet.has(node.toolKey))
       .map((node) => node.toolKey),
   );
   const hasConnectedRoute = hasDirectedRoute && activeCoreToolKeys.length > 0;
@@ -575,7 +575,7 @@ export function deriveCanvasSemantics(args: {
   );
   const matchedCombinations = matchCombinations(
     activeCoreToolKeys,
-    activeOverlayKeys,
+    architecturalOverlayKeys,
     args.combinations,
     args.selectedPattern,
   );
@@ -589,10 +589,10 @@ export function deriveCanvasSemantics(args: {
     activeNodeIds,
     activeEdgeIds: activeEdges.map((edge) => edge.edgeId),
     disconnectedNodeIds: sanitized.nodes
-      .filter((node) => !activeNodeIdSet.has(node.instanceId))
+      .filter((node) => !activeNodeIdSet.has(node.instanceId) && !overlayToolSet.has(node.toolKey))
       .map((node) => node.instanceId),
     coreToolKeys: activeCoreToolKeys,
-    overlayKeys: activeOverlayKeys,
+    overlayKeys: architecturalOverlayKeys,
     processingRouteLabels,
     routeLabels,
     processingSummary:
@@ -601,9 +601,9 @@ export function deriveCanvasSemantics(args: {
         ? activeCoreToolKeys.join(" -> ")
         : "No connected core tools on the active route yet"),
     overlaySummary:
-      activeOverlayKeys.length > 0
-        ? activeOverlayKeys.join(", ")
-        : "No overlays attached to the active route",
+      architecturalOverlayKeys.length > 0
+        ? architecturalOverlayKeys.join(", ")
+        : "No architectural overlays attached",
     matchedCombinations,
     suggestedPatternIds,
   };

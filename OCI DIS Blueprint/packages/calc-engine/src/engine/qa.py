@@ -61,7 +61,6 @@ def evaluate_qa(
     payload_per_execution_kb: Optional[float],
     is_fan_out: Optional[bool],
     fan_out_targets: Optional[int],
-    uncertainty: Optional[str],
     is_active_row: bool = True,
     retry_policy: Optional[str] = None,
     idempotency: Optional[str] = None,
@@ -100,10 +99,6 @@ def evaluate_qa(
     # Fan-out declared but targets missing
     if is_fan_out and (fan_out_targets is None or fan_out_targets < 2):
         reasons.append("MISSING_FAN_OUT_TARGETS")
-
-    # TBD uncertainty flag
-    if uncertainty and "TBD" in uncertainty.upper():
-        reasons.append("TBD_UNCERTAINTY")
 
     if selected_pattern and core_tools:
         tools_lower = core_tools.lower()

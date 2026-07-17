@@ -90,6 +90,9 @@ class AgentApproval(Base, UUIDMixin, TimestampMixin):
     reviewed_by: Mapped[Optional[str]] = mapped_column(String(36))
     review_note: Mapped[Optional[str]] = mapped_column(Text)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    execution_status: Mapped[str] = mapped_column(String(24), nullable=False, default="not_started")
+    execution_result: Mapped[Optional[dict]] = mapped_column(JSON)
+    executed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class AgentArtifact(Base, UUIDMixin, TimestampMixin):

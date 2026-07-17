@@ -382,8 +382,9 @@ export default async function ProjectDashboardPage({
               <dd className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{parityBenchmark.excludedRows}</dd>
             </div>
             <div className="rounded-[1.5rem] bg-[var(--color-surface-2)] p-4">
-              <dt className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-muted)]">TBQ = Y</dt>
+              <dt className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-muted)]">Source TBQ = Y</dt>
               <dd className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{parityBenchmark.tbqRows}</dd>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">Before Duplicate 2 rejection</p>
             </div>
             <div className="rounded-[1.5rem] bg-[var(--color-surface-2)] p-4">
               <dt className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-muted)]">Expected QA Review</dt>

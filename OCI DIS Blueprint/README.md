@@ -61,9 +61,9 @@ docker compose exec -T api python -m app.migrations.seed
 ## OCI Generative AI for Governed Reviews
 
 AI Review and the BOM scenario assistant use OCI Generative AI with
-`OpenAI gpt-oss-20b` in `us-chicago-1`. The deterministic review remains the
-source of truth; OCI GenAI receives only redacted, governed evidence and produces
-an optional decision summary.
+`OpenAI gpt-oss-20b` in `us-chicago-1`. Deterministic services remain the source
+of truth; OCI GenAI receives only redacted, governed evidence and prioritizes
+typed decision alternatives instead of calculating architecture, usage, or price.
 
 ```bash
 # Configure these non-secret values and the secret-file path in .env first:
@@ -108,6 +108,13 @@ always separates the finding, why it matters, next actions, validation, evidence
 and confidence. Agent Operations reports provider health and observed outcome
 quality separately; value signals come only from retained executions and human
 decisions, never estimated time savings.
+
+Specialized agents run four governed stages: load evidence, compare valid
+alternatives, synthesize the decision, and prepare approval-gated proposals.
+Approval never executes a change. A separate idempotent execution command creates
+only an auditable draft or simulation and records post-validation. Saved Canvas
+designs, approved scenarios, source rules, and published BOMs still require their
+existing explicit domain actions.
 See [`docs/architecture/oci-agent-runtime.md`](./docs/architecture/oci-agent-runtime.md).
 
 The global OCI DIS App Assistant persists across navigation, understands the
@@ -122,15 +129,17 @@ audit evidence.
 
 ## Offline Capture Workbook
 
-The Import workflow downloads the official template `v3.0.0` as
-`oci-dis-import-template-v3.0.0.xlsx` directly from the API. The workbook includes
+The Import workflow downloads the en-US official template `v3.1.0` as
+`oci-dis-import-template-v3.1.0.xlsx` directly from the API. The workbook includes
 a blank governed capture sheet, an executive dashboard, editable client catalogs,
 novice instructions, preflight checks, field guidance, pattern examples, and
-current Service Product Library references. Its `_Listas` manifest records the
+current Service Product Library references. Its `_Lists` manifest records the
 template/importer contract and governed-source freshness. Examples are never
 placed in the importable sheet.
 
-Existing unversioned v1 and governed v2 workbooks remain importable. Template v3
+Existing unversioned v1, governed v2, and Spanish v3.0 workbooks remain importable.
+Legacy `Uncertainty` and Due Diligence Business Process columns are retained only
+as immutable source evidence and ignored by the active catalog. Template v3.1
 rejects formulas and changed headers so offline capture cannot hide logic or
 silently drift from the App contract. See
 [`docs/architecture/offline-capture-workbook-v3.md`](./docs/architecture/offline-capture-workbook-v3.md).
@@ -169,6 +178,16 @@ metric, deterministic commercial classification, auditable human exception
 review, and independent quotation fixtures before rule-family approval. See
 [`docs/architecture/oci-full-catalog-commercial-coverage-plan.md`](./docs/architecture/oci-full-catalog-commercial-coverage-plan.md).
 
+Continuous source governance keeps the currently approved commercial families
+current without self-approving source drift. Celery verifies the Oracle public
+price feed plus Cloud Estimator products, metrics, and presets every day as one
+atomic source set; raw evidence is hash-addressed in Object Storage, every one of
+the 20 governed commercial families runs deterministic quotation fixtures, and
+changed evidence requires explicit Admin approval. New public-list BOMs are
+blocked when the latest verified evidence is older than 72 hours or a regression
+fails. See
+[`docs/architecture/oci-continuous-source-governance.md`](./docs/architecture/oci-continuous-source-governance.md).
+
 ---
 
 ## Running Tests
@@ -186,9 +205,14 @@ docker run --rm ocidisblueprint-api-quality:local \
 docker run --rm -w /calc-engine ocidisblueprint-api-quality:local \
   python -m pytest -p no:cacheprovider src/tests -q
 
+# Pure Decimal pricing-engine tests
+docker run --rm -e PYTHONPATH=/pricing-engine/src -w /pricing-engine \
+  ocidisblueprint-api-quality:local \
+  python -m pytest -p no:cacheprovider tests -q
+
 # API static analysis as the non-root image user
 docker run --rm ocidisblueprint-api-quality:local \
-  ruff check --no-cache app /calc-engine/src
+  ruff check --no-cache app /calc-engine/src /pricing-engine/src
 docker run --rm ocidisblueprint-api-quality:local \
   mypy app --ignore-missing-imports --no-error-summary \
   --cache-dir=/tmp/mypy-cache
@@ -253,6 +277,22 @@ docker compose exec -T api \
 This validates health, preset discovery, job creation, polling, recent-job
 visibility, and the `cleaned_up` terminal contract for the
 `ephemeral-smoke` preset.
+
+Existing synthetic projects created before the current pattern-certification
+contract can be repaired in place with the governed, synthetic-only helper:
+
+```bash
+docker compose exec -T api \
+  python scripts/remediate_synthetic_pattern_certification.py \
+  --project-id <synthetic-project-id>
+```
+
+The helper validates every row-specific canvas, rejects newly introduced
+blockers, emits an audit event only for a changed canvas, and recalculates the
+project once. A completed repair must report `issues_after: 0`; an immediate
+second run must also report `repaired_canvases: 0`. It intentionally preserves
+independent payload, connectivity, deployment-context, and service-limit
+warnings for architect review.
 
 To validate explicit cleanup on a retained small project instead of the
 ephemeral auto-clean path:
@@ -390,18 +430,26 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M50 | Full Service Product Commercial Coverage | ✅ Complete | 2026-07-15 |
 | M51 | Full OCI Public Catalog Commercial Coverage | 📋 Planned | — |
 | M52 | Governed Pattern Certification | ✅ Complete | 2026-07-16 |
+| M53 | Continuous OCI Source Verification + Quote Regression Governance | ✅ Complete | 2026-07-16 |
+| M54 | Governed Agentic Decision Workspaces | ✅ Complete | 2026-07-16 |
+| M55 | Technical Inclusion + en-US Capture Contract | ✅ Complete | 2026-07-17 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
 
 Phase 1 parity has been validated in Docker against the benchmark workbook rules:
 
-- Import parity: `157` TBQ=`Y` rows, `13` excluded `Duplicado 2`, `144` loaded rows in source order
+- Import policy: all non-defect rows load in source order; `TBQ=N` remains in the
+  technical catalog and is excluded only from BOM/pricing, while `Duplicado 2`
+  remains immutable rejected-source evidence
 - Reference seed data: `21` certified patterns, `9` architectural overlays, `27` governed canvas combinations, client-only assumption sets, governed dictionaries, and `20` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine + pricing-engine: `206 passed` (`133` API, `49` calc-engine, `24` pricing-engine)
-- Frontend: `68 passed`, strict TypeScript, ESLint, and production build green
-- Pricing/BOM E2E: public sync and BOM jobs reach terminal `completed` states
+- Backend + calc-engine + pricing-engine: `213 passed` (`139` API, `50` calc-engine, `24` pricing-engine)
+- Frontend: `70 passed`, strict TypeScript, ESLint, and production build green
+- Pricing/BOM E2E: real 4-source Oracle verification, scheduled no-change verification,
+  and post-verification BOM jobs reach terminal `completed` states
+- Continuous commercial governance: `4/4` official sources preserved in Object
+  Storage, `20/20` quotation families passing, and `100%` regression coverage
 - Production images: Trivy reports `0 HIGH` and `0 CRITICAL` for API and web
 - Browser E2E: `18 passed`, including OCI provider telemetry refresh, contextual AI,
   workbook download, terminal job state, BOM, topology, and cleanup validation
@@ -409,11 +457,10 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
 - Web and API stack: all eight production services running and healthy in Docker Compose
 - Pattern certification browser contract: `21/21` certified cards, `9/9` governed overlays, desktop light/dark and `390 px` mobile views, zero horizontal overflow, and zero console errors
 
-The current validated state is recorded in
-[`docs/reports/status-report.md`](./docs/reports/status-report.md). Historical
-implementation prompts and dated reports are retained only as traceability
-evidence; `AGENTS.md`, `README.md`, the root workflow, and current architecture
-documents define the active operational contract.
+`AGENTS.md`, this README, the root workflow, and the current architecture
+documents define the active operational contract. Dated audit reports,
+implementation prompts, and rendered diagrams are intentionally excluded from
+Git and belong in local or external artifact storage.
 
 ---
 

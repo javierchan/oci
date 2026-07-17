@@ -5,7 +5,7 @@ from __future__ import annotations
 import enum
 from typing import Optional
 
-from sqlalchemy import Boolean, Enum as SAEnum, Float, ForeignKey, Integer, JSON, String
+from sqlalchemy import Boolean, Enum as SAEnum, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, UUIDMixin
@@ -34,7 +34,6 @@ class IntegrationStatus(str, enum.Enum):
     EN_REVISION = "En Revisión"
     TBD = "TBD"
     DUPLICADO_1 = "Duplicado 1"
-    DUPLICADO_2 = "Duplicado 2"
 
 
 class QAStatus(str, enum.Enum):
@@ -73,6 +72,7 @@ class ImportBatch(Base, UUIDMixin, TimestampMixin):
     )
     source_row_count: Mapped[Optional[int]] = mapped_column(Integer)
     tbq_y_count: Mapped[Optional[int]] = mapped_column(Integer)
+    tbq_n_count: Mapped[Optional[int]] = mapped_column(Integer)
     excluded_count: Mapped[Optional[int]] = mapped_column(Integer)
     loaded_count: Mapped[Optional[int]] = mapped_column(Integer)
     header_map: Mapped[Optional[dict]] = mapped_column(JSON)
@@ -105,6 +105,7 @@ class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
 
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
     source_row_id: Mapped[Optional[str]] = mapped_column(ForeignKey("source_integration_rows.id"))
+    tbq: Mapped[str] = mapped_column(String(1), nullable=False, default="Y", server_default="Y")
 
     seq_number: Mapped[int] = mapped_column(Integer, nullable=False)
     interface_id: Mapped[Optional[str]] = mapped_column(String(100))
@@ -153,14 +154,12 @@ class CatalogIntegration(Base, UUIDMixin, TimestampMixin):
     retry_policy: Mapped[Optional[str]] = mapped_column(String(500))
     idempotency: Mapped[Optional[str]] = mapped_column(String(500))
     core_tools: Mapped[Optional[str]] = mapped_column(String(1000))
-    additional_tools_overlays: Mapped[Optional[str]] = mapped_column(String(1000))
+    additional_tools_overlays: Mapped[Optional[str]] = mapped_column(Text)
 
     qa_status: Mapped[Optional[str]] = mapped_column(String(50))
     qa_reasons: Mapped[Optional[list]] = mapped_column(JSON)
 
     calendarization: Mapped[Optional[str]] = mapped_column(String(255))
     retention_processing_window: Mapped[Optional[str]] = mapped_column(String(500))
-    uncertainty: Mapped[Optional[str]] = mapped_column(String(255))
-
     project: Mapped["Project"] = relationship(back_populates="catalog_integrations")
     source_row: Mapped[Optional["SourceIntegrationRow"]] = relationship(back_populates="catalog_integrations")

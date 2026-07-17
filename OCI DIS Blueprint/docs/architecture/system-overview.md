@@ -41,12 +41,12 @@ Celery: import_worker.process_import()
        │
        ├─► parse_rows() [calc-engine/importer.py]
        │     ├─ detect headers (row 5)
-       │     ├─ apply TBQ=Y / exclude Duplicado 2 (PRD-017)
+       │     ├─ include TBQ Y/N technically / reject Duplicado 2 source defects
        │     ├─ normalize frequency, status (PRD-019)
        │     └─ emit NormalizationEvents per row
        │
        ├─► persist SourceIntegrationRow (immutable)
-       ├─► persist CatalogIntegration (governed working copy)
+       ├─► persist CatalogIntegration (governed working copy with TBQ eligibility)
        ├─► compute derived fields (executions_per_day, payload_per_hour_kb)
        ├─► compute QA status per row [calc-engine/qa.py]
        ├─► emit AuditEvent per normalization event

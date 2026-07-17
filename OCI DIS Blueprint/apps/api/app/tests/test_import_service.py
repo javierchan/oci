@@ -7,9 +7,25 @@ import json
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.models import ImportBatch, Project, SourceIntegrationRow
+from app.models import CatalogIntegration, ImportBatch, Project, SourceIntegrationRow
 from app.models.project import ImportStatus
-from app.services import import_service
+from app.services import capture_template_service, import_service
+
+
+def test_official_template_fields_have_one_explicit_operational_contract() -> None:
+    """Every current template field is either operational or intentionally lineage-only."""
+
+    template_fields = {column.field for column in capture_template_service.COLUMNS}
+    lineage_only = capture_template_service.LINEAGE_ONLY_TEMPLATE_FIELDS
+    catalog_fields = set(CatalogIntegration.__table__.columns.keys())
+
+    assert lineage_only <= template_fields
+    assert template_fields - lineage_only <= set(import_service.HEADER_ALIASES)
+    assert template_fields - lineage_only <= catalog_fields
+
+
+def test_official_template_translates_every_twenty_minutes_to_en_us() -> None:
+    assert capture_template_service._en_us_option("Cada 20 minutos") == "Every 20 minutes"
 
 
 def test_previous_v2_template_contract_remains_supported() -> None:
@@ -37,6 +53,7 @@ def test_build_catalog_integration_prefers_header_aliases_over_indexes() -> None
         import_service.RAW_HEADERS_METADATA_KEY: json.dumps(
             {
                 "1": "#",
+                "5": "Proceso de Negocio",
                 "6": "Interfaz",
                 "10": "Alcance Inicial",
                 "12": "Frecuencia",
@@ -47,6 +64,7 @@ def test_build_catalog_integration_prefers_header_aliases_over_indexes() -> None
                 "27": "Tecnología de Destino",
                 "40": "TBQ",
                 "41": "Incertidumbre",
+                "42": "Proceso de Negocio DueDiligence",
             },
             ensure_ascii=True,
         )
@@ -56,6 +74,7 @@ def test_build_catalog_integration_prefers_header_aliases_over_indexes() -> None
         source_row_id="row-1",
         raw_data={
             "#": 1,
+            "Proceso de Negocio": "Order to Cash",
             "Interfaz": "Store Master Sync",
             "Alcance Inicial": "Wave 1",
             "Frecuencia": "Una vez al día",
@@ -64,8 +83,9 @@ def test_build_catalog_integration_prefers_header_aliases_over_indexes() -> None
             "Sistema de Origen": "MFCS",
             "Sistema de Destino": "Oracle ATP",
             "Tecnología de Destino": "SFTP/API Rest",
-            "TBQ": "Y",
+            "TBQ": "N",
             "Incertidumbre": "TBD",
+            "Proceso de Negocio DueDiligence": "Wrong duplicate value",
         },
         normalization_events=[],
         header_map=header_map,
@@ -78,7 +98,9 @@ def test_build_catalog_integration_prefers_header_aliases_over_indexes() -> None
     assert integration.payload_per_execution_kb == 0.0
     assert integration.destination_technology_1 == "SFTP"
     assert integration.destination_technology_2 == "API Rest"
-    assert integration.uncertainty == "TBD"
+    assert integration.business_process == "Order to Cash"
+    assert integration.tbq == "N"
+    assert not hasattr(integration, "uncertainty")
 
 
 def test_normalized_payload_value_converts_mb_header_into_kb() -> None:

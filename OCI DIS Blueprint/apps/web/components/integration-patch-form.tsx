@@ -55,6 +55,7 @@ export function IntegrationPatchForm({
   const [retentionWindow, setRetentionWindow] = useState<string>(integration.retention_processing_window ?? "");
   const [retryPolicy, setRetryPolicy] = useState<string>(integration.retry_policy ?? "");
   const [idempotency, setIdempotency] = useState<string>(integration.idempotency ?? "");
+  const [tbq, setTbq] = useState<"Y" | "N">(integration.tbq);
   const [saving, setSaving] = useState<boolean>(false);
   const [deleting, setDeleting] = useState<boolean>(false);
   const [deleteOpen, setDeleteOpen] = useState<boolean>(false);
@@ -104,6 +105,7 @@ export function IntegrationPatchForm({
       retention_processing_window: retentionWindow,
       retry_policy: retryPolicy,
       idempotency,
+      tbq,
     };
 
     try {
@@ -211,6 +213,14 @@ export function IntegrationPatchForm({
       <fieldset className="space-y-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
         <legend className="app-label px-1">Operational Design</legend>
         <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="app-label mb-2 block">Commercial Scope</span>
+            <select value={tbq} onChange={(event) => setTbq(event.target.value as "Y" | "N")} className="app-input">
+              <option value="Y">BOM eligible (TBQ=Y)</option>
+              <option value="N">Technical only (TBQ=N)</option>
+            </select>
+            <span className="mt-1.5 block text-xs leading-5 text-[var(--color-text-muted)]">This changes BOM and pricing eligibility only; the integration remains in the technical catalog.</span>
+          </label>
           <label className="block">
             <span className="app-label mb-2 block">Business Criticality</span>
             <select value={businessCriticality} onChange={(event) => setBusinessCriticality(event.target.value)} className="app-input">

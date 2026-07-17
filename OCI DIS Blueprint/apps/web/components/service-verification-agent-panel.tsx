@@ -6,8 +6,9 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, Play, ShieldAlert } from "lucide-react";
 
 import { api, getErrorMessage } from "@/lib/api";
+import { AgentDecisionWorkspace } from "@/components/agent-decision-workspace";
 import { formatDate } from "@/lib/format";
-import type { ServiceVerificationFinding, ServiceVerificationJob } from "@/lib/types";
+import type { AgentRun, ServiceVerificationFinding, ServiceVerificationJob } from "@/lib/types";
 
 function labelize(value: string): string {
   return value.replace(/_/g, " ");
@@ -35,6 +36,20 @@ function hasApplicableUpdate(finding: ServiceVerificationFinding): boolean {
   );
 }
 
+async function waitForAgent(run: AgentRun): Promise<AgentRun> {
+  let current = run;
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (["completed", "failed", "cancelled"].includes(current.status)) return current;
+    await new Promise((resolve) => window.setTimeout(resolve, 1000));
+    current = await api.getAgentRun(current.id);
+  }
+  throw new Error("Official Source Governance Agent did not finish within two minutes.");
+}
+
+function isVerificationJob(value: unknown): value is ServiceVerificationJob {
+  return typeof value === "object" && value !== null && typeof (value as ServiceVerificationJob).id === "string" && Array.isArray((value as ServiceVerificationJob).findings);
+}
+
 export function ServiceVerificationAgentPanel({
   initialJob,
   scopeServiceId,
@@ -49,6 +64,7 @@ export function ServiceVerificationAgentPanel({
   const [isRunning, setIsRunning] = useState(false);
   const [isLoadingFindings, setIsLoadingFindings] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
 
   const scopeLabel = useMemo(() => (scopeServiceId ? scopeServiceId : "All products"), [scopeServiceId]);
 
@@ -114,13 +130,17 @@ export function ServiceVerificationAgentPanel({
     setIsRunning(true);
     setErrorMessage(null);
     try {
-      const result = await api.runServiceVerificationJob({
-        service_ids: scopeServiceId ? [scopeServiceId] : [],
-        max_sources: maxSources,
-        force,
-      });
-      setJob(result);
-      setIsRunning(!isTerminalJob(result.status));
+      const terminal = await waitForAgent(await api.runAgent({
+        agent_type: "service_verification",
+        context: { request: { service_ids: scopeServiceId ? [scopeServiceId] : [], max_sources: maxSources, force } },
+        message: "Compare official Oracle evidence with governed Service Product rules and prepare reviewable decisions.",
+      }));
+      if (terminal.status !== "completed" || !isVerificationJob(terminal.result?.evidence)) {
+        throw new Error("Official Source Governance Agent returned an invalid result.");
+      }
+      setAgentRun(terminal);
+      setJob(terminal.result.evidence);
+      setIsRunning(false);
     } catch (error) {
       setErrorMessage(getErrorMessage(error, "Unable to run service verification."));
       setIsRunning(false);
@@ -188,7 +208,7 @@ export function ServiceVerificationAgentPanel({
             onClick={() => void runVerification()}
           >
             <Play className="h-4 w-4" />
-            {isRunning ? "Running" : "Run agent"}
+            {isRunning ? "Checking sources" : "Review official-source changes"}
           </button>
         </div>
 
@@ -223,6 +243,8 @@ export function ServiceVerificationAgentPanel({
             {errorMessage}
           </div>
         ) : null}
+
+        {agentRun ? <AgentDecisionWorkspace run={agentRun} onRunChange={setAgentRun} compact /> : null}
 
         {job ? (
           <div className="space-y-3">

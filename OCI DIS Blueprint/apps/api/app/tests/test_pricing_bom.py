@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import cast
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.models import (
@@ -18,9 +19,11 @@ from app.models import (
     DeploymentScenario,
     DeploymentEnvironmentPlan,
     DeploymentRampPhase,
+    GovernanceChangeSet,
     PriceCatalogSnapshot,
     PriceItem,
     PriceSource,
+    PriceSyncJob,
     Project,
     ServiceProductSkuMapping,
     ServiceCommercialPolicy,
@@ -28,6 +31,51 @@ from app.models import (
 )
 from app.models.project import ProjectStatus
 from app.services import bom_service, pricing_service
+
+
+@pytest.mark.asyncio
+async def test_bom_scope_excludes_tbq_n_but_catalog_keeps_it(test_engine: AsyncEngine) -> None:
+    """TBQ N is technical catalog evidence and never becomes economic demand."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(id="tbq-scope", name="TBQ Scope", owner_id="architect", status="active")
+        session.add_all(
+            [
+                project,
+                CatalogIntegration(
+                    id="tbq-y",
+                    project_id=project.id,
+                    seq_number=1,
+                    interface_name="Quoted route",
+                    source_system="ERP",
+                    destination_system="CRM",
+                    tbq="Y",
+                ),
+                CatalogIntegration(
+                    id="tbq-n",
+                    project_id=project.id,
+                    seq_number=2,
+                    interface_name="Technical-only route",
+                    source_system="ERP",
+                    destination_system="Lake",
+                    tbq="N",
+                ),
+            ]
+        )
+        await session.flush()
+
+        catalog_rows = list(
+            (
+                await session.scalars(
+                    select(CatalogIntegration).where(CatalogIntegration.project_id == project.id)
+                )
+            ).all()
+        )
+        economic_rows = await bom_service._project_integrations(project.id, session)
+
+        assert {row.id for row in catalog_rows} == {"tbq-y", "tbq-n"}
+        assert [row.id for row in economic_rows] == ["tbq-y"]
 
 
 def test_rebuilds_historical_monthly_series_from_immutable_line_periods() -> None:
@@ -617,8 +665,17 @@ async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_
         )
         session.add_all([technical, integration, source])
         await session.flush()
+        sync_job = PriceSyncJob(
+            source_id=source.id,
+            requested_by="test",
+            currency="USD",
+            status="completed",
+        )
+        session.add(sync_job)
+        await session.flush()
         catalog = PriceCatalogSnapshot(
             source_id=source.id,
+            sync_job_id=sync_job.id,
             currency="USD",
             retrieved_at=technical.created_at,
             content_hash="test-public-catalog",
@@ -662,6 +719,25 @@ async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_
         )
         session.add_all([catalog, mapping, scenario])
         await session.flush()
+        session.add(
+            GovernanceChangeSet(
+                sync_job_id=sync_job.id,
+                price_source_id=source.id,
+                price_snapshot_id=catalog.id,
+                trigger_type="test",
+                currency="USD",
+                status="promoted",
+                drift_classification="baseline",
+                materiality_score=0,
+                source_manifest={},
+                drift_summary={},
+                impact_summary={},
+                validation_status="passed",
+                regression_summary={"families": 1, "passed": 1, "failed": 0},
+                approval_status="approved",
+                promoted_at=datetime.now(UTC),
+            )
+        )
         environment = DeploymentEnvironmentPlan(
             scenario_id=scenario.id,
             name="Production",
@@ -773,8 +849,17 @@ async def test_bom_resolves_commercial_variant_per_environment(test_engine: Asyn
         )
         session.add_all([technical, integration, source])
         await session.flush()
+        sync_job = PriceSyncJob(
+            source_id=source.id,
+            requested_by="test",
+            currency="USD",
+            status="completed",
+        )
+        session.add(sync_job)
+        await session.flush()
         catalog = PriceCatalogSnapshot(
             source_id=source.id,
+            sync_job_id=sync_job.id,
             currency="USD",
             retrieved_at=technical.created_at,
             content_hash="environment-sku-catalog",
@@ -821,6 +906,25 @@ async def test_bom_resolves_commercial_variant_per_environment(test_engine: Asyn
         )
         session.add_all([catalog, *mappings, scenario])
         await session.flush()
+        session.add(
+            GovernanceChangeSet(
+                sync_job_id=sync_job.id,
+                price_source_id=source.id,
+                price_snapshot_id=catalog.id,
+                trigger_type="test",
+                currency="USD",
+                status="promoted",
+                drift_classification="baseline",
+                materiality_score=0,
+                source_manifest={},
+                drift_summary={},
+                impact_summary={},
+                validation_status="passed",
+                regression_summary={"families": 1, "passed": 1, "failed": 0},
+                approval_status="approved",
+                promoted_at=datetime.now(UTC),
+            )
+        )
         for sequence, (name, mapping) in enumerate(
             [("Production", mappings[1]), ("QA", mappings[0])], start=1
         ):

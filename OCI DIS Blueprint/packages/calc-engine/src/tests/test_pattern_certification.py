@@ -52,3 +52,11 @@ def test_saved_canvas_key_lists_are_supported_by_certification_matching() -> Non
         '"overlayKeys": ["OCI API Gateway", "OCI IAM and Security Services"]}'
     )
     assert composition_issues("#13", canvas, canvas) == ()
+
+
+def test_cqrs_supports_the_governed_orchestration_projection_stack() -> None:
+    assert composition_issues(
+        "#10",
+        "OCI Streaming, OIC Gen3, OCI Data Integration",
+        None,
+    ) == ()

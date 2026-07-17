@@ -3,7 +3,8 @@ Source File Importer — XLSX/CSV parser with parity-mode row selection.
 
 Implements PRD-015 through PRD-019:
   - Supports parity workbooks with headers at row 5 and template uploads with headers at row 1
-  - TBQ=Y inclusion, Duplicado 2 exclusion
+  - Technical inclusion regardless of TBQ commercial eligibility
+  - Duplicado 2 source defects rejected from the active catalog
   - Source order preservation
   - Per-row normalization events
   - Immutable SourceIntegrationRow output
@@ -39,11 +40,12 @@ class ParsedRow:
 class ImportResult:
     source_row_count: int
     tbq_y_count: int
+    tbq_n_count: int
     excluded_count: int
     loaded_count: int
     header_map: dict[str, str]
     rows: list[ParsedRow]
-    parser_version: str = "3.0.0"
+    parser_version: str = "3.1.0"
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +70,7 @@ HEADER_ALIASES: dict[str, list[str]] = {
     "mapping_status": ["estado de mapeo", "mapping status"],
     "source_system": ["sistema de origen", "source system"],
     "source_technology": ["tecnología de origen", "source technology"],
-    "source_api_reference": ["api reference", "api ref origen"],
+    "source_api_reference": ["api reference", "source api reference", "api ref origen"],
     "source_owner": ["propietario de origen", "source owner"],
     "destination_system": ["sistema de destino", "destination system"],
     "destination_technology_1": [
@@ -110,8 +112,8 @@ HEADER_ALIASES: dict[str, list[str]] = {
         "tamaño kb",
     ],
     "is_fan_out": ["fan-out (si/no)", "fan-out", "fan out"],
-    "fan_out_targets": ["# destinos", "fan-out targets", "fan out targets"],
-    "calendarization": ["calendarización", "calendarizacion", "calendarization"],
+    "fan_out_targets": ["# destinos", "# destinations", "fan-out targets", "fan out targets"],
+    "calendarization": ["calendarización", "calendarizacion", "calendarization", "schedule window"],
     "selected_pattern": [
         "patrón seleccionado (manual)",
         "patron seleccionado (manual)",
@@ -148,23 +150,19 @@ HEADER_ALIASES: dict[str, list[str]] = {
         "herramientas core cuantificables / volumetricas",
         "herramientas core",
         "core tools",
+        "quantifiable core tools",
         "posibles tools y componentes identificados",
     ],
     "additional_tools_overlays": [
         "herramientas adicionales / overlays (complemento manual)",
         "herramientas adicionales",
         "additional tools",
+        "architectural overlays",
         "overlays",
     ],
     "tbq": ["tbq"],
-    "uncertainty": ["incertidumbre", "uncertainty"],
     "owner": ["owner", "dueño"],
     "identified_in": ["identificada en:", "identified in"],
-    "business_process_dd": [
-        "proceso de negocio duedilligence",
-        "proceso de negocio duediligence",
-        "dd process",
-    ],
     "slide": ["slide"],
 }
 
@@ -236,17 +234,14 @@ def _get(row: list, header_map: dict, field: str):
 def should_include(row: list, header_map: dict) -> tuple[bool, Optional[str]]:
     """
     Parity-mode inclusion rules:
-    - TBQ must be 'Y' (case-insensitive)
-    - Estado must NOT be 'Duplicado 2'
+    - TBQ controls commercial eligibility, not technical catalog inclusion
+    - Estado must NOT be 'Duplicado 2' because it is a known master-workbook defect
     Returns (included, exclusion_reason).
     """
-    tbq = _get(row, header_map, "tbq")
-    if not tbq or str(tbq).strip().upper() != "Y":
-        return False, f"TBQ != Y (was: {tbq!r})"
-
     status = _get(row, header_map, "interface_status") or _get(row, header_map, "status") or ""
-    if str(status).strip() == "Duplicado 2":
-        return False, "Estado = Duplicado 2"
+    normalized_status = str(status).strip().casefold()
+    if normalized_status in {"duplicado 2", "duplicate 2"}:
+        return False, "Interface Status = Duplicate 2"
 
     return True, None
 
@@ -260,6 +255,11 @@ FREQUENCY_ALIASES: dict[str, str] = {
     "1 vez al dia": "Una vez al día",
     "once a day": "Una vez al día",
     "hourly": "Cada 1 hora",
+    "every hour": "Cada 1 hora",
+    "every 5 minutes": "Cada 5 minutos",
+    "every 15 minutes": "Cada 15 minutos",
+    "every 20 minutes": "Cada 20 minutos",
+    "every 30 minutes": "Cada 30 minutos",
     "cada hora": "Cada 1 hora",
     "cada 1 hora": "Cada 1 hora",
     "every 2 hours": "Cada 2 horas",
@@ -279,6 +279,7 @@ FREQUENCY_ALIASES: dict[str, str] = {
     "tiempo real": "Tiempo Real",
     "weekly": "Semanal",
     "monthly": "Mensual",
+    "once daily": "Una vez al día",
     "mensual": "Mensual",
     "semanal": "Semanal",
     "biweekly": "Quincenal",
@@ -321,6 +322,7 @@ def parse_rows(
 
     parsed: list[ParsedRow] = []
     tbq_y_count = 0
+    tbq_n_count = 0
     excluded_count = 0
     loaded_count = 0
 
@@ -337,11 +339,13 @@ def parse_rows(
         included, reason = should_include(raw_row, header_map)
         # Check TBQ value directly for accurate counting
         raw_tbq = _get(raw_row, header_map, "tbq")
-        is_tbq_y = raw_tbq and str(raw_tbq).strip().upper() == "Y"
-
+        normalized_tbq = str(raw_tbq or "N").strip().upper()
+        is_tbq_y = normalized_tbq == "Y"
         if included:
-            tbq_y_count += 1
-
+            if is_tbq_y:
+                tbq_y_count += 1
+            else:
+                tbq_n_count += 1
             # Normalize frequency
             freq_raw = _get(raw_row, header_map, "frequency")
             freq_norm, freq_event = normalize_frequency(str(freq_raw) if freq_raw else None)
@@ -350,10 +354,7 @@ def parse_rows(
 
             loaded_count += 1
         else:
-            if is_tbq_y:
-                # TBQ=Y but excluded (e.g. Duplicado 2) — matches workbook "excluded" count
-                tbq_y_count += 1
-                excluded_count += 1
+            excluded_count += 1
 
         parsed.append(ParsedRow(
             source_row_number=source_row_number,
@@ -366,6 +367,7 @@ def parse_rows(
     return ImportResult(
         source_row_count=len(parsed),
         tbq_y_count=tbq_y_count,
+        tbq_n_count=tbq_n_count,
         excluded_count=excluded_count,
         loaded_count=loaded_count,
         header_map=header_map,

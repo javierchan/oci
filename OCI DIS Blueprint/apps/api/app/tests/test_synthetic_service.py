@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from app.core.calc_engine import composition_issues
 from app.services import synthetic_service
 
 
@@ -17,7 +18,12 @@ def test_generated_synthetic_dataset_meets_scale_and_coverage_targets() -> None:
     assert validation.catalog_count == 480
     assert validation.distinct_systems >= 70
     assert len(validation.covered_pattern_ids) == 17
-    assert validation.max_canvas_state_length < 1000
+    assert validation.max_canvas_state_length < synthetic_service.SYNTHETIC_CANVAS_MAX_BYTES
+
+    assert all(
+        not composition_issues(row.selected_pattern, row.core_tools_csv, row.canvas_state)
+        for row in dataset.included_rows
+    )
 
 
 def test_generated_smoke_dataset_meets_smoke_targets_and_full_pattern_coverage() -> None:
@@ -30,7 +36,7 @@ def test_generated_smoke_dataset_meets_smoke_targets_and_full_pattern_coverage()
     assert validation.catalog_count == 18
     assert validation.distinct_systems >= 12
     assert len(validation.covered_pattern_ids) == synthetic_service.SUPPORTED_PATTERN_COUNT
-    assert validation.max_canvas_state_length < 1000
+    assert validation.max_canvas_state_length < synthetic_service.SYNTHETIC_CANVAS_MAX_BYTES
 
 
 def test_synthetic_queue_routes_stay_within_governed_message_limit() -> None:
@@ -103,3 +109,78 @@ def test_canvas_state_keeps_incompatible_gateway_overlay_off_active_route() -> N
 
     assert gateway_node["instanceId"] not in connected_node_ids
     assert gateway_node["payloadNote"] == "overlay"
+
+
+def test_canvas_overlay_repair_preserves_route_and_adds_visible_context_nodes() -> None:
+    original = synthetic_service.build_canvas_state(("OIC Gen3",), ("OCI API Gateway",), 54.0)
+    repaired = synthetic_service.add_canvas_overlays(
+        original,
+        ("OCI API Gateway", "OCI IAM and Security Services"),
+    )
+    before = json.loads(original)
+    after = json.loads(repaired)
+
+    assert after["edges"] == before["edges"]
+    assert after["overlayKeys"] == ["OCI API Gateway", "OCI IAM and Security Services"]
+    assert any(
+        node["toolKey"] == "OCI IAM and Security Services" and node["payloadNote"] == "overlay"
+        for node in after["nodes"]
+    )
+
+
+def test_canvas_overlay_detach_preserves_the_core_payload_route() -> None:
+    original = json.dumps(
+        {
+            "v": 3,
+            "nodes": [
+                {
+                    "instanceId": "gateway",
+                    "toolKey": "OCI API Gateway",
+                    "payloadNote": "",
+                    "x": 200,
+                    "y": 120,
+                },
+                {"instanceId": "stream", "toolKey": "OCI Streaming", "payloadNote": ""},
+                {"instanceId": "oic", "toolKey": "OIC Gen3", "payloadNote": ""},
+            ],
+            "edges": [
+                {"edgeId": "e1", "sourceInstanceId": "source-system", "targetInstanceId": "gateway"},
+                {"edgeId": "e2", "sourceInstanceId": "gateway", "targetInstanceId": "stream"},
+                {"edgeId": "e3", "sourceInstanceId": "stream", "targetInstanceId": "oic"},
+                {"edgeId": "e4", "sourceInstanceId": "oic", "targetInstanceId": "destination-system"},
+            ],
+            "coreToolKeys": ["OCI Streaming", "OIC Gen3"],
+            "overlayKeys": ["OCI API Gateway"],
+        },
+        separators=(",", ":"),
+    )
+
+    repaired_value = synthetic_service.detach_canvas_overlay_from_route(
+        original,
+        "OCI API Gateway",
+    )
+    repaired = json.loads(repaired_value)
+    edge_pairs = {
+        (edge["sourceInstanceId"], edge["targetInstanceId"])
+        for edge in repaired["edges"]
+    }
+
+    assert ("source-system", "stream") in edge_pairs
+    assert not any("gateway" in pair for pair in edge_pairs)
+    gateway = next(node for node in repaired["nodes"] if node["instanceId"] == "gateway")
+    assert gateway["payloadNote"] == "overlay"
+    assert gateway["x"] == 340
+    assert gateway["y"] == 20
+    assert json.loads(
+        synthetic_service.detach_canvas_overlay_from_route(
+            json.dumps(repaired, separators=(",", ":")),
+            "OCI API Gateway",
+        )
+    ) == repaired
+    assert (
+        synthetic_service.detach_canvas_overlay_from_route(
+            repaired_value,
+            "OCI API Gateway",
+        )
+        == repaired_value
+    )

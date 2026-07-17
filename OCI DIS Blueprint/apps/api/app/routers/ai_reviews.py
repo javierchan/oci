@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
+from app.models import AiReviewJob
 from app.schemas.ai_review import (
     AiReviewAcceptRecommendationRequest,
     AiReviewApplyPatchRequest,
@@ -181,6 +184,12 @@ async def create_project_ai_review(
         await agent_service.link_agent_run(
             agent_run.id, legacy_job_type="ai_review", legacy_job_id=job.id, db=db
         )
+        job_model = await db.get(AiReviewJob, job.id)
+        if job_model is not None:
+            job_model.input_payload = {
+                **cast(dict[str, object], job_model.input_payload),
+                "agent_run_id": agent_run.id,
+            }
     try:
         execute_agent_run_task.apply_async(args=[agent_run.id], task_id=agent_run.id, queue="agents")
     except Exception as exc:  # pragma: no cover - defensive dispatch path

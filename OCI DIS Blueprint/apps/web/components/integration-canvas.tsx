@@ -40,6 +40,16 @@ import {
   type CanvasEdge,
   type CanvasNode,
 } from "@/lib/canvas-governance";
+import {
+  CANVAS_HEIGHT,
+  ROUTE_NODE_GAP,
+  SYSTEM_NODE_HEIGHT,
+  SYSTEM_NODE_WIDTH,
+  TOOL_NODE_HEIGHT,
+  TOOL_NODE_WIDTH,
+  arrangeCanvasNodes,
+  primaryRouteNodeIds,
+} from "@/lib/canvas-layout";
 import type {
   AiReviewCanvasDraftSelection,
   CanvasCombination,
@@ -57,15 +67,9 @@ type SelectedElement =
   | null;
 
 const MIN_CANVAS_WIDTH = 900;
-const CANVAS_HEIGHT = 560;
 const MIN_SCALE = 0.5;
 const MIN_READABLE_AUTO_SCALE = 0.76;
 const MAX_SCALE = 2;
-const ROUTE_NODE_GAP = 64;
-const TOOL_NODE_WIDTH = 184;
-const TOOL_NODE_HEIGHT = 126;
-const SYSTEM_NODE_WIDTH = 218;
-const SYSTEM_NODE_HEIGHT = 96;
 const HANDLE_RADIUS = 5;
 const EDGE_HIT_STROKE = 14;
 const EDGE_STROKE = 3;
@@ -449,77 +453,6 @@ function minimumCanvasWidthForNodeCount(nodeCount: number): number {
     MIN_CANVAS_WIDTH,
     SYSTEM_NODE_WIDTH * 2 + TOOL_NODE_WIDTH * nodeCount + ROUTE_NODE_GAP * (nodeCount + 1) + 96,
   );
-}
-
-function primaryRouteNodeIds(nodes: CanvasNode[], edges: CanvasEdge[]): string[] {
-  const nodeIds = new Set(nodes.map((node) => node.instanceId));
-  const ordered: string[] = [];
-  const visited = new Set<string>([SOURCE_NODE_ID]);
-  let currentId = SOURCE_NODE_ID;
-
-  while (currentId !== DESTINATION_NODE_ID) {
-    const nextEdge = edges.find(
-      (edge) =>
-        edge.sourceInstanceId === currentId &&
-        !visited.has(edge.targetInstanceId) &&
-        (edge.targetInstanceId === DESTINATION_NODE_ID || nodeIds.has(edge.targetInstanceId)),
-    );
-    if (!nextEdge) {
-      break;
-    }
-    currentId = nextEdge.targetInstanceId;
-    visited.add(currentId);
-    if (currentId !== DESTINATION_NODE_ID) {
-      ordered.push(currentId);
-    }
-  }
-
-  return ordered;
-}
-
-function arrangeCanvasNodes(nodes: CanvasNode[], edges: CanvasEdge[], canvasWidth: number): CanvasNode[] {
-  const routeIds = primaryRouteNodeIds(nodes, edges);
-  const routeIdSet = new Set(routeIds);
-  const orderedIds = [
-    ...routeIds,
-    ...nodes
-      .filter((node) => !routeIdSet.has(node.instanceId))
-      .sort((left, right) => left.x - right.x || left.y - right.y)
-      .map((node) => node.instanceId),
-  ];
-  const positions = new Map<string, { x: number; y: number }>();
-  const routeStartX = SYSTEM_NODE_WIDTH + 40 + ROUTE_NODE_GAP;
-  const routeStep = TOOL_NODE_WIDTH + ROUTE_NODE_GAP;
-  const routeY = CANVAS_HEIGHT / 2 - TOOL_NODE_HEIGHT / 2;
-
-  routeIds.forEach((instanceId, index) => {
-    positions.set(instanceId, {
-      x: routeStartX + index * routeStep,
-      y: routeY,
-    });
-  });
-
-  const sideNodes = orderedIds.filter((instanceId) => !routeIdSet.has(instanceId));
-  sideNodes.forEach((instanceId, index) => {
-    const column = index % Math.max(1, Math.floor((canvasWidth - 120) / (TOOL_NODE_WIDTH + ROUTE_NODE_GAP)));
-    const row = Math.floor(index / Math.max(1, Math.floor((canvasWidth - 120) / (TOOL_NODE_WIDTH + ROUTE_NODE_GAP))));
-    positions.set(instanceId, {
-      x: 60 + column * (TOOL_NODE_WIDTH + ROUTE_NODE_GAP),
-      y: 28 + row * (TOOL_NODE_HEIGHT + 44),
-    });
-  });
-
-  return nodes.map((node) => {
-    const position = positions.get(node.instanceId);
-    if (!position) {
-      return node;
-    }
-    return {
-      ...node,
-      x: clamp(position.x, 20, canvasWidth - TOOL_NODE_WIDTH - 20),
-      y: clamp(position.y, 20, CANVAS_HEIGHT - TOOL_NODE_HEIGHT - 20),
-    };
-  });
 }
 
 function defaultEndpointPositions(canvasWidth: number, routeNodes: CanvasNode[] = []): CanvasEndpointPositions {
@@ -2693,7 +2626,7 @@ export function IntegrationCanvas({
           <p className="text-[var(--color-text-secondary)]">{patternCategory ?? "No pattern category"}</p>
           {activeOverlayKeys.length > 0 ? (
             <p className="text-[var(--color-text-secondary)]">
-              Active overlays: {activeOverlayKeys.join(", ")}
+              Architectural overlays: {activeOverlayKeys.join(", ")}
             </p>
           ) : null}
         </div>

@@ -10,21 +10,25 @@ from io import StringIO
 import json
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 from fastapi import HTTPException
-import httpx
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
+    GovernanceChangeSet,
+    GovernanceSourceArtifact,
     PriceCatalogSnapshot,
     PriceItem,
     PriceSource,
     PriceSyncJob,
+    QuotationRegressionRun,
     ServiceProductSkuMapping,
 )
 from app.schemas.pricing import (
+    GovernanceChangeSetListResponse,
+    GovernanceChangeSetResponse,
+    GovernanceSourceArtifactResponse,
     PriceCatalogSnapshotListResponse,
     PriceCatalogSnapshotResponse,
     PriceItemListResponse,
@@ -38,14 +42,11 @@ from app.schemas.pricing import (
     SkuMappingPatchRequest,
     SkuMappingResponse,
     QuantityPresetResponse,
+    QuotationRegressionRunResponse,
 )
 from app.services import storage_service
 from app.services import audit_service
-
-
-PRICE_FETCH_TIMEOUT_SECONDS = 45.0
-PRICE_USER_AGENT = "OCI-DIS-Blueprint-Pricing/1.0"
-ALLOWED_PUBLIC_PRICE_HOSTS = {"apexapps.oracle.com", "www.oracle.com", "oracle.com"}
+from app.services import pricing_governance_service
 
 
 def _now() -> datetime:
@@ -257,25 +258,6 @@ def _price_signature(item: PriceItem | dict[str, object]) -> tuple[object, ...]:
         item["range_unit"],
         item["metric_name"],
     )
-
-
-async def _fetch_public_prices(source: PriceSource, currency: str) -> dict[str, Any]:
-    if not source.base_url:
-        raise ValueError("Public price source has no URL")
-    parsed = urlparse(source.base_url)
-    if parsed.scheme != "https" or (parsed.hostname or "") not in ALLOWED_PUBLIC_PRICE_HOSTS:
-        raise ValueError("Public price source is not allowlisted")
-    async with httpx.AsyncClient(
-        timeout=PRICE_FETCH_TIMEOUT_SECONDS,
-        follow_redirects=True,
-        headers={"User-Agent": PRICE_USER_AGENT, "Accept": "application/json"},
-    ) as client:
-        response = await client.get(source.base_url, params={"currencyCode": currency.upper()})
-        response.raise_for_status()
-        payload = response.json()
-    if not isinstance(payload, dict):
-        raise ValueError("Oracle price source did not return a JSON object")
-    return payload
 
 
 def serialize_price_source(source: PriceSource) -> PriceSourceResponse:
@@ -553,7 +535,7 @@ async def create_sync_job(request: PriceSyncRequest, actor_id: str, db: AsyncSes
     return serialize_sync_job(job)
 
 
-async def run_sync_job(job_id: str, db: AsyncSession) -> PriceSyncJob:
+async def run_sync_job(job_id: str, db: AsyncSession, *, trigger_type: str = "manual") -> PriceSyncJob:
     """Fetch, normalize, snapshot, and diff one price source."""
 
     job = await db.get(PriceSyncJob, job_id)
@@ -568,7 +550,8 @@ async def run_sync_job(job_id: str, db: AsyncSession) -> PriceSyncJob:
     job.status = "running"
     job.started_at = _now()
     await db.flush()
-    payload = await _fetch_public_prices(source, job.currency)
+    bundle = await pricing_governance_service.fetch_official_source_bundle(source, job.currency)
+    payload = bundle["price_catalog"][1]
     normalized = normalize_public_price_payload(payload, job.currency)
     content_hash = _catalog_hash(normalized)
     existing = await db.scalar(
@@ -580,12 +563,37 @@ async def run_sync_job(job_id: str, db: AsyncSession) -> PriceSyncJob:
     )
     now = _now()
     if existing is not None:
+        change_set = await pricing_governance_service.persist_change_set(
+            job=job,
+            source=source,
+            snapshot=existing,
+            previous_snapshot=existing,
+            bundle=bundle,
+            normalized_prices=normalized,
+            trigger_type=trigger_type,
+            db=db,
+        )
         job.status = "completed"
         job.completed_at = now
         job.item_count = existing.item_count
         job.changes_detected = 0
         job.snapshot_id = existing.id
         source.last_synced_at = now
+        await audit_service.emit(
+            event_type="oci_governance_verification_completed",
+            entity_type="governance_change_set",
+            entity_id=change_set.id,
+            actor_id=job.requested_by,
+            old_value=None,
+            new_value={
+                "status": change_set.status,
+                "validation_status": change_set.validation_status,
+                "drift_classification": change_set.drift_classification,
+            },
+            project_id=None,
+            correlation_id=job.id,
+            db=db,
+        )
         await db.flush()
         return job
 
@@ -606,7 +614,7 @@ async def run_sync_job(job_id: str, db: AsyncSession) -> PriceSyncJob:
         previous_signatures = {_price_signature(item) for item in previous_items}
     new_signatures = {_price_signature(item) for item in normalized}
     changes_detected = len(previous_signatures.symmetric_difference(new_signatures)) if previous else 0
-    approval_status = "approved" if previous is None else "pending_review"
+    approval_status = "pending_review"
     snapshot = PriceCatalogSnapshot(
         source_id=source.id,
         sync_job_id=job.id,
@@ -616,8 +624,8 @@ async def run_sync_job(job_id: str, db: AsyncSession) -> PriceSyncJob:
         content_hash=content_hash,
         item_count=len(normalized),
         approval_status=approval_status,
-        approved_by="system:first_catalog" if previous is None else None,
-        approved_at=now if previous is None else None,
+        approved_by=None,
+        approved_at=None,
         snapshot_metadata={
             "source_type": source.source_type,
             "source_url": source.base_url,
@@ -629,6 +637,16 @@ async def run_sync_job(job_id: str, db: AsyncSession) -> PriceSyncJob:
     db.add(snapshot)
     await db.flush()
     db.add_all([PriceItem(snapshot_id=snapshot.id, **item) for item in normalized])
+    change_set = await pricing_governance_service.persist_change_set(
+        job=job,
+        source=source,
+        snapshot=snapshot,
+        previous_snapshot=previous,
+        bundle=bundle,
+        normalized_prices=normalized,
+        trigger_type=trigger_type,
+        db=db,
+    )
     job.status = "completed"
     job.completed_at = now
     job.item_count = len(normalized)
@@ -647,6 +665,8 @@ async def run_sync_job(job_id: str, db: AsyncSession) -> PriceSyncJob:
             "changes_detected": changes_detected,
             "approval_status": approval_status,
             "content_hash": content_hash,
+            "change_set_id": change_set.id,
+            "validation_status": change_set.validation_status,
         },
         project_id=None,
         correlation_id=job.id,
@@ -665,6 +685,7 @@ async def mark_sync_job_failed(job_id: str, error: dict[str, object], db: AsyncS
     job.status = "failed"
     job.completed_at = _now()
     job.error_details = error
+    storage_service.delete_prefix(f"governance/oci-sources/jobs/{job_id}")
     await db.flush()
 
 
@@ -702,12 +723,160 @@ async def list_price_snapshots(db: AsyncSession, limit: int = 20) -> PriceCatalo
     )
 
 
+async def _serialize_change_set(
+    change_set: GovernanceChangeSet,
+    db: AsyncSession,
+) -> GovernanceChangeSetResponse:
+    artifacts = (
+        await db.scalars(
+            select(GovernanceSourceArtifact)
+            .where(GovernanceSourceArtifact.change_set_id == change_set.id)
+            .order_by(GovernanceSourceArtifact.source_kind)
+        )
+    ).all()
+    regressions = (
+        await db.scalars(
+            select(QuotationRegressionRun)
+            .where(QuotationRegressionRun.change_set_id == change_set.id)
+            .order_by(QuotationRegressionRun.family_key)
+        )
+    ).all()
+    return GovernanceChangeSetResponse(
+        id=change_set.id,
+        sync_job_id=change_set.sync_job_id,
+        price_source_id=change_set.price_source_id,
+        price_snapshot_id=change_set.price_snapshot_id,
+        previous_change_set_id=change_set.previous_change_set_id,
+        trigger_type=change_set.trigger_type,
+        currency=change_set.currency,
+        status=change_set.status,
+        drift_classification=change_set.drift_classification,
+        materiality_score=change_set.materiality_score,
+        source_manifest=change_set.source_manifest,
+        drift_summary=change_set.drift_summary,
+        impact_summary=change_set.impact_summary,
+        validation_status=change_set.validation_status,
+        regression_summary=change_set.regression_summary,
+        approval_status=change_set.approval_status,
+        approved_by=change_set.approved_by,
+        approved_at=change_set.approved_at,
+        promoted_at=change_set.promoted_at,
+        error_details=change_set.error_details,
+        artifacts=[
+            GovernanceSourceArtifactResponse(
+                id=artifact.id,
+                source_kind=artifact.source_kind,
+                source_url=artifact.source_url,
+                content_hash=artifact.content_hash,
+                record_count=artifact.record_count,
+                storage_reference=artifact.storage_reference,
+                source_last_updated=artifact.source_last_updated,
+                retrieval_status=artifact.retrieval_status,
+                validation_summary=artifact.validation_summary,
+                retrieved_at=artifact.retrieved_at,
+            )
+            for artifact in artifacts
+        ],
+        regressions=[
+            QuotationRegressionRunResponse(
+                id=run.id,
+                family_key=run.family_key,
+                status=run.status,
+                fixture_count=run.fixture_count,
+                passed_count=run.passed_count,
+                failed_count=run.failed_count,
+                mapping_count=run.mapping_count,
+                findings=run.findings,
+                started_at=run.started_at,
+                completed_at=run.completed_at,
+            )
+            for run in regressions
+        ],
+        created_at=change_set.created_at,
+        updated_at=change_set.updated_at,
+    )
+
+
+async def list_governance_change_sets(
+    db: AsyncSession,
+    limit: int = 20,
+) -> GovernanceChangeSetListResponse:
+    """Return recent atomic official OCI verification decisions."""
+
+    rows = (
+        await db.scalars(
+            select(GovernanceChangeSet)
+            .order_by(GovernanceChangeSet.created_at.desc())
+            .limit(min(max(limit, 1), 100))
+        )
+    ).all()
+    return GovernanceChangeSetListResponse(
+        change_sets=[await _serialize_change_set(row, db) for row in rows],
+        total=len(rows),
+    )
+
+
+async def get_governance_change_set(
+    change_set_id: str,
+    db: AsyncSession,
+) -> GovernanceChangeSetResponse:
+    """Return one continuous-governance decision with complete evidence."""
+
+    change_set = await db.get(GovernanceChangeSet, change_set_id)
+    if change_set is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Governance change set not found", "error_code": "GOVERNANCE_CHANGE_SET_NOT_FOUND"},
+        )
+    return await _serialize_change_set(change_set, db)
+
+
 async def approve_price_snapshot(snapshot_id: str, actor_id: str, db: AsyncSession) -> PriceCatalogSnapshotResponse:
     """Approve a reviewed price catalog snapshot for BOM generation."""
 
     snapshot = await db.get(PriceCatalogSnapshot, snapshot_id)
     if snapshot is None:
         raise HTTPException(status_code=404, detail={"detail": "Price snapshot not found", "error_code": "PRICE_SNAPSHOT_NOT_FOUND"})
+    source = await db.get(PriceSource, snapshot.source_id)
+    if source is not None and source.source_type == "public_list":
+        change_set = await db.scalar(
+            select(GovernanceChangeSet)
+            .where(GovernanceChangeSet.price_snapshot_id == snapshot.id)
+            .order_by(GovernanceChangeSet.created_at.desc())
+        )
+        if change_set is None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "detail": "Run official OCI source verification before approving this catalog",
+                    "error_code": "PRICE_GOVERNANCE_EVIDENCE_REQUIRED",
+                },
+            )
+        if change_set.validation_status != "passed" or change_set.status == "blocked":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "detail": "Quotation regression or source validation failed for this change set",
+                    "error_code": "PRICE_GOVERNANCE_VALIDATION_FAILED",
+                },
+            )
+        prior_approved = (
+            await db.scalars(
+                select(PriceCatalogSnapshot).where(
+                    PriceCatalogSnapshot.source_id == snapshot.source_id,
+                    PriceCatalogSnapshot.currency == snapshot.currency,
+                    PriceCatalogSnapshot.approval_status == "approved",
+                    PriceCatalogSnapshot.id != snapshot.id,
+                )
+            )
+        ).all()
+        for prior in prior_approved:
+            prior.approval_status = "superseded"
+        change_set.status = "promoted"
+        change_set.approval_status = "approved"
+        change_set.approved_by = actor_id
+        change_set.approved_at = _now()
+        change_set.promoted_at = change_set.approved_at
     old_status = snapshot.approval_status
     snapshot.approval_status = "approved"
     snapshot.approved_by = actor_id

@@ -131,3 +131,21 @@ async def decide_agent_approval(
 ) -> AgentRunResponse:
     async with db.begin():
         return await agent_service.decide_agent_approval(run_id, approval_id, body, actor_id, actor_role, db)
+
+
+@router.post(
+    "/runs/{run_id}/approvals/{approval_id}/execute",
+    response_model=AgentRunResponse,
+    summary="Execute an approved deterministic agent proposal",
+)
+async def execute_agent_approval(
+    run_id: str,
+    approval_id: str,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
+) -> AgentRunResponse:
+    async with db.begin():
+        return await agent_service.execute_agent_approval(
+            run_id, approval_id, actor_id, actor_role, db
+        )

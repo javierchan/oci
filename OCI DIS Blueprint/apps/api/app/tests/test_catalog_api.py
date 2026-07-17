@@ -188,6 +188,61 @@ async def test_manual_capture_lists_catalog_and_lineage(api_client: AsyncClient)
 
 
 @pytest.mark.asyncio
+async def test_patch_tbq_updates_commercial_scope_and_keeps_technical_catalog(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Architects can remove a row from the BOM without deleting its technical evidence."""
+
+    await seed_canvas_validation_reference_data(test_engine)
+
+    project_response = await api_client.post(
+        "/api/v1/projects/",
+        json={"name": "TBQ Patch Project", "owner_id": "integration-test", "description": "TBQ patch"},
+    )
+    project_id = project_response.json()["id"]
+    create_response = await api_client.post(
+        f"/api/v1/catalog/{project_id}",
+        params={"actor_id": "integration-test"},
+        json={
+            "interface_id": "INT-TBQ-PATCH-001",
+            "brand": "Oracle",
+            "business_process": "Finance",
+            "interface_name": "Commercial scope patch",
+            "source_system": "ERP",
+            "destination_system": "ATP",
+            "frequency": "Cada 1 hora",
+            "tbq": "Y",
+        },
+    )
+    integration_id = create_response.json()["id"]
+
+    patch_response = await api_client.patch(
+        f"/api/v1/catalog/{project_id}/{integration_id}",
+        params={"actor_id": "integration-test"},
+        json={"tbq": "N"},
+    )
+
+    assert patch_response.status_code == 200, patch_response.text
+    assert patch_response.json()["tbq"] == "N"
+    assert patch_response.json()["commercially_eligible"] is False
+    catalog_response = await api_client.get(f"/api/v1/catalog/{project_id}")
+    assert catalog_response.json()["total"] == 1
+
+    lineage_response = await api_client.get(f"/api/v1/catalog/{project_id}/{integration_id}/lineage")
+    raw_values = lineage_response.json()["raw_data"]
+    raw_values["tbq"] = "Y"
+    source_patch_response = await api_client.patch(
+        f"/api/v1/catalog/{project_id}/{integration_id}",
+        params={"actor_id": "integration-test"},
+        json={"raw_column_values": raw_values},
+    )
+    assert source_patch_response.status_code == 200
+    assert source_patch_response.json()["tbq"] == "Y"
+    assert source_patch_response.json()["commercially_eligible"] is True
+
+
+@pytest.mark.asyncio
 async def test_patch_rejects_oracle_backed_canvas_blockers(
     api_client: AsyncClient,
     test_engine: AsyncEngine,
@@ -402,3 +457,32 @@ async def test_bulk_patch_does_not_bypass_canvas_validation(
     assert payload["updated"] == 0
     assert len(payload["errors"]) == 2
     assert all("Oracle-backed canvas blockers detected" in error for error in payload["errors"])
+
+
+@pytest.mark.asyncio
+async def test_bulk_patch_rejects_row_specific_raw_source_evidence(
+    api_client: AsyncClient,
+) -> None:
+    """Bulk changes must not overwrite per-row source lineage evidence."""
+
+    create_project_response = await api_client.post(
+        "/api/v1/projects/",
+        json={
+            "name": "Raw Evidence Bulk Patch Project",
+            "owner_id": "integration-test",
+            "description": "Raw evidence remains row-specific",
+        },
+    )
+    project_id = create_project_response.json()["id"]
+
+    bulk_response = await api_client.post(
+        f"/api/v1/catalog/{project_id}/bulk-patch",
+        json={
+            "integration_ids": [],
+            "actor_id": "integration-test",
+            "patch": {"raw_column_values": {"TBQ": "N"}},
+        },
+    )
+
+    assert bulk_response.status_code == 400
+    assert bulk_response.json()["detail"]["error_code"] == "RAW_COLUMN_VALUES_BULK_UNSUPPORTED"

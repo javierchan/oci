@@ -257,6 +257,7 @@ async def calculate_project_volumetry(
     frequency_map = await _frequency_map(db)
     derived_inputs: dict[str, tuple[float | None, float | None]] = {}
     row_inputs: list[IntegrationInput] = []
+    commercial_row_inputs: list[IntegrationInput] = []
     for row in integrations:
         executions_day = _resolved_executions_per_day(row, frequency_map)
         payload_hour = _resolved_payload_per_hour_kb(
@@ -266,19 +267,24 @@ async def calculate_project_volumetry(
         )
         derived_inputs[row.id] = (executions_day, payload_hour)
         override = draft_override if draft_override and draft_override.integration_id == row.id else None
-        row_inputs.append(
-            _integration_input_with_overrides(
-                row,
-                executions_day,
-                override.core_tools if override else None,
-            )
+        integration_input = _integration_input_with_overrides(
+            row,
+            executions_day,
+            override.core_tools if override else None,
         )
+        row_inputs.append(integration_input)
+        if row.tbq == "Y":
+            commercial_row_inputs.append(integration_input)
     consolidated = consolidate_project(row_inputs, assumptions)
+    commercial_consolidated = consolidate_project(commercial_row_inputs, assumptions)
     row_results: dict[str, dict[str, object]] = {}
 
     di_total_gb = 0.0
     streaming_total_gb = 0.0
     peak_streaming_partitions = 0
+    commercial_di_total_gb = 0.0
+    commercial_streaming_total_gb = 0.0
+    commercial_peak_streaming_partitions = 0
     certified_pattern_ids: set[str] = set()
     uncertified_pattern_ids: set[str] = set()
     noncompliant_integration_count = 0
@@ -337,6 +343,16 @@ async def calculate_project_volumetry(
             streaming_total_gb += streaming_gb_month
         if streaming_partitions:
             peak_streaming_partitions = max(peak_streaming_partitions, int(streaming_partitions))
+        if row.tbq == "Y":
+            if di_gb_month:
+                commercial_di_total_gb += di_gb_month
+            if streaming_gb_month:
+                commercial_streaming_total_gb += streaming_gb_month
+            if streaming_partitions:
+                commercial_peak_streaming_partitions = max(
+                    commercial_peak_streaming_partitions,
+                    int(streaming_partitions),
+                )
 
         design_constraint_warnings = _design_constraint_warnings(
             row,
@@ -359,6 +375,8 @@ async def calculate_project_volumetry(
         if certification_issues:
             noncompliant_integration_count += 1
         row_results[row.id] = {
+            "tbq": row.tbq,
+            "commercially_eligible": row.tbq == "Y",
             "executions_per_day": executions_day,
             "payload_per_hour_kb": payload_hour,
             "oic_billing_msgs_month": oic_msgs_month,
@@ -386,6 +404,11 @@ async def calculate_project_volumetry(
     consolidated["data_integration"]["data_processed_gb_month"] = di_total_gb
     consolidated["streaming"]["total_gb_month"] = streaming_total_gb
     consolidated["streaming"]["partition_count"] = peak_streaming_partitions
+    commercial_consolidated["data_integration"]["data_processed_gb_month"] = (
+        commercial_di_total_gb
+    )
+    commercial_consolidated["streaming"]["total_gb_month"] = commercial_streaming_total_gb
+    commercial_consolidated["streaming"]["partition_count"] = commercial_peak_streaming_partitions
 
     return ProjectVolumetryCalculation(
         assumption_set_version=assumption_set.version,
@@ -394,6 +417,12 @@ async def calculate_project_volumetry(
         consolidated=consolidated,
         metadata={
             "integration_count": len(integrations),
+            "technical_integration_count": len(integrations),
+            "commercial_integration_count": len(commercial_row_inputs),
+            "commercially_excluded_integration_count": (
+                len(integrations) - len(commercial_row_inputs)
+            ),
+            "commercial_consolidated": commercial_consolidated,
             "service_rules": service_rules.metadata(),
             "pattern_certification": {
                 "version": CERTIFICATION_VERSION,
@@ -420,6 +449,12 @@ async def recalculate_project(project_id: str, actor_id: str, db: AsyncSession) 
         consolidated=calculation.consolidated,
         snapshot_metadata={
             "integration_count": calculation.metadata["integration_count"],
+            "technical_integration_count": calculation.metadata["technical_integration_count"],
+            "commercial_integration_count": calculation.metadata["commercial_integration_count"],
+            "commercially_excluded_integration_count": calculation.metadata[
+                "commercially_excluded_integration_count"
+            ],
+            "commercial_consolidated": calculation.metadata["commercial_consolidated"],
             "service_rules": calculation.metadata["service_rules"],
             "pattern_certification": calculation.metadata["pattern_certification"],
         },

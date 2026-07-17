@@ -1412,11 +1412,6 @@ def build_integrations(
             )
             retry_policy = choose_retry_policy(pattern_id, trigger_type)
             calendarization = choose_calendarization(trigger_type, frequency)
-            uncertainty = (
-                "Architecture and business assumptions pending final domain sign-off."
-                if qa_status == QAStatus.PENDING.value
-                else None
-            )
             comments = (
                 "Synthetic enterprise scenario row generated for milestone M24 validation."
                 if qa_status != QAStatus.OK.value
@@ -1488,7 +1483,7 @@ def build_integrations(
                 qa_status=qa_status,
                 qa_reasons=qa_reasons,
                 calendarization=calendarization,
-                uncertainty=uncertainty,
+                tbq="Y",
             )
             integrations.append(integration)
 

@@ -25,13 +25,19 @@ celery_app.conf.task_routes = {
     "app.workers.agent_worker.execute_agent_run_task": {"queue": "agents"},
 }
 
+beat_schedule: dict[str, dict[str, object]] = {}
 if settings.SERVICE_VERIFICATION_SCHEDULE_ENABLED:
-    celery_app.conf.beat_schedule = {
-        "service-verification-stale-scan": {
-            "task": "app.workers.service_verification_worker.execute_stale_service_verification_task",
-            "schedule": settings.SERVICE_VERIFICATION_SCHEDULE_SECONDS,
-        },
+    beat_schedule["service-verification-stale-scan"] = {
+        "task": "app.workers.service_verification_worker.execute_stale_service_verification_task",
+        "schedule": settings.SERVICE_VERIFICATION_SCHEDULE_SECONDS,
     }
+if settings.OCI_GOVERNANCE_SCHEDULE_ENABLED:
+    beat_schedule["official-oci-commercial-governance"] = {
+        "task": "app.workers.pricing_worker.execute_scheduled_oci_governance_task",
+        "schedule": settings.OCI_GOVERNANCE_SCHEDULE_SECONDS,
+    }
+if beat_schedule:
+    celery_app.conf.beat_schedule = beat_schedule
 
 # Import worker modules after the Celery app is created so task decorators register
 # against this application in both API-side dispatch and worker-side startup flows.

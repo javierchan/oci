@@ -24,6 +24,7 @@ from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import CatalogIntegration, PatternDefinition, Project, SyntheticGenerationJob
 from app.models.project import ProjectStatus
+from app.core.calc_engine import composition_issues
 from app.schemas.catalog import CatalogIntegrationPatch, ManualIntegrationCreate
 from app.schemas.export import ExportJobResponse
 from app.schemas.synthetic import (
@@ -46,9 +47,10 @@ from app.services import (
     recalc_service,
     storage_service,
 )
+from app.services.capture_template_service import CAPTURE_SHEET_NAME, COLUMNS
 from app.services.serializers import sanitize_for_json
 
-SOURCE_SHEET_NAME = "Catálogo de Integraciones"
+SOURCE_SHEET_NAME = CAPTURE_SHEET_NAME
 SYNTHETIC_ACTOR_ID = "synthetic-generator"
 DEFAULT_PRESET_CODE = "enterprise-default"
 SMOKE_PRESET_CODE = "ephemeral-smoke"
@@ -60,48 +62,10 @@ SYNTHETIC_JOBS_REQUIRED_MIGRATION = "20260428_0007"
 SYNTHETIC_QUEUE_MAX_MESSAGE_KB = 256.0
 SYNTHETIC_QUEUE_REFERENCE_PAYLOAD_KB = 192.0
 SYNTHETIC_STREAMING_MAX_MESSAGE_KB = 1024.0
+SYNTHETIC_CANVAS_MAX_BYTES = 16_000
 SYNTHETIC_API_GATEWAY_BACKEND_TOOL_KEYS = frozenset({"OIC Gen3", "OCI Functions", "Oracle Functions"})
 
-IMPORT_HEADER_ROW: list[str] = [
-    "#",
-    "ID de Interfaz",
-    "Owner",
-    "Marca",
-    "Proceso de Negocio",
-    "Interfaz",
-    "Descripción",
-    "Estado",
-    "Estado de Mapeo",
-    "Alcance Inicial",
-    "Complejidad",
-    "Frecuencia",
-    "Tipo",
-    "Base",
-    "Estado Interfaz",
-    "Tiempo Real (Si/No)",
-    "Tipo Trigger OIC",
-    "Response Size (KB)",
-    "Payload por ejecución (KB)",
-    "Fan-Out (Si/No)",
-    "# Destinos",
-    "Sistema de Origen",
-    "Tecnología de Origen",
-    "API Reference",
-    "Propietario de Origen",
-    "Sistema de Destino",
-    "Tecnología de Destino #1",
-    "Tecnología de Destino #2",
-    "Propietario de Destino",
-    "Calendarización",
-    "TBQ",
-    "Patrón seleccionado (manual)",
-    "Racional del patrón (manual)",
-    "Comentarios / Observaciones",
-    "Retry Policy",
-    "Herramientas Core Cuantificables / Volumétricas",
-    "Herramientas Adicionales / Overlays (complemento manual)",
-    "Incertidumbre",
-]
+IMPORT_HEADER_ROW: list[str] = [column.header for column in COLUMNS]
 
 BRANDS = [
     "Retail North",
@@ -219,26 +183,25 @@ class PatternPlan:
     payload_range_kb: tuple[int, int]
     response_ratio: float
     fan_out_targets: tuple[int, ...] = ()
-    uncertainty_ratio: int = 0
 
 
 PATTERN_PLANS: dict[str, PatternPlan] = {
     "#01": PatternPlan("#01", ("OIC Gen3",), ("OCI API Gateway",), "REST", "Operational API", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Medio", (48, 2048), 0.35),
-    "#02": PatternPlan("#02", ("OCI Streaming", "OIC Gen3"), ("OCI Events",), "Event", "Domain Event", ("Cada 5 minutos", "Cada 15 minutos", "Tiempo Real"), "Medio", (32, 768), 0.18, (2, 3, 4), 8),
+    "#02": PatternPlan("#02", ("OCI Streaming", "OIC Gen3"), ("OCI Events",), "Event", "Domain Event", ("Cada 5 minutos", "Cada 15 minutos", "Tiempo Real"), "Medio", (32, 768), 0.18, (2, 3, 4)),
     "#03": PatternPlan("#03", ("OCI Functions",), ("OCI API Gateway",), "REST", "Facade API", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Bajo", (16, 768), 0.25),
     "#04": PatternPlan("#04", ("OIC Gen3", "OCI Queue", "OCI Functions"), ("Process Automation",), "Scheduled", "Process Orchestration", ("Cada 1 hora", "Cada 4 horas", "Cada 12 horas"), "Alto", (128, 2048), 0.15),
-    "#05": PatternPlan("#05", ("Oracle GoldenGate", "OCI Streaming"), (), "DB Polling", "CDC Feed", ("Cada 5 minutos", "Cada 15 minutos", "Cada 1 hora"), "Alto", (24, 512), 0.05, (), 10),
+    "#05": PatternPlan("#05", ("Oracle GoldenGate", "OCI Streaming"), (), "DB Polling", "CDC Feed", ("Cada 5 minutos", "Cada 15 minutos", "Cada 1 hora"), "Alto", (24, 512), 0.05),
     "#06": PatternPlan("#06", ("OIC Gen3",), ("OCI API Gateway",), "REST", "Migration Bridge", ("Cada 1 hora", "Cada 4 horas", "Cada 12 horas"), "Medio", (64, 1536), 0.30),
     "#07": PatternPlan("#07", ("OIC Gen3",), ("OCI API Gateway",), "REST", "Parallel Aggregation", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (96, 2048), 0.55, (2, 3, 4)),
     "#08": PatternPlan("#08", ("OIC Gen3", "OCI Queue", "OCI Functions"), ("OCI API Gateway",), "REST", "Resilient API", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (64, 1536), 0.30),
     "#09": PatternPlan("#09", ("Oracle GoldenGate", "OCI Streaming", "OIC Gen3"), (), "Event", "Transactional Event", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (24, 384), 0.08),
     "#10": PatternPlan("#10", ("OCI Streaming", "OIC Gen3", "OCI Data Integration"), (), "Event", "Read Model Projection", ("Cada 15 minutos", "Cada 1 hora"), "Alto", (64, 1024), 0.12),
     "#11": PatternPlan("#11", ("OCI Functions",), ("OCI API Gateway",), "REST", "Channel API", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Medio", (16, 512), 0.20),
-    "#12": PatternPlan("#12", ("OCI Data Integration", "Oracle GoldenGate"), (), "Scheduled", "Data Product Pipeline", ("Cada 4 horas", "Cada 12 horas", "Una vez al día"), "Alto", (256, 4096), 0.10, (), 12),
-    "#13": PatternPlan("#13", ("OIC Gen3",), ("OCI API Gateway",), "REST", "Protected Integration", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Medio", (32, 1024), 0.22),
-    "#14": PatternPlan("#14", ("OCI Streaming", "OIC Gen3"), ("OCI API Gateway",), "Event", "Governed Event API", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Medio", (32, 768), 0.12),
-    "#15": PatternPlan("#15", ("OIC Gen3", "OCI Functions"), ("OCI API Gateway",), "REST", "AI-Assisted Orchestration", ("Cada 1 hora", "Cada 4 horas", "Bajo demanda"), "Alto", (64, 1024), 0.18, (), 6),
-    "#16": PatternPlan("#16", ("OIC Gen3", "OCI Functions"), ("OCI API Gateway",), "REST", "Mesh Edge", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (48, 768), 0.20),
+    "#12": PatternPlan("#12", ("OCI Data Integration", "Oracle GoldenGate"), ("OCI Object Storage", "OCI Data Catalog"), "Scheduled", "Data Product Pipeline", ("Cada 4 horas", "Cada 12 horas", "Una vez al día"), "Alto", (256, 4096), 0.10),
+    "#13": PatternPlan("#13", ("OIC Gen3",), ("OCI API Gateway", "OCI IAM and Security Services"), "REST", "Protected Integration", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Medio", (32, 1024), 0.22),
+    "#14": PatternPlan("#14", ("OCI Streaming", "OIC Gen3"), ("OCI API Gateway", "OCI Data Catalog"), "Event", "Governed Event API", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Medio", (32, 768), 0.12),
+    "#15": PatternPlan("#15", ("OIC Gen3", "OCI Functions"), ("OCI API Gateway", "OCI AI Services"), "REST", "AI-Assisted Orchestration", ("Cada 1 hora", "Cada 4 horas", "Bajo demanda"), "Alto", (64, 1024), 0.18),
+    "#16": PatternPlan("#16", ("OIC Gen3", "OCI Functions"), ("OCI API Gateway", "OKE / Service Mesh", "OCI Observability", "OCI IAM and Security Services"), "REST", "Mesh Edge", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (48, 768), 0.20),
     "#17": PatternPlan("#17", ("OIC Gen3", "OCI Functions", "OCI Queue"), ("OCI API Gateway",), "Webhook", "Webhook Distribution", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (24, 640), 0.10, (2, 3, 4)),
 }
 
@@ -352,13 +315,13 @@ class SyntheticIntegrationSpec:
     destination_technology_2: str | None
     destination_owner: str
     calendarization: str
+    tbq: Literal["Y", "N"]
     selected_pattern: str
     pattern_rationale: str
     comments: str
     retry_policy: str
     core_tools: tuple[str, ...]
     overlay_keys: tuple[str, ...]
-    uncertainty: str | None
 
     @property
     def core_tools_csv(self) -> str:
@@ -369,46 +332,45 @@ class SyntheticIntegrationSpec:
         return build_canvas_state(self.core_tools, self.overlay_keys, self.payload_per_execution_kb)
 
     def to_workbook_row(self) -> list[object]:
-        return [
-            self.sequence_number,
-            self.interface_id,
-            self.owner,
-            self.brand,
-            self.business_process,
-            self.interface_name,
-            self.description,
-            self.status,
-            self.mapping_status,
-            self.initial_scope,
-            self.complexity,
-            self.frequency,
-            self.type_value,
-            self.base_value,
-            self.interface_status,
-            "Sí" if self.is_real_time else "No",
-            self.trigger_type,
-            self.response_size_kb,
-            self.payload_per_execution_kb,
-            "Sí" if self.is_fan_out else "No",
-            self.fan_out_targets,
-            self.source_system,
-            self.source_technology,
-            self.source_api_reference,
-            self.source_owner,
-            self.destination_system,
-            self.destination_technology_1,
-            self.destination_technology_2,
-            self.destination_owner,
-            self.calendarization,
-            "Y",
-            self.selected_pattern,
-            self.pattern_rationale,
-            self.comments,
-            self.retry_policy,
-            self.core_tools_csv,
-            self.canvas_state,
-            self.uncertainty,
-        ]
+        values: dict[str, object] = {
+            "seq_number": self.sequence_number,
+            "interface_id": self.interface_id,
+            "owner": self.owner,
+            "brand": self.brand,
+            "business_process": self.business_process,
+            "interface_name": self.interface_name,
+            "description": self.description,
+            "status": self.status,
+            "mapping_status": self.mapping_status,
+            "initial_scope": self.initial_scope,
+            "complexity": self.complexity,
+            "frequency": self.frequency,
+            "type": self.type_value,
+            "interface_status": self.interface_status,
+            "is_real_time": "Yes" if self.is_real_time else "No",
+            "trigger_type": self.trigger_type,
+            "response_size_kb": self.response_size_kb,
+            "payload_per_execution_kb": self.payload_per_execution_kb,
+            "is_fan_out": "Yes" if self.is_fan_out else "No",
+            "fan_out_targets": self.fan_out_targets,
+            "source_system": self.source_system,
+            "source_technology": self.source_technology,
+            "source_api_reference": self.source_api_reference,
+            "source_owner": self.source_owner,
+            "destination_system": self.destination_system,
+            "destination_technology_1": self.destination_technology_1,
+            "destination_technology_2": self.destination_technology_2,
+            "destination_owner": self.destination_owner,
+            "calendarization": self.calendarization,
+            "tbq": self.tbq,
+            "selected_pattern": self.selected_pattern,
+            "pattern_rationale": self.pattern_rationale,
+            "comments": self.comments,
+            "retry_policy": self.retry_policy,
+            "core_tools": self.core_tools_csv,
+            "additional_tools_overlays": self.canvas_state,
+        }
+        return [values.get(column.field) for column in COLUMNS]
 
     def to_manual_request(self) -> ManualIntegrationCreate:
         return ManualIntegrationCreate(
@@ -428,11 +390,10 @@ class SyntheticIntegrationSpec:
             frequency=self.frequency,
             payload_per_execution_kb=self.payload_per_execution_kb,
             complexity=self.complexity,
-            uncertainty=self.uncertainty,
             selected_pattern=self.selected_pattern,
             pattern_rationale=self.pattern_rationale,
             core_tools=list(self.core_tools),
-            tbq="Y",
+            tbq=self.tbq,
             initial_scope=self.initial_scope,
             owner=self.owner,
         )
@@ -638,12 +599,6 @@ def _retry_policy(pattern: PatternPlan) -> str:
     return "Exponential backoff 3x within 10 minutes."
 
 
-def _uncertainty(pattern: PatternPlan, index: int) -> str | None:
-    if pattern.uncertainty_ratio and index % pattern.uncertainty_ratio == 0:
-        return "Source payload estimate is modeled from historical batch evidence."
-    return None
-
-
 def _business_process(source: SystemProfile, destination: SystemProfile, index: int) -> str:
     base = BUSINESS_PROCESSES[index % len(BUSINESS_PROCESSES)]
     return f"{base} — {source.domain} to {destination.domain}"
@@ -737,6 +692,228 @@ def build_canvas_state(core_tools: tuple[str, ...], overlay_keys: tuple[str, ...
     return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
 
 
+def add_canvas_overlays(value: str, overlay_keys: tuple[str, ...]) -> str:
+    """Add governed context overlays without changing the active payload route."""
+
+    payload = json.loads(value)
+    if not isinstance(payload, dict) or payload.get("v") not in (3, 4):
+        raise ValueError("Synthetic canvas repair requires a V3 or V4 canvas object.")
+    nodes = payload.get("nodes")
+    edges = payload.get("edges")
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        raise ValueError("Synthetic canvas repair requires nodes and edges.")
+
+    existing_tool_keys = {
+        str(node.get("toolKey"))
+        for node in nodes
+        if isinstance(node, dict) and node.get("toolKey")
+    }
+    existing_ids = {
+        str(node.get("instanceId"))
+        for node in nodes
+        if isinstance(node, dict) and node.get("instanceId")
+    }
+    existing_overlay_keys = {
+        str(tool_key)
+        for tool_key in payload.get("overlayKeys", [])
+        if isinstance(tool_key, str) and tool_key
+    }
+    missing_keys = [tool_key for tool_key in overlay_keys if tool_key not in existing_tool_keys]
+    overlay_slot = sum(
+        1
+        for node in nodes
+        if isinstance(node, dict) and node.get("toolKey") in existing_overlay_keys
+    )
+    for tool_key in missing_keys:
+        overlay_slot += 1
+        instance_id = f"cert-overlay-{overlay_slot}"
+        while instance_id in existing_ids:
+            overlay_slot += 1
+            instance_id = f"cert-overlay-{overlay_slot}"
+        existing_ids.add(instance_id)
+        nodes.append(
+            {
+                "instanceId": instance_id,
+                "toolKey": tool_key,
+                "label": SHORT_TOOL_LABELS.get(tool_key, tool_key),
+                "payloadNote": "overlay",
+                "x": 340 + (overlay_slot - 1) * 260,
+                "y": 70,
+            }
+        )
+
+    payload["overlayKeys"] = sorted(existing_overlay_keys | set(overlay_keys))
+    return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
+
+def detach_canvas_overlay_from_route(value: str, tool_key: str) -> str:
+    """Preserve an overlay node while removing it from the directed payload route."""
+
+    payload = json.loads(value)
+    if not isinstance(payload, dict) or payload.get("v") not in (3, 4):
+        raise ValueError("Synthetic canvas repair requires a V3 or V4 canvas object.")
+    nodes = payload.get("nodes")
+    edges = payload.get("edges")
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        raise ValueError("Synthetic canvas repair requires nodes and edges.")
+
+    target_ids = {
+        str(node.get("instanceId"))
+        for node in nodes
+        if isinstance(node, dict)
+        and node.get("toolKey") == tool_key
+        and node.get("instanceId")
+    }
+    if not target_ids:
+        return value
+
+    overlay_keys = {
+        str(tool_key)
+        for tool_key in payload.get("overlayKeys", [])
+        if isinstance(tool_key, str) and tool_key
+    }
+    other_overlay_x: list[float] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_x = node.get("x")
+        if (
+            node.get("instanceId") not in target_ids
+            and node.get("toolKey") in overlay_keys
+            and isinstance(node_x, (int, float))
+        ):
+            other_overlay_x.append(float(node_x))
+    detached_overlay_x = max(other_overlay_x, default=80.0) + 260.0
+
+    edge_dicts = [edge for edge in edges if isinstance(edge, dict)]
+    retained_edges = [
+        edge
+        for edge in edge_dicts
+        if edge.get("sourceInstanceId") not in target_ids
+        and edge.get("targetInstanceId") not in target_ids
+    ]
+    existing_pairs = {
+        (str(edge.get("sourceInstanceId")), str(edge.get("targetInstanceId")))
+        for edge in retained_edges
+    }
+    existing_edge_ids = {
+        str(edge.get("edgeId")) for edge in retained_edges if edge.get("edgeId")
+    }
+    bridge_index = 1
+    for target_id in sorted(target_ids):
+        predecessors = [
+            str(edge.get("sourceInstanceId"))
+            for edge in edge_dicts
+            if edge.get("targetInstanceId") == target_id and edge.get("sourceInstanceId")
+        ]
+        successors = [
+            str(edge.get("targetInstanceId"))
+            for edge in edge_dicts
+            if edge.get("sourceInstanceId") == target_id and edge.get("targetInstanceId")
+        ]
+        for predecessor in predecessors:
+            for successor in successors:
+                if predecessor == successor or (predecessor, successor) in existing_pairs:
+                    continue
+                edge_id = f"cert-bypass-{bridge_index}"
+                while edge_id in existing_edge_ids:
+                    bridge_index += 1
+                    edge_id = f"cert-bypass-{bridge_index}"
+                retained_edges.append(
+                    {
+                        "edgeId": edge_id,
+                        "sourceInstanceId": predecessor,
+                        "targetInstanceId": successor,
+                        "label": "",
+                    }
+                )
+                existing_edge_ids.add(edge_id)
+                existing_pairs.add((predecessor, successor))
+                bridge_index += 1
+
+    for node in nodes:
+        if isinstance(node, dict) and node.get("instanceId") in target_ids:
+            node["payloadNote"] = "overlay"
+            node["x"] = detached_overlay_x
+            node["y"] = 20.0
+    payload["edges"] = retained_edges
+    return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
+
+async def remediate_synthetic_pattern_certification(
+    project_id: str,
+    db: AsyncSession,
+) -> dict[str, object]:
+    """Repair governed synthetic canvases without inventing client evidence."""
+
+    project = await db.scalar(select(Project).where(Project.id == project_id))
+    if project is None:
+        raise ValueError(f"Project {project_id} was not found.")
+    if not bool((project.project_metadata or {}).get("synthetic")):
+        raise ValueError("Pattern certification auto-remediation is limited to synthetic projects.")
+
+    rows = await _load_project_rows(project_id, db)
+    issues_before = sum(
+        bool(composition_issues(row.selected_pattern, row.core_tools, row.additional_tools_overlays))
+        for row in rows
+    )
+    repairs: dict[str, str] = {}
+    for row in rows:
+        issues = composition_issues(
+            row.selected_pattern,
+            row.core_tools,
+            row.additional_tools_overlays,
+        )
+        should_normalize_asyncapi_overlay = row.selected_pattern == "#14"
+        if "PATTERN_OVERLAYS_NOT_CERTIFIED" not in issues and not should_normalize_asyncapi_overlay:
+            continue
+        plan = PATTERN_PLANS.get(row.selected_pattern or "")
+        if plan is None or not plan.route_overlays:
+            continue
+        current_canvas = row.additional_tools_overlays or build_canvas_state(
+            tuple(tool.strip() for tool in (row.core_tools or "").split(",") if tool.strip()),
+            (),
+            row.payload_per_execution_kb or 0.0,
+        )
+        if row.selected_pattern == "#14":
+            current_canvas = detach_canvas_overlay_from_route(
+                current_canvas,
+                "OCI API Gateway",
+            )
+        repaired_canvas = add_canvas_overlays(current_canvas, plan.route_overlays)
+        if repaired_canvas != row.additional_tools_overlays:
+            repairs[row.id] = repaired_canvas
+
+    if repairs:
+        await catalog_service.repair_canvas_designs(
+            project_id=project_id,
+            canvas_by_integration_id=repairs,
+            actor_id=SYNTHETIC_ACTOR_ID,
+            db=db,
+        )
+    else:
+        await recalc_service.recalculate_project(project_id, SYNTHETIC_ACTOR_ID, db)
+
+    issues_after = {
+        row.id: composition_issues(
+            row.selected_pattern,
+            row.core_tools,
+            row.additional_tools_overlays,
+        )
+        for row in rows
+    }
+    unresolved = {row_id: issues for row_id, issues in issues_after.items() if issues}
+    if unresolved:
+        raise ValueError(f"Synthetic certification remediation left unresolved rows: {unresolved}")
+    return {
+        "project_id": project_id,
+        "catalog_count": len(rows),
+        "issues_before": issues_before,
+        "repaired_canvases": len(repairs),
+        "issues_after": 0,
+    }
+
+
 def generate_synthetic_dataset(spec: SyntheticProjectSpec) -> SyntheticDataset:
     rng = random.Random(spec.seed)
     systems = _build_system_catalog()
@@ -756,51 +933,46 @@ def generate_synthetic_dataset(spec: SyntheticProjectSpec) -> SyntheticDataset:
     for position in range(1, import_position_limit + 1):
         if position in excluded_positions:
             tbq_value = "N" if len(excluded_rows) % 2 == 0 else "Y"
-            status_value = "Duplicado 2" if tbq_value == "Y" else "TBD"
+            status_value = "Duplicado 2"
             source = systems[(position - 1) % len(systems)]
             destination = systems[(position * 7 + 9) % len(systems)]
-            excluded_rows.append(
-                [
-                    position,
-                    f"INT-SYN-{position:04d}",
-                    f"{source.domain} Integration Lead",
-                    BRANDS[position % len(BRANDS)],
-                    _business_process(source, destination, position),
-                    f"{source.name} to {destination.name} deferred workbook row",
-                    "Synthetic excluded workbook row kept to validate inclusion/exclusion lineage.",
-                    status_value,
-                    "Pendiente",
-                    "Sí",
-                    "Bajo",
-                    "Cada 12 horas",
-                    "Scheduled",
-                    "Deferred Flow",
-                    status_value,
-                    "No",
-                    "Scheduled",
-                    12.0,
-                    64.0,
-                    "No",
-                    None,
-                    source.name,
-                    source.technology,
-                    f"/synthetic/excluded/{position:04d}",
-                    source.owner,
-                    destination.name,
-                    destination.technology,
-                    None,
-                    destination.owner,
-                    "Business hours",
-                    tbq_value,
-                    "#01",
-                    "Excluded workbook evidence row.",
-                    "Excluded for synthetic import-path validation.",
-                    "No retry because row is excluded.",
-                    "OIC Gen3",
-                    build_canvas_state(("OIC Gen3",), ("OCI API Gateway",), 64.0),
-                    "Excluded synthetic workbook row.",
-                ]
-            )
+            excluded_values: dict[str, object] = {
+                "seq_number": position,
+                "interface_id": f"INT-SYN-{position:04d}",
+                "owner": f"{source.domain} Integration Lead",
+                "brand": BRANDS[position % len(BRANDS)],
+                "business_process": _business_process(source, destination, position),
+                "interface_name": f"{source.name} to {destination.name} duplicate source row",
+                "description": "Synthetic source-defect row retained only for exclusion lineage.",
+                "status": status_value,
+                "mapping_status": "Pending",
+                "initial_scope": "Yes",
+                "complexity": "Low",
+                "frequency": "Every 12 hours",
+                "type": "Scheduled",
+                "interface_status": status_value,
+                "is_real_time": "No",
+                "trigger_type": "Scheduled",
+                "response_size_kb": 12.0,
+                "payload_per_execution_kb": 64.0,
+                "is_fan_out": "No",
+                "source_system": source.name,
+                "source_technology": source.technology,
+                "source_api_reference": f"/synthetic/excluded/{position:04d}",
+                "source_owner": source.owner,
+                "destination_system": destination.name,
+                "destination_technology_1": destination.technology,
+                "destination_owner": destination.owner,
+                "calendarization": "Business hours",
+                "tbq": tbq_value,
+                "selected_pattern": "#01",
+                "pattern_rationale": "Rejected source duplicate retained as immutable evidence.",
+                "comments": "Excluded for synthetic import-path validation.",
+                "retry_policy": "Not applicable because the source row is rejected.",
+                "core_tools": "OIC Gen3",
+                "additional_tools_overlays": build_canvas_state(("OIC Gen3",), ("OCI API Gateway",), 64.0),
+            }
+            excluded_rows.append([excluded_values.get(column.field) for column in COLUMNS])
             continue
 
         pattern_id = pattern_ids[pattern_cursor]
@@ -850,13 +1022,13 @@ def generate_synthetic_dataset(spec: SyntheticProjectSpec) -> SyntheticDataset:
             destination_technology_2=_destination_technology_2(position),
             destination_owner=destination.owner,
             calendarization=_calendarization(pattern, frequency, position),
+            tbq="N" if position % 19 == 0 else "Y",
             selected_pattern=pattern_id,
             pattern_rationale=_pattern_rationale(pattern_id, source, destination, pattern.route_core_tools),
             comments=_comments(pattern_id, "import", position),
             retry_policy=_retry_policy(pattern),
             core_tools=pattern.route_core_tools,
             overlay_keys=pattern.route_overlays,
-            uncertainty=_uncertainty(pattern, position),
         )
         import_rows.append(spec_row)
 
@@ -910,13 +1082,13 @@ def generate_synthetic_dataset(spec: SyntheticProjectSpec) -> SyntheticDataset:
                 destination_technology_2=_destination_technology_2(sequence_number),
                 destination_owner=destination.owner,
                 calendarization=_calendarization(pattern, frequency, sequence_number),
+                tbq="N" if sequence_number % 23 == 0 else "Y",
                 selected_pattern=pattern_id,
                 pattern_rationale=_pattern_rationale(pattern_id, source, destination, pattern.route_core_tools),
                 comments=_comments(pattern_id, "manual", sequence_number),
                 retry_policy=_retry_policy(pattern),
                 core_tools=pattern.route_core_tools,
                 overlay_keys=pattern.route_overlays,
-                uncertainty=_uncertainty(pattern, sequence_number),
             )
         )
 
@@ -1076,8 +1248,8 @@ async def create_synthetic_enterprise_project(
         raise ValueError("Synthetic dataset does not meet minimum distinct-system coverage.")
     if len(validation.covered_pattern_ids) != SUPPORTED_PATTERN_COUNT:
         raise ValueError(f"Synthetic dataset does not cover all {SUPPORTED_PATTERN_COUNT} patterns.")
-    if validation.max_canvas_state_length >= 1000:
-        raise ValueError("Synthetic dataset exceeded the current canvas column budget.")
+    if validation.max_canvas_state_length >= SYNTHETIC_CANVAS_MAX_BYTES:
+        raise ValueError("Synthetic dataset exceeded the governed canvas storage budget.")
 
     pattern_map = await _load_pattern_map(db)
     missing_patterns = sorted(set(validation.covered_pattern_ids) - set(pattern_map))

@@ -13,14 +13,12 @@ def test_active_row_without_formal_id_still_gets_qa_evaluation() -> None:
         payload_per_execution_kb=None,
         is_fan_out=False,
         fan_out_targets=None,
-        uncertainty="TBD",
         is_active_row=True,
     )
 
     assert result.status == "REVISAR"
     assert "MISSING_ID_FORMAL" not in result.reasons
     assert "MISSING_PAYLOAD" in result.reasons
-    assert "TBD_UNCERTAINTY" in result.reasons
 
 
 def test_inactive_row_stays_outside_qa() -> None:
@@ -33,7 +31,6 @@ def test_inactive_row_stays_outside_qa() -> None:
         payload_per_execution_kb=None,
         is_fan_out=None,
         fan_out_targets=None,
-        uncertainty=None,
         is_active_row=False,
     )
 
@@ -52,7 +49,6 @@ def test_workbook_trigger_vocabulary_is_accepted() -> None:
             payload_per_execution_kb=100.0,
             is_fan_out=False,
             fan_out_targets=None,
-            uncertainty=None,
         )
         assert "INVALID_TRIGGER_TYPE" not in result.reasons
 
@@ -71,7 +67,6 @@ def test_scatter_gather_exceeds_parallel_limit() -> None:
         payload_per_execution_kb=50.0,
         is_fan_out=True,
         fan_out_targets=8,
-        uncertainty=None,
     )
 
     assert "SCATTER_GATHER_EXCEEDS_OIC_PARALLEL_LIMIT" in result.reasons
@@ -88,7 +83,6 @@ def test_streaming_payload_exceeds_1mb() -> None:
         payload_per_execution_kb=2048.0,
         is_fan_out=False,
         fan_out_targets=None,
-        uncertainty=None,
     )
 
     assert "STREAMING_PAYLOAD_EXCEEDS_1MB_LIMIT" in result.reasons
@@ -104,7 +98,6 @@ def test_functions_payload_exceeds_6mb() -> None:
         payload_per_execution_kb=8192.0,
         is_fan_out=False,
         fan_out_targets=None,
-        uncertainty=None,
     )
 
     assert "FUNCTIONS_PAYLOAD_EXCEEDS_6MB_LIMIT" in result.reasons
@@ -120,7 +113,6 @@ def test_certified_data_mesh_requires_governed_evidence_and_overlays() -> None:
         payload_per_execution_kb=100.0,
         is_fan_out=False,
         fan_out_targets=None,
-        uncertainty=None,
     )
 
     assert "BUSINESS_CRITICALITY_REQUIRED" in result.reasons
@@ -139,7 +131,6 @@ def test_claim_check_requires_retention_and_classification() -> None:
         payload_per_execution_kb=8192.0,
         is_fan_out=False,
         fan_out_targets=None,
-        uncertainty=None,
     )
 
     assert "INVALID_PATTERN" not in result.reasons
@@ -157,7 +148,6 @@ def test_dlq_pattern_is_ok_with_retry_and_idempotency_evidence() -> None:
         payload_per_execution_kb=100.0,
         is_fan_out=False,
         fan_out_targets=None,
-        uncertainty=None,
         retry_policy="3 attempts; exponential backoff; DLQ",
         idempotency="Deduplicate by eventId for 7 days",
         additional_tools_overlays="OCI Observability",

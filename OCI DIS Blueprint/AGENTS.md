@@ -214,7 +214,7 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       named fields do not degrade into `Column N` unless the workbook header is blank
 - [x] Align import normalization with the workbook operating rules documented in
       `TPL - Prompts`: preserve source order, include `Duplicado 1`, exclude only
-      `Duplicado 2`, and retain `TBD`, uncertainty, and payload `0`
+      `Duplicado 2`, and retain `TBD` and payload `0`
 - [x] Normalize split destination technologies and trigger capture semantics
       conservatively from workbook evidence without inventing missing values
 - [x] **Exit criteria**: ADN workbook imports with descriptive Interface Name and
@@ -273,7 +273,7 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       coverage so QA and dashboard surfaces communicate confidence, not just status
 - [x] Add low-confidence forecast messaging when billing is extrapolated from sparse
       payload coverage or other weak source inputs
-- [x] Preserve workbook uncertainty instead of overwriting it merely to turn QA green
+- [x] Preserve evidence gaps without inventing field values merely to turn QA green
 - [x] **Exit criteria**: QA no longer hides active rows behind missing formal IDs,
       and forecast surfaces clearly communicate uncertainty when coverage is weak
 
@@ -383,8 +383,8 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 - [x] Execute agents in a dedicated production Docker `agent-worker` that consumes
       only the Celery `agents` queue
 - [x] Use OCI Responses-first Function Calling with one typed, allowlisted deterministic
-      application tool per agent, governed Chat fallback, and no SQL, shell, Docker,
-      or arbitrary URL access
+      evidence boundary per agent, governed Chat fallback, and app-owned decision,
+      proposal, and validation stages with no SQL, shell, Docker, or arbitrary URL access
 - [x] Preserve existing specialized UI contracts while linking Architecture Review
       and Service Verification jobs to the common runtime
 - [x] Add contextual Import and BOM agent actions plus an Admin Agent Operations surface
@@ -718,6 +718,65 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 - [x] **Exit criteria**: migration head `20260716_0032`; all 21 profiles have
       deterministic fixtures; API, calc-engine, frontend, OpenAPI, Docker,
       export, browser, light/dark, and console validation pass
+
+### M53 — Continuous OCI Source Verification + Quotation Regression Governance
+- [x] Retrieve the public price catalog, Cloud Estimator products, metrics, and
+      presets as one atomic official-source verification; a partial failure keeps
+      the previous approved evidence authoritative
+- [x] Persist immutable, hash-addressed source artifacts and record counts in
+      Object Storage while keeping only typed governance references in PostgreSQL
+- [x] Schedule daily Celery verification behind a Redis lease, bounded source
+      retries, and terminal no-change, review, blocked, or promoted states
+- [x] Classify source drift and identify affected approved SKUs and Service Products
+      before an administrator can accept changed commercial evidence
+- [x] Execute deterministic quotation fixtures for every approved commercial
+      family and block promotion or new public-list BOMs when regression coverage
+      fails or verified evidence exceeds the configured freshness window
+- [x] Expose source health, drift, impact, regression coverage, review decisions,
+      and recent executions in the responsive Admin Pricing Verification Center
+- [x] **Exit criteria**: migration head `20260716_0034`; 139 API, 50 calc-engine,
+      24 pricing-engine, and 70 frontend tests; Ruff, mypy, TypeScript, ESLint,
+      OpenAPI, Node 26 production build, eight-service Docker runtime, real Oracle
+      4-source sync, 20/20 quotation families, Object Storage artifacts, scheduled
+      no-change execution, post-verification BOM, responsive light/dark browser
+      validation, and zero console errors pass
+
+### M54 — Governed Agentic Decision Workspaces
+- [x] Replace single-pass agent summaries with a four-stage runtime for evidence,
+      deterministic alternatives, grounded OCI synthesis, and governed proposals
+- [x] Give Architecture, Source Governance, Import, Integration Design, Topology,
+      BOM, and Support agents explicit decision responsibilities and typed capabilities
+- [x] Persist up to three alternatives with what changes, expected impact, missing
+      inputs, implementation, validation, confidence, and completion contracts
+- [x] Separate proposal approval from execution, make execution idempotent, and
+      persist bounded post-validation evidence plus audit correlation
+- [x] Keep canvas changes as reversible simulations until explicit architect save;
+      create BOM alternatives only as draft deployment scenarios
+- [x] Expose decision workspaces in Agent Operations, Architecture Review, Import,
+      Service Verification, Integration Design, and BOM without replacing existing
+      deterministic candidate, pricing, or governance authorities
+- [x] Measure created proposals, approved executions, post-validations, and execution
+      rate in the retained operational window without inventing labor savings
+- [x] **Exit criteria**: migration head `20260716_0035`; backend, calc-engine,
+      pricing-engine, frontend, OpenAPI, Node 26 production build, eight-service
+      Docker runtime, real OCI decision generation, approval, execution,
+      post-validation, dark/light responsive browser, and console checks pass
+
+### M55 — Technical Inclusion + en-US Capture Contract
+- [x] Include both `TBQ=Y` and `TBQ=N` source rows in technical governance while
+      deriving commercial eligibility exclusively from the persisted TBQ value
+- [x] Keep `TBQ=N` integrations in Catalog, QA, topology, Canvas, and technical
+      volumetry, but exclude them from deployment scenarios, BOM, and pricing
+- [x] Reject `Duplicado 2` only as a known source-workbook defect and retain the
+      rejected row solely as immutable source-lineage evidence
+- [x] Remove Uncertainty and the duplicated Due Diligence Business Process from
+      active schemas, QA, capture, exports, and UI while accepting and ignoring
+      those columns in historical workbooks
+- [x] Publish the governed offline workbook as en-US template `v3.1.0`, including
+      English sheet names, headers, definitions, examples, validations, and lists
+- [ ] **Exit criteria**: migration head `20260717_0036`; calc-engine, API,
+      frontend, OpenAPI, production Docker, round-trip current/legacy workbook,
+      BOM eligibility, and responsive browser validation pass
 
 ### M26 — Topology Decision Workspace
 - [x] Separate statistical majority from conservative edge risk so mixed paths

@@ -184,13 +184,12 @@ function NavPanel({
           width={44}
           height={44}
           className="h-11 w-11 shrink-0 rounded-[14px] shadow-[0_8px_20px_rgba(199,70,52,0.18)]"
-          priority
         />
         <div className="min-w-0">
-          <p className="truncate text-[15px] font-semibold leading-tight text-[var(--color-text-primary)]">
+          <p className="app-brand-name truncate text-[var(--color-text-primary)]">
             {APP_NAME}
           </p>
-          <p className="mt-1 truncate text-[10px] font-medium text-[var(--color-text-muted)]">
+          <p className="app-brand-tagline mt-1 truncate text-[var(--color-text-muted)]">
             {APP_TAGLINE}
           </p>
         </div>
@@ -400,7 +399,7 @@ export function Nav(): JSX.Element {
       <div className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 backdrop-blur lg:hidden">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-accent)]">{APP_NAME}</p>
+            <p className="app-brand-name app-brand-name-mobile truncate text-[var(--color-accent)]">{APP_NAME}</p>
             <p className="mt-1 truncate text-base font-semibold text-[var(--color-text-primary)]">{sectionTitle}</p>
             <p className="mt-1 truncate text-xs text-[var(--color-text-secondary)]">
               {hasProjectContext

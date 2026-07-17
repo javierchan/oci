@@ -61,6 +61,76 @@ class PriceCatalogSnapshot(Base, UUIDMixin, TimestampMixin):
     snapshot_metadata: Mapped[dict[str, object]] = mapped_column("metadata", JSON, nullable=False, default=dict)
 
 
+class GovernanceChangeSet(Base, UUIDMixin, TimestampMixin):
+    """Atomic review unit for official OCI commercial-source changes."""
+
+    __tablename__ = "governance_change_sets"
+
+    sync_job_id: Mapped[str] = mapped_column(ForeignKey("price_sync_jobs.id"), nullable=False, unique=True)
+    price_source_id: Mapped[str] = mapped_column(ForeignKey("price_sources.id"), nullable=False)
+    price_snapshot_id: Mapped[str] = mapped_column(ForeignKey("price_catalog_snapshots.id"), nullable=False)
+    previous_change_set_id: Mapped[Optional[str]] = mapped_column(ForeignKey("governance_change_sets.id"))
+    trigger_type: Mapped[str] = mapped_column(String(32), default="manual", nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="validating", nullable=False)
+    drift_classification: Mapped[str] = mapped_column(String(32), default="none", nullable=False)
+    materiality_score: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    source_manifest: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    drift_summary: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    impact_summary: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    validation_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    regression_summary: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    approval_status: Mapped[str] = mapped_column(String(32), default="pending_review", nullable=False)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    promoted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    error_details: Mapped[Optional[dict[str, object]]] = mapped_column(JSON)
+
+
+class GovernanceSourceArtifact(Base, UUIDMixin, TimestampMixin):
+    """Immutable source evidence captured for one governance change set."""
+
+    __tablename__ = "governance_source_artifacts"
+    __table_args__ = (
+        UniqueConstraint("change_set_id", "source_kind", name="uq_governance_artifact_change_set_kind"),
+    )
+
+    change_set_id: Mapped[str] = mapped_column(
+        ForeignKey("governance_change_sets.id", ondelete="CASCADE"), nullable=False
+    )
+    source_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    record_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    storage_reference: Mapped[str] = mapped_column(Text, nullable=False)
+    source_last_updated: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    retrieval_status: Mapped[str] = mapped_column(String(32), default="verified", nullable=False)
+    validation_summary: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class QuotationRegressionRun(Base, UUIDMixin, TimestampMixin):
+    """Deterministic quote fixture result for one commercial service family."""
+
+    __tablename__ = "quotation_regression_runs"
+    __table_args__ = (
+        UniqueConstraint("change_set_id", "family_key", name="uq_quote_regression_change_set_family"),
+    )
+
+    change_set_id: Mapped[str] = mapped_column(
+        ForeignKey("governance_change_sets.id", ondelete="CASCADE"), nullable=False
+    )
+    family_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    fixture_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    passed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    mapping_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    findings: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class PriceItem(Base, UUIDMixin, TimestampMixin):
     """One normalized SKU price or tier inside a price catalog snapshot."""
 

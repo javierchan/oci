@@ -3,8 +3,9 @@
 /* Operational view of governed OCI Generative AI definitions and Docker runs. */
 
 import { useEffect, useState } from "react";
-import { Bot, CheckCircle2, Clock3, Loader2, RefreshCcw, Square, TriangleAlert } from "lucide-react";
+import { Bot, CheckCircle2, Clock3, Eye, Loader2, RefreshCcw, Square, TriangleAlert } from "lucide-react";
 
+import { AgentDecisionWorkspace } from "@/components/agent-decision-workspace";
 import { emitToast } from "@/hooks/use-toast";
 import { agentExecutionIndicatorTone, type AgentExecutionIndicatorTone } from "@/lib/agent-status";
 import { api } from "@/lib/api";
@@ -52,6 +53,7 @@ export function AgentOperations({
   const [metrics, setMetrics] = useState<AgentProviderMetrics>(initialMetrics);
   const [valueMetrics, setValueMetrics] = useState<AgentValueMetrics>(initialValueMetrics);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedRun, setSelectedRun] = useState<AgentRun | null>(null);
 
   async function refresh(silent = false): Promise<void> {
     if (!silent) setRefreshing(true);
@@ -85,6 +87,24 @@ export function AgentOperations({
     } catch (error) {
       emitToast("error", error instanceof Error ? error.message : "Unable to cancel agent run.");
     }
+  }
+
+  async function inspect(run: AgentRun): Promise<void> {
+    if (selectedRun?.id === run.id) {
+      setSelectedRun(null);
+      return;
+    }
+    try {
+      setSelectedRun(await api.getAgentRun(run.id));
+    } catch (error) {
+      emitToast("error", error instanceof Error ? error.message : "Unable to load the decision workspace.");
+    }
+  }
+
+  function updateSelectedRun(updated: AgentRun): void {
+    setSelectedRun(updated);
+    setRuns((current) => current.map((item) => item.id === updated.id ? updated : item));
+    void refresh(true);
   }
 
   return (
@@ -151,7 +171,7 @@ export function AgentOperations({
             ["High evidence", valueMetrics.quality_evaluated_runs ? `${valueMetrics.high_evidence_completeness_rate_pct.toFixed(1)}%` : "Not evaluated", `${valueMetrics.high_evidence_completeness_runs} complete briefs`],
             ["Actionable briefs", `${valueMetrics.recommendation_runs}`, `${valueMetrics.completed_runs} completed runs`],
             ["Human acceptance", valueMetrics.acceptance_rate_pct === null ? "No decisions" : `${valueMetrics.acceptance_rate_pct.toFixed(1)}%`, `${valueMetrics.approval_decisions} recorded decisions`],
-            ["Approval follow-up", valueMetrics.approval_follow_up_rate_pct === null ? "No approvals" : `${valueMetrics.approval_follow_up_rate_pct.toFixed(1)}%`, `${valueMetrics.follow_up_runs_after_approval} follow-up runs`],
+            ["Approved execution", valueMetrics.execution_rate_pct === null ? "No approvals" : `${valueMetrics.execution_rate_pct.toFixed(1)}%`, `${valueMetrics.proposals_executed} of ${valueMetrics.approved_decisions} approved`],
             ["Median runtime", valueMetrics.median_execution_seconds === null ? "No data" : `${valueMetrics.median_execution_seconds.toFixed(1)}s`, `${valueMetrics.provider_synthesis_rate_pct.toFixed(1)}% OCI synthesis`],
           ].map(([label, value, detail]) => (
             <article key={label} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
@@ -204,8 +224,9 @@ export function AgentOperations({
         ) : (
           <div className="divide-y divide-[var(--color-border)]">
             {runs.map((run) => (
-              <article key={run.id} className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(15rem,1fr)_10rem_12rem_auto] lg:items-center">
-                <div className="min-w-0">
+              <article key={run.id}>
+                <div className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(15rem,1fr)_10rem_12rem_auto] lg:items-center">
+                  <div className="min-w-0">
                   <p className="flex items-center gap-2 font-semibold text-[var(--color-text-primary)]">{statusIcon(run)} {run.agent_type.replaceAll("_", " ")}</p>
                   <p className="mt-1 truncate text-sm text-[var(--color-text-secondary)]">{run.result?.summary ?? "Waiting for governed evidence."}</p>
                   {run.result?.output_quality ? (
@@ -213,10 +234,19 @@ export function AgentOperations({
                       Evidence {run.result.output_quality.evidence_completeness_pct}% · {run.result.output_quality.fallback_used ? "deterministic fallback" : "grounded synthesis"}
                     </p>
                   ) : null}
+                  </div>
+                  <div><p className="app-label">Status</p><p className="mt-1 text-sm font-semibold capitalize text-[var(--color-text-primary)]">{run.status.replaceAll("_", " ")}</p></div>
+                  <div><p className="app-label">Created</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{formatDate(run.created_at)}</p></div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isActive(run.status) ? <button type="button" className="app-button-secondary gap-2" onClick={() => void cancel(run)}><Square className="h-3.5 w-3.5" /> Cancel</button> : <button type="button" className="app-button-secondary gap-2" onClick={() => void inspect(run)}><Eye className="h-4 w-4" />{selectedRun?.id === run.id ? "Hide" : "Inspect"}</button>}
+                    <span className="app-theme-chip">{run.result?.provider_status ?? "deterministic"}</span>
+                  </div>
                 </div>
-                <div><p className="app-label">Status</p><p className="mt-1 text-sm font-semibold capitalize text-[var(--color-text-primary)]">{run.status.replaceAll("_", " ")}</p></div>
-                <div><p className="app-label">Created</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{formatDate(run.created_at)}</p></div>
-                {isActive(run.status) ? <button type="button" className="app-button-secondary gap-2" onClick={() => void cancel(run)}><Square className="h-3.5 w-3.5" /> Cancel</button> : <span className="app-theme-chip">{run.result?.provider_status ?? "deterministic"}</span>}
+                {selectedRun?.id === run.id ? (
+                  <div className="border-t border-[var(--color-border)] px-5 pb-5">
+                    <AgentDecisionWorkspace run={selectedRun} onRunChange={updateSelectedRun} />
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>

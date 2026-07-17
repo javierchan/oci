@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Download, FileUp, Loader2 } from "lucide-react";
 
 import { ConfirmModal } from "@/components/modal";
+import { AgentDecisionWorkspace } from "@/components/agent-decision-workspace";
 import { GovernedNarrative } from "@/components/governed-narrative";
 import { emitToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
@@ -223,6 +224,7 @@ export function ImportUpload({
   const visibleHistory = history.slice(historyStartIndex, historyStartIndex + historyPageSize);
   const historyLoadedTotal = history.reduce((sum, batch) => sum + (batch.loaded_count ?? 0), 0);
   const historyExcludedTotal = history.reduce((sum, batch) => sum + (batch.excluded_count ?? 0), 0);
+  const historyTechnicalOnlyTotal = history.reduce((sum, batch) => sum + (batch.tbq_n_count ?? 0), 0);
   const requiredTemplateColumns = templateMetadata?.columns.filter((column) => column.requirement === "Requerido") ?? [];
   const templateCompatibility = latestBatch?.header_map?.["__template_compatibility__"] ?? null;
 
@@ -370,6 +372,7 @@ export function ImportUpload({
                 <span className="app-theme-chip">{history.length} batches</span>
                 <span className="app-theme-chip">Latest status: {latestBatch.status}</span>
                 <span className="app-theme-chip">{latestBatch.loaded_count ?? 0} loaded</span>
+                <span className="app-theme-chip">{latestBatch.tbq_n_count ?? 0} technical only</span>
                 <span className="app-theme-chip">{latestBatch.excluded_count ?? 0} excluded</span>
               </div>
             </div>
@@ -533,7 +536,7 @@ export function ImportUpload({
           {currentBatch ? (
             currentBatch.status === "completed" ? (
               <div className="mt-4 space-y-4 rounded-[1.5rem] border border-[var(--color-qa-ok-border)] bg-[var(--color-qa-ok-bg)] p-5">
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <div>
                     <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">Loaded</p>
                     <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.loaded_count ?? 0}</p>
@@ -543,8 +546,12 @@ export function ImportUpload({
                     <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.excluded_count ?? 0}</p>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">TBQ = Y</p>
+                    <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">BOM eligible</p>
                     <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.tbq_y_count ?? 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-qa-ok-text)]">Technical only</p>
+                    <p className="mt-2 text-3xl font-semibold text-[var(--color-text-primary)]">{currentBatch.tbq_n_count ?? 0}</p>
                   </div>
                 </div>
                 <Link
@@ -607,6 +614,11 @@ export function ImportUpload({
                 </summary>
                 <div className="mt-3"><GovernedNarrative content={qualityAgentRun.result.summary} /></div>
               </details>
+            ) : null}
+            {qualityAgentRun ? (
+              <div className="mt-5">
+                <AgentDecisionWorkspace run={qualityAgentRun} onRunChange={setQualityAgentRun} />
+              </div>
             ) : null}
             <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
               <p className="app-label">What to do next</p>
@@ -837,7 +849,7 @@ export function ImportUpload({
               </p>
             </div>
             {history.length > 0 ? (
-              <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[24rem]">
+              <div className="grid grid-cols-2 gap-2 text-center sm:min-w-[32rem] lg:grid-cols-4">
                 <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2">
                   <p className="app-label">Batches</p>
                   <p className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">{history.length}</p>
@@ -849,6 +861,10 @@ export function ImportUpload({
                 <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2">
                   <p className="app-label">Excluded</p>
                   <p className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">{historyExcludedTotal}</p>
+                </div>
+                <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2">
+                  <p className="app-label">Technical only</p>
+                  <p className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">{historyTechnicalOnlyTotal}</p>
                 </div>
               </div>
             ) : null}
@@ -865,6 +881,7 @@ export function ImportUpload({
                     <th className="px-6 py-4">Batch</th>
                     <th className="px-6 py-4">Created</th>
                     <th className="px-6 py-4">Loaded</th>
+                    <th className="px-6 py-4">Technical only</th>
                     <th className="px-6 py-4">Excluded</th>
                     <th className="px-6 py-4">Status</th>
                     <th className="px-6 py-4 text-right">Actions</th>
@@ -886,6 +903,7 @@ export function ImportUpload({
                       </td>
                       <td className="px-6 py-3 text-[var(--color-text-secondary)]">{formatDate(batch.created_at)}</td>
                       <td className="px-6 py-3 font-medium text-[var(--color-text-primary)]">{batch.loaded_count ?? 0}</td>
+                      <td className="px-6 py-3 text-[var(--color-text-secondary)]">{batch.tbq_n_count ?? 0}</td>
                       <td className="px-6 py-3 text-[var(--color-text-secondary)]">{batch.excluded_count ?? 0}</td>
                       <td className="px-6 py-3">
                         <span className="app-theme-chip">

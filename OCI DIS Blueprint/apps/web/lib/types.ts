@@ -107,12 +107,16 @@ export interface AgentValueMetrics {
   approval_decisions: number;
   approved_decisions: number;
   rejected_decisions: number;
+  proposals_created: number;
+  proposals_executed: number;
+  post_validations_completed: number;
   follow_up_runs_after_approval: number;
   provider_synthesis_rate_pct: number;
   grounded_output_rate_pct: number;
   high_evidence_completeness_rate_pct: number;
   acceptance_rate_pct: number | null;
   approval_follow_up_rate_pct: number | null;
+  execution_rate_pct: number | null;
   median_execution_seconds: number | null;
 }
 
@@ -132,6 +136,42 @@ export interface AgentOutputQuality {
   fallback_used: boolean;
   fallback_reason: string | null;
   evidence_completeness_pct: number;
+}
+
+export interface AgentDecisionImpact {
+  technical: string[];
+  commercial: string[];
+  governance: string[];
+  operational: string[];
+}
+
+export interface AgentDecisionAlternative {
+  id: string;
+  title: string;
+  summary: string;
+  status: "ready" | "review" | "blocked";
+  recommended: boolean;
+  changes: string[];
+  implementation_steps: string[];
+  validation_steps: string[];
+  missing_inputs: string[];
+  impact: AgentDecisionImpact;
+  evidence_ids: string[];
+  confidence: "high" | "medium" | "low";
+  action_type: string | null;
+  action_label: string | null;
+  action_href: string | null;
+}
+
+export interface AgentDecisionWorkspace {
+  workspace_type: "architecture" | "data_quality" | "commercial" | "support";
+  goal: string;
+  current_state: string;
+  recommendation_basis: string;
+  recommended_alternative_id: string | null;
+  alternatives: AgentDecisionAlternative[];
+  outcome_metrics: Array<Record<string, unknown>>;
+  post_validation: string[];
 }
 
 export interface AgentStep {
@@ -154,6 +194,9 @@ export interface AgentApproval {
   reviewed_by: string | null;
   review_note: string | null;
   reviewed_at: string | null;
+  execution_status: "not_started" | "running" | "completed" | "failed";
+  execution_result: Record<string, unknown> | null;
+  executed_at: string | null;
 }
 
 export interface AgentRun {
@@ -169,6 +212,7 @@ export interface AgentRun {
     summary?: string;
     brief?: AgentOutputBrief;
     output_quality?: AgentOutputQuality;
+    decision_workspace?: AgentDecisionWorkspace;
     evidence?: unknown;
     provider_status?: string;
     authority?: string;
@@ -687,6 +731,7 @@ export interface AiReviewJob {
   status: AiReviewJobStatus;
   scope: AiReviewScope;
   integration_id: string | null;
+  agent_run_id: string | null;
   input_payload: Record<string, unknown>;
   result: AiReviewResponse | null;
   accepted_recommendations: AiReviewRecommendationAcceptance[];
@@ -819,6 +864,7 @@ export interface ImportBatch {
   loaded_count: number | null;
   excluded_count: number | null;
   tbq_y_count: number | null;
+  tbq_n_count: number | null;
   source_row_count: number | null;
   header_map: Record<string, string> | null;
   error_details: Record<string, unknown> | null;
@@ -890,6 +936,7 @@ export interface ImportQualityAssistant {
   row_count: number;
   included_count: number;
   excluded_count: number;
+  technical_only_count: number;
   normalization_event_count: number;
   recommended_next_action: string;
   metrics: ImportQualityMetric[];
@@ -900,6 +947,8 @@ export interface Integration {
   id: string;
   project_id: string;
   source_row_id: string | null;
+  tbq: "Y" | "N";
+  commercially_eligible: boolean;
   seq_number: number;
   interface_id: string | null;
   owner: string | null;
@@ -945,7 +994,6 @@ export interface Integration {
   qa_reasons: string[];
   calendarization: string | null;
   retention_processing_window: string | null;
-  uncertainty: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -980,6 +1028,7 @@ export interface IntegrationPatch {
   idempotency?: string;
   core_tools?: string[];
   additional_tools_overlays?: string;
+  tbq?: "Y" | "N";
   raw_column_values?: Record<string, unknown>;
 }
 
@@ -1520,7 +1569,6 @@ export interface ManualIntegrationCreate {
   frequency?: string;
   payload_per_execution_kb?: number;
   complexity?: string;
-  uncertainty?: string;
   data_security_classification?: string;
   retention_processing_window?: string;
   retry_policy?: string;
@@ -1809,6 +1857,64 @@ export interface PriceCatalogSnapshot {
 
 export interface PriceCatalogSnapshotList {
   snapshots: PriceCatalogSnapshot[];
+  total: number;
+}
+
+export interface GovernanceSourceArtifact {
+  id: string;
+  source_kind: string;
+  source_url: string;
+  content_hash: string;
+  record_count: number;
+  storage_reference: string;
+  source_last_updated: string | null;
+  retrieval_status: string;
+  validation_summary: Record<string, unknown>;
+  retrieved_at: string;
+}
+
+export interface QuotationRegressionRun {
+  id: string;
+  family_key: string;
+  status: string;
+  fixture_count: number;
+  passed_count: number;
+  failed_count: number;
+  mapping_count: number;
+  findings: unknown[];
+  started_at: string;
+  completed_at: string;
+}
+
+export interface GovernanceChangeSet {
+  id: string;
+  sync_job_id: string;
+  price_source_id: string;
+  price_snapshot_id: string;
+  previous_change_set_id: string | null;
+  trigger_type: string;
+  currency: string;
+  status: string;
+  drift_classification: string;
+  materiality_score: number;
+  source_manifest: Record<string, unknown>;
+  drift_summary: Record<string, unknown>;
+  impact_summary: Record<string, unknown>;
+  validation_status: string;
+  regression_summary: Record<string, unknown>;
+  approval_status: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  promoted_at: string | null;
+  error_details: Record<string, unknown> | null;
+  artifacts: GovernanceSourceArtifact[];
+  regressions: QuotationRegressionRun[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GovernanceChangeSetList {
+  change_sets: GovernanceChangeSet[];
   total: number;
 }
 

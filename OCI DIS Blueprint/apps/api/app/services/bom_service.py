@@ -72,7 +72,7 @@ from app.schemas.pricing import (
     QuantityPresetResponse,
 )
 from app.schemas.ai_review import AiReviewActionCandidate, AiReviewActionWorkspace
-from app.services import audit_service
+from app.services import audit_service, pricing_governance_service
 
 
 BOM_ENGINE_VERSION = "pricing-engine-3.0.0"
@@ -672,15 +672,30 @@ async def _project_and_snapshot(
 
 
 async def _project_integrations(project_id: str, db: AsyncSession) -> list[CatalogIntegration]:
+    """Load only integrations explicitly eligible for the economic exercise."""
+
     return list(
         (
             await db.scalars(
                 select(CatalogIntegration)
-                .where(CatalogIntegration.project_id == project_id)
+                .where(
+                    CatalogIntegration.project_id == project_id,
+                    CatalogIntegration.tbq == "Y",
+                )
                 .order_by(CatalogIntegration.seq_number)
             )
         ).all()
     )
+
+
+def _commercial_consolidated(snapshot: VolumetrySnapshot) -> dict[str, object]:
+    """Return the immutable TBQ=Y aggregate, with compatibility for legacy snapshots."""
+
+    metadata = snapshot.snapshot_metadata or {}
+    commercial = metadata.get("commercial_consolidated")
+    if isinstance(commercial, dict):
+        return commercial
+    return snapshot.consolidated
 
 
 async def _active_mappings(db: AsyncSession) -> list[ServiceProductSkuMapping]:
@@ -935,7 +950,7 @@ async def build_scenario_assistant(
     metric_options = _metric_options(
         service_ids,
         mappings,
-        snapshot.consolidated,
+        _commercial_consolidated(snapshot),
         integrations,
         service_config,
     )
@@ -1863,6 +1878,9 @@ async def calculate_bom(
     )
     if price_snapshot is None:
         raise ValueError(f"No approved {scenario.currency} price catalog is available")
+    price_source = await db.get(PriceSource, price_snapshot.source_id)
+    if price_source is not None and price_source.source_type == "public_list":
+        await pricing_governance_service.ensure_public_snapshot_is_current(price_snapshot, db)
 
     integrations = await _project_integrations(project_id, db)
     mappings = await _active_mappings(db)
@@ -2149,7 +2167,7 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
     calculation = await calculate_bom(
         project_id=job.project_id,
         scenario=scenario,
-        technical=technical.consolidated,
+        technical=_commercial_consolidated(technical),
         db=db,
     )
     line_payloads = calculation.line_payloads

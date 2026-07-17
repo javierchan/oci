@@ -64,9 +64,11 @@ PATCHABLE_FIELDS = {
     "idempotency",
     "core_tools",
     "additional_tools_overlays",
+    "tbq",
 }
 RAW_COLUMN_PATCH_FIELD = "raw_column_values"
 SOURCE_MANAGED_FIELDS = {
+    "tbq",
     "seq_number",
     "interface_id",
     "owner",
@@ -105,9 +107,13 @@ SOURCE_MANAGED_FIELDS = {
     "qa_reasons",
     "calendarization",
     "retention_processing_window",
-    "uncertainty",
 }
+def _parse_tbq(value: Any) -> str:
+    return "Y" if (parse_text(value) or "").strip().upper() == "Y" else "N"
+
+
 MANUAL_SOURCE_ROW_FIELD_PARSERS: dict[str, Any] = {
+    "tbq": _parse_tbq,
     "seq_number": parse_int,
     "interface_id": parse_text,
     "owner": parse_text,
@@ -133,7 +139,6 @@ MANUAL_SOURCE_ROW_FIELD_PARSERS: dict[str, Any] = {
     "data_security_classification": parse_text,
     "payload_per_execution_kb": parse_float,
     "retention_processing_window": parse_text,
-    "uncertainty": parse_text,
 }
 
 FIELD_LABELS = {
@@ -168,10 +173,8 @@ FIELD_LABELS = {
     "tbq": "TBQ",
     "patterns": "Patterns",
     "selected_pattern": "Patterns",
-    "uncertainty": "Uncertainty",
     "owner": "Owner",
     "identified_in": "Identified In",
-    "business_process_dd": "Business Process (DD)",
     "slide": "Slide",
 }
 
@@ -183,6 +186,8 @@ def serialize_catalog_integration(row: CatalogIntegration) -> CatalogIntegration
         id=row.id,
         project_id=row.project_id,
         source_row_id=row.source_row_id,
+        tbq="Y" if row.tbq == "Y" else "N",
+        commercially_eligible=row.tbq == "Y",
         seq_number=row.seq_number,
         interface_id=row.interface_id,
         owner=row.owner,
@@ -228,7 +233,6 @@ def serialize_catalog_integration(row: CatalogIntegration) -> CatalogIntegration
         qa_reasons=row.qa_reasons or [],
         calendarization=row.calendarization,
         retention_processing_window=row.retention_processing_window,
-        uncertainty=row.uncertainty,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -342,12 +346,13 @@ async def _load_canvas_validation_context(
                 DictionaryOption.is_active.is_(True),
                 DictionaryOption.code.is_not(None),
                 DictionaryOption.description.is_not(None),
-                DictionaryOption.is_volumetric.is_(True),
             )
         )
     ).all()
     allowed_core_tools = {
-        option.value for option in options if option.category == "TOOLS" and option.value
+        option.value
+        for option in options
+        if option.category == "TOOLS" and option.is_volumetric is True and option.value
     }
     allowed_overlay_tools = {
         option.value for option in options if option.category == "OVERLAYS" and option.value
@@ -457,7 +462,6 @@ def _recompute_qa(row: CatalogIntegration) -> None:
         payload_per_execution_kb=row.payload_per_execution_kb,
         is_fan_out=row.is_fan_out,
         fan_out_targets=row.fan_out_targets,
-        uncertainty=row.uncertainty,
         is_active_row=True,
         retry_policy=row.retry_policy,
         idempotency=row.idempotency,
@@ -507,14 +511,19 @@ async def _next_source_row_number(project_id: str, db: AsyncSession) -> int:
     return int(current or 0) + 1
 
 
-async def _create_manual_import_batch(project_id: str, db: AsyncSession) -> ImportBatch:
+async def _create_manual_import_batch(
+    project_id: str,
+    tbq: str,
+    db: AsyncSession,
+) -> ImportBatch:
     batch = ImportBatch(
         project_id=project_id,
         filename="manual-capture.json",
         parser_version="manual-capture-v1",
         status="completed",
         source_row_count=1,
-        tbq_y_count=1,
+        tbq_y_count=1 if tbq == "Y" else 0,
+        tbq_n_count=1 if tbq == "N" else 0,
         excluded_count=0,
         loaded_count=1,
         header_map=None,
@@ -624,7 +633,7 @@ async def manual_create_integration(
 
     source_row_number = await _next_source_row_number(project_id, db)
     seq_number = await _next_seq_number(project_id, db)
-    import_batch = await _create_manual_import_batch(project_id, db)
+    import_batch = await _create_manual_import_batch(project_id, data.tbq, db)
     raw_data = data.model_dump()
 
     source_row = SourceIntegrationRow(
@@ -654,7 +663,6 @@ async def manual_create_integration(
         payload_per_execution_kb=data.payload_per_execution_kb,
         is_fan_out=None,
         fan_out_targets=None,
-        uncertainty=data.uncertainty,
         is_active_row=True,
         retry_policy=data.retry_policy,
         idempotency=data.idempotency,
@@ -668,6 +676,7 @@ async def manual_create_integration(
     row = CatalogIntegration(
         project_id=project_id,
         source_row_id=source_row.id,
+        tbq=data.tbq,
         seq_number=seq_number,
         interface_id=data.interface_id,
         owner=data.owner,
@@ -701,7 +710,6 @@ async def manual_create_integration(
         retention_processing_window=data.retention_processing_window,
         qa_status=qa_result.status,
         qa_reasons=qa_result.reasons,
-        uncertainty=data.uncertainty,
     )
     db.add(row)
     await db.flush()
@@ -939,7 +947,7 @@ async def update_integration(
 
     for field, value in patch_data.items():
         setattr(row, field, value)
-        if field in {"core_tools", "selected_pattern"}:
+        if field in {"core_tools", "selected_pattern", "tbq"}:
             recalc_required = True
 
     _recompute_derived_fields(row)
@@ -975,6 +983,23 @@ async def bulk_patch(
     updated = 0
     errors: list[str] = []
     patch_data = patch.model_dump(exclude_none=True)
+    if RAW_COLUMN_PATCH_FIELD in patch_data:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "detail": "Raw source evidence is row-specific and cannot be updated through a bulk patch.",
+                "error_code": "RAW_COLUMN_VALUES_BULK_UNSUPPORTED",
+            },
+        )
+    invalid_fields = set(patch_data) - PATCHABLE_FIELDS
+    if invalid_fields:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "detail": f"Unsupported bulk patch field(s): {', '.join(sorted(invalid_fields))}.",
+                "error_code": "BULK_PATCH_FIELD_UNSUPPORTED",
+            },
+        )
     await _validate_pattern(patch_data.get("selected_pattern"), db)
     allowed_core_tools: set[str] | None = None
     allowed_overlay_tools: set[str] | None = None
@@ -1035,7 +1060,7 @@ async def bulk_patch(
             old_value = serialize_catalog_integration(row).model_dump()
             for field, value in row_patch_data.items():
                 setattr(row, field, value)
-                if field in {"core_tools", "selected_pattern"}:
+                if field in {"core_tools", "selected_pattern", "tbq"}:
                     recalc_required = True
             _recompute_derived_fields(row)
             _recompute_qa(row)
@@ -1059,6 +1084,94 @@ async def bulk_patch(
         await recalc_service.recalculate_project(project_id=project_id, actor_id=actor_id, db=db)
 
     return BulkPatchResult(updated=updated, errors=errors)
+
+
+async def repair_canvas_designs(
+    project_id: str,
+    canvas_by_integration_id: dict[str, str],
+    actor_id: str,
+    db: AsyncSession,
+) -> BulkPatchResult:
+    """Apply validated, row-specific canvas repairs and recalculate once."""
+
+    if not canvas_by_integration_id:
+        return BulkPatchResult(updated=0, errors=[])
+
+    allowed_core_tools, allowed_overlay_tools, assumptions, service_rules = (
+        await _load_canvas_validation_context(db)
+    )
+    for integration_id, incoming_canvas in canvas_by_integration_id.items():
+        row = await _load_catalog_row(project_id, integration_id, db)
+        old_value = serialize_catalog_integration(row).model_dump()
+        current_design = _normalize_design_values(
+            core_tools=row.core_tools,
+            additional_tools_overlays=row.additional_tools_overlays,
+            allowed_core_tools=allowed_core_tools,
+            allowed_overlay_tools=allowed_overlay_tools,
+            assumptions=assumptions,
+            service_rules=service_rules,
+            payload_kb=row.payload_per_execution_kb,
+            trigger_type=row.trigger_type,
+            is_real_time=row.is_real_time,
+            source_technology=row.source_technology,
+            destination_technology=row.destination_technology_1,
+            integration_type=row.type,
+            enforce_canvas_route=True,
+            enforce_blockers=False,
+        )
+        normalized_design = _normalize_design_values(
+            core_tools=row.core_tools,
+            additional_tools_overlays=incoming_canvas,
+            allowed_core_tools=allowed_core_tools,
+            allowed_overlay_tools=allowed_overlay_tools,
+            assumptions=assumptions,
+            service_rules=service_rules,
+            payload_kb=row.payload_per_execution_kb,
+            trigger_type=row.trigger_type,
+            is_real_time=row.is_real_time,
+            source_technology=row.source_technology,
+            destination_technology=row.destination_technology_1,
+            integration_type=row.type,
+            enforce_canvas_route=True,
+            enforce_blockers=False,
+        )
+        existing_blocker_ids = {finding.id for finding in current_design.report.blockers}
+        introduced_blockers = [
+            finding
+            for finding in normalized_design.report.blockers
+            if finding.id not in existing_blocker_ids
+        ]
+        if introduced_blockers:
+            titles = "; ".join(finding.title for finding in introduced_blockers)
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "detail": f"Canvas certification repair introduced blockers: {titles}.",
+                    "error_code": "CANVAS_REPAIR_INTRODUCED_BLOCKER",
+                },
+            )
+        row.core_tools = normalized_design.core_tools_csv
+        row.additional_tools_overlays = normalized_design.additional_tools_value
+        _recompute_derived_fields(row)
+        _recompute_qa(row)
+        await db.flush()
+        await audit_service.emit(
+            event_type="catalog_canvas_certification_repair",
+            entity_type="catalog_integration",
+            entity_id=row.id,
+            actor_id=actor_id,
+            old_value=old_value,
+            new_value=serialize_catalog_integration(row).model_dump(),
+            project_id=project_id,
+            db=db,
+        )
+
+    await recalc_service.recalculate_project(
+        project_id=project_id,
+        actor_id=actor_id,
+        db=db,
+    )
+    return BulkPatchResult(updated=len(canvas_by_integration_id), errors=[])
 
 
 async def delete_integration(

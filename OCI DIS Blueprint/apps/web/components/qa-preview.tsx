@@ -79,11 +79,6 @@ function buildRules(form: ManualIntegrationCreate, patterns: PatternDefinition[]
       label: "Payload KB specified",
       pass: form.payload_per_execution_kb !== undefined,
     },
-    {
-      code: "TBD_UNCERTAINTY",
-      label: "Uncertainty resolved",
-      pass: form.uncertainty !== "TBD",
-    },
   ];
 }
 
@@ -102,13 +97,6 @@ function buildCoverageSignals(form: ManualIntegrationCreate, patterns: PatternDe
     signals.push({
       title: "Low-confidence forecast",
       detail: "Payload evidence is still missing, so billing estimates will remain directional after submit.",
-    });
-  }
-
-  if (form.uncertainty && form.uncertainty.toUpperCase().includes("TBD")) {
-    signals.push({
-      title: "Workbook uncertainty preserved",
-      detail: "Keep the source uncertainty visible until the owning team resolves the TBD evidence.",
     });
   }
 

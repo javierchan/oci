@@ -954,7 +954,6 @@ async def build_support_evidence(
                 "core_tools": integration.core_tools,
                 "overlays": integration.additional_tools_overlays,
                 "retry_policy": integration.retry_policy,
-                "uncertainty": integration.uncertainty,
                 "needs_attention": integration_needs_attention,
                 "recommended_next_action": (
                     "Review the listed QA reasons and complete the missing governed fields in Integration Detail."

@@ -106,10 +106,6 @@ const QA_REASON_LABELS: Record<string, { title: string; hint: string }> = {
     title: "Fan-out targets missing",
     hint: "This integration is marked as fan-out, but the downstream target count is still missing or incomplete.",
   },
-  TBD_UNCERTAINTY: {
-    title: "Source uncertainty still open",
-    hint: "The workbook still marks this row as TBD. Keep the uncertainty visible until source evidence is resolved.",
-  },
   SCATTER_GATHER_EXCEEDS_OIC_PARALLEL_LIMIT: {
     title: "Scatter-gather exceeds OIC parallel limit",
     hint: "OIC Gen3 supports a maximum of 5 parallel branches. Split this flow into smaller fan-outs or redesign the aggregation path.",
@@ -258,13 +254,6 @@ function buildCoverageSignals(integration: Integration): Array<{ title: string; 
     signals.push({
       title: "Low-confidence forecast",
       detail: "Payload evidence is missing, so billing and throughput forecasts for this integration remain directional rather than precise.",
-    });
-  }
-
-  if (integration.uncertainty && integration.uncertainty.toUpperCase().includes("TBD")) {
-    signals.push({
-      title: "Workbook uncertainty preserved",
-      detail: "The source workbook still flags uncertainty as TBD. This signal should stay visible until the source team resolves it.",
     });
   }
 
@@ -471,11 +460,19 @@ export default async function IntegrationDetailPage({
           <div className="mt-3 flex flex-wrap gap-2">
             <QaBadge status={integration.qa_status} />
             <ComplexityBadge value={integration.complexity} />
+            <span className="app-theme-chip">
+              {integration.commercially_eligible ? "BOM eligible" : "Technical only"}
+            </span>
           </div>
           <p className="mt-3 text-xs text-[var(--color-text-muted)]">
             {auditEvents.length} audit event{auditEvents.length === 1 ? "" : "s"} ·{" "}
             {integration.qa_reasons.length} QA reason{integration.qa_reasons.length === 1 ? "" : "s"}
           </p>
+          {!integration.commercially_eligible ? (
+            <p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">
+              TBQ=N keeps this integration in architecture governance while excluding it from BOM and pricing.
+            </p>
+          ) : null}
         </article>
       </section>
 
@@ -542,10 +539,6 @@ export default async function IntegrationDetailPage({
                 <div className="min-w-0">
                   <dt className="app-label">Initial Scope</dt>
                   <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.initial_scope)}</dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="app-label">Uncertainty</dt>
-                  <dd className="mt-2 break-words text-sm text-[var(--color-text-secondary)]">{displayUiValue(integration.uncertainty)}</dd>
                 </div>
                 <div className="min-w-0">
                   <dt className="app-label">Business Criticality</dt>

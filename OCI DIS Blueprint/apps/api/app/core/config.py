@@ -63,15 +63,16 @@ class Settings(BaseSettings):
     AI_REVIEW_LLM_DAILY_JOB_LIMIT: int = 25
 
     # Service Product Library verification agent
-    SERVICE_VERIFICATION_SCHEDULE_ENABLED: bool = False
+    SERVICE_VERIFICATION_SCHEDULE_ENABLED: bool = True
     SERVICE_VERIFICATION_SCHEDULE_SECONDS: int = 86400
     SERVICE_VERIFICATION_STALE_SCAN_MAX_SOURCES: int = 20
 
-    # Import rules (parity-mode defaults — PRD-017)
-    IMPORT_TBQ_COLUMN: str = "TBQ"
-    IMPORT_TBQ_REQUIRED_VALUE: str = "Y"
-    IMPORT_EXCLUDE_ESTADO: list[str] = ["Duplicado 2"]
-    IMPORT_SOURCE_DATA_START_ROW: int = 6  # Headers at row 5, data at row 6
+    # Continuous official OCI pricing/estimator governance
+    OCI_GOVERNANCE_SCHEDULE_ENABLED: bool = True
+    OCI_GOVERNANCE_SCHEDULE_SECONDS: int = 86400
+    OCI_GOVERNANCE_LOCK_TTL_SECONDS: int = 3600
+    OCI_GOVERNANCE_MAX_SOURCE_AGE_HOURS: int = 72
+    OCI_GOVERNANCE_CURRENCY: str = "USD"
 
     # Logging
     LOG_LEVEL: str = "INFO"

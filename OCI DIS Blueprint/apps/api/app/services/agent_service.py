@@ -42,6 +42,11 @@ from app.schemas.agent import (
     AgentValueMetricsResponse,
 )
 from app.services import audit_service, support_service
+from app.services.agent_decision_service import (
+    build_decision_workspace,
+    execute_approved_proposal,
+    persist_proposals,
+)
 from app.services.agent_output_service import govern_agent_output
 from app.services.authz import normalize_role, require_roles
 from app.services.genai_client import GenAiAgentResult, run_governed_tool_agent
@@ -302,6 +307,18 @@ async def get_agent_value_metrics(db: AsyncSession) -> AgentValueMetricsResponse
     )
     approved = [approval for approval in approvals if approval.status == "approved"]
     rejected = [approval for approval in approvals if approval.status == "rejected"]
+    proposals = (
+        list(
+            (
+                await db.scalars(
+                    select(AgentApproval).where(AgentApproval.run_id.in_(run_ids))
+                )
+            ).all()
+        )
+        if run_ids
+        else []
+    )
+    executed = [approval for approval in proposals if approval.execution_status == "completed"]
     runs_by_id = {run.id: run for run in runs}
     follow_up_runs = 0
     for approval in approved:
@@ -329,12 +346,20 @@ async def get_agent_value_metrics(db: AsyncSession) -> AgentValueMetricsResponse
         approval_decisions=len(approvals),
         approved_decisions=len(approved),
         rejected_decisions=len(rejected),
+        proposals_created=len(proposals),
+        proposals_executed=len(executed),
+        post_validations_completed=sum(
+            isinstance(approval.execution_result, dict)
+            and bool(approval.execution_result.get("validation"))
+            for approval in executed
+        ),
         follow_up_runs_after_approval=follow_up_runs,
         provider_synthesis_rate_pct=_rate(provider_synthesis_runs, len(completed)),
         grounded_output_rate_pct=_rate(grounded_output_runs, len(quality_payloads)),
         high_evidence_completeness_rate_pct=_rate(high_evidence_runs, len(quality_payloads)),
         acceptance_rate_pct=_rate(len(approved), len(approvals)) if approvals else None,
         approval_follow_up_rate_pct=_rate(follow_up_runs, len(approved)) if approved else None,
+        execution_rate_pct=_rate(len(executed), len(approved)) if approved else None,
         median_execution_seconds=round(float(median(durations)), 1) if durations else None,
     )
 
@@ -438,6 +463,12 @@ async def serialize_agent_run(run: AgentRun, db: AsyncSession, *, compact: bool 
                 proposed_payload=cast(dict[str, object], approval.proposed_payload),
                 reviewed_by=approval.reviewed_by, review_note=approval.review_note,
                 reviewed_at=approval.reviewed_at,
+                execution_status=cast(
+                    Literal["not_started", "running", "completed", "failed"],
+                    approval.execution_status,
+                ),
+                execution_result=cast(dict[str, object] | None, approval.execution_result),
+                executed_at=approval.executed_at,
             )
             for approval in approvals
         ],
@@ -560,7 +591,7 @@ async def mark_agent_run_running(run_id: str, db: AsyncSession) -> AgentRun:
 
 
 async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
-    """Execute the authorized tool and optional OCI function-call synthesis."""
+    """Execute evidence, decision, provider, and proposal stages."""
 
     run = await _load_run(run_id, db)
     if run.status in TERMINAL_STATUSES:
@@ -572,33 +603,46 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         integration_id=run.integration_id, context=context,
         actor_id=run.requested_by, db=db,
     )
+    include_provider = context.get("include_provider") is not False
+    result: GenAiAgentResult | None = None
+    evidence_started_at = datetime.now(UTC)
+    preflight_evidence = await executor({})
+    if definition.type == "support_assistant" and preflight_evidence.get("in_scope") is False:
+        include_provider = False
+    tool_step = AgentStep(
+        run_id=run.id,
+        sequence=1,
+        step_type="evidence",
+        tool_name=tool_name,
+        status="completed",
+        started_at=evidence_started_at,
+        finished_at=datetime.now(UTC),
+        input_payload={"arguments": "validated"},
+        output_payload={"summary": f"Governed evidence collected by {tool_name}."},
+    )
+    db.add(tool_step)
+
+    async def cached_executor(_: dict[str, object]) -> dict[str, object]:
+        return preflight_evidence
+
     provider_step = AgentStep(
-        run_id=run.id, sequence=1, step_type="provider", tool_name=tool_name,
+        run_id=run.id, sequence=3, step_type="provider", tool_name=tool_name,
         status="running", started_at=datetime.now(UTC), input_payload={"tool": tool_name},
     )
     db.add(provider_step)
     await db.flush()
-    include_provider = context.get("include_provider") is not False
-    result: GenAiAgentResult | None = None
-    preflight_evidence: dict[str, object] | None = None
-    if definition.type == "support_assistant":
-        preflight_evidence = await executor({})
-        if preflight_evidence.get("in_scope") is False:
-            include_provider = False
     if include_provider:
         result = await run_governed_tool_agent(
             settings=get_settings(), instruction=definition.instruction,
             user_message=str(context.get("message") or f"Run {definition.name} for the governed scope."),
             tool_name=tool_name, tool_description=description,
-            tool_parameters=parameters, tool_executor=executor,
+            tool_parameters=parameters, tool_executor=cached_executor,
             safety_subject=run.requested_by,
         )
     evidence = (
         result.tool_output
         if result and result.tool_output is not None
         else preflight_evidence
-        if preflight_evidence is not None
-        else await executor({})
     )
     safety_refused = bool(result and result.error == "input_guardrails_blocked")
     provider_step.status = (
@@ -617,18 +661,6 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
     }
     provider_step.opc_request_id = result.opc_request_id if result else None
     provider_step.finished_at = datetime.now(UTC)
-    tool_step = AgentStep(
-        run_id=run.id,
-        sequence=2,
-        step_type="tool",
-        tool_name=tool_name,
-        status="completed",
-        started_at=provider_step.started_at,
-        finished_at=datetime.now(UTC),
-        input_payload={"arguments": "validated"},
-        output_payload={"summary": f"Governed evidence collected by {tool_name}."},
-    )
-    db.add(tool_step)
     artifact = AgentArtifact(
         run_id=run.id, artifact_type="governed_evidence", label=f"{definition.name} evidence",
         payload=cast(dict[str, object], sanitize_for_json(evidence)),
@@ -660,6 +692,40 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         governed_output.quality.fallback_reason = "support_grounding_gate"
     summary = governed_output.summary
     grounding_fallback = governed_output.quality.fallback_used
+    decision_workspace, proposal_specs = build_decision_workspace(
+        definition,
+        evidence,
+        project_id=run.project_id,
+        integration_id=run.integration_id,
+    )
+    decision_step = AgentStep(
+        run_id=run.id,
+        sequence=2,
+        step_type="decision",
+        tool_name="build_decision_workspace",
+        status="completed",
+        started_at=tool_step.finished_at,
+        finished_at=datetime.now(UTC),
+        input_payload={"evidence": "governed"},
+        output_payload={
+            "summary": f"Compared {len(decision_workspace.alternatives)} governed alternative(s).",
+            "recommended_alternative_id": decision_workspace.recommended_alternative_id,
+        },
+    )
+    db.add(decision_step)
+    approvals = await persist_proposals(run, proposal_specs, db)
+    proposal_step = AgentStep(
+        run_id=run.id,
+        sequence=4,
+        step_type="proposal",
+        tool_name="prepare_governed_proposals",
+        status="completed",
+        started_at=datetime.now(UTC),
+        finished_at=datetime.now(UTC),
+        input_payload={"recommended_alternative_id": decision_workspace.recommended_alternative_id},
+        output_payload={"summary": f"Prepared {len(approvals)} approval-gated proposal(s)."},
+    )
+    db.add(proposal_step)
     provider_step.output_payload["summary"] = _provider_diagnostic_summary(
         provider_status=result.status if result else "skipped",
         fallback_used=grounding_fallback,
@@ -717,6 +783,7 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         "guardrails_status": result.guardrails_status if result else "skipped",
         "grounding_fallback": grounding_fallback,
         "brief": governed_output.brief.model_dump(mode="json"),
+        "decision_workspace": decision_workspace.model_dump(mode="json"),
         "output_quality": governed_output.quality.model_dump(mode="json"),
         "tool": tool_name,
         "evidence": sanitize_for_json(evidence),
@@ -727,7 +794,7 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
     run.opc_request_id = result.opc_request_id if result else None
     run.input_tokens = result.input_tokens if result else None
     run.output_tokens = result.output_tokens if result else None
-    run.step_count = 2
+    run.step_count = 4
     run.status = AgentRunStatus.CANCELLED if run.cancel_requested else AgentRunStatus.COMPLETED
     run.finished_at = datetime.now(UTC)
     await db.flush()
@@ -830,5 +897,35 @@ async def decide_agent_approval(
         event_type="agent_approval_decided", entity_type="agent_approval", entity_id=approval.id,
         actor_id=actor_id, old_value={"status": "pending"}, new_value={"status": approval.status},
         project_id=run.project_id, correlation_id=run.id, db=db,
+    )
+    return await serialize_agent_run(run, db)
+
+
+async def execute_agent_approval(
+    run_id: str,
+    approval_id: str,
+    actor_id: str,
+    actor_role: str,
+    db: AsyncSession,
+) -> AgentRunResponse:
+    """Execute an approved deterministic proposal and persist post-validation."""
+
+    require_roles(actor_role, {"Admin", "Architect"}, error_code="AGENT_EXECUTION_ROLE_REQUIRED")
+    run = await _load_run(run_id, db)
+    approval = await db.get(AgentApproval, approval_id)
+    if approval is None or approval.run_id != run.id:
+        raise HTTPException(status_code=404, detail={"detail": "Approval not found", "error_code": "AGENT_APPROVAL_NOT_FOUND"})
+    old_status = approval.execution_status
+    result = await execute_approved_proposal(run, approval, actor_id=actor_id, db=db)
+    await audit_service.emit(
+        event_type="agent_proposal_executed",
+        entity_type="agent_approval",
+        entity_id=approval.id,
+        actor_id=actor_id,
+        old_value={"execution_status": old_status},
+        new_value={"execution_status": approval.execution_status, "result": result},
+        project_id=run.project_id,
+        correlation_id=run.id,
+        db=db,
     )
     return await serialize_agent_run(run, db)

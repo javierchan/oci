@@ -36,7 +36,7 @@ def _capture_workbook(client: httpx.Client) -> bytes:
     response = client.get("/exports/template/xlsx")
     response.raise_for_status()
     workbook = load_workbook(BytesIO(response.content))
-    sheet = workbook["Catálogo de Integraciones"]
+    sheet = workbook["Integration Catalog"]
     columns = {str(cell.value): cell.column for cell in sheet[1] if cell.value}
     values: dict[str, object] = {
         "#": 1,

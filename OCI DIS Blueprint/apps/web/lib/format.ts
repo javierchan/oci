@@ -138,7 +138,8 @@ const SOURCE_FIELD_LABELS: Record<string, string> = {
   "Herramientas Adicionales": "Additional Tools",
   "Herramientas Adicionales / Overlays (complemento manual)": "Additional Tools / Overlays (Manual Complement)",
   "Herramientas Adicionales / Overlays (Complemento manual)": "Additional Tools / Overlays (Manual Complement)",
-  Incertidumbre: "Uncertainty",
+  Incertidumbre: "Legacy Uncertainty (ignored)",
+  "Proceso de Negocio DueDiligence": "Legacy Due Diligence Business Process (ignored)",
   QA: "QA",
 };
 

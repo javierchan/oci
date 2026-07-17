@@ -1172,6 +1172,11 @@ def serialize_ai_review_job(job: AiReviewJob) -> AiReviewJobResponse:
         status=_status_value(job),
         scope=cast(Literal["project", "integration"], job.scope),
         integration_id=job.integration_id,
+        agent_run_id=(
+            str(cast(dict[str, object], job.input_payload).get("agent_run_id"))
+            if cast(dict[str, object], job.input_payload).get("agent_run_id")
+            else None
+        ),
         input_payload=cast(dict[str, object], sanitize_for_json(job.input_payload)),
         result=_review_from_payload(job.result_payload),
         accepted_recommendations=_accepted_recommendations(job),
@@ -1928,7 +1933,7 @@ async def build_review_result(
                 _evidence_lines(evidence, ids),
                 f"missing_payload={len(missing_payload)}",
                 "Payload coverage should be high enough for sizing and stress analysis.",
-                "Capture payload evidence or mark uncertainty explicitly before using forecasts.",
+                "Capture payload evidence before using forecasts for sizing or commercial decisions.",
                 "Filter catalog",
                 _catalog_href(project_id),
                 _first_ids(missing_payload),

@@ -114,6 +114,29 @@ describe("canvas-governance", () => {
     expect(semantics.disconnectedNodeIds).toEqual(["island"]);
   });
 
+  it("keeps contextual overlays without reporting them as disconnected core nodes", () => {
+    const nodes = [
+      node("oic", "OIC Gen3", "OIC"),
+      node("iam", "OCI IAM and Security Services", "IAM"),
+    ];
+    const edges = [
+      edge("1", SOURCE_NODE_ID, "oic"),
+      edge("2", "oic", DESTINATION_NODE_ID),
+    ];
+
+    const semantics = deriveCanvasSemantics({
+      nodes,
+      edges,
+      overlayToolKeys: ["OCI IAM and Security Services"],
+      combinations,
+      selectedPattern: "#13",
+    });
+
+    expect(semantics.coreToolKeys).toEqual(["OIC Gen3"]);
+    expect(semantics.overlayKeys).toEqual(["OCI IAM and Security Services"]);
+    expect(semantics.disconnectedNodeIds).toEqual([]);
+  });
+
   it("round-trips v4 canvas state with persisted overlay and endpoint metadata", () => {
     const nodes = [node("oic", "OIC Gen3", "OIC"), node("queue", "OCI Queue", "Queue")];
     const edges = [

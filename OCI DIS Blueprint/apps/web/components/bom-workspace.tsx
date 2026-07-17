@@ -27,9 +27,11 @@ import {
 } from "recharts";
 
 import { emitToast } from "@/hooks/use-toast";
+import { AppDatePicker } from "@/components/app-date-picker";
 import { BomConsumptionEditor } from "@/components/bom-consumption-editor";
 import { BomRolloutExplorer } from "@/components/bom-rollout-explorer";
 import { ActionRecommendationWorkspace } from "@/components/action-recommendation-workspace";
+import { AgentDecisionWorkspace } from "@/components/agent-decision-workspace";
 import { GovernedNarrative } from "@/components/governed-narrative";
 import { api, apiDownloadBlob, getErrorMessage } from "@/lib/api";
 import {
@@ -125,6 +127,7 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
   const [loading, setLoading] = useState<boolean>(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
+  const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
 
   const load = useCallback(async (silent = false): Promise<void> => {
     if (!silent) {
@@ -209,6 +212,7 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
         };
         setAssistant(result);
         setDraft(result.draft);
+        setAgentRun(terminal);
         emitToast("success", "Governed BOM scenario agent completed.");
         return;
       }
@@ -352,7 +356,7 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
         <div id="deployment-scenario-editor" className="app-card scroll-mt-6 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div><p className="app-label">Deployment Scenario</p><h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Convert logical demand into deployable capacity</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">Commercial estimates for {projectName} are isolated from the technical Dashboard and require an approved physical deployment scenario.</p></div>
-            <button className="app-button-secondary gap-2" type="button" disabled={busyAction !== null} onClick={() => void refreshAssistant(true)}>{busyAction === "assistant" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}{busyAction === "assistant" ? "Running agent" : "Run BOM agent"}</button>
+            <button className="app-button-secondary gap-2" type="button" disabled={busyAction !== null} onClick={() => void refreshAssistant(true)}>{busyAction === "assistant" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}{busyAction === "assistant" ? "Comparing scenarios" : "Compare deployment alternatives"}</button>
           </div>
 
           {draft ? <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -361,7 +365,7 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
             <label className="text-sm font-semibold text-[var(--color-text-primary)]">Currency<input className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 font-mono" maxLength={3} value={draft.currency} onChange={(event) => patchDraft({ currency: event.target.value.toUpperCase() })} /></label>
             <label className="text-sm font-semibold text-[var(--color-text-primary)]">Price source<select className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.price_mode} onChange={(event) => patchDraft({ price_mode: event.target.value as DeploymentScenarioCreate["price_mode"] })}><option value="public_list">Public list</option><option value="contract_rate">Contract rate</option><option value="manual_rate_card">Manual rate card</option></select></label>
             <label className="text-sm font-semibold text-[var(--color-text-primary)]">Contract months<input type="number" min={1} max={120} className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.contract_months} onChange={(event) => { const contractMonths = Math.min(Math.max(Number(event.target.value), 1), 120); patchDraft({ contract_months: contractMonths, environments: resizeConsumptionPlan(draft.environments, contractMonths) }); }} /></label>
-            <label className="text-sm font-semibold text-[var(--color-text-primary)]">Contract start<input type="date" className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.start_date} onChange={(event) => patchDraft({ start_date: event.target.value })} /></label>
+            <AppDatePicker label="Contract start" value={draft.start_date} onChange={(startDate) => patchDraft({ start_date: startDate })} />
             <div className="md:col-span-2 xl:col-span-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div><p className="app-label">Commercial Coverage</p><h3 className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">Every detected product has an explicit quote path</h3></div>
@@ -403,6 +407,18 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
           {assistant?.warnings.length ? <div className="mt-4 rounded-lg border border-amber-400/45 p-3 text-sm text-amber-700 dark:text-amber-300"><p className="mb-2 font-semibold"><AlertTriangle className="mr-2 inline h-4 w-4" />Why the estimate needs review</p>{assistant.warnings.join(" ")}</div> : null}
         </aside>
       </section>
+
+      {agentRun ? (
+        <section className="app-card p-5">
+          <AgentDecisionWorkspace
+            run={agentRun}
+            onRunChange={(updated) => {
+              setAgentRun(updated);
+              if (updated.approvals.some((approval) => approval.execution_status === "completed")) void load(true);
+            }}
+          />
+        </section>
+      ) : null}
 
       <section className="app-card p-5">
         <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="app-label">Approved Input</p><h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Generate an immutable BOM</h2></div><button className="app-button-primary gap-2" type="button" disabled={!selectedScenario || selectedScenario.status !== "approved" || busyAction !== null || hasActiveJob} onClick={() => void generateBom()}>{busyAction === "generate" || hasActiveJob ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}{hasActiveJob ? "Generation running" : "Generate BOM"}</button></div>

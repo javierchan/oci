@@ -31,6 +31,7 @@ class ImportBatchResponse(BaseModel):
     status: str
     source_row_count: Optional[int] = None
     tbq_y_count: Optional[int] = None
+    tbq_n_count: Optional[int] = None
     excluded_count: Optional[int] = None
     loaded_count: Optional[int] = None
     header_map: Optional[dict[str, str]] = None
@@ -105,6 +106,7 @@ class ImportQualityAssistantResponse(BaseModel):
     row_count: int
     included_count: int
     excluded_count: int
+    technical_only_count: int
     normalization_event_count: int
     recommended_next_action: str
     metrics: list[ImportQualityMetric] = Field(default_factory=list)

@@ -146,11 +146,16 @@ async def test_agent_catalog_create_execute_and_read(
     assert completed.result is not None
     assert completed.result["authority"] == "governed_deterministic_evidence"
     assert completed.result["provider_status"] == "skipped"
+    assert completed.step_count == 4
+    assert [step.step_type for step in completed.steps] == ["evidence", "decision", "provider", "proposal"]
     assert completed.steps[0].tool_name == "load_architecture_review_evidence"
-    assert completed.steps[0].output_summary == (
+    assert completed.steps[0].output_summary == "Governed evidence collected by load_architecture_review_evidence."
+    assert completed.steps[2].output_summary == (
         "Provider synthesis was unavailable; governed deterministic evidence was used."
     )
-    assert "we need" not in (completed.steps[0].output_summary or "").lower()
+    assert "we need" not in (completed.steps[2].output_summary or "").lower()
+    assert isinstance(completed.result["decision_workspace"], dict)
+    assert completed.result["decision_workspace"].get("alternatives")
 
     read_response = await api_client.get(f"/api/v1/agents/runs/{run_id}", headers=HEADERS)
     assert read_response.status_code == 200
@@ -183,6 +188,75 @@ async def test_pending_agent_can_be_cancelled(
     assert response.status_code == 200
     assert response.json()["status"] == "cancelled"
     assert response.json()["cancel_requested"] is True
+
+
+@pytest.mark.asyncio
+async def test_approved_agent_proposal_executes_once_with_post_validation(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Approved drafts use deterministic execution and retain the outcome evidence."""
+
+    project_id = await _seed_project(test_engine)
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    started = datetime(2026, 1, 2, 12, 0, tzinfo=UTC)
+    async with session_factory() as session:
+        run = AgentRun(
+            id="agent-approved-execution",
+            agent_type="architecture_review",
+            definition_version="2.0.0",
+            project_id=project_id,
+            requested_by="architect-user",
+            status=AgentRunStatus.COMPLETED,
+            context_payload={},
+            result_payload={"authority": "governed_deterministic_evidence"},
+            started_at=started,
+            finished_at=started + timedelta(seconds=4),
+        )
+        approval = AgentApproval(
+            id="agent-approved-proposal",
+            run_id=run.id,
+            action_type="create_agent_action_draft",
+            status="approved",
+            proposed_payload={
+                "alternative_id": "resolve-qa",
+                "project_id": project_id,
+                "candidate": {"title": "Resolve QA blockers", "action_href": f"/projects/{project_id}/catalog"},
+            },
+            reviewed_by="architect-user",
+            reviewed_at=started,
+        )
+        session.add_all([run, approval])
+        await session.commit()
+
+    response = await api_client.post(
+        f"/api/v1/agents/runs/{run.id}/approvals/{approval.id}/execute",
+        headers=HEADERS,
+    )
+    assert response.status_code == 200, response.text
+    execution = response.json()["approvals"][0]
+    assert execution["execution_status"] == "completed"
+    assert execution["execution_result"]["outcome"] == "governed_draft_created"
+    assert execution["execution_result"]["validation"] == "draft_persisted_no_authoritative_data_changed"
+
+    repeated = await api_client.post(
+        f"/api/v1/agents/runs/{run.id}/approvals/{approval.id}/execute",
+        headers=HEADERS,
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["approvals"][0]["execution_result"] == execution["execution_result"]
+
+    async with session_factory() as session:
+        artifacts = list(
+            (
+                await session.scalars(
+                    select(AgentArtifact)
+                    .where(AgentArtifact.run_id == run.id)
+                    .order_by(AgentArtifact.created_at)
+                )
+            ).all()
+        )
+        assert [artifact.artifact_type for artifact in artifacts] == ["decision_draft", "post_validation"]
 
 
 @pytest.mark.asyncio
@@ -264,6 +338,10 @@ async def test_agent_value_metrics_report_observed_quality_and_human_follow_up(
     assert payload["high_evidence_completeness_rate_pct"] == 50.0
     assert payload["acceptance_rate_pct"] == 100.0
     assert payload["approval_follow_up_rate_pct"] == 100.0
+    assert payload["proposals_created"] == 1
+    assert payload["proposals_executed"] == 0
+    assert payload["post_validations_completed"] == 0
+    assert payload["execution_rate_pct"] == 0.0
     assert payload["median_execution_seconds"] == 15.0
 
     viewer_response = await api_client.get(

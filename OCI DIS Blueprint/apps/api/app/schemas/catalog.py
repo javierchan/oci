@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,6 +24,7 @@ class CatalogIntegrationPatch(BaseModel):
     idempotency: Optional[str] = None
     core_tools: Optional[str] = None
     additional_tools_overlays: Optional[str] = None
+    tbq: Optional[Literal["Y", "N"]] = None
     raw_column_values: Optional[dict[str, Any]] = None
 
 
@@ -50,7 +51,6 @@ class ManualIntegrationCreate(BaseModel):
     frequency: Optional[str] = None
     payload_per_execution_kb: Optional[float] = None
     complexity: Optional[str] = None
-    uncertainty: Optional[str] = None
     data_security_classification: Optional[str] = None
     retention_processing_window: Optional[str] = None
     retry_policy: Optional[str] = None
@@ -58,7 +58,7 @@ class ManualIntegrationCreate(BaseModel):
     selected_pattern: Optional[str] = None
     pattern_rationale: Optional[str] = None
     core_tools: Optional[list[str]] = None
-    tbq: str = "Y"
+    tbq: Literal["Y", "N"] = "Y"
     initial_scope: Optional[str] = None
     owner: Optional[str] = None
 
@@ -93,6 +93,8 @@ class CatalogIntegrationResponse(BaseModel):
     id: str
     project_id: str
     source_row_id: Optional[str]
+    tbq: Literal["Y", "N"]
+    commercially_eligible: bool
     seq_number: int
     interface_id: Optional[str]
     owner: Optional[str]
@@ -138,7 +140,6 @@ class CatalogIntegrationResponse(BaseModel):
     qa_reasons: list[str] = Field(default_factory=list)
     calendarization: Optional[str]
     retention_processing_window: Optional[str]
-    uncertainty: Optional[str]
     created_at: datetime
     updated_at: datetime
 
