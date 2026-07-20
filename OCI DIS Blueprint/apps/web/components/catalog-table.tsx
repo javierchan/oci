@@ -311,7 +311,7 @@ export function CatalogTable({
               <button
                 type="button"
                 onClick={() => resetPageAndSet(setSearch, "")}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-medium text-[var(--color-text-secondary)] transition hover:border-[var(--color-accent)]"
+                className="badge hover:border-[var(--accent)]"
               >
                 &quot;{search.length > 20 ? `${search.slice(0, 20)}…` : search}&quot;
                 <X className="h-3 w-3" />
@@ -321,7 +321,7 @@ export function CatalogTable({
               <button
                 type="button"
                 onClick={() => resetPageAndSet(setQaStatus, "")}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-medium text-[var(--color-text-secondary)] transition hover:border-[var(--color-accent)]"
+                className="badge hover:border-[var(--accent)]"
               >
                 QA: {displayQaStatus(qaStatus)}
                 <X className="h-3 w-3" />
@@ -331,7 +331,7 @@ export function CatalogTable({
               <button
                 type="button"
                 onClick={() => resetPageAndSet(setPattern, "")}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-medium text-[var(--color-text-secondary)] transition hover:border-[var(--color-accent)]"
+                className="badge hover:border-[var(--accent)]"
               >
                 Pattern: {pattern}
                 <X className="h-3 w-3" />
@@ -341,7 +341,7 @@ export function CatalogTable({
               <button
                 type="button"
                 onClick={() => resetPageAndSet(setBrand, "")}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-medium text-[var(--color-text-secondary)] transition hover:border-[var(--color-accent)]"
+                className="badge hover:border-[var(--accent)]"
               >
                 Brand: {brand}
                 <X className="h-3 w-3" />
@@ -365,7 +365,7 @@ export function CatalogTable({
       </section>
 
       <section className="app-table-shell">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4">
+        <div className="relative z-30 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4">
           <div>
             <p className="app-label">Catalog Grid</p>
             <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
@@ -487,8 +487,8 @@ export function CatalogTable({
           )}
         </div>
 
-        <div className="hidden overflow-x-auto md:block">
-          <table className="w-full table-fixed divide-y divide-[var(--color-table-border)] text-left">
+        <div className="hidden md:block">
+          <table className="w-full table-fixed text-left">
             <colgroup>
               <col className="w-12" />
               <col className="w-[32%]" />
@@ -498,17 +498,29 @@ export function CatalogTable({
               <col className="w-[10%]" />
               <col className="w-12" />
             </colgroup>
-            <thead className="app-table-header">
+            <thead className="app-table-header shadow-[0_1px_0_var(--line)]">
               <tr>
-                <th className="px-3 py-3">#</th>
-                <th className="px-3 py-3">Integration</th>
-                <th className="px-3 py-3">Flow</th>
-                <th className="px-3 py-3">Pattern</th>
-                <th className="px-3 py-3">Complexity</th>
-                <th className="px-3 py-3">QA</th>
-                <th className="px-3 py-3 text-right">···</th>
+                <th className="bg-[var(--color-table-header-bg)] px-3 py-3">#</th>
+                <th className="bg-[var(--color-table-header-bg)] px-3 py-3">Integration</th>
+                <th className="bg-[var(--color-table-header-bg)] px-3 py-3">Flow</th>
+                <th className="bg-[var(--color-table-header-bg)] px-3 py-3">Pattern</th>
+                <th className="bg-[var(--color-table-header-bg)] px-3 py-3">Complexity</th>
+                <th className="bg-[var(--color-table-header-bg)] px-3 py-3">QA</th>
+                <th className="bg-[var(--color-table-header-bg)] px-3 py-3 text-right">···</th>
               </tr>
             </thead>
+          </table>
+          <div className="max-h-[calc(100vh-16rem)] overflow-auto overscroll-contain" data-catalog-scroll>
+            <table className="w-full table-fixed divide-y divide-[var(--color-table-border)] text-left">
+              <colgroup>
+                <col className="w-12" />
+                <col className="w-[32%]" />
+                <col className="w-[24%]" />
+                <col className="w-[19%]" />
+                <col className="w-[11%]" />
+                <col className="w-[10%]" />
+                <col className="w-12" />
+              </colgroup>
             <tbody className="divide-y divide-[var(--color-table-border)]">
               {loading
                 ? Array.from({ length: 7 }).map((_, index) => <SkeletonRow key={index} />)
@@ -524,8 +536,10 @@ export function CatalogTable({
                           setDrawerOpen(true);
                         }}
                         className={[
-                          "app-table-row group cursor-pointer text-sm transition",
-                          selectedIntegration?.id === integration.id ? "bg-[var(--color-accent-soft)]" : "",
+                          "app-table-row group cursor-pointer border-l-2 text-sm transition",
+                          selectedIntegration?.id === integration.id
+                            ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                            : "border-transparent hover:border-[var(--accent)]",
                         ].join(" ")}
                       >
                         <td className="px-3 py-3 font-medium text-[var(--color-text-primary)]">
@@ -589,7 +603,8 @@ export function CatalogTable({
                     );
                   })}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
 
         {!loading && data.integrations.length === 0 ? (

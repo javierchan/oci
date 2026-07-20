@@ -235,7 +235,7 @@ export default async function ProjectDashboardPage({
                 <List className="h-4 w-4" />
                 Catalog
               </Link>
-              <Link href={`/projects/${projectId}/graph`} className="app-button-secondary h-10 gap-2">
+              <Link href={`/projects/${projectId}/map`} className="app-button-secondary h-10 gap-2">
                 <Network className="h-4 w-4" />
                 Map
               </Link>

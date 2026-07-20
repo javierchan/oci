@@ -84,9 +84,9 @@ function formatProjectLabel(projectId: string): string {
 
 function linkClasses(active: boolean): string {
   return [
-    "relative block rounded-lg px-3 py-2 text-sm font-medium transition",
+    "relative block rounded-md px-3 py-[7px] text-sm font-medium transition",
     active
-      ? "bg-[var(--color-surface-2)] text-[var(--color-text-primary)] before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-[var(--color-accent)]"
+      ? "bg-[var(--surface-2)] text-[var(--ink-1)] before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-[var(--accent)]"
       : "text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)]",
   ].join(" ");
 }
@@ -145,6 +145,9 @@ function contextLabelFromPath(pathname: string): string {
   }
   if (section === "bom") {
     return "BOM & Cost";
+  }
+  if (section === "map") {
+    return "Map";
   }
 
   return section
@@ -229,7 +232,7 @@ function NavPanel({
 
       {projectLinks.length > 0 ? (
         <NavSection title="Current Project">
-          <div className="mb-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-3">
+          <div className="mb-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-3">
             <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
               <FolderOpen className="h-3.5 w-3.5" />
               Current Project
@@ -389,7 +392,7 @@ export function Nav(): JSX.Element {
         { href: `/projects/${projectId}/import`, label: "Import" },
         { href: `/projects/${projectId}/capture`, label: "Capture" },
         { href: `/projects/${projectId}/catalog`, label: "Catalog" },
-        { href: `/projects/${projectId}/graph`, label: "Map" },
+        { href: `/projects/${projectId}/map`, label: "Map" },
         { href: `/projects/${projectId}/bom`, label: "BOM & Cost" },
       ]
     : [];
@@ -456,7 +459,7 @@ export function Nav(): JSX.Element {
         </div>
       ) : null}
 
-      <aside className="hidden border-r border-[var(--color-border)] bg-[var(--color-surface)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[14.5rem] lg:shrink-0 lg:overflow-y-auto xl:w-[15rem]">
+      <aside className="hidden border-r border-[var(--line)] bg-[var(--surface)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[232px] lg:shrink-0 lg:overflow-y-auto">
         <NavPanel
           pathname={pathname}
           baseLinks={baseLinks}

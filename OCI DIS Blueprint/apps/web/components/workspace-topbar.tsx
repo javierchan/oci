@@ -56,6 +56,9 @@ function pathSectionLabel(pathname: string): string {
       return "Dashboard";
     }
     if (parts[2] === "graph") {
+      return "Graph";
+    }
+    if (parts[2] === "map") {
       return "Map";
     }
     if (parts[2] === "capture" && parts[3] === "new") {
@@ -96,7 +99,7 @@ function CommandPalette({
     ? [
         { label: "Project dashboard", description: "Review QA, maturity, volumetry, and risks", href: `/projects/${projectId}` },
         { label: "Catalog", description: "Open the governed integration spine", href: `/projects/${projectId}/catalog` },
-        { label: "Design map", description: "Inspect systems and dependency topology", href: `/projects/${projectId}/graph` },
+        { label: "Design map", description: "Inspect systems and dependency topology", href: `/projects/${projectId}/map` },
         { label: "Import workbook", description: "Upload and review source workbook rows", href: `/projects/${projectId}/import` },
         { label: "New integration capture", description: "Open the five-step manual wizard", href: `/projects/${projectId}/capture/new` },
       ]
