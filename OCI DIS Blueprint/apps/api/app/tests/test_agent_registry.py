@@ -34,9 +34,27 @@ def test_specialized_agents_share_explainable_output_and_safety_contracts() -> N
         assert "Never output a Markdown table" in instruction
         assert "Never expose chain-of-thought" in instruction
 
-    assert get_agent_definition("service_verification").version == "2.0.0"
-    assert "when no source was retrieved" in get_agent_definition("service_verification").instruction
-    assert get_agent_definition("import_quality").version == "2.0.0"
+    source_governance = get_agent_definition("service_verification")
+    assert source_governance.version == "4.2.0"
+    assert source_governance.tools == ("inspect_official_source_governance",)
+    assert source_governance.mutates_data is False
+    assert "atomic_source_set" in source_governance.instruction
+    assert "freshness" in source_governance.instruction
+    assert "documentary_drift" in source_governance.instruction
+    assert "commercial_fixtures" in source_governance.instruction
+    assert "commercial_exceptions" in source_governance.instruction
+    assert "commercial_release_scope" in source_governance.instruction
+    assert "candidate_revalidation" in source_governance.instruction
+    assert "catalog_count" in source_governance.instruction
+    assert "quote_ready_count" in source_governance.instruction
+    assert "blocked_count" in source_governance.instruction
+    assert "pending_count" in source_governance.instruction
+    assert "explicit Admin finalization workflow" in source_governance.instruction
+    assert "never finalize a catalog review" in source_governance.instruction
+    assert "approve a candidate or exception" in source_governance.instruction
+    assert "promote a commercial release" in source_governance.instruction
+    assert "mutate a BOM" in source_governance.instruction
+    assert get_agent_definition("import_quality").version == "3.0.0"
     assert get_agent_definition("integration_design").version == "2.0.0"
     assert get_agent_definition("topology_investigation").version == "2.0.0"
-    assert get_agent_definition("bom_scenario").version == "2.0.0"
+    assert get_agent_definition("bom_scenario").version == "2.2.0"

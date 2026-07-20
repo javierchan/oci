@@ -14,6 +14,7 @@ from app.schemas.catalog import (
     CatalogIntegrationDetail,
     CatalogIntegrationPatch,
     CatalogIntegrationResponse,
+    CatalogQaRefreshResponse,
     CatalogListResponse,
     LineageDetail,
     ManualIntegrationCreate,
@@ -87,6 +88,22 @@ async def list_facets(project_id: str, db: AsyncSession = Depends(get_db)) -> Ca
     """Return lightweight filter metadata without serializing catalog rows."""
 
     return await catalog_service.list_facets(project_id, db)
+
+
+@router.post(
+    "/{project_id}/refresh-qa",
+    response_model=CatalogQaRefreshResponse,
+    summary="Refresh derived QA state from current governed evidence",
+)
+async def refresh_project_qa(
+    project_id: str,
+    actor_id: str = "api-user",
+    db: AsyncSession = Depends(get_db),
+) -> CatalogQaRefreshResponse:
+    """Remove stale QA decisions without mutating source or architect evidence."""
+
+    async with db.begin():
+        return await catalog_service.refresh_project_qa(project_id, actor_id, db)
 
 
 @router.get(

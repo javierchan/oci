@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 
+from openpyxl import load_workbook
+
 from app.core.calc_engine import composition_issues
-from app.services import synthetic_service
+from app.services import import_service, synthetic_service
 
 
 def test_generated_synthetic_dataset_meets_scale_and_coverage_targets() -> None:
@@ -37,6 +39,22 @@ def test_generated_smoke_dataset_meets_smoke_targets_and_full_pattern_coverage()
     assert validation.distinct_systems >= 12
     assert len(validation.covered_pattern_ids) == synthetic_service.SUPPORTED_PATTERN_COUNT
     assert validation.max_canvas_state_length < synthetic_service.SYNTHETIC_CANVAS_MAX_BYTES
+
+
+def test_synthetic_workbook_uses_the_governed_official_template_contract(tmp_path) -> None:
+    dataset = synthetic_service.generate_synthetic_dataset(synthetic_service.SMOKE_SYNTHETIC_SPEC)
+    path = synthetic_service.write_synthetic_workbook(dataset, tmp_path / "synthetic.xlsx")
+
+    workbook = load_workbook(path, read_only=True, data_only=False)
+    manifest = import_service._read_template_manifest(workbook)
+    source_sheet_name, rows = import_service._select_import_sheet(workbook, manifest)
+    parsed = import_service.parse_rows(rows)
+
+    assert manifest["template_version"] == synthetic_service.TEMPLATE_VERSION
+    assert manifest["source_kind"] == "governed_synthetic_generation"
+    assert source_sheet_name == synthetic_service.SOURCE_SHEET_NAME
+    assert import_service._is_official_template(source_sheet_name, manifest, parsed.header_map)
+    assert parsed.loaded_count == len(dataset.import_rows)
 
 
 def test_synthetic_queue_routes_stay_within_governed_message_limit() -> None:

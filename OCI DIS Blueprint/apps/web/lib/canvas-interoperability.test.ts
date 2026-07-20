@@ -10,6 +10,7 @@ import {
 } from "./canvas-governance";
 import {
   evaluateCanvasInteroperability,
+  resolveCanvasServiceId,
   type CanvasInteroperabilityArgs,
 } from "./canvas-interoperability";
 import type { CanvasServiceProfile } from "./types";
@@ -38,6 +39,31 @@ function profile(
   serviceId: string,
   limits: Record<string, unknown>,
 ): CanvasServiceProfile {
+  const limitDefinitions = Object.fromEntries(
+    Object.entries(limits).map(([limitKey, value]) => [
+      limitKey,
+      {
+        id: `${serviceId}-${limitKey}`,
+        limit_key: limitKey,
+        label: limitKey,
+        scope: "service_operation",
+        limit_type: "payload",
+        constraint_kind: limitKey === "billing_threshold_kb" ? "billing_granularity" : "hard_limit",
+        enforcement: limitKey === "billing_threshold_kb" ? "calculate" : "block_when_applicable",
+        applicability: {},
+        value,
+        unit: "KB",
+        default_value: null,
+        can_request_increase: false,
+        source_url: "https://docs.oracle.com/",
+        source_retrieved_at: null,
+        confidence: 1,
+        notes: null,
+        is_active: true,
+        updated_at: "2026-07-17T00:00:00Z",
+      },
+    ]),
+  );
   return {
     id: serviceId,
     service_id: serviceId,
@@ -46,6 +72,7 @@ function profile(
     sla_uptime_pct: null,
     pricing_model: null,
     limits,
+    limit_definitions: limitDefinitions,
     summary: null,
     architecture_role: null,
   };
@@ -65,7 +92,11 @@ function makeArgs(
     destinationTechnology: null,
     integrationType: null,
     serviceProfilesById: new Map<string, CanvasServiceProfile>([
-      ["OIC3", profile("OIC3", { max_message_size_kb: 10240 })],
+      ["OIC3", profile("OIC3", {
+        billing_threshold_kb: 50,
+        rest_trigger_structured_max_payload_kb: 102400,
+        kafka_schema_max_payload_kb: 10240,
+      })],
       ["FUNCTIONS", profile("FUNCTIONS", { max_invoke_body_kb: 6144 })],
       ["API_GATEWAY", profile("API_GATEWAY", { max_request_body_kb: 20480 })],
       ["QUEUE", profile("QUEUE", { max_message_size_kb: 256 })],
@@ -76,6 +107,16 @@ function makeArgs(
 }
 
 describe("canvas-interoperability", () => {
+  it("resolves normalized Service Product aliases without guessing generic families", () => {
+    expect(resolveCanvasServiceId("OCI Events")).toBe("EVENTS");
+    expect(resolveCanvasServiceId("Process Automation")).toBe("PROCESS_AUTOMATION");
+    expect(resolveCanvasServiceId("OCI Data Catalog")).toBe("DATA_CATALOG");
+    expect(resolveCanvasServiceId("OCI IAM and Security Services")).toBe("IAM");
+    expect(resolveCanvasServiceId("OCI Observability")).toBe("OBSERVABILITY");
+    expect(resolveCanvasServiceId("OCI AI Services")).toBeNull();
+    expect(resolveCanvasServiceId("OKE / Service Mesh")).toBeNull();
+  });
+
   it("blocks payloads that exceed documented service limits", () => {
     const report = evaluateCanvasInteroperability(
       makeArgs({
@@ -89,6 +130,58 @@ describe("canvas-interoperability", () => {
     );
 
     expect(report.blockers.map((finding) => finding.id)).toContain("functions-payload-limit");
+  });
+
+  it("treats the OIC 50 KB billing increment as pricing granularity, not a payload ceiling", () => {
+    const report = evaluateCanvasInteroperability(
+      makeArgs({
+        payloadKb: 70,
+        triggerType: "REST Trigger",
+        nodes: [node("oic", "OIC Gen3")],
+        edges: [
+          edge("1", SOURCE_NODE_ID, "oic"),
+          edge("2", "oic", DESTINATION_NODE_ID),
+        ],
+      }),
+    );
+
+    expect(report.blockers).toHaveLength(0);
+  });
+
+  it("applies the governed adapter-specific OIC payload boundary", () => {
+    const report = evaluateCanvasInteroperability(
+      makeArgs({
+        payloadKb: 11 * 1024,
+        sourceTechnology: "Kafka",
+        nodes: [node("oic", "OIC Gen3")],
+        edges: [
+          edge("1", SOURCE_NODE_ID, "oic"),
+          edge("2", "oic", DESTINATION_NODE_ID),
+        ],
+      }),
+    );
+
+    expect(report.blockers.map((finding) => finding.id)).toContain(
+      "oic-payload-limit-kafka_schema_max_payload_kb",
+    );
+  });
+
+  it("requests adapter evidence instead of inventing a generic OIC ceiling", () => {
+    const report = evaluateCanvasInteroperability(
+      makeArgs({
+        payloadKb: 11 * 1024,
+        nodes: [node("oic", "OIC Gen3")],
+        edges: [
+          edge("1", SOURCE_NODE_ID, "oic"),
+          edge("2", "oic", DESTINATION_NODE_ID),
+        ],
+      }),
+    );
+
+    expect(report.blockers).toHaveLength(0);
+    expect(report.warnings.map((finding) => finding.id)).toContain(
+      "oic-adapter-context-required",
+    );
   });
 
   it("blocks connector hub when it is fed directly from the external source", () => {

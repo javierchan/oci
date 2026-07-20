@@ -100,16 +100,79 @@ def test_build_charts_represents_every_captured_product_once_per_integration() -
             core_tools="OCI Streaming",
             additional_tools_overlays="OCI API Gateway",
         ),
+        _row(
+            seq_number=3,
+            core_tools="OCI AI Services",
+            additional_tools_overlays=None,
+        ),
     ]
 
-    charts = cast(dict[str, Any], dashboard_service._build_charts(rows, {"#02": "Event Backbone"}))
+    charts = cast(
+        dict[str, Any],
+        dashboard_service._build_charts(
+            rows,
+            {"#02": "Event Backbone"},
+            commercial_classifications={
+                "API_GATEWAY": "direct_metered",
+                "EVENTS": "included_non_billable",
+                "GOLDENGATE": "direct_metered",
+                "OIC3": "direct_metered",
+                "PROCESS_AUTOMATION": "dependent_entitlement",
+                "STREAMING": "direct_metered",
+            },
+        ),
+    )
     footprint = charts["product_footprint"]
     products = {item["tool_key"]: item for item in footprint["products"]}
 
-    assert footprint["captured_product_count"] == 6
-    assert footprint["represented_product_count"] == 6
-    assert footprint["rows_with_products"] == 2
+    assert footprint["captured_product_count"] == 7
+    assert footprint["represented_product_count"] == 7
+    assert footprint["verified_product_count"] == 4
+    assert footprint["included_or_dependent_count"] == 2
+    assert footprint["external_dependency_count"] == 1
+    assert footprint["selection_required_count"] == 0
+    assert footprint["rows_with_products"] == 3
     assert products["OCI Events"]["integration_count"] == 1
     assert products["OCI Events"]["role"] == "overlay"
+    assert products["OCI Events"]["service_id"] == "EVENTS"
+    assert products["OCI Events"]["resolution_status"] == "included_or_dependent"
     assert products["Oracle GoldenGate"]["service_id"] == "GOLDENGATE"
-    assert products["Process Automation"]["service_id"] is None
+    assert products["Process Automation"]["service_id"] == "PROCESS_AUTOMATION"
+    assert products["OCI AI Services"]["service_id"] is None
+    assert products["OCI AI Services"]["resolution_status"] == "external_dependency"
+
+
+def test_enrich_product_footprint_upgrades_historical_aliases() -> None:
+    footprint = dashboard_service.DashboardProductFootprint(
+        captured_product_count=2,
+        represented_product_count=2,
+        rows_with_products=1,
+        total_rows=1,
+        products=[
+            dashboard_service.DashboardProductUsage(
+                tool_key="OCI Data Catalog",
+                role="overlay",
+                integration_count=1,
+                coverage_ratio=1.0,
+            ),
+            dashboard_service.DashboardProductUsage(
+                tool_key="OKE / Service Mesh",
+                role="overlay",
+                integration_count=1,
+                coverage_ratio=1.0,
+            ),
+        ],
+    )
+
+    enriched = dashboard_service._enrich_product_footprint(
+        footprint,
+        {"DATA_CATALOG": "included_non_billable"},
+    )
+
+    assert enriched.represented_product_count == 2
+    assert enriched.included_or_dependent_count == 1
+    assert enriched.external_dependency_count == 1
+    assert enriched.selection_required_count == 0
+    assert enriched.products[0].service_id == "DATA_CATALOG"
+    assert enriched.products[1].service_id is None
+    assert enriched.products[1].resolution_status == "external_dependency"

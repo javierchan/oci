@@ -29,6 +29,16 @@ function isSyntheticProject(project: Project): boolean {
   return metadata?.synthetic === true || metadata?.seed_type === "synthetic-enterprise";
 }
 
+function projectStatusPresentation(project: Project): { chipClass: "active" | "draft" | "archived"; label: string } {
+  if (project.status === "archived") {
+    return { chipClass: "archived", label: "◌ Archived" };
+  }
+  if (project.status === "draft") {
+    return { chipClass: "draft", label: "○ Draft" };
+  }
+  return { chipClass: "active", label: "● Active" };
+}
+
 export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps): JSX.Element {
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectRow[]>(
@@ -52,8 +62,8 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
   });
   const visibleActiveProjects = visibleProjects.filter((row) => row.project.status !== "archived");
   const visibleArchivedProjects = visibleProjects.filter((row) => row.project.status === "archived");
-  const activeCount = projects.filter((row) => row.project.status === "active").length;
-  const archivedCount = projects.length - activeCount;
+  const activeCount = projects.filter((row) => row.project.status !== "archived").length;
+  const archivedCount = projects.filter((row) => row.project.status === "archived").length;
   const totalIntegrations = projects.reduce((total, row) => total + row.rowCount, 0);
   const syntheticCount = projects.filter((row) => isSyntheticProject(row.project)).length;
   const nameCounts = visibleProjects.reduce((accumulator: Record<string, number>, row: ProjectRow) => {
@@ -328,8 +338,8 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                       </p>
                     )}
                   </div>
-                  <span className={`app-status-chip ${row.project.status === "active" ? "active" : "archived"}`}>
-                    {row.project.status === "active" ? "● Active" : "◌ Archived"}
+                  <span className={`app-status-chip ${projectStatusPresentation(row.project).chipClass}`}>
+                    {projectStatusPresentation(row.project).label}
                   </span>
                 </div>
 
@@ -374,8 +384,8 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                     <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--color-surface-2)] text-[var(--color-accent)]">
                       <FolderOpen className="h-4 w-4" />
                     </span>
-                    <span className={`app-status-chip ${row.project.status === "active" ? "active" : "archived"}`}>
-                      {row.project.status === "active" ? "● Active" : "◌ Archived"}
+                    <span className={`app-status-chip ${projectStatusPresentation(row.project).chipClass}`}>
+                      {projectStatusPresentation(row.project).label}
                     </span>
                   </div>
                   {isSyntheticProject(row.project) ? <span className="app-theme-chip">Synthetic</span> : null}

@@ -10,7 +10,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.calc_engine import normalize_trigger_type
-from app.models import CatalogIntegration, DashboardSnapshot, PatternDefinition, Project, VolumetrySnapshot
+from app.models import (
+    CatalogIntegration,
+    DashboardSnapshot,
+    PatternDefinition,
+    Project,
+    ServiceCommercialPolicy,
+    VolumetrySnapshot,
+)
 from app.schemas.dashboard import (
     CompletenessChart,
     CoverageMetric,
@@ -30,6 +37,7 @@ from app.schemas.dashboard import (
     PayloadDistributionBucket,
 )
 from app.services.canvas_interoperability import (
+    EXTERNAL_DEPENDENCY_TOOL_KEYS,
     TOOL_TO_SERVICE_ID,
     CanvasDesignValidationError,
     parse_canvas_state,
@@ -38,6 +46,14 @@ from app.services.serializers import split_csv
 
 
 OVERLAY_TOOL_KEYS = frozenset({"OCI API Gateway", "OCI Events", "Process Automation"})
+INCLUDED_OR_DEPENDENT_CLASSIFICATIONS = frozenset(
+    {
+        "dependent_cost",
+        "dependent_entitlement",
+        "included_non_billable",
+        "included_with_optional_addons",
+    }
+)
 
 
 def _has_text(value: str | None) -> bool:
@@ -237,6 +253,71 @@ async def _pattern_name_map(db: AsyncSession) -> dict[str, str]:
     return {pattern.pattern_id: pattern.name for pattern in pattern_rows.all()}
 
 
+async def _commercial_classification_map(db: AsyncSession) -> dict[str, str]:
+    policy_rows = await db.scalars(
+        select(ServiceCommercialPolicy).where(ServiceCommercialPolicy.status == "approved")
+    )
+    return {policy.service_id: policy.classification for policy in policy_rows.all()}
+
+
+def _product_resolution_status(
+    service_id: str | None,
+    commercial_classification: str | None,
+    tool_key: str | None = None,
+) -> Literal[
+    "verified_product",
+    "included_or_dependent",
+    "external_dependency",
+    "product_selection_required",
+]:
+    if tool_key in EXTERNAL_DEPENDENCY_TOOL_KEYS:
+        return "external_dependency"
+    if service_id is None:
+        return "product_selection_required"
+    if commercial_classification in INCLUDED_OR_DEPENDENT_CLASSIFICATIONS:
+        return "included_or_dependent"
+    return "verified_product"
+
+
+def _enrich_product_footprint(
+    footprint: DashboardProductFootprint,
+    commercial_classifications: dict[str, str],
+) -> DashboardProductFootprint:
+    products: list[DashboardProductUsage] = []
+    for product in footprint.products:
+        service_id = product.service_id or TOOL_TO_SERVICE_ID.get(product.tool_key)
+        classification = commercial_classifications.get(service_id) if service_id is not None else None
+        products.append(
+            product.model_copy(
+                update={
+                    "service_id": service_id,
+                    "commercial_classification": classification,
+                    "resolution_status": _product_resolution_status(
+                        service_id,
+                        classification,
+                        product.tool_key,
+                    ),
+                }
+            )
+        )
+
+    verified_count = sum(item.resolution_status == "verified_product" for item in products)
+    included_count = sum(item.resolution_status == "included_or_dependent" for item in products)
+    external_count = sum(item.resolution_status == "external_dependency" for item in products)
+    selection_count = sum(item.resolution_status == "product_selection_required" for item in products)
+    return footprint.model_copy(
+        update={
+            "captured_product_count": len(products),
+            "represented_product_count": verified_count + included_count + external_count,
+            "verified_product_count": verified_count,
+            "included_or_dependent_count": included_count,
+            "external_dependency_count": external_count,
+            "selection_required_count": selection_count,
+            "products": products,
+        }
+    )
+
+
 def _build_kpi_strip(volumetry_snapshot: VolumetrySnapshot) -> dict[str, object]:
     consolidated = volumetry_snapshot.consolidated
     oic = consolidated.get("oic", {})
@@ -255,6 +336,7 @@ def _build_charts(
     rows: list[CatalogIntegration],
     pattern_names: dict[str, str],
     service_rule_metadata: dict[str, object] | None = None,
+    commercial_classifications: dict[str, str] | None = None,
 ) -> dict[str, object]:
     total = len(rows)
     formal_id_complete = sum(1 for row in rows if _has_text(row.interface_id))
@@ -334,25 +416,29 @@ def _build_charts(
                 "overlay" if tool_key in overlay_keys or tool_key in OVERLAY_TOOL_KEYS else "core"
             )
 
-    products = [
-        DashboardProductUsage(
-            tool_key=tool_key,
-            service_id=TOOL_TO_SERVICE_ID.get(tool_key),
-            role=product_roles[tool_key],
-            integration_count=count,
-            coverage_ratio=(count / total) if total else 0.0,
+    classifications = commercial_classifications or {}
+    raw_products = []
+    for tool_key, count in sorted(product_counts.items(), key=lambda item: (-item[1], item[0])):
+        service_id = TOOL_TO_SERVICE_ID.get(tool_key)
+        classification = classifications.get(service_id) if service_id is not None else None
+        raw_products.append(
+            DashboardProductUsage(
+                tool_key=tool_key,
+                service_id=service_id,
+                commercial_classification=classification,
+                resolution_status=_product_resolution_status(service_id, classification, tool_key),
+                role=product_roles[tool_key],
+                integration_count=count,
+                coverage_ratio=(count / total) if total else 0.0,
+            )
         )
-        for tool_key, count in sorted(
-            product_counts.items(),
-            key=lambda item: (-item[1], item[0]),
-        )
-    ]
-    product_footprint = DashboardProductFootprint(
-        captured_product_count=len(products),
-        represented_product_count=len(products),
-        rows_with_products=rows_with_products,
-        total_rows=total,
-        products=products,
+    product_footprint = _enrich_product_footprint(
+        DashboardProductFootprint(
+            rows_with_products=rows_with_products,
+            total_rows=total,
+            products=raw_products,
+        ),
+        classifications,
     )
 
     charts = DashboardCharts(
@@ -436,6 +522,7 @@ async def create_dashboard_snapshot(
 
     rows = await _load_catalog_rows(project_id, db)
     pattern_names = await _pattern_name_map(db)
+    commercial_classifications = await _commercial_classification_map(db)
     snapshot_metadata = volumetry_snapshot.snapshot_metadata or {}
     service_rule_metadata = _dict_value(snapshot_metadata.get("service_rules", {}))
 
@@ -444,7 +531,12 @@ async def create_dashboard_snapshot(
         volumetry_snapshot_id=volumetry_snapshot.id,
         mode="technical",
         kpi_strip=_build_kpi_strip(volumetry_snapshot),
-        charts=_build_charts(rows, pattern_names, service_rule_metadata),
+        charts=_build_charts(
+            rows,
+            pattern_names,
+            service_rule_metadata,
+            commercial_classifications,
+        ),
         risks=_build_risks(rows),
         maturity=_build_maturity(rows),
     )
@@ -521,4 +613,17 @@ async def get_snapshot(project_id: str, snapshot_id: str, db: AsyncSession) -> D
             status_code=404,
             detail={"detail": "Dashboard snapshot not found", "error_code": "DASHBOARD_SNAPSHOT_NOT_FOUND"},
         )
-    return serialize_snapshot(snapshot)
+    response = serialize_snapshot(snapshot)
+    commercial_classifications = await _commercial_classification_map(db)
+    return response.model_copy(
+        update={
+            "charts": response.charts.model_copy(
+                update={
+                    "product_footprint": _enrich_product_footprint(
+                        response.charts.product_footprint,
+                        commercial_classifications,
+                    )
+                }
+            )
+        }
+    )

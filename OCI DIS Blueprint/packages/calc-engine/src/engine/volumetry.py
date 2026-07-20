@@ -62,15 +62,15 @@ class Assumptions:
     data_integration_workspaces_per_region: int = 5
     data_integration_deleted_workspace_retention_days: int = 15
     # OIC service limits
-    oic_rest_max_payload_kb: float = 10_240.0
-    oic_ftp_max_payload_kb: float = 10_240.0
+    oic_rest_max_payload_kb: float = 102_400.0
+    oic_ftp_max_payload_kb: float = 102_400.0
     oic_kafka_max_payload_kb: float = 10_240.0
     oic_rest_raw_max_payload_kb: float = 1_048_576.0
     oic_rest_attachment_max_payload_kb: float = 1_048_576.0
-    oic_rest_json_schema_max_payload_kb: float = 102_400.0
-    oic_soap_max_payload_kb: float = 51_200.0
+    oic_rest_json_schema_max_payload_kb: float = 100.0
+    oic_soap_max_payload_kb: float = 102_400.0
     oic_soap_attachment_max_payload_kb: float = 1_048_576.0
-    oic_ftp_stage_file_max_payload_kb: float = 10_485_760.0
+    oic_ftp_stage_file_max_payload_kb: float = 102_400.0
     oic_sync_max_duration_s: int = 300
     oic_async_max_duration_s: int = 21_600
     oic_max_parallel_branches: int = 5
@@ -81,7 +81,7 @@ class Assumptions:
     oic_async_concurrency_byol: int = 200
     oic_pack_size_msgs_per_hour_byol: int = 20_000
     oic_db_stored_proc_timeout_s: int = 240
-    oic_db_polling_max_payload_kb: float = 10_240.0
+    oic_db_polling_max_payload_kb: float = 51_200.0
     oic_outbound_read_timeout_s: int = 300
     oic_outbound_connection_timeout_s: int = 300
     oic_agent_connection_timeout_s: int = 240
@@ -90,9 +90,9 @@ class Assumptions:
     api_gw_backend_timeout_max_s: int = 300
     api_gw_max_routes_per_deployment: int = 50
     api_gw_max_deployments_per_gateway: int = 20
-    oic_project_max_integrations: int = 100
-    oic_project_max_deployments: int = 50
-    oic_project_max_connections: int = 20
+    oic_project_max_integrations: int = 200
+    oic_project_max_deployments: int = 100
+    oic_project_max_connections: int = 100
     oic_timeout_s: int = 300
 
 

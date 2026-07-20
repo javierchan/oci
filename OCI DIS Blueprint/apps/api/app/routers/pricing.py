@@ -7,6 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.schemas.pricing import (
+    CommercialCatalogFinalizeRequest,
+    CommercialCandidateReviewRequest,
+    CommercialExceptionReviewRequest,
+    CommercialWorkspaceResponse,
     GovernanceChangeSetListResponse,
     GovernanceChangeSetResponse,
     PriceCatalogSnapshotListResponse,
@@ -20,7 +24,7 @@ from app.schemas.pricing import (
     SkuMappingPatchRequest,
     SkuMappingResponse,
 )
-from app.services import pricing_service
+from app.services import commercial_catalog_service, pricing_service
 from app.services.authz import require_admin, require_roles
 from app.workers.pricing_worker import execute_price_sync_job_task
 
@@ -30,6 +34,184 @@ router = APIRouter(prefix="/pricing", tags=["Pricing"])
 
 def _require_pricing_read(role: str | None) -> None:
     require_roles(role, {"Admin", "Architect", "Analyst", "Viewer"}, error_code="PRICING_READ_ROLE_REQUIRED")
+
+
+@router.get(
+    "/commercial-catalog",
+    response_model=CommercialWorkspaceResponse,
+    summary="Inspect normalized official OCI commercial evidence",
+)
+async def get_commercial_catalog(
+    document_id: str | None = None,
+    search: str | None = None,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialWorkspaceResponse:
+    _require_pricing_read(actor_role)
+    return CommercialWorkspaceResponse.model_validate(
+        await commercial_catalog_service.commercial_workspace(
+            db, document_id=document_id, search=search, limit=limit
+        )
+    )
+
+
+@router.post(
+    "/commercial-documents",
+    response_model=CommercialWorkspaceResponse,
+    summary="Import an official OCI Price List and Supplement workbook",
+)
+async def import_commercial_document(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialWorkspaceResponse:
+    require_admin(actor_role)
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(
+            status_code=422,
+            detail={"detail": "Official commercial evidence must be an XLSX workbook", "error_code": "COMMERCIAL_DOCUMENT_FORMAT_INVALID"},
+        )
+    try:
+        async with db.begin():
+            payload = await commercial_catalog_service.import_commercial_workbook(
+                filename=file.filename,
+                contents=await file.read(),
+                actor_id=actor_id,
+                db=db,
+            )
+        return CommercialWorkspaceResponse.model_validate(payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"detail": str(exc), "error_code": "COMMERCIAL_DOCUMENT_CONTENT_INVALID"},
+        ) from exc
+
+
+@router.post(
+    "/commercial-documents/{document_id}/approve",
+    response_model=CommercialWorkspaceResponse,
+    summary="Approve an official document as evidence without approving mappings",
+)
+async def approve_commercial_document(
+    document_id: str,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialWorkspaceResponse:
+    require_admin(actor_role)
+    async with db.begin():
+        payload = await commercial_catalog_service.approve_document(document_id, actor_id, db)
+    return CommercialWorkspaceResponse.model_validate(payload)
+
+
+@router.post(
+    "/commercial-documents/{document_id}/finalize-review",
+    response_model=CommercialWorkspaceResponse,
+    summary="Finalize global OCI catalog dispositions with deterministic gates",
+)
+async def finalize_commercial_catalog_review(
+    document_id: str,
+    body: CommercialCatalogFinalizeRequest,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialWorkspaceResponse:
+    require_admin(actor_role)
+    async with db.begin():
+        payload = await commercial_catalog_service.finalize_catalog_review(
+            document_id,
+            rationale=body.rationale,
+            actor_id=actor_id,
+            db=db,
+        )
+    return CommercialWorkspaceResponse.model_validate(payload)
+
+
+@router.post(
+    "/commercial-candidates/{candidate_id}/review",
+    response_model=CommercialWorkspaceResponse,
+    summary="Record an explicit commercial candidate decision",
+)
+async def review_commercial_candidate(
+    candidate_id: str,
+    body: CommercialCandidateReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialWorkspaceResponse:
+    require_admin(actor_role)
+    async with db.begin():
+        payload = await commercial_catalog_service.review_candidate(
+            candidate_id,
+            decision=body.decision,
+            rationale=body.rationale,
+            actor_id=actor_id,
+            db=db,
+        )
+    return CommercialWorkspaceResponse.model_validate(payload)
+
+
+@router.post(
+    "/commercial-candidates/{candidate_id}/revalidate",
+    response_model=CommercialWorkspaceResponse,
+    summary="Revalidate one derived commercial candidate against persisted evidence",
+)
+async def revalidate_commercial_candidate(
+    candidate_id: str,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialWorkspaceResponse:
+    require_admin(actor_role)
+    async with db.begin():
+        payload = await commercial_catalog_service.revalidate_candidate(
+            candidate_id, actor_id, db
+        )
+    return CommercialWorkspaceResponse.model_validate(payload)
+
+
+@router.post(
+    "/commercial-exceptions/{exception_id}/review",
+    response_model=CommercialWorkspaceResponse,
+    summary="Record an explicit decision for a commercial evidence exception",
+)
+async def review_commercial_exception(
+    exception_id: str,
+    body: CommercialExceptionReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialWorkspaceResponse:
+    require_admin(actor_role)
+    async with db.begin():
+        payload = await commercial_catalog_service.review_exception(
+            exception_id,
+            decision=body.decision,
+            rationale=body.rationale,
+            target_part_number=body.target_part_number,
+            actor_id=actor_id,
+            db=db,
+        )
+    return CommercialWorkspaceResponse.model_validate(payload)
+
+
+@router.post(
+    "/commercial-documents/{document_id}/releases",
+    response_model=CommercialWorkspaceResponse,
+    summary="Promote an atomic global OCI commercial release",
+)
+async def promote_commercial_release(
+    document_id: str,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialWorkspaceResponse:
+    require_admin(actor_role)
+    async with db.begin():
+        payload = await commercial_catalog_service.promote_release(document_id, actor_id, db)
+    return CommercialWorkspaceResponse.model_validate(payload)
 
 
 @router.get("/sources", response_model=PriceSourceListResponse, summary="List governed OCI price sources")

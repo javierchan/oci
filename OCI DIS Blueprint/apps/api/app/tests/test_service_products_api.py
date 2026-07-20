@@ -124,6 +124,9 @@ async def test_service_product_library_endpoints_return_normalized_governance(
                     label="Max Message Size",
                     scope="service",
                     limit_type="payload",
+                    constraint_kind="hard_limit",
+                    enforcement="block_when_applicable",
+                    applicability={"component": "oic_messaging"},
                     value=10240,
                     unit="KB",
                     can_request_increase=False,
@@ -182,6 +185,9 @@ async def test_service_product_library_endpoints_return_normalized_governance(
     detail_payload = detail_response.json()
     assert detail_payload["current_version"]["version_label"] == "1.0.0"
     assert detail_payload["limits"][0]["limit_key"] == "max_message_size_kb"
+    assert detail_payload["limits"][0]["constraint_kind"] == "hard_limit"
+    assert detail_payload["limits"][0]["enforcement"] == "block_when_applicable"
+    assert detail_payload["limits"][0]["applicability"] == {"component": "oic_messaging"}
     assert detail_payload["evidence_sources"][0]["trust_tier"] == "tier_1_official_docs"
     assert detail_payload["interoperability_rules"][0]["target_service_id"] == "STREAMING"
 

@@ -79,6 +79,11 @@ function buildRules(form: ManualIntegrationCreate, patterns: PatternDefinition[]
       label: "Payload KB specified",
       pass: form.payload_per_execution_kb !== undefined,
     },
+    {
+      code: "MISSING_FAN_OUT_TARGETS",
+      label: "Fan-out destinations specified",
+      pass: form.is_fan_out !== true || (form.fan_out_targets ?? 0) >= 2,
+    },
   ];
 }
 

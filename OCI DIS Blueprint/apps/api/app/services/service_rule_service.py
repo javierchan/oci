@@ -34,6 +34,23 @@ class GovernedRelationship:
 
 
 @dataclass(frozen=True)
+class GovernedServiceLimit:
+    """One runtime rule with its governed semantics and applicability context."""
+
+    service_id: str
+    limit_key: str
+    value: object
+    unit: str | None
+    scope: str
+    limit_type: str
+    constraint_kind: str
+    enforcement: str
+    applicability: Mapping[str, object]
+    source_url: str | None
+    confidence: float
+
+
+@dataclass(frozen=True)
 class ServiceRuleBundle:
     """Immutable view consumed by canvas, calculation, review, and reporting."""
 
@@ -41,6 +58,7 @@ class ServiceRuleBundle:
     source: str
     freshness_status: str
     limits_by_service: Mapping[str, Mapping[str, object]]
+    definitions_by_service: Mapping[str, Mapping[str, GovernedServiceLimit]]
     relationships: tuple[GovernedRelationship, ...]
     stale_evidence_count: int
     open_findings_count: int
@@ -64,6 +82,11 @@ class ServiceRuleBundle:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             return None
         return float(value)
+
+    def definition(self, service_id: str, limit_key: str) -> GovernedServiceLimit | None:
+        """Return the full governed rule definition, including enforcement semantics."""
+
+        return self.definitions_by_service.get(service_id, {}).get(limit_key)
 
     def string_values(self, service_id: str, limit_key: str) -> frozenset[str]:
         """Return a normalized string set from a list-valued service rule."""
@@ -113,6 +136,7 @@ EMPTY_SERVICE_RULE_BUNDLE = ServiceRuleBundle(
     source="unavailable",
     freshness_status="unavailable",
     limits_by_service=MappingProxyType({}),
+    definitions_by_service=MappingProxyType({}),
     relationships=(),
     stale_evidence_count=0,
     open_findings_count=0,
@@ -127,9 +151,15 @@ ASSUMPTION_RULE_BINDINGS: dict[str, tuple[str, str, float]] = {
     "oic_pack_size_msgs_per_hour": ("OIC3", "pack_size_msgs_per_hour_new_license", 1.0),
     "oic_byol_pack_size_msgs_per_hour": ("OIC3", "pack_size_msgs_per_hour_byol", 1.0),
     "oic_pack_size_msgs_per_hour_byol": ("OIC3", "pack_size_msgs_per_hour_byol", 1.0),
-    "oic_rest_max_payload_kb": ("OIC3", "max_message_size_kb", 1.0),
-    "oic_ftp_max_payload_kb": ("OIC3", "max_message_size_kb", 1.0),
-    "oic_kafka_max_payload_kb": ("OIC3", "max_message_size_kb", 1.0),
+    "oic_rest_max_payload_kb": ("OIC3", "rest_trigger_structured_max_payload_kb", 1.0),
+    "oic_ftp_max_payload_kb": ("OIC3", "ftp_structured_cloud_max_payload_kb", 1.0),
+    "oic_kafka_max_payload_kb": ("OIC3", "kafka_schema_max_payload_kb", 1.0),
+    "oic_rest_raw_max_payload_kb": ("OIC3", "rest_raw_max_payload_kb", 1.0),
+    "oic_rest_attachment_max_payload_kb": ("OIC3", "rest_attachment_max_payload_kb", 1.0),
+    "oic_rest_json_schema_max_payload_kb": ("OIC3", "rest_json_schema_sample_max_kb", 1.0),
+    "oic_soap_max_payload_kb": ("OIC3", "soap_structured_max_payload_kb", 1.0),
+    "oic_soap_attachment_max_payload_kb": ("OIC3", "soap_attachment_max_payload_kb", 1.0),
+    "oic_ftp_stage_file_max_payload_kb": ("OIC3", "stage_read_entire_file_max_payload_kb", 1.0),
     "oic_sync_max_duration_s": ("OIC3", "sync_flow_max_duration_s", 1.0),
     "oic_timeout_s": ("OIC3", "sync_flow_max_duration_s", 1.0),
     "oic_async_max_duration_s": ("OIC3", "async_scheduled_flow_max_duration_s", 1.0),
@@ -139,6 +169,10 @@ ASSUMPTION_RULE_BINDINGS: dict[str, tuple[str, str, float]] = {
     "oic_sync_concurrency_byol": ("OIC3", "sync_concurrency_per_pack_byol", 1.0),
     "oic_async_concurrency_new": ("OIC3", "async_concurrency_per_pack_new", 1.0),
     "oic_async_concurrency_byol": ("OIC3", "async_concurrency_per_pack_byol", 1.0),
+    "oic_db_polling_max_payload_kb": ("OIC3", "database_polling_agent_max_payload_kb", 1.0),
+    "oic_project_max_integrations": ("OIC3", "project_max_integrations", 1.0),
+    "oic_project_max_connections": ("OIC3", "project_max_connections", 1.0),
+    "oic_project_max_deployments": ("OIC3", "project_max_deployments", 1.0),
     "streaming_partition_throughput_mb_s": ("STREAMING", "write_throughput_mb_s_per_partition", 1.0),
     "streaming_max_message_kb": ("STREAMING", "max_message_size_kb", 1.0),
     "streaming_max_message_size_mb": ("STREAMING", "max_message_size_kb", 1.0 / 1024.0),
@@ -245,14 +279,36 @@ async def load_service_rule_bundle(db: AsyncSession) -> ServiceRuleBundle:
     )
 
     mutable_limits: dict[str, dict[str, object]] = {profile.service_id: {} for profile in profiles}
+    mutable_definitions: dict[str, dict[str, GovernedServiceLimit]] = {
+        profile.service_id: {} for profile in profiles
+    }
     for limit in limits:
         profile = profile_by_id.get(limit.service_profile_id)
         if profile is not None:
             mutable_limits[profile.service_id][limit.limit_key] = limit.value
+            mutable_definitions[profile.service_id][limit.limit_key] = GovernedServiceLimit(
+                service_id=profile.service_id,
+                limit_key=limit.limit_key,
+                value=limit.value,
+                unit=limit.unit,
+                scope=limit.scope,
+                limit_type=limit.limit_type,
+                constraint_kind=limit.constraint_kind,
+                enforcement=limit.enforcement,
+                applicability=MappingProxyType(dict(limit.applicability or {})),
+                source_url=limit.source_url,
+                confidence=limit.confidence,
+            )
     limits_by_service: Mapping[str, Mapping[str, object]] = MappingProxyType(
         {
             service_id: MappingProxyType(service_limits)
             for service_id, service_limits in mutable_limits.items()
+        }
+    )
+    definitions_by_service: Mapping[str, Mapping[str, GovernedServiceLimit]] = MappingProxyType(
+        {
+            service_id: MappingProxyType(service_limits)
+            for service_id, service_limits in mutable_definitions.items()
         }
     )
 
@@ -303,6 +359,7 @@ async def load_service_rule_bundle(db: AsyncSession) -> ServiceRuleBundle:
         source="normalized_service_products",
         freshness_status=freshness_status,
         limits_by_service=limits_by_service,
+        definitions_by_service=definitions_by_service,
         relationships=relationships,
         stale_evidence_count=stale_evidence_count,
         open_findings_count=open_findings_count,

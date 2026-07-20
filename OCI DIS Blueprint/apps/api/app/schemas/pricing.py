@@ -36,6 +36,125 @@ class PriceSourceListResponse(BaseModel):
     total: int
 
 
+class CommercialDocumentResponse(BaseModel):
+    """One immutable official Oracle commercial-document snapshot."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    source_name: str
+    original_filename: str
+    content_hash: str
+    parser_version: str
+    status: str
+    record_count: int
+    retrieved_at: datetime
+    approved_by: Optional[str]
+    approved_at: Optional[datetime]
+    manifest: dict[str, Any]
+
+
+class CommercialCatalogSummaryResponse(BaseModel):
+    """Coverage and review state for one commercial evidence snapshot."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    skus: int
+    candidates: int
+    pending: int
+    approved: int
+    blocked: int
+    exceptions: int
+
+
+class CommercialCandidateResponse(BaseModel):
+    """Generated, never implicitly approved commercial mapping candidate."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    part_number: str
+    service_id: Optional[str]
+    family_key: Optional[str]
+    classification: str
+    confidence: float
+    status: str
+    generator_version: str
+    rule_status: Optional[str]
+    rule_fixture_status: Optional[str]
+    proposed_mapping: dict[str, Any]
+    reasons: list[Any] = Field(default_factory=list)
+
+
+class CommercialExceptionResponse(BaseModel):
+    """Blocking or reviewable source ambiguity."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    candidate_id: Optional[str]
+    part_number: Optional[str]
+    code: str
+    severity: str
+    status: str
+    details: dict[str, Any]
+
+
+class CommercialReleaseResponse(BaseModel):
+    """Atomic approved price, term, mapping, rule, and evidence release."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    version: str
+    status: str
+    validation_status: str
+    open_exception_count: int
+    approved_by: Optional[str]
+    approved_at: Optional[datetime]
+    metadata: dict[str, Any]
+
+
+class CommercialWorkspaceResponse(BaseModel):
+    """Admin review workspace for official commercial evidence."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    document: Optional[CommercialDocumentResponse]
+    summary: CommercialCatalogSummaryResponse
+    candidates: list[CommercialCandidateResponse] = Field(default_factory=list)
+    exceptions: list[CommercialExceptionResponse] = Field(default_factory=list)
+    releases: list[CommercialReleaseResponse] = Field(default_factory=list)
+    field_authority: dict[str, str] = Field(default_factory=dict)
+
+
+class CommercialCandidateReviewRequest(BaseModel):
+    """Explicit administrator disposition of one generated candidate."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    decision: str = Field(pattern="^(approve|reject|keep_blocked)$")
+    rationale: str = Field(min_length=8, max_length=2000)
+
+
+class CommercialCatalogFinalizeRequest(BaseModel):
+    """Explicit global catalog review using deterministic eligibility gates."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    rationale: str = Field(min_length=8, max_length=2000)
+
+
+class CommercialExceptionReviewRequest(BaseModel):
+    """Explicit human disposition of one observed commercial discrepancy."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    decision: str = Field(pattern="^(resolve|accept_risk|keep_open)$")
+    rationale: str = Field(min_length=8, max_length=2000)
+    target_part_number: Optional[str] = Field(default=None, min_length=2, max_length=50)
+
+
 class PriceSyncRequest(BaseModel):
     """Request to synchronize a price source in one currency."""
 
@@ -371,6 +490,10 @@ class DeploymentScenarioCreateRequest(BaseModel):
     currency: str = Field(default="USD", min_length=3, max_length=3)
     region: str = Field(default="global", min_length=1, max_length=100)
     price_mode: str = Field(default="public_list", pattern="^(public_list|contract_rate|manual_rate_card)$")
+    commitment_model: str = Field(
+        default="pay_as_you_go",
+        pattern="^(pay_as_you_go|annual_commitment|annual_flex|monthly_flex)$",
+    )
     contract_months: int = Field(default=12, ge=1, le=120)
     start_date: date = Field(default_factory=date.today, strict=False)
     proration_policy: str = Field(default="full_month", pattern="^full_month$")
@@ -418,6 +541,7 @@ class DeploymentScenarioResponse(BaseModel):
     currency: str
     region: str
     price_mode: str
+    commitment_model: str
     technical_snapshot_id: str
     contract_months: int
     start_date: date
@@ -518,6 +642,30 @@ class ScenarioCommercialCoverageResponse(BaseModel):
     source_urls: list[str]
 
 
+class CurrentBomContextResponse(BaseModel):
+    """Authoritative current BOM state available to the scenario assistant."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    snapshot_id: str
+    scenario_id: str
+    scenario_name: str
+    scenario_status: str
+    publication_status: str
+    technical_snapshot_id: str
+    technical_snapshot_current: bool
+    coverage_pct: float
+    currency: str
+    monthly_total: float
+    contract_total: float
+    environment_names: list[str]
+    line_item_count: int
+    unresolved_line_count: int
+    warnings_count: int
+    ready_for_use: bool
+    created_at: datetime
+
+
 class ScenarioAssistantResponse(BaseModel):
     """Evidence-backed scenario draft and minimum missing client questions."""
 
@@ -527,6 +675,7 @@ class ScenarioAssistantResponse(BaseModel):
     detected_services: list[str]
     metric_options: list[ScenarioMetricOptionResponse]
     commercial_coverage: list[ScenarioCommercialCoverageResponse]
+    current_bom: Optional[CurrentBomContextResponse] = None
     required_questions: list[str]
     warnings: list[str]
     confidence: str
@@ -586,6 +735,9 @@ class BomLineItemResponse(BaseModel):
     monthly_amount: float
     annual_amount: float
     contract_amount: float
+    commercial_term_id: Optional[str] = None
+    commercial_rule_family_id: Optional[str] = None
+    evidence_reference_ids: list[str] = Field(default_factory=list)
     formula: str
     inputs: dict[str, Any]
     status: str
@@ -608,6 +760,9 @@ class BomLinePeriodResponse(BaseModel):
     unit_price: float
     amount: float
     selected_price_item_id: Optional[str]
+    commercial_term_id: Optional[str] = None
+    commercial_rule_family_id: Optional[str] = None
+    evidence_reference_ids: list[str] = Field(default_factory=list)
     formula: str
     inputs: dict[str, Any]
     status: str
@@ -638,6 +793,7 @@ class BomSnapshotResponse(BaseModel):
     scenario_id: str
     technical_snapshot_id: str
     price_catalog_snapshot_id: str
+    commercial_release_id: Optional[str] = None
     mapping_version: str
     engine_version: str
     currency: str

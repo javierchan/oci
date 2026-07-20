@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import cast
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -16,6 +17,12 @@ from app.models import (
     BomLinePeriod,
     BomSnapshot,
     CatalogIntegration,
+    CommercialDocumentSnapshot,
+    CommercialEvidenceReference,
+    CommercialException,
+    CommercialRelease,
+    CommercialRuleFamily,
+    CommercialSku,
     DeploymentScenario,
     DeploymentEnvironmentPlan,
     DeploymentRampPhase,
@@ -28,9 +35,400 @@ from app.models import (
     ServiceProductSkuMapping,
     ServiceCommercialPolicy,
     VolumetrySnapshot,
+    SkuCommercialConstraint,
+    SkuCommercialTerm,
 )
 from app.models.project import ProjectStatus
 from app.services import bom_service, pricing_service
+from app.schemas.pricing import BomReviewRequest
+
+
+async def _seed_approved_commercial_release(
+    session: AsyncSession,
+    catalog: PriceCatalogSnapshot,
+    mappings: list[ServiceProductSkuMapping],
+) -> CommercialRelease:
+    """Create the minimum complete governed contract required by a new BOM."""
+
+    document = CommercialDocumentSnapshot(
+        document_kind="oracle_localizable_price_list",
+        source_name="Oracle test price list",
+        source_url="test://oracle-price-list",
+        original_filename="oracle-price-list.xlsx",
+        storage_reference="minio://pricing/oracle-price-list.xlsx",
+        content_hash=f"document-{catalog.content_hash}",
+        parser_version="test-1",
+        currency=catalog.currency,
+        status="approved_evidence",
+        record_count=len(mappings),
+        retrieved_at=datetime.now(UTC),
+        manifest={"price_snapshot_id": catalog.id},
+        approved_by="test",
+        approved_at=datetime.now(UTC),
+    )
+    session.add(document)
+    await session.flush()
+    part_numbers: list[str] = []
+    term_ids_by_part: dict[str, str] = {}
+    rule_ids_by_part: dict[str, str] = {}
+    for mapping in mappings:
+        assert mapping.part_number is not None
+        part_numbers.append(mapping.part_number)
+        family_key = f"test::{mapping.part_number.casefold()}"
+        sku = CommercialSku(
+            part_number=mapping.part_number,
+            display_name=mapping.tool_key,
+            service_category="Integration",
+            lifecycle_status="active",
+            identity_metadata={},
+        )
+        session.add(sku)
+        await session.flush()
+        term = SkuCommercialTerm(
+            document_snapshot_id=document.id,
+            commercial_sku_id=sku.id,
+            price_catalog_snapshot_id=catalog.id,
+            part_number=mapping.part_number,
+            service_name=mapping.tool_key,
+            service_category="Integration",
+            commercial_prices=[],
+            currency=catalog.currency,
+            metric_name=mapping.billing_metric_key,
+            price_type="HOUR" if mapping.formula_key == "hourly_capacity" else "MONTH",
+            allow_decimal_quantity=mapping.quantity_behavior == "continuous",
+            availability=[],
+            disposition="direct_metered",
+            family_key=family_key,
+            status="approved",
+            confidence=1,
+            source_sheet="Price List",
+            source_row=1,
+            source_cells={},
+            extraction_metadata={},
+        )
+        rule = CommercialRuleFamily(
+            family_key=family_key,
+            version="1.0.0",
+            formula_key=mapping.formula_key,
+            metric_pattern=mapping.billing_metric_key,
+            price_types=[term.price_type],
+            quantity_behavior=mapping.quantity_behavior,
+            quantity_increment=Decimal(str(mapping.quantity_increment)),
+            minimum_quantity=Decimal(str(mapping.minimum_quantity)),
+            aggregation_window=mapping.aggregation_window,
+            proration_policy=mapping.proration_policy,
+            quote_rounding=mapping.quote_rounding,
+            generator_version="test-1",
+            status="approved",
+            fixture_status="passed",
+            evidence={"document_snapshot_id": document.id},
+            approved_by="test",
+            approved_at=datetime.now(UTC),
+        )
+        session.add_all([term, rule])
+        await session.flush()
+        term_ids_by_part[mapping.part_number] = term.id
+        rule_ids_by_part[mapping.part_number] = rule.id
+        session.add_all(
+            [
+                SkuCommercialConstraint(
+                    term_id=term.id,
+                    constraint_type="purchase_increment",
+                    scope="commercial_quantity",
+                    numeric_value=Decimal(str(mapping.quantity_increment)),
+                    unit=mapping.quantity_unit,
+                    behavior="round_up",
+                    status="approved",
+                    source_cell="A1",
+                    evidence_metadata={},
+                ),
+                CommercialEvidenceReference(
+                    entity_type="sku_commercial_term",
+                    entity_id=term.id,
+                    source_kind="price_list",
+                    document_snapshot_id=document.id,
+                    source_sheet="Price List",
+                    source_row=1,
+                    source_cell="A1",
+                    evidence_metadata={},
+                ),
+            ]
+        )
+    release = CommercialRelease(
+        version=f"test-{catalog.content_hash}",
+        price_catalog_snapshot_id=catalog.id,
+        document_snapshot_id=document.id,
+        mapping_set_hash="mapping-hash",
+        rule_family_set_hash="rule-hash",
+        evidence_hash="evidence-hash",
+        status="approved",
+        validation_status="passed",
+        open_exception_count=0,
+        release_metadata={
+            "part_numbers": part_numbers,
+            "mapping_ids_by_part": {
+                mapping.part_number: [mapping.id]
+                for mapping in mappings
+                if mapping.part_number
+            },
+            "term_ids_by_part": term_ids_by_part,
+            "rule_ids_by_part": rule_ids_by_part,
+        },
+        approved_by="test",
+        approved_at=datetime.now(UTC),
+    )
+    session.add(release)
+    await session.flush()
+    return release
+
+
+def _direct_commercial_contract(
+    *,
+    formula_key: str,
+    price_type: str,
+    behavior: str,
+    constraints: tuple[SkuCommercialConstraint, ...],
+) -> bom_service.GovernedSkuCommercialContract:
+    release = CommercialRelease(
+        id="release-direct",
+        version="direct-1",
+        price_catalog_snapshot_id="price-direct",
+        document_snapshot_id="document-direct",
+        mapping_set_hash="mapping-direct",
+        rule_family_set_hash="rule-direct",
+        evidence_hash="evidence-direct",
+        status="approved",
+        validation_status="passed",
+        open_exception_count=0,
+        release_metadata={},
+    )
+    term = SkuCommercialTerm(
+        id="term-direct",
+        document_snapshot_id="document-direct",
+        commercial_sku_id="sku-direct",
+        price_catalog_snapshot_id="price-direct",
+        part_number="DIRECT-SKU",
+        service_name="Direct fixture",
+        service_category="Integration",
+        commercial_prices=[],
+        currency="USD",
+        metric_name="Direct metric",
+        price_type=price_type,
+        availability=[],
+        disposition="direct_metered",
+        family_key="direct-family",
+        status="approved",
+        source_sheet="Price List",
+        source_row=1,
+        source_cells={},
+        extraction_metadata={},
+    )
+    rule = CommercialRuleFamily(
+        id="rule-direct",
+        family_key="direct-family",
+        version="1.0.0",
+        formula_key=formula_key,
+        metric_pattern="Direct metric",
+        price_types=[price_type],
+        quantity_behavior=behavior,
+        quantity_increment=Decimal("1"),
+        minimum_quantity=Decimal("0"),
+        aggregation_window="monthly",
+        proration_policy="full_month",
+        quote_rounding="half_up",
+        generator_version="test",
+        status="approved",
+        fixture_status="passed",
+        evidence={},
+    )
+    return bom_service.GovernedSkuCommercialContract(
+        release=release,
+        term=term,
+        rule=rule,
+        constraints=constraints,
+        evidence_reference_ids=("evidence-direct",),
+    )
+
+
+def test_release_rejects_mapping_not_pinned_at_promotion() -> None:
+    mapping = ServiceProductSkuMapping(
+        id="mapping-after-release",
+        service_id="API_GATEWAY",
+        tool_key="OCI API Gateway",
+        part_number="B92072",
+        billing_metric_key="api_gateway_call_millions",
+        formula_key="metered_quantity",
+        quantity_behavior="continuous",
+        quantity_increment=Decimal("0.000001"),
+        minimum_quantity=Decimal("0"),
+        quantity_unit="million calls",
+        predicates={},
+        is_billable=True,
+        status="approved",
+        version="test",
+        confidence=1,
+    )
+    release = CommercialRelease(
+        id="release-before-mapping",
+        version="test",
+        price_catalog_snapshot_id="price",
+        document_snapshot_id="document",
+        mapping_set_hash="mapping-hash",
+        rule_family_set_hash="rule-hash",
+        evidence_hash="evidence-hash",
+        status="approved",
+        validation_status="passed",
+        open_exception_count=0,
+        release_metadata={"mapping_ids_by_part": {"B92072": ["older-mapping"]}},
+    )
+
+    with pytest.raises(ValueError, match="does not pin"):
+        bom_service._validate_release_mapping_scope(release, [mapping])
+
+
+def test_release_does_not_require_a_commercial_sku_for_non_billable_mappings() -> None:
+    mapping = ServiceProductSkuMapping(
+        id="included-service",
+        service_id="EVENTS",
+        tool_key="OCI Events",
+        part_number=None,
+        billing_metric_key="events",
+        formula_key="non_billable",
+        quantity_behavior="fixed_capacity",
+        quantity_increment=Decimal("1"),
+        minimum_quantity=Decimal("0"),
+        quantity_unit="included",
+        predicates={},
+        is_billable=False,
+        status="approved",
+        version="test",
+        confidence=1,
+    )
+    release = CommercialRelease(
+        id="release-without-included-service",
+        version="test",
+        price_catalog_snapshot_id="price",
+        document_snapshot_id="document",
+        mapping_set_hash="mapping-hash",
+        rule_family_set_hash="rule-hash",
+        evidence_hash="evidence-hash",
+        status="approved",
+        validation_status="passed",
+        open_exception_count=0,
+        release_metadata={"mapping_ids_by_part": {}},
+    )
+
+    bom_service._validate_release_mapping_scope(release, [mapping])
+
+
+def test_commercial_constraints_preserve_capacity_storage_and_time_scopes() -> None:
+    hourly_contract = _direct_commercial_contract(
+        formula_key="hourly_capacity",
+        price_type="HOUR",
+        behavior="fixed_capacity",
+        constraints=(
+            SkuCommercialConstraint(
+                constraint_type="metric_minimum",
+                scope="provisioned_capacity",
+                numeric_value=Decimal("2"),
+                behavior="minimum",
+                status="approved",
+                source_cell="F1",
+                evidence_metadata={},
+            ),
+            SkuCommercialConstraint(
+                constraint_type="usage_time_minimum",
+                scope="billing_duration_seconds",
+                numeric_value=Decimal("60"),
+                unit="seconds",
+                behavior="minimum",
+                status="approved",
+                source_cell="G1",
+                evidence_metadata={},
+            ),
+        ),
+    )
+    hourly_mapping = ServiceProductSkuMapping(
+        service_id="ATP",
+        tool_key="Autonomous Database",
+        part_number="B95701",
+        billing_metric_key="ecpu_hour",
+        formula_key="hourly_capacity",
+        quantity_behavior="fixed_capacity",
+        quantity_increment=1,
+        minimum_quantity=0,
+        quantity_unit="ECPU",
+        predicates={},
+        is_billable=True,
+        status="approved",
+        version="test",
+        confidence=1,
+    )
+    hourly_rule = bom_service._compiled_quantity_rule(hourly_contract, hourly_mapping)
+    assert hourly_rule.minimum == Decimal("2")
+    assert hourly_rule.increment == Decimal("1")
+
+    storage_contract = _direct_commercial_contract(
+        formula_key="metered_quantity",
+        price_type="MONTH",
+        behavior="continuous",
+        constraints=(
+            SkuCommercialConstraint(
+                constraint_type="purchase_increment",
+                scope="database_storage_quantity",
+                numeric_value=Decimal("1024"),
+                unit="GB",
+                behavior="round_up",
+                status="approved",
+                source_cell="G2",
+                evidence_metadata={},
+            ),
+            SkuCommercialConstraint(
+                constraint_type="purchase_increment",
+                scope="backup_storage_quantity",
+                numeric_value=Decimal("1"),
+                unit="GB",
+                behavior="round_up",
+                status="approved",
+                source_cell="G3",
+                evidence_metadata={},
+            ),
+        ),
+    )
+    database_mapping = ServiceProductSkuMapping(
+        service_id="ATP_STORAGE",
+        tool_key="Autonomous Database Storage",
+        part_number="B95754",
+        billing_metric_key="database_storage_gb_month",
+        formula_key="metered_quantity",
+        quantity_behavior="continuous",
+        quantity_increment=1,
+        minimum_quantity=0,
+        quantity_unit="GB",
+        predicates={},
+        is_billable=True,
+        status="approved",
+        version="test",
+        confidence=1,
+    )
+    backup_mapping = ServiceProductSkuMapping(
+        service_id="ATP_BACKUP",
+        tool_key="Autonomous Database Backup",
+        part_number="B95754",
+        billing_metric_key="backup_storage_gb_month",
+        formula_key="metered_quantity",
+        quantity_behavior="continuous",
+        quantity_increment=1,
+        minimum_quantity=0,
+        quantity_unit="GB",
+        predicates={},
+        is_billable=True,
+        status="approved",
+        version="test",
+        confidence=1,
+    )
+    assert bom_service._compiled_quantity_rule(storage_contract, database_mapping).increment == Decimal("1024")
+    assert bom_service._compiled_quantity_rule(storage_contract, backup_mapping).increment == Decimal("1")
 
 
 @pytest.mark.asyncio
@@ -601,6 +999,7 @@ async def test_scenario_persists_exact_monthly_product_quantities(
         json={
             "name": "DEV message ramp",
             "technical_snapshot_id": snapshot.id,
+            "commitment_model": "annual_commitment",
             "contract_months": 3,
             "consumption_model": "explicit_units",
             "environments": [{
@@ -623,12 +1022,58 @@ async def test_scenario_persists_exact_monthly_product_quantities(
     )
     assert response.status_code == 200, response.text
     payload = response.json()
+    assert payload["commitment_model"] == "annual_commitment"
     assert payload["consumption_model"] == "explicit_units"
     assert payload["environments"][0]["phases"][0]["monthly_quantities"] == [
         {"period_index": 1, "quantity": 1.0},
         {"period_index": 2, "quantity": 2.0},
         {"period_index": 3, "quantity": 4.0},
     ]
+
+
+def test_price_tier_selection_isolated_by_commitment_model() -> None:
+    """One SKU never combines PAYG and Annual prices in the same quote."""
+
+    items = [
+        PriceItem(
+            id="payg",
+            snapshot_id="snapshot",
+            part_number="SAME-SKU",
+            display_name="Same product",
+            metric_name="Unit per month",
+            service_category="Test",
+            price_type="MONTH",
+            currency="USD",
+            model="PAY_AS_YOU_GO",
+            value=3,
+        ),
+        PriceItem(
+            id="annual",
+            snapshot_id="snapshot",
+            part_number="SAME-SKU",
+            display_name="Same product",
+            metric_name="Unit per month",
+            service_category="Test",
+            price_type="MONTH",
+            currency="USD",
+            model="ANNUAL_COMMITMENT",
+            value=2,
+        ),
+    ]
+
+    payg_tiers, _, payg_paid, payg_selected = bom_service._selected_price_tiers(
+        items, "pay_as_you_go"
+    )
+    annual_tiers, _, annual_paid, annual_selected = bom_service._selected_price_tiers(
+        items, "annual_commitment"
+    )
+
+    assert [tier.unit_price for tier in payg_tiers] == [Decimal("3")]
+    assert [item.id for item in payg_paid] == ["payg"]
+    assert [item.id for item in payg_selected] == ["payg"]
+    assert [tier.unit_price for tier in annual_tiers] == [Decimal("2")]
+    assert [item.id for item in annual_paid] == ["annual"]
+    assert [item.id for item in annual_selected] == ["annual"]
 
 
 @pytest.mark.asyncio
@@ -778,6 +1223,9 @@ async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_
                 value=0.6452,
             )
         )
+        commercial_release = await _seed_approved_commercial_release(
+            session, catalog, [mapping]
+        )
         await session.commit()
         async with session.begin():
             dry_run = await bom_service.calculate_bom(
@@ -789,6 +1237,10 @@ async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_
         assert dry_run.monthly_total == 960.06
         assert dry_run.contract_total == 11520.72
         assert dry_run.coverage_pct == 100.0
+        assert dry_run.commercial_release.id == commercial_release.id
+        assert dry_run.line_payloads[0]["commercial_term_id"] is not None
+        assert dry_run.line_payloads[0]["commercial_rule_family_id"] is not None
+        assert dry_run.line_payloads[0]["evidence_reference_ids"]
         async with session.begin():
             job_response = await bom_service.create_bom_job(project.id, scenario.id, "architect", session)
         async with session.begin():
@@ -808,6 +1260,55 @@ async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_
         assert snapshot.recommendation_workspace.context == "bom"
         assert snapshot.recommendation_workspace.candidates
         assert snapshot.recommendation_workspace.candidates[0].implementation_steps
+        persisted_snapshot = await session.get(BomSnapshot, job.bom_snapshot_id)
+        assert persisted_snapshot is not None
+        assert persisted_snapshot.commercial_release_id == commercial_release.id
+        persisted_line = await session.scalar(
+            select(BomLineItem).where(BomLineItem.bom_snapshot_id == persisted_snapshot.id)
+        )
+        assert persisted_line is not None
+        assert persisted_line.commercial_term_id is not None
+        assert persisted_line.commercial_rule_family_id is not None
+        assert persisted_line.evidence_reference_ids
+        persisted_period = await session.scalar(
+            select(BomLinePeriod).where(BomLinePeriod.bom_line_item_id == persisted_line.id)
+        )
+        assert persisted_period is not None
+        assert persisted_period.commercial_term_id == persisted_line.commercial_term_id
+        assert persisted_period.commercial_rule_family_id == persisted_line.commercial_rule_family_id
+        assert persisted_period.evidence_reference_ids == persisted_line.evidence_reference_ids
+
+        reviewed = await bom_service.review_bom_snapshot(
+            project.id,
+            persisted_snapshot.id,
+            BomReviewRequest(publication_status="approved"),
+            "architect",
+            session,
+        )
+        assert reviewed.publication_status == "approved"
+
+        session.add(
+            CommercialException(
+                document_snapshot_id=commercial_release.document_snapshot_id,
+                part_number="B89639",
+                exception_code="LATE_SOURCE_CONFLICT",
+                severity="high",
+                status="open",
+                details={},
+            )
+        )
+        await session.flush()
+        with pytest.raises(HTTPException) as exc_info:
+            await bom_service.review_bom_snapshot(
+                project.id,
+                persisted_snapshot.id,
+                BomReviewRequest(publication_status="published"),
+                "architect",
+                session,
+            )
+        assert exc_info.value.status_code == 409
+        detail = cast(dict[str, object], exc_info.value.detail)
+        assert detail["error_code"] == "BOM_COMMERCIAL_EVIDENCE_INCOMPLETE"
 
 
 @pytest.mark.asyncio
@@ -970,6 +1471,7 @@ async def test_bom_resolves_commercial_variant_per_environment(test_engine: Asyn
                 ("enterprise", "OIC-ENT", 2),
             ]
         ])
+        await _seed_approved_commercial_release(session, catalog, mappings)
         await session.commit()
 
         async with session.begin():
@@ -991,6 +1493,466 @@ async def test_bom_resolves_commercial_variant_per_environment(test_engine: Asyn
             assert isinstance(provenance, dict)
             variant_labels.add(str(provenance["commercial_variant"]))
         assert variant_labels == {"Enterprise · PAYG · OIC-ENT", "Standard · PAYG · OIC-STD"}
+
+
+@pytest.mark.asyncio
+async def test_contract_rate_overrides_price_but_inherits_public_terms(
+    test_engine: AsyncEngine,
+) -> None:
+    """A private rate never replaces the approved public quantity semantics."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        public_source = PriceSource(
+            name="Public commercial contract",
+            source_type="public_list",
+            currency="USD",
+            status="active",
+            source_config={},
+            created_by="test",
+        )
+        contract_source = PriceSource(
+            name="Customer rate card",
+            source_type="manual_rate_card",
+            currency="USD",
+            status="active",
+            source_config={},
+            created_by="test",
+        )
+        session.add_all([public_source, contract_source])
+        await session.flush()
+        public_catalog = PriceCatalogSnapshot(
+            source_id=public_source.id,
+            currency="USD",
+            retrieved_at=datetime.now(UTC),
+            content_hash="public-commercial-terms",
+            item_count=1,
+            approval_status="approved",
+            snapshot_metadata={},
+        )
+        contract_catalog = PriceCatalogSnapshot(
+            source_id=contract_source.id,
+            currency="USD",
+            retrieved_at=datetime.now(UTC),
+            content_hash="customer-price-override",
+            item_count=1,
+            approval_status="approved",
+            snapshot_metadata={},
+        )
+        mapping = ServiceProductSkuMapping(
+            service_id="OIC3",
+            tool_key="OIC Gen3",
+            part_number="RATE-OVERRIDE",
+            billing_metric_key="oic_peak_packs_hour",
+            formula_key="hourly_capacity",
+            quantity_behavior="fixed_capacity",
+            quantity_increment=1,
+            minimum_quantity=1,
+            quantity_unit="packs/hour",
+            predicates={},
+            is_billable=True,
+            status="approved",
+            version="test-1",
+            confidence=1,
+        )
+        session.add_all([public_catalog, contract_catalog, mapping])
+        await session.flush()
+        release = await _seed_approved_commercial_release(
+            session, public_catalog, [mapping]
+        )
+        contract_price = PriceItem(
+            snapshot_id=contract_catalog.id,
+            part_number="RATE-OVERRIDE",
+            display_name="Oracle Integration negotiated rate",
+            metric_name="Message pack per hour",
+            service_category="Integration",
+            price_type="HOUR",
+            currency="USD",
+            model="CONTRACT_RATE",
+            value=0.5,
+        )
+        session.add(contract_price)
+        await session.flush()
+
+        resolved_release = await bom_service._resolve_commercial_release(
+            price_snapshot=contract_catalog,
+            price_source=contract_source,
+            currency="USD",
+            db=session,
+        )
+        contracts = await bom_service._governed_sku_contracts(
+            release=resolved_release,
+            part_numbers={"RATE-OVERRIDE"},
+            currency="USD",
+            db=session,
+        )
+        scenario = DeploymentScenario(
+            project_id="project",
+            name="Contract override",
+            status="approved",
+            currency="USD",
+            region="global",
+            price_mode="manual_rate_card",
+            commitment_model="annual_commitment",
+            technical_snapshot_id="technical",
+            contract_months=1,
+            start_date=date(2026, 1, 1),
+            proration_policy="full_month",
+            consumption_model="explicit_units",
+            service_config={},
+            scenario_assumptions={},
+            created_by="test",
+        )
+        line, periods = bom_service._price_mapping_line(
+            mapping,
+            [contract_price],
+            1.2,
+            "packs/hour",
+            {"name": "Production", "active_hours_month": 744},
+            scenario,
+            [],
+            (Decimal("1"),),
+            (Decimal("1.2"),),
+            {},
+            contracts["RATE-OVERRIDE"],
+        )
+
+        assert resolved_release.id == release.id
+        assert line["unit_price"] == 0.5
+        assert line["quantity"] == 2
+        assert line["monthly_amount"] == 744
+        assert line["commercial_term_id"] == contracts["RATE-OVERRIDE"].term.id
+        provenance = cast(dict[str, object], line["provenance"])
+        assert provenance["contract_price_override"] is True
+        assert provenance["public_commercial_price_snapshot_id"] == public_catalog.id
+        assert provenance["applied_price_snapshot_id"] == contract_catalog.id
+        assert periods[0]["commercial_rule_family_id"] == contracts["RATE-OVERRIDE"].rule.id
+
+
+@pytest.mark.asyncio
+async def test_governed_contract_blocks_open_exception_and_unapproved_rule(
+    test_engine: AsyncEngine,
+) -> None:
+    """Calculation cannot bypass unresolved evidence or unapproved rule logic."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        source = PriceSource(
+            name="Blocking catalog",
+            source_type="public_list",
+            currency="USD",
+            status="active",
+            source_config={},
+            created_by="test",
+        )
+        session.add(source)
+        await session.flush()
+        catalog = PriceCatalogSnapshot(
+            source_id=source.id,
+            currency="USD",
+            retrieved_at=datetime.now(UTC),
+            content_hash="blocking-commercial-terms",
+            item_count=1,
+            approval_status="approved",
+            snapshot_metadata={},
+        )
+        mapping = ServiceProductSkuMapping(
+            service_id="API_GATEWAY",
+            tool_key="OCI API Gateway",
+            part_number="BLOCKED-SKU",
+            billing_metric_key="api_gateway_call_millions",
+            formula_key="metered_quantity",
+            quantity_behavior="packaged",
+            quantity_increment=1,
+            minimum_quantity=1,
+            quantity_unit="million calls",
+            predicates={},
+            is_billable=True,
+            status="approved",
+            version="test-1",
+            confidence=1,
+        )
+        session.add_all([catalog, mapping])
+        await session.flush()
+        release = await _seed_approved_commercial_release(session, catalog, [mapping])
+        exception = CommercialException(
+            document_snapshot_id=release.document_snapshot_id,
+            part_number="BLOCKED-SKU",
+            exception_code="SOURCE_CONFLICT",
+            severity="high",
+            status="open",
+            details={},
+        )
+        session.add(exception)
+        await session.flush()
+
+        with pytest.raises(ValueError, match="unresolved_exception_parts"):
+            await bom_service._governed_sku_contracts(
+                release=release,
+                part_numbers={"BLOCKED-SKU"},
+                currency="USD",
+                db=session,
+            )
+
+        exception.status = "resolved"
+        rule = await session.scalar(
+            select(CommercialRuleFamily).where(
+                CommercialRuleFamily.family_key == "test::blocked-sku"
+            )
+        )
+        assert rule is not None
+        rule.status = "draft"
+        await session.flush()
+        with pytest.raises(ValueError, match="missing_approved_rules"):
+            await bom_service._governed_sku_contracts(
+                release=release,
+                part_numbers={"BLOCKED-SKU"},
+                currency="USD",
+                db=session,
+            )
+
+
+@pytest.mark.asyncio
+async def test_historical_bom_reads_but_cannot_be_newly_published_without_release(
+    test_engine: AsyncEngine,
+) -> None:
+    """Legacy snapshots remain readable while publication requires governed evidence."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(name="Historical BOM", status=ProjectStatus.ACTIVE, owner_id="owner")
+        source = PriceSource(
+            name="Historical source",
+            source_type="public_list",
+            currency="USD",
+            status="active",
+            source_config={},
+            created_by="test",
+        )
+        session.add_all([project, source])
+        await session.flush()
+        technical = VolumetrySnapshot(
+            project_id=project.id,
+            assumption_set_version="1.0.0",
+            triggered_by="test",
+            row_results={},
+            consolidated={},
+            snapshot_metadata={},
+        )
+        catalog = PriceCatalogSnapshot(
+            source_id=source.id,
+            currency="USD",
+            retrieved_at=datetime.now(UTC),
+            content_hash="historical-catalog",
+            item_count=0,
+            approval_status="approved",
+            snapshot_metadata={},
+        )
+        session.add_all([technical, catalog])
+        await session.flush()
+        scenario = DeploymentScenario(
+            project_id=project.id,
+            name="Historical scenario",
+            status="approved",
+            currency="USD",
+            region="global",
+            price_mode="public_list",
+            technical_snapshot_id=technical.id,
+            contract_months=12,
+            start_date=date(2026, 1, 1),
+            proration_policy="full_month",
+            consumption_model="explicit_units",
+            service_config={},
+            scenario_assumptions={},
+            created_by="test",
+        )
+        session.add(scenario)
+        await session.flush()
+        snapshot = BomSnapshot(
+            project_id=project.id,
+            scenario_id=scenario.id,
+            technical_snapshot_id=technical.id,
+            price_catalog_snapshot_id=catalog.id,
+            commercial_release_id=None,
+            mapping_version="legacy",
+            engine_version="legacy",
+            currency="USD",
+            coverage_pct=100,
+            monthly_total=0,
+            annual_total=0,
+            contract_total=0,
+            steady_state_monthly_total=0,
+            peak_monthly_total=0,
+            ramp_deferred_amount=0,
+            summary={},
+            warnings=[],
+            publication_status="draft",
+        )
+        session.add(snapshot)
+        await session.flush()
+
+        readable = await bom_service.get_bom_snapshot(project.id, snapshot.id, session)
+        assert readable.id == snapshot.id
+        with pytest.raises(HTTPException) as exc_info:
+            await bom_service.review_bom_snapshot(
+                project.id,
+                snapshot.id,
+                BomReviewRequest(publication_status="published"),
+                "architect",
+                session,
+            )
+        assert exc_info.value.status_code == 409
+        detail = cast(dict[str, object], exc_info.value.detail)
+        assert detail["error_code"] == "BOM_COMMERCIAL_RELEASE_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_scenario_assistant_uses_current_published_bom(test_engine: AsyncEngine) -> None:
+    """A published current BOM replaces generic missing-input assumptions."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(name="Current BOM", status=ProjectStatus.ACTIVE, owner_id="owner")
+        source = PriceSource(
+            name="Public",
+            source_type="public_list",
+            currency="USD",
+            status="active",
+            source_config={},
+            created_by="test",
+        )
+        session.add_all([project, source])
+        await session.flush()
+        technical = VolumetrySnapshot(
+            project_id=project.id,
+            assumption_set_version="1.0.0",
+            triggered_by="test",
+            row_results={},
+            consolidated={},
+            snapshot_metadata={},
+        )
+        catalog = PriceCatalogSnapshot(
+            source_id=source.id,
+            currency="USD",
+            retrieved_at=datetime.now(UTC),
+            content_hash="current-bom-price",
+            item_count=1,
+            approval_status="approved",
+            snapshot_metadata={},
+        )
+        session.add_all([technical, catalog])
+        await session.flush()
+        scenario = DeploymentScenario(
+            project_id=project.id,
+            name="Published production baseline",
+            status="approved",
+            currency="USD",
+            region="global",
+            price_mode="public_list",
+            technical_snapshot_id=technical.id,
+            contract_months=12,
+            start_date=date(2026, 1, 1),
+            proration_policy="full_month",
+            consumption_model="explicit_units",
+            service_config={},
+            scenario_assumptions={},
+            created_by="test",
+            approved_by="architect",
+            approved_at=datetime.now(UTC),
+        )
+        session.add(scenario)
+        await session.flush()
+        session.add(
+            DeploymentEnvironmentPlan(
+                scenario_id=scenario.id,
+                name="Production",
+                sequence=1,
+                active_hours_month=744,
+                demand_share=1,
+                ha_multiplier=1,
+                dr_role="primary",
+            )
+        )
+        bom = BomSnapshot(
+            project_id=project.id,
+            scenario_id=scenario.id,
+            technical_snapshot_id=technical.id,
+            price_catalog_snapshot_id=catalog.id,
+            mapping_version="test",
+            engine_version="test",
+            currency="USD",
+            coverage_pct=100,
+            monthly_total=100,
+            annual_total=1200,
+            contract_total=1200,
+            steady_state_monthly_total=100,
+            peak_monthly_total=100,
+            ramp_deferred_amount=0,
+            first_active_period=1,
+            steady_state_period=1,
+            summary={"line_count": 2, "blocked_line_count": 0},
+            warnings=[],
+            publication_status="published",
+            approved_by="architect",
+            approved_at=datetime.now(UTC),
+        )
+        session.add(bom)
+        await session.flush()
+        session.add(
+            BomLineItem(
+                bom_snapshot_id=bom.id,
+                environment="Production",
+                service_id="OIC3",
+                part_number="B89639",
+                description="Oracle Integration",
+                metric_name="5K messages per hour",
+                quantity=1,
+                unit="message packs",
+                unit_price=100,
+                monthly_amount=100,
+                annual_amount=1200,
+                contract_amount=1200,
+                formula="1 x 100",
+                inputs={},
+                status="priced",
+                warnings=[],
+                provenance={},
+            )
+        )
+        session.add(
+            BomLineItem(
+                bom_snapshot_id=bom.id,
+                environment="Production",
+                service_id="DATA_CATALOG",
+                part_number=None,
+                description="OCI Data Catalog",
+                metric_name="Included technical capability",
+                quantity=0,
+                unit="included",
+                unit_price=0,
+                monthly_amount=0,
+                annual_amount=0,
+                contract_amount=0,
+                formula="non-billable governed evidence",
+                inputs={},
+                status="non_billable",
+                warnings=[],
+                provenance={},
+            )
+        )
+        await session.commit()
+
+        assistant = await bom_service.build_scenario_assistant(project.id, session)
+
+        assert assistant.current_bom is not None
+        assert assistant.current_bom.ready_for_use is True
+        assert assistant.current_bom.publication_status == "published"
+        assert assistant.current_bom.environment_names == ["Production"]
+        assert assistant.current_bom.line_item_count == 2
+        assert assistant.current_bom.unresolved_line_count == 0
+        assert assistant.required_questions == []
+        assert assistant.confidence == "high"
+        assert assistant.draft.name == "Published production baseline alternative"
 
 
 @pytest.mark.asyncio

@@ -118,7 +118,9 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
 
   await page.goto("/admin/pricing");
   await expect(page.getByRole("heading", { name: "OCI Pricing" })).toBeVisible();
-  await expect(page.getByText("Oracle OCI Public List Pricing", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Oracle OCI Public List Pricing", { exact: true }).filter({ visible: true }).first(),
+  ).toBeVisible();
   await expect(page.getByText(`${completedSync.item_count} items`, { exact: true }).first()).toBeVisible();
 
   const syntheticResponse = await request.post(`${apiBase}/api/v1/admin/synthetic/jobs`, {
@@ -204,7 +206,7 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
       },
     },
   );
-  expect(scenarioResponse.ok()).toBe(true);
+  expect(scenarioResponse.ok(), await scenarioResponse.text()).toBe(true);
   const scenario = (await scenarioResponse.json()) as Scenario;
   const approveResponse = await request.post(
     `${apiBase}/api/v1/projects/${projectId}/deployment-scenarios/${scenario.id}/approve`,

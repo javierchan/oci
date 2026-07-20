@@ -18,8 +18,8 @@ FROM base AS runtime-deps
 COPY --from=runtime-dependency-builder /tmp/runtime-wheels /tmp/runtime-wheels
 RUN pip install --no-cache-dir /tmp/runtime-wheels/* && rm -rf /tmp/runtime-wheels
 
-# ---------- production ----------
-FROM runtime-deps AS production
+# ---------- production application ----------
+FROM runtime-deps AS production-base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     ENVIRONMENT=production \
@@ -45,13 +45,20 @@ EXPOSE 8000
 ENTRYPOINT ["oci-dis-entrypoint"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
 
+# The deployed image installs no packages at runtime. Remove the package installer
+# and its metadata so build tooling cannot become part of the production surface.
+FROM production-base AS production
+USER root
+RUN python -m pip uninstall --yes pip
+USER app
+
 # ---------- quality dependency builder ----------
 FROM base AS quality-dependency-builder
 COPY apps/api/requirements-quality.txt /tmp/requirements-quality.txt
 RUN pip wheel --no-cache-dir --wheel-dir /tmp/quality-wheels -r /tmp/requirements-quality.txt
 
 # ---------- quality gates (never deployed) ----------
-FROM production AS quality
+FROM production-base AS quality
 USER root
 COPY --from=quality-dependency-builder /tmp/quality-wheels /tmp/quality-wheels
 RUN pip install --no-cache-dir /tmp/quality-wheels/* && rm -rf /tmp/quality-wheels

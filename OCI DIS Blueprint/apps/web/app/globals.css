@@ -505,6 +505,12 @@ html.dark {
     color: var(--color-status-archived-text);
   }
 
+  .app-status-chip.draft {
+    background-color: var(--color-surface-2);
+    border-color: var(--color-border);
+    color: var(--color-text-secondary);
+  }
+
   .skeleton {
     background: linear-gradient(
       90deg,

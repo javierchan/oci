@@ -35,11 +35,19 @@ COMMON_INSTRUCTION = (
 
 AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
     "architecture_review": AgentDefinition(
-        type="architecture_review", version="2.0.0", name="Architecture Remediation Agent",
+        type="architecture_review",
+        version="2.0.0",
+        name="Architecture Remediation Agent",
         description="Compares remediation alternatives, prepares approval-gated drafts, and validates outcomes.",
         location="Dashboard, Catalog and Integration Detail",
-        tools=("load_architecture_review_evidence", "build_decision_workspace", "prepare_governed_proposals", "validate_post_change"),
-        allowed_roles=frozenset({"Admin", "Architect", "Analyst"}), mutates_data=False,
+        tools=(
+            "load_architecture_review_evidence",
+            "build_decision_workspace",
+            "prepare_governed_proposals",
+            "validate_post_change",
+        ),
+        allowed_roles=frozenset({"Admin", "Architect", "Analyst"}),
+        mutates_data=False,
         requires_project=True,
         instruction=(
             f"{COMMON_INSTRUCTION} Return a plain-language architecture decision brief in at most 160 words. "
@@ -49,35 +57,67 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
         ),
     ),
     "service_verification": AgentDefinition(
-        type="service_verification", version="2.0.0", name="Official Source Governance Agent",
-        description="Compares official-source changes, proposes governed updates, and gates acceptance through Admin review.",
+        type="service_verification",
+        version="4.2.0",
+        name="Official Source Governance Agent",
+        description="Inspects atomic OCI source evidence, global commercial coverage, fixtures, and review exceptions.",
         location="Library > Service Products",
-        tools=("verify_official_service_sources", "build_decision_workspace", "prepare_governed_proposals", "validate_quote_fixtures"), allowed_roles=frozenset({"Admin"}),
-        mutates_data=True, requires_project=False,
+        tools=("inspect_official_source_governance",),
+        allowed_roles=frozenset({"Admin"}),
+        mutates_data=False,
+        requires_project=False,
         instruction=(
-            f"{COMMON_INSTRUCTION} Summarize source freshness and reviewable findings in at most 160 words. "
-            "State the exact allowlisted source count and change count returned by the tool. Never describe a "
-            "service as current, verified, supported, or within limits when no source was retrieved. Finish with "
-            "the human review required; only explicit Admin approval owns governed rule updates."
+            f"{COMMON_INSTRUCTION} Summarize the latest persisted OCI source-governance state in at most 180 words. "
+            "Report atomic_source_set, freshness, documentary_drift, commercial_fixtures, commercial_exceptions, "
+            "commercial_release_scope, and candidate_revalidation "
+            "as separate decisions. A source set is atomic only when products, metrics, and presets belong to the same "
+            "change set and all expected artifacts are verified. Never describe evidence as current when freshness.status "
+            "is stale or unavailable, and never describe fixtures as passed when any family is failed or pending. Explain "
+            "material drift, global catalog_count, quote_ready_count, blocked_count, pending_count, stale generated "
+            "candidates, and open exceptions with their persisted evidence identifiers. When pending_count is greater "
+            "than zero, direct the user to the explicit Admin finalization workflow and state that the agent cannot "
+            "execute it. This agent is inspection-only: never finalize a catalog review, approve a candidate or exception, "
+            "promote a commercial release, change a price or mapping, mutate a BOM, or claim that any of those actions "
+            "occurred. Scheduled "
+            "deterministic source synchronization and human governance workflows remain authoritative."
         ),
     ),
     "import_quality": AgentDefinition(
-        type="import_quality", version="2.0.0", name="Import Correction Agent",
-        description="Prioritizes data gaps, prepares correction drafts, and validates downstream quality impact.",
-        location="Import Review", tools=("inspect_import_quality", "build_decision_workspace", "prepare_governed_proposals", "validate_import_outcome"),
-        allowed_roles=frozenset({"Admin", "Architect", "Analyst"}), mutates_data=False,
+        type="import_quality",
+        version="3.0.0",
+        name="Import Correction Agent",
+        description="Guides external workbook mapping, validates import evidence, and prevents unsafe catalog materialization.",
+        location="Import Review",
+        tools=(
+            "inspect_import_quality",
+            "build_decision_workspace",
+            "prepare_governed_proposals",
+            "validate_import_outcome",
+        ),
+        allowed_roles=frozenset({"Admin", "Architect", "Analyst"}),
+        mutates_data=False,
         requires_project=True,
         instruction=(
-            f"{COMMON_INSTRUCTION} In at most 160 words, prioritize the highest-severity import gap, explain "
-            "which downstream decisions it weakens, list the minimum client inputs to capture, and use only "
-            "the action routes returned by the tool. Do not imply that source rows were repaired."
+            f"{COMMON_INSTRUCTION} In at most 160 words, first state whether the workbook is staged for mapping "
+            "review or already governed. For a staged workbook, explain the highest-risk ambiguous field, why it "
+            "could distort catalog, QA, topology, or BOM, and the minimum user decision required. Do not choose a "
+            "mapping, approve a contract, or imply that source rows were repaired; those remain explicit user actions."
         ),
     ),
     "integration_design": AgentDefinition(
-        type="integration_design", version="2.0.0", name="Integration Design Optimizer",
+        type="integration_design",
+        version="2.0.0",
+        name="Integration Design Optimizer",
         description="Compares valid canvas alternatives, simulates approved drafts, and records post-validation before explicit save.",
-        location="Integration Canvas", tools=("inspect_integration_design", "simulate_integration_candidate", "prepare_governed_proposals", "validate_post_change"),
-        allowed_roles=frozenset({"Admin", "Architect", "Analyst"}), mutates_data=False,
+        location="Integration Canvas",
+        tools=(
+            "inspect_integration_design",
+            "simulate_integration_candidate",
+            "prepare_governed_proposals",
+            "validate_post_change",
+        ),
+        allowed_roles=frozenset({"Admin", "Architect", "Analyst"}),
+        mutates_data=False,
         requires_project=True,
         instruction=(
             f"{COMMON_INSTRUCTION} Compare only the deterministic recommendation candidates returned by the tool. "
@@ -88,10 +128,19 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
         ),
     ),
     "topology_investigation": AgentDefinition(
-        type="topology_investigation", version="2.0.0", name="Topology Resilience Agent",
+        type="topology_investigation",
+        version="2.0.0",
+        name="Topology Resilience Agent",
         description="Analyzes blast radius, compares mitigation plans, and prepares auditable remediation drafts.",
-        location="Map", tools=("inspect_topology_context", "build_decision_workspace", "prepare_governed_proposals", "validate_topology_outcome"),
-        allowed_roles=frozenset({"Admin", "Architect", "Analyst"}), mutates_data=False,
+        location="Map",
+        tools=(
+            "inspect_topology_context",
+            "build_decision_workspace",
+            "prepare_governed_proposals",
+            "validate_topology_outcome",
+        ),
+        allowed_roles=frozenset({"Admin", "Architect", "Analyst"}),
+        mutates_data=False,
         requires_project=True,
         instruction=(
             f"{COMMON_INSTRUCTION} In at most 180 words, describe the selected system or path blast radius, "
@@ -100,24 +149,43 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
         ),
     ),
     "bom_scenario": AgentDefinition(
-        type="bom_scenario", version="2.0.0", name="BOM Scenario Optimizer",
+        type="bom_scenario",
+        version="2.2.0",
+        name="BOM Scenario Optimizer",
         description="Compares baseline, phased, and resilience scenarios and creates approved governed drafts.",
-        location="BOM & Cost", tools=("inspect_bom_scenario", "compare_deployment_alternatives", "prepare_governed_proposals", "validate_bom_outcome"),
-        allowed_roles=frozenset({"Admin", "Architect", "Analyst"}), mutates_data=True,
+        location="BOM & Cost",
+        tools=(
+            "inspect_bom_scenario",
+            "compare_deployment_alternatives",
+            "prepare_governed_proposals",
+            "validate_bom_outcome",
+        ),
+        allowed_roles=frozenset({"Admin", "Architect", "Analyst"}),
+        mutates_data=True,
         requires_project=True,
         instruction=(
-            f"{COMMON_INSTRUCTION} In at most 180 words, identify the missing commercial architecture "
-            "decision, explain which products or environments it affects, list the client inputs required, "
+            f"{COMMON_INSTRUCTION} In at most 180 words, first state whether a current published BOM is ready. "
+            "Only when it is not ready, identify the missing commercial architecture decision, explain which products or environments it affects, list the client inputs required, "
             "and state how to validate a regenerated BOM. Never invent prices, discounts, quantities, savings, "
-            "contract terms, or claim that a draft scenario is approved."
+            "contract terms, assume inputs are missing when current_bom says otherwise, or claim that a draft scenario is approved. "
+            "Use only the approved commercial release reported by commercial_governance; if it is absent or has open "
+            "exceptions, identify the exact governance review required instead of estimating around it."
         ),
     ),
     "support_assistant": AgentDefinition(
-        type="support_assistant", version="2.0.0", name="OCI DIS Decision Assistant",
+        type="support_assistant",
+        version="2.0.0",
+        name="OCI DIS Decision Assistant",
         description="Answers from App evidence and routes material decisions to the correct specialized workspace.",
-        location="Global floating assistant", tools=("answer_app_support_question", "build_decision_workspace", "route_specialist_workflow"),
+        location="Global floating assistant",
+        tools=(
+            "answer_app_support_question",
+            "build_decision_workspace",
+            "route_specialist_workflow",
+        ),
         allowed_roles=frozenset({"Admin", "Architect", "Analyst", "Viewer"}),
-        mutates_data=False, requires_project=False,
+        mutates_data=False,
+        requires_project=False,
         instruction=(
             f"{COMMON_INSTRUCTION} Act like a warm, experienced OCI integration architect sitting beside the user. "
             "Answer only questions about OCI DIS Architect, its App context, data integrations, business processes, "

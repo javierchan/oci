@@ -16,21 +16,35 @@ DESTINATION_NODE_ID = "destination-system"
 TOOL_TO_SERVICE_ID: dict[str, str] = {
     "OIC Gen3": "OIC3",
     "OCI API Gateway": "API_GATEWAY",
+    "OCI Events": "EVENTS",
+    "Events": "EVENTS",
     "OCI Streaming": "STREAMING",
     "OCI Queue": "QUEUE",
     "OCI Functions": "FUNCTIONS",
     "Oracle Functions": "FUNCTIONS",
     "OCI Data Integration": "DATA_INTEGRATION",
+    "OCI Data Catalog": "DATA_CATALOG",
+    "Data Catalog": "DATA_CATALOG",
     "Data Integrator": "ODI",
     "Oracle ORDS": "ORDS",
     "Oracle DB": "ORDS",
     "OCI APM": "OBSERVABILITY",
+    "OCI Observability": "OBSERVABILITY",
     "Oracle GoldenGate": "GOLDENGATE",
     "OCI Connector Hub": "CONNECTOR_HUB",
     "OCI IAM": "IAM",
+    "OCI IAM and Security Services": "IAM",
     "OCI Object Storage": "OBJECT_STORAGE",
+    "Process Automation": "PROCESS_AUTOMATION",
+    "OCI Process Automation": "PROCESS_AUTOMATION",
+    "Oracle Integration Process Automation": "PROCESS_AUTOMATION",
     "SFTP": "OBJECT_STORAGE",
 }
+
+# These pattern-level dependencies are intentionally outside OCI DIS Architect's
+# commercial sizing boundary. They remain visible in architecture evidence, but
+# must not be presented as unresolved OCI Service Products or added to the BOM.
+EXTERNAL_DEPENDENCY_TOOL_KEYS = frozenset({"OCI AI Services", "OKE / Service Mesh"})
 
 CONNECTOR_HUB_ALLOWED_SOURCES = frozenset({"QUEUE", "STREAMING"})
 CONNECTOR_HUB_ALLOWED_TARGETS = frozenset({"FUNCTIONS", "STREAMING", "OBJECT_STORAGE"})
@@ -590,26 +604,99 @@ def _payload_blockers(
     tool_keys: set[str],
     assumptions: Assumptions,
     service_rules: ServiceRuleBundle,
+    trigger_type: str | None,
+    source_technology: str | None,
+    destination_technology: str | None,
+    integration_type: str | None,
 ) -> list[CanvasInteroperabilityFinding]:
     if payload_kb is None:
         return []
 
     blockers: list[CanvasInteroperabilityFinding] = []
+    context = " ".join(
+        value or ""
+        for value in (trigger_type, source_technology, destination_technology, integration_type)
+    ).upper()
+    oic_limit_key: str | None = None
+    oic_fallback_limit: float | None = None
+    if any(value in context for value in ("KAFKA", "OCI STREAMING")):
+        oic_limit_key = "kafka_schema_max_payload_kb"
+        oic_fallback_limit = assumptions.oic_kafka_max_payload_kb
+    elif any(value in context for value in ("JMS", " MQ ", "MESSAGE QUEUE")):
+        oic_limit_key = "jms_schema_max_payload_kb"
+        oic_fallback_limit = assumptions.oic_kafka_max_payload_kb
+    elif any(value in context for value in ("FTP", "SFTP", "FILE")):
+        oic_limit_key = (
+            "ftp_structured_agent_max_payload_kb"
+            if "AGENT" in context
+            else "ftp_structured_cloud_max_payload_kb"
+        )
+        oic_fallback_limit = assumptions.oic_ftp_max_payload_kb
+    elif "SOAP" in context:
+        oic_limit_key = (
+            "soap_structured_agent_max_payload_kb"
+            if "AGENT" in context
+            else "soap_structured_max_payload_kb"
+        )
+        oic_fallback_limit = assumptions.oic_soap_max_payload_kb
+    elif any(value in context for value in ("DATABASE", "DB ", "SQL")):
+        if any(value in context for value in ("POLL", "SCHEDULE")):
+            oic_limit_key = (
+                "database_polling_agent_max_payload_kb"
+                if "AGENT" in context
+                else "database_polling_private_max_payload_kb"
+            )
+            oic_fallback_limit = assumptions.oic_db_polling_max_payload_kb
+        else:
+            oic_limit_key = "database_outbound_schema_max_payload_kb"
+            oic_fallback_limit = assumptions.oic_kafka_max_payload_kb
+    elif any(value in context for value in ("REST", "HTTP", "API")):
+        oic_limit_key = "rest_trigger_structured_max_payload_kb"
+        oic_fallback_limit = assumptions.oic_rest_max_payload_kb
+
+    if "OIC Gen3" in tool_keys and oic_limit_key is not None:
+        definition = service_rules.definition("OIC3", oic_limit_key)
+        oic_limit = service_rules.numeric_limit("OIC3", oic_limit_key)
+        can_block = (
+            not service_rules.available
+            or (
+                definition is not None
+                and definition.constraint_kind == "hard_limit"
+                and definition.enforcement == "block_when_applicable"
+            )
+        )
+        resolved_limit = (
+            oic_limit
+            if oic_limit is not None
+            else oic_fallback_limit if not service_rules.available else None
+        )
+        if can_block and resolved_limit is not None and payload_kb > resolved_limit:
+            blockers.append(
+                CanvasInteroperabilityFinding(
+                    id=f"oic-payload-limit-{oic_limit_key}",
+                    severity="blocker",
+                    title="OIC payload exceeds the selected adapter boundary",
+                    detail=(
+                        "The active adapter and operation cannot carry this inline payload. "
+                        f"Payload {_format_limit_kb(payload_kb)} exceeds "
+                        f"{_format_limit_kb(resolved_limit)} for {oic_limit_key}. "
+                        "Reduce the payload or externalize it through Object Storage."
+                    ),
+                    service_ids=("OIC3",),
+                )
+            )
+
+    def governed_or_fallback(service_id: str, limit_key: str, fallback: float) -> float | None:
+        governed = service_rules.numeric_limit(service_id, limit_key)
+        if governed is not None:
+            return governed
+        return fallback if not service_rules.available else None
+
     checks = [
-        (
-            "oic-payload-limit",
-            {"OIC Gen3"},
-            service_rules.numeric_limit("OIC3", "max_message_size_kb")
-            or assumptions.oic_rest_max_payload_kb,
-            "OIC payload exceeds the documented message limit",
-            "Route the payload through object storage or reduce the synchronous message size before using OIC Gen3 on the active path.",
-            ("OIC3",),
-        ),
         (
             "functions-payload-limit",
             {"OCI Functions", "Oracle Functions"},
-            service_rules.numeric_limit("FUNCTIONS", "max_invoke_body_kb")
-            or assumptions.functions_max_invoke_body_kb,
+            governed_or_fallback("FUNCTIONS", "max_invoke_body_kb", assumptions.functions_max_invoke_body_kb),
             "Functions payload exceeds the documented invoke limit",
             "Oracle Functions cannot accept this payload body size on the active path. Use OIC or externalize the payload before invocation.",
             ("FUNCTIONS",),
@@ -617,8 +704,7 @@ def _payload_blockers(
         (
             "gateway-payload-limit",
             {"OCI API Gateway"},
-            service_rules.numeric_limit("API_GATEWAY", "max_request_body_kb")
-            or assumptions.api_gw_max_body_kb,
+            governed_or_fallback("API_GATEWAY", "max_request_body_kb", assumptions.api_gw_max_body_kb),
             "API Gateway payload exceeds the documented request-body limit",
             "The gateway edge cannot carry this request size. Reduce the body or move the payload off-band before API Gateway.",
             ("API_GATEWAY",),
@@ -626,8 +712,7 @@ def _payload_blockers(
         (
             "queue-payload-limit",
             {"OCI Queue"},
-            service_rules.numeric_limit("QUEUE", "max_message_size_kb")
-            or assumptions.queue_max_message_kb,
+            governed_or_fallback("QUEUE", "max_message_size_kb", assumptions.queue_max_message_kb),
             "Queue payload exceeds the documented message limit",
             "OCI Queue should carry a lightweight reference, not the full payload. Externalize the document and enqueue a token or pointer.",
             ("QUEUE",),
@@ -635,15 +720,25 @@ def _payload_blockers(
         (
             "streaming-payload-limit",
             {"OCI Streaming"},
-            service_rules.numeric_limit("STREAMING", "max_message_size_kb")
-            or assumptions.streaming_max_message_kb,
+            governed_or_fallback("STREAMING", "max_message_size_kb", assumptions.streaming_max_message_kb),
             "Streaming payload exceeds the documented message limit",
             "OCI Streaming enforces a 1 MB message ceiling. Store the large document elsewhere and publish only the event reference.",
             ("STREAMING",),
         ),
     ]
     for finding_id, supported_tools, limit_kb, title, detail, service_ids in checks:
-        if tool_keys.isdisjoint(supported_tools) or payload_kb <= limit_kb:
+        if limit_kb is None or tool_keys.isdisjoint(supported_tools) or payload_kb <= limit_kb:
+            continue
+        definition = service_rules.definition(service_ids[0], {
+            "FUNCTIONS": "max_invoke_body_kb",
+            "API_GATEWAY": "max_request_body_kb",
+            "QUEUE": "max_message_size_kb",
+            "STREAMING": "max_message_size_kb",
+        }[service_ids[0]])
+        if definition is not None and not (
+            definition.constraint_kind == "hard_limit"
+            and definition.enforcement == "block_when_applicable"
+        ):
             continue
         blockers.append(
             CanvasInteroperabilityFinding(
@@ -655,6 +750,55 @@ def _payload_blockers(
             )
         )
     return blockers
+
+
+def _oic_payload_context_warnings(
+    payload_kb: float | None,
+    tool_keys: set[str],
+    service_rules: ServiceRuleBundle,
+    trigger_type: str | None,
+    source_technology: str | None,
+    destination_technology: str | None,
+    integration_type: str | None,
+    assumptions: Assumptions,
+) -> list[CanvasInteroperabilityFinding]:
+    if payload_kb is None or "OIC Gen3" not in tool_keys:
+        return []
+    context = " ".join(
+        value or ""
+        for value in (trigger_type, source_technology, destination_technology, integration_type)
+    ).upper()
+    if any(
+        marker in context
+        for marker in ("REST", "HTTP", "API", "SOAP", "FTP", "SFTP", "FILE", "KAFKA", "STREAMING", "JMS", "DATABASE", "SQL")
+    ):
+        return []
+    governed_runtime_limits = [
+        float(definition.value)
+        for definition in service_rules.definitions_by_service.get("OIC3", {}).values()
+        if definition.constraint_kind == "hard_limit"
+        and definition.enforcement == "block_when_applicable"
+        and definition.limit_type == "payload"
+        and definition.scope != "design_time"
+        and isinstance(definition.value, (int, float))
+        and not isinstance(definition.value, bool)
+    ]
+    review_threshold = min(governed_runtime_limits) if governed_runtime_limits else assumptions.oic_kafka_max_payload_kb
+    if payload_kb <= review_threshold:
+        return []
+    return [
+        CanvasInteroperabilityFinding(
+            id="oic-adapter-context-required",
+            severity="warning",
+            title="Select the OIC adapter context before approval",
+            detail=(
+                f"The {_format_limit_kb(payload_kb)} payload exceeds at least one adapter-specific OIC boundary, "
+                "but the captured route does not identify the adapter or operation. The 50 KB billing increment "
+                "is not a payload ceiling; capture REST, SOAP, FTP, Kafka, JMS, or Database context to apply the correct rule."
+            ),
+            service_ids=("OIC3",),
+        )
+    ]
 
 
 def _connector_hub_blockers(
@@ -958,12 +1102,31 @@ def evaluate_canvas_interoperability(
     gateway_findings = _gateway_findings(routes, trigger_type, service_rules)
     route_service_sets = [set(route.service_ids) for route in routes]
     blockers = [
-        *_payload_blockers(payload_kb, active_tool_keys, assumptions, service_rules),
+        *_payload_blockers(
+            payload_kb,
+            active_tool_keys,
+            assumptions,
+            service_rules,
+            trigger_type,
+            source_technology,
+            destination_technology,
+            integration_type,
+        ),
         *_connector_hub_blockers(routes, edges, overlay_tool_set, service_rules),
         *(finding for finding in gateway_findings if finding.severity == "blocker"),
     ]
     warnings = [
         *(finding for finding in gateway_findings if finding.severity == "warning"),
+        *_oic_payload_context_warnings(
+            payload_kb,
+            active_tool_keys,
+            service_rules,
+            trigger_type,
+            source_technology,
+            destination_technology,
+            integration_type,
+            assumptions,
+        ),
         *_operational_findings(
             route_service_sets,
             trigger_type,
@@ -1009,7 +1172,16 @@ def _evaluate_toolset_interoperability(
             if (service_id := _resolve_canvas_service_id(tool_key)) is not None
         }
     ]
-    blockers = _payload_blockers(payload_kb, all_tool_keys, assumptions, service_rules)
+    blockers = _payload_blockers(
+        payload_kb,
+        all_tool_keys,
+        assumptions,
+        service_rules,
+        trigger_type,
+        source_technology,
+        destination_technology,
+        integration_type,
+    )
     if "OCI API Gateway" in all_tool_keys and _includes_any(trigger_type, ["SOAP"]):
         blockers.append(
             CanvasInteroperabilityFinding(
@@ -1024,7 +1196,18 @@ def _evaluate_toolset_interoperability(
             )
         )
 
-    warnings = _operational_findings(
+    warnings = [
+        *_oic_payload_context_warnings(
+            payload_kb,
+            all_tool_keys,
+            service_rules,
+            trigger_type,
+            source_technology,
+            destination_technology,
+            integration_type,
+            assumptions,
+        ),
+        *_operational_findings(
         route_service_sets,
         trigger_type,
         is_real_time,
@@ -1032,7 +1215,8 @@ def _evaluate_toolset_interoperability(
         destination_technology,
         integration_type,
         service_rules,
-    )
+        ),
+    ]
     advisories = _advisories(
         route_service_sets,
         trigger_type,

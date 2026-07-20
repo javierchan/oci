@@ -52,7 +52,7 @@ ALLOWED_EVIDENCE_HOSTS = {
 }
 EVIDENCE_FETCH_TIMEOUT_SECONDS = 12.0
 EVIDENCE_USER_AGENT = "OCI-DIS-Blueprint-Service-Verification/1.0"
-CLAIM_PARSER_VERSION = "oracle_http_claim_parser_v1"
+CLAIM_PARSER_VERSION = "oracle_http_claim_parser_v2"
 TERMINAL_JOB_STATUSES = {"completed", "failed"}
 
 
@@ -166,6 +166,90 @@ def _convert_numeric_unit(value: float, source_unit: str | None, target_unit: st
     return value
 
 
+def _unit_family(unit: str | None) -> str | None:
+    if unit in {"KB", "MB", "GB"}:
+        return "size"
+    if unit in {"s", "min", "h", "days"}:
+        return "time"
+    if unit in {"partitions", "messages", "requests", "workspaces", "tasks"}:
+        return unit
+    return unit
+
+
+def _units_compatible(source_unit: str | None, target_unit: str | None) -> bool:
+    """Reject cross-family claims instead of silently retaining a numeric value."""
+
+    if source_unit is None or target_unit is None:
+        return source_unit == target_unit
+    return _unit_family(source_unit) == _unit_family(target_unit)
+
+
+def _validate_limit_candidate(
+    limit: ServiceLimit,
+    value: object,
+    unit: str | None,
+) -> dict[str, object]:
+    """Run deterministic invariants before a source-derived value can be proposed."""
+
+    checks: list[dict[str, object]] = []
+    passed = True
+    numeric_value: float | None = None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        checks.append({"id": "numeric_value", "passed": False, "detail": "Candidate must be numeric."})
+        passed = False
+    else:
+        numeric_value = float(value)
+        value_passed = numeric_value > 0
+        checks.append({"id": "positive_value", "passed": value_passed, "detail": "Candidate must be greater than zero."})
+        passed = passed and value_passed
+
+    canonical_current_unit = _canonical_unit(limit.unit)
+    unit_passed = _units_compatible(unit, canonical_current_unit)
+    checks.append(
+        {
+            "id": "compatible_unit",
+            "passed": unit_passed,
+            "detail": f"Candidate unit {unit or 'none'} must match governed family {canonical_current_unit or 'none'}.",
+        }
+    )
+    passed = passed and unit_passed
+
+    semantic_passed = True
+    if limit.constraint_kind == "billing_granularity":
+        semantic_passed = limit.enforcement == "calculate"
+    elif limit.constraint_kind == "hard_limit":
+        semantic_passed = limit.enforcement == "block_when_applicable"
+    elif limit.constraint_kind == "adjustable_quota":
+        semantic_passed = limit.enforcement == "warn"
+    checks.append(
+        {
+            "id": "semantic_contract",
+            "passed": semantic_passed,
+            "detail": f"{limit.constraint_kind} uses {limit.enforcement} enforcement.",
+        }
+    )
+    passed = passed and semantic_passed
+
+    if limit.constraint_kind == "billing_granularity" and numeric_value:
+        first_increment = -(-30 // numeric_value)
+        second_increment = -(-70 // numeric_value)
+        billing_passed = first_increment >= 1 and second_increment > first_increment
+        checks.append(
+            {
+                "id": "billing_increment_fixture",
+                "passed": billing_passed,
+                "detail": "Billing increments round up without becoming a payload compatibility blocker.",
+            }
+        )
+        passed = passed and billing_passed
+
+    return {
+        "status": "passed" if passed else "failed",
+        "parser": CLAIM_PARSER_VERSION,
+        "checks": checks,
+    }
+
+
 def _clean_numeric(value: float) -> int | float:
     return int(value) if float(value).is_integer() else round(value, 4)
 
@@ -230,9 +314,14 @@ def _extract_limit_claims(
                 continue
             raw_value = float(match.group("value"))
             raw_unit = _canonical_unit(match.group("unit"))
-            target_unit = _canonical_unit(limit.unit) or raw_unit
+            target_unit = _canonical_unit(limit.unit)
+            if not _units_compatible(raw_unit, target_unit):
+                continue
             proposed_value = _clean_numeric(_convert_numeric_unit(raw_value, raw_unit, target_unit))
             if _values_match(limit.value, proposed_value):
+                continue
+            validation = _validate_limit_candidate(limit, proposed_value, target_unit)
+            if validation["status"] != "passed":
                 continue
             proposals.append(
                 {
@@ -248,6 +337,12 @@ def _extract_limit_claims(
                     "source_url": source.url,
                     "source_retrieved_at": now.isoformat(),
                     "confidence": max(limit.confidence, 0.86),
+                    "scope": limit.scope,
+                    "limit_type": limit.limit_type,
+                    "constraint_kind": limit.constraint_kind,
+                    "enforcement": limit.enforcement,
+                    "applicability": dict(limit.applicability or {}),
+                    "validation": validation,
                     "parser": CLAIM_PARSER_VERSION,
                 }
             )
@@ -327,6 +422,9 @@ def serialize_service_limit(limit: ServiceLimit) -> ServiceLimitResponse:
         label=limit.label,
         scope=limit.scope,
         limit_type=limit.limit_type,
+        constraint_kind=limit.constraint_kind,
+        enforcement=limit.enforcement,
+        applicability=limit.applicability,
         value=limit.value,
         unit=limit.unit,
         default_value=limit.default_value,
@@ -1244,6 +1342,49 @@ async def _apply_accepted_finding_update(
             },
         )
 
+    proposal_source_url = new_value.get("source_url")
+    if (
+        not isinstance(proposal_source_url, str)
+        or not _is_allowed_evidence_url(proposal_source_url)
+        or proposal_source_url != finding.source_url
+        or new_value.get("limit_key") != limit.limit_key
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "The proposal no longer matches its allowlisted source or governed target.",
+                "error_code": "SERVICE_LIMIT_PROPOSAL_EVIDENCE_MISMATCH",
+            },
+        )
+
+    immutable_semantics = {
+        "scope": limit.scope,
+        "limit_type": limit.limit_type,
+        "constraint_kind": limit.constraint_kind,
+        "enforcement": limit.enforcement,
+        "applicability": dict(limit.applicability or {}),
+    }
+    if any(new_value.get(key) != expected for key, expected in immutable_semantics.items()):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "The proposal attempts to change deterministic rule semantics.",
+                "error_code": "SERVICE_LIMIT_PROPOSAL_SEMANTICS_MISMATCH",
+            },
+        )
+
+    candidate_unit = _canonical_unit(str(new_value.get("unit"))) if new_value.get("unit") else None
+    validation = _validate_limit_candidate(limit, new_value.get("value"), candidate_unit)
+    stored_validation = new_value.get("validation")
+    if validation["status"] != "passed" or not isinstance(stored_validation, dict) or stored_validation.get("status") != "passed":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "The proposed value did not pass deterministic service-rule fixtures.",
+                "error_code": "SERVICE_LIMIT_PROPOSAL_VALIDATION_FAILED",
+            },
+        )
+
     old_limit: dict[str, object] = {
         "value": limit.value,
         "unit": limit.unit,
@@ -1254,9 +1395,8 @@ async def _apply_accepted_finding_update(
     limit.value = new_value.get("value")
     unit = new_value.get("unit")
     limit.unit = str(unit) if unit is not None else None
-    source_url = new_value.get("source_url")
-    if isinstance(source_url, str):
-        limit.source_url = source_url
+    source_url = proposal_source_url
+    limit.source_url = source_url
     retrieved_at = _parse_iso_datetime(new_value.get("source_retrieved_at"))
     limit.source_retrieved_at = retrieved_at or _now_utc()
     confidence = new_value.get("confidence")

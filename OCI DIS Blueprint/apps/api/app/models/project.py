@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import enum
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Enum as SAEnum, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, UUIDMixin
@@ -24,6 +25,7 @@ class ProjectStatus(str, enum.Enum):
 class ImportStatus(str, enum.Enum):
     PENDING = "pending"
     PROCESSING = "processing"
+    MAPPING_REVIEW = "mapping_review"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -67,19 +69,38 @@ class ImportBatch(Base, UUIDMixin, TimestampMixin):
     parser_version: Mapped[str] = mapped_column(String(50), nullable=False)
     prompt_version: Mapped[Optional[str]] = mapped_column(String(50))
     status: Mapped[ImportStatus] = mapped_column(
-        SAEnum(ImportStatus, native_enum=False, values_callable=_enum_values),
+        SAEnum(ImportStatus, native_enum=False, values_callable=_enum_values, length=32),
         default=ImportStatus.PENDING,
     )
     source_row_count: Mapped[Optional[int]] = mapped_column(Integer)
+    candidate_count: Mapped[Optional[int]] = mapped_column(Integer)
     tbq_y_count: Mapped[Optional[int]] = mapped_column(Integer)
     tbq_n_count: Mapped[Optional[int]] = mapped_column(Integer)
     excluded_count: Mapped[Optional[int]] = mapped_column(Integer)
     loaded_count: Mapped[Optional[int]] = mapped_column(Integer)
     header_map: Mapped[Optional[dict]] = mapped_column(JSON)
     error_details: Mapped[Optional[dict]] = mapped_column(JSON)
+    intake_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="official_template")
+    mapping_contract: Mapped[Optional[dict]] = mapped_column(JSON)
+    mapping_profile_id: Mapped[Optional[str]] = mapped_column(String(36))
+    mapping_reviewed_by: Mapped[Optional[str]] = mapped_column(String(36))
+    mapping_reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     project: Mapped["Project"] = relationship(back_populates="import_batches")
     source_rows: Mapped[list["SourceIntegrationRow"]] = relationship(back_populates="import_batch")
+
+
+class ImportMappingProfile(Base, UUIDMixin, TimestampMixin):
+    """Project-scoped, approved mapping contract for an exact external header set."""
+
+    __tablename__ = "import_mapping_profiles"
+
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    header_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    contract: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class SourceIntegrationRow(Base, UUIDMixin, TimestampMixin):

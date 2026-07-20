@@ -5,7 +5,7 @@ export interface Project {
   name: string;
   owner_id: string;
   description: string | null;
-  status: string;
+  status: "active" | "draft" | "archived";
   project_metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
@@ -860,7 +860,8 @@ export interface ImportBatch {
   project_id: string;
   filename: string;
   parser_version: string;
-  status: "pending" | "processing" | "completed" | "failed";
+  status: "pending" | "processing" | "mapping_review" | "completed" | "failed";
+  candidate_count: number | null;
   loaded_count: number | null;
   excluded_count: number | null;
   tbq_y_count: number | null;
@@ -868,8 +869,93 @@ export interface ImportBatch {
   source_row_count: number | null;
   header_map: Record<string, string> | null;
   error_details: Record<string, unknown> | null;
+  intake_mode: "official_template" | "external_mapping";
+  mapping_contract: ImportMappingContract | null;
+  mapping_profile_id: string | null;
+  mapping_reviewed_by: string | null;
+  mapping_reviewed_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ImportMappingField {
+  source_index: string;
+  source_header: string;
+  target_field: string;
+  proposed_target: string;
+  confidence: "high" | "low";
+  sample_values: string[];
+  formula_policy?: "evidence_only" | "formula_rows_only";
+  formula_classification?: "commercial_evidence" | "derived_demand" | "needs_review";
+  formula_count?: number;
+}
+
+export interface ImportFormulaColumn {
+  source_index: string;
+  source_header: string;
+  classification: "commercial_evidence" | "derived_demand" | "needs_review";
+  rationale: string;
+  formula_count: number;
+  cached_value_count: number;
+  cached_error_count: number;
+  sample_formulas: string[];
+  sample_cached_values: unknown[];
+  operational_policy: "evidence_only" | "formula_rows_only";
+}
+
+export interface ImportMappingQuestionOption {
+  value: string;
+  label: string;
+}
+
+export interface ImportMappingQuestion {
+  id: string;
+  prompt: string;
+  reason: string;
+  required: boolean;
+  options: ImportMappingQuestionOption[];
+}
+
+export interface ImportMappingContract {
+  version: string;
+  header_fingerprint?: string;
+  status?: "mapping_review" | "approved" | "not_required";
+  source_kind: "external_workbook" | "official_template";
+  fields?: ImportMappingField[];
+  questions?: ImportMappingQuestion[];
+  answers?: Record<string, string>;
+  dictionary_aliases?: Record<string, string>;
+  formula_columns?: ImportFormulaColumn[];
+  formula_policy?: "preserve_without_execution";
+}
+
+export interface ImportMappingReviewRequest {
+  fields: Array<{
+    source_header: string;
+    target_field: string;
+  }>;
+  answers: Record<string, string>;
+}
+
+export interface ImportMappingReviewApprovalRequest extends ImportMappingReviewRequest {
+  profile_name?: string;
+  save_profile: boolean;
+}
+
+export interface ImportMappingProfile {
+  id: string;
+  project_id: string;
+  name: string;
+  header_fingerprint: string;
+  contract: ImportMappingContract;
+  created_by: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ImportMappingProfileListResponse {
+  profiles: ImportMappingProfile[];
 }
 
 export interface ImportBatchListResponse {
@@ -1119,6 +1205,7 @@ export interface CanvasServiceProfile {
   sla_uptime_pct: number | null;
   pricing_model: string | null;
   limits: Record<string, unknown>;
+  limit_definitions: Record<string, ServiceLimit>;
   summary: string | null;
   architecture_role: string | null;
 }
@@ -1147,6 +1234,9 @@ export interface ServiceLimit {
   label: string;
   scope: string;
   limit_type: string;
+  constraint_kind: string;
+  enforcement: string;
+  applicability: Record<string, unknown>;
   value: unknown;
   unit: string | null;
   default_value: unknown | null;
@@ -1338,7 +1428,7 @@ export interface CaptureTemplateColumnMetadata {
   field: string;
   header: string;
   section: string;
-  requirement: "Requerido" | "Recomendado" | "Opcional";
+  requirement: "Required" | "Recommended" | "Optional";
   data_type: string;
   description: string;
 }
@@ -1565,9 +1655,12 @@ export interface ManualIntegrationCreate {
   destination_technology?: string;
   destination_owner?: string;
   type?: string;
+  base?: string;
   target_latency_sla?: string;
   frequency?: string;
   payload_per_execution_kb?: number;
+  is_fan_out?: boolean;
+  fan_out_targets?: number;
   complexity?: string;
   data_security_classification?: string;
   retention_processing_window?: string;
@@ -1579,6 +1672,11 @@ export interface ManualIntegrationCreate {
   tbq?: string;
   initial_scope?: string;
   owner?: string;
+  status?: string;
+  interface_status?: string;
+  mapping_status?: string;
+  calendarization?: string;
+  source_evidence?: Record<string, unknown>;
 }
 
 export interface OICEstimateRequest {
@@ -1739,6 +1837,8 @@ export interface DashboardServiceRuleStatus {
 export interface DashboardProductUsage {
   tool_key: string;
   service_id: string | null;
+  commercial_classification: string | null;
+  resolution_status: "verified_product" | "included_or_dependent" | "external_dependency" | "product_selection_required";
   role: "core" | "overlay";
   integration_count: number;
   coverage_ratio: number;
@@ -1747,6 +1847,10 @@ export interface DashboardProductUsage {
 export interface DashboardProductFootprint {
   captured_product_count: number;
   represented_product_count: number;
+  verified_product_count: number;
+  included_or_dependent_count: number;
+  external_dependency_count: number;
+  selection_required_count: number;
   rows_with_products: number;
   total_rows: number;
   products: DashboardProductUsage[];
@@ -1816,6 +1920,249 @@ export interface PriceSource {
 export interface PriceSourceList {
   sources: PriceSource[];
   total: number;
+}
+
+export interface CommercialDocument {
+  id: string;
+  source_name: string;
+  original_filename: string;
+  content_hash: string;
+  parser_version: string;
+  status: string;
+  record_count: number;
+  retrieved_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  manifest: Record<string, unknown>;
+}
+
+export interface CommercialCatalogSummary {
+  skus: number;
+  candidates: number;
+  pending: number;
+  approved: number;
+  blocked: number;
+  exceptions: number;
+}
+
+export type CommercialCandidateDecision = "approve" | "reject" | "keep_blocked";
+
+export interface CommercialCandidate {
+  id: string;
+  part_number: string;
+  service_id: string | null;
+  family_key: string | null;
+  classification: string;
+  confidence: number;
+  status: string;
+  generator_version: string;
+  rule_status: string | null;
+  rule_fixture_status: string | null;
+  proposed_mapping: Record<string, unknown>;
+  reasons: unknown[];
+}
+
+export interface CommercialCandidateReviewRequest {
+  decision: CommercialCandidateDecision;
+  rationale: string;
+}
+
+export interface CommercialCatalogFinalizeRequest {
+  rationale: string;
+}
+
+export type CommercialExceptionDecision = "resolve" | "accept_risk" | "keep_open";
+
+export interface CommercialException {
+  id: string;
+  candidate_id: string | null;
+  part_number: string | null;
+  code: string;
+  severity: string;
+  status: string;
+  details: Record<string, unknown>;
+}
+
+export interface CommercialExceptionReviewRequest {
+  decision: CommercialExceptionDecision;
+  rationale: string;
+  target_part_number?: string | null;
+}
+
+export interface CommercialRelease {
+  id: string;
+  version: string;
+  status: string;
+  validation_status: string;
+  open_exception_count: number;
+  approved_by: string | null;
+  approved_at: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface CommercialReleaseCoverage {
+  scope: string;
+  catalogTotal: number;
+  quoteReady: number;
+  blocked: number;
+  appBomEnabled: number;
+  excludedMappings: number;
+  blockedParts: string[];
+  isGlobal: boolean;
+}
+
+function commercialMetadataStrings(metadata: Record<string, unknown>, keys: string[]): string[] {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (Array.isArray(value)) {
+      return value.filter(
+        (item): item is string => typeof item === "string" && item.length > 0,
+      );
+    }
+  }
+  return [];
+}
+
+function commercialMetadataCount(
+  metadata: Record<string, unknown>,
+  keys: string[],
+  fallback: number,
+): number {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      return Math.trunc(value);
+    }
+  }
+  return fallback;
+}
+
+export function commercialReleaseCoverage(release: CommercialRelease): CommercialReleaseCoverage {
+  const metadata = release.metadata;
+  const scope = typeof metadata.scope === "string" ? metadata.scope : "legacy_app_scope";
+  const catalogParts = commercialMetadataStrings(metadata, [
+    "catalog_part_numbers",
+    "catalog_parts",
+  ]);
+  const quoteReadyParts = commercialMetadataStrings(metadata, [
+    "quote_ready_part_numbers",
+    "part_numbers",
+  ]);
+  const blockedParts = commercialMetadataStrings(metadata, [
+    "blocked_part_numbers",
+    "excluded_mapping_parts",
+  ]);
+  const appMappingParts = commercialMetadataStrings(metadata, [
+    "app_mapped_part_numbers",
+    "app_mapping_parts",
+    "available_mapping_parts",
+  ]);
+  const appBomParts = commercialMetadataStrings(metadata, ["part_numbers"]);
+  const excludedMappingParts = commercialMetadataStrings(metadata, ["excluded_mapping_parts"]);
+  const legacyCatalogTotal = appMappingParts.length || quoteReadyParts.length + blockedParts.length;
+
+  return {
+    scope,
+    catalogTotal: commercialMetadataCount(
+      metadata,
+      ["catalog_total", "catalog_count", "catalog_part_count", "catalog_candidate_count"],
+      catalogParts.length || legacyCatalogTotal,
+    ),
+    quoteReady: commercialMetadataCount(
+      metadata,
+      ["quote_ready_count", "quote_ready_part_count"],
+      quoteReadyParts.length,
+    ),
+    blocked: commercialMetadataCount(
+      metadata,
+      ["blocked_count", "blocked_part_count"],
+      blockedParts.length,
+    ),
+    appBomEnabled: commercialMetadataCount(
+      metadata,
+      ["included_mapping_count", "app_bom_enabled_count"],
+      appBomParts.length,
+    ),
+    excludedMappings: commercialMetadataCount(
+      metadata,
+      ["excluded_mapping_count"],
+      excludedMappingParts.length,
+    ),
+    blockedParts,
+    isGlobal: scope === "global_oci_catalog",
+  };
+}
+
+export function commercialReleaseScope(release: CommercialRelease): {
+  included: number;
+  available: number;
+  excluded: string[];
+  isPartial: boolean;
+} {
+  const strings = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
+      : [];
+  const includedParts = strings(release.metadata.part_numbers);
+  const availableParts = strings(release.metadata.available_mapping_parts);
+  const excluded = strings(release.metadata.excluded_mapping_parts);
+  return {
+    included: includedParts.length,
+    available: availableParts.length || includedParts.length + excluded.length,
+    excluded,
+    isPartial: excluded.length > 0,
+  };
+}
+
+export interface CommercialWorkspace {
+  document: CommercialDocument | null;
+  summary: CommercialCatalogSummary;
+  candidates: CommercialCandidate[];
+  exceptions: CommercialException[];
+  releases: CommercialRelease[];
+  field_authority: Record<string, string>;
+}
+
+export function commercialCandidatePresentation(status: string): {
+  label: string;
+  tone: "success" | "warning" | "error";
+} {
+  if (status === "approved") {
+    return { label: "Explicitly approved", tone: "success" };
+  }
+  if (status === "rejected") {
+    return { label: "Explicitly rejected", tone: "error" };
+  }
+  if (status === "blocked") {
+    return { label: "Kept blocked", tone: "warning" };
+  }
+  return { label: "Generated · review required", tone: "warning" };
+}
+
+export function filterCommercialCandidates(
+  candidates: CommercialCandidate[],
+  query: string,
+  status: string,
+): CommercialCandidate[] {
+  const normalizeSearchValue = (value: string): string =>
+    value.replaceAll("_", " ").replaceAll("-", " ").toLocaleLowerCase();
+  const normalized = normalizeSearchValue(query.trim());
+  return candidates.filter((candidate) => {
+    if (status !== "all" && candidate.status !== status) {
+      return false;
+    }
+    if (!normalized) {
+      return true;
+    }
+    return [
+      candidate.part_number,
+      candidate.service_id,
+      candidate.family_key,
+      candidate.classification,
+      ...candidate.reasons.map((reason) => String(reason)),
+      JSON.stringify(candidate.proposed_mapping),
+    ].some((value) => value && normalizeSearchValue(value).includes(normalized));
+  });
 }
 
 export interface PriceSyncJob {
@@ -2048,6 +2395,7 @@ export interface DeploymentScenarioCreate {
   currency: string;
   region: string;
   price_mode: "public_list" | "contract_rate" | "manual_rate_card";
+  commitment_model: "pay_as_you_go" | "annual_commitment" | "annual_flex" | "monthly_flex";
   contract_months: number;
   start_date: string;
   proration_policy: "full_month";
@@ -2065,6 +2413,7 @@ export interface DeploymentScenario {
   currency: string;
   region: string;
   price_mode: string;
+  commitment_model: "pay_as_you_go" | "annual_commitment" | "annual_flex" | "monthly_flex";
   technical_snapshot_id: string;
   contract_months: number;
   start_date: string;
@@ -2090,11 +2439,32 @@ export interface ScenarioAssistant {
   detected_services: string[];
   metric_options: ScenarioMetricOption[];
   commercial_coverage: ScenarioCommercialCoverage[];
+  current_bom: CurrentBomContext | null;
   required_questions: string[];
   warnings: string[];
   confidence: string;
   ai_status: string;
   ai_summary: string | null;
+}
+
+export interface CurrentBomContext {
+  snapshot_id: string;
+  scenario_id: string;
+  scenario_name: string;
+  scenario_status: string;
+  publication_status: string;
+  technical_snapshot_id: string;
+  technical_snapshot_current: boolean;
+  coverage_pct: number;
+  currency: string;
+  monthly_total: number;
+  contract_total: number;
+  environment_names: string[];
+  line_item_count: number;
+  unresolved_line_count: number;
+  warnings_count: number;
+  ready_for_use: boolean;
+  created_at: string;
 }
 
 export interface ScenarioMetricOption {
@@ -2182,6 +2552,9 @@ export interface BomJobList {
 
 export interface BomLineItem {
   id: string;
+  commercial_term_id?: string | null;
+  commercial_rule_family_id?: string | null;
+  evidence_reference_ids?: string[];
   environment: string;
   service_id: string;
   part_number: string | null;
@@ -2203,6 +2576,9 @@ export interface BomLineItem {
 
 export interface BomLinePeriod {
   id: string;
+  commercial_term_id?: string | null;
+  commercial_rule_family_id?: string | null;
+  evidence_reference_ids?: string[];
   period_index: number;
   period_start: string;
   multiplier: number;
@@ -2229,6 +2605,7 @@ export interface BomPeriodSummary {
 
 export interface BomSnapshot {
   id: string;
+  commercial_release_id?: string | null;
   project_id: string;
   scenario_id: string;
   technical_snapshot_id: string;

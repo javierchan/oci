@@ -173,6 +173,142 @@ async def test_capture_template_round_trip_imports_tbq_y_and_n_rows(
 
 
 @pytest.mark.asyncio
+async def test_active_project_exports_its_catalog_in_the_official_template(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+    tmp_path: Path,
+) -> None:
+    """An active project can continue offline in the same governed workbook contract."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(
+            id="template-project-export",
+            name="Northwind Retail 2026",
+            owner_id="architect",
+            status="active",
+        )
+        integrations = [
+            CatalogIntegration(
+                id="template-project-export-1",
+                project_id=project.id,
+                seq_number=1,
+                interface_id="INT-NW-001",
+                owner="Retail Architecture",
+                brand="Northwind Retail",
+                business_process="Order to Cash",
+                interface_name="Publish confirmed order",
+                description="Publishes confirmed orders to fulfillment.",
+                business_criticality="High",
+                complexity="High",
+                frequency="Every hour",
+                is_real_time=True,
+                target_latency_sla="p95 < 5 seconds",
+                trigger_type="Event Trigger",
+                payload_per_execution_kb=150.0,
+                is_fan_out=True,
+                fan_out_targets=3,
+                source_system="Oracle Retail Merchandising",
+                source_technology="REST API",
+                destination_system="Order Fulfillment",
+                destination_technology_1="OCI Streaming",
+                data_security_classification="Confidential",
+                tbq="Y",
+                selected_pattern="#02",
+                pattern_rationale="Decouples one producer from three consumers.",
+                retry_policy="3 attempts; DLQ",
+                idempotency="orderId",
+                core_tools="OCI Streaming | OIC Gen3",
+                additional_tools_overlays="OCI API Gateway",
+            ),
+            CatalogIntegration(
+                id="template-project-export-2",
+                project_id=project.id,
+                seq_number=2,
+                interface_id="INT-NW-002",
+                brand="Northwind Retail",
+                business_process="Inventory Synchronization",
+                interface_name="Publish unquoted inventory exception",
+                frequency="Once daily",
+                source_system="Inventory Hub",
+                destination_system="Store Operations",
+                tbq="N",
+                is_fan_out=False,
+            ),
+        ]
+        session.add(project)
+        session.add_all(integrations)
+        await session.commit()
+
+    response = await api_client.get(f"/api/v1/exports/{project.id}/template/xlsx")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert "northwind-retail-2026-integration-catalog-v3.1.0.xlsx" in response.headers["content-disposition"]
+
+    workbook = load_workbook(BytesIO(response.content))
+    sheet = workbook["Integration Catalog"]
+    headers = {cell.value: cell.column for cell in sheet[1]}
+    assert sheet.cell(2, headers["Interface ID"]).value == "INT-NW-001"
+    assert sheet.cell(2, headers["Fan-out (Yes/No)"]).value == "Yes"
+    assert sheet.cell(2, headers["TBQ"]).value == "Y"
+    assert sheet.cell(3, headers["Interface ID"]).value == "INT-NW-002"
+    assert sheet.cell(3, headers["Fan-out (Yes/No)"]).value == "No"
+    assert sheet.cell(3, headers["TBQ"]).value == "N"
+    assert "Northwind Retail 2026" in workbook["Start Here"]["A2"].value
+    brand_suggestions = [workbook["Client Catalogs"].cell(row, 1).value for row in range(5, 15)]
+    assert "Northwind Retail" in brand_suggestions
+
+    async with session_factory() as session:
+        target = Project(
+            id="template-project-export-roundtrip",
+            name="Northwind Re-import",
+            owner_id="architect",
+            status="active",
+        )
+        session.add(target)
+        await session.flush()
+        export_path = tmp_path / "northwind-project-export.xlsx"
+        export_path.write_bytes(response.content)
+        batch = await import_service.create_import_batch(target.id, export_path.name, session)
+        processed = await import_service.process_import(batch.id, str(export_path), session)
+        await session.flush()
+        imported = list(
+            (
+                await session.scalars(
+                    select(CatalogIntegration).where(CatalogIntegration.project_id == target.id)
+                )
+            ).all()
+        )
+
+        assert processed.loaded_count == 2
+        assert {item.interface_id for item in imported} == {"INT-NW-001", "INT-NW-002"}
+        assert next(item for item in imported if item.interface_id == "INT-NW-002").tbq == "N"
+
+
+@pytest.mark.asyncio
+async def test_archived_project_cannot_export_the_official_capture_template(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Archived workspaces cannot create an editable offline continuation."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(
+            id="template-project-archived",
+            name="Archived Template Export",
+            owner_id="architect",
+            status="archived",
+        )
+        session.add(project)
+        await session.commit()
+
+    response = await api_client.get(f"/api/v1/exports/{project.id}/template/xlsx")
+    assert response.status_code == 409
+    assert response.json()["detail"]["error_code"] == "PROJECT_NOT_ACTIVE"
+
+
+@pytest.mark.asyncio
 async def test_capture_template_rejects_formulas(
     test_engine: AsyncEngine,
     tmp_path: Path,

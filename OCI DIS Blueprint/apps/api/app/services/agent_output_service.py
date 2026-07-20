@@ -55,6 +55,19 @@ def _text(value: object) -> str:
     return str(value).strip() if value not in (None, "") else ""
 
 
+def _number(value: object) -> float:
+    """Return a bounded JSON number for deterministic presentation."""
+
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
 def _dict(value: object) -> dict[str, object]:
     return cast(dict[str, object], value) if isinstance(value, dict) else {}
 
@@ -272,6 +285,35 @@ def _import_brief(evidence: dict[str, object]) -> AgentOutputBrief:
 
 
 def _bom_brief(evidence: dict[str, object]) -> AgentOutputBrief:
+    current_bom = _dict(evidence.get("current_bom"))
+    if current_bom.get("ready_for_use") is True:
+        currency = _text(current_bom.get("currency")) or "USD"
+        contract_total = _number(current_bom.get("contract_total"))
+        environments = _strings(current_bom.get("environment_names"), limit=8)
+        return AgentOutputBrief(
+            headline="Published BOM is ready for governed use",
+            finding=(
+                f"{current_bom.get('coverage_pct', 0)}% coverage across {current_bom.get('line_item_count', 0)} "
+                f"line(s) in {', '.join(environments) or 'the approved environment plan'}; contract total is "
+                f"{currency} {contract_total:,.2f}."
+            ),
+            why="The published BOM uses the latest technical snapshot, an approved deployment scenario, and has no unresolved commercial lines.",
+            next_actions=["Keep this baseline unless architecture, environment timing, SKU selection, or approved price evidence changes."],
+            validation=[
+                "Confirm the current technical snapshot and publication state before client use.",
+                "Regenerate and compare a separate snapshot after any governed input changes.",
+            ],
+            evidence_ids=[
+                item
+                for item in (
+                    _text(current_bom.get("snapshot_id")),
+                    _text(current_bom.get("scenario_id")),
+                    _text(current_bom.get("technical_snapshot_id")),
+                )
+                if item
+            ],
+            confidence="high",
+        )
     services = _strings(evidence.get("detected_services"), limit=8)
     questions = _strings(evidence.get("required_questions"), limit=4)
     warnings = _strings(evidence.get("warnings"), limit=3)

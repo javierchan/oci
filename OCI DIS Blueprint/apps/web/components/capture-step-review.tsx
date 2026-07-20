@@ -48,6 +48,7 @@ export function CaptureStepReview({
       title: "Technical",
       rows: [
         ["Trigger Type", form.type],
+        ["Data Change Scope", form.base],
         ["Frequency", form.frequency],
         [
           "Payload per Execution",
@@ -55,6 +56,8 @@ export function CaptureStepReview({
             ? `${form.payload_per_execution_kb} KB`
             : undefined,
         ],
+        ["Delivery Shape", form.is_fan_out === undefined ? undefined : form.is_fan_out ? "Fan-out" : "Single destination"],
+        ["Fan-out Destinations", form.fan_out_targets],
         ["Complexity", form.complexity],
         ["Business Criticality", form.business_criticality],
         ["SLA / Target Latency", form.target_latency_sla],
@@ -64,7 +67,7 @@ export function CaptureStepReview({
         ["Idempotency", form.idempotency],
         ["Pattern", form.selected_pattern],
         ["Core Tools", stringifyValue(form.core_tools)],
-      ] as Array<[string, string | undefined]>,
+      ] as Array<[string, string | number | string[] | undefined]>,
     },
   ];
 

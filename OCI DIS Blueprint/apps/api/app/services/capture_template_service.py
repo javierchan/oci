@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Iterable
+from unicodedata import normalize
 
+from fastapi import HTTPException
 from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 from openpyxl.comments import Comment
@@ -20,14 +23,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
+    CatalogIntegration,
     DictionaryOption,
     PatternDefinition,
+    Project,
     ServiceCapabilityProfile,
     ServiceEvidenceSource,
     ServiceInteroperabilityRule,
     ServiceLimit,
     ServiceProductVersion,
 )
+from app.models.project import ProjectStatus
 from app.schemas.export import CaptureTemplateMetadata, CaptureTemplateColumnMetadata
 from app.services.pattern_support import get_pattern_support
 
@@ -388,7 +394,12 @@ def _en_us_option(value: str) -> str:
     return EN_US_OPTION_LABELS.get(value, value)
 
 
-def _create_lists_sheet(workbook: Workbook, context: TemplateContext, generated_at: datetime) -> dict[str, str]:
+def _create_lists_sheet(
+    workbook: Workbook,
+    context: TemplateContext,
+    generated_at: datetime,
+    capture_row_limit: int = CAPTURE_ROW_LIMIT,
+) -> dict[str, str]:
     sheet = workbook.create_sheet(MANIFEST_SHEET_NAME)
     lists: dict[str, list[str]] = {
         "FREQUENCY": [_en_us_option(option.value) for option in context.dictionaries.get("FREQUENCY", [])],
@@ -415,7 +426,7 @@ def _create_lists_sheet(workbook: Workbook, context: TemplateContext, generated_
         ("importer_min_version", IMPORTER_MIN_VERSION),
         ("generated_at_utc", generated_at.isoformat()),
         ("capture_sheet", CAPTURE_SHEET_NAME),
-        ("capture_row_limit", str(CAPTURE_ROW_LIMIT - 1)),
+        ("capture_row_limit", str(capture_row_limit - 1)),
         ("pattern_count", str(len(context.patterns))),
         ("service_product_count", str(len(context.profiles))),
         ("service_limit_count", str(len(context.limits))),
@@ -431,7 +442,26 @@ def _create_lists_sheet(workbook: Workbook, context: TemplateContext, generated_
     return name_map
 
 
-def _create_client_catalogs_sheet(workbook: Workbook) -> dict[str, str]:
+def _deduplicated_catalog_values(values: Iterable[object | None]) -> list[str]:
+    """Keep the project export suggestions concise while retaining exact values."""
+
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = _safe_text(value).strip()
+        if not text:
+            continue
+        key = text.casefold()
+        if key not in seen:
+            seen.add(key)
+            result.append(text)
+    return result[:100]
+
+
+def _create_client_catalogs_sheet(
+    workbook: Workbook,
+    integrations: Iterable[CatalogIntegration] = (),
+) -> dict[str, str]:
     """Create editable customer suggestions used by the capture dropdowns."""
 
     sheet = workbook.create_sheet(CLIENT_CATALOGS_SHEET_NAME)
@@ -441,6 +471,7 @@ def _create_client_catalogs_sheet(workbook: Workbook) -> dict[str, str]:
         "Replace or extend these suggestions. Capture also accepts new values; this sheet improves consistency and speed.",
         5,
     )
+    integration_rows = list(integrations)
     catalogs = {
         "CLIENT_BRANDS": ("Brands / business units", ["Retail", "Finance", "Human Capital", "Supply Chain"]),
         "CLIENT_PROCESSES": ("Business processes", ["Order to Cash", "Procure to Pay", "Hire to Retire", "Record to Report", "Inventory Synchronization"]),
@@ -448,8 +479,32 @@ def _create_client_catalogs_sheet(workbook: Workbook) -> dict[str, str]:
         "CLIENT_TECHNOLOGIES": ("Technologies", ["REST API", "SOAP API", "SFTP", "JDBC", "Kafka", "Oracle ATP"]),
         "CLIENT_OWNERS": ("Owners / teams", ["Enterprise Architecture", "Integration Platform Team", "Application Owner", "Data Platform Team"]),
     }
+    project_values = {
+        "CLIENT_BRANDS": [integration.brand for integration in integration_rows],
+        "CLIENT_PROCESSES": [integration.business_process for integration in integration_rows],
+        "CLIENT_SYSTEMS": [
+            value
+            for integration in integration_rows
+            for value in (integration.source_system, integration.destination_system)
+        ],
+        "CLIENT_TECHNOLOGIES": [
+            value
+            for integration in integration_rows
+            for value in (
+                integration.source_technology,
+                integration.destination_technology_1,
+                integration.destination_technology_2,
+            )
+        ],
+        "CLIENT_OWNERS": [
+            value
+            for integration in integration_rows
+            for value in (integration.owner, integration.source_owner, integration.destination_owner)
+        ],
+    }
     name_map: dict[str, str] = {}
-    for column, (defined_name, (header, values)) in enumerate(catalogs.items(), start=1):
+    for column, (defined_name, (header, defaults)) in enumerate(catalogs.items(), start=1):
+        values = _deduplicated_catalog_values([*defaults, *project_values[defined_name]])
         sheet.cell(4, column, header)
         for row, value in enumerate(values, start=5):
             sheet.cell(row, column, value)
@@ -463,13 +518,24 @@ def _create_client_catalogs_sheet(workbook: Workbook) -> dict[str, str]:
     return name_map
 
 
-def _create_start_sheet(workbook: Workbook, context: TemplateContext, generated_at: datetime) -> None:
+def _create_start_sheet(
+    workbook: Workbook,
+    context: TemplateContext,
+    generated_at: datetime,
+    project_name: str | None = None,
+    integration_count: int = 0,
+) -> None:
     sheet = workbook.active
     sheet.title = "Start Here"
     _style_title(
         sheet,
         "OCI DIS Architect · Offline Capture",
-        "Governed template for documenting integrations before importing them into the App.",
+        (
+            f"Official template pre-populated with {integration_count} governed integrations from {project_name}. "
+            "Edit values and re-import this same workbook when the catalog needs a governed update."
+            if project_name
+            else "Governed template for documenting integrations before importing them into the App."
+        ),
         8,
     )
     sheet["A4"] = "What this workbook does"
@@ -569,7 +635,11 @@ def _create_start_sheet(workbook: Workbook, context: TemplateContext, generated_
     sheet.freeze_panes = "A4"
 
 
-def _create_capture_sheet(workbook: Workbook, list_names: dict[str, str]) -> None:
+def _create_capture_sheet(
+    workbook: Workbook,
+    list_names: dict[str, str],
+    capture_row_limit: int = CAPTURE_ROW_LIMIT,
+) -> None:
     sheet = workbook.create_sheet(CAPTURE_SHEET_NAME)
     for index, column in enumerate(COLUMNS, start=1):
         cell = sheet.cell(1, index, column.header)
@@ -584,7 +654,7 @@ def _create_capture_sheet(workbook: Workbook, list_names: dict[str, str]) -> Non
     sheet.row_dimensions[1].height = 48
     sheet.freeze_panes = "F2"
     last_letter = get_column_letter(len(COLUMNS))
-    sheet.auto_filter.ref = f"A1:{last_letter}{CAPTURE_ROW_LIMIT}"
+    sheet.auto_filter.ref = f"A1:{last_letter}{capture_row_limit}"
     sheet.sheet_view.zoomScale = 75
     sheet.sheet_view.showGridLines = False
 
@@ -599,20 +669,20 @@ def _create_capture_sheet(workbook: Workbook, list_names: dict[str, str]) -> Non
             validation_writer = _add_client_validation if column.validation_key.startswith("CLIENT_") else _add_validation
             validation_writer(
                 sheet,
-                f"{get_column_letter(index)}2:{get_column_letter(index)}{CAPTURE_ROW_LIMIT}",
+                f"{get_column_letter(index)}2:{get_column_letter(index)}{capture_row_limit}",
                 list_names[column.validation_key],
                 column.description,
             )
         elif column.data_type in {"Integer", "Decimal"}:
             _add_numeric_validation(
                 sheet,
-                f"{get_column_letter(index)}2:{get_column_letter(index)}{CAPTURE_ROW_LIMIT}",
+                f"{get_column_letter(index)}2:{get_column_letter(index)}{capture_row_limit}",
                 column.data_type,
                 column.description,
             )
     # Blank rows remain truly blank; only conditional formatting communicates missing required input.
     required_letters = [get_column_letter(index) for index, column in enumerate(COLUMNS, start=1) if column.requirement == "Required"]
-    data_range = f"A2:{last_letter}{CAPTURE_ROW_LIMIT}"
+    data_range = f"A2:{last_letter}{capture_row_limit}"
     first_required = required_letters[0]
     for letter in required_letters:
         sheet.conditional_formatting.add(
@@ -631,7 +701,7 @@ def _create_capture_sheet(workbook: Workbook, list_names: dict[str, str]) -> Non
     )
 
 
-def _create_preflight_sheet(workbook: Workbook) -> None:
+def _create_preflight_sheet(workbook: Workbook, capture_row_limit: int = CAPTURE_ROW_LIMIT) -> None:
     sheet = workbook.create_sheet("Preflight Validation")
     _style_title(sheet, "Preflight Validation", "Directional review before import. Final authoritative QA runs inside the App.", 7)
     headers = ["Row", "ID", "Interface", "Status", "Missing fields", "Observations", "Action"]
@@ -642,10 +712,10 @@ def _create_preflight_sheet(workbook: Workbook) -> None:
     sheet["J4"] = "Value"
     _style_table_header(sheet[4][8:10], fill=TEAL)
     summary_rows = [
-        ("Captured rows", f'=COUNTIF(D5:D{CAPTURE_ROW_LIMIT + 3},"<>Not captured")'),
-        ("Ready to import", f'=COUNTIF(D5:D{CAPTURE_ROW_LIMIT + 3},"Ready")'),
-        ("Blocked rows", f'=COUNTIF(D5:D{CAPTURE_ROW_LIMIT + 3},"Blocked")'),
-        ("With observations", f'=COUNTIF(F5:F{CAPTURE_ROW_LIMIT + 3},"?*")'),
+        ("Captured rows", f'=COUNTIF(D5:D{capture_row_limit + 3},"<>Not captured")'),
+        ("Ready to import", f'=COUNTIF(D5:D{capture_row_limit + 3},"Ready")'),
+        ("Blocked rows", f'=COUNTIF(D5:D{capture_row_limit + 3},"Blocked")'),
+        ("With observations", f'=COUNTIF(F5:F{capture_row_limit + 3},"?*")'),
         ("Overall status", '=IF(J7>0,"CORRECT",IF(J5=0,"NO CAPTURE","READY"))'),
     ]
     for row, (label, formula) in enumerate(summary_rows, start=5):
@@ -655,7 +725,7 @@ def _create_preflight_sheet(workbook: Workbook) -> None:
     field_to_letter = {column.field: get_column_letter(index) for index, column in enumerate(COLUMNS, start=1)}
     last_letter = get_column_letter(len(COLUMNS))
     required = [column for column in COLUMNS if column.requirement == "Required"]
-    for target_row, capture_row in enumerate(range(2, CAPTURE_ROW_LIMIT + 1), start=5):
+    for target_row, capture_row in enumerate(range(2, capture_row_limit + 1), start=5):
         blank_check = f"COUNTA('{CAPTURE_SHEET_NAME}'!A{capture_row}:{last_letter}{capture_row})=0"
         sheet.cell(target_row, 1, capture_row)
         sheet.cell(
@@ -699,7 +769,7 @@ def _create_preflight_sheet(workbook: Workbook) -> None:
                 f'\'{CAPTURE_SHEET_NAME}\'!{targets_letter}{capture_row}<2),"Fan-out requires at least 2 destinations; ","")&'
                 f'IF(\'{CAPTURE_SHEET_NAME}\'!{pattern_letter}{capture_row}="","Pattern is missing; ","")&'
                 f'IF(\'{CAPTURE_SHEET_NAME}\'!{trigger_letter}{capture_row}="","Trigger is missing; ","")&'
-                f'IF(AND(\'{CAPTURE_SHEET_NAME}\'!{interface_id_letter}{capture_row}<>"",COUNTIF(\'{CAPTURE_SHEET_NAME}\'!${interface_id_letter}$2:${interface_id_letter}${CAPTURE_ROW_LIMIT},\'{CAPTURE_SHEET_NAME}\'!{interface_id_letter}{capture_row})>1),"Duplicate ID; ","")&'
+                f'IF(AND(\'{CAPTURE_SHEET_NAME}\'!{interface_id_letter}{capture_row}<>"",COUNTIF(\'{CAPTURE_SHEET_NAME}\'!${interface_id_letter}$2:${interface_id_letter}${capture_row_limit},\'{CAPTURE_SHEET_NAME}\'!{interface_id_letter}{capture_row})>1),"Duplicate ID; ","")&'
                 f'IF(AND(\'{CAPTURE_SHEET_NAME}\'!{payload_letter}{capture_row}<>"",NOT(ISNUMBER(\'{CAPTURE_SHEET_NAME}\'!{payload_letter}{capture_row}))),"Payload must be numeric; ","")&'
                 f'IF(COUNTIF(LIST_FREQUENCY,\'{CAPTURE_SHEET_NAME}\'!{frequency_letter}{capture_row})=0,"Frequency is outside the governed list; ","")&'
                 f'IF(AND(\'{CAPTURE_SHEET_NAME}\'!{pattern_letter}{capture_row}<>"",COUNTIF(LIST_PATTERNS,\'{CAPTURE_SHEET_NAME}\'!{pattern_letter}{capture_row})=0),"Pattern is outside the governed list; ","")&'
@@ -714,15 +784,15 @@ def _create_preflight_sheet(workbook: Workbook) -> None:
         )
         sheet.cell(target_row, 7).data_type = "f"
     sheet.freeze_panes = "A5"
-    sheet.auto_filter.ref = f"A4:G{CAPTURE_ROW_LIMIT + 3}"
-    sheet.conditional_formatting.add(f"D5:D{CAPTURE_ROW_LIMIT + 3}", FormulaRule(formula=['D5="Ready"'], fill=PatternFill("solid", fgColor=LIGHT_TEAL)))
-    sheet.conditional_formatting.add(f"D5:D{CAPTURE_ROW_LIMIT + 3}", FormulaRule(formula=['D5="Blocked"'], fill=PatternFill("solid", fgColor="FEE2E2")))
-    sheet.conditional_formatting.add(f"D5:D{CAPTURE_ROW_LIMIT + 3}", FormulaRule(formula=['D5="Not captured"'], fill=PatternFill("solid", fgColor=LIGHT_GRAY)))
+    sheet.auto_filter.ref = f"A4:G{capture_row_limit + 3}"
+    sheet.conditional_formatting.add(f"D5:D{capture_row_limit + 3}", FormulaRule(formula=['D5="Ready"'], fill=PatternFill("solid", fgColor=LIGHT_TEAL)))
+    sheet.conditional_formatting.add(f"D5:D{capture_row_limit + 3}", FormulaRule(formula=['D5="Blocked"'], fill=PatternFill("solid", fgColor="FEE2E2")))
+    sheet.conditional_formatting.add(f"D5:D{capture_row_limit + 3}", FormulaRule(formula=['D5="Not captured"'], fill=PatternFill("solid", fgColor=LIGHT_GRAY)))
     _set_widths(sheet, {1: 8, 2: 16, 3: 30, 4: 18, 5: 42, 6: 52, 7: 24, 8: 3, 9: 24, 10: 18})
     sheet.sheet_view.zoomScale = 85
 
 
-def _create_dashboard_sheet(workbook: Workbook) -> None:
+def _create_dashboard_sheet(workbook: Workbook, capture_row_limit: int = CAPTURE_ROW_LIMIT) -> None:
     """Add a formula-driven offline summary without becoming an authority source."""
 
     sheet = workbook.create_sheet("Dashboard")
@@ -735,11 +805,11 @@ def _create_dashboard_sheet(workbook: Workbook) -> None:
     fields = {column.field: get_column_letter(index) for index, column in enumerate(COLUMNS, start=1)}
     capture = f"'{CAPTURE_SHEET_NAME}'"
     metrics = [
-        ("Captured rows", f'=COUNTIF({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{CAPTURE_ROW_LIMIT},"?*")'),
-        ("BOM eligible (TBQ=Y)", f'=COUNTIF({capture}!{fields["tbq"]}2:{fields["tbq"]}{CAPTURE_ROW_LIMIT},"Y")'),
-        ("Technical only (TBQ=N)", f'=COUNTIF({capture}!{fields["tbq"]}2:{fields["tbq"]}{CAPTURE_ROW_LIMIT},"N")'),
-        ("With pattern", f'=COUNTIF({capture}!{fields["selected_pattern"]}2:{fields["selected_pattern"]}{CAPTURE_ROW_LIMIT},"#??")'),
-        ("With payload", f'=COUNT({capture}!{fields["payload_per_execution_kb"]}2:{fields["payload_per_execution_kb"]}{CAPTURE_ROW_LIMIT})'),
+        ("Captured rows", f'=COUNTIF({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{capture_row_limit},"?*")'),
+        ("BOM eligible (TBQ=Y)", f'=COUNTIF({capture}!{fields["tbq"]}2:{fields["tbq"]}{capture_row_limit},"Y")'),
+        ("Technical only (TBQ=N)", f'=COUNTIF({capture}!{fields["tbq"]}2:{fields["tbq"]}{capture_row_limit},"N")'),
+        ("With pattern", f'=COUNTIF({capture}!{fields["selected_pattern"]}2:{fields["selected_pattern"]}{capture_row_limit},"#??")'),
+        ("With payload", f'=COUNT({capture}!{fields["payload_per_execution_kb"]}2:{fields["payload_per_execution_kb"]}{capture_row_limit})'),
     ]
     for index, (label, formula) in enumerate(metrics):
         start = 1 + index * 3
@@ -763,7 +833,7 @@ def _create_dashboard_sheet(workbook: Workbook) -> None:
         sheet.cell(
             row,
             2,
-            f'=COUNTIF({capture}!{fields["business_criticality"]}2:{fields["business_criticality"]}{CAPTURE_ROW_LIMIT},A{row})',
+            f'=COUNTIF({capture}!{fields["business_criticality"]}2:{fields["business_criticality"]}{capture_row_limit},A{row})',
         )
         sheet.cell(row, 2).data_type = "f"
 
@@ -783,10 +853,10 @@ def _create_dashboard_sheet(workbook: Workbook) -> None:
     sheet["A18"] = "Pending decisions"
     sheet["A18"].font = Font(size=14, bold=True, color=NAVY)
     pending = [
-        ("Missing pattern", f'=COUNTIFS({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{CAPTURE_ROW_LIMIT},"?*",{capture}!{fields["selected_pattern"]}2:{fields["selected_pattern"]}{CAPTURE_ROW_LIMIT},"")'),
-        ("Missing SLA / latency", f'=COUNTIFS({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{CAPTURE_ROW_LIMIT},"?*",{capture}!{fields["target_latency_sla"]}2:{fields["target_latency_sla"]}{CAPTURE_ROW_LIMIT},"")'),
-        ("Missing classification", f'=COUNTIFS({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{CAPTURE_ROW_LIMIT},"?*",{capture}!{fields["data_security_classification"]}2:{fields["data_security_classification"]}{CAPTURE_ROW_LIMIT},"")'),
-        ("Missing idempotency", f'=COUNTIFS({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{CAPTURE_ROW_LIMIT},"?*",{capture}!{fields["idempotency"]}2:{fields["idempotency"]}{CAPTURE_ROW_LIMIT},"")'),
+        ("Missing pattern", f'=COUNTIFS({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{capture_row_limit},"?*",{capture}!{fields["selected_pattern"]}2:{fields["selected_pattern"]}{capture_row_limit},"")'),
+        ("Missing SLA / latency", f'=COUNTIFS({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{capture_row_limit},"?*",{capture}!{fields["target_latency_sla"]}2:{fields["target_latency_sla"]}{capture_row_limit},"")'),
+        ("Missing classification", f'=COUNTIFS({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{capture_row_limit},"?*",{capture}!{fields["data_security_classification"]}2:{fields["data_security_classification"]}{capture_row_limit},"")'),
+        ("Missing idempotency", f'=COUNTIFS({capture}!{fields["interface_name"]}2:{fields["interface_name"]}{capture_row_limit},"?*",{capture}!{fields["idempotency"]}2:{fields["idempotency"]}{capture_row_limit},"")'),
     ]
     for row, (label, formula) in enumerate(pending, start=19):
         sheet.cell(row, 1, label)
@@ -1095,7 +1165,11 @@ def _set_properties(workbook: Workbook, generated_at: datetime) -> None:
     workbook.calculation.forceFullCalc = True
 
 
-def _metadata(context: TemplateContext, generated_at: datetime) -> CaptureTemplateMetadata:
+def _metadata(
+    context: TemplateContext,
+    generated_at: datetime,
+    capture_row_limit: int = CAPTURE_ROW_LIMIT,
+) -> CaptureTemplateMetadata:
     evidence_dates = [source.last_checked_at for source in context.evidence if source.last_checked_at]
     last_verified_at = max(evidence_dates) if evidence_dates else None
     stale_count = sum(1 for source in context.evidence if source.status in {"stale", "pending_verification", "seeded_pending_verification", "failed", "source_unavailable"})
@@ -1105,7 +1179,7 @@ def _metadata(context: TemplateContext, generated_at: datetime) -> CaptureTempla
         filename=TEMPLATE_FILENAME,
         generated_at=generated_at,
         capture_sheet=CAPTURE_SHEET_NAME,
-        capture_row_limit=CAPTURE_ROW_LIMIT - 1,
+        capture_row_limit=capture_row_limit - 1,
         pattern_count=len(context.patterns),
         service_product_count=len(context.profiles),
         service_limit_count=len(context.limits),
@@ -1134,19 +1208,56 @@ async def get_capture_template_metadata(db: AsyncSession) -> CaptureTemplateMeta
     return _metadata(context, _utc_now())
 
 
-async def generate_capture_template(db: AsyncSession) -> tuple[bytes, CaptureTemplateMetadata]:
-    """Generate the governed workbook and matching response metadata."""
+def _catalog_template_value(integration: CatalogIntegration, field: str) -> object:
+    """Translate governed catalog state into the exact offline capture contract."""
 
-    generated_at = _utc_now()
-    context = await _load_context(db)
+    if field in LINEAGE_ONLY_TEMPLATE_FIELDS:
+        # Immutable source evidence remains available through App lineage. It is not
+        # copied from a prior workbook into a newly governed catalog export.
+        return ""
+    value = getattr(integration, field, None)
+    if field == "tbq":
+        return "Y" if str(value or "Y").strip().upper() == "Y" else "N"
+    if field in {"is_fan_out", "is_real_time"}:
+        return "Yes" if value is True else "No" if value is False else ""
+    return _safe_text(value) if isinstance(value, str) else value
+
+
+def _populate_capture_sheet(
+    workbook: Workbook,
+    integrations: Iterable[CatalogIntegration],
+) -> None:
+    """Fill the official capture sheet without changing its governed structure."""
+
+    sheet = workbook[CAPTURE_SHEET_NAME]
+    for row_number, integration in enumerate(integrations, start=2):
+        for column_number, column in enumerate(COLUMNS, start=1):
+            sheet.cell(row_number, column_number, _catalog_template_value(integration, column.field))
+
+
+def _project_export_filename(project_name: str) -> str:
+    ascii_name = normalize("NFKD", project_name).encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_name.lower()).strip("-") or "project"
+    return f"{slug}-integration-catalog-v{TEMPLATE_VERSION}.xlsx"
+
+
+def _build_capture_template(
+    context: TemplateContext,
+    generated_at: datetime,
+    integrations: Iterable[CatalogIntegration] = (),
+    project_name: str | None = None,
+) -> tuple[bytes, CaptureTemplateMetadata]:
+    integration_rows = list(integrations)
+    capture_row_limit = max(CAPTURE_ROW_LIMIT, len(integration_rows) + 1)
     workbook = Workbook()
     _set_properties(workbook, generated_at)
-    _create_start_sheet(workbook, context, generated_at)
-    _create_dashboard_sheet(workbook)
-    list_names = _create_lists_sheet(workbook, context, generated_at)
-    list_names.update(_create_client_catalogs_sheet(workbook))
-    _create_capture_sheet(workbook, list_names)
-    _create_preflight_sheet(workbook)
+    _create_start_sheet(workbook, context, generated_at, project_name, len(integration_rows))
+    _create_dashboard_sheet(workbook, capture_row_limit)
+    list_names = _create_lists_sheet(workbook, context, generated_at, capture_row_limit)
+    list_names.update(_create_client_catalogs_sheet(workbook, integration_rows))
+    _create_capture_sheet(workbook, list_names, capture_row_limit)
+    _populate_capture_sheet(workbook, integration_rows)
+    _create_preflight_sheet(workbook, capture_row_limit)
     _create_examples_sheet(workbook, context)
     _create_field_guide_sheet(workbook)
     _create_patterns_sheet(workbook, context)
@@ -1157,4 +1268,54 @@ async def generate_capture_template(db: AsyncSession) -> tuple[bytes, CaptureTem
     workbook.active = workbook.sheetnames.index("Start Here")
     output = BytesIO()
     workbook.save(output)
-    return output.getvalue(), _metadata(context, generated_at)
+    return output.getvalue(), _metadata(context, generated_at, capture_row_limit)
+
+
+async def generate_capture_template(db: AsyncSession) -> tuple[bytes, CaptureTemplateMetadata]:
+    """Generate the blank official governed workbook and matching metadata."""
+
+    generated_at = _utc_now()
+    context = await _load_context(db)
+    return _build_capture_template(context, generated_at)
+
+
+async def generate_project_capture_template(
+    project_id: str,
+    db: AsyncSession,
+) -> tuple[bytes, CaptureTemplateMetadata]:
+    """Export every governed integration in an active project using the official template."""
+
+    project = await db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Project not found", "error_code": "PROJECT_NOT_FOUND"},
+        )
+    if project.status != ProjectStatus.ACTIVE:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Only active projects can be exported into the official capture template.",
+                "error_code": "PROJECT_NOT_ACTIVE",
+            },
+        )
+    integrations = list(
+        (
+            await db.scalars(
+                select(CatalogIntegration)
+                .where(CatalogIntegration.project_id == project_id)
+                .order_by(CatalogIntegration.seq_number, CatalogIntegration.created_at)
+            )
+        ).all()
+    )
+    generated_at = _utc_now()
+    context = await _load_context(db)
+    workbook_bytes, metadata = _build_capture_template(
+        context,
+        generated_at,
+        integrations,
+        project.name,
+    )
+    return workbook_bytes, metadata.model_copy(
+        update={"filename": _project_export_filename(project.name)}
+    )

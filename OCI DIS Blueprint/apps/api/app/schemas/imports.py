@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,12 +30,18 @@ class ImportBatchResponse(BaseModel):
     parser_version: str
     status: str
     source_row_count: Optional[int] = None
+    candidate_count: Optional[int] = None
     tbq_y_count: Optional[int] = None
     tbq_n_count: Optional[int] = None
     excluded_count: Optional[int] = None
     loaded_count: Optional[int] = None
     header_map: Optional[dict[str, str]] = None
     error_details: Optional[dict[str, object]] = None
+    intake_mode: Literal["official_template", "external_mapping"] = "official_template"
+    mapping_contract: Optional[dict[str, object]] = None
+    mapping_profile_id: Optional[str] = None
+    mapping_reviewed_by: Optional[str] = None
+    mapping_reviewed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -125,3 +131,52 @@ class ImportBatchDeleteResponse(BaseModel):
     deleted_integrations: int
     deleted_justifications: int
     recalculated_snapshot_id: Optional[str] = None
+
+
+class ImportMappingFieldDecision(BaseModel):
+    """One user-approved source-column classification."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    source_header: str
+    target_field: str
+
+
+class ImportMappingReviewUpdateRequest(BaseModel):
+    """Draft answers and classifications for one staged external workbook."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    fields: list[ImportMappingFieldDecision]
+    answers: dict[str, str] = Field(default_factory=dict)
+
+
+class ImportMappingReviewApproveRequest(ImportMappingReviewUpdateRequest):
+    """Human approval that unlocks catalog materialization."""
+
+    profile_name: Optional[str] = Field(default=None, max_length=255)
+    save_profile: bool = False
+
+
+class ImportMappingProfileResponse(BaseModel):
+    """One approved project-scoped mapping profile."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    project_id: str
+    name: str
+    header_fingerprint: str
+    contract: dict[str, object]
+    created_by: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ImportMappingProfileListResponse(BaseModel):
+    """Mapping profiles available to an external import in one project."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    profiles: list[ImportMappingProfileResponse] = Field(default_factory=list)

@@ -3,9 +3,13 @@
 /* Operational admin surface for governed OCI price catalogs and SKU mappings. */
 
 import {
+  AlertTriangle,
   Check,
+  CheckCircle2,
+  FileCheck2,
   FileUp,
   Loader2,
+  PackageCheck,
   Pencil,
   RefreshCcw,
   Search,
@@ -17,8 +21,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { emitToast } from "@/hooks/use-toast";
 import { api, getErrorMessage } from "@/lib/api";
 import { formatDate, formatNumber } from "@/lib/format";
-import { isPriceSyncTerminal } from "@/lib/types";
+import {
+  commercialCandidatePresentation,
+  commercialReleaseCoverage,
+  filterCommercialCandidates,
+  isPriceSyncTerminal,
+} from "@/lib/types";
 import type {
+  CommercialCandidate,
+  CommercialCandidateDecision,
+  CommercialExceptionDecision,
+  CommercialWorkspace,
   PriceCatalogSnapshot,
   GovernanceChangeSet,
   PriceItem,
@@ -29,8 +42,399 @@ import type {
   SkuMappingStatus,
 } from "@/lib/types";
 
+const EMPTY_COMMERCIAL_WORKSPACE: CommercialWorkspace = {
+  document: null,
+  summary: { skus: 0, candidates: 0, pending: 0, approved: 0, blocked: 0, exceptions: 0 },
+  candidates: [],
+  exceptions: [],
+  releases: [],
+  field_authority: {},
+};
+
+function humanize(value: string): string {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function displayValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "Not established";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+type CandidateDraft = {
+  decision: CommercialCandidateDecision;
+  rationale: string;
+};
+
+type ExceptionDraft = {
+  decision: CommercialExceptionDecision;
+  rationale: string;
+  target_part_number?: string;
+};
+
+function CommercialCatalogWorkspace(): JSX.Element {
+  const [workspace, setWorkspace] = useState<CommercialWorkspace>(EMPTY_COMMERCIAL_WORKSPACE);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [candidateQuery, setCandidateQuery] = useState("");
+  const [candidateStatus, setCandidateStatus] = useState("all");
+  const [finalizeRationale, setFinalizeRationale] = useState("");
+  const [candidateDrafts, setCandidateDrafts] = useState<Record<string, CandidateDraft>>({});
+  const [exceptionDrafts, setExceptionDrafts] = useState<Record<string, ExceptionDraft>>({});
+
+  const load = useCallback(async (): Promise<void> => {
+    setLoading(true);
+    try {
+      setWorkspace(await api.getCommercialCatalog({ limit: 500 }));
+      setError("");
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError, "Unable to load official commercial evidence."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const search = candidateQuery.trim();
+    if (!search) {
+      void load();
+      return undefined;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      api.getCommercialCatalog({ search, limit: 500 })
+        .then((result) => {
+          if (active) {
+            setWorkspace(result);
+            setError("");
+          }
+        })
+        .catch((caughtError) => {
+          if (active) {
+            setError(getErrorMessage(caughtError, "Unable to search the commercial review queue."));
+          }
+        });
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [candidateQuery, load]);
+
+  const visibleCandidates = useMemo(
+    () => filterCommercialCandidates(workspace.candidates, candidateQuery, candidateStatus),
+    [candidateQuery, candidateStatus, workspace.candidates],
+  );
+  const evidenceApproved = workspace.document?.status === "approved_evidence";
+
+  function candidateDraft(candidateId: string): CandidateDraft {
+    return candidateDrafts[candidateId] ?? { decision: "keep_blocked", rationale: "" };
+  }
+
+  function exceptionDraft(exceptionId: string): ExceptionDraft {
+    return exceptionDrafts[exceptionId] ?? { decision: "keep_open", rationale: "" };
+  }
+
+  async function runAction(actionKey: string, action: () => Promise<CommercialWorkspace>, success: string): Promise<void> {
+    setBusy(actionKey);
+    try {
+      let updatedWorkspace = await action();
+      if (candidateQuery.trim()) {
+        updatedWorkspace = await api.getCommercialCatalog({ search: candidateQuery.trim(), limit: 500 });
+      }
+      setWorkspace(updatedWorkspace);
+      setError("");
+      emitToast("success", success);
+    } catch (caughtError) {
+      const message = getErrorMessage(caughtError, "The commercial governance action could not be completed.");
+      setError(message);
+      emitToast("error", message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function uploadDocument(): Promise<void> {
+    if (!uploadFile) {
+      return;
+    }
+    await runAction(
+      "commercial-upload",
+      () => api.importCommercialDocument(uploadFile),
+      "Official workbook imported as immutable review evidence.",
+    );
+    setUploadFile(null);
+  }
+
+  async function reviewCandidate(candidate: CommercialCandidate): Promise<void> {
+    const draft = candidateDraft(candidate.id);
+    await runAction(
+      `candidate:${candidate.id}`,
+      () => api.reviewCommercialCandidate(candidate.id, draft),
+      `Candidate ${candidate.part_number} decision recorded.`,
+    );
+  }
+
+  async function revalidateCandidate(candidate: CommercialCandidate): Promise<void> {
+    await runAction(
+      `revalidate:${candidate.id}`,
+      () => api.revalidateCommercialCandidate(candidate.id),
+      `Candidate ${candidate.part_number} revalidated against persisted official evidence. Its explicit review decision was not changed.`,
+    );
+  }
+
+  async function reviewException(exceptionId: string): Promise<void> {
+    const draft = exceptionDraft(exceptionId);
+    await runAction(
+      `exception:${exceptionId}`,
+      () => api.reviewCommercialException(exceptionId, draft),
+      "Exception disposition recorded without removing its source evidence.",
+    );
+  }
+
+  async function finalizeCatalogReview(): Promise<void> {
+    if (!workspace.document) {
+      return;
+    }
+    await runAction(
+      "finalize-catalog-review",
+      () => api.finalizeCommercialCatalogReview(workspace.document!.id, {
+        rationale: finalizeRationale.trim(),
+      }),
+      "Catalog review finalized. Unambiguous SKUs were approved and all remaining SKUs were blocked with governed reasons.",
+    );
+  }
+
+  return (
+    <section className="app-table-shell min-w-0 overflow-hidden" aria-labelledby="commercial-catalog-title">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--color-border)] px-5 py-5">
+        <div className="max-w-3xl">
+          <p className="app-label">Official Commercial Catalog</p>
+          <h2 id="commercial-catalog-title" className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
+            Evidence, mapping decisions, and releases
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+            Oracle documents establish commercial meaning. Generated candidates remain proposals until an explicit review decision is recorded; approving evidence never approves mappings or rules.
+          </p>
+        </div>
+        <button className="app-button-secondary gap-2" type="button" disabled={busy !== null || loading} onClick={() => void load()}>
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+          Refresh
+        </button>
+      </div>
+
+      {error ? (
+        <div role="alert" className="border-b border-rose-400/45 bg-[var(--color-surface-2)] px-5 py-4 text-sm text-rose-700 dark:text-rose-300">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="grid gap-px bg-[var(--color-border)] sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          ["Normalized SKUs", workspace.summary.skus, "Official and structured catalog coverage"],
+          ["Generated candidates", workspace.summary.candidates, `${workspace.summary.pending} pending · ${workspace.summary.blocked} truthfully blocked`],
+          ["Explicitly approved", workspace.summary.approved, "Mappings and eligible rules with a recorded review decision"],
+          ["Open exceptions", workspace.summary.exceptions, "Source conflicts or prerequisites still open"],
+        ].map(([label, value, detail]) => (
+          <div key={String(label)} className="min-w-0 bg-[var(--color-surface)] px-5 py-4">
+            <p className="app-label">{label}</p>
+            <p className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{formatNumber(Number(value))}</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--color-text-muted)]">{detail}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid min-w-0 border-t border-[var(--color-border)] xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.55fr)]">
+        <div className="min-w-0 border-b border-[var(--color-border)] p-5 xl:border-b-0 xl:border-r">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 max-w-full flex-1">
+              <p className="app-label">Latest Official Document</p>
+              {workspace.document ? (
+                <>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <h3 className="min-w-0 max-w-full [overflow-wrap:anywhere] text-lg font-semibold text-[var(--color-text-primary)]">{workspace.document.original_filename}</h3>
+                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses(workspace.document.status)}`}>
+                      {humanize(workspace.document.status)}
+                    </span>
+                  </div>
+                  <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                    <div><dt className="text-xs text-[var(--color-text-muted)]">Records</dt><dd className="mt-1 font-semibold text-[var(--color-text-primary)]">{formatNumber(workspace.document.record_count)}</dd></div>
+                    <div><dt className="text-xs text-[var(--color-text-muted)]">Parser</dt><dd className="mt-1 break-all font-mono text-xs text-[var(--color-text-primary)]">{workspace.document.parser_version}</dd></div>
+                    <div><dt className="text-xs text-[var(--color-text-muted)]">Retrieved</dt><dd className="mt-1 text-[var(--color-text-primary)]">{formatDate(workspace.document.retrieved_at)}</dd></div>
+                    <div><dt className="text-xs text-[var(--color-text-muted)]">SHA-256</dt><dd className="mt-1 font-mono text-xs text-[var(--color-text-primary)]" title={workspace.document.content_hash}>{compactId(workspace.document.content_hash)}</dd></div>
+                  </dl>
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-[var(--color-text-secondary)]">No official Oracle commercial workbook has been imported.</p>
+              )}
+            </div>
+            {workspace.document && !evidenceApproved ? (
+              <button className="app-button-primary gap-2" type="button" disabled={busy !== null} onClick={() => void runAction("approve-evidence", () => api.approveCommercialDocument(workspace.document!.id), "Official document approved as evidence. Candidate reviews remain separate.")}>
+                {busy === "approve-evidence" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
+                Approve evidence
+              </button>
+            ) : null}
+          </div>
+          <div className="mt-4 flex items-start gap-3 border-l-2 border-[var(--color-accent)] bg-[var(--color-surface-2)] px-4 py-3">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-accent)]" />
+            <p className="text-xs leading-5 text-[var(--color-text-secondary)]">
+              Evidence approval confirms provenance and parser coverage only. Mapping, rule, exception, price-snapshot, and release approvals remain independent governed decisions.
+            </p>
+          </div>
+        </div>
+
+        <div className="min-w-0 p-5">
+          <p className="app-label">Import Official Evidence</p>
+          <h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Price List + Supplement workbook</h3>
+          <p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">Upload the Oracle XLSX as a new immutable snapshot. Existing releases remain unchanged.</p>
+          <label className="mt-4 block text-sm font-semibold text-[var(--color-text-primary)]">
+            XLSX workbook
+            <input className="mt-2 block min-w-0 max-w-full text-sm text-[var(--color-text-secondary)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-surface-3)] file:px-3 file:py-2 file:font-semibold file:text-[var(--color-text-primary)]" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />
+          </label>
+          <button className="app-button-secondary mt-4 w-full gap-2" type="button" disabled={!uploadFile || busy !== null} onClick={() => void uploadDocument()}>
+            {busy === "commercial-upload" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+            Import official workbook
+          </button>
+        </div>
+      </div>
+
+      <div className="border-t border-[var(--color-border)]">
+        <div className="border-b border-[var(--color-border)] px-5 py-4">
+          <p className="app-label">Field Authority</p>
+          <h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Which source governs each commercial decision</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="bg-[var(--color-surface-2)] text-xs uppercase tracking-[0.12em] text-[var(--color-text-muted)]"><tr><th className="px-5 py-3">Decision field</th><th className="px-5 py-3">Authoritative source</th><th className="px-5 py-3">Operational use</th></tr></thead>
+            <tbody className="divide-y divide-[var(--color-border)]">
+              {Object.entries(workspace.field_authority).map(([field, authority]) => (
+                <tr key={field}><td className="px-5 py-3 font-medium text-[var(--color-text-primary)]">{humanize(field)}</td><td className="px-5 py-3 text-[var(--color-text-secondary)]">{humanize(authority)}</td><td className="px-5 py-3 text-xs text-[var(--color-text-muted)]">Lower-authority sources may corroborate, but cannot silently replace this value.</td></tr>
+              ))}
+              {!loading && Object.keys(workspace.field_authority).length === 0 ? <tr><td className="px-5 py-6 text-[var(--color-text-secondary)]" colSpan={3}>Field authority will appear after the commercial catalog service is available.</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="border-t border-[var(--color-border)]">
+        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4">
+          <div><p className="app-label">Candidate Review Queue</p><h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Generated proposals awaiting explicit disposition</h3></div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <label className="relative block min-w-0 sm:w-72"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[var(--color-text-muted)]" /><input aria-label="Search commercial candidates" className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3 text-sm" placeholder="Search part number" value={candidateQuery} onChange={(event) => setCandidateQuery(event.target.value)} /></label>
+            <select aria-label="Filter candidate status" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm" value={candidateStatus} onChange={(event) => setCandidateStatus(event.target.value)}><option value="all">All statuses</option><option value="pending_review">Needs review</option><option value="approved">Explicitly approved</option><option value="blocked">Blocked</option><option value="rejected">Rejected</option></select>
+          </div>
+        </div>
+        <div className="divide-y divide-[var(--color-border)]">
+          {visibleCandidates.map((candidate) => {
+            const draft = candidateDraft(candidate.id);
+            const presentation = commercialCandidatePresentation(candidate.status);
+            const presentationTone = {
+              success: "border-emerald-400/45 text-emerald-700 dark:text-emerald-300",
+              warning: "border-amber-400/45 text-amber-700 dark:text-amber-300",
+              error: "border-rose-400/45 text-rose-700 dark:text-rose-300",
+            }[presentation.tone];
+            const approvalBlocked = draft.decision === "approve" && !evidenceApproved;
+            return (
+              <details key={candidate.id} className="group px-5 py-4">
+                <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-mono font-semibold text-[var(--color-text-primary)]">{candidate.part_number}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${presentationTone}`}>{presentation.label}</span><span className="app-theme-chip">{humanize(candidate.classification)}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClasses(candidate.rule_fixture_status ?? "missing")}`}>Fixture: {humanize(candidate.rule_fixture_status ?? "missing")}</span></div><p className="mt-1 text-xs text-[var(--color-text-muted)]">{candidate.service_id ?? "Service mapping not established"} · {candidate.family_key ?? "Rule family not established"} · {Math.round(candidate.confidence * 100)}% generator confidence · {candidate.generator_version}</p></div>
+                  <span className="text-xs font-semibold text-[var(--color-text-secondary)] group-open:hidden">Review details</span>
+                </summary>
+                <div className="mt-4 grid min-w-0 gap-5 border-t border-[var(--color-border)] pt-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
+                  <div className="min-w-0"><p className="app-label">Proposed commercial behavior</p><dl className="mt-3 grid gap-x-5 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(candidate.proposed_mapping).filter(([key]) => key !== "field_authority").map(([key, value]) => <div key={key}><dt className="text-xs text-[var(--color-text-muted)]">{humanize(key)}</dt><dd className="mt-1 break-words text-sm font-medium text-[var(--color-text-primary)]">{displayValue(value)}</dd></div>)}</dl><p className="app-label mt-5">Why it was generated</p><ul className="mt-2 space-y-1 text-sm leading-5 text-[var(--color-text-secondary)]">{candidate.reasons.map((reason, index) => <li key={`${candidate.id}-reason-${index}`}>• {displayValue(reason)}</li>)}</ul></div>
+                  <div className="min-w-0 border-l-0 border-[var(--color-border)] xl:border-l xl:pl-5"><p className="app-label">Deterministic validation</p><p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">Re-run the generated rule and quotation fixture against persisted official evidence. This action never approves the candidate.</p><button className="app-button-secondary mt-3 w-full gap-2" type="button" disabled={busy !== null} onClick={() => void revalidateCandidate(candidate)}>{busy === `revalidate:${candidate.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}Revalidate rule</button><div className="my-4 border-t border-[var(--color-border)]" /><p className="app-label">Explicit review decision</p><select aria-label={`Decision for ${candidate.part_number}`} className="mt-3 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm" value={draft.decision} onChange={(event) => setCandidateDrafts((current) => ({ ...current, [candidate.id]: { ...draft, decision: event.target.value as CommercialCandidateDecision } }))}><option value="keep_blocked">Keep blocked</option><option value="approve">Approve mapping and eligible rule</option><option value="reject">Reject proposal</option></select><textarea aria-label={`Rationale for ${candidate.part_number}`} className="mt-3 min-h-24 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm" placeholder="Document the commercial evidence and decision rationale (minimum 8 characters)." value={draft.rationale} onChange={(event) => setCandidateDrafts((current) => ({ ...current, [candidate.id]: { ...draft, rationale: event.target.value } }))} />{approvalBlocked ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Approve the official document as evidence before approving this candidate.</p> : null}<button className="app-button-primary mt-3 w-full gap-2" type="button" disabled={busy !== null || draft.rationale.trim().length < 8 || approvalBlocked} onClick={() => void reviewCandidate(candidate)}>{busy === `candidate:${candidate.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Record decision</button></div>
+                </div>
+              </details>
+            );
+          })}
+          {!loading && visibleCandidates.length === 0 ? <p className="px-5 py-8 text-sm text-[var(--color-text-secondary)]">No candidates match the current search and status filter.</p> : null}
+        </div>
+      </div>
+
+      <div className="border-t border-[var(--color-border)]">
+        <div className="border-b border-[var(--color-border)] px-5 py-4"><p className="app-label">Commercial Exceptions</p><h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Resolve, accept risk, or preserve as open</h3><p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">Every decision keeps the original discrepancy and requires a reviewer rationale.</p></div>
+        <div className="divide-y divide-[var(--color-border)]">
+          {workspace.exceptions.map((exception) => {
+            const draft = exceptionDraft(exception.id);
+            const closureBlocked = draft.decision !== "keep_open" && !evidenceApproved;
+            const dependency = exception.code === "DEPENDENCY_UNRESOLVED";
+            const targetRequired = dependency && draft.decision === "resolve";
+            return (
+              <div key={exception.id} className="grid min-w-0 gap-4 px-5 py-4 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.65fr)]">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <AlertTriangle className={`h-4 w-4 ${exception.severity === "blocking" || exception.severity === "high" ? "text-rose-600 dark:text-rose-300" : "text-amber-600 dark:text-amber-300"}`} />
+                    <span className="font-semibold text-[var(--color-text-primary)]">{humanize(exception.code)}</span>
+                    <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClasses(exception.status)}`}>{humanize(exception.status)}</span>
+                  </div>
+                  <p className="mt-2 font-mono text-xs text-[var(--color-text-muted)]">{exception.part_number ?? "Catalog-level exception"}</p>
+                  <dl className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2">
+                    {Object.entries(exception.details).map(([key, value]) => <div key={key}><dt className="text-xs text-[var(--color-text-muted)]">{humanize(key)}</dt><dd className="mt-1 break-words text-sm text-[var(--color-text-secondary)]">{displayValue(value)}</dd></div>)}
+                  </dl>
+                </div>
+                <div className="min-w-0">
+                  <select aria-label={`Disposition for exception ${exception.code}`} className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm" value={draft.decision} onChange={(event) => setExceptionDrafts((current) => ({ ...current, [exception.id]: { ...draft, decision: event.target.value as CommercialExceptionDecision } }))}>
+                    <option value="keep_open">Keep open</option>
+                    <option value="resolve">Resolve with evidence</option>
+                    {!dependency ? <option value="accept_risk">Accept documented risk</option> : null}
+                  </select>
+                  {targetRequired ? (
+                    <div className="mt-3">
+                      <label className="text-xs font-semibold text-[var(--color-text-secondary)]" htmlFor={`dependency-target-${exception.id}`}>Required OCI part number</label>
+                      <input id={`dependency-target-${exception.id}`} className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 font-mono text-sm uppercase" placeholder="B95702" value={draft.target_part_number ?? ""} onChange={(event) => setExceptionDrafts((current) => ({ ...current, [exception.id]: { ...draft, target_part_number: event.target.value.toUpperCase() } }))} />
+                      <p className="mt-1 text-xs leading-5 text-[var(--color-text-muted)]">The target must exist in this same official source set and have an approved candidate.</p>
+                    </div>
+                  ) : null}
+                  <textarea aria-label={`Rationale for exception ${exception.code}`} className="mt-3 min-h-20 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm" placeholder="Explain why this disposition is valid (minimum 8 characters)." value={draft.rationale} onChange={(event) => setExceptionDrafts((current) => ({ ...current, [exception.id]: { ...draft, rationale: event.target.value } }))} />
+                  {closureBlocked ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Evidence approval is required before closing or accepting this exception.</p> : null}
+                  <button className="app-button-secondary mt-3 w-full gap-2" type="button" disabled={busy !== null || draft.rationale.trim().length < 8 || closureBlocked || (targetRequired && !draft.target_part_number?.trim())} onClick={() => void reviewException(exception.id)}>
+                    {busy === `exception:${exception.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                    Record disposition
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {!loading && workspace.exceptions.length === 0 ? <p className="px-5 py-8 text-sm text-[var(--color-text-secondary)]">No commercial exceptions are recorded for this document.</p> : null}
+        </div>
+      </div>
+
+      <div className="grid min-w-0 border-t border-[var(--color-border)] xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <div className="min-w-0 border-b border-[var(--color-border)] xl:border-b-0 xl:border-r">
+          <div className="border-b border-[var(--color-border)] px-5 py-4"><p className="app-label">Release History</p><h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Global governed commercial baselines</h3><p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">Each release separates total catalog disposition from quote-ready coverage and current App mappings.</p></div>
+          <div className="divide-y divide-[var(--color-border)]">
+            {workspace.releases.map((release) => {
+              const coverage = commercialReleaseCoverage(release);
+              return (
+                <article key={release.id} className="min-w-0 px-5 py-4">
+                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0"><p className="break-words font-mono text-sm font-semibold text-[var(--color-text-primary)]">{release.version}</p><p className="mt-1 text-xs text-[var(--color-text-muted)]">{release.approved_at ? `Approved ${formatDate(release.approved_at)}` : "Not approved"}</p></div>
+                    <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusClasses(release.status)}`}>{humanize(release.status)}</span><span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusClasses(release.validation_status)}`}>{humanize(release.validation_status)}</span><span className="app-theme-chip">{coverage.isGlobal ? "Global catalog" : "Legacy App scope"}</span></div>
+                  </div>
+                  <dl className="mt-4 grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-lg bg-[var(--color-border)] lg:grid-cols-4">
+                    {[["Catalog total", coverage.catalogTotal], ["Quote-ready", coverage.quoteReady], ["Blocked", coverage.blocked], ["BOM-enabled", coverage.appBomEnabled]].map(([label, value]) => <div key={String(label)} className="min-w-0 bg-[var(--color-surface-2)] px-3 py-3"><dt className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{label}</dt><dd className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">{formatNumber(Number(value))}</dd></div>)}
+                  </dl>
+                  <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs text-[var(--color-text-muted)]"><span>{release.open_exception_count} open exception{release.open_exception_count === 1 ? "" : "s"} in release scope</span><span>{coverage.excludedMappings} reviewed App mapping{coverage.excludedMappings === 1 ? "" : "s"} excluded from BOM</span>{coverage.blockedParts.length ? <span className="max-w-full break-words font-mono" title={coverage.blockedParts.join(", ")}>{coverage.blockedParts.length} blocked SKU{coverage.blockedParts.length === 1 ? "" : "s"} retained with reasons</span> : null}</div>
+                </article>
+              );
+            })}
+            {!loading && workspace.releases.length === 0 ? <p className="px-5 py-6 text-sm text-[var(--color-text-secondary)]">No commercial release has been promoted.</p> : null}
+          </div>
+        </div>
+        <div className="min-w-0 p-5"><ShieldCheck className="h-5 w-5 text-[var(--color-accent)]" /><p className="app-label mt-3">Catalog Review Gate</p><h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Finalize catalog review</h3><p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">Approve only unambiguous SKUs backed by passing deterministic fixtures. Every other SKU is kept visible and blocked with governed reasons.</p><div className="mt-3 border-l-2 border-[var(--color-accent)] bg-[var(--color-surface-2)] px-3 py-2.5 text-xs leading-5 text-[var(--color-text-secondary)]">This action does not resolve exceptions and does not modify any BOM, price total, or deployment scenario.</div><label className="mt-4 block text-xs font-semibold text-[var(--color-text-secondary)]" htmlFor="commercial-finalize-rationale">Review rationale</label><textarea id="commercial-finalize-rationale" className="mt-2 min-h-24 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-primary)]" placeholder="Explain why the deterministic catalog disposition can be recorded (minimum 8 characters)." value={finalizeRationale} onChange={(event) => setFinalizeRationale(event.target.value)} /><button className="app-button-primary mt-3 w-full gap-2" type="button" disabled={!workspace.document || !evidenceApproved || finalizeRationale.trim().length < 8 || busy !== null} onClick={() => void finalizeCatalogReview()}>{busy === "finalize-catalog-review" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}Finalize catalog review</button>{workspace.document && !evidenceApproved ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Approve official evidence before finalizing catalog review.</p> : null}<div className="my-5 border-t border-[var(--color-border)]" /><PackageCheck className="h-5 w-5 text-[var(--color-accent)]" /><p className="app-label mt-3">Promotion Gate</p><h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Promote reviewed release</h3><p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">The backend verifies terminal catalog dispositions, approved official evidence, quote-ready rules, App mappings, and scoped exceptions atomically. A blocked promotion changes nothing.</p><button className="app-button-secondary mt-4 w-full gap-2" type="button" disabled={!workspace.document || !evidenceApproved || busy !== null} onClick={() => workspace.document ? void runAction("promote-release", () => api.promoteCommercialRelease(workspace.document!.id), "Commercial release promoted and ready for governed BOM use.") : undefined}>{busy === "promote-release" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}Promote release</button></div>
+      </div>
+    </section>
+  );
+}
+
 function statusClasses(status: string): string {
-  if (["approved", "completed", "active", "passed", "promoted", "no_change", "not_required"].includes(status)) {
+  if (["approved", "approved_evidence", "accepted_risk", "completed", "active", "passed", "promoted", "resolved", "no_change", "not_required"].includes(status)) {
     return "border-emerald-400/45 text-emerald-700 dark:text-emerald-300";
   }
   if (["failed", "retired", "blocked"].includes(status)) {
@@ -245,6 +649,8 @@ export function PricingAdminPanel(): JSX.Element {
 
   return (
     <div className="min-w-0 space-y-5">
+      <CommercialCatalogWorkspace />
+
       {error ? (
         <div role="alert" className="rounded-lg border border-rose-400/45 bg-[var(--color-surface-2)] p-4 text-sm text-rose-700 dark:text-rose-300">
           {error}

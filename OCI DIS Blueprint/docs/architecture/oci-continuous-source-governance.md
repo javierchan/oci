@@ -7,15 +7,17 @@ new public-list BOMs are generated. The process detects source drift, preserves 
 retrieved evidence, evaluates the impact on governed Service Products, and executes
 deterministic quotation fixtures before a changed catalog can be promoted.
 
-This control does not automatically broaden product coverage. M51 remains the
-separate program for governing every public OCI SKU. This workflow keeps the
-currently governed families current and prevents stale or unverified evidence from
-being used as if it were approved.
+This control does not automatically make a blocked product quote-ready. M51 established
+the global governed baseline for every persisted public OCI candidate, while the App
+BOM continues to use its exact approved allowlist. This workflow keeps both the global
+dispositions and the narrower BOM mappings current, reports source drift and excluded
+SKUs explicitly, and prevents stale or unverified evidence from being used as if it
+were approved.
 
 ## Verified Sources
 
-Each verification job retrieves the following four HTTPS sources as one atomic
-validation unit:
+Commercial catalog verification retrieves the following four HTTPS sources as one
+atomic validation unit:
 
 | Source | Purpose |
 |---|---|
@@ -28,13 +30,49 @@ Every response must be a non-empty JSON object from an allowlisted Oracle hostna
 The job retries transient source failures three times. A partial retrieval fails the
 whole job and the previous approved evidence remains authoritative.
 
+Service Product verification is a separate, complementary control. It retrieves the
+current allowlisted Oracle documentation registered by the governed Service Products;
+the source count is therefore dynamic rather than fixed at four. It detects changes to
+service limits, billing granularity, quotas, adapters, interoperability, and product
+guidance without treating a document hash change as an approved runtime rule.
+
+## Rule Ownership Boundary
+
+Runtime behavior is deterministic. `ServiceLimit` records and the normalized service
+rule registry own each rule's applicability, constraint kind, enforcement action,
+unit, and currently approved value. Canvas validation, recalculation, Dashboard,
+Architecture Review, BOM evidence, and exports consume that same registry.
+
+The Official Source Governance Agent is an evidence and proposal layer:
+
+1. it retrieves only registered Oracle-controlled sources;
+2. it extracts a candidate value, unit, citation, retrieval time, and source hash;
+3. it cannot change deterministic applicability, constraint kind, or enforcement;
+4. deterministic semantic fixtures validate the candidate before review;
+5. an administrator explicitly accepts or rejects the finding;
+6. only an accepted finding updates the governed value and audit trail.
+
+The agent also reports the latest commercial release scope and candidates whose
+generator or quotation fixture requires deterministic revalidation. It remains
+read-only: revalidation, candidate disposition, exception closure, and release
+promotion are explicit Admin actions. A separate engineering-time Commercial
+Consistency Test Agent validates implementation and fixtures against documentary
+evidence; it is not registered in the product runtime and cannot mutate App data.
+
+For example, Oracle Integration's 50 KB rule is governed as billing granularity and
+uses `calculate` enforcement: a larger payload consumes multiple message packs. It is
+not a universal payload rejection threshold. Adapter-specific hard limits remain
+separate `hard_limit` rules and block only when their governed applicability matches.
+This separation prevents an LLM, a source wording change, or a duplicated constant in
+application code from silently changing architecture decisions.
+
 ## Runtime Flow
 
 1. Celery Beat invokes `execute_scheduled_oci_governance_task` once per configured
    interval.
 2. The task obtains a Redis lease. A concurrent run exits as `skipped` and does not
    create duplicate evidence.
-3. The worker retrieves the four official sources concurrently and normalizes the
+3. The worker retrieves the four commercial sources concurrently and normalizes the
    price payload through the existing pricing service.
 4. The raw source payloads are written to Object Storage under
    `governance/oci-sources/jobs/{job_id}/` with their SHA-256 hashes and record counts.
@@ -107,7 +145,8 @@ Daily operations should confirm:
 
 1. the latest scheduled change set reached `no_change`, `ready_for_review`, or
    `promoted`;
-2. four source artifacts exist in Object Storage;
+2. four commercial source artifacts exist in Object Storage and the latest scheduled
+   Service Product verification has a terminal result for its registered Oracle sources;
 3. regression coverage is 100%;
 4. blocked or pending-review changes have an owner and decision;
 5. the latest approved evidence remains inside the BOM freshness window;

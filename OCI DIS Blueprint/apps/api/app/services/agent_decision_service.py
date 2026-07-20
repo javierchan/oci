@@ -44,6 +44,19 @@ def _text(value: object, default: str = "") -> str:
     return str(value).strip() if value is not None and str(value).strip() else default
 
 
+def _number(value: object) -> float:
+    """Return a bounded JSON number for deterministic presentation."""
+
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
 DecisionStatus = Literal["ready", "review", "blocked"]
 DecisionConfidence = Literal["high", "medium", "low"]
 
@@ -221,6 +234,89 @@ def _review_workspace(
 def _bom_workspace(
     evidence: dict[str, object], project_id: str | None
 ) -> tuple[AgentDecisionWorkspace, list[AgentProposal]]:
+    current_bom = _dict(evidence.get("current_bom"))
+    if current_bom.get("ready_for_use") is True:
+        services = _strings(evidence.get("detected_services"), limit=24)
+        environments = _strings(current_bom.get("environment_names"), limit=12)
+        snapshot_id = _text(current_bom.get("snapshot_id"))
+        scenario_id = _text(current_bom.get("scenario_id"))
+        currency = _text(current_bom.get("currency"), "USD")
+        contract_total = _number(current_bom.get("contract_total"))
+        baseline = AgentDecisionAlternative(
+            id="keep-published-baseline",
+            title="Keep the published baseline",
+            summary=(
+                f"The current approved scenario has 100% coverage across {current_bom.get('line_item_count', 0)} "
+                f"line(s) and {len(environments)} environment(s); contract total is {currency} {contract_total:,.2f}."
+            ),
+            status="ready",
+            recommended=True,
+            changes=["No replacement scenario is required while this BOM remains aligned with the latest technical snapshot."],
+            implementation_steps=["Use the published baseline for the current planning decision and preserve its immutable provenance."],
+            validation_steps=["Regenerate only after architecture, environment timing, SKU selection, or approved price evidence changes."],
+            missing_inputs=[],
+            impact=_impact(
+                commercial=["Preserves the approved contract estimate without introducing an unsupported alternative."],
+                governance=["Keeps the published BOM and its approved scenario as the authoritative commercial planning evidence."],
+            ),
+            evidence_ids=[item for item in (snapshot_id, scenario_id) if item],
+            confidence="high",
+            action_href=f"/projects/{project_id}/bom" if project_id else None,
+        )
+        phased = AgentDecisionAlternative(
+            id="review-phased-rollout",
+            title="Review a phased rollout alternative",
+            summary="Create a separate comparison only when delivery dates or product activation differ from the published baseline.",
+            status="review",
+            recommended=False,
+            changes=["Model changed activation months or real-unit quantities in a new scenario; do not overwrite the published BOM."],
+            implementation_steps=["Clone the approved scenario, change only evidenced rollout inputs, then generate a separate BOM."],
+            validation_steps=["Compare monthly ramp, peak, steady state, and contract total with the published baseline."],
+            missing_inputs=[],
+            impact=_impact(commercial=["Quantifies timing effects without presenting them as negotiated savings."]),
+            evidence_ids=[item for item in (snapshot_id, scenario_id) if item],
+            confidence="high",
+            action_href=f"/projects/{project_id}/bom" if project_id else None,
+        )
+        resilient = AgentDecisionAlternative(
+            id="review-availability-ready",
+            title="Review an availability alternative",
+            summary="Create a separate comparison when HA, DR, edition, or license posture changes by environment.",
+            status="review",
+            recommended=False,
+            changes=["Capture the changed resilience requirement in a new governed scenario."],
+            implementation_steps=["Clone the approved scenario and change only the affected environment and commercial variants."],
+            validation_steps=["Require approved SKU mappings and 100% coverage before comparing or publishing."],
+            missing_inputs=[],
+            impact=_impact(technical=["Separates resilience capacity from logical demand."], commercial=["Shows the deterministic cost delta of the availability decision."]),
+            evidence_ids=[item for item in (snapshot_id, scenario_id) if item],
+            confidence="high",
+            action_href=f"/projects/{project_id}/bom" if project_id else None,
+        )
+        return (
+            AgentDecisionWorkspace(
+                workspace_type="commercial",
+                goal="Use the current published estimate or compare an explicitly changed deployment alternative.",
+                current_state=(
+                    f"Published BOM is current with {current_bom.get('coverage_pct', 0)}% coverage, "
+                    f"{current_bom.get('line_item_count', 0)} line(s), and no unresolved lines."
+                ),
+                recommendation_basis="The recommendation uses the current technical snapshot, approved deployment scenario, immutable BOM lines, and publication state.",
+                recommended_alternative_id=baseline.id,
+                alternatives=[baseline, phased, resilient],
+                outcome_metrics=[
+                    {"key": "coverage", "label": "Commercial coverage", "value": current_bom.get("coverage_pct")},
+                    {"key": "lines", "label": "BOM lines", "value": current_bom.get("line_item_count")},
+                    {"key": "questions", "label": "Client inputs remaining", "value": 0},
+                ],
+                post_validation=[
+                    "Confirm the published BOM still references the latest technical snapshot.",
+                    "Regenerate after any approved architecture, scenario, SKU, or price-evidence change.",
+                    "Preserve comparisons as separate immutable snapshots.",
+                ],
+            ),
+            [],
+        )
     draft = _dict(evidence.get("draft"))
     services = _strings(evidence.get("detected_services"), limit=24)
     questions = _strings(evidence.get("required_questions"), limit=12)

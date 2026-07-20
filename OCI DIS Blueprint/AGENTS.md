@@ -569,6 +569,55 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       API schema checks, Ruff, mypy, frontend lint/build,
       OpenAPI, production Docker migration, and light/dark browser validation pass
 
+### M56 — Governed External Workbook Intake
+- [x] Stage any non-official workbook as immutable source evidence before it can
+      create Catalog, QA, topology, dashboard, or BOM records.
+- [x] Require an explicit, auditable source-column contract with evidence-only
+      handling for unmapped values and user decisions for ambiguous semantics.
+- [x] Let the Import Correction Agent explain mapping risks and minimum business
+      decisions, without selecting or approving mappings on the user's behalf.
+- [x] Support reusable, project-scoped mapping profiles only after approval and
+      only for an exact header fingerprint.
+- [x] Preserve external workbook formulas as non-executable evidence, classify
+      derived-demand and commercial expressions, and protect formula rows or
+      columns from silently populating operational fields.
+- [x] Restore the newest unresolved mapping review, source rows, questions, and
+      agent guidance when the user returns to Import without an explicit batch ID.
+- [x] **Exit criteria**: migration head `20260717_0039`; external workbooks cannot materialize without approval;
+      approved mappings materialize once; official templates retain direct import;
+      API/frontend tests, migration, Docker workflow, and browser validation pass.
+
+### M57 — Active Project Official Template Export
+- [x] Export every active project's governed catalog directly into the canonical
+      en-US offline capture workbook rather than creating a second export format.
+- [x] Preserve all defined integrations, including `TBQ=N` technical-only rows,
+      while retaining the same governed headers, validations, documentation,
+      patterns, service evidence, and preflight sheets used for offline capture.
+- [x] Pre-populate project-specific client catalog suggestions and expand the
+      capture range when a project's catalog exceeds the standard template capacity.
+- [x] Block archived projects from export to prevent an offline edit path outside
+      the active-project governance lifecycle.
+- [x] Expose project export in a distinct Offline Export area, separate from the
+      blank capture template and upload steps, and validate download, round-trip
+      semantics, runtime migration state, frontend, and browser behavior.
+
+### M58 — Governed Service Rule Semantics + Current BOM Agent Context
+- [x] Classify every active Service Product rule with deterministic applicability,
+      constraint kind, enforcement, unit, and approved value in one normalized registry.
+- [x] Treat OIC 50 KB as calculable billing granularity rather than a universal
+      payload hard limit; preserve adapter-specific hard limits as separate rules.
+- [x] Let Service Verification retrieve only allowlisted Oracle evidence and propose
+      value or unit changes while preventing it from changing applicability,
+      constraint kind, enforcement, or runtime state without Admin acceptance.
+- [x] Make Canvas, recalculation, Dashboard, Architecture Review, BOM evidence, and
+      exports consume the same governed service-rule registry.
+- [x] Resolve the current approved or published BOM before the BOM Scenario Agent
+      creates alternatives; a current 100%-covered BOM produces a keep-baseline
+      recommendation, zero invented client questions, and no mutation proposal.
+- [x] **Exit criteria**: migration head `20260717_0040`; focused and full backend,
+      calc-engine, pricing-engine, frontend, OpenAPI, Docker, real agent, BOM API,
+      responsive browser, and console validation pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector
@@ -672,34 +721,43 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       OpenAPI, Node 26 production build, Docker runtime, and responsive browser
       validation pass
 
-### M51 — Full OCI Public Catalog Commercial Coverage (Planned)
-- [ ] Import the complete official products, metrics, and product-presets sources
+### M51 — Full OCI Public Catalog Commercial Coverage
+- [x] Import the complete official products, metrics, and product-presets sources
       as one atomic immutable catalog snapshot; partial refreshes must retain the
       previous approved snapshot
-- [ ] Generate versioned draft mappings by deterministic price family and metric;
+- [x] Generate versioned draft mappings by deterministic price family and metric;
       every source SKU must receive one candidate or an explicit unmapped exception
-- [ ] Automatically classify every product as directly metered, included
+- [x] Automatically classify every product as directly metered, included
       non-billable, dependent entitlement, external rate card, or blocked pending
       explicit input
-- [ ] Route ambiguous BYOL, edition, entitlement, private-rate, dependency, tier,
+- [x] Route ambiguous BYOL, edition, entitlement, private-rate, dependency, tier,
       metric, and source-drift cases to auditable human review; generated mappings
       must never self-approve
-- [ ] Execute independent quotation fixtures for boundaries, tiers, proration,
+- [x] Execute independent quotation fixtures for boundaries, tiers, proration,
       Free Tier, predicates, environments, ramps, provenance, and exports before
       approving each rule family
-- [ ] Govern all public `HOUR`, `HOUR_UTILIZED`, `MONTH`, `DAY`, and `PER-ITEM`
+- [x] Govern all public `HOUR`, `HOUR_UTILIZED`, `MONTH`, `DAY`, and `PER-ITEM`
       products, including tiers, proration, minimums, Free Tier, dependencies,
       editions, licenses, and explicit-input requirements
-- [ ] Extend Library, Pricing, BOM, exports, assistant evidence, agents, and audit
+- [x] Extend Library, Pricing, BOM, exports, assistant evidence, agents, and audit
       to use one consistent full-catalog product identity without adding irrelevant
       SKUs to project-scoped architecture flows
-- [ ] **Planned exit criteria**: every public SKU has an approved disposition or
+- [x] **Exit criteria**: every public SKU has an approved disposition or
       truthful blocked state; source counts and hashes reconcile; deterministic
       formula-family, tier, migration, backend, frontend, OpenAPI, export, E2E,
       visual, security, and production-image gates pass; OCI Pricing review records
       approval or an explicit exception
-- [ ] **Estimated autonomous delivery**: 8–12 working days / 60–90 effective hours,
-      plus a focused one-to-two-day OCI Pricing review. See
+- [x] Publish a truthful App-scoped release for 27 of 32 currently mapped SKUs;
+      keep `B88299`, `B88406`, `B92993`, `B93496`, and `B93497` excluded until their
+      official commercial dependencies are resolved
+- [x] Add an independent Commercial Consistency Test Agent contract, separate from
+      the App's read-only Official Source Governance Agent, to validate implementation
+      semantics against documentary evidence and recommend recurring deterministic controls
+- [x] Promote global release `commercial-20260720043236` with terminal dispositions
+      for all 1,182 candidates: 229 quote-ready and 953 truthfully blocked with
+      governed reasons; retain the exact App BOM allowlist at 27 of 32 mapped SKUs
+- [x] Record the independent OCI Pricing review as
+      `codex-m51-global-catalog-review` and reconcile the completion evidence in
       `docs/architecture/oci-full-catalog-commercial-coverage-plan.md`
 
 ### M52 — Governed Pattern Certification
@@ -774,7 +832,7 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       those columns in historical workbooks
 - [x] Publish the governed offline workbook as en-US template `v3.1.0`, including
       English sheet names, headers, definitions, examples, validations, and lists
-- [ ] **Exit criteria**: migration head `20260717_0036`; calc-engine, API,
+- [x] **Exit criteria**: migration head `20260717_0036`; calc-engine, API,
       frontend, OpenAPI, production Docker, round-trip current/legacy workbook,
       BOM eligibility, and responsive browser validation pass
 

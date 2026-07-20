@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, UUIDMixin
@@ -59,6 +60,293 @@ class PriceCatalogSnapshot(Base, UUIDMixin, TimestampMixin):
     approved_by: Mapped[Optional[str]] = mapped_column(String(100))
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     snapshot_metadata: Mapped[dict[str, object]] = mapped_column("metadata", JSON, nullable=False, default=dict)
+
+
+class CommercialSku(Base, UUIDMixin, TimestampMixin):
+    """Stable OCI part-number identity shared by price, document, and mapping evidence."""
+
+    __tablename__ = "commercial_skus"
+    __table_args__ = (
+        UniqueConstraint("part_number", name="uq_commercial_sku_part_number"),
+        Index("ix_commercial_sku_lifecycle_category", "lifecycle_status", "service_category"),
+    )
+
+    part_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(1000), nullable=False)
+    service_category: Mapped[Optional[str]] = mapped_column(String(500))
+    source_product_id: Mapped[Optional[str]] = mapped_column(String(100))
+    lifecycle_status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+    identity_metadata: Mapped[dict[str, object]] = mapped_column("metadata", JSON, nullable=False, default=dict)
+
+
+class CommercialDocumentSnapshot(Base, UUIDMixin, TimestampMixin):
+    """Immutable official commercial document stored as governed evidence."""
+
+    __tablename__ = "commercial_document_snapshots"
+    __table_args__ = (
+        UniqueConstraint("document_kind", "content_hash", name="uq_commercial_document_kind_hash"),
+        Index("ix_commercial_document_kind_status", "document_kind", "status"),
+    )
+
+    document_kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_url: Mapped[Optional[str]] = mapped_column(Text)
+    original_filename: Mapped[str] = mapped_column(String(500), nullable=False)
+    storage_reference: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    parser_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    record_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    effective_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    supersedes_snapshot_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("commercial_document_snapshots.id")
+    )
+    manifest: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class SkuCommercialTerm(Base, UUIDMixin, TimestampMixin):
+    """Normalized commercial terms extracted from one official document row."""
+
+    __tablename__ = "sku_commercial_terms"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_snapshot_id",
+            "source_sheet",
+            "source_row",
+            "part_number",
+            name="uq_sku_term_document_location",
+        ),
+        Index("ix_sku_commercial_terms_part_status", "part_number", "status"),
+    )
+
+    document_snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("commercial_document_snapshots.id", ondelete="CASCADE"), nullable=False
+    )
+    commercial_sku_id: Mapped[str] = mapped_column(ForeignKey("commercial_skus.id"), nullable=False)
+    price_catalog_snapshot_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("price_catalog_snapshots.id")
+    )
+    part_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    service_name: Mapped[str] = mapped_column(String(1000), nullable=False)
+    service_category: Mapped[Optional[str]] = mapped_column(String(500))
+    commercial_prices: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    metric_name: Mapped[Optional[str]] = mapped_column(String(500))
+    price_type: Mapped[Optional[str]] = mapped_column(String(50))
+    allow_decimal_quantity: Mapped[Optional[bool]] = mapped_column(Boolean)
+    availability: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    additional_information: Mapped[Optional[str]] = mapped_column(Text)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    disposition: Mapped[str] = mapped_column(String(40), default="blocked_input_required", nullable=False)
+    family_key: Mapped[Optional[str]] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    source_sheet: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_row: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_cells: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    extraction_metadata: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class SkuCommercialConstraint(Base, UUIDMixin, TimestampMixin):
+    """One typed minimum, increment, duration, or eligibility constraint."""
+
+    __tablename__ = "sku_commercial_constraints"
+    __table_args__ = (
+        UniqueConstraint(
+            "term_id", "constraint_type", "scope", "source_cell",
+            name="uq_sku_commercial_constraint_source",
+        ),
+        Index("ix_sku_commercial_constraint_term_status", "term_id", "status"),
+    )
+
+    term_id: Mapped[str] = mapped_column(
+        ForeignKey("sku_commercial_terms.id", ondelete="CASCADE"), nullable=False
+    )
+    constraint_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    scope: Mapped[str] = mapped_column(String(80), nullable=False)
+    numeric_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(28, 8))
+    text_value: Mapped[Optional[str]] = mapped_column(Text)
+    unit: Mapped[Optional[str]] = mapped_column(String(100))
+    behavior: Mapped[Optional[str]] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(32), default="observed", nullable=False)
+    source_cell: Mapped[str] = mapped_column(String(50), nullable=False)
+    evidence_metadata: Mapped[dict[str, object]] = mapped_column(
+        "metadata", JSON, nullable=False, default=dict
+    )
+
+
+class SkuCommercialRelationship(Base, UUIDMixin, TimestampMixin):
+    """Entitlement, prerequisite, dependency, or inclusion linked to a SKU."""
+
+    __tablename__ = "sku_commercial_relationships"
+    __table_args__ = (
+        Index("ix_sku_commercial_relationship_part_type", "part_number", "relationship_type"),
+    )
+
+    document_snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("commercial_document_snapshots.id", ondelete="CASCADE"), nullable=False
+    )
+    source_term_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("sku_commercial_terms.id", ondelete="CASCADE")
+    )
+    source_commercial_sku_id: Mapped[str] = mapped_column(ForeignKey("commercial_skus.id"), nullable=False)
+    target_commercial_sku_id: Mapped[Optional[str]] = mapped_column(ForeignKey("commercial_skus.id"))
+    part_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    relationship_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_part_number: Mapped[Optional[str]] = mapped_column(String(50))
+    target_name: Mapped[str] = mapped_column(Text, nullable=False)
+    guidance: Mapped[Optional[str]] = mapped_column(Text)
+    resolution_status: Mapped[str] = mapped_column(String(32), default="unresolved", nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    source_sheet: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_row: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_cell: Mapped[Optional[str]] = mapped_column(String(50))
+
+
+class CommercialRuleFamily(Base, UUIDMixin, TimestampMixin):
+    """Reusable deterministic formula contract for equivalent OCI SKU semantics."""
+
+    __tablename__ = "commercial_rule_families"
+    __table_args__ = (
+        UniqueConstraint("family_key", "version", name="uq_commercial_rule_family_version"),
+    )
+
+    family_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    version: Mapped[str] = mapped_column(String(50), nullable=False)
+    formula_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    metric_pattern: Mapped[str] = mapped_column(String(500), nullable=False)
+    price_types: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    quantity_behavior: Mapped[str] = mapped_column(String(32), nullable=False)
+    quantity_increment: Mapped[Decimal] = mapped_column(Numeric(28, 8), nullable=False)
+    minimum_quantity: Mapped[Decimal] = mapped_column(Numeric(28, 8), nullable=False)
+    aggregation_window: Mapped[str] = mapped_column(String(40), nullable=False)
+    proration_policy: Mapped[str] = mapped_column(String(40), nullable=False)
+    quote_rounding: Mapped[str] = mapped_column(String(40), nullable=False)
+    generator_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    fixture_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    evidence: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class CommercialMappingCandidate(Base, UUIDMixin, TimestampMixin):
+    """Generated SKU mapping proposal that requires an explicit disposition."""
+
+    __tablename__ = "commercial_mapping_candidates"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_snapshot_id", "part_number", "generator_version",
+            name="uq_commercial_candidate_document_sku_generator",
+        ),
+        Index("ix_commercial_candidate_status_class", "status", "classification"),
+    )
+
+    document_snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("commercial_document_snapshots.id", ondelete="CASCADE"), nullable=False
+    )
+    commercial_sku_id: Mapped[str] = mapped_column(ForeignKey("commercial_skus.id"), nullable=False)
+    term_id: Mapped[Optional[str]] = mapped_column(ForeignKey("sku_commercial_terms.id"))
+    price_item_id: Mapped[Optional[str]] = mapped_column(ForeignKey("price_items.id"))
+    existing_mapping_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("service_product_sku_mappings.id")
+    )
+    part_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    proposed_service_id: Mapped[Optional[str]] = mapped_column(String(80))
+    family_key: Mapped[Optional[str]] = mapped_column(String(100))
+    classification: Mapped[str] = mapped_column(String(40), nullable=False)
+    proposed_mapping: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    confidence: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    generator_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="pending_review", nullable=False)
+    reasons: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(100))
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class CommercialException(Base, UUIDMixin, TimestampMixin):
+    """Auditable ambiguity or source conflict that blocks automatic publication."""
+
+    __tablename__ = "commercial_exceptions"
+    __table_args__ = (
+        Index("ix_commercial_exception_status_severity", "status", "severity"),
+    )
+
+    document_snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("commercial_document_snapshots.id", ondelete="CASCADE"), nullable=False
+    )
+    candidate_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("commercial_mapping_candidates.id", ondelete="CASCADE")
+    )
+    part_number: Mapped[Optional[str]] = mapped_column(String(50))
+    exception_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="open", nullable=False)
+    details: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    proposed_resolution: Mapped[Optional[str]] = mapped_column(Text)
+    decision_rationale: Mapped[Optional[str]] = mapped_column(Text)
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(100))
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class CommercialEvidenceReference(Base, UUIDMixin, TimestampMixin):
+    """Fine-grained source pointer supporting a commercial decision."""
+
+    __tablename__ = "commercial_evidence_references"
+    __table_args__ = (
+        Index("ix_commercial_evidence_entity", "entity_type", "entity_id"),
+    )
+
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    source_kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    document_snapshot_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("commercial_document_snapshots.id", ondelete="CASCADE")
+    )
+    governance_artifact_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("governance_source_artifacts.id", ondelete="CASCADE")
+    )
+    source_url: Mapped[Optional[str]] = mapped_column(Text)
+    source_sheet: Mapped[Optional[str]] = mapped_column(String(255))
+    source_row: Mapped[Optional[int]] = mapped_column(Integer)
+    source_cell: Mapped[Optional[str]] = mapped_column(String(50))
+    excerpt_hash: Mapped[Optional[str]] = mapped_column(String(128))
+    evidence_metadata: Mapped[dict[str, object]] = mapped_column("metadata", JSON, nullable=False, default=dict)
+
+
+class CommercialRelease(Base, UUIDMixin, TimestampMixin):
+    """Atomic approved combination of prices, documents, mappings, and rule families."""
+
+    __tablename__ = "commercial_releases"
+    __table_args__ = (
+        UniqueConstraint("version", name="uq_commercial_release_version"),
+        Index("ix_commercial_release_status_validation", "status", "validation_status"),
+    )
+
+    version: Mapped[str] = mapped_column(String(80), nullable=False)
+    price_catalog_snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("price_catalog_snapshots.id"), nullable=False
+    )
+    document_snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("commercial_document_snapshots.id"), nullable=False
+    )
+    governance_change_set_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("governance_change_sets.id")
+    )
+    mapping_set_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    rule_family_set_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    evidence_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    validation_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    open_exception_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    release_metadata: Mapped[dict[str, object]] = mapped_column("metadata", JSON, nullable=False, default=dict)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class GovernanceChangeSet(Base, UUIDMixin, TimestampMixin):
@@ -221,6 +509,9 @@ class DeploymentScenario(Base, UUIDMixin, TimestampMixin):
     currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
     region: Mapped[str] = mapped_column(String(100), default="global", nullable=False)
     price_mode: Mapped[str] = mapped_column(String(50), default="public_list", nullable=False)
+    commitment_model: Mapped[str] = mapped_column(
+        String(32), default="pay_as_you_go", nullable=False
+    )
     technical_snapshot_id: Mapped[str] = mapped_column(ForeignKey("volumetry_snapshots.id"), nullable=False)
     contract_months: Mapped[int] = mapped_column(Integer, default=12, nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -315,6 +606,7 @@ class BomSnapshot(Base, UUIDMixin, TimestampMixin):
     price_catalog_snapshot_id: Mapped[str] = mapped_column(
         ForeignKey("price_catalog_snapshots.id"), nullable=False
     )
+    commercial_release_id: Mapped[Optional[str]] = mapped_column(ForeignKey("commercial_releases.id"))
     mapping_version: Mapped[str] = mapped_column(String(100), nullable=False)
     engine_version: Mapped[str] = mapped_column(String(50), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
@@ -352,6 +644,9 @@ class BomLineItem(Base, UUIDMixin, TimestampMixin):
     annual_amount: Mapped[float] = mapped_column(Numeric(24, 2, asdecimal=False), nullable=False)
     contract_amount: Mapped[float] = mapped_column(Numeric(24, 2, asdecimal=False), nullable=False)
     price_item_id: Mapped[Optional[str]] = mapped_column(ForeignKey("price_items.id"))
+    commercial_term_id: Mapped[Optional[str]] = mapped_column(ForeignKey("sku_commercial_terms.id"))
+    commercial_rule_family_id: Mapped[Optional[str]] = mapped_column(ForeignKey("commercial_rule_families.id"))
+    evidence_reference_ids: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
     formula: Mapped[str] = mapped_column(Text, nullable=False)
     inputs: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(String(50), default="priced", nullable=False)
@@ -376,6 +671,9 @@ class BomLinePeriod(Base, UUIDMixin, TimestampMixin):
     unit_price: Mapped[float] = mapped_column(Numeric(24, 10, asdecimal=False), nullable=False)
     amount: Mapped[float] = mapped_column(Numeric(24, 2, asdecimal=False), nullable=False)
     selected_price_item_id: Mapped[Optional[str]] = mapped_column(ForeignKey("price_items.id"))
+    commercial_term_id: Mapped[Optional[str]] = mapped_column(ForeignKey("sku_commercial_terms.id"))
+    commercial_rule_family_id: Mapped[Optional[str]] = mapped_column(ForeignKey("commercial_rule_families.id"))
+    evidence_reference_ids: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
     formula: Mapped[str] = mapped_column(Text, nullable=False)
     inputs: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(String(50), nullable=False)

@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { Breadcrumb } from "@/components/breadcrumb";
 import { ImportUpload } from "@/components/import-upload";
 import { api } from "@/lib/api";
+import { selectImportReviewBatch } from "@/lib/import-selection";
 import { isProjectNotFoundError } from "@/lib/project-errors";
 
 type ProjectImportPageProps = {
@@ -32,13 +33,15 @@ export default async function ProjectImportPage({
     }
     throw error;
   }
-  const [imports, selectedRows, qualityAssistant] = await Promise.all([
-    api.listImports(projectId),
-    resolvedSearchParams.batch_id
-      ? api.listImportRows(projectId, resolvedSearchParams.batch_id, { page: 1, page_size: 200 })
+  const imports = await api.listImports(projectId);
+  const selectedBatch = selectImportReviewBatch(imports.batches, resolvedSearchParams.batch_id);
+  const selectedBatchId = selectedBatch?.id ?? null;
+  const [selectedRows, qualityAssistant] = await Promise.all([
+    selectedBatchId
+      ? api.listImportRows(projectId, selectedBatchId, { page: 1, page_size: 1000 })
       : Promise.resolve(null),
-    resolvedSearchParams.batch_id
-      ? api.getImportQualityAssistant(projectId, resolvedSearchParams.batch_id).catch(() => null)
+    selectedBatchId
+      ? api.getImportQualityAssistant(projectId, selectedBatchId).catch(() => null)
       : Promise.resolve(null),
   ]);
 
@@ -67,10 +70,12 @@ export default async function ProjectImportPage({
       <ImportUpload
         projectId={projectId}
         projectName={project.name}
+        projectStatus={project.status}
         initialBatches={imports.batches}
         initialRows={selectedRows}
         initialQualityAssistant={qualityAssistant}
-        initialSelectedBatchId={resolvedSearchParams.batch_id ?? null}
+        initialSelectedBatchId={selectedBatchId}
+        initialSelectedBatch={selectedBatch}
         highlightedRowNumber={resolvedSearchParams.row ? Number(resolvedSearchParams.row) : null}
       />
     </div>

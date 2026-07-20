@@ -7,9 +7,15 @@ type DashboardList = { snapshots: Array<{ snapshot_id: string }> };
 type ProductFootprint = {
   captured_product_count: number;
   represented_product_count: number;
+  external_dependency_count: number;
+  selection_required_count: number;
   rows_with_products: number;
   total_rows: number;
-  products: Array<{ tool_key: string; service_id: string | null }>;
+  products: Array<{
+    tool_key: string;
+    service_id: string | null;
+    resolution_status: "verified_product" | "included_or_dependent" | "external_dependency" | "product_selection_required";
+  }>;
 };
 type DashboardSnapshot = { charts: { product_footprint: ProductFootprint } };
 
@@ -44,13 +50,13 @@ async function findDashboardWithProducts(
   throw new Error("E2E requires one Dashboard snapshot with captured products");
 }
 
-test("represents every captured product and standardizes Dashboard actions", async ({ page, request }) => {
+test("resolves captured architecture components and standardizes Dashboard actions", async ({ page, request }) => {
   const { projectId, footprint } = await findDashboardWithProducts(request);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/projects/${projectId}`);
 
-  await expect(page.getByRole("region", { name: "Every product used in the architecture" })).toBeVisible();
-  await expect(page.getByText(`${footprint.represented_product_count} of ${footprint.captured_product_count} represented`)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Every architecture component captured" })).toBeVisible();
+  await expect(page.getByText(`${footprint.represented_product_count} of ${footprint.captured_product_count} classified`)).toBeVisible();
   await expect(page.getByText(`${footprint.rows_with_products} of ${footprint.total_rows} rows covered`)).toBeVisible();
   for (const product of footprint.products) {
     await expect(page.getByRole("heading", { name: product.tool_key, exact: true })).toBeVisible();
@@ -94,7 +100,7 @@ test("represents every captured product and standardizes Dashboard actions", asy
 
   const governedProduct = footprint.products.find((product) => product.service_id !== null);
   expect(governedProduct).toBeDefined();
-  await page.getByRole("link", { name: "Product evidence", exact: true }).first().click();
+  await page.getByRole("link", { name: "Open evidence", exact: true }).first().click();
   await expect(page).toHaveURL(new RegExp(`/admin/services/${governedProduct?.service_id}$`));
 });
 
@@ -126,7 +132,7 @@ test("keeps product coverage and actions usable on mobile", async ({ page, reque
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/projects/${projectId}`);
 
-  await expect(page.getByText(`${footprint.represented_product_count} of ${footprint.captured_product_count} represented`)).toBeVisible();
+  await expect(page.getByText(`${footprint.represented_product_count} of ${footprint.captured_product_count} classified`)).toBeVisible();
   await expect(page.getByRole("button", { name: "Recalculate", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Review project", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: footprint.products.at(-1)?.tool_key ?? "", exact: true })).toBeVisible();

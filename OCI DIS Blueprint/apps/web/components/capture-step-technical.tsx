@@ -62,6 +62,18 @@ export function CaptureStepTechnical({
           </select>
         </label>
         <label className="block">
+          <span className="app-label mb-2 block">Data Change Scope</span>
+          <select
+            value={form.base ?? ""}
+            onChange={(event) => updateField("base", event.target.value)}
+            className="app-input"
+          >
+            <option value="">Not specified</option>
+            <option value="Completo">Full</option>
+            <option value="Delta">Delta</option>
+          </select>
+        </label>
+        <label className="block">
           <span className="app-label mb-2 block">Payload per Execution (KB)</span>
           <input
             type="number"
@@ -78,6 +90,48 @@ export function CaptureStepTechnical({
             placeholder="0.0"
           />
         </label>
+        <label className="block">
+          <span className="app-label mb-2 block">Delivery Shape</span>
+          <select
+            value={form.is_fan_out === undefined ? "" : form.is_fan_out ? "fan-out" : "single"}
+            onChange={(event) => {
+              if (event.target.value === "") {
+                updateField("is_fan_out", undefined);
+                updateField("fan_out_targets", undefined);
+                return;
+              }
+              const isFanOut = event.target.value === "fan-out";
+              updateField("is_fan_out", isFanOut);
+              if (!isFanOut) {
+                updateField("fan_out_targets", undefined);
+              }
+            }}
+            className="app-input"
+          >
+            <option value="">Not specified</option>
+            <option value="single">Single destination</option>
+            <option value="fan-out">Multiple destinations</option>
+          </select>
+        </label>
+        {form.is_fan_out ? (
+          <label className="block">
+            <span className="app-label mb-2 block">Fan-out Destinations</span>
+            <input
+              type="number"
+              min="2"
+              step="1"
+              value={form.fan_out_targets ?? ""}
+              onChange={(event) =>
+                updateField(
+                  "fan_out_targets",
+                  event.target.value === "" ? undefined : Number(event.target.value),
+                )
+              }
+              className="app-input"
+              placeholder="3"
+            />
+          </label>
+        ) : null}
         <label className="block">
           <span className="app-label mb-2 block">Complexity</span>
           <select

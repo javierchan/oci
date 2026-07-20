@@ -172,10 +172,15 @@ Oracle quotes. See
 [`docs/architecture/oci-pricing-bom-plan.md`](./docs/architecture/oci-pricing-bom-plan.md)
 and [`docs/architecture/oci-pricing-parity-spec.md`](./docs/architecture/oci-pricing-parity-spec.md).
 
-Planned M51 full-catalog coverage follows a mandatory five-stage strategy:
+M51 full-catalog coverage follows a mandatory five-stage strategy:
 atomic official-source import, draft mapping generation by price family and
 metric, deterministic commercial classification, auditable human exception
-review, and independent quotation fixtures before rule-family approval. See
+review, and independent quotation fixtures before rule-family approval. The current
+global release records a terminal disposition for all 1,182 catalog candidates:
+229 are quote-ready and 953 remain truthfully blocked with governed reasons. The
+App BOM allowlist remains narrower by design: 27 of 32 mapped SKUs are enabled and
+five unresolved commercial dependencies remain excluded. Global coverage means
+every SKU is governed, not that every public OCI SKU is quote-ready. See
 [`docs/architecture/oci-full-catalog-commercial-coverage-plan.md`](./docs/architecture/oci-full-catalog-commercial-coverage-plan.md).
 
 Continuous source governance keeps the currently approved commercial families
@@ -185,7 +190,9 @@ atomic source set; raw evidence is hash-addressed in Object Storage, every one o
 the 20 governed commercial families runs deterministic quotation fixtures, and
 changed evidence requires explicit Admin approval. New public-list BOMs are
 blocked when the latest verified evidence is older than 72 hours or a regression
-fails. See
+fails. A separate Service Verification Agent checks the dynamic set of allowlisted
+Oracle product documents and may propose value or unit updates, but deterministic
+rule semantics and explicit Admin acceptance remain authoritative. See
 [`docs/architecture/oci-continuous-source-governance.md`](./docs/architecture/oci-continuous-source-governance.md).
 
 ---
@@ -428,7 +435,7 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M48 | Governed Commercial Quantity Policies + BOM Product Navigation | ✅ Complete | 2026-07-15 |
 | M49 | OCI Metering Policy Alignment | ✅ Complete | 2026-07-15 |
 | M50 | Full Service Product Commercial Coverage | ✅ Complete | 2026-07-15 |
-| M51 | Full OCI Public Catalog Commercial Coverage | 📋 Planned | — |
+| M51 | Full OCI Public Catalog Commercial Coverage | ✅ Complete | 2026-07-20 |
 | M52 | Governed Pattern Certification | ✅ Complete | 2026-07-16 |
 | M53 | Continuous OCI Source Verification + Quote Regression Governance | ✅ Complete | 2026-07-16 |
 | M54 | Governed Agentic Decision Workspaces | ✅ Complete | 2026-07-16 |

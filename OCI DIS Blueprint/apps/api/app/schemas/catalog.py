@@ -38,6 +38,9 @@ class ManualIntegrationCreate(BaseModel):
     business_process: str
     interface_name: str
     description: Optional[str] = None
+    status: Optional[str] = None
+    interface_status: Optional[str] = None
+    mapping_status: Optional[str] = None
     business_criticality: Optional[str] = None
     source_system: str
     source_technology: Optional[str] = None
@@ -47,9 +50,12 @@ class ManualIntegrationCreate(BaseModel):
     destination_technology: Optional[str] = None
     destination_owner: Optional[str] = None
     type: Optional[str] = None
+    base: Optional[str] = None
     target_latency_sla: Optional[str] = None
     frequency: Optional[str] = None
     payload_per_execution_kb: Optional[float] = None
+    is_fan_out: Optional[bool] = None
+    fan_out_targets: Optional[int] = Field(default=None, ge=2)
     complexity: Optional[str] = None
     data_security_classification: Optional[str] = None
     retention_processing_window: Optional[str] = None
@@ -61,6 +67,8 @@ class ManualIntegrationCreate(BaseModel):
     tbq: Literal["Y", "N"] = "Y"
     initial_scope: Optional[str] = None
     owner: Optional[str] = None
+    calendarization: Optional[str] = None
+    source_evidence: Optional[dict[str, Any]] = None
 
 
 class OICEstimateRequest(BaseModel):
@@ -206,6 +214,19 @@ class BulkPatchResult(BaseModel):
 
     updated: int
     errors: list[str] = Field(default_factory=list)
+
+
+class CatalogQaRefreshResponse(BaseModel):
+    """Summary of a project-wide refresh of derived QA state."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    project_id: str
+    evaluated: int
+    changed: int
+    qa_ok: int
+    qa_revisar: int
+    qa_pending: int
 
 
 class CatalogIntegrationDeleteResponse(BaseModel):

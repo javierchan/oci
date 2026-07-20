@@ -49,18 +49,27 @@ export type CanvasInteroperabilityArgs = {
 export const TOOL_TO_SERVICE_ID: Record<string, string> = {
   "OIC Gen3": "OIC3",
   "OCI API Gateway": "API_GATEWAY",
+  "OCI Events": "EVENTS",
+  Events: "EVENTS",
   "OCI Streaming": "STREAMING",
   "OCI Queue": "QUEUE",
   "OCI Functions": "FUNCTIONS",
   "Oracle Functions": "FUNCTIONS",
   "OCI Data Integration": "DATA_INTEGRATION",
+  "OCI Data Catalog": "DATA_CATALOG",
+  "Data Catalog": "DATA_CATALOG",
   "Oracle ORDS": "ORDS",
   "Oracle DB": "ORDS",
   "OCI APM": "OBSERVABILITY",
+  "OCI Observability": "OBSERVABILITY",
   "Oracle GoldenGate": "GOLDENGATE",
   "OCI Connector Hub": "CONNECTOR_HUB",
   "OCI IAM": "IAM",
+  "OCI IAM and Security Services": "IAM",
   "OCI Object Storage": "OBJECT_STORAGE",
+  "Process Automation": "PROCESS_AUTOMATION",
+  "OCI Process Automation": "PROCESS_AUTOMATION",
+  "Oracle Integration Process Automation": "PROCESS_AUTOMATION",
   SFTP: "OBJECT_STORAGE",
 };
 
@@ -88,6 +97,61 @@ function routeKey(route: CanvasInteroperabilityRoute): string {
 function serviceLimitNumber(limits: Record<string, unknown>, key: string): number | null {
   const value = limits[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function isBlockingPayloadRule(
+  profile: CanvasServiceProfile | undefined,
+  limitKey: string,
+): boolean {
+  const definition = profile?.limit_definitions[limitKey];
+  return Boolean(
+    definition &&
+      definition.limit_type === "payload" &&
+      definition.constraint_kind === "hard_limit" &&
+      definition.enforcement === "block_when_applicable" &&
+      definition.scope !== "design_time",
+  );
+}
+
+function oicPayloadLimitKey(args: CanvasInteroperabilityArgs): string | null {
+  const context = [
+    args.triggerType,
+    args.sourceTechnology,
+    args.destinationTechnology,
+    args.integrationType,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toUpperCase();
+
+  if (context.includes("KAFKA") || context.includes("OCI STREAMING")) {
+    return "kafka_schema_max_payload_kb";
+  }
+  if (context.includes("JMS") || context.includes(" MQ ") || context.includes("MESSAGE QUEUE")) {
+    return "jms_schema_max_payload_kb";
+  }
+  if (["FTP", "SFTP", "FILE"].some((value) => context.includes(value))) {
+    return context.includes("AGENT")
+      ? "ftp_structured_agent_max_payload_kb"
+      : "ftp_structured_cloud_max_payload_kb";
+  }
+  if (context.includes("SOAP")) {
+    return context.includes("AGENT")
+      ? "soap_structured_agent_max_payload_kb"
+      : "soap_structured_max_payload_kb";
+  }
+  if (["DATABASE", "DB ", "SQL"].some((value) => context.includes(value))) {
+    if (context.includes("POLL") || context.includes("SCHEDULE")) {
+      return context.includes("AGENT")
+        ? "database_polling_agent_max_payload_kb"
+        : "database_polling_private_max_payload_kb";
+    }
+    return "database_outbound_schema_max_payload_kb";
+  }
+  if (["REST", "HTTP", "API"].some((value) => context.includes(value))) {
+    return "rest_trigger_structured_max_payload_kb";
+  }
+  return null;
 }
 
 export function formatCanvasLimit(valueKb: number): string {
@@ -165,24 +229,35 @@ function pushUniqueFinding(
 }
 
 function collectPayloadBlockers(
-  payloadKb: number | null,
+  args: CanvasInteroperabilityArgs,
   toolKeys: Set<string>,
-  serviceProfilesById: Map<string, CanvasServiceProfile>,
 ): CanvasInteroperabilityFinding[] {
+  const payloadKb = args.payloadKb;
   if (payloadKb === null || payloadKb === undefined) {
     return [];
   }
 
   const blockers: CanvasInteroperabilityFinding[] = [];
+  const oicLimitKey = oicPayloadLimitKey(args);
+  const oicProfile = args.serviceProfilesById.get("OIC3");
+  if (toolKeys.has("OIC Gen3") && oicLimitKey) {
+    const oicLimitKb = serviceLimitNumber(oicProfile?.limits ?? {}, oicLimitKey);
+    if (
+      oicLimitKb !== null &&
+      isBlockingPayloadRule(oicProfile, oicLimitKey) &&
+      payloadKb > oicLimitKb
+    ) {
+      blockers.push({
+        id: `oic-payload-limit-${oicLimitKey}`,
+        severity: "blocker",
+        title: "OIC payload exceeds the selected adapter boundary",
+        detail: `The active adapter and operation cannot carry this inline payload. Payload ${formatCanvasLimit(payloadKb)} exceeds ${formatCanvasLimit(oicLimitKb)} for ${oicLimitKey}. Reduce the payload or externalize it through Object Storage.`,
+        serviceIds: ["OIC3"],
+      });
+    }
+  }
+
   const checks = [
-    {
-      findingId: "oic-payload-limit",
-      toolKeys: ["OIC Gen3"],
-      serviceId: "OIC3",
-      limitKey: "max_message_size_kb",
-      title: "OIC payload exceeds the documented message limit",
-      detail: "Route the payload through object storage or reduce the synchronous message size before using OIC Gen3 on the active path.",
-    },
     {
       findingId: "functions-payload-limit",
       toolKeys: ["OCI Functions", "Oracle Functions"],
@@ -218,9 +293,14 @@ function collectPayloadBlockers(
   ];
 
   for (const check of checks) {
-    const profile = serviceProfilesById.get(check.serviceId);
+    const profile = args.serviceProfilesById.get(check.serviceId);
     const limitKb = profile ? serviceLimitNumber(profile.limits, check.limitKey) : null;
-    if (limitKb === null || !check.toolKeys.some((toolKey) => toolKeys.has(toolKey)) || payloadKb <= limitKb) {
+    if (
+      limitKb === null ||
+      !isBlockingPayloadRule(profile, check.limitKey) ||
+      !check.toolKeys.some((toolKey) => toolKeys.has(toolKey)) ||
+      payloadKb <= limitKb
+    ) {
       continue;
     }
 
@@ -234,6 +314,46 @@ function collectPayloadBlockers(
   }
 
   return blockers;
+}
+
+function collectOicPayloadContextWarnings(
+  args: CanvasInteroperabilityArgs,
+  toolKeys: Set<string>,
+): CanvasInteroperabilityFinding[] {
+  if (args.payloadKb === null || !toolKeys.has("OIC Gen3") || oicPayloadLimitKey(args)) {
+    return [];
+  }
+  const profile = args.serviceProfilesById.get("OIC3");
+  if (!profile) {
+    return [];
+  }
+  const blockingLimits = Object.values(profile.limit_definitions)
+    .filter(
+      (definition) =>
+        definition.limit_type === "payload" &&
+        definition.constraint_kind === "hard_limit" &&
+        definition.enforcement === "block_when_applicable" &&
+        definition.scope !== "design_time",
+    )
+    .map((definition) =>
+      typeof definition.value === "number" && Number.isFinite(definition.value)
+        ? definition.value
+        : null,
+    )
+    .filter((value): value is number => value !== null);
+  const reviewThreshold = blockingLimits.length ? Math.min(...blockingLimits) : null;
+  if (reviewThreshold === null || args.payloadKb <= reviewThreshold) {
+    return [];
+  }
+  return [
+    {
+      id: "oic-adapter-context-required",
+      severity: "warning",
+      title: "Select the OIC adapter context before approval",
+      detail: `The ${formatCanvasLimit(args.payloadKb)} payload exceeds at least one adapter-specific OIC boundary, but the captured route does not identify the adapter or operation. The 50 KB billing increment is not a payload ceiling; capture REST, SOAP, FTP, Kafka, JMS, or Database context to apply the correct rule.`,
+      serviceIds: ["OIC3"],
+    },
+  ];
 }
 
 function activeNodeIdSet(routes: CanvasInteroperabilityRoute[]): Set<string> {
@@ -485,13 +605,14 @@ export function evaluateCanvasInteroperability(
   const activeToolKeys = new Set(routes.flatMap((route) => route.toolKeys));
 
   const blockers = [
-    ...collectPayloadBlockers(args.payloadKb, activeToolKeys, args.serviceProfilesById),
+    ...collectPayloadBlockers(args, activeToolKeys),
     ...collectConnectorHubBlockers(routes, args.edges, overlayToolSet),
     ...collectGatewayRules(routes, args.triggerType).filter(
       (finding): finding is CanvasInteroperabilityFinding => finding.severity === "blocker",
     ),
   ];
   const warnings = [
+    ...collectOicPayloadContextWarnings(args, activeToolKeys),
     ...collectGatewayRules(routes, args.triggerType).filter(
       (finding): finding is CanvasInteroperabilityFinding => finding.severity === "warning",
     ),

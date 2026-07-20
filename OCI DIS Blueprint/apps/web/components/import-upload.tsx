@@ -5,11 +5,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Download, FileUp, Loader2 } from "lucide-react";
+import { Bot, Download, FileSpreadsheet, FileUp, Loader2 } from "lucide-react";
 
 import { ConfirmModal } from "@/components/modal";
 import { AgentDecisionWorkspace } from "@/components/agent-decision-workspace";
 import { GovernedNarrative } from "@/components/governed-narrative";
+import { ImportMappingReview } from "@/components/import-mapping-review";
 import { emitToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
@@ -18,14 +19,16 @@ import type { AgentRun, CaptureTemplateMetadata, ImportBatch, ImportQualityAssis
 type ImportUploadProps = {
   projectId: string;
   projectName: string;
+  projectStatus: "active" | "draft" | "archived";
   initialBatches: ImportBatch[];
   initialRows: SourceRowList | null;
   initialQualityAssistant: ImportQualityAssistant | null;
   initialSelectedBatchId: string | null;
+  initialSelectedBatch: ImportBatch | null;
   highlightedRowNumber: number | null;
 };
 
-type UploadPhase = "idle" | "pending" | "processing" | "completed" | "failed";
+type UploadPhase = "idle" | "pending" | "processing" | "mapping_review" | "completed" | "failed";
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(
   /\/api\/v1\/?$/,
   "",
@@ -36,6 +39,8 @@ function phaseFromBatchStatus(batch: ImportBatch): UploadPhase {
       return "pending";
     case "processing":
       return "processing";
+    case "mapping_review":
+      return "mapping_review";
     case "completed":
       return "completed";
     case "failed":
@@ -88,12 +93,12 @@ function ImportStepper({
   phase: UploadPhase;
   hasHistory: boolean;
 }): JSX.Element {
-  const activeIndex = hasHistory ? 3 : phase === "processing" ? 2 : phase === "pending" ? 1 : 0;
+  const activeIndex = phase === "mapping_review" ? 3 : hasHistory ? 3 : phase === "processing" ? 2 : phase === "pending" ? 1 : 0;
   const steps = [
     { label: "Template", description: "Governed headers" },
     { label: "Upload", description: "Queue workbook" },
     { label: "Parse", description: "Normalize rows" },
-    { label: "Review", description: "Trace lineage" },
+    { label: "Map", description: "Approve external evidence" },
   ];
 
   return (
@@ -139,18 +144,22 @@ function ImportStepper({
 export function ImportUpload({
   projectId,
   projectName,
+  projectStatus,
   initialBatches,
   initialRows,
   initialQualityAssistant,
   initialSelectedBatchId,
+  initialSelectedBatch,
   highlightedRowNumber,
 }: ImportUploadProps): JSX.Element {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [phase, setPhase] = useState<UploadPhase>("idle");
+  const [phase, setPhase] = useState<UploadPhase>(
+    initialSelectedBatch ? phaseFromBatchStatus(initialSelectedBatch) : "idle",
+  );
   const [error, setError] = useState<string>("");
-  const [currentBatch, setCurrentBatch] = useState<ImportBatch | null>(null);
+  const [currentBatch, setCurrentBatch] = useState<ImportBatch | null>(initialSelectedBatch);
   const [history, setHistory] = useState<ImportBatch[]>(initialBatches);
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [deletingBatchId, setDeletingBatchId] = useState<string>("");
@@ -180,6 +189,15 @@ export function ImportUpload({
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    setCurrentBatch(initialSelectedBatch);
+    setPhase(initialSelectedBatch ? phaseFromBatchStatus(initialSelectedBatch) : "idle");
+  }, [initialSelectedBatch]);
+
+  useEffect(() => {
+    setHistory(initialBatches);
+  }, [initialBatches]);
 
   const filteredRows = useMemo(() => {
     if (!initialRows) {
@@ -225,7 +243,7 @@ export function ImportUpload({
   const historyLoadedTotal = history.reduce((sum, batch) => sum + (batch.loaded_count ?? 0), 0);
   const historyExcludedTotal = history.reduce((sum, batch) => sum + (batch.excluded_count ?? 0), 0);
   const historyTechnicalOnlyTotal = history.reduce((sum, batch) => sum + (batch.tbq_n_count ?? 0), 0);
-  const requiredTemplateColumns = templateMetadata?.columns.filter((column) => column.requirement === "Requerido") ?? [];
+  const requiredTemplateColumns = templateMetadata?.columns.filter((column) => column.requirement === "Required") ?? [];
   const templateCompatibility = latestBatch?.header_map?.["__template_compatibility__"] ?? null;
 
   function updateSelectedFile(file: File | null): void {
@@ -298,6 +316,9 @@ export function ImportUpload({
             "success",
             `Import completed: ${batch.loaded_count ?? 0} loaded, ${batch.excluded_count ?? 0} excluded.`,
           );
+          router.refresh();
+        } else if (batch.status === "mapping_review") {
+          emitToast("success", "External workbook staged. Review its source-to-App mapping before materialization.");
           router.refresh();
         } else if (batch.status === "failed") {
           const detail = batch.error_details?.detail;
@@ -401,8 +422,8 @@ export function ImportUpload({
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
             {hasHistory
-              ? "Refresh the workbook template only when you need the latest governed headers or validations before another upload."
-              : "Use this template to ensure your data matches the expected column order and format for workbook import."}
+              ? "Refresh the blank template when you need the latest governed columns, validations, and reference data for a new capture."
+              : "Start with the blank official template when you are preparing a new offline capture."}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <a
@@ -414,7 +435,7 @@ export function ImportUpload({
               Download Template (.xlsx)
             </a>
             <span className="app-theme-chip">
-              Template v{templateMetadata?.template_version ?? "current"}
+              {templateMetadata ? `Template v${templateMetadata.template_version}` : "Official template"}
             </span>
             {templateMetadata ? (
               <span className="text-xs text-[var(--color-text-muted)]">
@@ -424,7 +445,9 @@ export function ImportUpload({
           </div>
           {templateCompatibility && templateCompatibility !== "current" ? (
             <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-              The latest batch used an older supported workbook ({templateCompatibility.replaceAll("_", " ")}). It imported successfully; use the current template for guided validation and governed references.
+              {latestBatch?.status === "mapping_review"
+                ? `The latest external workbook uses ${templateCompatibility.replaceAll("_", " ")} headers and is safely staged for mapping review. No governed Catalog records have been created.`
+                : `The latest batch used an older supported workbook (${templateCompatibility.replaceAll("_", " ")}). It completed under the compatibility policy; use the current template for guided validation and governed references.`}
             </div>
           ) : null}
           <div className="mt-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3.5">
@@ -561,6 +584,23 @@ export function ImportUpload({
                   View imported rows →
                 </Link>
               </div>
+            ) : currentBatch.status === "mapping_review" ? (
+              <div className="mt-4 rounded-lg border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] p-5">
+                <p className="app-kicker">Mapping review required</p>
+                <h3 className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">The external workbook is safely staged.</h3>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+                  {currentBatch.candidate_count ?? 0} candidate integration rows are preserved as evidence. Approve their
+                  source-to-App mapping below before the Catalog, QA, topology, or BOM can use them.
+                </p>
+              </div>
+            ) : currentBatch.status === "failed" ? (
+              <div className="mt-4 rounded-lg border border-rose-300 bg-rose-50 p-5 dark:border-rose-900 dark:bg-rose-950/30">
+                <p className="app-kicker text-rose-700 dark:text-rose-300">Import needs attention</p>
+                <h3 className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">This workbook was not staged.</h3>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+                  Review the import detail below, correct the workbook when needed, and queue it again. No catalog records were created.
+                </p>
+              </div>
             ) : (
               <div className="mt-4 space-y-3 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
                 <p className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">Batch queued</p>
@@ -584,26 +624,81 @@ export function ImportUpload({
         </article>
       </section>
 
+      <section className="app-card overflow-hidden">
+        <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:p-6">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-accent)]">
+              <FileSpreadsheet className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="app-kicker">Offline export</p>
+              <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
+                Continue this project in the official workbook
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+                Download the current governed catalog for {projectName}, including technical-only integrations, in the same en-US template accepted by Import.
+              </p>
+            </div>
+          </div>
+          {projectStatus === "active" ? (
+            <a
+              href={`${API_BASE}/api/v1/exports/${projectId}/template/xlsx`}
+              className="app-button-secondary w-full justify-center gap-2 px-4 py-2.5 text-sm lg:w-auto"
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Export governed project (.xlsx)
+            </a>
+          ) : (
+            <p className="max-w-sm text-sm leading-6 text-[var(--color-text-muted)] lg:text-right">
+              Archived projects remain read-only and cannot be exported for offline edits.
+            </p>
+          )}
+        </div>
+      </section>
+
+      {currentBatch?.status === "mapping_review" && currentBatch.intake_mode === "external_mapping" ? (
+        <ImportMappingReview
+          batch={currentBatch}
+          projectId={projectId}
+          onBatchChange={(batch) => {
+            setCurrentBatch(batch);
+            setHistory((current) => [batch, ...current.filter((item) => item.id !== batch.id)]);
+            setPhase(phaseFromBatchStatus(batch));
+          }}
+        />
+      ) : null}
+
       {initialRows && initialSelectedBatchId ? (
         <>
         {initialQualityAssistant ? (
           <section className="app-card p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="app-kicker">Import Data Quality Assistant</p>
+                <p className="app-kicker">
+                  {initialQualityAssistant.status === "mapping_review"
+                    ? "Import Correction Agent"
+                    : "Import Data Quality Assistant"}
+                </p>
                 <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
-                  Batch {initialQualityAssistant.batch_id.slice(0, 8)} evidence check
+                  {initialQualityAssistant.status === "mapping_review"
+                    ? `Batch ${initialQualityAssistant.batch_id.slice(0, 8)} mapping guidance`
+                    : `Batch ${initialQualityAssistant.batch_id.slice(0, 8)} evidence check`}
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-                  The assistant separates workbook evidence from recommendations so you can see what was imported,
-                  why quality gaps matter, and which records need attention.
+                  {initialQualityAssistant.status === "mapping_review"
+                    ? "The agent explains ambiguous client evidence and the minimum decision needed. It cannot select a mapping or approve materialization for you."
+                    : "The assistant separates workbook evidence from recommendations so you can see what was imported, why quality gaps matter, and which records need attention."}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="app-theme-chip">{initialQualityAssistant.status}</span>
                 <button type="button" className="app-button-secondary gap-2" disabled={qualityAgentBusy} onClick={() => void runQualityAgent()}>
                   {qualityAgentBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-                  {qualityAgentBusy ? "Analyzing" : "Analyze with agent"}
+                  {qualityAgentBusy
+                    ? "Analyzing"
+                    : initialQualityAssistant.status === "mapping_review"
+                      ? "Ask Import Correction Agent"
+                      : "Analyze with agent"}
                 </button>
               </div>
             </div>

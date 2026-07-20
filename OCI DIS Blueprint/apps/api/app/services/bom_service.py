@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 import json
 import math
-from typing import Iterable
+from typing import Iterable, cast
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -37,6 +37,10 @@ from app.models import (
     BomLineItem,
     BomSnapshot,
     CatalogIntegration,
+    CommercialEvidenceReference,
+    CommercialException,
+    CommercialRelease,
+    CommercialRuleFamily,
     DeploymentScenario,
     DeploymentEnvironmentPlan,
     DeploymentRampPhase,
@@ -47,6 +51,8 @@ from app.models import (
     Project,
     ServiceCommercialPolicy,
     ServiceProductSkuMapping,
+    SkuCommercialConstraint,
+    SkuCommercialTerm,
     VolumetrySnapshot,
 )
 from app.schemas.pricing import (
@@ -66,6 +72,7 @@ from app.schemas.pricing import (
     DeploymentScenarioListResponse,
     DeploymentScenarioResponse,
     ScenarioAssistantResponse,
+    CurrentBomContextResponse,
     ScenarioMetricOptionResponse,
     ScenarioSkuVariantResponse,
     ScenarioCommercialCoverageResponse,
@@ -85,6 +92,7 @@ class BomCalculation:
     """Complete deterministic BOM calculation before optional persistence."""
 
     price_snapshot: PriceCatalogSnapshot
+    commercial_release: CommercialRelease
     line_payloads: list[dict[str, object]]
     period_payloads: list[list[dict[str, object]]]
     coverage_pct: float
@@ -101,6 +109,17 @@ class BomCalculation:
     by_service: dict[str, float]
     by_environment: dict[str, float]
     warnings: list[str]
+
+
+@dataclass(frozen=True)
+class GovernedSkuCommercialContract:
+    """Approved public commercial semantics compiled for one mapped OCI SKU."""
+
+    release: CommercialRelease
+    term: SkuCommercialTerm
+    rule: CommercialRuleFamily
+    constraints: tuple[SkuCommercialConstraint, ...]
+    evidence_reference_ids: tuple[str, ...]
 
 
 def _now() -> datetime:
@@ -354,13 +373,14 @@ async def serialize_scenario(
         currency=scenario.currency,
         region=scenario.region,
         price_mode=scenario.price_mode,
+        commitment_model=scenario.commitment_model,
         technical_snapshot_id=scenario.technical_snapshot_id,
         contract_months=scenario.contract_months,
         start_date=scenario.start_date,
         proration_policy=scenario.proration_policy,
         consumption_model=scenario.consumption_model,
         environments=await _scenario_environments(scenario.id, db),
-        service_config=scenario.service_config,
+        service_config=cast(dict[str, dict[str, object]], scenario.service_config),
         assumptions=scenario.scenario_assumptions,
         created_by=scenario.created_by,
         approved_by=scenario.approved_by,
@@ -722,6 +742,300 @@ async def _active_commercial_policies(db: AsyncSession) -> list[ServiceCommercia
     )
 
 
+async def _resolve_commercial_release(
+    *,
+    price_snapshot: PriceCatalogSnapshot,
+    price_source: PriceSource,
+    currency: str,
+    db: AsyncSession,
+) -> CommercialRelease:
+    """Resolve the immutable public commercial semantics used by a new BOM."""
+
+    statement = (
+        select(CommercialRelease)
+        .join(
+            PriceCatalogSnapshot,
+            PriceCatalogSnapshot.id == CommercialRelease.price_catalog_snapshot_id,
+        )
+        .join(PriceSource, PriceSource.id == PriceCatalogSnapshot.source_id)
+        .where(
+            CommercialRelease.status == "approved",
+            CommercialRelease.validation_status == "passed",
+            CommercialRelease.open_exception_count == 0,
+            PriceCatalogSnapshot.currency == currency,
+            PriceSource.source_type == "public_list",
+        )
+        .order_by(CommercialRelease.approved_at.desc(), CommercialRelease.created_at.desc())
+    )
+    if price_source.source_type == "public_list":
+        statement = statement.where(
+            CommercialRelease.price_catalog_snapshot_id == price_snapshot.id
+        )
+    release = await db.scalar(statement)
+    if release is None:
+        detail = (
+            f"matching public price snapshot {price_snapshot.id}"
+            if price_source.source_type == "public_list"
+            else f"approved public commercial terms for {currency}"
+        )
+        raise ValueError(f"No approved CommercialRelease exists for {detail}")
+    return release
+
+
+async def _governed_sku_contracts(
+    *,
+    release: CommercialRelease,
+    part_numbers: set[str],
+    currency: str,
+    db: AsyncSession,
+) -> dict[str, GovernedSkuCommercialContract]:
+    """Load complete approved term, rule, constraint, and evidence contracts."""
+
+    if not part_numbers:
+        return {}
+    release_scope = set(_as_string_list(release.release_metadata.get("part_numbers")))
+    term_ids_payload = release.release_metadata.get("term_ids_by_part")
+    rule_ids_payload = release.release_metadata.get("rule_ids_by_part")
+    term_ids_by_part = (
+        {str(key): str(value) for key, value in term_ids_payload.items()}
+        if isinstance(term_ids_payload, dict)
+        else {}
+    )
+    rule_ids_by_part = (
+        {str(key): str(value) for key, value in rule_ids_payload.items()}
+        if isinstance(rule_ids_payload, dict)
+        else {}
+    )
+    outside_scope = sorted(part_numbers - release_scope) if release_scope else []
+    unresolved_exceptions = list(
+        (
+            await db.scalars(
+                select(CommercialException).where(
+                    CommercialException.document_snapshot_id == release.document_snapshot_id,
+                    CommercialException.part_number.in_(part_numbers),
+                    CommercialException.status.notin_(("resolved", "accepted_risk")),
+                )
+            )
+        ).all()
+    )
+    selected_term_ids = {
+        term_ids_by_part[part_number]
+        for part_number in part_numbers
+        if part_number in term_ids_by_part
+    }
+    terms = list(
+        (
+            await db.scalars(
+                select(SkuCommercialTerm)
+                .where(
+                    SkuCommercialTerm.id.in_(selected_term_ids),
+                    SkuCommercialTerm.document_snapshot_id == release.document_snapshot_id,
+                    SkuCommercialTerm.price_catalog_snapshot_id
+                    == release.price_catalog_snapshot_id,
+                    SkuCommercialTerm.part_number.in_(part_numbers),
+                    SkuCommercialTerm.currency == currency,
+                    SkuCommercialTerm.status == "approved",
+                )
+            )
+        ).all()
+    ) if selected_term_ids else []
+    terms_by_part = {term.part_number: term for term in terms}
+
+    selected_rule_ids = {
+        rule_ids_by_part[part_number]
+        for part_number in part_numbers
+        if part_number in rule_ids_by_part
+    }
+    rules = list(
+        (
+            await db.scalars(
+                select(CommercialRuleFamily)
+                .where(
+                    CommercialRuleFamily.id.in_(selected_rule_ids),
+                    CommercialRuleFamily.status == "approved",
+                    CommercialRuleFamily.fixture_status == "passed",
+                )
+            )
+        ).all()
+    ) if selected_rule_ids else []
+    rules_by_id = {rule.id: rule for rule in rules}
+
+    term_ids = {term.id for term in terms_by_part.values()}
+    constraints = list(
+        (
+            await db.scalars(
+                select(SkuCommercialConstraint).where(
+                    SkuCommercialConstraint.term_id.in_(term_ids),
+                    SkuCommercialConstraint.status == "approved",
+                )
+            )
+        ).all()
+    ) if term_ids else []
+    constraints_by_term: dict[str, list[SkuCommercialConstraint]] = defaultdict(list)
+    for constraint in constraints:
+        constraints_by_term[constraint.term_id].append(constraint)
+
+    rule_ids = set(rules_by_id)
+    governed_entity_ids = term_ids | rule_ids
+    references = list(
+        (
+            await db.scalars(
+                select(CommercialEvidenceReference).where(
+                    CommercialEvidenceReference.entity_id.in_(governed_entity_ids)
+                )
+            )
+        ).all()
+    ) if governed_entity_ids else []
+    evidence_by_entity: dict[str, list[str]] = defaultdict(list)
+    for reference in references:
+        evidence_by_entity[reference.entity_id].append(reference.id)
+
+    missing_terms = sorted(part_numbers - set(terms_by_part))
+    missing_rules: list[str] = []
+    missing_evidence: list[str] = []
+    contracts: dict[str, GovernedSkuCommercialContract] = {}
+    for part_number, term in terms_by_part.items():
+        selected_rule = rules_by_id.get(rule_ids_by_part.get(part_number, ""))
+        if selected_rule is None:
+            missing_rules.append(part_number)
+            continue
+        evidence_ids = tuple(
+            dict.fromkeys(
+                [*evidence_by_entity[term.id], *evidence_by_entity[selected_rule.id]]
+            )
+        )
+        if not evidence_ids:
+            missing_evidence.append(part_number)
+            continue
+        contracts[part_number] = GovernedSkuCommercialContract(
+            release=release,
+            term=term,
+            rule=selected_rule,
+            constraints=tuple(constraints_by_term[term.id]),
+            evidence_reference_ids=evidence_ids,
+        )
+
+    if outside_scope or unresolved_exceptions or missing_terms or missing_rules or missing_evidence:
+        details = {
+            "outside_release_scope": outside_scope,
+            "unresolved_exception_parts": sorted(
+                {item.part_number or "catalog" for item in unresolved_exceptions}
+            ),
+            "missing_approved_terms": missing_terms,
+            "missing_approved_rules": sorted(missing_rules),
+            "missing_evidence": sorted(missing_evidence),
+        }
+        raise ValueError(
+            "CommercialRelease cannot price the selected SKU scope: "
+            + json.dumps(details, sort_keys=True)
+        )
+    return contracts
+
+
+def _validate_release_mapping_scope(
+    release: CommercialRelease,
+    mappings: Iterable[ServiceProductSkuMapping],
+) -> None:
+    """Require every selected mapping to be pinned by the immutable release."""
+
+    raw_mapping_ids = release.release_metadata.get("mapping_ids_by_part")
+    mapping_ids_by_part = (
+        {
+            str(part_number): {
+                str(mapping_id)
+                for mapping_id in mapping_ids
+                if isinstance(mapping_id, str)
+            }
+            for part_number, mapping_ids in raw_mapping_ids.items()
+            if isinstance(mapping_ids, list)
+        }
+        if isinstance(raw_mapping_ids, dict)
+        else {}
+    )
+    missing = sorted(
+        {
+            f"{mapping.part_number or 'unmapped'}:{mapping.id}"
+            for mapping in mappings
+            if mapping.is_billable
+            and (
+                not mapping.part_number
+                or mapping.id
+                not in mapping_ids_by_part.get(str(mapping.part_number), set())
+            )
+        }
+    )
+    if missing:
+        raise ValueError(
+            "CommercialRelease does not pin the selected SKU mappings: "
+            + json.dumps(missing)
+        )
+
+
+def _compiled_quantity_rule(
+    contract: GovernedSkuCommercialContract,
+    mapping: ServiceProductSkuMapping,
+) -> QuantityRule:
+    """Compile approved normalized constraints over the approved rule family."""
+
+    increment = Decimal(contract.rule.quantity_increment)
+    minimum = Decimal(contract.rule.minimum_quantity)
+    metric_key = mapping.billing_metric_key.casefold()
+    quantity_unit = mapping.quantity_unit.casefold()
+    pricing_model = _compiled_pricing_model(contract)
+    for constraint in contract.constraints:
+        if constraint.numeric_value is None:
+            continue
+        value = Decimal(constraint.numeric_value)
+        if constraint.constraint_type == "purchase_increment":
+            scope_matches = (
+                constraint.scope == "commercial_quantity"
+                or constraint.scope == "backup_storage_quantity"
+                and "backup" in metric_key
+                or constraint.scope == "database_storage_quantity"
+                and "storage" in metric_key
+                and "backup" not in metric_key
+            )
+            unit_matches = (
+                not constraint.unit
+                or str(constraint.unit).casefold() in quantity_unit
+                or quantity_unit in str(constraint.unit).casefold()
+            )
+            if scope_matches and unit_matches:
+                increment = max(increment, value)
+        elif constraint.constraint_type == "metric_minimum":
+            scope_matches = (
+                constraint.scope in {"billed_quantity", "monthly_billed_quantity"}
+                and pricing_model not in {PricingModel.HOURLY, PricingModel.HOUR_UTILIZED}
+                or constraint.scope == "provisioned_capacity"
+                and pricing_model in {PricingModel.HOURLY, PricingModel.HOUR_UTILIZED}
+            )
+            if scope_matches:
+                minimum = max(minimum, value)
+    if contract.term.allow_decimal_quantity is False:
+        increment = max(increment, Decimal("1"))
+    return QuantityRule(
+        behavior=QuantityBehavior(contract.rule.quantity_behavior),
+        increment=increment,
+        minimum=minimum,
+    )
+
+
+def _compiled_pricing_model(
+    contract: GovernedSkuCommercialContract,
+) -> PricingModel:
+    """Translate approved OCI semantics into the existing Decimal engine model."""
+
+    formula_key = contract.rule.formula_key.casefold()
+    price_type = (contract.term.price_type or "").strip().upper()
+    if formula_key == "hourly_capacity":
+        return PricingModel.HOURLY
+    if formula_key in {"hour_utilized_capacity", "hourly_utilized_capacity"}:
+        return PricingModel.HOUR_UTILIZED
+    if price_type in {"MONTH", "MONTHLY"}:
+        return PricingModel.MONTHLY
+    return PricingModel.PER_ITEM
+
+
 def _detected_services(
     integrations: Iterable[CatalogIntegration],
     mappings: Iterable[ServiceProductSkuMapping],
@@ -818,6 +1132,113 @@ def _required_questions(service_ids: Iterable[str]) -> list[str]:
     if "QUEUE" in services:
         questions.append("Which Queue operations occur per message (push, get, delete, or update), and what is each payload size?")
     return questions
+
+
+async def _current_bom_state(
+    project_id: str,
+    technical_snapshot_id: str,
+    db: AsyncSession,
+) -> tuple[CurrentBomContextResponse | None, DeploymentScenario | None]:
+    """Resolve the most relevant persisted BOM without inventing a new scenario state."""
+
+    snapshots = list(
+        (
+            await db.scalars(
+                select(BomSnapshot)
+                .where(BomSnapshot.project_id == project_id)
+                .order_by(BomSnapshot.created_at.desc())
+                .limit(100)
+            )
+        ).all()
+    )
+    if not snapshots:
+        return None, None
+
+    selected = next(
+        (
+            item
+            for item in snapshots
+            if item.technical_snapshot_id == technical_snapshot_id
+            and item.publication_status in {"approved", "published"}
+        ),
+        None,
+    )
+    selected = selected or next(
+        (item for item in snapshots if item.technical_snapshot_id == technical_snapshot_id),
+        None,
+    )
+    selected = selected or next(
+        (item for item in snapshots if item.publication_status in {"approved", "published"}),
+        snapshots[0],
+    )
+    scenario = await db.get(DeploymentScenario, selected.scenario_id)
+    if scenario is None:
+        return None, None
+
+    environments = await _scenario_environments(scenario.id, db)
+    lines = list(
+        (
+            await db.scalars(
+                select(BomLineItem).where(BomLineItem.bom_snapshot_id == selected.id)
+            )
+        ).all()
+    )
+    # BOM coverage and publication use `blocked` as the sole unresolved state.
+    # Included and non-billable evidence are terminal governed lines, not gaps.
+    unresolved_count = sum(1 for line in lines if line.status == "blocked")
+    technical_current = selected.technical_snapshot_id == technical_snapshot_id
+    ready_for_use = (
+        scenario.status == "approved"
+        and selected.publication_status in {"approved", "published"}
+        and selected.coverage_pct >= 100
+        and unresolved_count == 0
+        and technical_current
+    )
+    return (
+        CurrentBomContextResponse(
+            snapshot_id=selected.id,
+            scenario_id=scenario.id,
+            scenario_name=scenario.name,
+            scenario_status=scenario.status,
+            publication_status=selected.publication_status,
+            technical_snapshot_id=selected.technical_snapshot_id,
+            technical_snapshot_current=technical_current,
+            coverage_pct=selected.coverage_pct,
+            currency=selected.currency,
+            monthly_total=selected.monthly_total,
+            contract_total=selected.contract_total,
+            environment_names=[environment.name for environment in environments],
+            line_item_count=len(lines),
+            unresolved_line_count=unresolved_count,
+            warnings_count=len(selected.warnings or []),
+            ready_for_use=ready_for_use,
+            created_at=selected.created_at,
+        ),
+        scenario,
+    )
+
+
+async def _scenario_clone_request(
+    scenario: DeploymentScenario,
+    db: AsyncSession,
+) -> DeploymentScenarioCreateRequest:
+    """Return an editable copy of a governed scenario without mutating it."""
+
+    return DeploymentScenarioCreateRequest(
+        name=f"{scenario.name} alternative",
+        technical_snapshot_id=scenario.technical_snapshot_id,
+        currency=scenario.currency,
+        region=scenario.region,
+        price_mode=scenario.price_mode,
+        commitment_model=scenario.commitment_model,
+        contract_months=scenario.contract_months,
+        start_date=scenario.start_date,
+        proration_policy=scenario.proration_policy,
+        consumption_model=scenario.consumption_model,
+        environments=await _scenario_environments(scenario.id, db),
+        service_config=cast(dict[str, dict[str, object]], scenario.service_config),
+        assumptions={**scenario.scenario_assumptions, "cloned_from_scenario_id": scenario.id},
+    )
 
 
 def _metric_label(metric_key: str) -> str:
@@ -946,7 +1367,12 @@ async def build_scenario_assistant(
     mappings = await _active_mappings(db)
     policies = await _active_commercial_policies(db)
     service_ids, _ = _detected_services(integrations, mappings, policies)
-    service_config = _default_service_config(service_ids)
+    current_bom, current_scenario = await _current_bom_state(project_id, snapshot.id, db)
+    service_config: dict[str, dict[str, object]] = (
+        cast(dict[str, dict[str, object]], current_scenario.service_config)
+        if current_scenario is not None and current_bom is not None and current_bom.technical_snapshot_current
+        else _default_service_config(service_ids)
+    )
     metric_options = _metric_options(
         service_ids,
         mappings,
@@ -954,20 +1380,20 @@ async def build_scenario_assistant(
         integrations,
         service_config,
     )
-    warnings = [
-        "The draft is a deployment proposal, not an Oracle quote.",
-        "Free Tier is disabled until tenancy-level allocation is confirmed.",
-    ]
+    warnings = ["The draft is a deployment proposal, not an Oracle quote."]
+    if current_bom is None or not current_bom.ready_for_use:
+        warnings.append("Free Tier is disabled until tenancy-level allocation is confirmed.")
     if "GOLDENGATE" in service_ids:
         warnings.append("GoldenGate defaults to one OCPU only as an architect-review starting point.")
     if "DATA_INTEGRATION" in service_ids:
         warnings.append("Data Integration operator execution hours remain zero until supplied.")
-    draft = DeploymentScenarioCreateRequest(
+    default_draft = DeploymentScenarioCreateRequest(
         name="Governed baseline",
         technical_snapshot_id=snapshot.id,
         currency="USD",
         region="global",
         price_mode="public_list",
+        commitment_model="pay_as_you_go",
         contract_months=12,
         start_date=date.today().replace(day=1),
         environments=[
@@ -995,6 +1421,16 @@ async def build_scenario_assistant(
         service_config=service_config,
         assumptions={"free_tier_enabled": False, "drafted_from": snapshot.id},
     )
+    draft = (
+        await _scenario_clone_request(current_scenario, db)
+        if current_scenario is not None and current_bom is not None and current_bom.technical_snapshot_current
+        else default_draft
+    )
+    required_questions = [] if current_bom is not None and current_bom.ready_for_use else _required_questions(service_ids)
+    if current_bom is not None and current_bom.ready_for_use:
+        warnings = [
+            "The published BOM is a governed planning estimate, not an Oracle quote. Regenerate it after architecture, scenario, or approved price evidence changes."
+        ]
     ai_status = "skipped"
     ai_summary: str | None = None
     if include_llm:
@@ -1013,7 +1449,8 @@ async def build_scenario_assistant(
                 "technical_snapshot_id": snapshot.id,
                 "detected_services": service_ids,
                 "draft": draft.model_dump(mode="json"),
-                "required_questions": _required_questions(service_ids),
+                "current_bom": current_bom.model_dump(mode="json") if current_bom else None,
+                "required_questions": required_questions,
                 "warnings": warnings,
             },
             safety_subject=safety_subject,
@@ -1025,9 +1462,10 @@ async def build_scenario_assistant(
         detected_services=service_ids,
         metric_options=metric_options,
         commercial_coverage=_commercial_coverage(service_ids, policies, mappings),
-        required_questions=_required_questions(service_ids),
+        current_bom=current_bom,
+        required_questions=required_questions,
         warnings=warnings,
-        confidence="medium" if service_ids else "low",
+        confidence="high" if current_bom is not None and current_bom.ready_for_use else "medium" if service_ids else "low",
         ai_status=ai_status,
         ai_summary=ai_summary,
     )
@@ -1071,6 +1509,7 @@ async def create_scenario(
         currency=request.currency.upper(),
         region=request.region,
         price_mode=request.price_mode,
+        commitment_model=request.commitment_model,
         technical_snapshot_id=snapshot.id,
         contract_months=request.contract_months,
         start_date=request.start_date.replace(day=1),
@@ -1182,6 +1621,7 @@ async def create_scenario(
             "technical_snapshot_id": snapshot.id,
             "currency": scenario.currency,
             "start_date": scenario.start_date.isoformat(),
+            "commitment_model": scenario.commitment_model,
             "consumption_model": scenario.consumption_model,
             "environments": environment_payloads,
         },
@@ -1386,10 +1826,33 @@ def _demand_for_metric(
     return None, "unknown", [f"No demand resolver exists for {metric_key}."]
 
 
-def _selected_price_tiers(items: list[PriceItem]) -> tuple[tuple[PriceTier, ...], float, list[PriceItem]]:
+def _selected_price_tiers(
+    items: list[PriceItem],
+    commitment_model: str,
+    *,
+    rate_card_override: bool = False,
+) -> tuple[tuple[PriceTier, ...], float, list[PriceItem], list[PriceItem]]:
+    expected_model = commitment_model.upper()
+    if expected_model not in {
+        "PAY_AS_YOU_GO",
+        "ANNUAL_COMMITMENT",
+        "ANNUAL_FLEX",
+        "MONTHLY_FLEX",
+    }:
+        raise ValueError(f"Unsupported commercial commitment model: {commitment_model}")
+    selected_items = [
+        item
+        for item in items
+        if item.model.upper()
+        in (
+            {"CONTRACT_RATE", "MANUAL_RATE_CARD"}
+            if rate_card_override
+            else {expected_model}
+        )
+    ]
     free_tier = 0.0
     paid_items: list[PriceItem] = []
-    for item in items:
+    for item in selected_items:
         if item.value == 0 and item.range_max is not None:
             free_tier = max(free_tier, item.range_max)
         else:
@@ -1404,7 +1867,7 @@ def _selected_price_tiers(items: list[PriceItem]) -> tuple[tuple[PriceTier, ...]
         )
         for item in paid_items
     )
-    return tiers, free_tier, paid_items
+    return tiers, free_tier, paid_items, selected_items
 
 
 def _tiers_after_shared_free_allowance(
@@ -1576,6 +2039,7 @@ def _price_mapping_line(
     multipliers: tuple[Decimal, ...],
     explicit_quantities: tuple[Decimal, ...] | None = None,
     free_tier_remaining: dict[tuple[str, int], Decimal] | None = None,
+    commercial_contract: GovernedSkuCommercialContract | None = None,
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
     effective_quantity = max(
         [Decimal(str(quantity)), *(explicit_quantities or ())],
@@ -1611,8 +2075,30 @@ def _price_mapping_line(
         line = _blocked_line(mapping, environment, float(effective_quantity), unit, [*demand_warnings, "Approved price item not found."])
         return line, _zero_period_payloads(scenario.contract_months, multipliers, line, explicit_quantities)
 
-    tiers, free_tier, paid_items = _selected_price_tiers(items)
-    primary_item = paid_items[0] if paid_items else items[0]
+    tiers, free_tier, paid_items, selected_items = _selected_price_tiers(
+        items,
+        scenario.commitment_model or "pay_as_you_go",
+        rate_card_override=scenario.price_mode in {"contract_rate", "manual_rate_card"},
+    )
+    if not selected_items:
+        line = _blocked_line(
+            mapping,
+            environment,
+            float(effective_quantity),
+            unit,
+            [
+                *demand_warnings,
+                "No price tier exists for commercial model "
+                f"{scenario.commitment_model or 'pay_as_you_go'}.",
+            ],
+        )
+        return line, _zero_period_payloads(
+            scenario.contract_months,
+            multipliers,
+            line,
+            explicit_quantities,
+        )
+    primary_item = paid_items[0] if paid_items else selected_items[0]
     if not paid_items and effective_quantity > Decimal(str(free_tier)):
         line = _blocked_line(mapping, environment, float(effective_quantity), unit, [*demand_warnings, "No paid price tier covers this demand."])
         return line, _zero_period_payloads(scenario.contract_months, multipliers, line, explicit_quantities)
@@ -1629,7 +2115,16 @@ def _price_mapping_line(
             )
             for index, tier in enumerate(tiers)
         )
-    pricing_model = PricingModel.HOURLY if mapping.formula_key == "hourly_capacity" else PricingModel.MONTHLY
+    pricing_model = (
+        _compiled_pricing_model(commercial_contract)
+        if commercial_contract is not None
+        else PricingModel.HOURLY if mapping.formula_key == "hourly_capacity" else PricingModel.MONTHLY
+    )
+    active_hours = (
+        Decimal(str(_as_float(environment.get("active_hours_month"), 744.0)))
+        if pricing_model in {PricingModel.HOURLY, PricingModel.HOUR_UTILIZED}
+        else None
+    )
     request = PricingRequest(
         sku=mapping.part_number or mapping.service_id,
         model=pricing_model,
@@ -1637,17 +2132,22 @@ def _price_mapping_line(
         quantity=effective_quantity,
         unit_price=(Decimal(str(primary_item.value)) if not tiers else None),
         billing_unit=Decimal("1"),
-        hours=(Decimal(str(_as_float(environment.get("active_hours_month"), 744.0))) if pricing_model is PricingModel.HOURLY else None),
+        hours=active_hours,
+        utilization_ratio=(Decimal("1") if pricing_model is PricingModel.HOUR_UTILIZED else None),
         free_tier_allocation=Decimal("0"),
         tiers=tiers,
         tier_basis_quantity=(effective_quantity if tiers and not use_free_tier else None),
         annual_active_months=12,
         contract_months=scenario.contract_months,
     )
-    quantity_rule = QuantityRule(
-        behavior=QuantityBehavior(mapping.quantity_behavior),
-        increment=Decimal(str(mapping.quantity_increment)),
-        minimum=Decimal(str(mapping.minimum_quantity)),
+    quantity_rule = (
+        _compiled_quantity_rule(commercial_contract, mapping)
+        if commercial_contract is not None
+        else QuantityRule(
+            behavior=QuantityBehavior(mapping.quantity_behavior),
+            increment=Decimal(str(mapping.quantity_increment)),
+            minimum=Decimal(str(mapping.minimum_quantity)),
+        )
     )
     normalized_capacity = normalize_quantity(effective_quantity, quantity_rule)
     normalized_period_quantities = tuple(
@@ -1698,6 +2198,11 @@ def _price_mapping_line(
         "annual_amount": float(schedule.annual_totals[0]),
         "contract_amount": float(schedule.contract_total),
         "price_item_id": selected_item_id,
+        "commercial_term_id": commercial_contract.term.id if commercial_contract else None,
+        "commercial_rule_family_id": commercial_contract.rule.id if commercial_contract else None,
+        "evidence_reference_ids": (
+            list(commercial_contract.evidence_reference_ids) if commercial_contract else []
+        ),
         "formula": final_result.formula,
         "inputs": {
             **final_result.inputs,
@@ -1710,8 +2215,44 @@ def _price_mapping_line(
         "provenance": {
             **_mapping_provenance(mapping),
             "quantity_source": "explicit_units" if explicit_quantities is not None else "legacy_multiplier",
-            "quantity_behavior": mapping.quantity_behavior,
-            "quantity_increment": str(mapping.quantity_increment),
+            "quantity_behavior": quantity_rule.behavior.value,
+            "quantity_increment": str(quantity_rule.increment),
+            "minimum_quantity": str(quantity_rule.minimum),
+            "commercial_release_id": commercial_contract.release.id if commercial_contract else None,
+            "commercial_release_version": (
+                commercial_contract.release.version if commercial_contract else None
+            ),
+            "public_commercial_price_snapshot_id": (
+                commercial_contract.release.price_catalog_snapshot_id
+                if commercial_contract else None
+            ),
+            "applied_price_snapshot_id": primary_item.snapshot_id,
+            "contract_price_override": bool(
+                commercial_contract
+                and primary_item.snapshot_id
+                != commercial_contract.release.price_catalog_snapshot_id
+            ),
+            "commercial_term_id": commercial_contract.term.id if commercial_contract else None,
+            "commercial_rule_family_id": commercial_contract.rule.id if commercial_contract else None,
+            "commercial_constraints": (
+                [
+                    {
+                        "id": constraint.id,
+                        "type": constraint.constraint_type,
+                        "scope": constraint.scope,
+                        "value": (
+                            str(constraint.numeric_value)
+                            if constraint.numeric_value is not None
+                            else None
+                        ),
+                        "unit": constraint.unit,
+                        "behavior": constraint.behavior,
+                    }
+                    for constraint in commercial_contract.constraints
+                ]
+                if commercial_contract
+                else []
+            ),
             "usage_basis": mapping.usage_basis,
             "quote_rounding": mapping.quote_rounding,
             "aggregation_window": mapping.aggregation_window,
@@ -1741,6 +2282,11 @@ def _price_mapping_line(
                 if period.result.selected_tier
                 else primary_item.id
             ),
+            "commercial_term_id": commercial_contract.term.id if commercial_contract else None,
+            "commercial_rule_family_id": commercial_contract.rule.id if commercial_contract else None,
+            "evidence_reference_ids": (
+                list(commercial_contract.evidence_reference_ids) if commercial_contract else []
+            ),
             "formula": period.result.formula,
             "inputs": {
                 **period.result.inputs,
@@ -1761,6 +2307,20 @@ def _price_mapping_line(
                 "aggregation_window": mapping.aggregation_window,
                 "proration_policy": mapping.proration_policy,
                 "free_tier_scope": mapping.free_tier_scope,
+                "commercial_release_id": commercial_contract.release.id if commercial_contract else None,
+                "commercial_release_version": (
+                    commercial_contract.release.version if commercial_contract else None
+                ),
+                "public_commercial_price_snapshot_id": (
+                    commercial_contract.release.price_catalog_snapshot_id
+                    if commercial_contract else None
+                ),
+                "applied_price_snapshot_id": primary_item.snapshot_id,
+                "contract_price_override": bool(
+                    commercial_contract
+                    and primary_item.snapshot_id
+                    != commercial_contract.release.price_catalog_snapshot_id
+                ),
             },
         }
         for period, raw_quantity in zip(schedule.periods, raw_period_quantities)
@@ -1879,8 +2439,16 @@ async def calculate_bom(
     if price_snapshot is None:
         raise ValueError(f"No approved {scenario.currency} price catalog is available")
     price_source = await db.get(PriceSource, price_snapshot.source_id)
+    if price_source is None:
+        raise ValueError("Approved price catalog source not found")
     if price_source is not None and price_source.source_type == "public_list":
         await pricing_governance_service.ensure_public_snapshot_is_current(price_snapshot, db)
+    commercial_release = await _resolve_commercial_release(
+        price_snapshot=price_snapshot,
+        price_source=price_source,
+        currency=scenario.currency,
+        db=db,
+    )
 
     integrations = await _project_integrations(project_id, db)
     mappings = await _active_mappings(db)
@@ -1918,8 +2486,15 @@ async def calculate_bom(
             *(mappings_by_id[mapping_id] for mapping_id in explicit_mapping_ids if mapping_id in mappings_by_id),
         ]
     }.values())
+    _validate_release_mapping_scope(commercial_release, selected_mappings)
 
     part_numbers = {mapping.part_number for mapping in selected_mappings if mapping.part_number}
+    commercial_contracts = await _governed_sku_contracts(
+        release=commercial_release,
+        part_numbers={str(part_number) for part_number in part_numbers},
+        currency=scenario.currency,
+        db=db,
+    )
     price_rows = (
         await db.scalars(
             select(PriceItem).where(
@@ -2056,6 +2631,7 @@ async def calculate_bom(
                 multipliers,
                 explicit_quantities,
                 free_tier_remaining,
+                commercial_contracts.get(mapping.part_number or ""),
             )
             line_payloads.append(line)
             period_payloads.append(periods)
@@ -2130,6 +2706,7 @@ async def calculate_bom(
         )
     return BomCalculation(
         price_snapshot=price_snapshot,
+        commercial_release=commercial_release,
         line_payloads=line_payloads,
         period_payloads=period_payloads,
         coverage_pct=coverage_pct,
@@ -2179,7 +2756,8 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
         scenario_id=scenario.id,
         technical_snapshot_id=technical.id,
         price_catalog_snapshot_id=calculation.price_snapshot.id,
-        mapping_version="sku-mappings-1.1.0-environment",
+        commercial_release_id=calculation.commercial_release.id,
+        mapping_version=calculation.commercial_release.mapping_set_hash,
         engine_version=BOM_ENGINE_VERSION,
         currency=scenario.currency,
         coverage_pct=calculation.coverage_pct,
@@ -2196,6 +2774,17 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
             "priced_line_count": covered,
             "blocked_line_count": len(blocked),
             "detected_services": calculation.detected_services,
+            "commercial_release": {
+                "id": calculation.commercial_release.id,
+                "version": calculation.commercial_release.version,
+                "public_price_catalog_snapshot_id": (
+                    calculation.commercial_release.price_catalog_snapshot_id
+                ),
+                "applied_price_catalog_snapshot_id": calculation.price_snapshot.id,
+                "mapping_set_hash": calculation.commercial_release.mapping_set_hash,
+                "rule_family_set_hash": calculation.commercial_release.rule_family_set_hash,
+                "evidence_hash": calculation.commercial_release.evidence_hash,
+            },
             "by_service_monthly": {
                 key: round(value, 2) for key, value in sorted(calculation.by_service.items())
             },
@@ -2249,6 +2838,8 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
             "scenario_id": scenario.id,
             "technical_snapshot_id": technical.id,
             "price_catalog_snapshot_id": calculation.price_snapshot.id,
+            "commercial_release_id": calculation.commercial_release.id,
+            "commercial_release_version": calculation.commercial_release.version,
             "coverage_pct": calculation.coverage_pct,
             "monthly_total": calculation.monthly_total,
             "first_active_period": calculation.first_active_period,
@@ -2437,6 +3028,63 @@ async def review_bom_snapshot(
         raise HTTPException(
             status_code=409,
             detail={"detail": "Resolve every blocked BOM line before approval or publication", "error_code": "BOM_COVERAGE_INCOMPLETE"},
+        )
+    if snapshot.commercial_release_id is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Regenerate this BOM with an approved governed commercial release",
+                "error_code": "BOM_COMMERCIAL_RELEASE_REQUIRED",
+            },
+        )
+    release = await db.get(CommercialRelease, snapshot.commercial_release_id)
+    if (
+        release is None
+        or release.status != "approved"
+        or release.validation_status != "passed"
+        or release.open_exception_count != 0
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "The commercial release used by this BOM is not publishable",
+                "error_code": "BOM_COMMERCIAL_RELEASE_NOT_PUBLISHABLE",
+            },
+        )
+    scoped_lines = list(
+        (
+            await db.scalars(
+                select(BomLineItem).where(
+                    BomLineItem.bom_snapshot_id == snapshot.id,
+                    BomLineItem.part_number.is_not(None),
+                    BomLineItem.status == "priced",
+                )
+            )
+        ).all()
+    )
+    incomplete_lines = [
+        line.part_number
+        for line in scoped_lines
+        if line.commercial_term_id is None
+        or line.commercial_rule_family_id is None
+        or not line.evidence_reference_ids
+    ]
+    scoped_parts = {str(line.part_number) for line in scoped_lines if line.part_number}
+    unresolved_exception = await db.scalar(
+        select(CommercialException.id).where(
+            CommercialException.document_snapshot_id == release.document_snapshot_id,
+            CommercialException.part_number.in_(scoped_parts),
+            CommercialException.status.notin_(("resolved", "accepted_risk")),
+        ).limit(1)
+    ) if scoped_parts else None
+    if incomplete_lines or unresolved_exception is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Approved commercial terms, rules, evidence, and resolved exceptions are required for every priced SKU",
+                "error_code": "BOM_COMMERCIAL_EVIDENCE_INCOMPLETE",
+                "part_numbers": sorted({str(item) for item in incomplete_lines}),
+            },
         )
     old_status = snapshot.publication_status
     snapshot.publication_status = request.publication_status

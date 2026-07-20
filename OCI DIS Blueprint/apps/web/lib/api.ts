@@ -38,6 +38,10 @@ import type {
   CatalogPage,
   CatalogParams,
   ConsolidatedMetrics,
+  CommercialCatalogFinalizeRequest,
+  CommercialCandidateReviewRequest,
+  CommercialExceptionReviewRequest,
+  CommercialWorkspace,
   DashboardSnapshot,
   DashboardSnapshotList,
   DictionaryCategoryList,
@@ -56,6 +60,9 @@ import type {
   ImportBatchDeleteResponse,
   ImportBatchList,
   ImportBatchListResponse,
+  ImportMappingProfileListResponse,
+  ImportMappingReviewApprovalRequest,
+  ImportMappingReviewRequest,
   ImportQualityAssistant,
   Integration,
   IntegrationPatch,
@@ -668,6 +675,31 @@ export const api = {
   getImportBatch: (projectId: string, batchId: string): Promise<ImportBatch> =>
     apiFetch<ImportBatch>(`/api/v1/imports/${projectId}/${batchId}`),
 
+  saveImportMappingReview: (
+    projectId: string,
+    batchId: string,
+    body: ImportMappingReviewRequest,
+  ): Promise<ImportBatch> =>
+    apiFetch<ImportBatch>(`/api/v1/imports/${projectId}/${batchId}/mapping-review`, {
+      method: "PATCH",
+      headers: adminHeaders(),
+      body: JSON.stringify(body),
+    }),
+
+  approveImportMappingReview: (
+    projectId: string,
+    batchId: string,
+    body: ImportMappingReviewApprovalRequest,
+  ): Promise<ImportBatch> =>
+    apiFetch<ImportBatch>(`/api/v1/imports/${projectId}/${batchId}/mapping-review/approve`, {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify(body),
+    }),
+
+  listImportMappingProfiles: (projectId: string): Promise<ImportMappingProfileListResponse> =>
+    apiFetch<ImportMappingProfileListResponse>(`/api/v1/imports/${projectId}/mapping-profiles`),
+
   getImportQualityAssistant: (projectId: string, batchId: string): Promise<ImportQualityAssistant> =>
     apiFetch<ImportQualityAssistant>(`/api/v1/imports/${projectId}/${batchId}/quality-assistant`),
 
@@ -934,6 +966,68 @@ export const api = {
 
   listPriceSources: (): Promise<PriceSourceList> =>
     apiFetch<PriceSourceList>("/api/v1/pricing/sources", { headers: adminHeaders() }),
+
+  getCommercialCatalog: (
+    params: { document_id?: string; search?: string; limit?: number } = {},
+  ): Promise<CommercialWorkspace> =>
+    apiFetch<CommercialWorkspace>(`/api/v1/pricing/commercial-catalog${withQuery(params)}`, {
+      headers: adminHeaders(),
+    }),
+
+  importCommercialDocument: async (file: File): Promise<CommercialWorkspace> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiFetch<CommercialWorkspace>("/api/v1/pricing/commercial-documents", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: formData,
+    });
+  },
+
+  approveCommercialDocument: (documentId: string): Promise<CommercialWorkspace> =>
+    apiFetch<CommercialWorkspace>(
+      `/api/v1/pricing/commercial-documents/${encodeURIComponent(documentId)}/approve`,
+      { method: "POST", headers: adminHeaders() },
+    ),
+
+  finalizeCommercialCatalogReview: (
+    documentId: string,
+    body: CommercialCatalogFinalizeRequest,
+  ): Promise<CommercialWorkspace> =>
+    apiFetch<CommercialWorkspace>(
+      `/api/v1/pricing/commercial-documents/${encodeURIComponent(documentId)}/finalize-review`,
+      { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) },
+    ),
+
+  reviewCommercialCandidate: (
+    candidateId: string,
+    body: CommercialCandidateReviewRequest,
+  ): Promise<CommercialWorkspace> =>
+    apiFetch<CommercialWorkspace>(
+      `/api/v1/pricing/commercial-candidates/${encodeURIComponent(candidateId)}/review`,
+      { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) },
+    ),
+
+  revalidateCommercialCandidate: (candidateId: string): Promise<CommercialWorkspace> =>
+    apiFetch<CommercialWorkspace>(
+      `/api/v1/pricing/commercial-candidates/${encodeURIComponent(candidateId)}/revalidate`,
+      { method: "POST", headers: adminHeaders() },
+    ),
+
+  reviewCommercialException: (
+    exceptionId: string,
+    body: CommercialExceptionReviewRequest,
+  ): Promise<CommercialWorkspace> =>
+    apiFetch<CommercialWorkspace>(
+      `/api/v1/pricing/commercial-exceptions/${encodeURIComponent(exceptionId)}/review`,
+      { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) },
+    ),
+
+  promoteCommercialRelease: (documentId: string): Promise<CommercialWorkspace> =>
+    apiFetch<CommercialWorkspace>(
+      `/api/v1/pricing/commercial-documents/${encodeURIComponent(documentId)}/releases`,
+      { method: "POST", headers: adminHeaders() },
+    ),
 
   createPriceSyncJob: (body: { source_id?: string; currency: string }): Promise<PriceSyncJob> =>
     apiFetch<PriceSyncJob>("/api/v1/pricing/sync-jobs", {

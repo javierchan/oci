@@ -12,7 +12,7 @@ import { api, apiDownloadUrl } from "@/lib/api";
 import { displayQaStatus, formatCompactNumber, formatDate, formatNumber } from "@/lib/format";
 import { parityBenchmark } from "@/lib/parity";
 import { isProjectNotFoundError } from "@/lib/project-errors";
-import type { DashboardCoverageMetric, DashboardSnapshot } from "@/lib/types";
+import type { DashboardCoverageMetric, DashboardProductUsage, DashboardSnapshot } from "@/lib/types";
 
 type ProjectDashboardPageProps = {
   params: Promise<{
@@ -23,6 +23,69 @@ type ProjectDashboardPageProps = {
 function isSyntheticProject(project: { project_metadata?: Record<string, unknown> | null }): boolean {
   const metadata = project.project_metadata;
   return metadata?.synthetic === true || metadata?.seed_type === "synthetic-enterprise";
+}
+
+function ProductFootprintCard({ product }: { product: DashboardProductUsage }): JSX.Element {
+  const statusLabel = product.resolution_status === "verified_product"
+    ? "Verified OCI product"
+    : product.resolution_status === "included_or_dependent"
+      ? "Included or dependent service"
+      : product.resolution_status === "external_dependency"
+        ? "External architecture dependency"
+        : "Product selection required";
+
+  return (
+    <article className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface-3)] text-[var(--color-accent)]">
+            <Boxes className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-[var(--color-text-primary)]" title={product.tool_key}>
+              {product.tool_key}
+            </h3>
+            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+              {product.role === "core" ? "Processing route" : "Architecture context"}
+            </p>
+          </div>
+        </div>
+        <span className={product.role === "overlay" ? "app-status-chip archived" : "app-status-chip active"}>
+          {product.role === "overlay" ? "Overlay" : "Core"}
+        </span>
+      </div>
+      <div className="mt-4 flex items-end justify-between gap-3">
+        <div>
+          <p className="text-2xl font-semibold text-[var(--color-text-primary)]">{formatNumber(product.integration_count)}</p>
+          <p className="text-xs text-[var(--color-text-muted)]">integrations</p>
+        </div>
+        <p className="text-sm font-medium text-[var(--color-text-secondary)]">
+          {formatNumber(product.coverage_ratio * 100, 1)}%
+        </p>
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-3)]">
+        <div className="h-full rounded-full bg-[var(--color-accent)]" style={{ width: `${Math.max(product.coverage_ratio * 100, 2)}%` }} />
+      </div>
+      <div className="mt-4 flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border)] pt-3">
+        <span className="min-w-0 text-xs font-medium text-[var(--color-text-secondary)]">{statusLabel}</span>
+        {product.service_id ? (
+          <Link href={`/admin/services/${product.service_id}`} className="app-link inline-flex items-center gap-1 text-xs">
+            Open evidence <ExternalLink className="h-3 w-3" />
+          </Link>
+        ) : null}
+      </div>
+      {product.resolution_status === "product_selection_required" ? (
+        <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">
+          Select the exact OCI product before this component can enter BOM governance.
+        </p>
+      ) : null}
+      {product.resolution_status === "external_dependency" ? (
+        <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">
+          Required by the certified pattern, but sized and quoted outside this integration BOM.
+        </p>
+      ) : null}
+    </article>
+  );
 }
 
 export default async function ProjectDashboardPage({
@@ -74,6 +137,8 @@ export default async function ProjectDashboardPage({
   const qaPendingPct = qaTotal > 0 ? Math.max(0, 100 - qaOkPct - qaReviewPct) : 0;
   const patternCount = latestDashboard?.charts.pattern_mix.filter((entry) => entry.count > 0).length ?? 0;
   const productFootprint = latestDashboard?.charts.product_footprint;
+  const coreProducts = productFootprint?.products.filter((product) => product.role === "core") ?? [];
+  const overlayProducts = productFootprint?.products.filter((product) => product.role === "overlay") ?? [];
 
   function pct(value: number): string {
     return qaTotal > 0 ? `${Math.round((value / qaTotal) * 100)}% of total` : "—";
@@ -232,64 +297,59 @@ export default async function ProjectDashboardPage({
       <section className="space-y-5" aria-labelledby="product-footprint-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="app-label">Captured Product Footprint</p>
+            <p className="app-label">Captured Architecture Footprint</p>
             <h2 id="product-footprint-heading" className="mt-2 text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">
-              Every product used in the architecture
+              Every architecture component captured
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-              Derived from the governed core tools, architectural overlays, and saved canvas nodes across the catalog.
+              Core route products drive technical sizing. Overlays and external dependencies remain visible as
+              architecture context, but only governed commercial products enter this project&apos;s BOM.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <span className="app-status-chip active">
-              {productFootprint?.represented_product_count ?? 0} of {productFootprint?.captured_product_count ?? 0} represented
+              {productFootprint?.represented_product_count ?? 0} of {productFootprint?.captured_product_count ?? 0} classified
             </span>
+            {(productFootprint?.selection_required_count ?? 0) > 0 ? (
+              <span className="app-status-chip archived">
+                {productFootprint?.selection_required_count} selection required
+              </span>
+            ) : null}
             <span className="app-theme-chip">
               {productFootprint?.rows_with_products ?? 0} of {productFootprint?.total_rows ?? catalogPage.total} rows covered
             </span>
           </div>
         </div>
         {productFootprint?.products.length ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {productFootprint.products.map((product) => (
-              <article key={product.tool_key} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface-3)] text-[var(--color-accent)]">
-                      <Boxes className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <h3 className="truncate text-sm font-semibold text-[var(--color-text-primary)]" title={product.tool_key}>
-                        {product.tool_key}
-                      </h3>
-                      <p className="mt-1 text-xs capitalize text-[var(--color-text-muted)]">{product.role} product</p>
-                    </div>
-                  </div>
-                  <span className={product.role === "overlay" ? "app-status-chip archived" : "app-status-chip active"}>
-                    {product.role === "overlay" ? "Overlay" : "Core"}
-                  </span>
+          <div className="space-y-6">
+            <div>
+              <div className="mb-3 flex items-end justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Core route products</h3>
+                  <p className="mt-1 text-xs text-[var(--color-text-muted)]">Services that process, move, or persist integration traffic.</p>
                 </div>
-                <div className="mt-4 flex items-end justify-between gap-3">
+                <span className="app-theme-chip">{coreProducts.length} products</span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {coreProducts.map((product) => <ProductFootprintCard key={product.tool_key} product={product} />)}
+              </div>
+            </div>
+            {overlayProducts.length ? (
+              <div>
+                <div className="mb-3 flex items-end justify-between gap-3">
                   <div>
-                    <p className="text-2xl font-semibold text-[var(--color-text-primary)]">{formatNumber(product.integration_count)}</p>
-                    <p className="text-xs text-[var(--color-text-muted)]">integrations</p>
+                    <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Architecture overlays and dependencies</h3>
+                    <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                      Supporting controls and pattern dependencies; their commercial treatment is shown on each item.
+                    </p>
                   </div>
-                  <p className="text-sm font-medium text-[var(--color-text-secondary)]">
-                    {formatNumber(product.coverage_ratio * 100, 1)}%
-                  </p>
+                  <span className="app-theme-chip">{overlayProducts.length} components</span>
                 </div>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-3)]">
-                  <div className="h-full rounded-full bg-[var(--color-accent)]" style={{ width: `${Math.max(product.coverage_ratio * 100, 2)}%` }} />
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {overlayProducts.map((product) => <ProductFootprintCard key={product.tool_key} product={product} />)}
                 </div>
-                {product.service_id ? (
-                  <Link href={`/admin/services/${product.service_id}`} className="app-link mt-4 inline-flex items-center gap-1 text-xs">
-                    Product evidence <ExternalLink className="h-3 w-3" />
-                  </Link>
-                ) : (
-                  <p className="mt-4 text-xs text-[var(--color-text-muted)]">Governed by capture taxonomy</p>
-                )}
-              </article>
-            ))}
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-[var(--color-border)] px-5 py-8 text-sm text-[var(--color-text-secondary)]">
@@ -321,7 +381,14 @@ export default async function ProjectDashboardPage({
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+      <section
+        className={
+          isSyntheticProject(project)
+            ? "grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]"
+            : "grid gap-6"
+        }
+      >
+        {isSyntheticProject(project) ? <>
         <article className="app-card p-6">
           <p className="text-xs uppercase tracking-[0.25em] text-slate-500">QA Breakdown</p>
           <div className="mt-5 grid gap-4 md:grid-cols-3">
@@ -392,6 +459,7 @@ export default async function ProjectDashboardPage({
             </div>
           </dl>
         </article>
+        </> : null}
       </section>
 
       {latestDashboard ? (

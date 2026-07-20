@@ -110,6 +110,8 @@ HEADER_ALIASES: dict[str, list[str]] = {
         "payload por ejecucion",
         "payload (kb)",
         "tamaño kb",
+        "tamaño en kb",
+        "tamano en kb",
     ],
     "is_fan_out": ["fan-out (si/no)", "fan-out", "fan out"],
     "fan_out_targets": ["# destinos", "# destinations", "fan-out targets", "fan out targets"],

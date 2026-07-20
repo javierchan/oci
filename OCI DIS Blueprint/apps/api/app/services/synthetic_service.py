@@ -47,7 +47,13 @@ from app.services import (
     recalc_service,
     storage_service,
 )
-from app.services.capture_template_service import CAPTURE_SHEET_NAME, COLUMNS
+from app.services.capture_template_service import (
+    CAPTURE_SHEET_NAME,
+    COLUMNS,
+    IMPORTER_MIN_VERSION,
+    MANIFEST_SHEET_NAME,
+    TEMPLATE_VERSION,
+)
 from app.services.serializers import sanitize_for_json
 
 SOURCE_SHEET_NAME = CAPTURE_SHEET_NAME
@@ -389,6 +395,8 @@ class SyntheticIntegrationSpec:
             type=self.type_value,
             frequency=self.frequency,
             payload_per_execution_kb=self.payload_per_execution_kb,
+            is_fan_out=self.is_fan_out,
+            fan_out_targets=self.fan_out_targets,
             complexity=self.complexity,
             selected_pattern=self.selected_pattern,
             pattern_rationale=self.pattern_rationale,
@@ -1136,6 +1144,23 @@ def write_synthetic_workbook(dataset: SyntheticDataset, destination: Path) -> Pa
             continue
         row = next(import_iter)
         sheet.append(row.to_workbook_row())
+
+    manifest = workbook.create_sheet(MANIFEST_SHEET_NAME)
+    manifest["A1"] = "MANIFEST_KEY"
+    manifest["B1"] = "MANIFEST_VALUE"
+    for row_index, (key, value) in enumerate(
+        (
+            ("template_version", TEMPLATE_VERSION),
+            ("importer_min_version", IMPORTER_MIN_VERSION),
+            ("generated_at_utc", datetime.now(UTC).isoformat()),
+            ("capture_sheet", SOURCE_SHEET_NAME),
+            ("source_kind", "governed_synthetic_generation"),
+        ),
+        start=2,
+    ):
+        manifest.cell(row_index, 1, key)
+        manifest.cell(row_index, 2, value)
+    manifest.sheet_state = "veryHidden"
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     workbook.save(destination)

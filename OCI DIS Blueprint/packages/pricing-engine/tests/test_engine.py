@@ -18,6 +18,7 @@ from pricing_engine import (
     allocate_free_tier,
     expand_ramp,
     expand_quantity_ramp,
+    normalize_quantity,
     price_line,
     price_line_quantity_schedule,
     price_line_schedule,
@@ -449,8 +450,8 @@ def test_explicit_package_schedule_rounds_up_each_month() -> None:
     ]
 
 
-def test_api_gateway_quote_uses_whole_million_call_units() -> None:
-    """A sub-million measured demand remains visible but quotes one commercial unit."""
+def test_api_gateway_quote_preserves_fractional_million_call_units() -> None:
+    """The million-call metric is a scale, not evidence of an integer package."""
 
     schedule = price_line_quantity_schedule(
         PricingRequest(
@@ -462,11 +463,15 @@ def test_api_gateway_quote_uses_whole_million_call_units() -> None:
             contract_months=1,
         ),
         (Decimal("0.291152"),),
-        rule=QuantityRule(QuantityBehavior.PACKAGED, increment=Decimal("1"), minimum=Decimal("1")),
+        rule=QuantityRule(
+            QuantityBehavior.CONTINUOUS,
+            increment=Decimal("0.000001"),
+            minimum=Decimal("0"),
+        ),
     )
 
-    assert schedule.periods[0].result.gross_quantity == Decimal("1")
-    assert schedule.periods[0].result.totals.monthly == Decimal("3.00")
+    assert schedule.periods[0].result.gross_quantity == Decimal("0.291152")
+    assert schedule.periods[0].result.totals.monthly == Decimal("0.87")
 
 
 def test_explicit_continuous_schedule_preserves_governed_precision() -> None:
@@ -510,3 +515,65 @@ def test_real_unit_linear_ramp_keeps_inactive_months_at_zero() -> None:
         Decimal("0"), Decimal("0"), Decimal("10"),
         Decimal("20"), Decimal("30"), Decimal("0"),
     )
+
+
+@pytest.mark.parametrize(
+    ("price_type", "behavior", "increment", "minimum", "demand", "expected"),
+    [
+        ("HOUR", QuantityBehavior.CONTINUOUS, "0.000001", "0", "0.0000001", "0.000001"),
+        ("HOUR_UTILIZED", QuantityBehavior.CONTINUOUS, "0.01", "0.10", "0.001", "0.10"),
+        ("MONTH", QuantityBehavior.FIXED_CAPACITY, "1", "1", "0.01", "1"),
+        ("DAY", QuantityBehavior.CONTINUOUS, "0.25", "0.25", "0.30", "0.50"),
+        ("PER_ITEM", QuantityBehavior.PACKAGED, "1", "1", "1.01", "2"),
+        ("PER_ITEM_DECIMAL", QuantityBehavior.CONTINUOUS, "0.000001", "0", "0.25", "0.25"),
+    ],
+)
+def test_global_price_type_quantity_boundaries(
+    price_type: str,
+    behavior: QuantityBehavior,
+    increment: str,
+    minimum: str,
+    demand: str,
+    expected: str,
+) -> None:
+    rule = QuantityRule(
+        behavior=behavior,
+        increment=Decimal(increment),
+        minimum=Decimal(minimum),
+    )
+
+    assert normalize_quantity(Decimal("0"), rule) == Decimal("0"), price_type
+    assert normalize_quantity(Decimal(demand), rule) == Decimal(expected), price_type
+
+
+@pytest.mark.parametrize(
+    ("price_type", "model", "hours", "utilization", "expected_monthly"),
+    [
+        ("HOUR", PricingModel.HOURLY, "10", None, "20.00"),
+        ("HOUR_UTILIZED", PricingModel.HOUR_UTILIZED, "10", "0.5", "10.00"),
+        ("MONTH", PricingModel.MONTHLY, None, None, "2.00"),
+        ("DAY", PricingModel.PER_ITEM, None, None, "2.00"),
+        ("PER_ITEM", PricingModel.PER_ITEM, None, None, "2.00"),
+    ],
+)
+def test_global_price_type_extension_models(
+    price_type: str,
+    model: PricingModel,
+    hours: str | None,
+    utilization: str | None,
+    expected_monthly: str,
+) -> None:
+    result = price_line(
+        PricingRequest(
+            sku=f"TEST-{price_type}",
+            model=model,
+            currency=USD,
+            quantity=Decimal("2"),
+            unit_price=Decimal("1"),
+            hours=Decimal(hours) if hours is not None else None,
+            utilization_ratio=Decimal(utilization) if utilization is not None else None,
+            contract_months=1,
+        )
+    )
+
+    assert result.totals.monthly == Decimal(expected_monthly)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import fields
 from typing import Any, Optional, cast
 
@@ -26,10 +27,12 @@ from app.models import (
     ImportBatch,
     JustificationRecord,
     PatternDefinition,
+    Project,
     SourceIntegrationRow,
 )
 from app.schemas.catalog import (
     BulkPatchResult,
+    CatalogQaRefreshResponse,
     CatalogFacetsResponse,
     CatalogIntegrationDeleteResponse,
     CatalogIntegrationDetail,
@@ -50,7 +53,7 @@ from app.services.canvas_interoperability import (
 from app.services.justification_service import serialize_justification_record
 from app.services.pattern_support import support_reason_code
 from app.services.service_rule_service import ServiceRuleBundle
-from app.services.serializers import parse_float, parse_int, parse_text, sanitize_for_json, split_csv
+from app.services.serializers import parse_bool, parse_float, parse_int, parse_text, sanitize_for_json, split_csv
 
 PATCHABLE_FIELDS = {
     "selected_pattern",
@@ -128,6 +131,7 @@ MANUAL_SOURCE_ROW_FIELD_PARSERS: dict[str, Any] = {
     "complexity": parse_text,
     "frequency": parse_text,
     "type": parse_text,
+    "base": parse_text,
     "target_latency_sla": parse_text,
     "source_system": parse_text,
     "source_technology": parse_text,
@@ -138,6 +142,8 @@ MANUAL_SOURCE_ROW_FIELD_PARSERS: dict[str, Any] = {
     "destination_owner": parse_text,
     "data_security_classification": parse_text,
     "payload_per_execution_kb": parse_float,
+    "is_fan_out": parse_bool,
+    "fan_out_targets": parse_int,
     "retention_processing_window": parse_text,
 }
 
@@ -167,6 +173,8 @@ FIELD_LABELS = {
     "frequency": "Frequency",
     "target_latency_sla": "SLA / Target Latency",
     "payload_per_execution_kb": "Payload (KB)",
+    "is_fan_out": "Fan-out",
+    "fan_out_targets": "Fan-out Destinations",
     "data_security_classification": "Data / Security Classification",
     "retention_processing_window": "Retention / Processing Window",
     "idempotency": "Idempotency",
@@ -479,6 +487,59 @@ def _recompute_qa(row: CatalogIntegration) -> None:
     row.qa_reasons = reasons
 
 
+async def refresh_project_qa(
+    project_id: str,
+    actor_id: str,
+    db: AsyncSession,
+) -> CatalogQaRefreshResponse:
+    """Rebuild derived QA state without changing governed integration evidence."""
+
+    project = await db.scalar(select(Project).where(Project.id == project_id))
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Project not found", "error_code": "PROJECT_NOT_FOUND"},
+        )
+    rows = list(
+        (
+            await db.scalars(
+                select(CatalogIntegration)
+                .where(CatalogIntegration.project_id == project_id)
+                .order_by(CatalogIntegration.seq_number, CatalogIntegration.created_at)
+            )
+        ).all()
+    )
+    changed = 0
+    for row in rows:
+        old_status = row.qa_status
+        old_reasons = list(row.qa_reasons or [])
+        _recompute_qa(row)
+        if old_status != row.qa_status or old_reasons != list(row.qa_reasons or []):
+            changed += 1
+
+    counts = Counter(row.qa_status for row in rows)
+    response = CatalogQaRefreshResponse(
+        project_id=project_id,
+        evaluated=len(rows),
+        changed=changed,
+        qa_ok=counts.get("OK", 0),
+        qa_revisar=counts.get("REVISAR", 0),
+        qa_pending=counts.get("PENDING", 0),
+    )
+    await audit_service.emit(
+        event_type="catalog_qa_refreshed",
+        entity_type="project",
+        entity_id=project_id,
+        actor_id=actor_id,
+        old_value=None,
+        new_value=response.model_dump(),
+        project_id=project_id,
+        db=db,
+    )
+    await db.flush()
+    return response
+
+
 async def _load_default_assumptions(db: AsyncSession) -> Assumptions:
     assumption_set = await db.scalar(select(AssumptionSet).where(AssumptionSet.is_default.is_(True)))
     if assumption_set is None:
@@ -661,8 +722,8 @@ async def manual_create_integration(
         pattern_rationale=data.pattern_rationale,
         core_tools=core_tools_value,
         payload_per_execution_kb=data.payload_per_execution_kb,
-        is_fan_out=None,
-        fan_out_targets=None,
+        is_fan_out=data.is_fan_out,
+        fan_out_targets=data.fan_out_targets,
         is_active_row=True,
         retry_policy=data.retry_policy,
         idempotency=data.idempotency,
@@ -684,14 +745,20 @@ async def manual_create_integration(
         business_process=data.business_process,
         interface_name=data.interface_name,
         description=data.description,
+        status=data.status,
+        mapping_status=data.mapping_status,
         business_criticality=data.business_criticality,
         initial_scope=data.initial_scope,
         complexity=data.complexity,
         frequency=data.frequency,
         type=data.type,
+        base=data.base,
+        interface_status=data.interface_status,
         target_latency_sla=data.target_latency_sla,
         trigger_type=data.type,
         payload_per_execution_kb=data.payload_per_execution_kb,
+        is_fan_out=data.is_fan_out,
+        fan_out_targets=data.fan_out_targets,
         source_system=data.source_system,
         source_technology=data.source_technology,
         source_api_reference=data.source_api_reference,
@@ -708,6 +775,7 @@ async def manual_create_integration(
         idempotency=data.idempotency,
         core_tools=core_tools_value,
         retention_processing_window=data.retention_processing_window,
+        calendarization=data.calendarization,
         qa_status=qa_result.status,
         qa_reasons=qa_result.reasons,
     )

@@ -268,6 +268,14 @@ function buildCanvasLimitMap(limits: ServiceLimit[]): Record<string, unknown> {
   );
 }
 
+function buildCanvasLimitDefinitionMap(limits: ServiceLimit[]): Record<string, ServiceLimit> {
+  return Object.fromEntries(
+    limits
+      .filter((limit) => limit.is_active)
+      .map((limit) => [limit.limit_key, limit]),
+  );
+}
+
 function toCanvasServiceProfile(product: ServiceProductDetail): CanvasServiceProfile {
   return {
     id: product.id,
@@ -277,6 +285,7 @@ function toCanvasServiceProfile(product: ServiceProductDetail): CanvasServicePro
     sla_uptime_pct: product.sla_uptime_pct,
     pricing_model: product.pricing_model,
     limits: buildCanvasLimitMap(product.limits),
+    limit_definitions: buildCanvasLimitDefinitionMap(product.limits),
     summary: product.summary,
     architecture_role: product.architecture_role,
   };

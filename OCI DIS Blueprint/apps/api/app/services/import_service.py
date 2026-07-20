@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from datetime import UTC, datetime
 from io import BytesIO
-from typing import Any, cast
+from typing import Any, Literal, cast
 from unicodedata import normalize
 
 from fastapi import HTTPException
@@ -23,12 +24,23 @@ from app.core.calc_engine import (
     parse_rows,
     payload_per_hour_kb,
 )
-from app.models import CatalogIntegration, ImportBatch, JustificationRecord, Project, SourceIntegrationRow
+from app.models import (
+    CatalogIntegration,
+    ImportBatch,
+    ImportMappingProfile,
+    JustificationRecord,
+    Project,
+    SourceIntegrationRow,
+)
 from app.models.project import ImportStatus
 from app.schemas.imports import (
     ImportBatchDeleteResponse,
     ImportBatchListResponse,
     ImportBatchResponse,
+    ImportMappingProfileListResponse,
+    ImportMappingProfileResponse,
+    ImportMappingReviewApproveRequest,
+    ImportMappingReviewUpdateRequest,
     ImportQualityAssistantResponse,
     ImportQualityFinding,
     ImportQualityMetric,
@@ -36,7 +48,7 @@ from app.schemas.imports import (
     SourceRowListResponse,
     SourceRowResponse,
 )
-from app.services import audit_service, recalc_service, storage_service
+from app.services import audit_service, import_mapping_service, recalc_service, storage_service
 from app.services.capture_template_service import (
     CAPTURE_SHEET_NAME,
     COLUMNS as TEMPLATE_COLUMNS,
@@ -174,6 +186,96 @@ def _assert_no_capture_formulas(sheet: Any) -> None:
                 )
 
 
+def _formula_classification(header: str) -> tuple[str, str]:
+    """Classify external formula evidence without executing or trusting it."""
+
+    normalized = _normalize_header_key(header)
+    if "cost" in normalized or "costo" in normalized or "price" in normalized or "precio" in normalized:
+        return (
+            "commercial_evidence",
+            "Client cost logic is retained for comparison only; governed App pricing remains authoritative.",
+        )
+    if "mensaje" in normalized or "message" in normalized or "execution" in normalized or "ejecucion" in normalized:
+        return (
+            "derived_demand",
+            "The result is derived demand. Map the underlying payload, frequency, and fan-out inputs instead.",
+        )
+    return (
+        "needs_review",
+        "The formula is preserved as source evidence, but its result cannot become an operational App value.",
+    )
+
+
+def _collect_external_formula_evidence(
+    formula_sheet: Any,
+    value_sheet: Any,
+    header_row_index: int,
+    raw_headers: dict[str, str],
+) -> tuple[dict[int, list[dict[str, object]]], list[dict[str, object]]]:
+    """Capture formula text and cached display values without evaluating formulas."""
+
+    by_row: dict[int, list[dict[str, object]]] = {}
+    by_column: dict[str, dict[str, object]] = {}
+    first_data_row = header_row_index + 2
+    formula_rows = formula_sheet.iter_rows(min_row=first_data_row)
+    value_rows = value_sheet.iter_rows(min_row=first_data_row)
+    for formula_row, value_row in zip(formula_rows, value_rows, strict=False):
+        for formula_cell, value_cell in zip(formula_row, value_row, strict=False):
+            formula = formula_cell.value
+            if formula_cell.data_type != "f" and not (
+                isinstance(formula, str) and formula.startswith("=")
+            ):
+                continue
+            source_index = str(formula_cell.column - 1)
+            source_header = raw_headers.get(source_index, f"Column {formula_cell.column}")
+            cached_value = sanitize_for_json(value_cell.value)
+            classification, rationale = _formula_classification(source_header)
+            is_error = isinstance(cached_value, str) and cached_value.startswith("#")
+            evidence = {
+                "coordinate": formula_cell.coordinate,
+                "source_index": source_index,
+                "source_header": source_header,
+                "formula": str(formula),
+                "cached_value": cached_value,
+                "cached_value_status": "error" if is_error else ("missing" if cached_value is None else "available"),
+                "classification": classification,
+                "rationale": rationale,
+            }
+            by_row.setdefault(formula_cell.row, []).append(evidence)
+            column_policy = (
+                "evidence_only"
+                if classification in {"commercial_evidence", "derived_demand"}
+                else "formula_rows_only"
+            )
+            summary = by_column.setdefault(
+                source_header,
+                {
+                    "source_index": source_index,
+                    "source_header": source_header,
+                    "classification": classification,
+                    "rationale": rationale,
+                    "formula_count": 0,
+                    "cached_value_count": 0,
+                    "cached_error_count": 0,
+                    "sample_formulas": [],
+                    "sample_cached_values": [],
+                    "operational_policy": column_policy,
+                },
+            )
+            summary["formula_count"] = cast(int, summary["formula_count"]) + 1
+            if is_error:
+                summary["cached_error_count"] = cast(int, summary["cached_error_count"]) + 1
+            elif cached_value is not None:
+                summary["cached_value_count"] = cast(int, summary["cached_value_count"]) + 1
+            sample_formulas = cast(list[str], summary["sample_formulas"])
+            if str(formula) not in sample_formulas and len(sample_formulas) < 2:
+                sample_formulas.append(str(formula)[:240])
+            sample_values = cast(list[object], summary["sample_cached_values"])
+            if cached_value not in (None, "") and cached_value not in sample_values and len(sample_values) < 3:
+                sample_values.append(cached_value)
+    return by_row, sorted(by_column.values(), key=lambda item: int(str(item["source_index"])))
+
+
 def _validate_current_headers(all_rows: list[list], manifest: dict[str, str]) -> None:
     """Keep the current capture contract exact while preserving older workbooks."""
 
@@ -189,6 +291,47 @@ def _validate_current_headers(all_rows: list[list], manifest: dict[str, str]) ->
         )
 
 
+def _select_import_sheet(workbook: Any, manifest: dict[str, str]) -> tuple[str, list[list]]:
+    """Return the governed capture sheet or the strongest non-template evidence sheet.
+
+    A manifest-bearing workbook is a governed contract and must retain its declared
+    capture sheet.  For external evidence, a client is not required to know our
+    sheet name: select the non-manifest sheet with the most recognized headers,
+    then the most non-empty rows.  This only identifies a source tab; it never
+    accepts a semantic field mapping.
+    """
+
+    official_names = (SOURCE_SHEET_NAME, *LEGACY_SOURCE_SHEET_NAMES)
+    if manifest:
+        source_sheet_name = next((name for name in official_names if name in workbook.sheetnames), None)
+        if source_sheet_name is None:
+            raise _bad_request(
+                f"Required sheet '{SOURCE_SHEET_NAME}' not found in governed workbook.",
+                "IMPORT_SHEET_NOT_FOUND",
+            )
+        sheet = workbook[source_sheet_name]
+        return source_sheet_name, [list(row) for row in sheet.iter_rows(values_only=True)]
+
+    candidates: list[tuple[int, int, int, str, list[list]]] = []
+    for position, name in enumerate(workbook.sheetnames):
+        if name == MANIFEST_SHEET_NAME:
+            continue
+        sheet = workbook[name]
+        rows = [list(row) for row in sheet.iter_rows(values_only=True)]
+        if not any(any(value not in (None, "") for value in row) for row in rows):
+            continue
+        result = parse_rows(rows)
+        candidates.append((len(result.header_map), result.source_row_count, -position, name, rows))
+
+    if not candidates:
+        raise _bad_request(
+            "No populated worksheet was found for import.",
+            "IMPORT_SHEET_NOT_FOUND",
+        )
+    _, _, _, source_sheet_name, rows = max(candidates)
+    return source_sheet_name, rows
+
+
 def serialize_batch(batch: ImportBatch) -> ImportBatchResponse:
     """Convert an import batch model into a response schema."""
 
@@ -199,12 +342,18 @@ def serialize_batch(batch: ImportBatch) -> ImportBatchResponse:
         parser_version=batch.parser_version,
         status=batch.status.value,
         source_row_count=batch.source_row_count,
+        candidate_count=batch.candidate_count,
         tbq_y_count=batch.tbq_y_count,
         tbq_n_count=batch.tbq_n_count,
         excluded_count=batch.excluded_count,
         loaded_count=batch.loaded_count,
         header_map=batch.header_map,
         error_details=batch.error_details,
+        intake_mode=cast(Literal["official_template", "external_mapping"], batch.intake_mode),
+        mapping_contract=batch.mapping_contract,
+        mapping_profile_id=batch.mapping_profile_id,
+        mapping_reviewed_by=batch.mapping_reviewed_by,
+        mapping_reviewed_at=batch.mapping_reviewed_at,
         created_at=batch.created_at,
         updated_at=batch.updated_at,
     )
@@ -283,6 +432,22 @@ def _build_raw_column_values(raw_data: dict[str, object], raw_headers: dict[str,
     return values
 
 
+def _is_external_summary_row(raw_data: dict[str, object], header_map: dict[str, str]) -> bool:
+    """Identify explicit client workbook totals without guessing about business rows."""
+
+    sequence = _normalize_header_key(
+        str(_extract_raw_value(raw_data, header_map, "seq_number") or "")
+    )
+    if sequence not in {"total", "subtotal", "grand total"}:
+        return False
+    identifying_values = (
+        _extract_raw_value(raw_data, header_map, "interface_name"),
+        _extract_raw_value(raw_data, header_map, "source_system"),
+        _extract_raw_value(raw_data, header_map, "destination_system"),
+    )
+    return not any(value not in (None, "") for value in identifying_values)
+
+
 def _extract_value_from_header_alias(raw_data: dict[str, object], field: str) -> object:
     aliases = HEADER_ALIASES.get(field, [])
     if not aliases:
@@ -310,12 +475,21 @@ def _extract_raw_value(raw_data: dict[str, object], header_map: dict[str, str], 
     if field in raw_data:
         return raw_data.get(field)
 
+    contract_enforced = header_map.get(import_mapping_service.CONTRACT_ENFORCED_METADATA_KEY) == "true"
+    raw_headers = _extract_raw_headers(header_map)
+    column_index = header_map.get(field)
+    if contract_enforced:
+        if column_index is None or column_index == "-1":
+            return None
+        header_label = raw_headers.get(column_index)
+        if header_label and header_label in raw_data:
+            return raw_data.get(header_label)
+        return raw_data.get(column_index)
+
     alias_value = _extract_value_from_header_alias(raw_data, field)
     if alias_value is not _MISSING:
         return alias_value
 
-    raw_headers = _extract_raw_headers(header_map)
-    column_index = header_map.get(field)
     if column_index is None:
         fallback_index = FALLBACK_COLUMN_INDEXES.get(field)
         if fallback_index is None:
@@ -553,8 +727,118 @@ async def create_import_batch(
     return batch
 
 
+def _is_official_template(
+    source_sheet_name: str,
+    manifest: dict[str, str],
+    header_map: dict[str, str],
+    *,
+    has_formulas: bool = False,
+) -> bool:
+    """Return whether a workbook matches a current or documented legacy template contract."""
+
+    if source_sheet_name == SOURCE_SHEET_NAME and bool(manifest):
+        return True
+    # v1 templates had no manifest but used a legacy, localized sheet name and
+    # a sufficiently complete governed header set. Modern unmanifested sheets
+    # remain external evidence and must enter mapping review.
+    return (
+        source_sheet_name in LEGACY_SOURCE_SHEET_NAMES
+        and not manifest
+        and not has_formulas
+        and len(header_map) >= 6
+    )
+
+
+async def _materialize_batch(
+    batch: ImportBatch,
+    db: AsyncSession,
+    *,
+    actor_id: str,
+    correlation_id: str,
+) -> int:
+    """Create catalog records from persisted source rows exactly once."""
+
+    source_rows = (
+        await db.scalars(
+            select(SourceIntegrationRow)
+            .where(SourceIntegrationRow.import_batch_id == batch.id)
+            .order_by(SourceIntegrationRow.source_row_number)
+        )
+    ).all()
+    source_row_ids = [row.id for row in source_rows]
+    if source_row_ids:
+        existing_count = await db.scalar(
+            select(func.count()).select_from(CatalogIntegration).where(
+                CatalogIntegration.source_row_id.in_(source_row_ids)
+            )
+        )
+        if existing_count:
+            batch.loaded_count = int(existing_count)
+            batch.status = ImportStatus.COMPLETED
+            return int(existing_count)
+
+    header_map = cast(dict[str, str], batch.header_map or {})
+    contract = cast(dict[str, object], batch.mapping_contract or {})
+    external = batch.intake_mode == "external_mapping"
+    effective_header_map = (
+        import_mapping_service.approved_header_map(header_map, contract)
+        if external
+        else header_map
+    )
+    loaded = 0
+    for source_row in source_rows:
+        if not source_row.included:
+            continue
+        raw_data = cast(dict[str, object], source_row.raw_data or {})
+        working_data = (
+            import_mapping_service.apply_contract_values(raw_data, contract)
+            if external
+            else raw_data
+        )
+        if external:
+            formula_headers = {
+                str(event.get("field", ""))
+                for event in cast(list[dict[str, object]], source_row.normalization_events or [])
+                if event.get("rule") == "external_formula_evidence_only"
+            }
+            for target in import_mapping_service.operational_targets_for_sources(
+                contract,
+                formula_headers,
+            ):
+                working_data[target] = None
+        db.add(
+            _build_catalog_integration(
+                project_id=batch.project_id,
+                source_row_id=source_row.id,
+                raw_data=working_data,
+                normalization_events=[] if external else cast(list[dict[str, Any]], source_row.normalization_events or []),
+                header_map=effective_header_map,
+            )
+        )
+        loaded += 1
+
+    batch.loaded_count = loaded
+    batch.status = ImportStatus.COMPLETED
+    await audit_service.emit(
+        event_type="import_materialized",
+        entity_type="import_batch",
+        entity_id=batch.id,
+        actor_id=actor_id,
+        old_value={"status": ImportStatus.PROCESSING.value, "loaded_count": 0},
+        new_value={
+            "status": ImportStatus.COMPLETED.value,
+            "loaded_count": loaded,
+            "intake_mode": batch.intake_mode,
+        },
+        project_id=batch.project_id,
+        correlation_id=correlation_id,
+        db=db,
+    )
+    return loaded
+
+
 async def process_import(batch_id: str, source_reference: str, db: AsyncSession) -> ImportBatch:
-    """Parse the workbook, persist all source rows, and materialize included catalog rows."""
+    """Parse a workbook and stage external evidence before catalog materialization."""
 
     batch = await db.get(ImportBatch, batch_id)
     if batch is None:
@@ -566,33 +850,31 @@ async def process_import(batch_id: str, source_reference: str, db: AsyncSession)
     batch.status = ImportStatus.PROCESSING
     await db.flush()
 
+    workbook_bytes = storage_service.read_bytes(source_reference)
     workbook = load_workbook(
-        filename=BytesIO(storage_service.read_bytes(source_reference)),
+        filename=BytesIO(workbook_bytes),
         data_only=False,
         read_only=True,
     )
     manifest = _read_template_manifest(workbook)
     compatibility = _validate_template_version(manifest)
-    source_sheet_name = next(
-        (
-            name
-            for name in (SOURCE_SHEET_NAME, *LEGACY_SOURCE_SHEET_NAMES)
-            if name in workbook.sheetnames
-        ),
-        None,
-    )
-    if source_sheet_name is None:
-        raise _bad_request(
-            f"Required sheet '{SOURCE_SHEET_NAME}' not found in workbook.",
-            "IMPORT_SHEET_NOT_FOUND",
-        )
+    source_sheet_name, all_rows = _select_import_sheet(workbook, manifest)
     sheet = workbook[source_sheet_name]
-    _assert_no_capture_formulas(sheet)
-    all_rows = [list(row) for row in sheet.iter_rows(values_only=True)]
     _validate_current_headers(all_rows, manifest)
     import_result = parse_rows(all_rows)
     header_row_index = detect_header_row(all_rows)
     raw_header_labels = _build_raw_header_labels(all_rows[header_row_index] if all_rows else [])
+    value_workbook = load_workbook(
+        filename=BytesIO(workbook_bytes),
+        data_only=True,
+        read_only=True,
+    )
+    formula_evidence_by_row, formula_columns = _collect_external_formula_evidence(
+        sheet,
+        value_workbook[source_sheet_name],
+        header_row_index,
+        raw_header_labels,
+    )
     stored_header_map = {
         **import_result.header_map,
         RAW_HEADERS_METADATA_KEY: json.dumps(raw_header_labels, ensure_ascii=True),
@@ -601,25 +883,55 @@ async def process_import(batch_id: str, source_reference: str, db: AsyncSession)
         TEMPLATE_GENERATED_AT_METADATA_KEY: manifest.get("generated_at_utc", ""),
     }
     correlation_id = str(uuid.uuid4())
+    staged_rows: list[tuple[SourceIntegrationRow, bool]] = []
+    official_template = _is_official_template(
+        source_sheet_name,
+        manifest,
+        import_result.header_map,
+        has_formulas=bool(formula_columns),
+    )
+    if official_template:
+        _assert_no_capture_formulas(sheet)
 
     for parsed_row in import_result.rows:
-        normalization_events = [
-            sanitize_for_json(event.__dict__) for event in parsed_row.normalization_events
-        ]
+        normalization_events = (
+            [sanitize_for_json(event.__dict__) for event in parsed_row.normalization_events]
+            if official_template
+            else []
+        )
+        if not official_template:
+            normalization_events.extend(
+                {
+                    "field": str(item["source_header"]),
+                    "old_value": item["formula"],
+                    "new_value": item["cached_value"],
+                    "rule": "external_formula_evidence_only",
+                }
+                for item in formula_evidence_by_row.get(parsed_row.source_row_number, [])
+            )
         raw_column_values = _build_raw_column_values(parsed_row.raw_data, raw_header_labels)
         _, payload_event = _normalized_payload_value(raw_column_values, stored_header_map)
-        if payload_event is not None:
+        if official_template and payload_event is not None:
             normalization_events.append(sanitize_for_json(payload_event))
+        summary_row = not official_template and _is_external_summary_row(
+            raw_column_values,
+            stored_header_map,
+        )
         source_row = SourceIntegrationRow(
             import_batch_id=batch.id,
             source_row_number=parsed_row.source_row_number,
             raw_data=sanitize_for_json(raw_column_values),
-            included=parsed_row.included,
-            exclusion_reason=parsed_row.exclusion_reason,
+            included=parsed_row.included and not summary_row,
+            exclusion_reason=(
+                "External workbook summary row"
+                if summary_row
+                else parsed_row.exclusion_reason
+            ),
             normalization_events=normalization_events,
         )
         db.add(source_row)
         await db.flush()
+        staged_rows.append((source_row, source_row.included))
 
         for event in normalization_events:
             event_dict = cast(dict[str, Any], event)
@@ -639,25 +951,293 @@ async def process_import(batch_id: str, source_reference: str, db: AsyncSession)
                 correlation_id=correlation_id,
             )
 
-        if parsed_row.included:
-            db.add(
-                _build_catalog_integration(
-                    project_id=batch.project_id,
-                    source_row_id=source_row.id,
-                    raw_data=source_row.raw_data,
-                    normalization_events=cast(list[dict[str, Any]], normalization_events),
-                    header_map=stored_header_map,
-                )
-            )
-
     batch.source_row_count = import_result.source_row_count
-    batch.tbq_y_count = import_result.tbq_y_count
-    batch.tbq_n_count = import_result.tbq_n_count
-    batch.excluded_count = import_result.excluded_count
-    batch.loaded_count = import_result.loaded_count
+    staged_included = [row for row, included in staged_rows if included]
+    if official_template:
+        batch.candidate_count = import_result.loaded_count
+        batch.tbq_y_count = import_result.tbq_y_count
+        batch.tbq_n_count = import_result.tbq_n_count
+        batch.excluded_count = import_result.excluded_count
+    else:
+        batch.candidate_count = len(staged_included)
+        batch.tbq_y_count = sum(
+            1
+            for row in staged_included
+            if str(
+                _extract_raw_value(
+                    cast(dict[str, object], row.raw_data or {}),
+                    stored_header_map,
+                    "tbq",
+                )
+                or ""
+            ).strip().upper()
+            == "Y"
+        )
+        batch.tbq_n_count = len(staged_included) - int(batch.tbq_y_count or 0)
+        batch.excluded_count = len(staged_rows) - len(staged_included)
+    batch.loaded_count = import_result.loaded_count if official_template else 0
     batch.header_map = stored_header_map
     batch.parser_version = import_result.parser_version
-    batch.status = ImportStatus.COMPLETED
+    if official_template:
+        batch.intake_mode = "official_template"
+        batch.mapping_contract = {
+            "version": import_mapping_service.CONTRACT_VERSION,
+            "status": "not_required",
+            "source_kind": "official_template",
+        }
+        await _materialize_batch(
+            batch,
+            db,
+            actor_id="system-import",
+            correlation_id=correlation_id,
+        )
+    else:
+        raw_rows = [cast(dict[str, object], row.raw_data or {}) for row, _ in staged_rows]
+        contract = import_mapping_service.build_mapping_contract(
+            raw_header_labels,
+            raw_rows,
+            formula_columns=formula_columns,
+        )
+        profile = await db.scalar(
+            select(ImportMappingProfile).where(
+                ImportMappingProfile.project_id == batch.project_id,
+                ImportMappingProfile.header_fingerprint == contract["header_fingerprint"],
+                ImportMappingProfile.is_active.is_(True),
+            )
+        )
+        batch.intake_mode = "external_mapping"
+        if profile is not None and not formula_columns:
+            batch.mapping_contract = profile.contract
+            batch.mapping_profile_id = profile.id
+            batch.mapping_reviewed_by = profile.created_by
+            batch.mapping_reviewed_at = datetime.now(UTC)
+            batch.status = ImportStatus.PROCESSING
+            await audit_service.emit(
+                event_type="import_mapping_profile_applied",
+                entity_type="import_batch",
+                entity_id=batch.id,
+                actor_id="system-import",
+                old_value={"status": ImportStatus.PENDING.value},
+                new_value={"profile_id": profile.id, "profile_name": profile.name},
+                project_id=batch.project_id,
+                correlation_id=correlation_id,
+                db=db,
+            )
+            await _materialize_batch(
+                batch,
+                db,
+                actor_id="system-import",
+                correlation_id=correlation_id,
+            )
+        else:
+            batch.mapping_contract = contract
+            batch.status = ImportStatus.MAPPING_REVIEW
+            await audit_service.emit(
+                event_type="import_mapping_review_required",
+                entity_type="import_batch",
+                entity_id=batch.id,
+                actor_id="system-import",
+                old_value={"status": ImportStatus.PROCESSING.value},
+                new_value={
+                    "status": ImportStatus.MAPPING_REVIEW.value,
+                    "header_count": len(raw_header_labels),
+                    "candidate_count": import_result.loaded_count,
+                    "question_count": len(import_mapping_service.contract_items(contract, "questions")),
+                },
+                project_id=batch.project_id,
+                correlation_id=correlation_id,
+                db=db,
+            )
+    await db.flush()
+    await db.refresh(batch)
+    return batch
+
+
+def _serialize_mapping_profile(profile: ImportMappingProfile) -> ImportMappingProfileResponse:
+    return ImportMappingProfileResponse(
+        id=profile.id,
+        project_id=profile.project_id,
+        name=profile.name,
+        header_fingerprint=profile.header_fingerprint,
+        contract=profile.contract,
+        created_by=profile.created_by,
+        is_active=profile.is_active,
+        created_at=profile.created_at,
+        updated_at=profile.updated_at,
+    )
+
+
+async def list_import_mapping_profiles(
+    project_id: str,
+    db: AsyncSession,
+) -> ImportMappingProfileListResponse:
+    """List the approved, project-scoped contracts available to future external imports."""
+
+    profiles = (
+        await db.scalars(
+            select(ImportMappingProfile)
+            .where(ImportMappingProfile.project_id == project_id)
+            .order_by(ImportMappingProfile.updated_at.desc())
+        )
+    ).all()
+    return ImportMappingProfileListResponse(
+        profiles=[_serialize_mapping_profile(profile) for profile in profiles]
+    )
+
+
+async def _load_mapping_review_batch(
+    project_id: str,
+    batch_id: str,
+    db: AsyncSession,
+) -> ImportBatch:
+    batch = await db.scalar(
+        select(ImportBatch).where(
+            ImportBatch.project_id == project_id,
+            ImportBatch.id == batch_id,
+        )
+    )
+    if batch is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Import batch not found", "error_code": "IMPORT_BATCH_NOT_FOUND"},
+        )
+    if batch.intake_mode != "external_mapping":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "The governed template does not require mapping review.",
+                "error_code": "IMPORT_MAPPING_NOT_REQUIRED",
+            },
+        )
+    return batch
+
+
+async def update_import_mapping_review(
+    project_id: str,
+    batch_id: str,
+    request: ImportMappingReviewUpdateRequest,
+    actor_id: str,
+    db: AsyncSession,
+) -> ImportBatchResponse:
+    """Save a draft mapping decision without releasing source rows downstream."""
+
+    batch = await _load_mapping_review_batch(project_id, batch_id, db)
+    if batch.status != ImportStatus.MAPPING_REVIEW:
+        raise HTTPException(
+            status_code=409,
+            detail={"detail": "Only a staged mapping review can be edited.", "error_code": "IMPORT_MAPPING_NOT_STAGED"},
+        )
+    try:
+        contract = import_mapping_service.validate_contract_update(
+            cast(dict[str, object], batch.mapping_contract or {}),
+            [item.model_dump() for item in request.fields],
+            request.answers,
+            require_complete=False,
+        )
+    except ValueError as exc:
+        raise _bad_request(str(exc), "IMPORT_MAPPING_INVALID") from exc
+    batch.mapping_contract = contract
+    await audit_service.emit(
+        event_type="import_mapping_review_saved",
+        entity_type="import_batch",
+        entity_id=batch.id,
+        actor_id=actor_id,
+        old_value=None,
+        new_value={
+            "mapped_header_count": len(request.fields),
+            "answered_question_count": len(request.answers),
+        },
+        project_id=project_id,
+        db=db,
+    )
+    await db.flush()
+    await db.refresh(batch)
+    return serialize_batch(batch)
+
+
+async def approve_import_mapping_review(
+    project_id: str,
+    batch_id: str,
+    request: ImportMappingReviewApproveRequest,
+    actor_id: str,
+    db: AsyncSession,
+) -> ImportBatchResponse:
+    """Approve a complete external mapping contract and queue safe materialization."""
+
+    batch = await _load_mapping_review_batch(project_id, batch_id, db)
+    if batch.status != ImportStatus.MAPPING_REVIEW:
+        raise HTTPException(
+            status_code=409,
+            detail={"detail": "Only a staged mapping review can be approved.", "error_code": "IMPORT_MAPPING_NOT_STAGED"},
+        )
+    try:
+        contract = import_mapping_service.validate_contract_update(
+            cast(dict[str, object], batch.mapping_contract or {}),
+            [item.model_dump() for item in request.fields],
+            request.answers,
+        )
+    except ValueError as exc:
+        raise _bad_request(str(exc), "IMPORT_MAPPING_INCOMPLETE") from exc
+
+    profile_id: str | None = None
+    if request.save_profile:
+        profile = ImportMappingProfile(
+            project_id=project_id,
+            name=request.profile_name or f"Approved mapping {datetime.now(UTC).date().isoformat()}",
+            header_fingerprint=str(contract["header_fingerprint"]),
+            contract=contract,
+            created_by=actor_id,
+            is_active=True,
+        )
+        db.add(profile)
+        await db.flush()
+        profile_id = profile.id
+
+    batch.mapping_contract = contract
+    batch.mapping_profile_id = profile_id
+    batch.mapping_reviewed_by = actor_id
+    batch.mapping_reviewed_at = datetime.now(UTC)
+    batch.status = ImportStatus.PENDING
+    await audit_service.emit(
+        event_type="import_mapping_approved",
+        entity_type="import_batch",
+        entity_id=batch.id,
+        actor_id=actor_id,
+        old_value={"status": ImportStatus.MAPPING_REVIEW.value},
+        new_value={
+            "status": ImportStatus.PENDING.value,
+            "profile_id": profile_id,
+            "mapped_header_count": len(request.fields),
+        },
+        project_id=project_id,
+        db=db,
+    )
+    await db.flush()
+    await db.refresh(batch)
+    return serialize_batch(batch)
+
+
+async def materialize_approved_import(batch_id: str, db: AsyncSession) -> ImportBatch:
+    """Worker entrypoint for an explicitly approved external mapping contract."""
+
+    batch = await db.get(ImportBatch, batch_id)
+    if batch is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Import batch not found", "error_code": "IMPORT_BATCH_NOT_FOUND"},
+        )
+    if batch.intake_mode != "external_mapping" or batch.status != ImportStatus.PENDING:
+        raise HTTPException(
+            status_code=409,
+            detail={"detail": "Import batch is not ready for approved mapping materialization.", "error_code": "IMPORT_MAPPING_NOT_READY"},
+        )
+    batch.status = ImportStatus.PROCESSING
+    await _materialize_batch(
+        batch,
+        db,
+        actor_id=batch.mapping_reviewed_by or "system-import",
+        correlation_id=str(uuid.uuid4()),
+    )
     await db.flush()
     await db.refresh(batch)
     return batch
@@ -789,6 +1369,59 @@ async def get_import_quality_assistant(
         raise HTTPException(
             status_code=404,
             detail={"detail": "Import batch not found", "error_code": "IMPORT_BATCH_NOT_FOUND"},
+        )
+
+    if batch.status == ImportStatus.MAPPING_REVIEW:
+        contract = cast(dict[str, object], batch.mapping_contract or {})
+        fields = import_mapping_service.contract_items(contract, "fields")
+        questions = import_mapping_service.contract_items(contract, "questions")
+        answers = cast(dict[str, str], contract.get("answers", {}))
+        unresolved_fields = sum(
+            1 for item in fields if str(item.get("target_field", import_mapping_service.EVIDENCE_ONLY)) == import_mapping_service.EVIDENCE_ONLY
+        )
+        unresolved_questions = [item for item in questions if not answers.get(str(item.get("id", "")))]
+        import_href = f"/projects/{project_id}/import?batch_id={batch_id}"
+        staged_findings = [
+            _quality_finding(
+                "high",
+                "External workbook is staged for mapping review",
+                "No integration, QA, topology, or BOM record has been materialized. Classify each source column and answer the semantic questions before approval.",
+                "Open mapping review",
+                import_href,
+            )
+        ]
+        for question in unresolved_questions[:5]:
+            staged_findings.append(
+                _quality_finding(
+                    "medium",
+                    "Client input required",
+                    str(question.get("reason") or question.get("prompt") or "A source field needs clarification."),
+                    "Answer in mapping review",
+                    import_href,
+                )
+            )
+        return ImportQualityAssistantResponse(
+            project_id=project_id,
+            batch_id=batch_id,
+            status=batch.status.value,
+            filename=batch.filename,
+            row_count=batch.source_row_count or len(batch.source_rows),
+            included_count=batch.candidate_count or 0,
+            excluded_count=batch.excluded_count or 0,
+            technical_only_count=batch.tbq_n_count or 0,
+            normalization_event_count=0,
+            recommended_next_action=(
+                "Use the guided mapping review to classify every column and answer the outstanding business semantics. "
+                "Approve only when the source-to-App contract is correct."
+            ),
+            metrics=[
+                _quality_metric("Rows staged", str(batch.source_row_count or len(batch.source_rows)), "Raw workbook evidence is preserved but has not entered the catalog."),
+                _quality_metric("Candidate rows", str(batch.candidate_count or 0), "Rows eligible for technical governance after approval."),
+                _quality_metric("Columns to classify", str(len(fields)), "Every external column needs an explicit App field or evidence-only decision."),
+                _quality_metric("Evidence only", str(unresolved_fields), "Columns retained for traceability instead of being used in calculations."),
+                _quality_metric("Questions open", str(len(unresolved_questions)), "Semantic choices that require user confirmation before materialization."),
+            ],
+            findings=staged_findings,
         )
 
     source_rows = sorted(batch.source_rows, key=lambda row: row.source_row_number)

@@ -213,13 +213,13 @@ export default async function AdminServiceDetailPage({
               </p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] text-left text-sm">
+              <table className="w-full min-w-[1120px] text-left text-sm">
                 <thead className="bg-[var(--color-surface-2)] text-xs uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
                   <tr>
                     <th className="px-6 py-3">Limit</th>
                     <th className="px-6 py-3">Value</th>
-                    <th className="px-6 py-3">Type</th>
-                    <th className="px-6 py-3">Scope</th>
+                    <th className="px-6 py-3">Behavior</th>
+                    <th className="px-6 py-3">Applies when</th>
                     <th className="px-6 py-3">Confidence</th>
                     <th className="px-6 py-3">Source</th>
                   </tr>
@@ -235,8 +235,18 @@ export default async function AdminServiceDetailPage({
                         {formatUnknownValue(limit.value)}
                         {limit.unit ? <span className="ml-1 text-[var(--color-text-muted)]">{limit.unit}</span> : null}
                       </td>
-                      <td className="px-6 py-4 text-[var(--color-text-secondary)]">{labelize(limit.limit_type)}</td>
-                      <td className="px-6 py-4 text-[var(--color-text-secondary)]">{labelize(limit.scope)}</td>
+                      <td className="px-6 py-4 text-[var(--color-text-secondary)]">
+                        <p className="font-semibold text-[var(--color-text-primary)]">{labelize(limit.constraint_kind)}</p>
+                        <p className="mt-1 text-xs">{labelize(limit.enforcement)}</p>
+                      </td>
+                      <td className="max-w-[18rem] px-6 py-4 text-[var(--color-text-secondary)]">
+                        <p>{labelize(limit.scope)}</p>
+                        {Object.keys(limit.applicability).length > 0 ? (
+                          <p className="mt-1 text-xs leading-5 text-[var(--color-text-muted)]">
+                            {formatUnknownValue(limit.applicability)}
+                          </p>
+                        ) : null}
+                      </td>
                       <td className="px-6 py-4 text-[var(--color-text-secondary)]">{Math.round(limit.confidence * 100)}%</td>
                       <td className="px-6 py-4">
                         {limit.source_url ? (

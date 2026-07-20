@@ -8,7 +8,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.models import AssumptionSet, DictionaryOption
+from app.models import AssumptionSet, CatalogIntegration, DictionaryOption
 
 
 def build_linear_canvas(tool_key: str) -> str:
@@ -84,6 +84,7 @@ async def seed_canvas_validation_reference_data(test_engine: AsyncEngine) -> Non
                 is_default=True,
                 assumptions={
                     "oic_rest_max_payload_kb": 10240,
+                    "oic_kafka_max_payload_kb": 10240,
                     "functions_max_invoke_body_kb": 6144,
                     "api_gw_max_body_kb": 20480,
                     "queue_max_message_kb": 256,
@@ -136,6 +137,59 @@ async def seed_canvas_validation_reference_data(test_engine: AsyncEngine) -> Non
 
 
 @pytest.mark.asyncio
+async def test_refresh_project_qa_removes_stale_derived_reasons(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """QA refresh recomputes decisions without rewriting integration evidence."""
+
+    project_response = await api_client.post(
+        "/api/v1/projects/",
+        json={"name": "QA Refresh Project", "owner_id": "integration-test"},
+    )
+    assert project_response.status_code == 201
+    project_id = project_response.json()["id"]
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        row = CatalogIntegration(
+            project_id=project_id,
+            seq_number=1,
+            interface_id="QA-REFRESH-001",
+            interface_name="Refresh stale QA state",
+            trigger_type="REST",
+            selected_pattern="#01",
+            pattern_rationale="Certified synchronous request and reply route.",
+            core_tools="OIC Gen3",
+            payload_per_execution_kb=10.0,
+            target_latency_sla="2 seconds",
+            qa_status="REVISAR",
+            qa_reasons=["PATTERN_REFERENCE_ONLY"],
+        )
+        session.add(row)
+        await session.commit()
+
+    refresh_response = await api_client.post(
+        f"/api/v1/catalog/{project_id}/refresh-qa",
+        params={"actor_id": "integration-test"},
+    )
+    assert refresh_response.status_code == 200
+    assert refresh_response.json() == {
+        "project_id": project_id,
+        "evaluated": 1,
+        "changed": 1,
+        "qa_ok": 1,
+        "qa_revisar": 0,
+        "qa_pending": 0,
+    }
+
+    list_response = await api_client.get(f"/api/v1/catalog/{project_id}")
+    assert list_response.status_code == 200
+    assert list_response.json()["integrations"][0]["qa_status"] == "OK"
+    assert list_response.json()["integrations"][0]["qa_reasons"] == []
+
+
+@pytest.mark.asyncio
 async def test_manual_capture_lists_catalog_and_lineage(api_client: AsyncClient) -> None:
     """Verify manual capture persists a catalog row and exposes lineage metadata."""
 
@@ -159,11 +213,19 @@ async def test_manual_capture_lists_catalog_and_lineage(api_client: AsyncClient)
             "business_process": "Finance",
             "interface_name": "GL Sync",
             "description": "Manual capture test integration",
+            "status": "In analysis",
+            "interface_status": "Definitive",
+            "mapping_status": "To be confirmed",
             "source_system": "SAP ECC",
             "destination_system": "Oracle ATP",
+            "base": "Delta",
             "frequency": "Una vez al día",
             "payload_per_execution_kb": 128,
+            "is_fan_out": True,
+            "fan_out_targets": 3,
             "tbq": "Y",
+            "calendarization": "Daily at 19:30",
+            "source_evidence": {"legacy_destination_api_reference": "/gl/sync"},
         },
     )
     assert create_integration_response.status_code == 201
@@ -171,6 +233,13 @@ async def test_manual_capture_lists_catalog_and_lineage(api_client: AsyncClient)
     integration_id = integration["id"]
     assert integration["interface_id"] == "INT-TEST-001"
     assert integration["source_system"] == "SAP ECC"
+    assert integration["base"] == "Delta"
+    assert integration["status"] == "In analysis"
+    assert integration["interface_status"] == "Definitive"
+    assert integration["mapping_status"] == "To be confirmed"
+    assert integration["calendarization"] == "Daily at 19:30"
+    assert integration["is_fan_out"] is True
+    assert integration["fan_out_targets"] == 3
 
     list_response = await api_client.get(f"/api/v1/catalog/{project_id}")
     assert list_response.status_code == 200
@@ -185,6 +254,9 @@ async def test_manual_capture_lists_catalog_and_lineage(api_client: AsyncClient)
     assert lineage["included"] is True
     assert lineage["import_filename"] == "manual-capture.json"
     assert lineage["raw_data"]["interface_id"] == "INT-TEST-001"
+    assert lineage["raw_data"]["source_evidence"]["legacy_destination_api_reference"] == "/gl/sync"
+    assert lineage["raw_data"]["is_fan_out"] is True
+    assert lineage["raw_data"]["fan_out_targets"] == 3
 
 
 @pytest.mark.asyncio
@@ -271,6 +343,7 @@ async def test_patch_rejects_oracle_backed_canvas_blockers(
             "interface_name": "Oversized OIC Route",
             "description": "Route should fail server-side blocker validation",
             "source_system": "SAP ECC",
+            "source_technology": "Kafka",
             "destination_system": "Oracle ATP",
             "frequency": "Cada 1 hora",
             "payload_per_execution_kb": 15000,
@@ -431,6 +504,7 @@ async def test_bulk_patch_does_not_bypass_canvas_validation(
                 "interface_name": f"Bulk Canvas {sequence + 1}",
                 "description": "Bulk patch should not bypass validation",
                 "source_system": "SAP ECC",
+                "source_technology": "Kafka",
                 "destination_system": "Oracle ATP",
                 "frequency": "Cada 1 hora",
                 "payload_per_execution_kb": 15000,

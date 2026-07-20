@@ -40,6 +40,9 @@ class ServiceLimitResponse(BaseModel):
     label: str
     scope: str
     limit_type: str
+    constraint_kind: str
+    enforcement: str
+    applicability: dict[str, Any]
     value: Any
     unit: Optional[str]
     default_value: Any = None

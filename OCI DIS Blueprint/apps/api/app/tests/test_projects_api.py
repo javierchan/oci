@@ -21,6 +21,7 @@ async def test_project_patch_emits_audit_event(api_client: AsyncClient) -> None:
     assert create_response.status_code == 201
     created = create_response.json()
     project_id = created["id"]
+    assert created["status"] == "active"
 
     patch_response = await api_client.patch(
         f"/api/v1/projects/{project_id}",

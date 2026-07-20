@@ -8,13 +8,16 @@ from app.schemas.imports import (
     ImportBatchDeleteResponse,
     ImportBatchListResponse,
     ImportBatchResponse,
+    ImportMappingProfileListResponse,
+    ImportMappingReviewApproveRequest,
+    ImportMappingReviewUpdateRequest,
     ImportQualityAssistantResponse,
     SourceRowListResponse,
 )
 from app.schemas.agent import AgentCreateRequest, AgentRunResponse
 from app.services import agent_service, import_service, storage_service
 from app.workers.agent_worker import execute_agent_run_task
-from app.workers.import_worker import process_import_task
+from app.workers.import_worker import materialize_import_task, process_import_task
 
 router = APIRouter(prefix="/imports", tags=["Imports"])
 
@@ -71,6 +74,18 @@ async def list_imports(project_id: str, db: AsyncSession = Depends(get_db)) -> I
     return await import_service.list_import_batches(project_id, db)
 
 
+@router.get(
+    "/{project_id}/mapping-profiles",
+    response_model=ImportMappingProfileListResponse,
+    summary="List approved project-scoped external import mappings",
+)
+async def list_mapping_profiles(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> ImportMappingProfileListResponse:
+    return await import_service.list_import_mapping_profiles(project_id, db)
+
+
 @router.get("/{project_id}/{batch_id}", response_model=ImportBatchResponse, summary="Get import batch status and stats")
 async def get_import(
     project_id: str,
@@ -78,6 +93,65 @@ async def get_import(
     db: AsyncSession = Depends(get_db),
 ) -> ImportBatchResponse:
     return await import_service.get_import_batch(project_id, batch_id, db)
+
+
+@router.patch(
+    "/{project_id}/{batch_id}/mapping-review",
+    response_model=ImportBatchResponse,
+    summary="Save a draft external workbook mapping review",
+)
+async def save_mapping_review(
+    project_id: str,
+    batch_id: str,
+    request: ImportMappingReviewUpdateRequest,
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    db: AsyncSession = Depends(get_db),
+) -> ImportBatchResponse:
+    async with db.begin():
+        return await import_service.update_import_mapping_review(
+            project_id,
+            batch_id,
+            request,
+            actor_id,
+            db,
+        )
+
+
+@router.post(
+    "/{project_id}/{batch_id}/mapping-review/approve",
+    response_model=ImportBatchResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Approve a reviewed external mapping and queue catalog materialization",
+)
+async def approve_mapping_review(
+    project_id: str,
+    batch_id: str,
+    request: ImportMappingReviewApproveRequest,
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    db: AsyncSession = Depends(get_db),
+) -> ImportBatchResponse:
+    async with db.begin():
+        batch = await import_service.approve_import_mapping_review(
+            project_id,
+            batch_id,
+            request,
+            actor_id,
+            db,
+        )
+    try:
+        materialize_import_task.delay(batch.id)
+    except Exception as exc:  # pragma: no cover - defensive dispatch path.
+        async with db.begin():
+            await import_service.mark_import_failed(
+                batch.id,
+                {"detail": "Approved mapping could not be dispatched.", "error": str(exc)},
+                db,
+            )
+        raise HTTPException(
+            status_code=503,
+            detail={"detail": "Approved mapping could not be dispatched", "error_code": "IMPORT_MAPPING_DISPATCH_FAILED"},
+        ) from exc
+    return batch
 
 
 @router.get("/{project_id}/{batch_id}/rows", response_model=SourceRowListResponse, summary="Get source rows with inclusion/exclusion reasons")

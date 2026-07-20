@@ -655,7 +655,7 @@ SERVICE_PROFILES: list[dict[str, object]] = [
         "limits": {
             "max_request_body_kb": 20480,
             "max_function_backend_body_kb": 6144,
-            "max_stock_response_body_kb": 20480,
+            "max_stock_response_body_kb": 4,
             "max_cached_response_kb": 51200,
             "max_routes_per_deployment": 50,
             "max_deployments_per_gateway": 20,
@@ -705,7 +705,26 @@ SERVICE_PROFILES: list[dict[str, object]] = [
             "max_invocation_depth": 16,
             "sync_flow_max_duration_s": 300,
             "async_scheduled_flow_max_duration_s": 21600,
-            "max_message_size_kb": 10240,
+            "messaging_max_payload_kb": 10240,
+            "rest_trigger_structured_max_payload_kb": 102400,
+            "rest_invoke_structured_cloud_max_payload_kb": 102400,
+            "rest_invoke_structured_agent_max_payload_kb": 51200,
+            "rest_raw_max_payload_kb": 1048576,
+            "rest_attachment_max_payload_kb": 1048576,
+            "rest_json_schema_sample_max_kb": 100,
+            "soap_structured_max_payload_kb": 102400,
+            "soap_structured_agent_max_payload_kb": 51200,
+            "soap_attachment_max_payload_kb": 1048576,
+            "kafka_schema_max_payload_kb": 10240,
+            "jms_schema_max_payload_kb": 10240,
+            "database_outbound_schema_max_payload_kb": 10240,
+            "database_polling_agent_max_payload_kb": 51200,
+            "database_polling_private_max_payload_kb": 102400,
+            "ftp_structured_cloud_max_payload_kb": 102400,
+            "ftp_structured_agent_max_payload_kb": 51200,
+            "ftp_unstructured_max_payload_kb": 1048576,
+            "stage_read_entire_file_max_payload_kb": 102400,
+            "stage_encrypt_decrypt_max_payload_kb": 1048576,
             "max_parallel_branches": 5,
             "billing_threshold_kb": 50,
             "pack_size_msgs_per_hour_new_license": 5000,
@@ -716,6 +735,10 @@ SERVICE_PROFILES: list[dict[str, object]] = [
             "async_concurrency_per_pack_byol": 200,
             "adapter_catalog_count": 133,
             "api_observability_instances_per_request": 50,
+            "event_integrations_per_instance": 50,
+            "project_max_integrations": 200,
+            "project_max_connections": 100,
+            "project_max_deployments": 100,
             "label": "documented",
             "note": "Parallel branches consume synchronous concurrency quota.",
         },
@@ -732,7 +755,8 @@ SERVICE_PROFILES: list[dict[str, object]] = [
             "NOT the right backbone for very high-rate event streams (>5,000 msgs/hr per pack) — "
             "use OCI Streaming/Queue in front of bursty work and keep OIC for orchestration. "
             "Synchronous flows hard-limited to 5 minutes — long-running work must be async. "
-            "10 MB message size limit means large file/data transfers must use Object Storage or FTP. "
+            "Payload limits are adapter- and operation-specific; 50 KB is billing granularity, not a technical ceiling. "
+            "Use Object Storage references when the selected adapter's governed payload boundary is exceeded. "
             "Parallel branches are capped at 5 — Scatter-Gather patterns with >5 targets need decomposition."
         ),
         "interoperability_notes": (
@@ -745,6 +769,8 @@ SERVICE_PROFILES: list[dict[str, object]] = [
         "oracle_docs_urls": (
             "https://docs.oracle.com/en-us/iaas/application-integration/index.html|"
             "https://docs.oracle.com/en/cloud/paas/application-integration/oracle-integration-oci/service-limits.html|"
+            "https://docs.oracle.com/en/cloud/paas/application-integration/oracle-integration-oci/component-adapters.html|"
+            "https://docs.oracle.com/en-us/iaas/application-integration/doc/how-billing-message-usage-is-calculated-based-feature.html|"
             "https://docs.oracle.com/en/cloud/paas/application-integration/oracle-integration-oci/message-pack-usage-synchronous-requests.html|"
             "https://docs.oracle.com/en/cloud/paas/application-integration/find-adapters.html|"
             "https://docs.oracle.com/en/cloud/paas/application-integration/aiagents/enable-mcp-project.html|"
@@ -2018,6 +2044,222 @@ def _can_request_limit_increase(key: str) -> bool:
     return "max_" in normalized or "partition" in normalized or "gateway" in normalized
 
 
+OIC_LIMIT_GOVERNANCE: dict[str, tuple[str, str, str, dict[str, object]]] = {
+    "billing_threshold_kb": (
+        "billing_granularity",
+        "calculate",
+        "billing_message",
+        {"rounding": "ceiling", "applies_to": ["trigger_request", "invoke_response"]},
+    ),
+    "messaging_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "component_operation",
+        {"component": "oic_messaging", "payload_mode": "message"},
+    ),
+    "rest_trigger_structured_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "REST", "operation": "trigger", "payload_mode": "structured"},
+    ),
+    "rest_invoke_structured_cloud_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {
+            "adapter": "REST",
+            "operation": "invoke",
+            "payload_mode": "structured",
+            "endpoint_mode": ["public", "private_endpoint"],
+        },
+    ),
+    "rest_invoke_structured_agent_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {
+            "adapter": "REST",
+            "operation": "invoke",
+            "payload_mode": "structured",
+            "endpoint_mode": "connectivity_agent",
+        },
+    ),
+    "rest_raw_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "REST", "payload_mode": ["raw", "binary"]},
+    ),
+    "rest_attachment_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "REST", "payload_mode": "attachment"},
+    ),
+    "rest_json_schema_sample_max_kb": (
+        "design_time_limit",
+        "warn",
+        "design_time",
+        {"adapter": "REST", "operation": "schema_sample"},
+    ),
+    "soap_structured_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {
+            "adapter": "SOAP",
+            "payload_mode": "structured",
+            "endpoint_mode": ["public", "private_endpoint"],
+        },
+    ),
+    "soap_structured_agent_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "SOAP", "payload_mode": "structured", "endpoint_mode": "connectivity_agent"},
+    ),
+    "soap_attachment_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "SOAP", "payload_mode": "attachment"},
+    ),
+    "kafka_schema_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "KAFKA", "payload_mode": "structured"},
+    ),
+    "jms_schema_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "JMS", "payload_mode": "structured"},
+    ),
+    "database_outbound_schema_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "DATABASE", "operation": "outbound", "payload_mode": "structured"},
+    ),
+    "database_polling_agent_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "DATABASE", "operation": "polling", "endpoint_mode": "connectivity_agent"},
+    ),
+    "database_polling_private_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "DATABASE", "operation": "polling", "endpoint_mode": "private_endpoint"},
+    ),
+    "ftp_structured_cloud_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "FTP", "payload_mode": "structured", "endpoint_mode": ["public", "private_endpoint"]},
+    ),
+    "ftp_structured_agent_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "FTP", "payload_mode": "structured", "endpoint_mode": "connectivity_agent"},
+    ),
+    "ftp_unstructured_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "adapter_operation",
+        {"adapter": "FTP", "payload_mode": "unstructured"},
+    ),
+    "stage_read_entire_file_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "component_operation",
+        {"component": "stage_file", "operation": "read_entire_file"},
+    ),
+    "stage_encrypt_decrypt_max_payload_kb": (
+        "hard_limit",
+        "block_when_applicable",
+        "component_operation",
+        {"component": "stage_file", "operation": ["encrypt", "decrypt"]},
+    ),
+    "sync_flow_max_duration_s": (
+        "hard_limit",
+        "block_when_applicable",
+        "integration_runtime",
+        {"execution_model": "synchronous"},
+    ),
+    "async_scheduled_flow_max_duration_s": (
+        "hard_limit",
+        "block_when_applicable",
+        "integration_runtime",
+        {"execution_model": ["asynchronous", "scheduled"]},
+    ),
+    "max_parallel_branches": (
+        "hard_limit",
+        "block_when_applicable",
+        "integration_design",
+        {"component": "parallel_action"},
+    ),
+    "max_invocation_depth": (
+        "hard_limit",
+        "block_when_applicable",
+        "integration_runtime",
+        {"component": "nested_integration"},
+    ),
+}
+
+OIC_SERVICE_LIMITS_URL = (
+    "https://docs.oracle.com/en/cloud/paas/application-integration/"
+    "oracle-integration-oci/service-limits.html"
+)
+OIC_ADAPTER_LIMITS_URL = (
+    "https://docs.oracle.com/en/cloud/paas/application-integration/"
+    "oracle-integration-oci/component-adapters.html"
+)
+OIC_BILLING_URL = (
+    "https://docs.oracle.com/en-us/iaas/application-integration/doc/"
+    "how-billing-message-usage-is-calculated-based-feature.html"
+)
+
+
+def _limit_source_url(service_id: str, key: str, fallback: str | None) -> str | None:
+    """Bind governed OIC variables to the Oracle page that defines their semantics."""
+
+    if service_id != "OIC3":
+        return fallback
+    if key == "billing_threshold_kb":
+        return OIC_BILLING_URL
+    applicability = OIC_LIMIT_GOVERNANCE.get(key, (None, None, None, {}))[3]
+    if "adapter" in applicability:
+        return OIC_ADAPTER_LIMITS_URL
+    return OIC_SERVICE_LIMITS_URL
+
+
+def _infer_limit_governance(
+    service_id: str,
+    key: str,
+    value: object,
+) -> tuple[str, str, str, dict[str, object]]:
+    """Classify how deterministic consumers may use one governed variable."""
+
+    if service_id == "OIC3" and key in OIC_LIMIT_GOVERNANCE:
+        return OIC_LIMIT_GOVERNANCE[key]
+    limit_type = _infer_limit_type(key)
+    can_increase = _can_request_limit_increase(key)
+    if limit_type == "payload":
+        return "hard_limit", "block_when_applicable", "service_operation", {}
+    if can_increase:
+        return "adjustable_quota", "warn", "service", {}
+    if limit_type in {"quota", "retention", "performance"}:
+        return "fixed_quota", "warn", "service", {}
+    if isinstance(value, bool):
+        return "capability_flag", "inform", "service", {}
+    return "informational", "inform", "service", {}
+
+
 def seed_service_product_library(session: Session) -> int:
     """Seed normalized service-product versions, limits, evidence, and matrix rules."""
 
@@ -2074,6 +2316,11 @@ def seed_service_product_library(session: Session) -> int:
         for key, value in cast(dict[str, object], profile.limits).items():
             if key == "label":
                 continue
+            constraint_kind, enforcement, scope, applicability = _infer_limit_governance(
+                profile.service_id,
+                key,
+                value,
+            )
             existing_limit = session.scalar(
                 select(ServiceLimit).where(
                     ServiceLimit.service_profile_id == profile.id,
@@ -2085,12 +2332,15 @@ def seed_service_product_library(session: Session) -> int:
                     service_profile_id=profile.id,
                     limit_key=key,
                     label=_humanize_limit_key(key),
-                    scope="service",
+                    scope=scope,
                     limit_type=_infer_limit_type(key),
+                    constraint_kind=constraint_kind,
+                    enforcement=enforcement,
+                    applicability=applicability,
                     value=value,
                     unit=_infer_limit_unit(key, value),
                     can_request_increase=_can_request_limit_increase(key),
-                    source_url=first_source_url,
+                    source_url=_limit_source_url(profile.service_id, key, first_source_url),
                     confidence=0.9 if first_source_url else 0.75,
                     notes=None,
                 )

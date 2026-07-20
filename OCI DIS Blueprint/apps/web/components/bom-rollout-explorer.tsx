@@ -392,7 +392,7 @@ function ProductInspector({
     return <div className="p-5 text-sm text-[var(--color-text-secondary)]">Select a product to inspect its governed cost evidence.</div>;
   }
   return (
-    <div className="p-5">
+    <div className="min-w-0 p-5">
       <p className="app-label">Selected Product</p>
       <h3 className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">{product.label}</h3>
       <p className="mt-1 text-sm leading-5 text-[var(--color-text-secondary)]">
@@ -426,7 +426,7 @@ function ProductInspector({
         })}
       </div>
 
-      <div className="mt-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-xs leading-5 text-[var(--color-text-secondary)]">
+      <div className="mt-4 min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-xs leading-5 text-[var(--color-text-secondary)] [overflow-wrap:anywhere]">
         Price snapshot <span className="font-mono text-[var(--color-text-primary)]">{snapshot.price_catalog_snapshot_id.slice(0, 8)}</span> · mapping <span className="font-mono text-[var(--color-text-primary)]">{snapshot.mapping_version}</span>
       </div>
       <button type="button" className="app-button-secondary mt-4 w-full gap-2" onClick={onEditScenario}>
@@ -482,7 +482,7 @@ export function BomRolloutExplorer({
   ];
 
   return (
-    <section className="app-card overflow-hidden" aria-labelledby="rollout-explorer-title">
+    <section className="app-card min-w-0 overflow-hidden" aria-labelledby="rollout-explorer-title">
       <div className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -556,7 +556,7 @@ export function BomRolloutExplorer({
             </div>
           </div>
 
-          <aside className={`${mobilePanel === "inspector" ? "block" : "hidden"} min-w-0 lg:block`} aria-label="Selected product inspector">
+          <aside className={`${mobilePanel === "inspector" ? "block" : "hidden"} w-full min-w-0 max-w-full lg:block`} aria-label="Selected product inspector">
             <div className="border-b border-[var(--color-border)] px-5 py-4">
               <p className="app-label">Top contract drivers</p>
               <div className="mt-3 space-y-2">

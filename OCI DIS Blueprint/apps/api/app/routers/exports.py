@@ -26,6 +26,22 @@ async def download_capture_template(db: AsyncSession = Depends(get_db)) -> Respo
 
 
 @router.get(
+    "/{project_id}/template/xlsx",
+    summary="Export an active project into the official offline capture template",
+)
+async def download_project_capture_template(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    workbook_bytes, metadata = await capture_template_service.generate_project_capture_template(project_id, db)
+    return Response(
+        content=workbook_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{metadata.filename}"'},
+    )
+
+
+@router.get(
     "/template/metadata",
     response_model=CaptureTemplateMetadata,
     summary="Describe the current governed offline capture template",

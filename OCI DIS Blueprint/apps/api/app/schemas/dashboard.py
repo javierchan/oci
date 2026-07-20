@@ -102,24 +102,35 @@ class DashboardServiceRuleStatus(BaseModel):
 
 
 class DashboardProductUsage(BaseModel):
-    """One captured product and the integrations that use it."""
+    """One captured architecture component and its governed product resolution."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
     tool_key: str
     service_id: str | None = None
+    commercial_classification: str | None = None
+    resolution_status: Literal[
+        "verified_product",
+        "included_or_dependent",
+        "external_dependency",
+        "product_selection_required",
+    ] = "product_selection_required"
     role: Literal["core", "overlay"]
     integration_count: int = 0
     coverage_ratio: float = 0.0
 
 
 class DashboardProductFootprint(BaseModel):
-    """Complete product inventory derived from governed catalog canvases."""
+    """Complete architecture inventory derived from governed catalog canvases."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
     captured_product_count: int = 0
     represented_product_count: int = 0
+    verified_product_count: int = 0
+    included_or_dependent_count: int = 0
+    external_dependency_count: int = 0
+    selection_required_count: int = 0
     rows_with_products: int = 0
     total_rows: int = 0
     products: list[DashboardProductUsage] = Field(default_factory=list)

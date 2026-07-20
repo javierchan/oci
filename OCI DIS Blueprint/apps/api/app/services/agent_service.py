@@ -816,6 +816,12 @@ def _deterministic_summary(definition: AgentDefinition, evidence: dict[str, obje
     if definition.type == "import_quality":
         return str(evidence.get("recommended_next_action") or "Import evidence is ready for analyst review.")
     if definition.type == "bom_scenario":
+        current_bom = evidence.get("current_bom")
+        if isinstance(current_bom, dict) and current_bom.get("ready_for_use") is True:
+            return (
+                "The published BOM is current, fully covered, and ready for governed use; "
+                "regenerate it only after an approved input changes."
+            )
         questions = evidence.get("required_questions")
         count = len(questions) if isinstance(questions, list) else 0
         return f"Governed BOM scenario evidence is ready; {count} client input question(s) remain."
