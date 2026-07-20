@@ -141,7 +141,7 @@ test.describe("Admin synthetic smoke", () => {
       await page.goto(`/projects/${projectId}/catalog/${integrationId}`);
       await expect(page.getByRole("heading", { name: "Design the payload route end to end" })).toBeVisible();
 
-      await page.goto(`/projects/${projectId}/graph`);
+      await page.goto(`/projects/${projectId}/map`);
       await expect(page.getByLabel("Integration system dependency topology")).toBeVisible();
 
       await page.goto("/admin/services");

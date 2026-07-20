@@ -16,6 +16,8 @@ type GraphSummary = {
   }>;
   meta: {
     integration_count: number;
+    business_process_families: string[];
+    brands: string[];
   };
 };
 
@@ -55,10 +57,33 @@ test("investigates, re-weights, exports, and navigates the desktop topology", as
 
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  await page.goto(`/projects/${projectId}/graph`);
+  await page.goto(`/projects/${projectId}/map`);
   await expect(page.getByText("Governed topology", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Integration system dependency topology")).toBeVisible();
   await expect(page.getByText(`${graph.nodes.length} systems`, { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Filter by business process family")).toBeVisible();
+  await expect(page.getByLabel("Filter by brand")).toBeVisible();
+
+  if (graph.meta.business_process_families.length > 0) {
+    const processFamily = graph.meta.business_process_families[0];
+    const processResponse = page.waitForResponse((response) =>
+      response.url().includes("business_process_family=") && response.ok(),
+    );
+    await page.getByLabel("Filter by business process family").click();
+    await page.getByRole("option", { name: processFamily, exact: true }).click();
+    await processResponse;
+    await expect(page.getByLabel("Filter by business process family")).toHaveValue(processFamily);
+    await page.getByRole("button", { name: "Clear filters (1)" }).click();
+  }
+
+  if (graph.meta.brands.length > 0) {
+    const brand = graph.meta.brands[0];
+    const brandResponse = page.waitForResponse((response) => response.url().includes("brand=") && response.ok());
+    await page.getByLabel("Filter by brand").selectOption(brand);
+    await brandResponse;
+    await expect(page.getByLabel("Filter by brand")).toHaveValue(brand);
+    await page.getByRole("button", { name: "Clear filters (1)" }).click();
+  }
 
   const focusInput = page.getByLabel("Focus system");
   await focusInput.click();
@@ -112,7 +137,7 @@ test("provides a useful mobile dependency explorer", async ({ page, request }) =
   const { projectId, graph } = await findProjectWithTopology(request);
   await page.setViewportSize({ width: 390, height: 844 });
 
-  await page.goto(`/projects/${projectId}/graph`);
+  await page.goto(`/projects/${projectId}/map`);
 
   await expect(page.getByRole("heading", { name: "Dependency explorer" })).toBeVisible();
   await expect(page.getByText(`${graph.nodes.length} systems · ${graph.edges.length} paths · ${graph.meta.integration_count} integrations`)).toBeVisible();

@@ -82,7 +82,7 @@ test("opens system and dependency-path reviews with their selected graph context
   if (!edge) throw new Error("Focused system has no adjacent dependency path");
 
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(`/projects/${projectId}/graph`);
+  await page.goto(`/projects/${projectId}/map`);
   const focusInput = page.getByLabel("Focus system");
   await focusInput.click();
   await focusInput.fill(node.label);

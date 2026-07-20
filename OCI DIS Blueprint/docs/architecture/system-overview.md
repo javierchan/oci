@@ -106,6 +106,7 @@ POST /api/v1/service-products/verification-jobs
 | Dedicated Docker agent queue | Isolates OCI Function Calling from deterministic background workloads |
 | Service Product Library uses canonical `/service-products` APIs | Retires raw service-profile endpoints from the public production contract |
 | Normalized service limits are authoritative | Re-seeding never overwrites reviewed limits; Assumptions contain client inputs only |
+| `/projects/{id}/map` owns the topology UI | Keeps filters, analysis state, assistant context, and E2E coverage in one implementation; legacy `/graph` only redirects to `/map` |
 | One repository-root CI workflow | Prevents drift between non-executed copies and the effective GitHub contract |
 
 ## Artifact Ownership

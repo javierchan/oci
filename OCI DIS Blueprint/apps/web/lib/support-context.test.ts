@@ -17,6 +17,7 @@ describe("contextual support route context", () => {
   });
 
   it.each([
+    ["map", "topology"],
     ["graph", "topology"],
     ["bom", "bom"],
     ["import", "import"],
@@ -27,6 +28,6 @@ describe("contextual support route context", () => {
   it("deduplicates the same pinned App component", () => {
     const current = deriveSupportRouteContext(`/projects/${PROJECT_ID}/bom`).attachment;
     expect(sameSupportAttachment(current, { ...current })).toBe(true);
-    expect(sameSupportAttachment(current, deriveSupportRouteContext(`/projects/${PROJECT_ID}/graph`).attachment)).toBe(false);
+    expect(sameSupportAttachment(current, deriveSupportRouteContext(`/projects/${PROJECT_ID}/map`).attachment)).toBe(false);
   });
 });

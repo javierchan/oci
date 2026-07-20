@@ -18,6 +18,7 @@ function routeLabel(section: string | undefined): string {
     import: "Workbook Import",
     capture: "Integration Capture",
     catalog: "Integration Catalog",
+    map: "Integration Topology",
     graph: "Integration Topology",
     bom: "BOM & Cost",
   };
@@ -43,7 +44,7 @@ export function deriveSupportRouteContext(pathname: string): SupportRouteContext
     projectId = parts[1];
     const section = parts[2];
     pageTitle = routeLabel(section);
-    attachmentType = section === "graph" ? "topology" : section === "bom" ? "bom" : section === "import" ? "import" : section === "catalog" ? "catalog" : section === "capture" ? "catalog" : "project";
+    attachmentType = section === "map" || section === "graph" ? "topology" : section === "bom" ? "bom" : section === "import" ? "import" : section === "catalog" ? "catalog" : section === "capture" ? "catalog" : "project";
     if (section === "catalog" && UUID_PATTERN.test(parts[3] ?? "")) {
       integrationId = parts[3];
       attachmentType = "integration";
@@ -51,7 +52,7 @@ export function deriveSupportRouteContext(pathname: string): SupportRouteContext
       suggestions = ["Explain this integration and its risks.", "Is its pattern and service route appropriate?"];
     } else if (section === "bom") {
       suggestions = ["Explain the current BOM evidence.", "What inputs are still needed for a reliable estimate?"];
-    } else if (section === "graph") {
+    } else if (section === "map" || section === "graph") {
       suggestions = ["What should I investigate in this topology?", "How do I interpret dependency risk?"];
     } else if (section === "import") {
       suggestions = ["How does workbook import work?", "What should I validate before uploading?"];

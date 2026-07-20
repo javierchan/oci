@@ -25,7 +25,6 @@ dist/
 build/
 *.egg
 .eggs/
-.venv/
 venv/
 env/
 pip-log.txt
