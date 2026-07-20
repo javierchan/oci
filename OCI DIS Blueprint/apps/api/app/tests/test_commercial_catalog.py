@@ -36,12 +36,24 @@ from app.models import (
 from app.services import commercial_catalog_service, storage_service
 from app.services.commercial_catalog_service import (
     GENERATOR_VERSION,
+    PARSER_VERSION,
     _commercial_decimal_availability,
     _commercial_fixture_result,
+    _meaningful_document_text,
     _quantity_behavior,
+    _stable_sku,
     commercial_agent_evidence,
 )
 from app.services.commercial_document_parser import PRICE_LIST_SHEET, SUPPLEMENT_SHEET
+
+
+@pytest.mark.parametrize("value", [None, "", "   ", "-"])
+def test_meaningful_document_text_rejects_empty_markers(value: str | None) -> None:
+    assert _meaningful_document_text(value) is False
+
+
+def test_meaningful_document_text_accepts_commercial_guidance() -> None:
+    assert _meaningful_document_text("Includes management entitlement") is True
 
 
 def _constraint(
@@ -401,6 +413,15 @@ async def test_official_workbook_requires_human_review_before_atomic_release(
     assert candidate["generator_version"] == GENERATOR_VERSION
     assert candidate["rule_status"] == "ready_for_review"
     assert candidate["rule_fixture_status"] == "passed"
+    assert candidate["identity"]["display_name"] == "Oracle Autonomous AI Lakehouse - ECPU"
+    assert candidate["identity"]["service_category"] == "Oracle Data Management Cloud Services"
+    assert candidate["identity"]["product_hierarchy"] == ["Oracle Data Management Cloud Services"]
+    assert candidate["identity"]["product_paths"] == [["Oracle Data Management Cloud Services"]]
+    assert candidate["identity"]["official_location_count"] == 1
+    assert candidate["identity"]["structured_product"]["name"] == (
+        "Oracle Autonomous AI Lakehouse - ECPU"
+    )
+    assert candidate["commercial_term"]["metric_name"] == "ECPU Per Hour"
     assert workspace["field_authority"]["contract_rate"] == "authorized_customer_rate_card"
     assert any(reference.endswith("ORACLE_LOCALIZABLE_PRICE_LIST.xlsx") for reference in isolated_object_storage)
 
@@ -413,6 +434,17 @@ async def test_official_workbook_requires_human_review_before_atomic_release(
     assert {item["part_number"] for item in filtered.json()["candidates"]} == {"B95701"}
     assert {item["part_number"] for item in filtered.json()["exceptions"]} == {"B95701"}
 
+    filtered_by_name = await api_client.get(
+        "/api/v1/pricing/commercial-catalog",
+        headers=headers,
+        params={"document_id": document_id, "search": "Autonomous AI Lakehouse", "limit": 500},
+    )
+    assert filtered_by_name.status_code == 200, filtered_by_name.text
+    assert {item["part_number"] for item in filtered_by_name.json()["candidates"]} == {
+        "B95701",
+        "B95702",
+    }
+
     premature = await api_client.post(
         f"/api/v1/pricing/commercial-documents/{document_id}/releases", headers=headers
     )
@@ -422,12 +454,15 @@ async def test_official_workbook_requires_human_review_before_atomic_release(
         f"/api/v1/pricing/commercial-documents/{document_id}/approve", headers=headers
     )
     assert approved_document.status_code == 200
-    reviewed_candidate = await api_client.post(
+    blocked_candidate_review = await api_client.post(
         f"/api/v1/pricing/commercial-candidates/{candidate['id']}/review",
         headers=headers,
         json={"decision": "approve", "rationale": "Matched exact official part number and metric."},
     )
-    assert reviewed_candidate.status_code == 200, reviewed_candidate.text
+    assert blocked_candidate_review.status_code == 409, blocked_candidate_review.text
+    assert blocked_candidate_review.json()["detail"]["error_code"] == (
+        "COMMERCIAL_CANDIDATE_APPROVAL_BLOCKED"
+    )
     reviewed_prerequisite = await api_client.post(
         f"/api/v1/pricing/commercial-candidates/{prerequisite_candidate['id']}/review",
         headers=headers,
@@ -444,6 +479,12 @@ async def test_official_workbook_requires_human_review_before_atomic_release(
         },
     )
     assert reviewed_exception.status_code == 200, reviewed_exception.text
+    reviewed_candidate = await api_client.post(
+        f"/api/v1/pricing/commercial-candidates/{candidate['id']}/review",
+        headers=headers,
+        json={"decision": "approve", "rationale": "Matched exact official part number and metric."},
+    )
+    assert reviewed_candidate.status_code == 200, reviewed_candidate.text
     promoted = await api_client.post(
         f"/api/v1/pricing/commercial-documents/{document_id}/releases", headers=headers
     )
@@ -558,6 +599,95 @@ async def test_new_document_version_reuses_stable_sku_identity(
 
 
 @pytest.mark.asyncio
+async def test_stable_sku_records_canonical_placement_drift_without_losing_history(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as db:
+        first, first_drift = await _stable_sku(
+            db,
+            part_number="B95634",
+            display_name="Oracle Cloud Infrastructure Log Analytics - Active Storage",
+            service_category="Oracle Monitoring and Diagnostics Services",
+            source_product_id=None,
+            products_artifact_id="products-v1",
+            product_hierarchy=("Management", "Log Analytics"),
+            product_paths=(("Management", "Log Analytics"),),
+            document_fingerprint="document-v1",
+        )
+        second, second_drift = await _stable_sku(
+            db,
+            part_number="B95634",
+            display_name="Oracle Cloud Infrastructure Log Analytics - Active Storage",
+            service_category="Oracle Monitoring and Diagnostics Services",
+            source_product_id=None,
+            products_artifact_id="products-v2",
+            product_hierarchy=("Observability", "Log Analytics"),
+            product_paths=(("Observability", "Log Analytics"),),
+            document_fingerprint="document-v2",
+        )
+        await db.flush()
+
+        assert second.id == first.id
+        assert first_drift is None
+        assert second_drift == {
+            "part_number": "B95634",
+            "previous_product_hierarchy": ["Management", "Log Analytics"],
+            "current_product_hierarchy": ["Observability", "Log Analytics"],
+            "document_fingerprint": "document-v2",
+        }
+        assert second.identity_metadata["canonical_placement_history"] == [
+            {
+                "product_hierarchy": ["Management", "Log Analytics"],
+                "superseded_by_document_fingerprint": "document-v2",
+            }
+        ]
+
+
+@pytest.mark.asyncio
+async def test_import_rejects_material_sku_coverage_regression(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    await _seed_pricing_scope(test_engine)
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as db:
+        db.add(
+            CommercialDocumentSnapshot(
+                id="commercial-full-coverage",
+                document_kind="oracle_localizable_price_list",
+                source_name="Oracle PaaS and IaaS Public Cloud Localizable Price List",
+                original_filename="full-price-list.xlsx",
+                storage_reference="minio://tests/full-price-list.xlsx",
+                content_hash="full-price-list-hash",
+                parser_version=PARSER_VERSION,
+                currency="USD",
+                status="approved",
+                record_count=1163,
+                retrieved_at=datetime.now(UTC),
+                manifest={},
+            )
+        )
+        await db.commit()
+
+    response = await api_client.post(
+        "/api/v1/pricing/commercial-documents",
+        headers={"X-Actor-Role": "Admin", "X-Actor-Id": "commercial-reviewer"},
+        files={
+            "file": (
+                "truncated-price-list.xlsx",
+                _official_workbook(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"]["error_code"] == "COMMERCIAL_DOCUMENT_CONTENT_INVALID"
+    assert "SKU coverage dropped below 80%" in response.json()["detail"]["detail"]
+
+
+@pytest.mark.asyncio
 async def test_candidate_approval_requires_a_passing_rule_fixture(
     api_client: AsyncClient, test_engine: AsyncEngine
 ) -> None:
@@ -579,10 +709,37 @@ async def test_candidate_approval_requires_a_passing_rule_fixture(
     candidate_payload = next(
         item for item in imported.json()["candidates"] if item["part_number"] == "B95701"
     )
+    dependency_target = next(
+        item for item in imported.json()["candidates"] if item["part_number"] == "B95702"
+    )
+    dependency = next(
+        item
+        for item in imported.json()["exceptions"]
+        if item["part_number"] == "B95701" and item["code"] == "DEPENDENCY_UNRESOLVED"
+    )
     approved_document = await api_client.post(
         f"/api/v1/pricing/commercial-documents/{document_id}/approve", headers=headers
     )
     assert approved_document.status_code == 200, approved_document.text
+    approved_dependency_target = await api_client.post(
+        f"/api/v1/pricing/commercial-candidates/{dependency_target['id']}/review",
+        headers=headers,
+        json={
+            "decision": "approve",
+            "rationale": "Approve the exact prerequisite target before resolution.",
+        },
+    )
+    assert approved_dependency_target.status_code == 200, approved_dependency_target.text
+    resolved_dependency = await api_client.post(
+        f"/api/v1/pricing/commercial-exceptions/{dependency['id']}/review",
+        headers=headers,
+        json={
+            "decision": "resolve",
+            "rationale": "Resolve dependency before testing the fixture gate.",
+            "target_part_number": "B95702",
+        },
+    )
+    assert resolved_dependency.status_code == 200, resolved_dependency.text
 
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as db:

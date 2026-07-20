@@ -518,6 +518,7 @@ def serialize_bom_snapshot(
         scenario_id=snapshot.scenario_id,
         technical_snapshot_id=snapshot.technical_snapshot_id,
         price_catalog_snapshot_id=snapshot.price_catalog_snapshot_id,
+        commercial_release_id=snapshot.commercial_release_id,
         mapping_version=snapshot.mapping_version,
         engine_version=snapshot.engine_version,
         currency=snapshot.currency,

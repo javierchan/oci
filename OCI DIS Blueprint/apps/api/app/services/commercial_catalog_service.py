@@ -15,7 +15,7 @@ from io import BytesIO
 import json
 import re
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pricing_engine import QuantityBehavior, QuantityRule, normalize_quantity
@@ -44,7 +44,7 @@ from app.services.commercial_document_parser import (
 )
 
 
-PARSER_VERSION = "oci-commercial-workbook-1.2.0"
+PARSER_VERSION = "oci-commercial-workbook-1.3.0"
 GENERATOR_VERSION = "commercial-product-factory-1.2.0"
 DOCUMENT_KIND = "oracle_localizable_price_list"
 FIELD_AUTHORITY = {
@@ -77,6 +77,103 @@ def _decimal_payload(value: object) -> object:
     if isinstance(value, Decimal):
         return str(value)
     return value
+
+
+def _metadata_text_list(metadata: dict[str, object], key: str) -> list[str]:
+    value = metadata.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _metadata_paths(metadata: dict[str, object]) -> list[list[str]]:
+    value = metadata.get("product_paths")
+    if not isinstance(value, list):
+        return []
+    return [
+        [item for item in path if isinstance(item, str)]
+        for path in value
+        if isinstance(path, list)
+    ]
+
+
+def _metadata_object(metadata: dict[str, object], key: str) -> dict[str, object]:
+    value = metadata.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _structured_label(row: dict[str, object]) -> str | None:
+    for key in ("name", "displayName", "display_name", "label", "title"):
+        value = row.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _structured_identifier(row: dict[str, object]) -> str | None:
+    for key in ("id", "key", "metricId", "metric_id", "presetId", "preset_id"):
+        value = row.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _structured_product_summary(structured: dict[str, object] | None) -> dict[str, object]:
+    """Keep reviewable Estimator identity without persisting the full source blob."""
+
+    if not structured:
+        return {}
+
+    def summaries(value: object) -> list[dict[str, object]]:
+        if not isinstance(value, list):
+            return []
+        result: list[dict[str, object]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            identifier = _structured_identifier(item)
+            label = _structured_label(item)
+            if identifier or label:
+                summary: dict[str, object] = {
+                    key: field
+                    for key, field in (("id", identifier), ("name", label))
+                    if field
+                }
+                for key in (
+                    "quantity",
+                    "recommendedQuantity",
+                    "minQuantity",
+                    "allowZeroQuantity",
+                    "weight",
+                    "partNumber",
+                ):
+                    field = item.get(key)
+                    if isinstance(field, (str, int, float, bool)):
+                        summary[key] = field
+                preset = item.get("preset")
+                if isinstance(preset, dict):
+                    preset_id = _structured_identifier(preset)
+                    preset_name = _structured_label(preset)
+                    summary["preset"] = {
+                        key: field
+                        for key, field in (("id", preset_id), ("name", preset_name))
+                        if field
+                    }
+                result.append(summary)
+        return result
+
+    product_id = _structured_identifier(structured)
+    product_name = _structured_label(structured)
+    return {
+        key: value
+        for key, value in (
+            ("id", product_id),
+            ("name", product_name),
+            ("metrics", summaries(structured.get("_governed_metrics"))),
+            ("presets", summaries(structured.get("_governed_presets"))),
+        )
+        if value not in (None, [], {})
+    }
 
 
 def _string_list(value: object) -> list[str]:
@@ -228,6 +325,41 @@ async def _approved_structured_source_set(
 
     metric_index = identity_index(metric_rows)
     preset_index = identity_index(preset_rows)
+    preset_memberships: dict[str, list[dict[str, object]]] = {}
+    presets_payload = payloads.get("presets", {})
+    preset_items = presets_payload.get("items") if isinstance(presets_payload, dict) else None
+    for preset in preset_items if isinstance(preset_items, list) else []:
+        if not isinstance(preset, dict):
+            continue
+        preset_identity = {
+            "id": preset.get("id"),
+            "name": preset.get("displayName") or preset.get("name"),
+        }
+        components = preset.get("presetItems")
+        if not isinstance(components, list):
+            continue
+        for component in components:
+            if not isinstance(component, dict):
+                continue
+            product = component.get("product")
+            if not isinstance(product, dict):
+                continue
+            part_number = product.get("partNumber")
+            if not isinstance(part_number, str) or not part_number.strip():
+                continue
+            preset_memberships.setdefault(part_number.strip().upper(), []).append(
+                {
+                    "id": f"{preset_identity.get('id')}:{product.get('id')}",
+                    "name": product.get("displayName") or part_number,
+                    "partNumber": part_number.strip().upper(),
+                    "quantity": component.get("quantity"),
+                    "recommendedQuantity": component.get("recommendedQuantity"),
+                    "minQuantity": component.get("minQuantity"),
+                    "allowZeroQuantity": component.get("allowZeroQuantity"),
+                    "weight": component.get("weight"),
+                    "preset": preset_identity,
+                }
+            )
 
     def referenced_values(row: dict[str, object], token: str) -> set[str]:
         references: set[str] = set()
@@ -256,10 +388,14 @@ async def _approved_structured_source_set(
                 for reference in sorted(metric_references)
                 if reference in metric_index
             ]
-            enriched["_governed_presets"] = [
+            referenced_presets = [
                 preset_index[reference]
                 for reference in sorted(preset_references)
                 if reference in preset_index
+            ]
+            enriched["_governed_presets"] = [
+                *referenced_presets,
+                *preset_memberships.get(part_number.strip().upper(), []),
             ]
             indexed.setdefault(part_number.strip().upper(), enriched)
     return change_set, indexed, {
@@ -621,7 +757,11 @@ async def _stable_sku(
     service_category: str | None,
     source_product_id: str | None,
     products_artifact_id: str | None,
-) -> CommercialSku:
+    product_hierarchy: tuple[str, ...] = (),
+    product_paths: tuple[tuple[str, ...], ...] = (),
+    structured_product: dict[str, object] | None = None,
+    document_fingerprint: str | None = None,
+) -> tuple[CommercialSku, dict[str, object] | None]:
     """Return the stable part-number identity without rewriting historical terms."""
 
     sku = await db.scalar(select(CommercialSku).where(CommercialSku.part_number == part_number))
@@ -632,22 +772,59 @@ async def _stable_sku(
             service_category=service_category,
             source_product_id=source_product_id,
             lifecycle_status="active",
-            identity_metadata={"products_artifact_id": products_artifact_id},
+            identity_metadata={
+                "products_artifact_id": products_artifact_id,
+                "product_hierarchy": list(product_hierarchy),
+                "product_paths": [list(path) for path in product_paths],
+                "structured_product": structured_product or {},
+            },
         )
         db.add(sku)
         await db.flush()
-        return sku
+        return sku, None
 
     # Identity metadata may be enriched, but immutable document terms retain the
     # exact source value that was current for each imported evidence snapshot.
+    previous_hierarchy = _metadata_text_list(sku.identity_metadata, "product_hierarchy")
+    current_hierarchy = list(product_hierarchy) or previous_hierarchy
+    placement_drift: dict[str, object] | None = (
+        {
+            "part_number": part_number,
+            "previous_product_hierarchy": previous_hierarchy,
+            "current_product_hierarchy": current_hierarchy,
+            "document_fingerprint": document_fingerprint,
+        }
+        if previous_hierarchy and current_hierarchy and previous_hierarchy != current_hierarchy
+        else None
+    )
+    raw_history = sku.identity_metadata.get("canonical_placement_history")
+    placement_history = (
+        [item for item in raw_history if isinstance(item, dict)]
+        if isinstance(raw_history, list)
+        else []
+    )
+    if placement_drift is not None:
+        history_entry = {
+            "product_hierarchy": previous_hierarchy,
+            "superseded_by_document_fingerprint": document_fingerprint,
+        }
+        if history_entry not in placement_history:
+            placement_history.append(history_entry)
     sku.display_name = display_name or sku.display_name
     sku.service_category = service_category or sku.service_category
     sku.source_product_id = source_product_id or sku.source_product_id
     sku.identity_metadata = {
         **sku.identity_metadata,
         "products_artifact_id": products_artifact_id,
+        "product_hierarchy": current_hierarchy,
+        "product_paths": (
+            [list(path) for path in product_paths]
+            or _metadata_paths(sku.identity_metadata)
+        ),
+        "structured_product": structured_product or {},
+        "canonical_placement_history": placement_history,
     }
-    return sku
+    return sku, placement_drift
 
 
 def _source_conflicts(
@@ -701,12 +878,28 @@ async def import_commercial_workbook(
         select(CommercialDocumentSnapshot).where(
             CommercialDocumentSnapshot.document_kind == DOCUMENT_KIND,
             CommercialDocumentSnapshot.content_hash == content_hash,
+            CommercialDocumentSnapshot.parser_version == PARSER_VERSION,
         )
     )
     if existing is not None:
         return await commercial_workspace(db, document_id=existing.id)
 
     parsed = await asyncio.to_thread(parse_oci_commercial_workbook, BytesIO(contents))
+    previous_document = await db.scalar(
+        select(CommercialDocumentSnapshot)
+        .where(CommercialDocumentSnapshot.document_kind == DOCUMENT_KIND)
+        .order_by(CommercialDocumentSnapshot.created_at.desc())
+    )
+    if (
+        previous_document is not None
+        and previous_document.record_count >= 100
+        and len(parsed.records) < previous_document.record_count * 0.8
+    ):
+        raise ValueError(
+            "Commercial workbook SKU coverage dropped below 80% of the latest "
+            f"governed snapshot ({len(parsed.records)} vs {previous_document.record_count}); "
+            "review the Oracle workbook layout before importing"
+        )
     storage_reference = await asyncio.to_thread(
         storage_service.put_bytes,
         f"governance/commercial-documents/{content_hash}/{storage_service.safe_filename(filename)}",
@@ -765,15 +958,40 @@ async def import_commercial_workbook(
         manifest={
             "field_authority": FIELD_AUTHORITY,
             "canonical_sku_count": len(parsed.records),
+            "price_list_sku_count": parsed.price_record_count,
+            "supplement_sku_count": parsed.supplement_record_count,
             "structured_artifacts": structured_artifacts,
             "price_snapshot_id": price_snapshot.id if price_snapshot else None,
             "governance_change_set_id": change_set.id if change_set else None,
+            "hierarchy_mapped_sku_count": sum(
+                1 for item in parsed.records if item.product_hierarchy
+            ),
+            "multi_location_sku_count": sum(
+                1 for item in parsed.records if len(item.product_paths) > 1
+            ),
         },
     )
     db.add(document)
     await db.flush()
 
     records_by_part = parsed.by_part_number()
+    workbook_parts = set(records_by_part)
+    api_parts = set(price_by_part)
+    estimator_parts = set(structured_products)
+    document.manifest = {
+        **document.manifest,
+        "source_reconciliation": {
+            "workbook_sku_count": len(workbook_parts),
+            "pricing_api_sku_count": len(api_parts),
+            "estimator_product_sku_count": len(estimator_parts),
+            "workbook_only_vs_pricing_api_count": len(workbook_parts - api_parts),
+            "workbook_only_vs_pricing_api": sorted(workbook_parts - api_parts),
+            "pricing_api_only_vs_workbook_count": len(api_parts - workbook_parts),
+            "pricing_api_only_vs_workbook": sorted(api_parts - workbook_parts),
+            "workbook_only_vs_estimator_count": len(workbook_parts - estimator_parts),
+            "workbook_only_vs_estimator": sorted(workbook_parts - estimator_parts),
+        },
+    }
     all_parts = sorted(set(records_by_part) | set(price_by_part) | set(structured_products))
     exception_count = 0
     candidate_count = 0
@@ -787,13 +1005,17 @@ async def import_commercial_workbook(
         service_category = (
             record.service_category if record else None
         ) or (api_items[0].service_category if api_items else None)
-        sku = await _stable_sku(
+        sku, placement_drift = await _stable_sku(
             db,
             part_number=part_number,
             display_name=display_name,
             service_category=service_category,
             source_product_id=str((structured or {}).get("id") or "") or None,
             products_artifact_id=products_artifact_id,
+            product_hierarchy=record.product_hierarchy if record else (),
+            product_paths=record.product_paths if record else (),
+            structured_product=_structured_product_summary(structured),
+            document_fingerprint=content_hash,
         )
 
         term: SkuCommercialTerm | None = None
@@ -831,6 +1053,9 @@ async def import_commercial_workbook(
                 extraction_metadata={
                     "parser_version": PARSER_VERSION,
                     "structured_artifacts": structured_artifacts,
+                    "product_hierarchy": list(record.product_hierarchy),
+                    "product_paths": [list(path) for path in record.product_paths],
+                    "structured_product": _structured_product_summary(structured),
                 },
             )
             db.add(term)
@@ -1014,6 +1239,23 @@ async def import_commercial_workbook(
         candidate_count += 1
 
         exception_specs = _source_conflicts(record, api_items, structured)
+        if placement_drift is not None:
+            exception_specs.append(
+                (
+                    "CANONICAL_PRODUCT_PLACEMENT_DRIFT",
+                    "medium",
+                    placement_drift,
+                )
+            )
+        if record is not None:
+            exception_specs.extend(
+                (
+                    "REPEATED_SKU_SOURCE_CONFLICT",
+                    "high",
+                    {"part_number": part_number, **conflict},
+                )
+                for conflict in record.source_conflicts
+            )
         if term is None:
             exception_specs.append(("DOCUMENT_TERM_MISSING", "high", {"part_number": part_number}))
         if numeric_price and not api_items:
@@ -1048,7 +1290,7 @@ async def import_commercial_workbook(
                     },
                 )
             )
-        if record and record.included_entitlements:
+        if record and _meaningful_document_text(record.included_entitlements):
             db.add(
                 SkuCommercialRelationship(
                     document_snapshot_id=document.id,
@@ -1155,13 +1397,54 @@ async def review_candidate(
                 "error_code": "COMMERCIAL_RULE_FIXTURE_REQUIRED",
             },
         )
+    term = await db.get(SkuCommercialTerm, candidate.term_id) if candidate.term_id else None
+    if decision == "approve":
+        open_exception_codes = set(
+            (
+                await db.scalars(
+                    select(CommercialException.exception_code).where(
+                        CommercialException.candidate_id == candidate.id,
+                        CommercialException.status == "open",
+                    )
+                )
+            ).all()
+        )
+        unresolved_relationship_statuses = set(
+            (
+                await db.scalars(
+                    select(SkuCommercialRelationship.resolution_status).where(
+                        SkuCommercialRelationship.document_snapshot_id
+                        == candidate.document_snapshot_id,
+                        SkuCommercialRelationship.part_number == candidate.part_number,
+                        SkuCommercialRelationship.resolution_status.in_(
+                            ("unresolved", "accepted_risk")
+                        ),
+                    )
+                )
+            ).all()
+        )
+        blockers = _catalog_finalization_blockers(
+            candidate=candidate,
+            rule=rule,
+            term=term,
+            open_exception_codes=open_exception_codes,
+            unresolved_relationship_statuses=unresolved_relationship_statuses,
+        )
+        if blockers:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "detail": "Resolve every deterministic commercial blocker before approval",
+                    "error_code": "COMMERCIAL_CANDIDATE_APPROVAL_BLOCKED",
+                    "blockers": blockers,
+                },
+            )
     old_status = candidate.status
     candidate.status = {"approve": "approved", "reject": "rejected", "keep_blocked": "blocked"}[decision]
     candidate.reviewed_by = actor_id
     candidate.reviewed_at = _now()
     candidate.reasons = [*candidate.reasons, f"Explicit review decision: {rationale}"]
     if candidate.term_id and decision == "approve":
-        term = await db.get(SkuCommercialTerm, candidate.term_id)
         if term:
             term.status = "approved"
             term.disposition = candidate.classification
@@ -1949,24 +2232,48 @@ async def promote_release(document_id: str, actor_id: str, db: AsyncSession) -> 
             )
         ).all()
     ) if selected_rule_ids else []
-    approved_rule_ids = {rule.id for rule in approved_rules}
-    missing_rule_parts = {
-        part
-        for part in approved_candidate_parts
-        if part not in selected_rule_ids_by_part
-        or selected_rule_ids_by_part[part] not in approved_rule_ids
+    approved_rules_by_id = {rule.id: rule for rule in approved_rules}
+    approved_terms = list(
+        (
+            await db.scalars(
+                select(SkuCommercialTerm).where(
+                    SkuCommercialTerm.id.in_(set(selected_term_ids_by_part.values())),
+                    SkuCommercialTerm.status == "approved",
+                )
+            )
+        ).all()
+    ) if selected_term_ids_by_part else []
+    approved_terms_by_id = {term.id: term for term in approved_terms}
+    exception_codes_by_part: dict[str, set[str]] = {}
+    for commercial_exception in open_exceptions:
+        if commercial_exception.part_number:
+            exception_codes_by_part.setdefault(
+                str(commercial_exception.part_number), set()
+            ).add(commercial_exception.exception_code)
+    relationship_statuses_by_part: dict[str, set[str]] = {}
+    for relationship in unresolved_relationships:
+        relationship_statuses_by_part.setdefault(relationship.part_number, set()).add(
+            relationship.resolution_status
+        )
+    release_blockers = {
+        part_number: _catalog_finalization_blockers(
+            candidate=candidate_by_part[part_number],
+            rule=approved_rules_by_id.get(selected_rule_ids_by_part.get(part_number, "")),
+            term=approved_terms_by_id.get(selected_term_ids_by_part.get(part_number, "")),
+            open_exception_codes=exception_codes_by_part.get(part_number, set()),
+            unresolved_relationship_statuses=relationship_statuses_by_part.get(
+                part_number, set()
+            ),
+        )
+        for part_number in sorted(approved_candidate_parts)
     }
-    missing_term_parts = {
-        part for part in approved_candidate_parts if part not in selected_term_ids_by_part
+    release_blockers = {
+        part_number: blockers
+        for part_number, blockers in release_blockers.items()
+        if blockers
     }
-    quote_ready_parts = sorted(
-        approved_candidate_parts
-        - open_exception_parts
-        - unresolved_relationship_parts
-        - missing_rule_parts
-        - missing_term_parts
-    )
-    invalid_approved_parts = sorted(approved_candidate_parts - set(quote_ready_parts))
+    quote_ready_parts = sorted(approved_candidate_parts - set(release_blockers))
+    invalid_approved_parts = sorted(release_blockers)
     if invalid_approved_parts:
         raise HTTPException(
             status_code=409,
@@ -1974,6 +2281,10 @@ async def promote_release(document_id: str, actor_id: str, db: AsyncSession) -> 
                 "detail": "Approved candidates must have complete rules, terms, relationships, and exception state",
                 "error_code": "COMMERCIAL_APPROVED_DISPOSITION_INVALID",
                 "invalid_part_numbers": invalid_approved_parts[:50],
+                "blockers": {
+                    part_number: release_blockers[part_number]
+                    for part_number in invalid_approved_parts[:50]
+                },
             },
         )
 
@@ -2158,10 +2469,103 @@ async def commercial_workspace(
             "document": None, "summary": {"skus": 0, "candidates": 0, "pending": 0, "exceptions": 0, "approved": 0, "blocked": 0},
             "candidates": [], "exceptions": [], "releases": [], "field_authority": FIELD_AUTHORITY,
         }
-    candidate_query = select(CommercialMappingCandidate).where(CommercialMappingCandidate.document_snapshot_id == document.id)
+    candidate_query = (
+        select(CommercialMappingCandidate)
+        .join(CommercialSku, CommercialSku.id == CommercialMappingCandidate.commercial_sku_id)
+        .outerjoin(SkuCommercialTerm, SkuCommercialTerm.id == CommercialMappingCandidate.term_id)
+        .where(CommercialMappingCandidate.document_snapshot_id == document.id)
+    )
     if search:
-        candidate_query = candidate_query.where(CommercialMappingCandidate.part_number.ilike(f"%{search.strip()}%"))
-    candidates = list((await db.scalars(candidate_query.order_by(CommercialMappingCandidate.part_number).limit(min(max(limit, 1), 500)))).all())
+        search_pattern = f"%{search.strip()}%"
+        candidate_query = candidate_query.where(
+            or_(
+                CommercialMappingCandidate.part_number.ilike(search_pattern),
+                CommercialSku.display_name.ilike(search_pattern),
+                CommercialSku.service_category.ilike(search_pattern),
+                cast(CommercialSku.identity_metadata, String).ilike(search_pattern),
+                SkuCommercialTerm.metric_name.ilike(search_pattern),
+                SkuCommercialTerm.service_name.ilike(search_pattern),
+            )
+        )
+    response_limit = min(max(limit, 1), 2000)
+    candidates = list(
+        (
+            await db.scalars(
+                candidate_query.order_by(CommercialMappingCandidate.part_number)
+                .limit(response_limit)
+            )
+        ).all()
+    )
+    candidate_sku_ids = {item.commercial_sku_id for item in candidates}
+    candidate_term_ids = {item.term_id for item in candidates if item.term_id}
+    candidate_skus = (
+        list(
+            (
+                await db.scalars(
+                    select(CommercialSku).where(CommercialSku.id.in_(candidate_sku_ids))
+                )
+            ).all()
+        )
+        if candidate_sku_ids
+        else []
+    )
+    candidate_terms = (
+        list(
+            (
+                await db.scalars(
+                    select(SkuCommercialTerm).where(SkuCommercialTerm.id.in_(candidate_term_ids))
+                )
+            ).all()
+        )
+        if candidate_term_ids
+        else []
+    )
+    candidate_constraints = (
+        list(
+            (
+                await db.scalars(
+                    select(SkuCommercialConstraint).where(
+                        SkuCommercialConstraint.term_id.in_(candidate_term_ids)
+                    )
+                )
+            ).all()
+        )
+        if candidate_term_ids
+        else []
+    )
+    candidate_relationships = (
+        list(
+            (
+                await db.scalars(
+                    select(SkuCommercialRelationship).where(
+                        SkuCommercialRelationship.document_snapshot_id == document.id,
+                        SkuCommercialRelationship.source_term_id.in_(candidate_term_ids),
+                    )
+                )
+            ).all()
+        )
+        if candidate_term_ids
+        else []
+    )
+    candidate_skus_by_id = {item.id: item for item in candidate_skus}
+    candidate_terms_by_id = {item.id: item for item in candidate_terms}
+    constraints_by_term: dict[str, list[dict[str, object]]] = {}
+    for item in candidate_constraints:
+        constraints_by_term.setdefault(item.term_id, []).append(
+            {
+                "type": item.constraint_type,
+                "scope": item.scope,
+                "value": str(item.numeric_value) if item.numeric_value is not None else item.text_value,
+                "unit": item.unit,
+                "behavior": item.behavior,
+            }
+        )
+    relationships_by_term: dict[str, list[SkuCommercialRelationship]] = {}
+    for relationship in candidate_relationships:
+        if relationship.source_term_id:
+            relationships_by_term.setdefault(relationship.source_term_id, []).append(
+                relationship
+            )
     candidate_rule_ids = {
         str(rule_id)
         for item in candidates
@@ -2195,7 +2599,7 @@ async def commercial_workspace(
             await db.scalars(
                 exception_query.order_by(
                     CommercialException.severity, CommercialException.part_number
-                ).limit(min(max(limit, 1), 500))
+                ).limit(response_limit)
             )
         ).all()
     )
@@ -2259,6 +2663,53 @@ async def commercial_workspace(
                         and str(rule_id) in candidate_rules_by_id
                         else None
                     ),
+                    "identity": {
+                        "display_name": candidate_skus_by_id[item.commercial_sku_id].display_name,
+                        "service_category": candidate_skus_by_id[item.commercial_sku_id].service_category,
+                        "product_hierarchy": _metadata_text_list(
+                            candidate_skus_by_id[item.commercial_sku_id].identity_metadata,
+                            "product_hierarchy",
+                        ),
+                        "product_paths": (
+                            product_paths := _metadata_paths(
+                                candidate_skus_by_id[
+                                    item.commercial_sku_id
+                                ].identity_metadata
+                            )
+                        ),
+                        "official_location_count": len(product_paths),
+                        "structured_product": _metadata_object(
+                            candidate_skus_by_id[item.commercial_sku_id].identity_metadata,
+                            "structured_product",
+                        ),
+                    },
+                    "commercial_term": (
+                        {
+                            "service_name": candidate_terms_by_id[item.term_id].service_name,
+                            "metric_name": candidate_terms_by_id[item.term_id].metric_name,
+                            "price_type": candidate_terms_by_id[item.term_id].price_type,
+                            "commercial_prices": candidate_terms_by_id[item.term_id].commercial_prices,
+                            "additional_information": candidate_terms_by_id[item.term_id].additional_information,
+                            "notes": candidate_terms_by_id[item.term_id].notes,
+                            "source_sheet": candidate_terms_by_id[item.term_id].source_sheet,
+                            "source_row": candidate_terms_by_id[item.term_id].source_row,
+                            "constraints": constraints_by_term.get(item.term_id, []),
+                        }
+                        if item.term_id and item.term_id in candidate_terms_by_id
+                        else None
+                    ),
+                    "composition": [
+                        {
+                            "relationship_type": relationship.relationship_type,
+                            "target_part_number": relationship.target_part_number,
+                            "target_name": relationship.target_name,
+                            "guidance": relationship.guidance,
+                            "resolution_status": relationship.resolution_status,
+                        }
+                        for relationship in relationships_by_term.get(item.term_id or "", [])
+                        if _meaningful_document_text(relationship.target_name)
+                        or _meaningful_document_text(relationship.target_part_number)
+                    ],
                     "proposed_mapping": item.proposed_mapping,
                     "reasons": item.reasons,
                 }

@@ -8,7 +8,7 @@ from typing import Any, Optional, cast
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import CatalogIntegration
+from app.models import CatalogIntegration, PatternDefinition
 from app.schemas.graph import GraphEdge, GraphIntegrationSummary, GraphMeta, GraphNode, GraphResponse
 
 
@@ -57,6 +57,19 @@ def _business_process_family(value: str) -> str:
     return value.split(" — ", 1)[0].strip()
 
 
+def _pattern_label(value: str | None, pattern_names: dict[str, str]) -> str | None:
+    """Return the current governed label while preserving unknown legacy values."""
+
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    pattern_id = normalized.split(" · ", 1)[0].strip()
+    governed_name = pattern_names.get(pattern_id)
+    return f"{pattern_id} · {governed_name}" if governed_name else normalized
+
+
 async def compute_graph(
     project_id: str,
     business_process: Optional[str],
@@ -82,6 +95,12 @@ async def compute_graph(
             query.order_by(CatalogIntegration.seq_number, CatalogIntegration.created_at, CatalogIntegration.id)
         )
     ).all()
+    pattern_names = {
+        pattern_id: name
+        for pattern_id, name in (
+            await db.execute(select(PatternDefinition.pattern_id, PatternDefinition.name))
+        ).all()
+    }
 
     node_state: dict[str, dict[str, object]] = {}
     edge_state: dict[tuple[str, str], dict[str, object]] = {}
@@ -175,10 +194,11 @@ async def compute_graph(
             edge_business_processes = edge["business_processes"]
             assert isinstance(edge_business_processes, set)
             edge_business_processes.add(row.business_process)
-        if row.selected_pattern:
+        pattern_label = _pattern_label(row.selected_pattern, pattern_names)
+        if pattern_label:
             edge_patterns = edge["patterns"]
             assert isinstance(edge_patterns, set)
-            edge_patterns.add(row.selected_pattern)
+            edge_patterns.add(pattern_label)
         edge_qa_statuses = edge["qa_statuses"]
         assert isinstance(edge_qa_statuses, defaultdict)
         edge_qa_statuses[row.qa_status or "PENDING"] += 1
@@ -201,7 +221,7 @@ async def compute_graph(
                 name=row.interface_name or row.interface_id or row.id,
                 qa_status=row.qa_status or "PENDING",
                 owner=row.owner,
-                pattern=row.selected_pattern,
+                pattern=pattern_label,
                 trigger_type=row.trigger_type,
                 interaction_mode=interaction_mode,
                 executions_per_day=row.executions_per_day,

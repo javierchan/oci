@@ -246,19 +246,23 @@ export function GraphDetailPanel({
         <section className="border-t border-[var(--color-border)] px-5 py-5">
           <p className="app-label">Top Patterns</p>
           <div className="mt-3 space-y-2">
-            {patterns.map((pattern) => (
-              <div key={pattern.pattern} className="flex items-center justify-between gap-3 text-sm">
-                <span className="inline-flex items-center gap-3">
-                  <span className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1 text-xs font-semibold">
-                    {pattern.pattern}
+            {patterns.map((pattern) => {
+              const [patternId, ...nameParts] = pattern.pattern.split(" · ");
+              const patternName = nameParts.join(" · ") || "Pattern definition unavailable";
+
+              return (
+                <div
+                  key={pattern.pattern}
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 text-sm"
+                >
+                  <span className="whitespace-nowrap rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1 text-xs font-semibold">
+                    {patternId}
                   </span>
-                  <span className="text-[var(--color-text-secondary)]">
-                    {pattern.pattern.includes(" · ") ? pattern.pattern.split(" · ").slice(1).join(" · ") : "Governed pattern"}
-                  </span>
-                </span>
-                <span className="font-semibold text-[var(--color-text-muted)]">{pattern.count}</span>
-              </div>
-            ))}
+                  <span className="min-w-0 text-[var(--color-text-secondary)]">{patternName}</span>
+                  <span className="font-semibold tabular-nums text-[var(--color-text-muted)]">{pattern.count}</span>
+                </div>
+              );
+            })}
           </div>
         </section>
       </PanelShell>

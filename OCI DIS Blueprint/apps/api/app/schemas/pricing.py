@@ -67,6 +67,47 @@ class CommercialCatalogSummaryResponse(BaseModel):
     exceptions: int
 
 
+class CommercialProductIdentityResponse(BaseModel):
+    """Stable SKU identity plus every official workbook location."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    display_name: str
+    service_category: Optional[str]
+    product_hierarchy: list[str] = Field(default_factory=list)
+    product_paths: list[list[str]] = Field(default_factory=list)
+    official_location_count: int = Field(ge=0)
+    structured_product: dict[str, Any] = Field(default_factory=dict)
+
+
+class CommercialTermEvidenceResponse(BaseModel):
+    """Human-readable commercial evidence selected for one SKU candidate."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    service_name: str
+    metric_name: Optional[str]
+    price_type: Optional[str]
+    commercial_prices: list[Any] = Field(default_factory=list)
+    additional_information: Optional[str]
+    notes: Optional[str]
+    source_sheet: str
+    source_row: int
+    constraints: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CommercialRelationshipSummaryResponse(BaseModel):
+    """One documented prerequisite, entitlement, or composition relationship."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    relationship_type: str
+    target_part_number: Optional[str]
+    target_name: str
+    guidance: Optional[str]
+    resolution_status: str
+
+
 class CommercialCandidateResponse(BaseModel):
     """Generated, never implicitly approved commercial mapping candidate."""
 
@@ -82,6 +123,9 @@ class CommercialCandidateResponse(BaseModel):
     generator_version: str
     rule_status: Optional[str]
     rule_fixture_status: Optional[str]
+    identity: CommercialProductIdentityResponse
+    commercial_term: Optional[CommercialTermEvidenceResponse]
+    composition: list[CommercialRelationshipSummaryResponse] = Field(default_factory=list)
     proposed_mapping: dict[str, Any]
     reasons: list[Any] = Field(default_factory=list)
 

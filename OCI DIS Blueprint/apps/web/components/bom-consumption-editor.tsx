@@ -98,7 +98,9 @@ export function BomConsumptionEditor({
 }: ConsumptionEditorProps): JSX.Element {
   const [mode, setMode] = useState<"standard" | "monthly">("standard");
   const [productQuery, setProductQuery] = useState("");
+  const [selectedProducts, setSelectedProducts] = useState<Record<number, string>>({});
   const [metricToAdd, setMetricToAdd] = useState<Record<number, string>>({});
+  const [addMetricOpen, setAddMetricOpen] = useState<Set<number>>(new Set());
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(
     () => new Set(environments.flatMap((environment, index) => {
       const serviceId = environment.phases[0]?.service_id;
@@ -148,19 +150,30 @@ export function BomConsumptionEditor({
   function addMetric(environmentIndex: number): void {
     const available = availableOptions(environmentIndex);
     const selectedKey = metricToAdd[environmentIndex];
-    const option = available.find((candidate) => optionKey(candidate) === selectedKey) ?? available[0];
+    const option = available.find((candidate) => optionKey(candidate) === selectedKey);
     if (!option) return;
     patchEnvironment(environmentIndex, {
       phases: [...environments[environmentIndex].phases, explicitQuantityPhase(option, contractMonths)],
     });
     setExpandedProducts((current) => new Set(current).add(`${environmentIndex}:${option.service_id}`));
+    setSelectedProducts((current) => ({ ...current, [environmentIndex]: option.service_id }));
     setMetricToAdd((current) => ({ ...current, [environmentIndex]: "" }));
+    setAddMetricOpen((current) => {
+      const next = new Set(current);
+      next.delete(environmentIndex);
+      return next;
+    });
   }
 
   function removeMetric(environmentIndex: number, phaseIndex: number): void {
+    const removedServiceId = environments[environmentIndex].phases[phaseIndex]?.service_id;
+    const phases = environments[environmentIndex].phases.filter((_, current) => current !== phaseIndex);
     patchEnvironment(environmentIndex, {
-      phases: environments[environmentIndex].phases.filter((_, current) => current !== phaseIndex),
+      phases,
     });
+    if (removedServiceId && !phases.some((phase) => phase.service_id === removedServiceId)) {
+      setSelectedProducts((current) => ({ ...current, [environmentIndex]: "" }));
+    }
   }
 
   function replaceMetric(environmentIndex: number, phaseIndex: number, option: ScenarioMetricOption | undefined): void {
@@ -241,18 +254,23 @@ export function BomConsumptionEditor({
     });
   }
 
-  function phaseGroups(environment: DeploymentEnvironmentInput): Array<{ serviceId: string; name: string; phases: IndexedPhase[] }> {
+  function phaseGroups(
+    environment: DeploymentEnvironmentInput,
+    selectedServiceId = "",
+    queryValue = productQuery,
+  ): Array<{ serviceId: string; name: string; phases: IndexedPhase[] }> {
     const groups = new Map<string, IndexedPhase[]>();
     environment.phases.forEach((phase, phaseIndex) => {
       const serviceId = phase.service_id ?? "UNASSIGNED";
       groups.set(serviceId, [...(groups.get(serviceId) ?? []), { phase, phaseIndex }]);
     });
-    const query = productQuery.trim().toLowerCase();
+    const query = queryValue.trim().toLowerCase();
     return [...groups.entries()].map(([serviceId, phases]) => ({
       serviceId,
       name: optionsByService.get(serviceId)?.[0]?.product_name ?? serviceId,
       phases,
     })).filter((group) => {
+      if (selectedServiceId && group.serviceId !== selectedServiceId) return false;
       if (!query) return true;
       return group.name.toLowerCase().includes(query) || group.phases.some(({ phase }) => {
         const option = metricOptions.find((candidate) => candidate.service_id === phase.service_id && candidate.metric_key === phase.metric_key);
@@ -296,7 +314,10 @@ export function BomConsumptionEditor({
       <div className="mt-2 divide-y divide-[var(--color-border)]">
         {environments.map((environment, environmentIndex) => {
           const available = availableOptions(environmentIndex);
-          const groups = phaseGroups(environment);
+          const allGroups = phaseGroups(environment, "", "");
+          const selectedProduct = selectedProducts[environmentIndex] ?? "";
+          const groups = phaseGroups(environment, selectedProduct);
+          const isAddMetricOpen = addMetricOpen.has(environmentIndex);
           return (
             <section key={`environment-${environmentIndex}`} className="py-5" aria-label={`${environment.name || `Environment ${environmentIndex + 1}`} consumption plan`}>
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -314,15 +335,23 @@ export function BomConsumptionEditor({
               </div>
 
               <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-t border-[var(--color-border)] pt-4">
-                <div><p className="app-label">Products</p><p className="mt-1 text-xs text-[var(--color-text-muted)]">Expand only the product you need to review or edit.</p></div>
+                <div><p className="app-label">Products</p><p className="mt-1 text-xs text-[var(--color-text-muted)]">Select one product to review, or show the complete environment plan.</p></div>
                 <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-2">
-                  <label className="min-w-64 max-w-md flex-1 text-xs text-[var(--color-text-muted)]"><span className="sr-only">Product metric to add</span><select aria-label={`Product metric to add to ${environment.name}`} className="h-9 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-text-primary)]" value={metricToAdd[environmentIndex] ?? ""} onChange={(event) => setMetricToAdd((current) => ({ ...current, [environmentIndex]: event.target.value }))} disabled={available.length === 0}><option value="">{available.length === 0 ? "All available metrics added" : "Choose a product metric..."}</option>{[...optionsByService.entries()].map(([serviceId, options]) => { const selectable = options.filter((option) => available.some((candidate) => optionKey(candidate) === optionKey(option))); return selectable.length > 0 ? <optgroup key={serviceId} label={options[0].product_name}>{selectable.map((option) => <option key={optionKey(option)} value={optionKey(option)}>{option.metric_label} · {option.variants[0]?.part_number ?? "No SKU"}</option>)}</optgroup> : null; })}</select></label>
-                  <button type="button" className="app-button-secondary h-9 gap-2 px-3" disabled={available.length === 0} onClick={() => addMetric(environmentIndex)}><Plus className="h-3.5 w-3.5" />Add metric</button>
+                  <label className="min-w-64 max-w-md flex-1 text-xs text-[var(--color-text-muted)]"><span className="sr-only">Product to review in {environment.name}</span><select aria-label={`Product to review in ${environment.name}`} className="h-9 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-text-primary)]" value={selectedProduct} onChange={(event) => { const serviceId = event.target.value; setSelectedProducts((current) => ({ ...current, [environmentIndex]: serviceId })); if (serviceId) setExpandedProducts((current) => new Set(current).add(`${environmentIndex}:${serviceId}`)); }} disabled={allGroups.length === 0}><option value="">{allGroups.length === 0 ? "No planned products" : `All products (${allGroups.length})`}</option>{allGroups.map((group) => <option key={group.serviceId} value={group.serviceId}>{group.name} · {group.phases.length} metric{group.phases.length === 1 ? "" : "s"}</option>)}</select></label>
+                  <button type="button" className="app-button-secondary h-9 gap-2 px-3" aria-expanded={isAddMetricOpen} disabled={available.length === 0} onClick={() => setAddMetricOpen((current) => { const next = new Set(current); if (next.has(environmentIndex)) next.delete(environmentIndex); else next.add(environmentIndex); return next; })}><Plus className="h-3.5 w-3.5" />Add metric</button>
                 </div>
               </div>
 
+              {isAddMetricOpen ? (
+                <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                  <label className="min-w-64 max-w-xl flex-1 text-xs font-semibold text-[var(--color-text-secondary)]">Metric to add<select aria-label={`Product metric to add to ${environment.name}`} className={inputClass} value={metricToAdd[environmentIndex] ?? ""} onChange={(event) => setMetricToAdd((current) => ({ ...current, [environmentIndex]: event.target.value }))}><option value="">Choose a product metric...</option>{[...optionsByService.entries()].map(([serviceId, options]) => { const selectable = options.filter((option) => available.some((candidate) => optionKey(candidate) === optionKey(option))); return selectable.length > 0 ? <optgroup key={serviceId} label={options[0].product_name}>{selectable.map((option) => <option key={optionKey(option)} value={optionKey(option)}>{option.metric_label} · {option.variants[0]?.part_number ?? "No SKU"}</option>)}</optgroup> : null; })}</select></label>
+                  <button type="button" className="app-button-primary h-10 px-3" disabled={!metricToAdd[environmentIndex]} onClick={() => addMetric(environmentIndex)}>Add selected metric</button>
+                  <button type="button" className="app-button-secondary h-10 px-3" onClick={() => setAddMetricOpen((current) => { const next = new Set(current); next.delete(environmentIndex); return next; })}>Cancel</button>
+                </div>
+              ) : null}
+
               {environment.phases.length === 0 ? <p className="mt-3 border-l-2 border-[var(--color-border)] py-2 pl-3 text-sm text-[var(--color-text-muted)]">No consumption is planned for this environment yet.</p> : null}
-              {environment.phases.length > 0 && groups.length === 0 ? <p className="mt-3 py-3 text-sm text-[var(--color-text-muted)]">No products match “{productQuery}”.</p> : null}
+              {environment.phases.length > 0 && groups.length === 0 ? <p className="mt-3 py-3 text-sm text-[var(--color-text-muted)]">No products match the current product selection and search.</p> : null}
 
               {mode === "standard" ? (
                 <div className="mt-3 space-y-2">

@@ -9,6 +9,7 @@ import {
   edgeMetricLabel,
   edgeMetricValue,
   edgeRiskLabel,
+  topPatternsForEdges,
 } from "./topology";
 import type { GraphEdge } from "./types";
 
@@ -69,5 +70,56 @@ describe("topology helpers", () => {
     expect(complete.nextEdge).toBeNull();
     expect(complete.complete).toBe(true);
     expect(EDGE.risk_qa_status).toBe("REVISAR");
+  });
+
+  it("counts top patterns from their actual connected integrations", () => {
+    const mixedEdge: GraphEdge = {
+      ...EDGE,
+      integration_count: 3,
+      patterns: ["#01 · Request-Reply", "#02 · Event-Driven"],
+      integrations: [
+        {
+          id: "1",
+          name: "One",
+          qa_status: "OK",
+          owner: null,
+          pattern: "#01 · Request-Reply",
+          trigger_type: null,
+          interaction_mode: "SYNCHRONOUS",
+          executions_per_day: null,
+          payload_per_hour_kb: null,
+          updated_at: EDGE.last_updated_at,
+        },
+        {
+          id: "2",
+          name: "Two",
+          qa_status: "OK",
+          owner: null,
+          pattern: "#01 · Request-Reply",
+          trigger_type: null,
+          interaction_mode: "SYNCHRONOUS",
+          executions_per_day: null,
+          payload_per_hour_kb: null,
+          updated_at: EDGE.last_updated_at,
+        },
+        {
+          id: "3",
+          name: "Three",
+          qa_status: "OK",
+          owner: null,
+          pattern: "#02 · Event-Driven",
+          trigger_type: null,
+          interaction_mode: "ASYNCHRONOUS",
+          executions_per_day: null,
+          payload_per_hour_kb: null,
+          updated_at: EDGE.last_updated_at,
+        },
+      ],
+    };
+
+    expect(topPatternsForEdges([mixedEdge], 4)).toEqual([
+      { pattern: "#01 · Request-Reply", count: 2 },
+      { pattern: "#02 · Event-Driven", count: 1 },
+    ]);
   });
 });

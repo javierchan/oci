@@ -6145,6 +6145,23 @@
             "title": "Classification",
             "type": "string"
           },
+          "commercial_term": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommercialTermEvidenceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "composition": {
+            "items": {
+              "$ref": "#/components/schemas/CommercialRelationshipSummaryResponse"
+            },
+            "title": "Composition",
+            "type": "array"
+          },
           "confidence": {
             "title": "Confidence",
             "type": "number"
@@ -6167,6 +6184,9 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/CommercialProductIdentityResponse"
           },
           "part_number": {
             "title": "Part Number",
@@ -6231,6 +6251,8 @@
           "generator_version",
           "rule_status",
           "rule_fixture_status",
+          "identity",
+          "commercial_term",
           "proposed_mapping"
         ],
         "title": "CommercialCandidateResponse",
@@ -6494,6 +6516,110 @@
         "title": "CommercialExceptionReviewRequest",
         "type": "object"
       },
+      "CommercialProductIdentityResponse": {
+        "additionalProperties": false,
+        "description": "Stable SKU identity plus every official workbook location.",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "official_location_count": {
+            "minimum": 0.0,
+            "title": "Official Location Count",
+            "type": "integer"
+          },
+          "product_hierarchy": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Product Hierarchy",
+            "type": "array"
+          },
+          "product_paths": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Product Paths",
+            "type": "array"
+          },
+          "service_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Category"
+          },
+          "structured_product": {
+            "additionalProperties": true,
+            "title": "Structured Product",
+            "type": "object"
+          }
+        },
+        "required": [
+          "display_name",
+          "service_category",
+          "official_location_count"
+        ],
+        "title": "CommercialProductIdentityResponse",
+        "type": "object"
+      },
+      "CommercialRelationshipSummaryResponse": {
+        "additionalProperties": false,
+        "description": "One documented prerequisite, entitlement, or composition relationship.",
+        "properties": {
+          "guidance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guidance"
+          },
+          "relationship_type": {
+            "title": "Relationship Type",
+            "type": "string"
+          },
+          "resolution_status": {
+            "title": "Resolution Status",
+            "type": "string"
+          },
+          "target_name": {
+            "title": "Target Name",
+            "type": "string"
+          },
+          "target_part_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Part Number"
+          }
+        },
+        "required": [
+          "relationship_type",
+          "target_part_number",
+          "target_name",
+          "guidance",
+          "resolution_status"
+        ],
+        "title": "CommercialRelationshipSummaryResponse",
+        "type": "object"
+      },
       "CommercialReleaseResponse": {
         "additionalProperties": false,
         "description": "Atomic approved price, term, mapping, rule, and evidence release.",
@@ -6558,6 +6684,92 @@
           "metadata"
         ],
         "title": "CommercialReleaseResponse",
+        "type": "object"
+      },
+      "CommercialTermEvidenceResponse": {
+        "additionalProperties": false,
+        "description": "Human-readable commercial evidence selected for one SKU candidate.",
+        "properties": {
+          "additional_information": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additional Information"
+          },
+          "commercial_prices": {
+            "items": {},
+            "title": "Commercial Prices",
+            "type": "array"
+          },
+          "constraints": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Constraints",
+            "type": "array"
+          },
+          "metric_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "price_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Type"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "source_row": {
+            "title": "Source Row",
+            "type": "integer"
+          },
+          "source_sheet": {
+            "title": "Source Sheet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_name",
+          "metric_name",
+          "price_type",
+          "additional_information",
+          "notes",
+          "source_sheet",
+          "source_row"
+        ],
+        "title": "CommercialTermEvidenceResponse",
         "type": "object"
       },
       "CommercialWorkspaceResponse": {

@@ -264,6 +264,17 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(dataIntegrationProduct.getByText("Always-on assumption", { exact: false })).toHaveCount(0);
   await productSearch.clear();
 
+  const productionPlan = page.getByRole("region", { name: "Production consumption plan" });
+  const productReview = productionPlan.getByLabel("Product to review in Production");
+  const dataIntegrationValue = await productReview.locator("option").filter({ hasText: "OCI Data Integration" }).first().getAttribute("value");
+  expect(dataIntegrationValue).toBeTruthy();
+  await productReview.selectOption(dataIntegrationValue ?? "");
+  await expect(productionPlan.locator("article")).toHaveCount(1);
+  await expect(productionPlan.locator("article").filter({ hasText: "OCI Data Integration" })).toBeVisible();
+  await expect(productionPlan.locator("article").filter({ hasText: "OCI API Gateway" })).toHaveCount(0);
+  await productReview.selectOption("");
+  await expect(productionPlan.locator("article").filter({ hasText: "OCI API Gateway" })).toBeVisible();
+
   await page.getByRole("button", { name: "Add environment" }).click();
   const environmentNames = page.getByLabel(/Environment \d+ name/);
   const environmentNameCount = await environmentNames.count();
@@ -273,6 +284,8 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(newEnvironmentName).toHaveValue("Disaster Recovery");
   const disasterRecovery = page.getByRole("region", { name: "Disaster Recovery consumption plan" });
   await disasterRecovery.getByRole("button", { name: "Add metric" }).click();
+  await disasterRecovery.getByLabel("Product metric to add to Disaster Recovery").selectOption({ index: 1 });
+  await disasterRecovery.getByRole("button", { name: "Add selected metric" }).click();
   await expect(disasterRecovery.locator("article").first()).toBeVisible();
   await page.getByRole("button", { name: "Monthly matrix" }).click();
   const firstMonthlyQuantity = disasterRecovery.locator('input[aria-label$=" month 1"]');

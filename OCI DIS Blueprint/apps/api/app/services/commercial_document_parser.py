@@ -12,6 +12,7 @@ from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from os import PathLike
 import re
+from collections.abc import Callable
 from typing import BinaryIO, TypeAlias
 
 from openpyxl import load_workbook
@@ -72,6 +73,9 @@ class CommercialWorkbookRecord:
     part_number: str
     service_name: str
     service_category: str | None
+    catalog_section: str | None
+    product_family: str | None
+    product_group: str | None
     pay_as_you_go: CommercialScalar
     annual_commitment: CommercialScalar
     commercial_price_terms: tuple[CommercialPriceTerm, ...]
@@ -81,7 +85,24 @@ class CommercialWorkbookRecord:
     notes: str | None
     included_entitlements: str | None
     prerequisites: str | None
+    product_paths: tuple[tuple[str, ...], ...]
     source_evidence: tuple[SourceEvidence, ...]
+    source_conflicts: tuple[dict[str, object], ...] = ()
+
+    @property
+    def product_hierarchy(self) -> tuple[str, ...]:
+        """Return the workbook product path without repeated adjacent labels."""
+
+        values: list[str] = []
+        for value in (
+            self.catalog_section,
+            self.product_family,
+            self.product_group,
+            self.service_category,
+        ):
+            if value and value not in values:
+                values.append(value)
+        return tuple(values)
 
     @property
     def source_sheets(self) -> tuple[str, ...]:
@@ -100,6 +121,8 @@ class ParsedCommercialWorkbook:
     """Deterministically ordered canonical records from one workbook."""
 
     records: tuple[CommercialWorkbookRecord, ...]
+    price_record_count: int
+    supplement_record_count: int
 
     def by_part_number(self) -> dict[str, CommercialWorkbookRecord]:
         return {record.part_number: record for record in self.records}
@@ -169,29 +192,86 @@ def parse_oci_commercial_workbook_object(workbook: Workbook) -> ParsedCommercial
     if missing:
         raise ValueError(f"Commercial workbook is missing required sheet(s): {', '.join(missing)}")
 
-    price_records = _parse_price_sheet(workbook[PRICE_LIST_SHEET])
-    supplement_records = _parse_supplement_sheet(workbook[SUPPLEMENT_SHEET])
+    price_sheet = workbook[PRICE_LIST_SHEET]
+    supplement_sheet = workbook[SUPPLEMENT_SHEET]
+    if not _sheet_contains_header(price_sheet, _PRICE_HEADER_ALIASES, _is_price_header):
+        raise ValueError(
+            "Commercial workbook Price List layout is not recognized; "
+            "no governed Part Number and price header was found"
+        )
+    if not _sheet_contains_header(
+        supplement_sheet,
+        _SUPPLEMENT_HEADER_ALIASES,
+        _is_supplement_header,
+    ):
+        raise ValueError(
+            "Commercial workbook Supplement layout is not recognized; "
+            "no governed Part Number, service, metric, and evidence header was found"
+        )
+
+    price_records = _parse_price_sheet(price_sheet)
+    supplement_records = _parse_supplement_sheet(supplement_sheet)
+    if not price_records:
+        raise ValueError(
+            "Commercial workbook Price List contains no recognized OCI SKU records"
+        )
+    if not supplement_records:
+        raise ValueError(
+            "Commercial workbook Supplement contains no recognized OCI SKU records"
+        )
     part_numbers = sorted(set(price_records) | set(supplement_records))
     records = tuple(
         _merge_records(price_records.get(part_number), supplement_records.get(part_number))
         for part_number in part_numbers
     )
-    return ParsedCommercialWorkbook(records=records)
+    return ParsedCommercialWorkbook(
+        records=records,
+        price_record_count=len(price_records),
+        supplement_record_count=len(supplement_records),
+    )
+
+
+def _sheet_contains_header(
+    sheet: Worksheet,
+    aliases: dict[str, frozenset[str]],
+    predicate: Callable[[dict[str, int]], bool],
+) -> bool:
+    """Confirm source layout before accepting any extracted commercial evidence."""
+
+    return any(predicate(_detect_header(row, aliases)) for row in sheet.iter_rows())
 
 
 def _parse_price_sheet(sheet: Worksheet) -> dict[str, CommercialWorkbookRecord]:
     candidates: dict[str, list[CommercialWorkbookRecord]] = {}
     header: dict[str, int] | None = None
     category: str | None = None
+    catalog_section: str | None = None
+    family_lines: list[str] = []
+    last_family_row: int | None = None
+    product_group: str | None = None
     current_part_number: str | None = None
     current_service_name: str | None = None
     current_service_category: str | None = None
 
     for row in sheet.iter_rows():
+        section = _catalog_section_from_row(row)
+        if section:
+            catalog_section = section
+            family_lines = []
+            last_family_row = None
+        family_line = _product_family_line(row)
+        if family_line:
+            row_number = row[0].row
+            if last_family_row is None or row_number > last_family_row + 2:
+                family_lines = [family_line]
+            elif family_line not in family_lines:
+                family_lines.append(family_line)
+            last_family_row = row_number
         detected = _detect_header(row, _PRICE_HEADER_ALIASES)
         if _is_price_header(detected):
             header = detected
             category = None
+            product_group = None
             current_part_number = None
             current_service_name = None
             current_service_category = None
@@ -210,11 +290,16 @@ def _parse_price_sheet(sheet: Worksheet) -> dict[str, CommercialWorkbookRecord]:
                         part_number=current_part_number,
                         service_name=current_service_name or current_part_number,
                         service_category=current_service_category,
+                        catalog_section=catalog_section,
+                        product_family=_joined_family(family_lines),
+                        product_group=product_group,
                     )
                 )
             elif _row_has_content(row):
                 detected_category = _category_from_row(row, header)
                 if detected_category:
+                    if product_group is None:
+                        product_group = detected_category
                     category = detected_category
                 current_part_number = None
                 current_service_name = None
@@ -234,6 +319,9 @@ def _parse_price_sheet(sheet: Worksheet) -> dict[str, CommercialWorkbookRecord]:
             part_number=part_number,
             service_name=service_name,
             service_category=current_service_category,
+            catalog_section=catalog_section,
+            product_family=_joined_family(family_lines),
+            product_group=product_group,
         )
         candidates.setdefault(part_number, []).append(record)
 
@@ -244,15 +332,33 @@ def _parse_supplement_sheet(sheet: Worksheet) -> dict[str, CommercialWorkbookRec
     candidates: dict[str, list[CommercialWorkbookRecord]] = {}
     header: dict[str, int] | None = None
     category: str | None = None
+    catalog_section: str | None = None
+    family_lines: list[str] = []
+    last_family_row: int | None = None
+    product_group: str | None = None
     current_part_number: str | None = None
     current_service_name: str | None = None
     current_service_category: str | None = None
 
     for row in sheet.iter_rows():
+        section = _catalog_section_from_row(row)
+        if section:
+            catalog_section = section
+            family_lines = []
+            last_family_row = None
+        family_line = _product_family_line(row)
+        if family_line:
+            row_number = row[0].row
+            if last_family_row is None or row_number > last_family_row + 2:
+                family_lines = [family_line]
+            elif family_line not in family_lines:
+                family_lines.append(family_line)
+            last_family_row = row_number
         detected = _detect_header(row, _SUPPLEMENT_HEADER_ALIASES)
         if _is_supplement_header(detected):
             header = detected
             category = None
+            product_group = None
             current_part_number = None
             current_service_name = None
             current_service_category = None
@@ -271,11 +377,16 @@ def _parse_supplement_sheet(sheet: Worksheet) -> dict[str, CommercialWorkbookRec
                         part_number=current_part_number,
                         service_name=current_service_name or current_part_number,
                         service_category=current_service_category,
+                        catalog_section=catalog_section,
+                        product_family=_joined_family(family_lines),
+                        product_group=product_group,
                     )
                 )
             elif _row_has_content(row):
                 detected_category = _category_from_row(row, header)
                 if detected_category:
+                    if product_group is None:
+                        product_group = detected_category
                     category = detected_category
                 current_part_number = None
                 current_service_name = None
@@ -295,6 +406,9 @@ def _parse_supplement_sheet(sheet: Worksheet) -> dict[str, CommercialWorkbookRec
             part_number=part_number,
             service_name=service_name,
             service_category=current_service_category,
+            catalog_section=catalog_section,
+            product_family=_joined_family(family_lines),
+            product_group=product_group,
         )
         candidates.setdefault(part_number, []).append(record)
 
@@ -309,11 +423,17 @@ def _price_record(
     part_number: str,
     service_name: str,
     service_category: str | None,
+    catalog_section: str | None,
+    product_family: str | None,
+    product_group: str | None,
 ) -> CommercialWorkbookRecord:
     return CommercialWorkbookRecord(
         part_number=part_number,
         service_name=service_name,
         service_category=service_category,
+        catalog_section=catalog_section,
+        product_family=product_family,
+        product_group=product_group,
         pay_as_you_go=_commercial_scalar(_cell_value(row, header.get("pay_as_you_go"))),
         annual_commitment=_commercial_scalar(_cell_value(row, header.get("annual_commitment"))),
         commercial_price_terms=_commercial_price_terms(row, header),
@@ -326,6 +446,9 @@ def _price_record(
         notes=_text_at(row, header.get("notes")),
         included_entitlements=None,
         prerequisites=None,
+        product_paths=(
+            _product_path(catalog_section, product_family, product_group, service_category),
+        ),
         source_evidence=(_evidence(sheet.title, row, header),),
     )
 
@@ -338,11 +461,17 @@ def _supplement_record(
     part_number: str,
     service_name: str,
     service_category: str | None,
+    catalog_section: str | None,
+    product_family: str | None,
+    product_group: str | None,
 ) -> CommercialWorkbookRecord:
     return CommercialWorkbookRecord(
         part_number=part_number,
         service_name=service_name,
         service_category=service_category,
+        catalog_section=catalog_section,
+        product_family=product_family,
+        product_group=product_group,
         pay_as_you_go=None,
         annual_commitment=None,
         commercial_price_terms=(),
@@ -352,6 +481,9 @@ def _supplement_record(
         notes=None,
         included_entitlements=_text_at(row, header.get("included_entitlements")),
         prerequisites=_text_at(row, header.get("prerequisites")),
+        product_paths=(
+            _product_path(catalog_section, product_family, product_group, service_category),
+        ),
         source_evidence=(_evidence(sheet.title, row, header),),
     )
 
@@ -386,6 +518,49 @@ def _row_has_content(row: tuple[Cell, ...]) -> bool:
     return any(not _is_blank(cell.value) for cell in row)
 
 
+def _catalog_section_from_row(row: tuple[Cell, ...]) -> str | None:
+    for cell in row:
+        value = _clean_text(cell.value)
+        if value and value.casefold().startswith("section "):
+            return value
+    return None
+
+
+def _product_family_line(row: tuple[Cell, ...]) -> str | None:
+    """Identify the centered page-family title used by the official workbook.
+
+    Product-family titles are visually distinct from table group headings: they
+    are bold, centered, and use 14pt type. The rule is style-based rather than
+    tied to workbook row numbers or style IDs, which change between releases.
+    """
+
+    populated = [cell for cell in row if not _is_blank(cell.value)]
+    if len(populated) != 1:
+        return None
+    cell = populated[0]
+    value = _clean_text(cell.value)
+    if not value or value.casefold().startswith("section "):
+        return None
+    if not cell.font.bold or float(cell.font.sz or 0) < 13.5:
+        return None
+    if cell.alignment.horizontal != "center":
+        return None
+    return value.rstrip(":").strip()
+
+
+def _joined_family(lines: list[str]) -> str | None:
+    unique = list(dict.fromkeys(line.strip() for line in lines if line.strip()))
+    return ": ".join(unique) or None
+
+
+def _product_path(*values: str | None) -> tuple[str, ...]:
+    path: list[str] = []
+    for value in values:
+        if value and value not in path:
+            path.append(value)
+    return tuple(path)
+
+
 def _detect_header(row: tuple[Cell, ...], aliases: dict[str, frozenset[str]]) -> dict[str, int]:
     detected: dict[str, int] = {}
     for index, cell in enumerate(row):
@@ -405,9 +580,11 @@ def _is_price_header(header: dict[str, int]) -> bool:
         "commitment_details",
         "monthly_commitment_minimum",
     }
+    # Legacy Pre-Paid / Metered tables expose Price, Minimum, Includes, Notes,
+    # and Part Number without a Metric column. They are still authoritative
+    # commercial tables and must reset the parser's hierarchy state.
     return "part_number" in header and (
-        ({"metric"}.issubset(header) and bool(price_fields & header.keys()))
-        or bool(special_fields & header.keys())
+        bool(price_fields & header.keys()) or bool(special_fields & header.keys())
     )
 
 
@@ -422,6 +599,26 @@ def _service_name(row: tuple[Cell, ...], header: dict[str, int]) -> str | None:
     if explicit:
         return explicit
 
+    # Some official Price List tables place a second ``Price`` column after
+    # Notes and Part Number. Using the first commercial column as the only
+    # boundary can therefore expose numeric note cells as a product name. The
+    # workbook contract is more stable: the product description is textual and
+    # appears before Part Number. Prefer that region and ignore numeric labels.
+    part_number_column = header.get("part_number")
+    if part_number_column is not None:
+        for index in range(part_number_column):
+            value = _cell_value(row, index)
+            if not isinstance(value, str):
+                continue
+            text = _clean_text(value)
+            if (
+                text
+                and text != "-"
+                and _part_number(text) is None
+                and _NUMERIC_PATTERN.fullmatch(text) is None
+            ):
+                return text
+
     commercial_columns = [
         header[field]
         for field in (
@@ -434,8 +631,16 @@ def _service_name(row: tuple[Cell, ...], header: dict[str, int]) -> str | None:
     if not commercial_columns:
         return None
     for index in range(min(commercial_columns) - 1, -1, -1):
-        text = _clean_text(_cell_value(row, index))
-        if text and _part_number(text) is None:
+        value = _cell_value(row, index)
+        if not isinstance(value, str):
+            continue
+        text = _clean_text(value)
+        if (
+            text
+            and text != "-"
+            and _part_number(text) is None
+            and _NUMERIC_PATTERN.fullmatch(text) is None
+        ):
             return text
     return None
 
@@ -466,10 +671,16 @@ def _category_from_row(row: tuple[Cell, ...], header: dict[str, int]) -> str | N
 def _canonical_price(records: list[CommercialWorkbookRecord]) -> CommercialWorkbookRecord:
     ordered = _deduplicated_records(records)
     canonical = sorted(ordered, key=lambda record: (-_price_score(record), _evidence_key(record)))[0]
+    identity = sorted(ordered, key=_identity_rank)[0]
     terms = _deduplicated_price_terms(ordered)
     evidence = tuple(item for record in ordered for item in record.source_evidence)
     return replace(
         canonical,
+        service_name=identity.service_name,
+        service_category=identity.service_category,
+        catalog_section=identity.catalog_section,
+        product_family=identity.product_family,
+        product_group=identity.product_group,
         pay_as_you_go=_first_scalar(ordered, "pay_as_you_go"),
         annual_commitment=_first_scalar(ordered, "annual_commitment"),
         commercial_price_terms=terms,
@@ -477,20 +688,30 @@ def _canonical_price(records: list[CommercialWorkbookRecord]) -> CommercialWorkb
         metric_minimum=_first_scalar(ordered, "metric_minimum"),
         additional_information=_joined_text(ordered, "additional_information"),
         notes=_joined_text(ordered, "notes"),
+        product_paths=_deduplicated_product_paths(ordered),
         source_evidence=evidence,
+        source_conflicts=_repeated_record_conflicts(ordered),
     )
 
 
 def _canonical_supplement(records: list[CommercialWorkbookRecord]) -> CommercialWorkbookRecord:
     ordered = _deduplicated_records(records)
     canonical = sorted(ordered, key=lambda record: (-_supplement_score(record), _evidence_key(record)))[0]
+    identity = sorted(ordered, key=_identity_rank)[0]
     evidence = tuple(item for record in ordered for item in record.source_evidence)
     return replace(
         canonical,
+        service_name=identity.service_name,
+        service_category=identity.service_category,
+        catalog_section=identity.catalog_section,
+        product_family=identity.product_family,
+        product_group=identity.product_group,
         metric=_first_text(ordered, "metric"),
         included_entitlements=_joined_text(ordered, "included_entitlements"),
         prerequisites=_joined_text(ordered, "prerequisites"),
+        product_paths=_deduplicated_product_paths(ordered),
         source_evidence=evidence,
+        source_conflicts=_repeated_record_conflicts(ordered),
     )
 
 
@@ -513,6 +734,9 @@ def _deduplicated_records(
             record.part_number,
             record.service_name,
             record.service_category,
+            record.catalog_section,
+            record.product_family,
+            record.product_group,
             record.pay_as_you_go,
             record.annual_commitment,
             price_terms,
@@ -522,6 +746,7 @@ def _deduplicated_records(
             record.notes,
             record.included_entitlements,
             record.prerequisites,
+            record.product_paths,
             source_values,
         )
         unique.setdefault(signature, record)
@@ -542,6 +767,127 @@ def _deduplicated_price_terms(
             )
             unique.setdefault(signature, term)
     return tuple(unique.values())
+
+
+def _deduplicated_product_paths(
+    records: list[CommercialWorkbookRecord],
+) -> tuple[tuple[str, ...], ...]:
+    paths = {
+        path
+        for record in records
+        for path in record.product_paths
+        if path
+    }
+    return tuple(sorted(paths, key=lambda path: (len(path), path)))
+
+
+def _semantic_text(value: str | None) -> str | None:
+    """Normalize source prose for conflict comparison without changing evidence."""
+
+    if not value or not value.strip() or value.strip() == "-":
+        return None
+    normalized = re.sub(r"\s+", " ", value).strip().casefold()
+    normalized = re.sub(
+        r"\s*\((?:priced in advance of availability|continued)\)\s*$",
+        "",
+        normalized,
+    )
+    return re.sub(r"(?:\s*\(?(?:note|footnote)\s*\d+\)?\s*)+$", "", normalized)
+
+
+def _valid_metric_identity(value: str) -> bool:
+    normalized = _semantic_text(value)
+    if not normalized or _NUMERIC_PATTERN.fullmatch(normalized):
+        return False
+    if normalized in {"metric", "not applicable.", "not applicable", "n/a"}:
+        return False
+    if normalized.startswith("country zone") or re.fullmatch(r"[a-z]{3}-[a-z0-9-]+", normalized):
+        return False
+    return True
+
+
+def _repeated_record_conflicts(
+    records: list[CommercialWorkbookRecord],
+) -> tuple[dict[str, object], ...]:
+    """Report only material disagreements across repeated official SKU rows.
+
+    Product placement is intentionally excluded: a SKU may be listed under many
+    workbook products or sections. Blank values do not conflict with populated
+    values, and price tiers are compared only when their typed term and source
+    label overlap.
+    """
+
+    conflicts: list[dict[str, object]] = []
+    for field in ("service_name", "metric"):
+        observed: dict[str, set[str]] = {}
+        for record in records:
+            raw = getattr(record, field)
+            if not isinstance(raw, str):
+                continue
+            normalized = _semantic_text(raw)
+            if normalized and (field != "metric" or _valid_metric_identity(raw)):
+                observed.setdefault(normalized, set()).add(raw.strip())
+        if len(observed) > 1:
+            conflicts.append(
+                {
+                    "field": field,
+                    "values": sorted({value for values in observed.values() for value in values}),
+                }
+            )
+
+    term_scope = tuple[tuple[str, ...], str | None, str | None, str, str | None]
+    scoped_terms: dict[term_scope, dict[str, set[str]]] = {}
+    for record in records:
+        product_path = tuple(_header_text(value) for value in record.product_hierarchy)
+        metric = _semantic_text(record.metric)
+        minimum = _semantic_scalar(record.metric_minimum)
+        for term in record.commercial_price_terms:
+            value = _semantic_scalar(term.value)
+            if value is None:
+                continue
+            scope: term_scope = (
+                product_path,
+                metric,
+                minimum,
+                term.term_type,
+                _semantic_text(term.source_label),
+            )
+            scoped_terms.setdefault(scope, {}).setdefault(value, set()).add(
+                str(term.value)
+            )
+    for scope, observed in sorted(scoped_terms.items(), key=lambda item: repr(item[0])):
+        if len(observed) > 1:
+            conflicts.append(
+                {
+                    "field": "commercial_price_term",
+                    "scope": [list(scope[0]), *scope[1:]],
+                    "values": sorted(
+                        {value for values in observed.values() for value in values}
+                    ),
+                }
+            )
+
+    return tuple(conflicts)
+
+
+def _semantic_scalar(value: CommercialScalar) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return format(value.normalize(), "f")
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return _semantic_text(str(value))
+
+
+def _deduplicated_conflicts(
+    *groups: tuple[dict[str, object], ...],
+) -> tuple[dict[str, object], ...]:
+    unique: dict[str, dict[str, object]] = {}
+    for conflict in (item for group in groups for item in group):
+        signature = repr(sorted(conflict.items()))
+        unique.setdefault(signature, conflict)
+    return tuple(unique[key] for key in sorted(unique))
 
 
 def _first_scalar(
@@ -587,10 +933,18 @@ def _merge_records(
         price,
         service_name=price.service_name or supplement.service_name,
         service_category=price.service_category or supplement.service_category,
+        catalog_section=price.catalog_section or supplement.catalog_section,
+        product_family=price.product_family or supplement.product_family,
+        product_group=price.product_group or supplement.product_group,
+        product_paths=_deduplicated_product_paths([price, supplement]),
         metric=price.metric or supplement.metric,
         included_entitlements=supplement.included_entitlements,
         prerequisites=supplement.prerequisites,
         source_evidence=price.source_evidence + supplement.source_evidence,
+        source_conflicts=_deduplicated_conflicts(
+            price.source_conflicts,
+            supplement.source_conflicts,
+        ),
     )
 
 
@@ -667,6 +1021,45 @@ def _supplement_score(record: CommercialWorkbookRecord) -> int:
         record.service_category,
     )
     return sum(value is not None for value in fields)
+
+
+def _identity_rank(record: CommercialWorkbookRecord) -> tuple[object, ...]:
+    """Choose a stable semantic placement independent of workbook page order."""
+
+    hierarchy = record.product_hierarchy
+    normalized_hierarchy = tuple(_header_text(value) for value in hierarchy)
+    service_tokens = _identity_tokens(record.service_name)
+    hierarchy_tokens = set().union(*(_identity_tokens(value) for value in hierarchy)) if hierarchy else set()
+    semantic_overlap = len(service_tokens & hierarchy_tokens)
+    return (
+        -semantic_overlap,
+        -len(hierarchy),
+        normalized_hierarchy,
+        _header_text(record.service_name),
+    )
+
+
+def _identity_tokens(value: str | None) -> set[str]:
+    """Return stable product-identity tokens without workbook footnote noise."""
+
+    ignored = {
+        "and",
+        "as",
+        "cloud",
+        "for",
+        "in",
+        "of",
+        "on",
+        "oracle",
+        "service",
+        "services",
+        "the",
+    }
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", _header_text(value))
+        if len(token) > 1 and token not in ignored
+    }
 
 
 def _evidence_key(record: CommercialWorkbookRecord) -> tuple[str, int]:

@@ -1251,6 +1251,7 @@ async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_
         assert snapshot.coverage_pct == 100.0
         assert snapshot.monthly_total == 960.06
         assert snapshot.contract_total == 11520.72
+        assert snapshot.commercial_release_id == commercial_release.id
         assert len(snapshot.monthly_series) == 12
         assert len(snapshot.line_items[0].periods) == 12
         assert snapshot.line_items[0].provenance["mapping_id"] == mapping.id

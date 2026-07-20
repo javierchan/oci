@@ -6,7 +6,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.models import CatalogIntegration, Project
+from app.models import CatalogIntegration, PatternDefinition, Project
 
 
 async def seed_graph_project(test_engine: AsyncEngine) -> str:
@@ -17,6 +17,12 @@ async def seed_graph_project(test_engine: AsyncEngine) -> str:
         project = Project(name="Graph contract", owner_id="graph-test")
         session.add(project)
         await session.flush()
+        session.add_all(
+            [
+                PatternDefinition(pattern_id="#01", name="Request-Reply", category="Synchronous"),
+                PatternDefinition(pattern_id="#02", name="Event-Driven", category="Asynchronous"),
+            ]
+        )
         session.add_all(
             [
                 CatalogIntegration(
@@ -36,7 +42,7 @@ async def seed_graph_project(test_engine: AsyncEngine) -> str:
                     destination_owner="Finance Data",
                     executions_per_day=120.0,
                     payload_per_hour_kb=640.0,
-                    selected_pattern="#01 · Request-Reply",
+                    selected_pattern="#01",
                     qa_status="OK",
                 ),
                 CatalogIntegration(
@@ -56,7 +62,7 @@ async def seed_graph_project(test_engine: AsyncEngine) -> str:
                     destination_owner="Finance Data",
                     executions_per_day=240.0,
                     payload_per_hour_kb=1280.0,
-                    selected_pattern="#02 · Event-Driven",
+                    selected_pattern="#02",
                     qa_status="REVISAR",
                 ),
             ]
@@ -93,9 +99,14 @@ async def test_graph_exposes_risk_metrics_modes_and_actionable_integrations(
     assert edge["total_payload_per_hour_kb"] == 1920.0
     assert edge["executions_coverage"] == 2
     assert edge["payload_coverage"] == 2
+    assert edge["patterns"] == ["#01 · Request-Reply", "#02 · Event-Driven"]
     assert [item["name"] for item in edge["integrations"]] == [
         "Synchronous order lookup",
         "Asynchronous order event",
+    ]
+    assert [item["pattern"] for item in edge["integrations"]] == [
+        "#01 · Request-Reply",
+        "#02 · Event-Driven",
     ]
 
     source_node = next(node for node in payload["nodes"] if node["id"] == "Retail Core ERP")

@@ -1947,6 +1947,35 @@ export interface CommercialCatalogSummary {
 
 export type CommercialCandidateDecision = "approve" | "reject" | "keep_blocked";
 
+export interface CommercialProductIdentity {
+  display_name: string;
+  service_category: string | null;
+  product_hierarchy: string[];
+  product_paths: string[][];
+  official_location_count: number;
+  structured_product: Record<string, unknown>;
+}
+
+export interface CommercialTermEvidence {
+  service_name: string;
+  metric_name: string | null;
+  price_type: string | null;
+  commercial_prices: unknown[];
+  additional_information: string | null;
+  notes: string | null;
+  source_sheet: string;
+  source_row: number;
+  constraints: Record<string, unknown>[];
+}
+
+export interface CommercialRelationshipSummary {
+  relationship_type: string;
+  target_part_number: string | null;
+  target_name: string;
+  guidance: string | null;
+  resolution_status: string;
+}
+
 export interface CommercialCandidate {
   id: string;
   part_number: string;
@@ -1958,6 +1987,9 @@ export interface CommercialCandidate {
   generator_version: string;
   rule_status: string | null;
   rule_fixture_status: string | null;
+  identity: CommercialProductIdentity;
+  commercial_term: CommercialTermEvidence | null;
+  composition: CommercialRelationshipSummary[];
   proposed_mapping: Record<string, unknown>;
   reasons: unknown[];
 }
@@ -2159,6 +2191,18 @@ export function filterCommercialCandidates(
       candidate.service_id,
       candidate.family_key,
       candidate.classification,
+      candidate.identity.display_name,
+      candidate.identity.service_category,
+      ...candidate.identity.product_hierarchy,
+      ...candidate.identity.product_paths.flat(),
+      candidate.commercial_term?.metric_name,
+      candidate.commercial_term?.additional_information,
+      candidate.commercial_term?.notes,
+      ...candidate.composition.flatMap((relationship) => [
+        relationship.target_part_number,
+        relationship.target_name,
+        relationship.guidance,
+      ]),
       ...candidate.reasons.map((reason) => String(reason)),
       JSON.stringify(candidate.proposed_mapping),
     ].some((value) => value && normalizeSearchValue(value).includes(normalized));

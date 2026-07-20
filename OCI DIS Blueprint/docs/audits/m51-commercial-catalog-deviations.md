@@ -151,10 +151,51 @@ the read-only App `Official Source Governance Agent`.
 
 ## Validation Evidence
 
+### Official source reconciliation (2026-07-20)
+
+The current Localizable Price List workbook and the approved structured OCI
+sources were reconciled by normalized part number before candidate generation:
+
+| Source | Distinct SKU identities | Version evidence |
+| --- | ---: | --- |
+| Localizable Price List workbook | 1,163 | SHA-256 `263060bda2eb99867d04a0ab9ea090347602ef28b25fddd274ebd0c32f1599e9` |
+| OCI Public Pricing API, USD | 658 | `lastUpdated=2026-07-16T13:52:41.483Z`; SHA-256 `73099e750880991da6fd704ff1da3127b660a918f4fe04cdfa170c0f1073f366` |
+| Cloud Estimator `products.json` | 674 | build `439`, `2026-07-16T11:00:10Z`; SHA-256 `0c3c8ac1d079a39a6db3e0139a924b0b02b8cde67417b9ff04f616fc3f04bd3b` |
+
+The workbook contains 506 identities absent from the Pricing API and 507 absent
+from `products.json`. The Pricing API contains one identity absent from the
+workbook (`B109480`). Cloud Estimator contains 18 `FR` identities absent from
+both of the other sources. The union contains 1,182 governed candidate
+identities and is persisted in the document manifest as an exact, sorted diff.
+
+The Pricing API remains authoritative for public PAYG prices and typed tiers.
+For the 506 workbook-only identities, the workbook commercial term may provide a
+source-labelled price fallback, but the candidate remains blocked until its
+metric, terms, quantity behavior, relationships, and quotation fixture are
+reviewed. PAYG and Annual Commitment are persisted as separate commercial terms
+even when their current numeric values are equal. `products.json`,
+`metrics.json`, and `productpresets.json` govern structured identity, metric
+display, decimal-input behavior, and estimator composition; they do not replace
+contract terms from the workbook or prices from the Pricing API.
+
+Repeated workbook occurrences are modeled as one SKU identity with every
+official product path retained. Canonical placement uses semantic hierarchy with
+a deterministic tie-break independent of page order. Conflicts compare only
+overlapping non-null normalized identity fields; workbook placement and
+source-labelled tiers do not create false conflicts. The current workbook has
+1,065 multi-location SKUs. Nine SKUs contain ten material identity or metric
+conflicts and are routed to explicit review instead of being reassigned
+silently.
+
+Workbook layout validation is fail-closed: both governed sheets and their
+required semantic headers must be recognized, and the Price List must yield at
+least one valid OCI part number. A layout change cannot degrade into an empty or
+apparently successful catalog.
+
 Validated on 2026-07-20 against the production Docker stack and the persisted
 global commercial release:
 
-- workspace `.venv` API suite: 200 passed;
+- workspace `.venv` API suite: 214 passed;
 - calc engine: 55 passed; pricing engine: 35 passed;
 - frontend unit and contract suite: 94 passed;
 - frontend TypeScript, ESLint, Ruff, mypy, and `npm audit --audit-level=high`: passed;
@@ -165,11 +206,13 @@ global commercial release:
 - Admin Pricing visual inspection in the isolated Codex browser: desktop dark and
   390-pixel mobile geometry, zero browser-console errors, no horizontal overflow,
   truthful 1,182/229/953 global counts, and explicit 27 enabled plus five excluded
-  App BOM mappings;
+  App BOM mappings; the official `B107951` detail displayed its Exadata product
+  name, semantic hierarchy, two workbook placements, metric, and commercial term
+  without treating the workbook placeholder `-` as a product entitlement;
 - deterministic candidate revalidation: passed and confirmed idempotent; it updates
   rule evidence without granting human approval;
 - OpenAPI artifact check inside `ocidisblueprint-api:latest`: passed;
-- production migration: `20260719_0042 (head)`;
+- production migration: `20260720_0043 (head)`;
 - production image scan: API reports zero findings; web reports zero critical/high,
   one medium BusyBox finding with no fixed Alpine package available, and zero low;
 - production services: API, PostgreSQL, Redis, and MinIO healthy; web, worker,

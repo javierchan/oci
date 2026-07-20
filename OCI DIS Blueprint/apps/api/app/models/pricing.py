@@ -84,7 +84,12 @@ class CommercialDocumentSnapshot(Base, UUIDMixin, TimestampMixin):
 
     __tablename__ = "commercial_document_snapshots"
     __table_args__ = (
-        UniqueConstraint("document_kind", "content_hash", name="uq_commercial_document_kind_hash"),
+        UniqueConstraint(
+            "document_kind",
+            "content_hash",
+            "parser_version",
+            name="uq_commercial_document_kind_hash_parser",
+        ),
         Index("ix_commercial_document_kind_status", "document_kind", "status"),
     )
 

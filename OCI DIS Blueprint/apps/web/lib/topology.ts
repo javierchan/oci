@@ -326,9 +326,14 @@ export function degradedSystemCount(nodes: GraphNode[], edges: GraphEdge[]): num
 export function topPatternsForEdges(edges: GraphEdge[], limit: number): Array<{ pattern: string; count: number }> {
   const counts = new Map<string, number>();
   edges.forEach((edge) => {
-    edge.patterns.forEach((pattern) => {
-      counts.set(pattern, (counts.get(pattern) ?? 0) + edge.integration_count);
-    });
+    const integrationPatterns = edge.integrations
+      .map((integration) => integration.pattern)
+      .filter((pattern): pattern is string => Boolean(pattern));
+    if (integrationPatterns.length > 0) {
+      integrationPatterns.forEach((pattern) => counts.set(pattern, (counts.get(pattern) ?? 0) + 1));
+      return;
+    }
+    edge.patterns.forEach((pattern) => counts.set(pattern, (counts.get(pattern) ?? 0) + edge.integration_count));
   });
   return [...counts.entries()]
     .map(([pattern, count]) => ({ pattern, count }))

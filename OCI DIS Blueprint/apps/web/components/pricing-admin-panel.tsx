@@ -10,6 +10,7 @@ import {
   FileUp,
   Loader2,
   PackageCheck,
+  PackageSearch,
   Pencil,
   RefreshCcw,
   Search,
@@ -91,7 +92,7 @@ function CommercialCatalogWorkspace(): JSX.Element {
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
-      setWorkspace(await api.getCommercialCatalog({ limit: 500 }));
+      setWorkspace(await api.getCommercialCatalog({ limit: 2000 }));
       setError("");
     } catch (caughtError) {
       setError(getErrorMessage(caughtError, "Unable to load official commercial evidence."));
@@ -108,7 +109,7 @@ function CommercialCatalogWorkspace(): JSX.Element {
     }
     let active = true;
     const timer = window.setTimeout(() => {
-      api.getCommercialCatalog({ search, limit: 500 })
+      api.getCommercialCatalog({ search, limit: 2000 })
         .then((result) => {
           if (active) {
             setWorkspace(result);
@@ -146,7 +147,7 @@ function CommercialCatalogWorkspace(): JSX.Element {
     try {
       let updatedWorkspace = await action();
       if (candidateQuery.trim()) {
-        updatedWorkspace = await api.getCommercialCatalog({ search: candidateQuery.trim(), limit: 500 });
+        updatedWorkspace = await api.getCommercialCatalog({ search: candidateQuery.trim(), limit: 2000 });
       }
       setWorkspace(updatedWorkspace);
       setError("");
@@ -326,7 +327,7 @@ function CommercialCatalogWorkspace(): JSX.Element {
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4">
           <div><p className="app-label">Candidate Review Queue</p><h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Generated proposals awaiting explicit disposition</h3></div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <label className="relative block min-w-0 sm:w-72"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[var(--color-text-muted)]" /><input aria-label="Search commercial candidates" className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3 text-sm" placeholder="Search part number" value={candidateQuery} onChange={(event) => setCandidateQuery(event.target.value)} /></label>
+            <label className="relative block min-w-0 sm:w-80"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[var(--color-text-muted)]" /><input aria-label="Search commercial candidates" className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3 text-sm" placeholder="Search SKU, product, metric, or family" value={candidateQuery} onChange={(event) => setCandidateQuery(event.target.value)} /></label>
             <select aria-label="Filter candidate status" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm" value={candidateStatus} onChange={(event) => setCandidateStatus(event.target.value)}><option value="all">All statuses</option><option value="pending_review">Needs review</option><option value="approved">Explicitly approved</option><option value="blocked">Blocked</option><option value="rejected">Rejected</option></select>
           </div>
         </div>
@@ -343,11 +344,28 @@ function CommercialCatalogWorkspace(): JSX.Element {
             return (
               <details key={candidate.id} className="group px-5 py-4">
                 <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
-                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-mono font-semibold text-[var(--color-text-primary)]">{candidate.part_number}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${presentationTone}`}>{presentation.label}</span><span className="app-theme-chip">{humanize(candidate.classification)}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClasses(candidate.rule_fixture_status ?? "missing")}`}>Fixture: {humanize(candidate.rule_fixture_status ?? "missing")}</span></div><p className="mt-1 text-xs text-[var(--color-text-muted)]">{candidate.service_id ?? "Service mapping not established"} · {candidate.family_key ?? "Rule family not established"} · {Math.round(candidate.confidence * 100)}% generator confidence · {candidate.generator_version}</p></div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-xs font-semibold text-[var(--color-text-secondary)]">{candidate.part_number}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${presentationTone}`}>{presentation.label}</span><span className="app-theme-chip">{humanize(candidate.classification)}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClasses(candidate.rule_fixture_status ?? "missing")}`}>Fixture: {humanize(candidate.rule_fixture_status ?? "missing")}</span></div>
+                    <p className="mt-2 text-sm font-semibold text-[var(--color-text-primary)]">{candidate.identity.display_name}</p>
+                    <p className="mt-1 truncate text-xs text-[var(--color-text-muted)]">{candidate.identity.product_hierarchy.length > 0 ? candidate.identity.product_hierarchy.join(" / ") : candidate.identity.service_category ?? "Official product placement is not established"}</p>
+                  </div>
                   <span className="text-xs font-semibold text-[var(--color-text-secondary)] group-open:hidden">Review details</span>
                 </summary>
                 <div className="mt-4 grid min-w-0 gap-5 border-t border-[var(--color-border)] pt-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
-                  <div className="min-w-0"><p className="app-label">Proposed commercial behavior</p><dl className="mt-3 grid gap-x-5 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(candidate.proposed_mapping).filter(([key]) => key !== "field_authority").map(([key, value]) => <div key={key}><dt className="text-xs text-[var(--color-text-muted)]">{humanize(key)}</dt><dd className="mt-1 break-words text-sm font-medium text-[var(--color-text-primary)]">{displayValue(value)}</dd></div>)}</dl><p className="app-label mt-5">Why it was generated</p><ul className="mt-2 space-y-1 text-sm leading-5 text-[var(--color-text-secondary)]">{candidate.reasons.map((reason, index) => <li key={`${candidate.id}-reason-${index}`}>• {displayValue(reason)}</li>)}</ul></div>
+                  <div className="min-w-0">
+                    <div className="flex items-start gap-3"><PackageSearch className="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-accent)]" /><div className="min-w-0"><p className="app-label">Official product identity</p><h4 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">{candidate.identity.display_name}</h4><p className="mt-1 font-mono text-xs text-[var(--color-text-muted)]">{candidate.part_number}</p></div></div>
+                    <dl className="mt-4 grid gap-x-5 gap-y-3 sm:grid-cols-2">
+                      <div><dt className="text-xs text-[var(--color-text-muted)]">Product hierarchy</dt><dd className="mt-1 text-sm font-medium leading-5 text-[var(--color-text-primary)]">{candidate.identity.product_hierarchy.join(" → ") || "Not established"}</dd></div>
+                      <div><dt className="text-xs text-[var(--color-text-muted)]">Official workbook locations</dt><dd className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">{formatNumber(candidate.identity.official_location_count)}</dd></div>
+                      <div><dt className="text-xs text-[var(--color-text-muted)]">Billing metric</dt><dd className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">{candidate.commercial_term?.metric_name ?? "Not established"}</dd></div>
+                      <div><dt className="text-xs text-[var(--color-text-muted)]">Commercial term type</dt><dd className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">{humanize(candidate.commercial_term?.price_type ?? "not established")}</dd></div>
+                    </dl>
+                    {candidate.commercial_term?.additional_information ? <div className="mt-4 border-t border-[var(--color-border)] pt-4"><p className="app-label">Official billing guidance</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-text-secondary)]">{candidate.commercial_term.additional_information}</p></div> : null}
+                    {candidate.identity.product_paths.length > 1 ? <details className="mt-4 border-t border-[var(--color-border)] pt-4"><summary className="cursor-pointer text-sm font-semibold text-[var(--color-text-secondary)]">Review {formatNumber(candidate.identity.official_location_count)} official placements</summary><ul className="mt-3 space-y-2 text-xs leading-5 text-[var(--color-text-muted)]">{candidate.identity.product_paths.slice(0, 12).map((path, index) => <li key={`${candidate.id}-path-${index}`}>{path.join(" → ")}</li>)}</ul>{candidate.identity.official_location_count > 12 ? <p className="mt-2 text-xs text-[var(--color-text-muted)]">Showing 12 placements; all {formatNumber(candidate.identity.official_location_count)} remain persisted as source evidence.</p> : null}</details> : null}
+                    {candidate.composition.length > 0 ? <div className="mt-4 border-t border-[var(--color-border)] pt-4"><p className="app-label">Documented composition</p><ul className="mt-2 space-y-2 text-sm text-[var(--color-text-secondary)]">{candidate.composition.map((relationship, index) => <li key={`${candidate.id}-relationship-${index}`}><span className="font-semibold text-[var(--color-text-primary)]">{humanize(relationship.relationship_type)}:</span> {relationship.target_name}{relationship.target_part_number ? ` (${relationship.target_part_number})` : ""}</li>)}</ul></div> : null}
+                    <div className="mt-5 border-t border-[var(--color-border)] pt-4"><p className="app-label">Proposed commercial behavior</p><dl className="mt-3 grid gap-x-5 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(candidate.proposed_mapping).filter(([key]) => key !== "field_authority").map(([key, value]) => <div key={key}><dt className="text-xs text-[var(--color-text-muted)]">{humanize(key)}</dt><dd className="mt-1 break-words text-sm font-medium text-[var(--color-text-primary)]">{displayValue(value)}</dd></div>)}</dl></div>
+                    <p className="app-label mt-5">Why it was generated</p><ul className="mt-2 space-y-1 text-sm leading-5 text-[var(--color-text-secondary)]">{candidate.reasons.map((reason, index) => <li key={`${candidate.id}-reason-${index}`}>• {displayValue(reason)}</li>)}</ul>
+                  </div>
                   <div className="min-w-0 border-l-0 border-[var(--color-border)] xl:border-l xl:pl-5"><p className="app-label">Deterministic validation</p><p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">Re-run the generated rule and quotation fixture against persisted official evidence. This action never approves the candidate.</p><button className="app-button-secondary mt-3 w-full gap-2" type="button" disabled={busy !== null} onClick={() => void revalidateCandidate(candidate)}>{busy === `revalidate:${candidate.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}Revalidate rule</button><div className="my-4 border-t border-[var(--color-border)]" /><p className="app-label">Explicit review decision</p><select aria-label={`Decision for ${candidate.part_number}`} className="mt-3 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm" value={draft.decision} onChange={(event) => setCandidateDrafts((current) => ({ ...current, [candidate.id]: { ...draft, decision: event.target.value as CommercialCandidateDecision } }))}><option value="keep_blocked">Keep blocked</option><option value="approve">Approve mapping and eligible rule</option><option value="reject">Reject proposal</option></select><textarea aria-label={`Rationale for ${candidate.part_number}`} className="mt-3 min-h-24 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm" placeholder="Document the commercial evidence and decision rationale (minimum 8 characters)." value={draft.rationale} onChange={(event) => setCandidateDrafts((current) => ({ ...current, [candidate.id]: { ...draft, rationale: event.target.value } }))} />{approvalBlocked ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Approve the official document as evidence before approving this candidate.</p> : null}<button className="app-button-primary mt-3 w-full gap-2" type="button" disabled={busy !== null || draft.rationale.trim().length < 8 || approvalBlocked} onClick={() => void reviewCandidate(candidate)}>{busy === `candidate:${candidate.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Record decision</button></div>
                 </div>
               </details>

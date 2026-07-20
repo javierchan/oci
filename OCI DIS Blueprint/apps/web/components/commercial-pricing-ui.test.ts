@@ -22,6 +22,26 @@ const candidates: CommercialCandidate[] = [
     generator_version: "commercial-product-factory-1.2.0",
     rule_status: "ready_for_review",
     rule_fixture_status: "passed",
+    identity: {
+      display_name: "Oracle Autonomous AI Lakehouse - ECPU",
+      service_category: "Oracle Data Management Cloud Services",
+      product_hierarchy: ["Section 1 - Universal Credits", "Oracle Autonomous Database"],
+      product_paths: [["Section 1 - Universal Credits", "Oracle Autonomous Database"]],
+      official_location_count: 1,
+      structured_product: {},
+    },
+    commercial_term: {
+      service_name: "Oracle Autonomous AI Lakehouse - ECPU",
+      metric_name: "ECPU Per Hour",
+      price_type: "HOUR",
+      commercial_prices: [],
+      additional_information: "Partial ECPU hours are billed per second.",
+      notes: null,
+      source_sheet: "Oracle PaaS and IaaS Price List",
+      source_row: 29,
+      constraints: [],
+    },
+    composition: [],
     proposed_mapping: { quantity_behavior: "hourly", minimum_quantity: "2" },
     reasons: ["Official document term present"],
   },
@@ -36,6 +56,26 @@ const candidates: CommercialCandidate[] = [
     generator_version: "commercial-product-factory-1.2.0",
     rule_status: "approved",
     rule_fixture_status: "passed",
+    identity: {
+      display_name: "Oracle Cloud Infrastructure API Gateway",
+      service_category: "Oracle Cloud Infrastructure Services",
+      product_hierarchy: ["Section 1 - Universal Credits", "API Management"],
+      product_paths: [["Section 1 - Universal Credits", "API Management"]],
+      official_location_count: 1,
+      structured_product: {},
+    },
+    commercial_term: {
+      service_name: "Oracle Cloud Infrastructure API Gateway",
+      metric_name: "1,000,000 API Calls Per Month",
+      price_type: "MONTH",
+      commercial_prices: [],
+      additional_information: null,
+      notes: null,
+      source_sheet: "Oracle PaaS and IaaS Price List",
+      source_row: 42,
+      constraints: [],
+    },
+    composition: [],
     proposed_mapping: { quote_rounding: "ceiling" },
     reasons: ["Existing approved mapping matched by exact part number"],
   },
@@ -145,6 +185,8 @@ describe("commercial candidate review presentation", () => {
   it("searches across SKU, service, family, rationale, and proposed behavior", () => {
     expect(filterCommercialCandidates(candidates, "B95701", "all")).toHaveLength(1);
     expect(filterCommercialCandidates(candidates, "api gateway", "all")[0]?.id).toBe("candidate-2");
+    expect(filterCommercialCandidates(candidates, "API Management", "all")[0]?.id).toBe("candidate-2");
+    expect(filterCommercialCandidates(candidates, "ECPU Per Hour", "all")[0]?.id).toBe("candidate-1");
     expect(filterCommercialCandidates(candidates, "ceiling", "all")[0]?.id).toBe("candidate-2");
     expect(filterCommercialCandidates(candidates, "official document", "pending_review")[0]?.id).toBe("candidate-1");
   });
