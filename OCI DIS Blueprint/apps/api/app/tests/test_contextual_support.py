@@ -258,6 +258,40 @@ async def test_support_resolves_commercial_follow_up_from_dialogue_and_governed_
 
 
 @pytest.mark.asyncio
+async def test_support_persists_only_resolved_conversation_references(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            conversation = support_service.SupportConversation(
+                session_id=SESSION_A,
+                actor_id="support-user",
+                title="Support",
+                status="active",
+            )
+            session.add(conversation)
+            await session.flush()
+            await support_service.update_conversation_state(
+                conversation.id,
+                {
+                    "question_intent": "commercial_guidance",
+                    "response_language": "es",
+                    "commercial_service_context": {"service_id": "FUNCTIONS", "service_name": "OCI Functions"},
+                    "project_resolution": {"resolved_project_id": "project-1"},
+                },
+                session,
+            )
+
+    assert conversation.context_state == {
+        "topic": "commercial_guidance",
+        "language": "es",
+        "active_service": {"id": "FUNCTIONS", "name": "OCI Functions"},
+        "active_project_id": "project-1",
+    }
+
+
+@pytest.mark.asyncio
 async def test_support_does_not_carry_commercial_intent_into_a_new_pattern_question(
     test_engine: AsyncEngine,
 ) -> None:

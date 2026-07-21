@@ -118,6 +118,7 @@ class SupportConversation(Base, UUIDMixin, TimestampMixin):
     actor_id: Mapped[str] = mapped_column(String(36), nullable=False)
     title: Mapped[str] = mapped_column(String(160), nullable=False, default="App support")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", index=True)
+    context_state: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
 
 class SupportMessage(Base, UUIDMixin, TimestampMixin):

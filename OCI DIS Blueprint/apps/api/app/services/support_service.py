@@ -791,6 +791,10 @@ async def prepare_support_turn(
             }
         ),
     )
+    conversation_state = dict(conversation.context_state or {})
+    conversation_state["language"] = "es" if SPANISH_QUESTION_PATTERN.search(body.content) else "en"
+    conversation_state["last_question"] = body.content.strip()[:300]
+    conversation_state["last_route"] = body.route
     user_message = SupportMessage(
         conversation_id=conversation.id,
         role="user",
@@ -822,6 +826,7 @@ async def prepare_support_turn(
         citations=[],
     )
     db.add(assistant_message)
+    conversation.context_state = conversation_state
     conversation.updated_at = datetime.now(UTC)
     await db.flush()
     previous = list(
@@ -845,8 +850,55 @@ async def prepare_support_turn(
         "support_assistant_message_id": assistant_message.id,
         "attachments": [item.model_dump(mode="json") for item in body.attachments],
         "transcript": [{"role": item.role, "content": item.content[:1200]} for item in previous],
+        "conversation_state": conversation_state,
     }
     return user_message, assistant_message, agent_context
+
+
+async def update_conversation_state(
+    conversation_id: str,
+    evidence: dict[str, object],
+    db: AsyncSession,
+) -> None:
+    """Persist only resolved, deterministic conversational references.
+
+    Model output is deliberately excluded: future turns resolve their subjects
+    from App evidence, never from previous generated prose.
+    """
+
+    conversation = await db.get(SupportConversation, conversation_id)
+    if conversation is None:
+        return
+    state = dict(conversation.context_state or {})
+    state["topic"] = evidence.get("question_intent")
+    state["language"] = evidence.get("response_language", state.get("language", "en"))
+    commercial = evidence.get("commercial_service_context")
+    if isinstance(commercial, dict) and commercial.get("service_id"):
+        state["active_service"] = {
+            "id": commercial["service_id"],
+            "name": commercial.get("service_name"),
+        }
+    pattern_answer = _pattern_answer(evidence)
+    if pattern_answer:
+        patterns = evidence.get("pattern_library")
+        if isinstance(patterns, list):
+            question = str(evidence.get("current_question") or "")
+            match = next(
+                (
+                    item for item in patterns
+                    if isinstance(item, dict)
+                    and any(_reference_appears_in_dialogue(item.get(key), question) for key in ("id", "name"))
+                ),
+                None,
+            )
+            if isinstance(match, dict):
+                state["active_pattern"] = {"id": match.get("id"), "name": match.get("name")}
+    resolution = evidence.get("project_resolution")
+    if isinstance(resolution, dict) and resolution.get("resolved_project_id"):
+        state["active_project_id"] = resolution["resolved_project_id"]
+    conversation.context_state = cast(dict, sanitize_for_json(state))
+    conversation.updated_at = datetime.now(UTC)
+    await db.flush()
 
 
 async def link_support_run(message_id: str, run_id: str, db: AsyncSession) -> None:
@@ -873,6 +925,9 @@ async def build_support_evidence(
     )
     transcript = cast(
         list[object], context.get("transcript") if isinstance(context.get("transcript"), list) else []
+    )
+    conversation_state = cast(
+        dict[str, object], context.get("conversation_state") if isinstance(context.get("conversation_state"), dict) else {}
     )
     dialogue_text = " ".join(
         [question]
@@ -987,6 +1042,7 @@ async def build_support_evidence(
             for item in transcript[:12]
             if isinstance(item, dict) and item.get("role") == "user"
         ],
+        "conversation_state": conversation_state,
         "scope_rules": {
             "conversation": "Previous questions provide dialogue continuity but are not architecture evidence.",
             "integration": "Do not apply project-level risks to an integration unless its row evidence identifies the same issue.",
@@ -1043,6 +1099,11 @@ async def build_support_evidence(
                 )
             )
         ]
+        active_service = conversation_state.get("active_service")
+        if not matched_mappings and isinstance(active_service, dict) and active_service.get("id"):
+            matched_mappings = [
+                item for item in mappings if item.service_id == str(active_service["id"])
+            ]
         requested_byol = "byol" in dialogue_text.casefold()
         requested_edition = (
             "enterprise"

@@ -778,6 +778,9 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
                 citations=citations,
                 db=db,
             )
+        conversation_id = context.get("conversation_id")
+        if isinstance(conversation_id, str):
+            await support_service.update_conversation_state(conversation_id, evidence, db)
     if run.legacy_job_type == "ai_review" and run.legacy_job_id:
         legacy_job = await db.get(AiReviewJob, run.legacy_job_id)
         if legacy_job is not None:
