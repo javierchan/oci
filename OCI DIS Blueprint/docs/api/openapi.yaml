@@ -14815,6 +14815,11 @@
         "additionalProperties": false,
         "description": "Session-isolated support conversation with bounded history.",
         "properties": {
+          "context_state": {
+            "additionalProperties": true,
+            "title": "Context State",
+            "type": "object"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -14853,6 +14858,7 @@
           "id",
           "title",
           "status",
+          "context_state",
           "messages",
           "created_at",
           "updated_at"

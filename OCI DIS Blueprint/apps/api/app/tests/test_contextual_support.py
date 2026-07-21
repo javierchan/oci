@@ -24,6 +24,7 @@ from app.models import (
 )
 from app.routers import support as support_router
 from app.services import agent_service, support_service
+from app.services.support_routing_service import route_support_question
 
 
 SESSION_A = "11111111-1111-4111-8111-111111111111"
@@ -40,6 +41,16 @@ def test_support_domain_boundary_accepts_general_app_help_and_refuses_external_t
     assert not support_service.question_is_in_scope("Write a poem", has_context=False)
     assert not support_service._question_needs_project_scope("¿Cuántos proyectos tenemos?")
     assert support_service._question_needs_project_scope("¿Cuál es el precio total de este proyecto?")
+
+
+def test_support_routes_spanish_billing_verbs_to_commercial_evidence() -> None:
+    route = route_support_question(
+        "¿Cómo se cobra OCI Functions a un cliente?",
+        project_is_explicit=False,
+        needs_project_scope=False,
+    )
+    assert route.intent == "commercial_guidance"
+    assert route.needs_commercial_evidence is True
 
 
 @pytest.mark.asyncio
@@ -334,6 +345,63 @@ async def test_support_does_not_carry_commercial_intent_into_a_new_pattern_quest
 
 
 @pytest.mark.asyncio
+async def test_support_answers_workflow_questions_deterministically_without_stale_topic_leakage(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            evidence = await support_service.build_support_evidence(
+                None,
+                None,
+                {
+                    "question": "¿Cómo importo un archivo y reviso qué filas quedaron fuera?",
+                    "route": "/projects",
+                    "attachments": [],
+                    "transcript": [
+                        {"role": "user", "content": "¿Cómo se cobra OCI Functions?"},
+                    ],
+                    "conversation_state": {
+                        "topic": "commercial_guidance",
+                        "active_service": {"id": "FUNCTIONS", "name": "OCI Functions"},
+                    },
+                },
+                session,
+            )
+
+    contract = cast(dict[str, object], evidence["response_contract"])
+    assert evidence["question_intent"] == "workflow_guidance"
+    assert contract["deterministic_answer_preferred"] is True
+    assert evidence["direct_answer"] == evidence["fallback_answer"]
+    assert "**Import**" in str(evidence["fallback_answer"])
+    assert "OCI Functions" not in str(evidence["fallback_answer"])
+
+
+@pytest.mark.asyncio
+async def test_support_explains_scenario_licensing_without_requiring_a_product_sku(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            evidence = await support_service.build_support_evidence(
+                None,
+                None,
+                {
+                    "question": "¿Qué significa License Included o BYOL en un escenario?",
+                    "route": "/projects",
+                    "attachments": [],
+                    "transcript": [],
+                },
+                session,
+            )
+
+    assert evidence["question_intent"] == "workflow_guidance"
+    assert evidence["direct_answer"] == evidence["fallback_answer"]
+    assert "**BOM & Cost**" in str(evidence["fallback_answer"])
+
+
+@pytest.mark.asyncio
 async def test_support_conversation_is_isolated_and_out_of_scope_is_refused(
     api_client: AsyncClient,
     test_engine: AsyncEngine,
@@ -407,6 +475,52 @@ async def test_support_conversation_is_isolated_and_out_of_scope_is_refused(
     assert event is not None
     assert event.old_value == {"message_count": 2, "attachment_count": 0}
     assert event.new_value == {"message_count": 0, "attachment_count": 0}
+
+
+@pytest.mark.asyncio
+async def test_support_skips_provider_for_a_resolved_deterministic_workflow_answer(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        support_router.execute_agent_run_task,
+        "apply_async",
+        lambda **kwargs: SimpleNamespace(id=kwargs["task_id"]),
+    )
+
+    async def provider_must_not_run(*args: object, **kwargs: object) -> object:
+        raise AssertionError("A resolved workflow answer must not call OCI inference")
+
+    monkeypatch.setattr(agent_service, "run_governed_tool_agent", provider_must_not_run)
+    created = await api_client.post("/api/v1/support/conversations/current", headers=HEADERS_A)
+    conversation_id = created.json()["id"]
+    submitted = await api_client.post(
+        f"/api/v1/support/conversations/{conversation_id}/messages",
+        headers=HEADERS_A,
+        json={
+            "content": "¿Cómo importo un archivo?",
+            "route": "/projects",
+            "page_title": "Projects",
+            "attachments": [],
+        },
+    )
+    assistant = submitted.json()["messages"][-1]
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            await agent_service.mark_agent_run_running(assistant["agent_run_id"], session)
+        async with session.begin():
+            completed = await agent_service.run_agent(assistant["agent_run_id"], session)
+
+    assert completed.result is not None
+    assert completed.result["provider_status"] == "skipped"
+    assert completed.steps[2].status == "completed"
+    refreshed = await api_client.get(
+        f"/api/v1/support/conversations/{conversation_id}", headers=HEADERS_A
+    )
+    assert "Para importar" in refreshed.json()["messages"][-1]["content"]
 
 
 @pytest.mark.asyncio

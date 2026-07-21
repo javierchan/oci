@@ -57,6 +57,16 @@ export function ContextualSupportAssistant(): JSX.Element {
   const pending = conversation?.messages.some((message) => message.status === "pending") ?? false;
   const latestMessage = conversation?.messages.at(-1);
   const currentContextAdded = attachments.some((item) => sameSupportAttachment(item, routeContext.attachment));
+  const contextLedger = useMemo(() => {
+    const state = conversation?.context_state ?? {};
+    const items: string[] = [];
+    const service = state.active_service as { name?: unknown } | undefined;
+    const pattern = state.active_pattern as { name?: unknown } | undefined;
+    if (typeof service?.name === "string") items.push(service.name);
+    if (typeof pattern?.name === "string") items.push(pattern.name);
+    if (typeof state.topic === "string") items.push(state.topic.replaceAll("_", " "));
+    return items.slice(0, 3);
+  }, [conversation?.context_state]);
 
   useEffect(() => {
     if (!pending || !conversation || !supportSessionId) return;
@@ -188,6 +198,13 @@ export function ContextualSupportAssistant(): JSX.Element {
               <X className="h-[18px] w-[18px]" />
             </button>
           </header>
+
+          {contextLedger.length ? (
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Active context</span>
+              {contextLedger.map((item) => <span key={item} className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-text-secondary)]">{item}</span>)}
+            </div>
+          ) : null}
 
           {clearConfirmOpen ? (
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">

@@ -51,6 +51,21 @@ conversation contract to its authenticated subject.
   recommendations, but it cannot relabel or paraphrase authoritative quantities.
 - Previous user questions provide continuity. Previous model answers are never
   reintroduced as architecture evidence.
+- A small persisted context ledger retains only resolved, App-owned references:
+  active Service Product, pattern, project, language, and the latest topic. It
+  deliberately does not retain a provider answer, inferred price, or arbitrary
+  user profile. The assistant shows the resolved ledger in the conversation UI
+  so a user can see which governed context is active.
+- A typed routing policy classifies the **current** turn before evidence is
+  loaded. Portfolio, project-cost, commercial, workflow, project-context, and
+  general App-help contracts are distinct. Conversation history may resolve a
+  reference such as “that service”, but cannot carry an old commercial topic
+  into a new question about a pattern, import, or topology.
+- Routine workflow questions use concise application-owned explanations before
+  OCI synthesis: Import, Capture, Catalog/QA, volumetry, Dashboard, Map,
+  BOM & Cost, exports, Governance, and agents. Product, project, and price
+  facts are still retrieved dynamically from approved App evidence; no Service
+  Product list is embedded in the response policy.
 - Citations are App routes, not fabricated external references.
 
 ## Domain Boundary
@@ -71,6 +86,11 @@ while the AgentRun records that grounding fallback occurred.
 - `support_messages`: user/assistant turns, status, AgentRun linkage, context, citations.
 - `support_attachments`: explicit component context pinned to a user message.
 - `agent_runs`, `agent_steps`, and `agent_artifacts`: auditable model/tool execution.
+
+The `context_state` JSON field on `support_conversations` is schema-governed by
+the service rather than client-editable. It is a compact reference ledger, not
+a second source of project, price, or technical facts; each new turn retrieves
+those facts again from the authoritative App tables.
 
 ## Clear History
 
@@ -102,3 +122,24 @@ Internal redaction markers and unresolved route placeholders fail the output-
 grounding gate and are replaced with the App-owned governed answer.
 The fallback uses the same project dossier, so a provider degradation still
 returns useful governed portfolio or BOM facts instead of generic navigation copy.
+
+## Response quality and evaluation
+
+Every assistant run preserves the selected response contract and evidence in its
+auditable `AgentRun`. The shared output gate removes model meta-reasoning and
+rejects unsupported sensitive claims; the App-owned deterministic answer is
+returned when a precise route, pattern, product, commercial mapping, project
+portfolio, or workflow explanation is already available. Agent Operations shows
+grounding/fallback state and evidence completeness for retained executions.
+When that direct answer is selected, the worker skips OCI inference entirely;
+this avoids adding latency, cost, and model variance to facts the App has
+already resolved. The run records that deterministic path alongside the same
+evidence artifact and citations.
+
+`apps/api/scripts/evaluate_support_assistant.py` exercises the public support
+API with fresh session IDs. Its bounded suite covers each major App workspace,
+commercial explanation, refusal, a service follow-up, and a deliberate
+commercial-to-pattern topic switch. It creates only disposable support
+conversations and agent audit records; it never mutates project or governance
+data. The script accepts at most ten numbered iterations so a release review can
+record a finite improve-and-retest cycle.

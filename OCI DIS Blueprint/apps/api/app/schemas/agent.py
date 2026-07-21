@@ -353,6 +353,7 @@ class SupportConversationResponse(BaseModel):
     id: str
     title: str
     status: Literal["active", "archived"]
+    context_state: dict[str, object]
     messages: list[SupportMessageResponse]
     created_at: datetime
     updated_at: datetime

@@ -42,6 +42,11 @@ from app.schemas.agent import (
 )
 from app.services import audit_service
 from app.services.serializers import sanitize_for_json
+from app.services.support_routing_service import (
+    PROJECT_PORTFOLIO_PATTERN,
+    SupportRoute,
+    route_support_question,
+)
 
 
 OUT_OF_SCOPE_RESPONSE = (
@@ -81,10 +86,6 @@ SPANISH_QUESTION_PATTERN = re.compile(
     r"integración|proceso|ayuda|siguiente|servicio|precio|costo|cuesta)\b",
     re.IGNORECASE,
 )
-PROJECT_PORTFOLIO_PATTERN = re.compile(
-    r"\b(how many|list|show|which|cu[aá]ntos|lista|muestra|cu[aá]les)\b.{0,28}\b(projects?|proyectos?)\b",
-    re.IGNORECASE,
-)
 PROJECT_SCOPE_PATTERN = re.compile(
     r"\b(this|current|selected|active|este|esta|actual|seleccionado|activo)\b.{0,24}\b("
     r"project|proyecto|pricing|price|cost|precio|costo|bom|bill of materials|dashboard|qa|risk|riesgo|"
@@ -92,11 +93,6 @@ PROJECT_SCOPE_PATTERN = re.compile(
     r"\b(project|proyecto)\b.{0,28}\b(pricing|price|cost|precio|costo|bom|bill of materials|dashboard|qa|"
     r"risk|riesgo|scenario|escenario)\b|"
     r"\b(pricing|price|cost|precio|costo|bom|bill of materials)\b.{0,28}\b(project|proyecto)\b",
-    re.IGNORECASE,
-)
-COMMERCIAL_GUIDANCE_PATTERN = re.compile(
-    r"\b(pricing|price|cost|cuesta|cu[aá]nto|precio|costo|billing|bill|factura|facturar|cobro|license|licencia|enterprise|"
-    r"bom|bill of materials|sku|rate card|tarifa)\b",
     re.IGNORECASE,
 )
 PROJECT_ROUTE_PATTERN = re.compile(r"/projects/([0-9a-f-]{36})(?:/|$)", re.IGNORECASE)
@@ -288,11 +284,15 @@ def _pattern_answer(evidence: dict[str, object]) -> str | None:
     when_to_use = str(matched.get("when_to_use") or "").strip()
     when_not_to_use = str(matched.get("when_not_to_use") or "").strip()
     if spanish:
-        parts = [f"**{name}**: {description}" if description else f"**{name}** es un patrón gobernado de integración."]
+        parts = [
+            f"**{name}** es un patrón gobernado de integración. Descripción gobernada: {description}"
+            if description
+            else f"**{name}** es un patrón gobernado de integración."
+        ]
         if when_to_use:
-            parts.append(f"Úsalo cuando {when_to_use[0].lower() + when_to_use[1:]}")
+            parts.append(f"Úsalo cuando se cumpla la siguiente condición gobernada: {when_to_use}")
         if when_not_to_use:
-            parts.append(f"No es adecuado cuando {when_not_to_use[0].lower() + when_not_to_use[1:]}")
+            parts.append(f"No es adecuado cuando se cumpla lo siguiente: {when_not_to_use}")
         return "\n\n".join(parts)
     parts = [f"**{name}**: {description}" if description else f"**{name}** is a governed integration pattern."]
     if when_to_use:
@@ -302,6 +302,83 @@ def _pattern_answer(evidence: dict[str, object]) -> str | None:
     return "\n\n".join(parts)
 
 
+def _workflow_answer(evidence: dict[str, object]) -> str | None:
+    """Explain an App workflow without delegating routine navigation to the model."""
+
+    if evidence.get("question_intent") != "workflow_guidance":
+        return None
+    question = str(evidence.get("current_question") or "").casefold()
+    spanish = evidence.get("response_language") == "es"
+    mentions_import = any(term in question for term in ("import", "importar", "importaci"))
+    mentions_capture = any(term in question for term in ("capture", "captura"))
+    if mentions_import and mentions_capture:
+        return (
+            "Usa **Import** cuando ya existe un archivo de inventario: la App conserva el lote, las columnas fuente y las filas incluidas o excluidas. Usa **Capture** para registrar una integración individual que no viene en un archivo. Ambos caminos terminan en el mismo catálogo gobernado, QA y cálculo de volumetría."
+            if spanish
+            else "Use **Import** when an inventory file already exists: the App preserves the batch, source columns, and included or excluded rows. Use **Capture** to record one integration that does not come from a file. Both paths end in the same governed catalog, QA, and volumetry calculation."
+        )
+    workflows: tuple[tuple[tuple[str, ...], str, str], ...] = (
+        (
+            ("import", "importar", "importaci"),
+            "Para importar, abre **Import**, descarga el template gobernado si lo necesitas, carga el archivo y revisa qué filas fueron incluidas, excluidas y por qué. Después revisa QA en **Catalog** y ejecuta el recálculo para producir un snapshot técnico.",
+            "To import, open **Import**, download the governed template if needed, upload the file, and review which rows were included, excluded, and why. Then review QA in **Catalog** and run recalculation to create a technical snapshot.",
+        ),
+        (
+            ("capture", "captura"),
+            "Para registrar una integración sin archivo, abre **Capture** y completa el flujo guiado: sistemas origen/destino, comportamiento técnico, patrón y datos de volumetría. La integración entra al mismo catálogo gobernado y pasa por las mismas validaciones de QA.",
+            "To record an integration without a file, open **Capture** and complete the guided flow: source/destination systems, technical behavior, pattern, and volumetry inputs. The integration enters the same governed catalog and receives the same QA validation.",
+        ),
+        (
+            ("catalog", "catálogo", "catalogo", "qa", "calidad"),
+            "**Catalog** es el registro gobernado de las integraciones. Filtra una fila, revisa su lineage, corrige los campos de arquitectura requeridos y usa las razones de QA como lista de remediación. No se inventan datos para que QA quede verde.",
+            "**Catalog** is the governed integration record. Filter to a row, inspect its lineage, correct required architecture fields, and use QA reasons as the remediation list. The App never invents data simply to turn QA green.",
+        ),
+        (
+            ("volumetry", "volumetría", "volumetria", "recalculate", "recalcular"),
+            "La volumetría parte del catálogo gobernado y de las suposiciones activas. Completa frecuencia, payload, patrón y herramientas; después ejecuta el recálculo. El snapshot conserva los resultados por integración y los consolidados, por lo que puede auditarse su origen.",
+            "Volumetry starts from the governed catalog and active assumptions. Complete frequency, payload, pattern, and tools, then run recalculation. The snapshot retains per-integration and consolidated results, so its origin is auditable.",
+        ),
+        (
+            ("dashboard", "riesgo", "risk"),
+            "**Dashboard** resume el último snapshot técnico: cobertura, madurez, mezcla de patrones, distribución de payload y riesgos. Úsalo para priorizar investigación; los datos comerciales se mantienen separados en **BOM & Cost**.",
+            "**Dashboard** summarizes the latest technical snapshot: coverage, maturity, pattern mix, payload distribution, and risks. Use it to prioritize investigation; commercial data remains separate in **BOM & Cost**.",
+        ),
+        (
+            ("map", "topology", "topología", "topologia"),
+            "**Map** muestra dependencias entre sistemas a partir del catálogo. Selecciona un sistema o una ruta para investigar conexiones, concentración y alcance potencial; luego abre la integración relacionada para revisar su evidencia y diseño.",
+            "**Map** shows system dependencies from the catalog. Select a system or path to investigate connections, concentration, and potential impact; then open the related integration to inspect its evidence and design.",
+        ),
+        (
+            ("bom", "scenario", "escenario", "byol", "license included", "licencia incluida"),
+            "En **BOM & Cost**, crea un escenario de despliegue a partir de un snapshot técnico, define ambientes y rampa mensual, y genera el BOM. La App elige SKU y precio solo desde catálogos aprobados; revisa cobertura, cantidades, rampas y procedencia antes de publicar o compartir una estimación.",
+            "In **BOM & Cost**, create a deployment scenario from a technical snapshot, define environments and the monthly ramp, and generate the BOM. The App selects SKU and price only from approved catalogs; review coverage, quantities, ramps, and provenance before publishing or sharing an estimate.",
+        ),
+        (
+            ("export", "exportar"),
+            "Las exportaciones salen de artefactos gobernados: catálogo y snapshot técnico, o un BOM inmutable cuando se trata de costos. Genera el artefacto desde el workspace correspondiente y conserva su procedencia; una exportación comercial es una estimación de planeación, no una cotización de Oracle.",
+            "Exports come from governed artifacts: the catalog and technical snapshot, or an immutable BOM for costs. Generate the artifact from its workspace and retain its provenance; a commercial export is a planning estimate, not an Oracle quote.",
+        ),
+        (
+            ("dictionary", "diccionario", "assumption", "supuesto", "governance", "gobernanza"),
+            "La zona de **Governance** controla patrones, diccionarios, supuestos, Service Products y pricing. Cambia referencias allí, con su auditoría, para que los cálculos y recomendaciones usen una fuente común en vez de reglas dispersas.",
+            "The **Governance** area controls patterns, dictionaries, assumptions, Service Products, and pricing. Change references there, with auditability, so calculations and recommendations use one common source rather than scattered rules.",
+        ),
+        (
+            ("agent", "agente", "assistant", "asistente"),
+            "Los agentes de la App investigan evidencia acotada y proponen o explican decisiones; no cambian datos por sí solos. El asistente global puede guiarte por cualquier workflow y conserva solo referencias resueltas de la conversación, nunca respuestas del modelo como hechos.",
+            "App agents investigate bounded evidence and propose or explain decisions; they do not change data by themselves. The global assistant can guide any workflow and keeps only resolved conversation references, never model answers as facts.",
+        ),
+    )
+    for terms, spanish_answer, english_answer in workflows:
+        if any(term in question for term in terms):
+            return spanish_answer if spanish else english_answer
+    return (
+        "OCI DIS Architect cubre Projects, Import, Capture, Catalog, Dashboard, Map, BOM & Cost y Governance. Dime el objetivo —por ejemplo importar, corregir QA, dimensionar, analizar dependencias o preparar un BOM— y te indico el flujo y la evidencia a revisar."
+        if spanish
+        else "OCI DIS Architect covers Projects, Import, Capture, Catalog, Dashboard, Map, BOM & Cost, and Governance. Tell me the goal—such as importing, fixing QA, sizing, analyzing dependencies, or preparing a BOM—and I will point you to the workflow and evidence to review."
+    )
+
+
 def _support_fallback_answer(evidence: dict[str, object]) -> str:
     """Build a concise App-owned answer when provider grounding is insufficient."""
 
@@ -309,6 +386,9 @@ def _support_fallback_answer(evidence: dict[str, object]) -> str:
     pattern_answer = _pattern_answer(evidence)
     if pattern_answer:
         return pattern_answer
+    workflow_answer = _workflow_answer(evidence)
+    if workflow_answer:
+        return workflow_answer
     integration = evidence.get("integration")
     process = evidence.get("business_process_flow")
     if evidence.get("question_intent") == "commercial_guidance":
@@ -347,13 +427,13 @@ def _support_fallback_answer(evidence: dict[str, object]) -> str:
                 if metric_count > 1:
                     if spanish:
                         return (
-                            f"**{service_name}** se cobra por más de una métrica de consumo. Los conceptos gobernados "
+                            f"**{service_name}** se cobra por más de una métrica de consumo. Los precios unitarios gobernados "
                             f"se suman en la factura del cliente: {'; '.join(option_summaries)}.\n\n"
                             "BOM & Cost aplica a cada métrica la cantidad dimensionada del escenario; no son alternativas "
                             "de licencia que haya que escoger."
                         )
                     return (
-                        f"**{service_name}** is billed through more than one consumption metric. The governed charges "
+                        f"**{service_name}** is billed through more than one consumption metric. The governed unit prices "
                         f"are additive on the customer invoice: {'; '.join(option_summaries)}.\n\n"
                         "BOM & Cost applies the scenario's sized quantity to each metric; these are not license alternatives to choose between."
                     )
@@ -641,6 +721,7 @@ async def serialize_conversation(
         id=conversation.id,
         title=conversation.title,
         status=cast(Literal["active", "archived"], conversation.status),
+        context_state=cast(dict[str, object], sanitize_for_json(conversation.context_state or {})),
         messages=[await _serialize_message(message, db) for message in messages],
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
@@ -976,24 +1057,19 @@ async def build_support_evidence(
     # The current turn determines intent. History only resolves references
     # inside a commercial follow-up; it must not convert a new pattern or App
     # question into the previous turn's commercial question.
-    is_commercial_question = bool(COMMERCIAL_GUIDANCE_PATTERN.search(question))
     project_is_explicit = needs_project_scope or project_resolution in {
         "attached_context",
         "named_in_conversation",
         "single_active_project",
         "integration_context",
     }
-    question_intent = (
-        "project_portfolio"
-        if PROJECT_PORTFOLIO_PATTERN.search(question)
-        else "project_cost"
-        if is_commercial_question and project_is_explicit
-        else "commercial_guidance"
-        if is_commercial_question
-        else "project_context"
-        if needs_project_scope
-        else "app_guidance"
+    support_route: SupportRoute = route_support_question(
+        question,
+        project_is_explicit=project_is_explicit,
+        needs_project_scope=needs_project_scope,
     )
+    question_intent = support_route.intent
+    is_commercial_question = support_route.needs_commercial_evidence
     pattern_count = int(
         await db.scalar(
             select(func.count()).select_from(PatternDefinition).where(PatternDefinition.is_active.is_(True))
@@ -1030,6 +1106,12 @@ async def build_support_evidence(
             "page_title": context.get("page_title"),
         },
         "question_intent": question_intent,
+        "response_contract": {
+            "intent": question_intent,
+            "requires_governed_commercial_evidence": support_route.needs_commercial_evidence,
+            "deterministic_answer_preferred": support_route.should_answer_deterministically,
+            "rule": "A new question replaces the previous topic; conversation state only resolves an explicit reference.",
+        },
         "project_resolution": {
             "resolved_project_id": resolved_project_id,
             "method": project_resolution,
@@ -1559,7 +1641,11 @@ async def build_support_evidence(
 
     evidence["fallback_answer"] = _support_fallback_answer(evidence)
     has_commercial_evidence = isinstance(evidence.get("commercial_service_context"), dict)
-    if question_intent in {"project_portfolio", "project_cost"} or _pattern_answer(evidence) or has_commercial_evidence:
+    if (
+        support_route.should_answer_deterministically
+        or _pattern_answer(evidence)
+        or has_commercial_evidence
+    ):
         evidence["direct_answer"] = evidence["fallback_answer"]
     return cast(dict[str, object], sanitize_for_json(evidence))
 

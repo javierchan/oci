@@ -288,6 +288,7 @@ export interface SupportConversation {
   id: string;
   title: string;
   status: "active" | "archived";
+  context_state: Record<string, unknown>;
   messages: SupportMessage[];
   created_at: string;
   updated_at: string;
