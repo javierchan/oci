@@ -133,6 +133,8 @@ and rejects unsupported sensitive claims; the App-owned deterministic answer is
 returned when a precise route, pattern, product, commercial mapping, project
 portfolio, or workflow explanation is already available. Agent Operations shows
 grounding/fallback state and evidence completeness for retained executions.
+The conversation serializer also suppresses legacy persisted messages that match
+the internal-reasoning signature without deleting their governed audit record.
 When that direct answer is selected, the worker skips OCI inference entirely;
 this avoids adding latency, cost, and model variance to facts the App has
 already resolved. The run records that deterministic path alongside the same

@@ -41,6 +41,7 @@ from app.schemas.agent import (
     SupportMessageResponse,
 )
 from app.services import audit_service
+from app.services.agent_output_service import support_output_contains_internal_reasoning
 from app.services.serializers import sanitize_for_json
 from app.services.support_routing_service import (
     PROJECT_PORTFOLIO_PATTERN,
@@ -53,6 +54,10 @@ from app.services.support_routing_service import (
 OUT_OF_SCOPE_RESPONSE = (
     "I’m here to help with OCI DIS Architect and everything available in this App. "
     "Ask me about workflows, projects, imports, catalog, topology, Service Products, pricing, BOM, governance, or agents."
+)
+WITHHELD_INTERNAL_RESPONSE = (
+    "This response was withheld because it contained internal generation notes. "
+    "Please ask the question again to receive a governed answer."
 )
 APP_DOMAIN_PATTERN = re.compile(
     r"\b(oci|dis|architect|app|application|project|integration|interface|catalog|capture|import|dashboard|"
@@ -675,10 +680,13 @@ async def _serialize_message(message: SupportMessage, db: AsyncSession) -> Suppo
             )
         ).all()
     )
+    content = message.content
+    if message.role == "assistant" and support_output_contains_internal_reasoning(content):
+        content = WITHHELD_INTERNAL_RESPONSE
     return SupportMessageResponse(
         id=message.id,
         role=cast(Literal["user", "assistant"], message.role),
-        content=message.content,
+        content=content,
         status=cast(Literal["pending", "completed", "failed", "refused"], message.status),
         agent_run_id=message.agent_run_id,
         context=cast(dict[str, object], message.context_snapshot),
@@ -1729,9 +1737,14 @@ async def complete_support_message(
     message = await db.get(SupportMessage, message_id)
     if message is None:
         return
-    message.content = content[:12000]
-    message.status = status
-    message.citations = cast(list, sanitize_for_json(citations[:12]))
+    if support_output_contains_internal_reasoning(content):
+        message.content = WITHHELD_INTERNAL_RESPONSE
+        message.status = "failed"
+        message.citations = []
+    else:
+        message.content = content[:12000]
+        message.status = status
+        message.citations = cast(list, sanitize_for_json(citations[:12]))
     await db.flush()
 
 

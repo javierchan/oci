@@ -49,6 +49,13 @@ SUPPORT_DRAFT_INSTRUCTION_PATTERN = re.compile(
     r")",
     re.IGNORECASE,
 )
+SUPPORT_INTERNAL_NARRATION_PATTERN = re.compile(
+    r"(?:^|[.!?]\s+)(?:the user asks?|user asks?|the system(?: says| asks| requires)|"
+    r"we need(?: to)?\s+(?:answer|respond|provide|explain)|we must\s+(?:answer|respond|provide|explain)|"
+    r"we have (?:tool|system) (?:output|data|evidence)|the tool (?:returned|gave)|"
+    r"our task is|system instructions?|private reasoning)\b",
+    re.IGNORECASE,
+)
 APPLIED_ACTION_PATTERN = re.compile(
     r"\b(?:i|we|the agent|the app)\s+(?:have\s+)?(?:applied|changed|updated|deployed|"
     r"approved|published|saved|deleted|created)\b",
@@ -160,6 +167,15 @@ def normalize_agent_summary(value: str | None) -> str:
     normalized = re.sub(r"[ \t]+", " ", normalized)
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)
     return normalized.strip()
+
+
+def support_output_contains_internal_reasoning(value: str) -> bool:
+    """Detect deliberation that must never cross the support presentation boundary."""
+
+    return bool(
+        SUPPORT_DRAFT_INSTRUCTION_PATTERN.search(value)
+        or SUPPORT_INTERNAL_NARRATION_PATTERN.search(value)
+    )
 
 
 def _remove_support_meta_reasoning(value: str) -> str:

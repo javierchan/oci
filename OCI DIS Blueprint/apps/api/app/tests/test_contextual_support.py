@@ -538,6 +538,83 @@ async def test_support_user_can_remove_one_resolved_context_item(
 
 
 @pytest.mark.asyncio
+async def test_support_hides_internal_reasoning_from_persisted_history(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    created = await api_client.post("/api/v1/support/conversations/current", headers=HEADERS_A)
+    conversation_id = created.json()["id"]
+    leaked_content = (
+        "The user asks what the App can do. Must use evidence. Avoid tables. Provide navigation suggestion. "
+        "Let's craft. Ensure no summary."
+    )
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            message = support_service.SupportMessage(
+                conversation_id=conversation_id,
+                role="assistant",
+                content=leaked_content,
+                status="completed",
+                context_snapshot={},
+                citations=[],
+            )
+            session.add(message)
+
+    refreshed = await api_client.get(
+        f"/api/v1/support/conversations/{conversation_id}", headers=HEADERS_A
+    )
+
+    assert refreshed.status_code == 200
+    visible_content = refreshed.json()["messages"][-1]["content"]
+    assert visible_content == support_service.WITHHELD_INTERNAL_RESPONSE
+    assert "Must use evidence" not in visible_content
+    async with session_factory() as session:
+        persisted = await session.get(support_service.SupportMessage, message.id)
+        assert persisted is not None
+        assert persisted.content == leaked_content
+
+
+@pytest.mark.asyncio
+async def test_support_refuses_to_persist_internal_reasoning_as_a_completed_answer(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            conversation = support_service.SupportConversation(
+                session_id="33333333-3333-4333-8333-333333333333",
+                actor_id="support-user",
+                title="Rationale protection",
+                status="active",
+            )
+            session.add(conversation)
+            await session.flush()
+            message = support_service.SupportMessage(
+                conversation_id=conversation.id,
+                role="assistant",
+                content="pending",
+                status="pending",
+                context_snapshot={},
+                citations=[],
+            )
+            session.add(message)
+            await session.flush()
+            await support_service.complete_support_message(
+                message.id,
+                content="Use citations. Let's craft. We'll follow style.",
+                status="completed",
+                citations=[{"label": "Projects", "href": "/projects"}],
+                db=session,
+            )
+
+        await session.refresh(message)
+        assert message.content == support_service.WITHHELD_INTERNAL_RESPONSE
+        assert message.status == "failed"
+        assert message.citations == []
+
+
+@pytest.mark.asyncio
 async def test_support_skips_provider_for_a_resolved_deterministic_workflow_answer(
     api_client: AsyncClient,
     test_engine: AsyncEngine,
