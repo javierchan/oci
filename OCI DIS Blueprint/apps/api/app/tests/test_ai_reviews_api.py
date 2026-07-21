@@ -699,6 +699,32 @@ def test_oci_chat_completions_payload_extracts_text_and_usage() -> None:
     assert output_tokens == 32
 
 
+def test_oci_responses_payload_excludes_reasoning_items_from_visible_text() -> None:
+    payload = {
+        "output": [
+            {
+                "type": "reasoning",
+                "content": [
+                    {"type": "reasoning_text", "text": "Must use evidence. Let's craft."}
+                ],
+            },
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "OCI DIS Architect uses governed App evidence.",
+                    }
+                ],
+            },
+        ]
+    }
+
+    assert _response_text(payload) == "OCI DIS Architect uses governed App evidence."
+    assert _response_text({"output": payload["output"][:1]}) is None
+
+
 def test_oci_summary_normalization_removes_markdown_emphasis() -> None:
     assert _normalize_summary("**Decision:** confirm `HA/DR` topology.") == "Decision: confirm HA/DR topology."
 

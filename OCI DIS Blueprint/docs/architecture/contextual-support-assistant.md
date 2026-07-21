@@ -126,8 +126,10 @@ returns useful governed portfolio or BOM facts instead of generic navigation cop
 ## Response quality and evaluation
 
 Every assistant run preserves the selected response contract and evidence in its
-auditable `AgentRun`. The shared output gate removes model meta-reasoning and
-rejects unsupported sensitive claims; the App-owned deterministic answer is
+auditable `AgentRun`. The provider adapter extracts only final assistant-message
+blocks and never merges Responses reasoning items into presentation text. The
+shared output gate fails closed on drafting instructions or model meta-reasoning
+and rejects unsupported sensitive claims; the App-owned deterministic answer is
 returned when a precise route, pattern, product, commercial mapping, project
 portfolio, or workflow explanation is already available. Agent Operations shows
 grounding/fallback state and evidence completeness for retained executions.

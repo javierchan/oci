@@ -175,7 +175,7 @@ def test_support_assistant_removes_redacted_sentence_and_keeps_grounded_answer()
     assert "REDACTED" not in output.summary
 
 
-def test_support_assistant_keeps_only_final_answer_after_model_draft_marker() -> None:
+def test_support_assistant_fails_closed_after_model_draft_marker() -> None:
     output = govern_agent_output(
         get_agent_definition("support_assistant"),
         (
@@ -188,10 +188,12 @@ def test_support_assistant_keeps_only_final_answer_after_model_draft_marker() ->
         },
     )
 
-    assert output.quality.grounded is True
+    assert output.quality.grounded is False
+    assert output.quality.fallback_used is True
+    assert output.quality.fallback_reason == "internal_reasoning"
     assert "User asks" not in output.summary
     assert "Let's draft" not in output.summary
-    assert output.summary == "Para estimar el total, selecciona el SKU gobernado y genera el BOM."
+    assert output.summary == "Use the governed catalog and BOM & Cost."
 
 
 def test_support_assistant_keeps_final_answer_after_visible_heading() -> None:
@@ -278,6 +280,44 @@ def test_support_assistant_keeps_how_to_answer_heading_after_model_planning() ->
     assert output.quality.grounded is True
     assert output.summary.startswith("Cómo completar el flujo")
     assert "User asked" not in output.summary
+
+
+def test_support_assistant_rejects_visible_drafting_rationale_from_provider() -> None:
+    leaked_rationale = (
+        "Must use evidence. Avoid tables. Provide navigation suggestion. So give direct answer. "
+        "Also after answer, mention evidence, next actions: click on sections, or create project. "
+        "Provide how user can validate: view sections. Use citations: attached citations with href. "
+        "Use simple paragraphs. Let's craft. Ensure no summary. We'll follow style."
+    )
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        leaked_rationale,
+        {
+            "current_question": "What can I do in this App?",
+            "fallback_answer": (
+                "OCI DIS Architect lets you govern integration catalogs, calculate volumetry, "
+                "review topology, and build an evidence-backed BOM."
+            ),
+        },
+    )
+
+    assert output.quality.fallback_used is True
+    assert output.quality.fallback_reason == "internal_reasoning"
+    assert output.summary.startswith("OCI DIS Architect lets you govern")
+    assert "Must use evidence" not in output.summary
+    assert "Let's craft" not in output.summary
+
+
+def test_support_assistant_fails_closed_when_drafting_notes_prefix_an_answer() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "Use simple paragraphs. Let's craft. The App answer would be shown here.",
+        {"fallback_answer": "Use the governed App workspace and its cited evidence."},
+    )
+
+    assert output.quality.fallback_used is True
+    assert output.summary == "Use the governed App workspace and its cited evidence."
+    assert "craft" not in output.summary.casefold()
 
 
 def test_agent_output_rejects_claim_that_the_agent_changed_governed_data() -> None:

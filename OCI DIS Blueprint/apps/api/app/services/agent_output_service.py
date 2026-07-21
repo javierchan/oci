@@ -33,6 +33,22 @@ FINAL_ANSWER_HEADING_PATTERN = re.compile(
     r"(?im)^\s*(?:\*{0,2})?(?:cómo\s+.+|qué\s+encontr[ée]|lo\s+que\s+encontr[ée]|"
     r"respuesta|answer|here(?:'s| is))(?:\*{0,2})?\s*$"
 )
+SUPPORT_DRAFT_INSTRUCTION_PATTERN = re.compile(
+    r"(?:^|[.!?]\s+)(?:"
+    r"(?:must|should)\s+(?:use|avoid|provide|include|mention|cite|answer|reply|respond)\b|"
+    r"avoid\s+(?:markdown\s+)?tables?\b|"
+    r"provide\s+(?:a\s+)?(?:navigation|validation|evidence|citations?|next actions?|"
+    r"how\s+(?:the\s+)?user\s+can\s+validate)\b|"
+    r"use\s+(?:attached\s+)?citations?(?:\s+with\s+href)?\b|"
+    r"use\s+(?:simple|short|plain)\s+paragraphs?\b|"
+    r"(?:also\s+)?after\s+(?:the\s+)?answer\b|"
+    r"so\s+(?:give|provide|write|return)\s+(?:a\s+)?(?:direct|concise|final)\s+answer\b|"
+    r"ensure\s+(?:there\s+is\s+)?no\s+summary\b|"
+    r"we(?:['’]ll|\s+will)\s+follow\s+(?:the\s+)?style\b|"
+    r"let['’]?s\s+(?:craft|draft|produce|write|compose)\b"
+    r")",
+    re.IGNORECASE,
+)
 APPLIED_ACTION_PATTERN = re.compile(
     r"\b(?:i|we|the agent|the app)\s+(?:have\s+)?(?:applied|changed|updated|deployed|"
     r"approved|published|saved|deleted|created)\b",
@@ -449,11 +465,19 @@ def govern_agent_output(
     """Return a presentation-safe summary and deterministic structured brief."""
 
     raw_summary = candidate_summary or ""
+    support_draft_instructions = bool(
+        definition.type == "support_assistant"
+        and SUPPORT_DRAFT_INSTRUCTION_PATTERN.search(raw_summary)
+    )
     if definition.type == "support_assistant":
         raw_summary = _remove_support_meta_reasoning(raw_summary)
         raw_summary = _remove_support_internal_placeholder_sentences(raw_summary)
     normalized_summary = normalize_agent_summary(raw_summary)
-    failure = _grounding_failure(definition, raw_summary, normalized_summary, evidence)
+    failure = (
+        "internal_reasoning"
+        if support_draft_instructions
+        else _grounding_failure(definition, raw_summary, normalized_summary, evidence)
+    )
     brief = build_agent_brief(definition, evidence)
     fallback_used = failure is not None
     summary = _fallback_summary(definition, brief) if fallback_used else normalized_summary

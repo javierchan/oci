@@ -681,6 +681,13 @@ def _build_prompt(
 
 
 def _response_text(payload: dict[str, Any]) -> str | None:
+    """Extract only the provider's user-visible assistant message.
+
+    Responses payloads may contain reasoning, function calls, and other internal
+    items alongside the final assistant message. Those items are never valid
+    presentation content, even when a provider includes a ``text`` field.
+    """
+
     choices = payload.get("choices")
     if isinstance(choices, list) and choices and isinstance(choices[0], dict):
         message = choices[0].get("message")
@@ -698,11 +705,15 @@ def _response_text(payload: dict[str, Any]) -> str | None:
     for item in output:
         if not isinstance(item, dict):
             continue
+        if item.get("type") != "message" or item.get("role") != "assistant":
+            continue
         content = item.get("content")
         if not isinstance(content, list):
             continue
         for block in content:
             if not isinstance(block, dict):
+                continue
+            if block.get("type") != "output_text":
                 continue
             text = block.get("text")
             if isinstance(text, str) and text.strip():
