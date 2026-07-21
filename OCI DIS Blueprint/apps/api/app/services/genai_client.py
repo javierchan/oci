@@ -1254,9 +1254,19 @@ async def run_governed_tool_agent(
         )
     except Exception as exc:  # pragma: no cover - provider behavior is environment-specific.
         await record_genai_metric(settings, "provider_degradations_total")
-        safe_error = _safe_http_error(exc.response) if isinstance(exc, httpx.HTTPStatusError) else exc.__class__.__name__
+        # Keep a bounded, redacted protocol reason for deterministic failures.  The
+        # previous class-only diagnostic made a successful 200 response that did not
+        # contain the expected function call indistinguishable from every other
+        # ValueError, which prevented us from selecting the compatible transport.
+        safe_error = (
+            _safe_http_error(exc.response)
+            if isinstance(exc, httpx.HTTPStatusError)
+            else _redact_sensitive_text(str(exc))[:200]
+            if isinstance(exc, ValueError) and str(exc)
+            else exc.__class__.__name__
+        )
         await LOGGER.awarning(
-            "oci_genai_agent_request_failed", error_type=exc.__class__.__name__,
+            "oci_genai_agent_request_failed", error_type=exc.__class__.__name__, error=safe_error,
             model=runtime.model_name, region=runtime.region,
             client_request_id=request_id, tool_name=tool_name,
         )

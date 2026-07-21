@@ -15,7 +15,9 @@ def test_architecture_review_agent_requests_plain_language_decision_brief() -> N
 def test_support_assistant_resolves_global_project_dossiers() -> None:
     definition = get_agent_definition("support_assistant")
 
-    assert definition.version == "2.0.0"
+    assert definition.version == "3.2.0"
+    assert "general assistant" in definition.instruction
+    assert "commercial_service_context" in definition.instruction
     assert "project_resolution" in definition.instruction
     assert "contract total" in definition.instruction
     assert "ambiguous" in definition.instruction

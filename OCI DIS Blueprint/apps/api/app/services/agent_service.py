@@ -49,7 +49,7 @@ from app.services.agent_decision_service import (
 )
 from app.services.agent_output_service import govern_agent_output
 from app.services.authz import normalize_role, require_roles
-from app.services.genai_client import GenAiAgentResult, run_governed_tool_agent
+from app.services.genai_client import GenAiAgentResult, run_governed_tool_agent, synthesize_governed_summary
 from app.services.genai_client import provider_status_payload
 from app.services.genai_telemetry import get_genai_metrics
 from app.services.serializers import sanitize_for_json
@@ -639,6 +639,39 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
             tool_parameters=parameters, tool_executor=cached_executor,
             safety_subject=run.requested_by,
         )
+        # The App-context tool has already run as the deterministic preflight
+        # above. OCI Responses can occasionally return a successful response
+        # without the required function call. For the conversational assistant,
+        # preserve a useful generative answer by synthesizing only that bounded
+        # preflight evidence instead of degrading to a canned response.
+        if (
+            definition.type == "support_assistant"
+            and result.status == "failed"
+            and result.error == "required_tool_not_called"
+        ):
+            synthesis = await synthesize_governed_summary(
+                settings=get_settings(),
+                system_instruction=(
+                    f"{definition.instruction} The governed App-context tool has already returned the evidence. "
+                    "Answer only from that evidence."
+                ),
+                evidence=preflight_evidence,
+                safety_subject=run.requested_by,
+            )
+            if synthesis.status == "completed" and synthesis.summary:
+                result = GenAiAgentResult(
+                    status="completed",
+                    model=synthesis.model,
+                    summary=synthesis.summary,
+                    tool_name=tool_name,
+                    tool_output=preflight_evidence,
+                    opc_request_id=synthesis.opc_request_id,
+                    input_tokens=synthesis.input_tokens,
+                    output_tokens=synthesis.output_tokens,
+                    transport=synthesis.transport,
+                    retry_count=result.retry_count + synthesis.retry_count,
+                    guardrails_status=synthesis.guardrails_status,
+                )
     evidence = (
         result.tool_output
         if result and result.tool_output is not None
@@ -677,14 +710,6 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         else _deterministic_summary(definition, evidence)
     )
     grounding_fallback = False
-    if (
-        definition.type == "support_assistant"
-        and evidence.get("in_scope") is not False
-        and not safety_refused
-        and not support_service.support_summary_is_grounded(summary, evidence)
-    ):
-        summary = str(evidence.get("fallback_answer") or _deterministic_summary(definition, evidence))
-        grounding_fallback = True
     governed_output = govern_agent_output(definition, summary, evidence)
     if grounding_fallback and not governed_output.quality.fallback_used:
         governed_output.quality.fallback_used = True

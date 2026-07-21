@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
+from difflib import SequenceMatcher
 from typing import Literal, cast
 from urllib.parse import quote
 from uuid import UUID
@@ -21,6 +23,8 @@ from app.models import (
     DictionaryOption,
     ImportBatch,
     PatternDefinition,
+    PriceCatalogSnapshot,
+    PriceItem,
     Project,
     ServiceCapabilityProfile,
     ServiceCommercialPolicy,
@@ -41,20 +45,16 @@ from app.services.serializers import sanitize_for_json
 
 
 OUT_OF_SCOPE_RESPONSE = (
-    "I’m here to help with OCI DIS Architect and the architecture work inside it. "
-    "Ask me about a project, integration, business process, topology, Service Product, volumetry, "
-    "pricing, BOM, or how to use this workspace."
+    "I’m here to help with OCI DIS Architect and everything available in this App. "
+    "Ask me about workflows, projects, imports, catalog, topology, Service Products, pricing, BOM, governance, or agents."
 )
 APP_DOMAIN_PATTERN = re.compile(
     r"\b(oci|dis|architect|app|application|project|integration|interface|catalog|capture|import|dashboard|"
     r"map|topology|canvas|pattern|service|product|volumetry|payload|frequency|qa|governance|assumption|"
-    r"pricing|price|cost|precio|costo|bom|bill of materials|sku|scenario|escenario|agent|review|export|"
+    r"pricing|price|cost|precio|costo|billing|bill|factura|facturar|cobro|license|licencia|enterprise|bom|"
+    r"bill of materials|sku|scenario|escenario|agent|review|export|"
     r"workbook|oracle|proyecto|proyectos|streaming|"
     r"queue|functions|goldengate|data integrator|api gateway)\b",
-    re.IGNORECASE,
-)
-REFERENTIAL_PATTERN = re.compile(
-    r"\b(this|that|these|those|current|here|screen|page|view|selected|it|esto|esta|este|aqui|pantalla|vista)\b",
     re.IGNORECASE,
 )
 OUTSIDE_TOPIC_PATTERN = re.compile(
@@ -76,21 +76,9 @@ UNGROUNDED_SENSITIVE_TERMS: tuple[str, ...] = (
     "sanción",
     "sancion",
 )
-UNGROUNDED_ACTION_TERMS: tuple[str, ...] = (
-    "approve",
-    "approval",
-    "aprobar",
-    "aprobación",
-    "aprobacion",
-    "deploy",
-    "deployment",
-    "despliegue",
-    "production test",
-    "prueba en producción",
-    "prueba en produccion",
-)
 SPANISH_QUESTION_PATTERN = re.compile(
-    r"[¿¡áéíóúñ]|\b(qué|que|cómo|como|cuál|cual|dónde|donde|esta|este|integración|proceso|ayuda|siguiente)\b",
+    r"[¿¡áéíóúñ]|\b(qué|que|cómo|como|cuál|cual|cuánto|cuanto|dónde|donde|esta|este|quiero|"
+    r"integración|proceso|ayuda|siguiente|servicio|precio|costo|cuesta)\b",
     re.IGNORECASE,
 )
 PROJECT_PORTFOLIO_PATTERN = re.compile(
@@ -98,9 +86,17 @@ PROJECT_PORTFOLIO_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PROJECT_SCOPE_PATTERN = re.compile(
-    r"\b(this|current|selected|active|este|esta|actual|seleccionado|activo)\b.{0,24}\b(project|proyecto)\b|"
-    r"\b(project|proyecto|pricing|price|cost|precio|costo|bom|bill of materials|dashboard|qa|risk|riesgo|"
-    r"scenario|escenario|import|importaci[oó]n|business process|proceso de negocio)\b",
+    r"\b(this|current|selected|active|este|esta|actual|seleccionado|activo)\b.{0,24}\b("
+    r"project|proyecto|pricing|price|cost|precio|costo|bom|bill of materials|dashboard|qa|risk|riesgo|"
+    r"scenario|escenario|import|importaci[oó]n|business process|proceso de negocio|topology|topolog[ií]a)\b|"
+    r"\b(project|proyecto)\b.{0,28}\b(pricing|price|cost|precio|costo|bom|bill of materials|dashboard|qa|"
+    r"risk|riesgo|scenario|escenario)\b|"
+    r"\b(pricing|price|cost|precio|costo|bom|bill of materials)\b.{0,28}\b(project|proyecto)\b",
+    re.IGNORECASE,
+)
+COMMERCIAL_GUIDANCE_PATTERN = re.compile(
+    r"\b(pricing|price|cost|cuesta|cu[aá]nto|precio|costo|billing|bill|factura|facturar|cobro|license|licencia|enterprise|"
+    r"bom|bill of materials|sku|rate card|tarifa)\b",
     re.IGNORECASE,
 )
 PROJECT_ROUTE_PATTERN = re.compile(r"/projects/([0-9a-f-]{36})(?:/|$)", re.IGNORECASE)
@@ -131,7 +127,7 @@ def validate_support_session_id(value: str) -> str:
 
 
 def question_is_in_scope(question: str, *, has_context: bool) -> bool:
-    """Apply a conservative deterministic App-domain boundary before inference."""
+    """Accept general App help while refusing clearly unrelated requests."""
 
     normalized = question.strip()
     if not normalized:
@@ -142,11 +138,11 @@ def question_is_in_scope(question: str, *, has_context: bool) -> bool:
         return True
     if normalized.lower() in {"hello", "hi", "help", "hola", "ayuda", "what can you do?", "que puedes hacer?"}:
         return True
-    return has_context and bool(REFERENTIAL_PATTERN.search(normalized))
+    return has_context
 
 
 def support_summary_is_grounded(summary: str, evidence: dict[str, object]) -> bool:
-    """Reject verbose or sensitive support synthesis not supported by tool evidence."""
+    """Keep the assistant expressive while blocking structural or sensitive failures."""
 
     normalized_summary = summary.casefold()
     serialized_evidence = str(sanitize_for_json(evidence)).casefold()
@@ -156,16 +152,7 @@ def support_summary_is_grounded(summary: str, evidence: dict[str, object]) -> bo
         or INTERNAL_PLACEHOLDER_PATTERN.search(summary)
     ):
         return False
-    if any(term in normalized_summary and term not in serialized_evidence for term in UNGROUNDED_SENSITIVE_TERMS):
-        return False
-    recommended_action = ""
-    integration = evidence.get("integration")
-    if isinstance(integration, dict):
-        recommended_action = str(integration.get("recommended_next_action") or "").casefold()
-    return not any(
-        term in normalized_summary and term not in recommended_action
-        for term in UNGROUNDED_ACTION_TERMS
-    )
+    return not any(term in normalized_summary and term not in serialized_evidence for term in UNGROUNDED_SENSITIVE_TERMS)
 
 
 def _question_needs_project_scope(question: str) -> bool:
@@ -223,12 +210,204 @@ def _money(value: object, currency: object) -> str:
     return f"{str(currency or 'USD').upper()} {amount:,.2f}"
 
 
+def _unit_price(value: object, currency: object) -> str:
+    """Render a catalog unit price without losing governed decimal precision."""
+
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return _money(value, currency)
+    return f"{str(currency or 'USD').upper()} {format(amount.normalize(), 'f')}"
+
+
+def _price_type_label(value: object, *, spanish: bool) -> str:
+    """Present a governed billing period in the user's language."""
+
+    normalized = str(value or "unit").upper()
+    labels = {
+        "HOUR": ("hora", "hour"),
+        "MONTH": ("mes", "month"),
+        "YEAR": ("año", "year"),
+        "PER_ITEM": ("unidad", "unit"),
+        "UNIT": ("unidad", "unit"),
+    }
+    return labels.get(normalized, ("unidad", "unit"))[0 if spanish else 1]
+
+
+def _compact_reference(value: object) -> str:
+    """Normalize a governed name for bounded dialogue-reference matching."""
+
+    return re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+
+
+def _reference_appears_in_dialogue(reference: object, dialogue: str) -> bool:
+    """Resolve a service name from natural dialogue without maintaining keyword aliases."""
+
+    normalized_reference = _compact_reference(reference)
+    normalized_dialogue = _compact_reference(dialogue)
+    if len(normalized_reference) < 5:
+        return False
+    if normalized_reference in normalized_dialogue:
+        return True
+    words = re.findall(r"[a-z0-9]+", dialogue.casefold())
+    phrases = (
+        "".join(words[index : index + width])
+        for width in range(1, min(4, len(words)) + 1)
+        for index in range(0, len(words) - width + 1)
+    )
+    return any(
+        len(candidate) >= 5 and SequenceMatcher(a=normalized_reference, b=candidate).ratio() >= 0.82
+        for candidate in phrases
+    )
+
+
+def _pattern_answer(evidence: dict[str, object]) -> str | None:
+    """Return a direct, evidence-backed explanation for a named pattern."""
+
+    patterns = evidence.get("pattern_library")
+    question = str(evidence.get("current_question") or "")
+    if not isinstance(patterns, list) or not question:
+        return None
+    matched = next(
+        (
+            item
+            for item in patterns
+            if isinstance(item, dict)
+            and any(
+                _reference_appears_in_dialogue(item.get(reference), question)
+                for reference in ("id", "name")
+            )
+        ),
+        None,
+    )
+    if not isinstance(matched, dict):
+        return None
+    spanish = evidence.get("response_language") == "es"
+    name = str(matched.get("name") or matched.get("id") or "the pattern")
+    description = str(matched.get("description") or "").strip()
+    when_to_use = str(matched.get("when_to_use") or "").strip()
+    when_not_to_use = str(matched.get("when_not_to_use") or "").strip()
+    if spanish:
+        parts = [f"**{name}**: {description}" if description else f"**{name}** es un patrón gobernado de integración."]
+        if when_to_use:
+            parts.append(f"Úsalo cuando {when_to_use[0].lower() + when_to_use[1:]}")
+        if when_not_to_use:
+            parts.append(f"No es adecuado cuando {when_not_to_use[0].lower() + when_not_to_use[1:]}")
+        return "\n\n".join(parts)
+    parts = [f"**{name}**: {description}" if description else f"**{name}** is a governed integration pattern."]
+    if when_to_use:
+        parts.append(f"Use it when {when_to_use[0].lower() + when_to_use[1:]}")
+    if when_not_to_use:
+        parts.append(f"It is not appropriate when {when_not_to_use[0].lower() + when_not_to_use[1:]}")
+    return "\n\n".join(parts)
+
+
 def _support_fallback_answer(evidence: dict[str, object]) -> str:
     """Build a concise App-owned answer when provider grounding is insufficient."""
 
     spanish = evidence.get("response_language") == "es"
+    pattern_answer = _pattern_answer(evidence)
+    if pattern_answer:
+        return pattern_answer
     integration = evidence.get("integration")
     process = evidence.get("business_process_flow")
+    if evidence.get("question_intent") == "commercial_guidance":
+        commercial_context = evidence.get("commercial_service_context")
+        if isinstance(commercial_context, dict):
+            sku_options = commercial_context.get("sku_options")
+            priced_options = [
+                option
+                for option in sku_options
+                if isinstance(option, dict) and isinstance(option.get("price"), dict)
+            ] if isinstance(sku_options, list) else []
+            if len(priced_options) > 1:
+                service_name = str(commercial_context.get("service_name") or "the selected service")
+                metric_keys = {
+                    str(option.get("billing_metric_key") or "")
+                    for option in priced_options
+                    if option.get("billing_metric_key")
+                }
+                metric_count = len(metric_keys)
+                option_summaries = []
+                for option in priced_options[:4]:
+                    price = cast(dict[str, object], option["price"])
+                    predicates = cast(dict[str, object], option.get("predicates") or {})
+                    selection_parts = []
+                    if predicates.get("edition"):
+                        selection_parts.append(str(predicates["edition"]).title())
+                    if predicates.get("byol") is True:
+                        selection_parts.append("BYOL")
+                    selection = " ".join(selection_parts) or str(
+                        price.get("metric_name") or option.get("part_number") or "governed option"
+                    )
+                    option_summaries.append(
+                        f"{selection} ({option.get('part_number')}): {_unit_price(price.get('value'), price.get('currency'))} "
+                        f"por {_price_type_label(price.get('price_type'), spanish=spanish)}"
+                    )
+                if metric_count > 1:
+                    if spanish:
+                        return (
+                            f"**{service_name}** se cobra por más de una métrica de consumo. Los conceptos gobernados "
+                            f"se suman en la factura del cliente: {'; '.join(option_summaries)}.\n\n"
+                            "BOM & Cost aplica a cada métrica la cantidad dimensionada del escenario; no son alternativas "
+                            "de licencia que haya que escoger."
+                        )
+                    return (
+                        f"**{service_name}** is billed through more than one consumption metric. The governed charges "
+                        f"are additive on the customer invoice: {'; '.join(option_summaries)}.\n\n"
+                        "BOM & Cost applies the scenario's sized quantity to each metric; these are not license alternatives to choose between."
+                    )
+                if spanish:
+                    return (
+                        f"Identifiqué **{service_name}** y su modalidad de licencia, pero hay más de una opción "
+                        f"gobernada aplicable: {'; '.join(option_summaries)}.\n\n"
+                        "Indica la edición que contratará el cliente para seleccionar un SKU. Después BOM & Cost "
+                        "aplica la cantidad dimensionada y el escenario para obtener el total."
+                    )
+                return (
+                    f"I identified **{service_name}** and its license mode, but more than one governed option applies: "
+                    f"{'; '.join(option_summaries)}.\n\n"
+                    "Specify the edition the client will contract so the App can select one SKU. BOM & Cost then applies "
+                    "sized quantity and the scenario to calculate the total."
+                )
+            if isinstance(sku_options, list) and len(sku_options) == 1 and isinstance(sku_options[0], dict):
+                option = sku_options[0]
+                price = option.get("price")
+                if isinstance(price, dict):
+                    service_name = str(commercial_context.get("service_name") or "the selected service")
+                    part_number = str(option.get("part_number") or "the selected SKU")
+                    display_name = str(price.get("display_name") or service_name)
+                    metric = str(price.get("metric_name") or "the governed metric")
+                    unit_price = _unit_price(price.get("value"), price.get("currency"))
+                    price_type = str(price.get("price_type") or "unit")
+                    if spanish:
+                        localized_price_type = _price_type_label(price_type, spanish=True)
+                        return (
+                            f"Para {service_name}, la selección capturada corresponde al SKU **{part_number}** "
+                            f"({display_name}). El catálogo aprobado registra **{unit_price} por {localized_price_type}** "
+                            f"para la métrica **{metric}**.\n\n"
+                            "Ese es el precio público unitario gobernado, no un total ni una tarifa contractual. "
+                            "El total depende de la cantidad dimensionada y del escenario de despliegue; BOM & Cost "
+                            "calcula ambos con la evidencia del proyecto."
+                        )
+                    return (
+                        f"For {service_name}, the captured selection maps to SKU **{part_number}** "
+                        f"({display_name}). The approved catalog records **{unit_price} per {price_type.lower()}** "
+                        f"for **{metric}**.\n\n"
+                        "That is governed public unit pricing, not a total or a contractual rate. The total depends on "
+                        "sized quantity and deployment scenario; BOM & Cost calculates both from project evidence."
+                    )
+        if spanish:
+            return (
+                "Puedo buscar el precio gobernado, pero el diálogo no identifica todavía un Service Product/SKU y "
+                "su modelo de licencia. Indica el servicio o conserva ese dato en el contexto; después la App puede "
+                "distinguir precio unitario, cantidad dimensionada y total del BOM."
+            )
+        return (
+            "I can look up governed pricing, but the dialogue does not yet identify a Service Product/SKU and its "
+            "license model. Name the service or preserve that detail in context; the App can then distinguish unit "
+            "price, sized quantity, and the BOM total."
+        )
     if isinstance(integration, dict):
         name = str(integration.get("name") or integration.get("interface_id") or "This integration")
         source = str(integration.get("source_system") or "an uncaptured source")
@@ -360,10 +539,17 @@ def _support_fallback_answer(evidence: dict[str, object]) -> str:
                 if spanish
                 else f"I found multiple active projects: {names}. Name the project or open its workspace so I can use the right evidence."
             )
+    if spanish:
+        return (
+            "OCI DIS Architect te ayuda a importar y gobernar integraciones, revisar su calidad, calcular volumetría, "
+            "analizar topología y preparar escenarios y BOM con evidencia trazable.\n\n"
+            "Puedo explicarte cualquier workflow de la App o ayudarte a interpretar la evidencia de un proyecto, integración, "
+            "patrón, Service Product o BOM."
+        )
     return (
-        "I can help you move through OCI DIS Architect and explain the governed evidence behind an integration, "
-        "business process, topology path, Service Product, or BOM.\n\n"
-        "Open the relevant workspace or add its context, then ask the decision you need to make."
+        "OCI DIS Architect helps you import and govern integrations, review their quality, calculate volumetry, "
+        "analyze topology, and prepare traceable scenarios and BOMs.\n\n"
+        "I can explain any App workflow or help interpret evidence for a project, integration, pattern, Service Product, or BOM."
     )
 
 
@@ -688,6 +874,14 @@ async def build_support_evidence(
     transcript = cast(
         list[object], context.get("transcript") if isinstance(context.get("transcript"), list) else []
     )
+    dialogue_text = " ".join(
+        [question]
+        + [
+            str(item.get("content") or "")
+            for item in transcript[:12]
+            if isinstance(item, dict) and item.get("role") == "user"
+        ]
+    )
     has_context = bool(context.get("route") or attachments or project_id or integration_id)
     if not question_is_in_scope(question, has_context=has_context):
         return {
@@ -724,14 +918,23 @@ async def build_support_evidence(
     if resolved_project_id is None and needs_project_scope and len(active_projects) == 1:
         resolved_project_id = active_projects[0].id
         project_resolution = "single_active_project"
+    # The current turn determines intent. History only resolves references
+    # inside a commercial follow-up; it must not convert a new pattern or App
+    # question into the previous turn's commercial question.
+    is_commercial_question = bool(COMMERCIAL_GUIDANCE_PATTERN.search(question))
+    project_is_explicit = needs_project_scope or project_resolution in {
+        "attached_context",
+        "named_in_conversation",
+        "single_active_project",
+        "integration_context",
+    }
     question_intent = (
-        "project_cost"
-        if any(
-            term in question_lower
-            for term in ("pricing", "price", "cost", "precio", "costo", "bom", "bill of materials")
-        )
-        else "project_portfolio"
+        "project_portfolio"
         if PROJECT_PORTFOLIO_PATTERN.search(question)
+        else "project_cost"
+        if is_commercial_question and project_is_explicit
+        else "commercial_guidance"
+        if is_commercial_question
         else "project_context"
         if needs_project_scope
         else "app_guidance"
@@ -765,7 +968,8 @@ async def build_support_evidence(
             "unknowns": "Say what evidence is missing instead of supplying generic external facts.",
             "style": "Answer naturally and directly. Use short paragraphs or bullets, never a Markdown table.",
         },
-        "response_language": "es" if SPANISH_QUESTION_PATTERN.search(question) else "en",
+        "response_language": "es" if SPANISH_QUESTION_PATTERN.search(dialogue_text) else "en",
+        "current_question": question,
         "current_context": {
             "route": route,
             "page_title": context.get("page_title"),
@@ -804,6 +1008,105 @@ async def build_support_evidence(
         term in question_lower
         for term in ("service product", "servicio", "interoperability", "interoperabilidad", "limit", "límite")
     ) or "/services" in route
+    if is_commercial_question:
+        citations.append({"label": "Pricing", "href": "/admin/pricing"})
+        service_profiles = list(
+            (
+                await db.scalars(
+                    select(ServiceCapabilityProfile)
+                    .where(ServiceCapabilityProfile.is_active.is_(True))
+                    .order_by(ServiceCapabilityProfile.name)
+                )
+            ).all()
+        )
+        mappings = list(
+            (
+                await db.scalars(
+                    select(ServiceProductSkuMapping).where(
+                        ServiceProductSkuMapping.status == "approved",
+                        ServiceProductSkuMapping.is_billable.is_(True),
+                    )
+                )
+            ).all()
+        )
+        profile_by_service = {item.service_id: item for item in service_profiles}
+        matched_mappings = [
+            item
+            for item in mappings
+            if any(
+                _reference_appears_in_dialogue(reference, dialogue_text)
+                for reference in (
+                    item.tool_key,
+                    profile_by_service[item.service_id].name
+                    if item.service_id in profile_by_service
+                    else "",
+                )
+            )
+        ]
+        requested_byol = "byol" in dialogue_text.casefold()
+        requested_edition = (
+            "enterprise"
+            if "enterprise" in dialogue_text.casefold()
+            else "standard"
+            if "standard" in dialogue_text.casefold()
+            else None
+        )
+        if requested_byol or requested_edition:
+            matched_mappings = [
+                item
+                for item in matched_mappings
+                if (not requested_byol or item.predicates.get("byol") is True)
+                and (not requested_edition or item.predicates.get("edition") == requested_edition)
+            ]
+        if matched_mappings:
+            latest_catalog = await db.scalar(
+                select(PriceCatalogSnapshot)
+                .where(PriceCatalogSnapshot.approval_status == "approved")
+                .order_by(PriceCatalogSnapshot.retrieved_at.desc())
+                .limit(1)
+            )
+            part_numbers = [item.part_number for item in matched_mappings if item.part_number]
+            price_by_part: dict[str, PriceItem] = {}
+            if latest_catalog and part_numbers:
+                price_items = list(
+                    (
+                        await db.scalars(
+                            select(PriceItem).where(
+                                PriceItem.snapshot_id == latest_catalog.id,
+                                PriceItem.part_number.in_(part_numbers),
+                            )
+                        )
+                    ).all()
+                )
+                price_by_part = {item.part_number: item for item in price_items}
+            selected_service = profile_by_service.get(matched_mappings[0].service_id)
+            evidence["commercial_service_context"] = {
+                "service_id": matched_mappings[0].service_id,
+                "service_name": selected_service.name if selected_service else matched_mappings[0].tool_key,
+                "pricing_model": selected_service.pricing_model if selected_service else None,
+                "selection": {"byol": requested_byol, "edition": requested_edition},
+                "sku_options": [
+                    {
+                        "part_number": item.part_number,
+                        "predicates": item.predicates,
+                        "billing_metric_key": item.billing_metric_key,
+                        "quantity_unit": item.quantity_unit,
+                        "price": (
+                            {
+                                "display_name": price_by_part[item.part_number].display_name,
+                                "metric_name": price_by_part[item.part_number].metric_name,
+                                "price_type": price_by_part[item.part_number].price_type,
+                                "currency": price_by_part[item.part_number].currency,
+                                "value": price_by_part[item.part_number].value,
+                            }
+                            if item.part_number in price_by_part
+                            else None
+                        ),
+                    }
+                    for item in matched_mappings[:8]
+                ],
+            }
+            citations.append({"label": "Service Products", "href": "/admin/services"})
     if wants_patterns:
         patterns = list(
             (

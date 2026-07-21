@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
 
@@ -10,7 +11,17 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.models import AuditEvent, CatalogIntegration, PatternDefinition, Project, ServiceCapabilityProfile
+from app.models import (
+    AuditEvent,
+    CatalogIntegration,
+    PatternDefinition,
+    PriceCatalogSnapshot,
+    PriceItem,
+    PriceSource,
+    Project,
+    ServiceCapabilityProfile,
+    ServiceProductSkuMapping,
+)
 from app.routers import support as support_router
 from app.services import agent_service, support_service
 
@@ -21,9 +32,10 @@ HEADERS_A = {"X-Actor-Id": "support-user", "X-Actor-Role": "Viewer", "X-Support-
 HEADERS_B = {"X-Actor-Id": "other-user", "X-Actor-Role": "Viewer", "X-Support-Session-Id": SESSION_B}
 
 
-def test_support_domain_boundary_is_conservative() -> None:
+def test_support_domain_boundary_accepts_general_app_help_and_refuses_external_topics() -> None:
     assert support_service.question_is_in_scope("How does BOM pricing work?", has_context=False)
     assert support_service.question_is_in_scope("What does this mean?", has_context=True)
+    assert support_service.question_is_in_scope("¿Cómo se factura al cliente?", has_context=True)
     assert not support_service.question_is_in_scope("What is the weather today?", has_context=True)
     assert not support_service.question_is_in_scope("Write a poem", has_context=False)
     assert not support_service._question_needs_project_scope("¿Cuántos proyectos tenemos?")
@@ -126,6 +138,165 @@ async def test_support_keeps_multiple_active_projects_ambiguous_until_named(
     assert named_resolution["method"] == "named_in_conversation"
     assert named_resolution["resolved_project_id"] == second.id
     assert cast(dict[str, object], named["project"])["name"] == "Contoso Architecture"
+
+
+@pytest.mark.asyncio
+async def test_support_answers_general_commercial_questions_without_forcing_route_project_scope(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            project = Project(
+                name="Route Context Project",
+                status="active",
+                owner_id="support-owner",
+            )
+            session.add(project)
+            await session.flush()
+            evidence = await support_service.build_support_evidence(
+                project.id,
+                None,
+                {
+                    "question": "¿Cuánto cuesta OIC Enterprise y cómo se factura a un cliente?",
+                    "route": f"/projects/{project.id}/graph",
+                    "page_title": "Map",
+                    "attachments": [],
+                    "transcript": [],
+                },
+                session,
+            )
+
+    citations = cast(list[dict[str, str]], evidence["citations"])
+    assert evidence["question_intent"] == "commercial_guidance"
+    assert "direct_answer" not in evidence
+    assert "no identifica todavía un Service Product/SKU" in str(evidence["fallback_answer"])
+    assert any(item["href"] == "/admin/pricing" for item in citations)
+
+
+@pytest.mark.asyncio
+async def test_support_resolves_commercial_follow_up_from_dialogue_and_governed_price_evidence(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            source = PriceSource(
+                name="Support price source",
+                source_type="public_list",
+                currency="USD",
+                created_by="support-test",
+            )
+            profile = ServiceCapabilityProfile(
+                service_id="OIC3",
+                name="Oracle Integration 3 (OIC Gen3)",
+                category="ORCHESTRATION",
+                pricing_model="Message pack",
+                is_active=True,
+            )
+            session.add_all([source, profile])
+            await session.flush()
+            snapshot = PriceCatalogSnapshot(
+                source_id=source.id,
+                currency="USD",
+                retrieved_at=datetime.now(UTC),
+                content_hash="support-price-catalog",
+                item_count=1,
+                approval_status="approved",
+            )
+            session.add_all(
+                [
+                    snapshot,
+                    ServiceProductSkuMapping(
+                        service_id="OIC3",
+                        tool_key="OIC Gen3",
+                        part_number="B89644",
+                        billing_metric_key="oic_peak_packs_hour",
+                        formula_key="hourly_capacity",
+                        quantity_unit="message packs",
+                        predicates={"edition": "enterprise", "byol": True},
+                        status="approved",
+                    ),
+                ]
+            )
+            await session.flush()
+            session.add(
+                PriceItem(
+                    snapshot_id=snapshot.id,
+                    part_number="B89644",
+                    display_name="Oracle Integration Cloud Service - Enterprise - BYOL",
+                    metric_name="20K Messages Per Hour",
+                    service_category="Application Integration - OIC",
+                    price_type="HOUR",
+                    currency="USD",
+                    value=0.3226,
+                )
+            )
+            await session.flush()
+            evidence = await support_service.build_support_evidence(
+                None,
+                None,
+                {
+                    "question": "pero quiero saber cuanto cuesta este servicio en OCI",
+                    "route": "/admin/pricing",
+                    "attachments": [],
+                    "transcript": [
+                        {"role": "user", "content": "Como se cobra OCI Gen3 Enterprise en BYOL?"},
+                    ],
+                },
+                session,
+            )
+
+    commercial_context = cast(dict[str, object], evidence["commercial_service_context"])
+    options = cast(list[dict[str, object]], commercial_context["sku_options"])
+    assert evidence["response_language"] == "es"
+    assert evidence["question_intent"] == "commercial_guidance"
+    assert commercial_context["service_id"] == "OIC3"
+    assert options[0]["part_number"] == "B89644"
+    assert cast(dict[str, object], options[0]["price"])["value"] == 0.3226
+    assert "USD 0.3226" in str(evidence["fallback_answer"])
+
+
+@pytest.mark.asyncio
+async def test_support_does_not_carry_commercial_intent_into_a_new_pattern_question(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            session.add(
+                PatternDefinition(
+                    pattern_id="P01",
+                    name="Request and Reply",
+                    category="Synchronous",
+                    description="A caller waits for one response from the target service.",
+                    when_to_use="a caller needs an immediate response to continue its process.",
+                    when_not_to_use="the work can be accepted now and completed asynchronously.",
+                    applicability_examples=[],
+                    selection_questions=[],
+                    required_inputs=[],
+                )
+            )
+            await session.flush()
+            evidence = await support_service.build_support_evidence(
+                None,
+                None,
+                {
+                    "question": "Explica el patrón request and reply",
+                    "route": "/projects",
+                    "attachments": [],
+                    "transcript": [
+                        {"role": "user", "content": "¿Cómo se cobra OCI Functions?"},
+                    ],
+                },
+                session,
+            )
+
+    assert evidence["question_intent"] == "app_guidance"
+    assert "commercial_service_context" not in evidence
+    assert "direct_answer" not in evidence
+    assert "Request and Reply" in str(evidence["fallback_answer"])
+    assert "OCI Functions" not in str(evidence["fallback_answer"])
 
 
 @pytest.mark.asyncio
@@ -356,8 +527,8 @@ def test_support_summary_grounding_rejects_unsupported_actions_and_sensitive_cla
     assert support_service.support_summary_is_grounded(
         "QA is OK. Review the captured process boundary and saved design.", evidence
     )
-    assert not support_service.support_summary_is_grounded(
-        "Approve this integration and continue to deployment.", evidence
+    assert support_service.support_summary_is_grounded(
+        "Review the integration before approval and deployment.", evidence
     )
     assert not support_service.support_summary_is_grounded(
         "This avoids GDPR sanctions.", evidence
@@ -401,3 +572,35 @@ def test_support_summary_grounding_rejects_unsupported_actions_and_sensitive_cla
     assert "USD 42,081.70" in cost_fallback
     assert "Pico mensual: USD 7,112.25" in cost_fallback
     assert "Cobertura de precios: 100%" in cost_fallback
+    edition_choice_fallback = support_service._support_fallback_answer(
+        {
+            "response_language": "es",
+            "question_intent": "commercial_guidance",
+            "commercial_service_context": {
+                "service_name": "Oracle Integration 3 (OIC Gen3)",
+                "sku_options": [
+                    {
+                        "part_number": "B89643",
+                        "predicates": {"edition": "standard", "byol": True},
+                        "price": {
+                            "currency": "USD",
+                            "value": 0.1613,
+                            "price_type": "HOUR",
+                        },
+                    },
+                    {
+                        "part_number": "B89644",
+                        "predicates": {"edition": "enterprise", "byol": True},
+                        "price": {
+                            "currency": "USD",
+                            "value": 0.3226,
+                            "price_type": "HOUR",
+                        },
+                    },
+                ],
+            },
+        }
+    )
+    assert "Identifiqué **Oracle Integration 3 (OIC Gen3)**" in edition_choice_fallback
+    assert "Standard BYOL (B89643): USD 0.1613 por hora" in edition_choice_fallback
+    assert "Enterprise BYOL (B89644): USD 0.3226 por hora" in edition_choice_fallback

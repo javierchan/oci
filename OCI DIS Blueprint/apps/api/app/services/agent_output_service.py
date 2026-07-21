@@ -17,10 +17,21 @@ INTERNAL_PLACEHOLDER_PATTERN = re.compile(
     r"\[(?:redacted|tool|system|assistant|internal)[^\]]*\]", re.IGNORECASE
 )
 META_REASONING_PATTERN = re.compile(
-    r"(?:^|[.!?]\s+)(?:the user|the system|the assistant|we need to|we should|"
-    r"i need to|i should|the tool returned|the system returned|the prompt asks|"
-    r"our task is)\b",
+    r"(?:^|[.!?]\s+)(?:the user|user asks|the system|the assistant|we need(?: to)?|we must|need to answer|need answer|"
+    r"need explain|need mention|we should|it should|i need to|i should|we have evidence|we have tool output|we have tool data|we saw|"
+    r"the tool returned|the system returned|the tool result|the tool gave|the question|the prompt asks|"
+    r"follow rules|our task is|provide details|provide steps|pricing model|also mention|also might|it returned|"
+    r"the answer(?: must| was| is)|the fallback answer|so we must|then next actions|we include evidence|"
+    r"next concrete actions|should cite|use that)\b",
     re.IGNORECASE,
+)
+FINAL_ANSWER_MARKER_PATTERN = re.compile(
+    r"(?:let['’]?s\s+(?:produce|draft)|final\s+answer|respuesta\s+final)\s*[:.]?\s*",
+    re.IGNORECASE,
+)
+FINAL_ANSWER_HEADING_PATTERN = re.compile(
+    r"(?im)^\s*(?:\*{0,2})?(?:cómo\s+.+|qué\s+encontr[ée]|lo\s+que\s+encontr[ée]|"
+    r"respuesta|answer|here(?:'s| is))(?:\*{0,2})?\s*$"
 )
 APPLIED_ACTION_PATTERN = re.compile(
     r"\b(?:i|we|the agent|the app)\s+(?:have\s+)?(?:applied|changed|updated|deployed|"
@@ -106,7 +117,11 @@ def _word_limit(definition: AgentDefinition) -> int:
     if definition.type == "architecture_review":
         return 160
     if definition.type == "support_assistant":
-        return 220
+        # The App assistant covers the whole product, so a short fixed cap must
+        # not replace a valid, grounded explanation with a canned fallback.
+        # Provider token limits and persisted-message limits remain the hard
+        # technical bounds; this only rejects pathological verbosity.
+        return 1200
     return 180
 
 
@@ -129,6 +144,45 @@ def normalize_agent_summary(value: str | None) -> str:
     normalized = re.sub(r"[ \t]+", " ", normalized)
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)
     return normalized.strip()
+
+
+def _remove_support_meta_reasoning(value: str) -> str:
+    """Remove incidental model deliberation from a user-visible support answer.
+
+    OCI's tool-capable model can occasionally prefix an otherwise useful answer
+    with a planning sentence (for example, ``The user asks ...``). That text is
+    not evidence or an answer for the user. Strip only those complete sentences
+    for the conversational assistant; all remaining content still passes the
+    shared grounding checks below.
+    """
+
+    # Some tool-capable models mark the transition to their final answer. Keep
+    # the user-visible suffix and never surface the deliberation before it.
+    marker = FINAL_ANSWER_MARKER_PATTERN.search(value)
+    if marker is not None:
+        value = value[marker.end() :]
+    else:
+        heading = FINAL_ANSWER_HEADING_PATTERN.search(value)
+        if heading is not None:
+            value = value[heading.start() :]
+    sentences = re.split(r"(?<=[.!?])(?:\s+|\n+)", value.strip())
+    visible = []
+    for sentence in sentences:
+        cleaned = re.sub(r"(?i)^\s*so:\s*", "", sentence).strip()
+        if cleaned and not META_REASONING_PATTERN.search(cleaned):
+            visible.append(cleaned)
+    return "\n\n".join(visible).strip()
+
+
+def _remove_support_internal_placeholder_sentences(value: str) -> str:
+    """Drop redacted model sentences without discarding an otherwise useful answer."""
+
+    sentences = re.split(r"(?<=[.!?])(?:\s+|\n+)", value.strip())
+    return "\n\n".join(
+        sentence.strip()
+        for sentence in sentences
+        if sentence.strip() and not INTERNAL_PLACEHOLDER_PATTERN.search(sentence)
+    ).strip()
 
 
 def _evidence_text(evidence: dict[str, object]) -> str:
@@ -167,6 +221,11 @@ def _grounding_failure(
         return "word_limit_exceeded"
     if not _numbers_are_grounded(normalized_summary, evidence):
         return "unsupported_numeric_claim"
+    if definition.type == "support_assistant":
+        question = _text(evidence.get("current_question")).casefold()
+        answer = normalized_summary.casefold()
+        if "oci dis" in question and not re.search(r"\boci\s+dis\b|\barchitect\b|\bapp\b", answer):
+            return "answer_not_relevant"
     if definition.type == "service_verification":
         sources_checked = evidence.get("sources_checked")
         if (not isinstance(sources_checked, int) or sources_checked < 1) and POSITIVE_VERIFICATION_PATTERN.search(
@@ -362,7 +421,11 @@ def build_agent_brief(definition: AgentDefinition, evidence: dict[str, object]) 
     return _review_brief(definition, evidence)
 
 
-def _fallback_summary(brief: AgentOutputBrief) -> str:
+def _fallback_summary(definition: AgentDefinition, brief: AgentOutputBrief) -> str:
+    # A conversational fallback is already a user-facing answer.  Do not wrap
+    # it in internal-looking headings or an unrelated generic next action.
+    if definition.type == "support_assistant":
+        return brief.finding
     action = brief.next_actions[0] if brief.next_actions else "Review the governed evidence."
     return f"{brief.headline}\n\n{brief.finding}\n\nNext action: {action}"
 
@@ -386,11 +449,14 @@ def govern_agent_output(
     """Return a presentation-safe summary and deterministic structured brief."""
 
     raw_summary = candidate_summary or ""
+    if definition.type == "support_assistant":
+        raw_summary = _remove_support_meta_reasoning(raw_summary)
+        raw_summary = _remove_support_internal_placeholder_sentences(raw_summary)
     normalized_summary = normalize_agent_summary(raw_summary)
     failure = _grounding_failure(definition, raw_summary, normalized_summary, evidence)
     brief = build_agent_brief(definition, evidence)
     fallback_used = failure is not None
-    summary = _fallback_summary(brief) if fallback_used else normalized_summary
+    summary = _fallback_summary(definition, brief) if fallback_used else normalized_summary
     quality = AgentOutputQuality(
         normalized=bool(raw_summary and normalized_summary != raw_summary.strip()),
         grounded=not fallback_used,

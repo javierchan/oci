@@ -171,7 +171,7 @@ export function ContextualSupportAssistant(): JSX.Element {
               <h2 className="truncate text-sm font-semibold text-[var(--color-text-primary)]">OCI DIS App Assistant</h2>
               <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-trend-up)]" />
-                <span className="truncate">Using {routeContext.pageTitle}</span>
+                <span className="truncate">General App help · context: {routeContext.pageTitle}</span>
               </p>
             </div>
             <button
@@ -258,7 +258,7 @@ export function ContextualSupportAssistant(): JSX.Element {
             ) : (
               <div className="pt-2">
                 <h3 className="text-base font-semibold text-[var(--color-text-primary)]">Hi. What are you working through?</h3>
-                <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">I’ll use the current workspace and any context you add to keep the answer specific.</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">Ask anything about OCI DIS Architect. The current view is optional context; add it when you want a record-specific answer.</p>
                 <div className="mt-5 space-y-2">
                   {routeContext.suggestions.map((suggestion) => (
                     <button key={suggestion} type="button" className="group flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3.5 py-3 text-left text-sm text-[var(--color-text-primary)] transition hover:border-[var(--color-accent)] hover:bg-[var(--color-hover)]" onClick={() => { setInput(suggestion); inputRef.current?.focus(); }}><span>{suggestion}</span><ArrowUpRight className="h-4 w-4 shrink-0 text-[var(--color-text-muted)] transition group-hover:text-[var(--color-accent)]" /></button>
@@ -281,7 +281,7 @@ export function ContextualSupportAssistant(): JSX.Element {
             {error ? <p className="mb-2 text-xs text-[var(--color-toast-error-text)]">{error}</p> : null}
             <form onSubmit={(event) => void submit(event)}>
               <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 shadow-sm transition focus-within:border-[var(--color-accent)]">
-                <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(); } }} className="max-h-32 min-h-14 w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-6 text-[var(--color-text-primary)] outline-none" placeholder="Ask about an integration, process, topology, or BOM" maxLength={2000} disabled={sending || pending} aria-label="Ask OCI DIS App Assistant" />
+                <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(); } }} className="max-h-32 min-h-14 w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-6 text-[var(--color-text-primary)] outline-none" placeholder="Ask anything about OCI DIS Architect" maxLength={2000} disabled={sending || pending} aria-label="Ask OCI DIS App Assistant" />
                 <div className="mt-1 flex min-h-9 items-center justify-between gap-2">
                   <button type="button" className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-[var(--color-text-secondary)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-60" onClick={attachCurrentView} disabled={currentContextAdded}>
                     {currentContextAdded ? <Check className="h-3.5 w-3.5 shrink-0 text-[var(--color-trend-up)]" /> : <Paperclip className="h-3.5 w-3.5 shrink-0" />}

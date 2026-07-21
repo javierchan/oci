@@ -7,11 +7,13 @@
 
 ## Purpose
 
-The OCI DIS App Assistant is a persistent floating support surface for questions
-about OCI DIS Architect and the governed project context visible in the App. It
-can explain App workflows, integrations, topology, patterns, Service Products,
-volumetry, pricing, and BOM evidence. It does not answer unrelated questions and
-cannot mutate project data.
+The OCI DIS App Assistant is a persistent, general support surface for every
+OCI DIS Architect App question. It can explain workflows, projects, imports,
+capture, catalog, integrations, topology, patterns, Service Products, volumetry,
+pricing, BOM, governance, exports, and specialized agents. Current project or
+route context is optional: it improves a record-specific answer but never blocks
+general App guidance. It does not answer clearly unrelated questions and cannot
+mutate project data.
 
 ## Session Isolation
 
@@ -32,13 +34,18 @@ conversation contract to its authenticated subject.
   Service Product metadata, project portfolio, import, integration definition,
   ordered business-process flow, Dashboard, deployment-scenario, and BOM evidence
   through typed SQLAlchemy queries owned by the application service.
-- Global routes first receive a bounded project index. Project-specific questions
-  then resolve their dossier from the route, explicit attachments, a project name
-  in recent user questions, or the sole active project. Multiple active candidates
-  remain ambiguous and require an explicit selection; the model never guesses.
-- Evidence retrieval is intent-aware. A cost question loads the latest immutable
-  BOM totals, monthly and peak run rate, price coverage, publication status, and
-  the project/BOM routes even when the user is currently in Admin or Projects.
+- Global and project routes receive the same general App capability. Project-specific
+  questions resolve their dossier from explicit attachments, a project name in recent
+  user questions, a clear reference such as “this project”, or the sole active
+  project. Multiple active candidates remain ambiguous only for a genuinely
+  project-specific question; the model never guesses.
+- Evidence retrieval is intent-aware. General pricing and billing questions explain
+  the governed BOM workflow without pretending the current route is a quote. When
+  a follow-up identifies a Service Product, edition, or license model, the assistant
+  resolves that reference from dialogue, retrieves its approved SKU and price-item
+  evidence, and lets the provider explain the result naturally. A project-cost
+  question loads the latest immutable BOM totals, monthly and peak run rate, price
+  coverage, publication status, and the project/BOM routes.
 - Exact portfolio counts and commercial totals render from deterministic App
   evidence. OCI synthesis remains available for explanation, comparison, and
   recommendations, but it cannot relabel or paraphrase authoritative quantities.
@@ -48,11 +55,12 @@ conversation contract to its authenticated subject.
 
 ## Domain Boundary
 
-A deterministic preflight classifier runs before OCI inference. Explicit outside
-topics are refused, and questions without App/domain terms require referential
-language plus attached App context. Refusal responses are application-owned; OCI
+A deterministic preflight classifier runs before OCI inference. Clearly external
+topics are refused. A question submitted from an App route is treated as a general
+App-help request even when it does not name a feature; the current view provides
+context rather than a restriction. Refusal responses are application-owned; OCI
 cannot override them. Provider failure returns an honest deterministic fallback.
-An output-grounding gate also rejects unsupported sensitive claims, invented
+A single centralized output-grounding gate also rejects unsupported sensitive claims, invented
 approval/deployment actions, Markdown tables, and excessive verbosity. Rejected
 synthesis is replaced by a concise App-owned answer built from the same evidence,
 while the AgentRun records that grounding fallback occurred.

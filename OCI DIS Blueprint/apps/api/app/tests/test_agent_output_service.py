@@ -123,6 +123,163 @@ def test_architecture_agent_keeps_grounded_plain_language_and_adds_typed_brief()
     assert output.quality.evidence_completeness_pct == 100
 
 
+def test_support_assistant_removes_model_deliberation_without_discarding_answer() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        (
+            "The user asks how the App prices a governed service. "
+            "The governed catalog lists OIC Gen3 Enterprise BYOL at USD 0.3226 per hour. "
+            "Open BOM & Cost to apply the dimensioned quantity."
+        ),
+        {
+            "fallback_answer": "Use the governed catalog and BOM & Cost.",
+            "commercial_service_context": {"unit_price": "0.3226"},
+            "recommended_next_action": "Open BOM & Cost.",
+        },
+    )
+
+    assert output.quality.grounded is True
+    assert output.quality.fallback_used is False
+    assert "The user asks" not in output.summary
+    assert "USD 0.3226 per hour" in output.summary
+
+
+def test_support_assistant_fallback_is_the_answer_without_generic_wrapper() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "The user asks about a pattern. We need to provide an answer.",
+        {
+            "fallback_answer": "Request and Reply waits for the target service response.",
+            "recommended_next_action": "Open the Pattern Library.",
+        },
+    )
+
+    assert output.quality.fallback_used is True
+    assert output.summary == "Request and Reply waits for the target service response."
+    assert "Answer from governed App context" not in output.summary
+    assert "Next action:" not in output.summary
+
+
+def test_support_assistant_removes_redacted_sentence_and_keeps_grounded_answer() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        (
+            "Request and Reply keeps the caller waiting for the target response. "
+            "Open /projects/[REDACTED] to inspect the pattern."
+        ),
+        {"fallback_answer": "Use the Pattern Library."},
+    )
+
+    assert output.quality.fallback_used is False
+    assert output.summary == "Request and Reply keeps the caller waiting for the target response."
+    assert "REDACTED" not in output.summary
+
+
+def test_support_assistant_keeps_only_final_answer_after_model_draft_marker() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        (
+            "User asks Spanish about App pricing. We have evidence of governed rate cards. "
+            "Let's draft. Para estimar el total, selecciona el SKU gobernado y genera el BOM."
+        ),
+        {
+            "fallback_answer": "Use the governed catalog and BOM & Cost.",
+            "recommended_next_action": "Open BOM & Cost.",
+        },
+    )
+
+    assert output.quality.grounded is True
+    assert "User asks" not in output.summary
+    assert "Let's draft" not in output.summary
+    assert output.summary == "Para estimar el total, selecciona el SKU gobernado y genera el BOM."
+
+
+def test_support_assistant_keeps_final_answer_after_visible_heading() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "We must produce Spanish text. The tool result contains governed evidence.\n\nQué encontré\nEl SKU gobernado se calcula en BOM & Cost.",
+        {
+            "fallback_answer": "Use the governed catalog and BOM & Cost.",
+            "recommended_next_action": "Open BOM & Cost.",
+        },
+    )
+
+    assert output.quality.grounded is True
+    assert output.summary.startswith("Qué encontré")
+    assert "We must" not in output.summary
+
+
+def test_support_assistant_removes_unheaded_model_planning_sentences() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        (
+            "We have tool output. Need answer in Spanish, no table. "
+            "The tool gave governed evidence. So: Para calcular el costo, abre BOM & Cost."
+        ),
+        {
+            "fallback_answer": "Use the governed catalog and BOM & Cost.",
+            "recommended_next_action": "Open BOM & Cost.",
+        },
+    )
+
+    assert output.quality.grounded is True
+    assert output.summary == "Para calcular el costo, abre BOM & Cost."
+
+
+def test_support_assistant_rejects_unheaded_planning_that_uses_we_need_without_to() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "We need produce an answer from the tool evidence. It should mention the import workflow.",
+        {"fallback_answer": "La App conserva evidencia de importación gobernada."},
+    )
+
+    assert output.quality.fallback_used is True
+    assert output.summary == "La App conserva evidencia de importación gobernada."
+
+
+def test_support_assistant_rejects_an_answer_that_omits_an_explicit_app_question() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "Abre el proyecto y revisa sus integraciones antes de tomar una decisión.",
+        {
+            "current_question": "¿Qué resuelve OCI DIS Architect?",
+            "fallback_answer": "OCI DIS Architect gobierna integraciones y su evidencia.",
+        },
+    )
+
+    assert output.quality.fallback_reason == "answer_not_relevant"
+    assert output.summary == "OCI DIS Architect gobierna integraciones y su evidencia."
+
+
+def test_support_assistant_removes_provider_deliberation_before_a_final_answer() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        (
+            "It returned a content that is not final. The fallback answer contains a summary. "
+            "So we must provide the answer. OCI DIS Architect gobierna integraciones y su evidencia."
+        ),
+        {"fallback_answer": "Usa la evidencia gobernada."},
+    )
+
+    assert output.quality.fallback_used is False
+    assert output.summary == "OCI DIS Architect gobierna integraciones y su evidencia."
+
+
+def test_support_assistant_keeps_how_to_answer_heading_after_model_planning() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "User asked about a workflow. We have tool data.\n\nCómo completar el flujo\nAbre el workspace y revisa la evidencia gobernada.",
+        {
+            "fallback_answer": "Use the governed workspace.",
+            "recommended_next_action": "Open the workspace.",
+        },
+    )
+
+    assert output.quality.grounded is True
+    assert output.summary.startswith("Cómo completar el flujo")
+    assert "User asked" not in output.summary
+
+
 def test_agent_output_rejects_claim_that_the_agent_changed_governed_data() -> None:
     output = govern_agent_output(
         get_agent_definition("import_quality"),
