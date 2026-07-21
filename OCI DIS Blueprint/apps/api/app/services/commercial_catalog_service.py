@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pricing_engine import QuantityBehavior, QuantityRule, normalize_quantity
 from app.models import (
+    CommercialBillingSemanticOverride,
     CommercialDocumentSnapshot,
     CommercialEvidenceReference,
     CommercialException,
@@ -623,52 +624,44 @@ def _quantity_behavior(price_type: str, allow_decimal: bool | None) -> tuple[str
 
 
 def _commercial_decimal_availability(
-    part_number: str, estimator_allow_decimal: bool | None
+    part_number: str,
+    estimator_allow_decimal: bool | None,
+    overrides: dict[str, bool | None],
 ) -> bool | None:
     """Apply documented billing semantics over estimator input hints."""
 
-    if part_number == "B92072":
-        return True
-    return estimator_allow_decimal
+    return overrides.get(part_number.upper(), estimator_allow_decimal)
+
+
+async def _approved_billing_semantic_overrides(
+    db: AsyncSession,
+) -> dict[str, bool | None]:
+    """Load approved per-SKU billing semantics once for a generation request."""
+
+    rows = (
+        await db.scalars(
+            select(CommercialBillingSemanticOverride).where(
+                CommercialBillingSemanticOverride.status == "approved"
+            )
+        )
+    ).all()
+    return {row.part_number.upper(): row.allow_decimal_quantity for row in rows}
 
 
 def _commercial_fixture_result(
     *,
-    part_number: str,
     behavior: str,
     increment: Decimal,
     minimum: Decimal,
     price_type: str,
-    allow_decimal: bool | None,
-    metric_name: str | None,
-    constraints: list[dict[str, object]],
     api_items: list[PriceItem],
 ) -> tuple[bool, list[dict[str, object]]]:
-    """Validate generated semantics against generic and official SKU fixtures."""
+    """Validate generated semantics against generic commercial invariants."""
 
     checks: list[dict[str, object]] = []
 
     def record_check(name: str, passed: bool, detail: str) -> None:
         checks.append({"name": name, "passed": passed, "detail": detail})
-
-    def has_constraint(
-        constraint_type: str,
-        *,
-        scope: str | None = None,
-        value: Decimal | None = None,
-    ) -> bool:
-        for constraint in constraints:
-            if constraint.get("constraint_type") != constraint_type:
-                continue
-            if scope is not None and constraint.get("scope") != scope:
-                continue
-            numeric_value = constraint.get("numeric_value")
-            if value is not None and (
-                not isinstance(numeric_value, Decimal) or numeric_value != value
-            ):
-                continue
-            return True
-        return False
 
     try:
         rule = QuantityRule(behavior=QuantityBehavior(behavior), increment=increment, minimum=minimum)
@@ -698,53 +691,6 @@ def _commercial_fixture_result(
             "day_metering",
             behavior == "continuous",
             "DAY-priced services must retain continuous metering semantics.",
-        )
-    if part_number == "B92072":
-        record_check(
-            "api_gateway_decimal_scale",
-            allow_decimal is True and behavior == "continuous" and increment <= Decimal("0.000001"),
-            "One million API calls is a billing scale; fractional million-call quantities remain measurable.",
-        )
-    elif part_number == "B93306":
-        record_check(
-            "data_integration_free_tier",
-            has_constraint("free_tier_allowance", value=Decimal("30"))
-            and has_constraint("paid_tier_start", value=Decimal("30")),
-            "The first 30 execution hours are free and the paid tier begins above 30.",
-        )
-    elif part_number == "B95701":
-        record_check(
-            "ecpu_runtime_granularity",
-            has_constraint("metric_minimum", scope="provisioned_capacity", value=Decimal("2"))
-            and has_constraint("billing_granularity", scope="usage_time", value=Decimal("1"))
-            and has_constraint("minimum_duration", scope="usage_time", value=Decimal("60")),
-            "ECPU capacity minimum and per-second usage with a one-minute minimum are preserved separately.",
-        )
-    elif part_number == "B95703":
-        record_check(
-            "byol_eligibility",
-            has_constraint("license_eligibility", scope="byol"),
-            "BYOL pricing remains blocked until entitlement evidence is provided.",
-        )
-    elif part_number == "B95754":
-        record_check(
-            "storage_increments",
-            has_constraint("purchase_increment", scope="database_storage_quantity", value=Decimal("1024"))
-            and has_constraint("purchase_increment", scope="backup_storage_quantity", value=Decimal("1")),
-            "Database and backup storage increments remain distinct.",
-        )
-    elif part_number == "B92598":
-        record_check(
-            "workspace_hour_metering",
-            price_type == "HOUR" and "workspace" in (metric_name or "").casefold(),
-            "Data Integration workspace demand is priced from active workspace hours, not a fixed monthly assumption.",
-        )
-    elif part_number == "B88206":
-        record_check(
-            "universal_credit_commitments",
-            has_constraint("commitment_minimum", scope="annual_commitment", value=Decimal("2000"))
-            and has_constraint("commitment_minimum", scope="annual_flex", value=Decimal("100000")),
-            "Annual Commitment and Annual Flex eligibility thresholds remain separate.",
         )
     return all(bool(check["passed"]) for check in checks), checks
 
@@ -937,6 +883,7 @@ async def import_commercial_workbook(
         (await db.scalars(select(ServiceProductSkuMapping).where(ServiceProductSkuMapping.status == "approved"))).all()
     )
     mapping_by_part = {mapping.part_number.upper(): mapping for mapping in mappings if mapping.part_number}
+    decimal_overrides = await _approved_billing_semantic_overrides(db)
     products_artifact_id = (
         str(structured_artifacts["products"]["artifact_id"])
         if "products" in structured_artifacts
@@ -1125,7 +1072,7 @@ async def import_commercial_workbook(
         # million-call units, so an estimator whole-unit hint must not force a
         # ceiling into the governed BOM.
         decimal_allowed = _commercial_decimal_availability(
-            part_number, decimal_allowed
+            part_number, decimal_allowed, decimal_overrides
         )
         behavior, increment, rounding, proration = _quantity_behavior(ptype, decimal_allowed)
         latest_rule = await db.scalar(
@@ -1152,14 +1099,10 @@ async def import_commercial_workbook(
         rule = latest_rule if latest_hash == semantics_hash else None
         if rule is None:
             fixture_passed, fixture_checks = _commercial_fixture_result(
-                part_number=part_number,
                 behavior=behavior,
                 increment=increment,
                 minimum=minimum,
                 price_type=ptype,
-                allow_decimal=decimal_allowed,
-                metric_name=record.metric if record else None,
-                constraints=constraints,
                 api_items=api_items,
             )
             rule = CommercialRuleFamily(
@@ -1812,17 +1755,6 @@ async def revalidate_candidate(
             )
         ).all()
     ) if term.price_catalog_snapshot_id else []
-    constraint_payloads: list[dict[str, object]] = [
-        {
-            "constraint_type": item.constraint_type,
-            "scope": item.scope,
-            "numeric_value": Decimal(item.numeric_value)
-            if item.numeric_value is not None
-            else None,
-            "text_value": item.text_value,
-        }
-        for item in constraints
-    ]
     minimum = Decimal("0")
     minimum_scope: str | None = None
     for item in constraints:
@@ -1830,8 +1762,9 @@ async def revalidate_candidate(
             minimum = Decimal(item.numeric_value)
             minimum_scope = item.scope
     price_type = term.price_type or (api_items[0].price_type if api_items else "PER_ITEM")
+    decimal_overrides = await _approved_billing_semantic_overrides(db)
     decimal_allowed = _commercial_decimal_availability(
-        candidate.part_number, term.allow_decimal_quantity
+        candidate.part_number, term.allow_decimal_quantity, decimal_overrides
     )
     behavior, increment, rounding, proration = _quantity_behavior(
         price_type, decimal_allowed
@@ -1870,14 +1803,10 @@ async def revalidate_candidate(
         rule = latest_rule
     else:
         fixture_passed, fixture_checks = _commercial_fixture_result(
-            part_number=candidate.part_number,
             behavior=behavior,
             increment=increment,
             minimum=minimum,
             price_type=price_type,
-            allow_decimal=decimal_allowed,
-            metric_name=term.metric_name,
-            constraints=constraint_payloads,
             api_items=api_items,
         )
         rule = CommercialRuleFamily(

@@ -240,6 +240,25 @@ class CommercialRuleFamily(Base, UUIDMixin, TimestampMixin):
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
+class CommercialBillingSemanticOverride(Base, UUIDMixin, TimestampMixin):
+    """Versioned, approved exception to estimator-provided billing semantics."""
+
+    __tablename__ = "commercial_billing_semantic_overrides"
+    __table_args__ = (
+        UniqueConstraint("part_number", name="uq_commercial_billing_override_part_number"),
+        Index("ix_commercial_billing_override_part_number", "part_number"),
+    )
+
+    part_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    allow_decimal_quantity: Mapped[Optional[bool]] = mapped_column(Boolean)
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
+    source_reference: Mapped[Optional[str]] = mapped_column(Text)
+    version: Mapped[str] = mapped_column(String(50), default="1.0.0", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="approved", nullable=False)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
 class CommercialMappingCandidate(Base, UUIDMixin, TimestampMixin):
     """Generated SKU mapping proposal that requires an explicit disposition."""
 

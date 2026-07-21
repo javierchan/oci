@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.models import (
     AuditEvent,
+    CommercialBillingSemanticOverride,
     CommercialDocumentSnapshot,
     CommercialException,
     CommercialMappingCandidate,
@@ -37,14 +38,24 @@ from app.services import commercial_catalog_service, storage_service
 from app.services.commercial_catalog_service import (
     GENERATOR_VERSION,
     PARSER_VERSION,
+    _approved_billing_semantic_overrides,
     _commercial_decimal_availability,
     _commercial_fixture_result,
+    _constraints,
+    _family_key,
     _meaningful_document_text,
     _quantity_behavior,
     _stable_sku,
     commercial_agent_evidence,
 )
-from app.services.commercial_document_parser import PRICE_LIST_SHEET, SUPPLEMENT_SHEET
+from app.services.commercial_document_parser import (
+    PRICE_LIST_SHEET,
+    SUPPLEMENT_SHEET,
+    CommercialPriceTerm,
+    CommercialWorkbookRecord,
+    SourceCell,
+    SourceEvidence,
+)
 
 
 @pytest.mark.parametrize("value", [None, "", "   ", "-"])
@@ -56,97 +67,177 @@ def test_meaningful_document_text_accepts_commercial_guidance() -> None:
     assert _meaningful_document_text("Includes management entitlement") is True
 
 
-def _constraint(
-    constraint_type: str,
-    scope: str,
-    value: str | None = None,
-) -> dict[str, object]:
-    return {
-        "constraint_type": constraint_type,
-        "scope": scope,
-        "numeric_value": Decimal(value) if value is not None else None,
-    }
+def _golden_commercial_record(
+    *,
+    part_number: str,
+    service_name: str,
+    metric: str,
+    metric_minimum: str | None = None,
+    guidance: str | None = None,
+    prerequisites: str | None = None,
+    terms: tuple[CommercialPriceTerm, ...] = (),
+) -> CommercialWorkbookRecord:
+    minimum = Decimal(metric_minimum) if metric_minimum is not None else None
+    return CommercialWorkbookRecord(
+        part_number=part_number,
+        service_name=service_name,
+        service_category="Golden regression evidence",
+        catalog_section=None,
+        product_family=None,
+        product_group=None,
+        pay_as_you_go=Decimal("1"),
+        annual_commitment=None,
+        commercial_price_terms=terms,
+        metric=metric,
+        metric_minimum=minimum,
+        additional_information=guidance,
+        notes=None,
+        included_entitlements=None,
+        prerequisites=prerequisites,
+        product_paths=(),
+        source_evidence=(
+            SourceEvidence(
+                sheet=PRICE_LIST_SHEET,
+                row=2,
+                cells=(
+                    SourceCell("A2", part_number, "text"),
+                    SourceCell("B2", minimum, "numeric"),
+                ),
+            ),
+        ),
+    )
 
 
 @pytest.mark.parametrize(
-    ("part_number", "price_type", "metric_name", "constraints"),
+    ("record", "expected_constraints", "expected_family_key"),
     [
         (
-            "B93306",
-            "HOUR",
-            "Execution Hour",
-            [
-                _constraint("free_tier_allowance", "monthly_billed_quantity", "30"),
-                _constraint("paid_tier_start", "pay_as_you_go", "30"),
-            ],
+            _golden_commercial_record(
+                part_number="B93306",
+                service_name="Data Integration Pipeline Operator Execution",
+                metric="Execution Hour",
+                terms=(
+                    CommercialPriceTerm("pay_as_you_go", "Free Tier", "C2", "First 30 Execution Hours", "free_tier"),
+                    CommercialPriceTerm("pay_as_you_go", Decimal("0.3"), "C3", "Greater than 30 Execution Hours", "numeric"),
+                ),
+            ),
+            {
+                ("free_tier_allowance", "monthly_billed_quantity", Decimal("30")),
+                ("paid_tier_start", "pay_as_you_go", Decimal("30")),
+            },
+            "hour::execution-hour",
         ),
         (
-            "B95703",
-            "HOUR",
-            "ECPU Per Hour",
-            [_constraint("license_eligibility", "byol")],
+            _golden_commercial_record(
+                part_number="B95701",
+                service_name="Autonomous AI Lakehouse - ECPU",
+                metric="ECPU Per Hour",
+                metric_minimum="2",
+                guidance="Partial ECPU hours are billed per second with a one-minute minimum.",
+            ),
+            {
+                ("metric_minimum", "provisioned_capacity", Decimal("2")),
+                ("billing_granularity", "usage_time", Decimal("1")),
+                ("minimum_duration", "usage_time", Decimal("60")),
+            },
+            "hour::ecpu-per-hour",
         ),
         (
-            "B95754",
-            "MONTH",
-            "Gigabyte Storage Capacity Per Month",
-            [
-                _constraint("purchase_increment", "database_storage_quantity", "1024"),
-                _constraint("purchase_increment", "backup_storage_quantity", "1"),
-            ],
+            _golden_commercial_record(
+                part_number="B95703",
+                service_name="Autonomous AI Lakehouse - ECPU BYOL",
+                metric="ECPU Per Hour",
+            ),
+            {("license_eligibility", "byol", None)},
+            "hour::ecpu-per-hour",
         ),
         (
-            "B88206",
-            "PER_ITEM",
-            "Universal Credits",
-            [
-                _constraint("commitment_minimum", "annual_commitment", "2000"),
-                _constraint("commitment_minimum", "annual_flex", "100000"),
-            ],
+            _golden_commercial_record(
+                part_number="B95754",
+                service_name="Autonomous Database Storage",
+                metric="Gigabyte Storage Capacity Per Month",
+                guidance=(
+                    "Database storage is purchased in 1,024 GB increments for each primary "
+                    "database allocation and capacity tier. Separately, backup storage is "
+                    "purchased in increments of 1 GB."
+                ),
+            ),
+            {
+                ("purchase_increment", "database_storage_quantity", Decimal("1024")),
+                ("purchase_increment", "backup_storage_quantity", Decimal("1")),
+            },
+            "month::gigabyte-storage-capacity-per-month",
         ),
-        ("B92598", "HOUR", "DI Workspace Hours", []),
+        (
+            _golden_commercial_record(
+                part_number="B92598",
+                service_name="OCI Data Integration Workspace",
+                metric="DI Workspace Hours",
+            ),
+            set(),
+            "hour::di-workspace-hours",
+        ),
+        (
+            _golden_commercial_record(
+                part_number="B88206",
+                service_name="Oracle PaaS and IaaS Universal Credits",
+                metric="Universal Credits",
+                terms=(
+                    CommercialPriceTerm("annual_commitment_minimum", Decimal("2000"), "C2", "Minimum annual commitment", "numeric"),
+                    CommercialPriceTerm("annual_flex_minimum", Decimal("100000"), "C3", "Minimum annual flex", "numeric"),
+                ),
+            ),
+            {
+                ("commitment_minimum", "annual_commitment", Decimal("2000")),
+                ("commitment_minimum", "annual_flex", Decimal("100000")),
+            },
+            "per_item::universal-credits",
+        ),
     ],
 )
-def test_official_sku_fixture_contracts_are_not_generic_placeholders(
-    part_number: str,
-    price_type: str,
-    metric_name: str,
-    constraints: list[dict[str, object]],
+def test_official_sku_constraint_generation_matches_golden_regressions(
+    record: CommercialWorkbookRecord,
+    expected_constraints: set[tuple[str, str, Decimal | None]],
+    expected_family_key: str,
 ) -> None:
-    passed, checks = _commercial_fixture_result(
-        part_number=part_number,
-        behavior="continuous",
-        increment=Decimal("0.000001"),
-        minimum=Decimal("0"),
-        price_type=price_type,
-        allow_decimal=True,
-        metric_name=metric_name,
-        constraints=constraints,
-        api_items=[],
-    )
-    assert passed, checks
-    assert len(checks) >= 2
-
-
-def test_api_gateway_fixture_rejects_integer_package_semantics() -> None:
-    passed, checks = _commercial_fixture_result(
-        part_number="B92072",
-        behavior="packaged",
-        increment=Decimal("1"),
-        minimum=Decimal("1"),
-        price_type="MONTH",
-        allow_decimal=False,
-        metric_name="1,000,000 API Calls Per Month",
-        constraints=[],
-        api_items=[],
-    )
-    assert not passed
-    assert next(item for item in checks if item["name"] == "api_gateway_decimal_scale")["passed"] is False
+    generated = {
+        (
+            str(item["constraint_type"]),
+            str(item["scope"]),
+            cast(Decimal | None, item["numeric_value"]),
+        )
+        for item in _constraints(record)
+    }
+    assert generated >= expected_constraints
+    price_type = expected_family_key.split("::", 1)[0].upper()
+    assert _family_key(price_type, record.metric) == expected_family_key
 
 
 def test_api_gateway_billing_semantics_override_estimator_whole_unit_hint() -> None:
-    assert _commercial_decimal_availability("B92072", False) is True
-    assert _commercial_decimal_availability("B92598", False) is False
+    overrides = {"B92072": True}
+    assert _commercial_decimal_availability("B92072", False, overrides) is True
+    assert _commercial_decimal_availability("B92598", False, overrides) is False
+
+
+@pytest.mark.asyncio
+async def test_approved_billing_semantic_overrides_are_loaded_from_governed_data(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as db:
+        db.add(
+            CommercialBillingSemanticOverride(
+                part_number="B92072",
+                allow_decimal_quantity=True,
+                rationale="Golden API Gateway billing regression evidence.",
+                version="1.0.0",
+                status="approved",
+                approved_by="test",
+                approved_at=datetime.now(UTC),
+            )
+        )
+        await db.commit()
+        assert await _approved_billing_semantic_overrides(db) == {"B92072": True}
 
 
 def _official_workbook() -> bytes:
@@ -873,14 +964,10 @@ def test_global_price_types_generate_explicit_quantity_contracts(
         expected_proration,
     )
     passed, checks = _commercial_fixture_result(
-        part_number=f"TEST-{price_type}-{allow_decimal}",
         behavior=behavior,
         increment=increment,
         minimum=Decimal("1") if behavior in {"packaged", "fixed_capacity"} else Decimal("0"),
         price_type=price_type,
-        allow_decimal=allow_decimal,
-        metric_name=f"Synthetic {price_type} metric",
-        constraints=[],
         api_items=[],
     )
     assert passed, checks
