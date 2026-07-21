@@ -374,6 +374,7 @@ async def serialize_scenario(
         region=scenario.region,
         price_mode=scenario.price_mode,
         commitment_model=scenario.commitment_model,
+        licensing_model=scenario.licensing_model,
         technical_snapshot_id=scenario.technical_snapshot_id,
         contract_months=scenario.contract_months,
         start_date=scenario.start_date,
@@ -1096,11 +1097,36 @@ def _commercial_coverage(
     return result
 
 
-def _default_service_config(service_ids: Iterable[str]) -> dict[str, dict[str, object]]:
+def _byol_gated_service_ids(mappings: Iterable[ServiceProductSkuMapping]) -> set[str]:
+    """Return products whose approved mappings expose a BYOL predicate."""
+
+    return {mapping.service_id for mapping in mappings if "byol" in mapping.predicates}
+
+
+def _apply_licensing_model(
+    service_config: dict[str, dict[str, object]],
+    licensing_model: str,
+    service_ids: Iterable[str],
+    byol_gated_service_ids: set[str],
+) -> dict[str, dict[str, object]]:
+    """Apply the scenario-wide license selection to dynamically BYOL-gated products."""
+
+    byol = licensing_model == "byol"
+    normalized = {key: dict(value) for key, value in service_config.items()}
+    for service_id in set(service_ids) & byol_gated_service_ids:
+        normalized[service_id] = {**normalized.get(service_id, {}), "byol": byol}
+    return normalized
+
+
+def _default_service_config(
+    service_ids: Iterable[str],
+    licensing_model: str = "license_included",
+    byol_gated_service_ids: set[str] = frozenset(),
+) -> dict[str, dict[str, object]]:
     service_config: dict[str, dict[str, object]] = {}
     for service_id in service_ids:
         if service_id == "OIC3":
-            service_config[service_id] = {"edition": "standard", "byol": False, "instance_count": 1}
+            service_config[service_id] = {"edition": "standard", "instance_count": 1}
         elif service_id == "DATA_INTEGRATION":
             service_config[service_id] = {"workspace_count": 1, "operator_execution_hours_month": 0}
         elif service_id == "STREAMING":
@@ -1108,10 +1134,15 @@ def _default_service_config(service_ids: Iterable[str]) -> dict[str, dict[str, o
         elif service_id == "QUEUE":
             service_config[service_id] = {}
         elif service_id == "GOLDENGATE":
-            service_config[service_id] = {"byol": False, "ocpu_count": 1}
+            service_config[service_id] = {"ocpu_count": 1}
         else:
             service_config[service_id] = {}
-    return service_config
+    return _apply_licensing_model(
+        service_config,
+        licensing_model,
+        service_ids,
+        byol_gated_service_ids,
+    )
 
 
 def _required_questions(service_ids: Iterable[str]) -> list[str]:
@@ -1123,11 +1154,11 @@ def _required_questions(service_ids: Iterable[str]) -> list[str]:
         "Can this estimate consume tenancy-level Free Tier allowances, or are they already allocated elsewhere?",
     ]
     if "OIC3" in services:
-        questions.append("Should Oracle Integration use Standard or Enterprise edition, and is BYOL contractually available?")
+        questions.append("Should Oracle Integration use Standard or Enterprise edition?")
     if "DATA_INTEGRATION" in services:
         questions.append("How many Data Integration workspaces and operator execution hours are required per month?")
     if "GOLDENGATE" in services:
-        questions.append("How many GoldenGate OCPUs are required per environment, and is BYOL available?")
+        questions.append("How many GoldenGate OCPUs are required per environment?")
     if "STREAMING" in services:
         questions.append("What Streaming retention period and evidenced PUT/GET transfer quantities should be used?")
     if "QUEUE" in services:
@@ -1232,6 +1263,7 @@ async def _scenario_clone_request(
         region=scenario.region,
         price_mode=scenario.price_mode,
         commitment_model=scenario.commitment_model,
+        licensing_model=scenario.licensing_model,
         contract_months=scenario.contract_months,
         start_date=scenario.start_date,
         proration_policy=scenario.proration_policy,
@@ -1366,13 +1398,18 @@ async def build_scenario_assistant(
     project, snapshot = await _project_and_snapshot(project_id, db)
     integrations = await _project_integrations(project_id, db)
     mappings = await _active_mappings(db)
+    byol_gated_service_ids = _byol_gated_service_ids(mappings)
     policies = await _active_commercial_policies(db)
     service_ids, _ = _detected_services(integrations, mappings, policies)
     current_bom, current_scenario = await _current_bom_state(project_id, snapshot.id, db)
     service_config: dict[str, dict[str, object]] = (
         cast(dict[str, dict[str, object]], current_scenario.service_config)
         if current_scenario is not None and current_bom is not None and current_bom.technical_snapshot_current
-        else _default_service_config(service_ids)
+        else _default_service_config(
+            service_ids,
+            licensing_model="license_included",
+            byol_gated_service_ids=byol_gated_service_ids,
+        )
     )
     metric_options = _metric_options(
         service_ids,
@@ -1395,6 +1432,7 @@ async def build_scenario_assistant(
         region="global",
         price_mode="public_list",
         commitment_model="pay_as_you_go",
+        licensing_model="license_included",
         contract_months=12,
         start_date=date.today().replace(day=1),
         environments=[
@@ -1502,6 +1540,19 @@ async def create_scenario(
             },
         )
     approved_mappings = await _active_mappings(db)
+    byol_gated_service_ids = _byol_gated_service_ids(approved_mappings)
+    scenario_service_ids = {
+        phase.service_id
+        for environment in environments
+        for phase in environment.phases
+        if phase.service_id
+    } | set(request.service_config)
+    enforced_service_config = _apply_licensing_model(
+        request.service_config,
+        request.licensing_model,
+        scenario_service_ids,
+        byol_gated_service_ids,
+    )
     mappings_by_id = {mapping.id: mapping for mapping in approved_mappings}
     scenario = DeploymentScenario(
         project_id=project_id,
@@ -1511,12 +1562,13 @@ async def create_scenario(
         region=request.region,
         price_mode=request.price_mode,
         commitment_model=request.commitment_model,
+        licensing_model=request.licensing_model,
         technical_snapshot_id=snapshot.id,
         contract_months=request.contract_months,
         start_date=request.start_date.replace(day=1),
         proration_policy=request.proration_policy,
         consumption_model=request.consumption_model,
-        service_config=request.service_config,
+        service_config=enforced_service_config,
         scenario_assumptions=request.assumptions,
         created_by=actor_id,
     )
@@ -1547,6 +1599,12 @@ async def create_scenario(
         for phase in phases:
             selected_mapping: ServiceProductSkuMapping | None = None
             if phase.service_id and phase.metric_key:
+                candidates = [
+                    mapping
+                    for mapping in approved_mappings
+                    if mapping.service_id == phase.service_id
+                    and mapping.billing_metric_key == phase.metric_key
+                ]
                 if phase.sku_mapping_id:
                     selected_mapping = mappings_by_id.get(phase.sku_mapping_id)
                     if (
@@ -1561,14 +1619,39 @@ async def create_scenario(
                                 "error_code": "SCENARIO_SKU_MAPPING_INVALID",
                             },
                         )
+                    if (
+                        selected_mapping is not None
+                        and "byol" in selected_mapping.predicates
+                        and phase.service_id in byol_gated_service_ids
+                    ):
+                        selected_predicates = {
+                            key: value
+                            for key, value in selected_mapping.predicates.items()
+                            if key != "byol"
+                        }
+                        expected_byol = enforced_service_config.get(phase.service_id, {}).get("byol")
+                        governed_variants = [
+                            mapping
+                            for mapping in candidates
+                            if mapping.predicates.get("byol") == expected_byol
+                            and {
+                                key: value
+                                for key, value in mapping.predicates.items()
+                                if key != "byol"
+                            }
+                            == selected_predicates
+                        ]
+                        if len(governed_variants) != 1:
+                            raise HTTPException(
+                                status_code=422,
+                                detail={
+                                    "detail": "The scenario licensing model has no matching approved commercial variant",
+                                    "error_code": "SCENARIO_LICENSING_VARIANT_REQUIRED",
+                                },
+                            )
+                        selected_mapping = governed_variants[0]
                 else:
-                    candidates = [
-                        mapping
-                        for mapping in approved_mappings
-                        if mapping.service_id == phase.service_id
-                        and mapping.billing_metric_key == phase.metric_key
-                    ]
-                    config = request.service_config.get(phase.service_id, {})
+                    config = enforced_service_config.get(phase.service_id, {})
                     matches = [
                         mapping for mapping in candidates if _mapping_predicates_match(mapping, config)
                     ]
@@ -1623,6 +1706,7 @@ async def create_scenario(
             "currency": scenario.currency,
             "start_date": scenario.start_date.isoformat(),
             "commitment_model": scenario.commitment_model,
+            "licensing_model": scenario.licensing_model,
             "consumption_model": scenario.consumption_model,
             "environments": environment_payloads,
         },

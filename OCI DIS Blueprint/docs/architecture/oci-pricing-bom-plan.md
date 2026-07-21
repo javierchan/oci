@@ -60,7 +60,7 @@ deployment scenario that answers:
 - tenancy and region placement;
 - shared versus dedicated service instances;
 - availability, redundancy, and disaster-recovery policy;
-- OIC edition and license model;
+- OIC edition and one scenario-wide licensing model;
 - active hours and active months;
 - capacity headroom and growth horizon;
 - free-tier allocation scope;
@@ -268,10 +268,12 @@ The editor uses three explicit levels:
    records hours, HA, and DR posture.
 2. **Product metric** selects the governed OCI billing unit, such as OIC message
    packs, OCPU-hours, GB, requests, or workspaces.
-3. **Commercial variant** selects the approved edition, license model, and part
-   number for that environment and metric. The selector is generated from mapping
-   predicates, so it applies to OIC Standard/Enterprise and BYOL as well as any
-   other OCI product with multiple approved commercial variants.
+3. **Commercial variant** selects the approved edition and part number for that
+   environment and metric. Licensing is not a per-product override: the scenario's
+   single `license_included` or `byol` answer is applied dynamically to every
+   mapped product whose approved SKU predicates expose `byol`; products without
+   that predicate remain untouched. The derived set is never a hardcoded service
+   list, so newly mapped BYOL products inherit the same rule automatically.
 4. **Activation schedule** records active months and initial/final quantities for
    constant or linear plans, or exact quantities in the monthly matrix.
 
@@ -356,11 +358,12 @@ It is not yet sufficient for a complete defensible BOM:
   explicit client planning; the App intentionally does not synthesize them.
 - Streaming needs explicit PUT/GET transfer evidence and storage GB-hours derived
   from an approved retention policy; the App does not assume a 2x transfer multiplier.
-- GoldenGate lacks OCPU/deployment sizing and BYOL choice.
+- GoldenGate lacks OCPU/deployment sizing; its license model follows the
+  scenario-wide licensing decision when a governed BYOL mapping is available.
 - API Gateway call demand can be derived as a planning baseline, but the client must
   validate expected monthly calls; partial million-call units remain prorated.
-- OIC needs approved edition, BYOL choice, environment count, and shared-instance
-  allocation.
+- OIC needs approved edition, environment count, and shared-instance allocation;
+  its BYOL choice follows the scenario-wide licensing decision.
 - Events and Process Automation are governed included/non-billable capabilities and
   remain visible as zero-amount BOM evidence.
 - The catalog has no governed physical environment/deployment topology.

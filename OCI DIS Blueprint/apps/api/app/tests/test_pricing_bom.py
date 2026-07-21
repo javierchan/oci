@@ -182,6 +182,33 @@ async def _seed_approved_commercial_release(
     return release
 
 
+def _scenario_mapping(
+    *,
+    service_id: str,
+    part_number: str,
+    predicates: dict[str, object],
+    metric_key: str = "test_metric",
+) -> ServiceProductSkuMapping:
+    """Build a minimal approved mapping for scenario-selection tests."""
+
+    return ServiceProductSkuMapping(
+        service_id=service_id,
+        tool_key=service_id,
+        part_number=part_number,
+        billing_metric_key=metric_key,
+        formula_key="metered_quantity",
+        quantity_behavior="continuous",
+        quantity_increment=1,
+        minimum_quantity=0,
+        quantity_unit="units",
+        predicates=predicates,
+        is_billable=True,
+        status="approved",
+        version="test-1",
+        confidence=1.0,
+    )
+
+
 def _direct_commercial_contract(
     *,
     formula_key: str,
@@ -1029,6 +1056,262 @@ async def test_scenario_persists_exact_monthly_product_quantities(
         {"period_index": 2, "quantity": 2.0},
         {"period_index": 3, "quantity": 4.0},
     ]
+
+
+@pytest.mark.asyncio
+async def test_scenario_licensing_model_overrides_conflicting_byol_and_selects_byol_sku(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """One scenario licensing answer governs every mapped BYOL variant."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(name="BYOL scenario", status=ProjectStatus.ACTIVE, owner_id="owner")
+        session.add(project)
+        await session.flush()
+        snapshot = VolumetrySnapshot(
+            project_id=project.id,
+            assumption_set_version="1.0.0",
+            triggered_by="test",
+            row_results={},
+            consolidated={},
+            snapshot_metadata={},
+        )
+        license_included = _scenario_mapping(
+            service_id="OIC3",
+            part_number="OIC-LI",
+            metric_key="oic_peak_packs_hour",
+            predicates={"edition": "standard", "byol": False},
+        )
+        byol = _scenario_mapping(
+            service_id="OIC3",
+            part_number="OIC-BYOL",
+            metric_key="oic_peak_packs_hour",
+            predicates={"edition": "standard", "byol": True},
+        )
+        session.add_all([snapshot, license_included, byol])
+        await session.commit()
+
+    response = await api_client.post(
+        f"/api/v1/projects/{project.id}/deployment-scenarios",
+        headers={"X-Actor-Role": "Architect", "X-Actor-Id": "architect"},
+        json={
+            "name": "BYOL is authoritative",
+            "technical_snapshot_id": snapshot.id,
+            "licensing_model": "byol",
+            "service_config": {"OIC3": {"edition": "standard", "byol": False}},
+            "environments": [{
+                "name": "Production",
+                "phases": [{
+                    "service_id": "OIC3",
+                    "metric_key": "oic_peak_packs_hour",
+                    "sku_mapping_id": license_included.id,
+                    "start_month": 1,
+                    "end_month": 12,
+                    "interpolation": "step",
+                    "start_quantity": 1,
+                    "end_quantity": 1,
+                    "quantity_unit": "units",
+                }],
+            }],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["licensing_model"] == "byol"
+    assert payload["service_config"]["OIC3"]["byol"] is True
+    assert payload["environments"][0]["phases"][0]["sku_mapping_id"] == byol.id
+
+
+@pytest.mark.asyncio
+async def test_scenario_licensing_does_not_touch_products_without_byol_predicate(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(name="Streaming scenario", status=ProjectStatus.ACTIVE, owner_id="owner")
+        session.add(project)
+        await session.flush()
+        snapshot = VolumetrySnapshot(
+            project_id=project.id,
+            assumption_set_version="1.0.0",
+            triggered_by="test",
+            row_results={},
+            consolidated={},
+            snapshot_metadata={},
+        )
+        session.add(snapshot)
+        await session.commit()
+
+    response = await api_client.post(
+        f"/api/v1/projects/{project.id}/deployment-scenarios",
+        headers={"X-Actor-Role": "Architect", "X-Actor-Id": "architect"},
+        json={
+            "name": "Streaming is unchanged",
+            "technical_snapshot_id": snapshot.id,
+            "licensing_model": "byol",
+            "service_config": {"STREAMING": {"retention_hours": 24}},
+            "environments": [{
+                "name": "Production",
+                "phases": [{
+                    "service_id": "STREAMING",
+                    "metric_key": "streaming_gb",
+                    "start_month": 1,
+                    "end_month": 12,
+                    "interpolation": "step",
+                    "start_quantity": 1,
+                    "end_quantity": 1,
+                    "quantity_unit": "GB",
+                }],
+            }],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["service_config"]["STREAMING"] == {"retention_hours": 24}
+
+
+@pytest.mark.asyncio
+async def test_byol_gated_products_are_derived_from_loaded_mapping_predicates(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        streaming = _scenario_mapping(
+            service_id="STREAMING",
+            part_number="STREAM-LI",
+            predicates={},
+            metric_key="streaming_gb",
+        )
+        session.add(streaming)
+        await session.flush()
+        assert "STREAMING" not in bom_service._byol_gated_service_ids(await bom_service._active_mappings(session))
+
+        streaming_byol = _scenario_mapping(
+            service_id="STREAMING",
+            part_number="STREAM-BYOL",
+            predicates={"byol": True},
+            metric_key="streaming_gb",
+        )
+        session.add(streaming_byol)
+        await session.flush()
+        assert "STREAMING" in bom_service._byol_gated_service_ids(await bom_service._active_mappings(session))
+
+
+@pytest.mark.asyncio
+async def test_odi_default_licensing_selects_license_included_variant(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(name="ODI default license", status=ProjectStatus.ACTIVE, owner_id="owner")
+        session.add(project)
+        await session.flush()
+        snapshot = VolumetrySnapshot(
+            project_id=project.id,
+            assumption_set_version="1.0.0",
+            triggered_by="test",
+            row_results={},
+            consolidated={},
+            snapshot_metadata={},
+        )
+        license_included = _scenario_mapping(
+            service_id="ODI",
+            part_number="ODI-LI",
+            predicates={"byol": False},
+            metric_key="odi_ocpu_hour",
+        )
+        byol = _scenario_mapping(
+            service_id="ODI",
+            part_number="ODI-BYOL",
+            predicates={"byol": True},
+            metric_key="odi_ocpu_hour",
+        )
+        session.add_all([snapshot, license_included, byol])
+        await session.commit()
+
+    response = await api_client.post(
+        f"/api/v1/projects/{project.id}/deployment-scenarios",
+        headers={"X-Actor-Role": "Architect", "X-Actor-Id": "architect"},
+        json={
+            "name": "ODI default licensing",
+            "technical_snapshot_id": snapshot.id,
+            "environments": [{
+                "name": "Production",
+                "phases": [{
+                    "service_id": "ODI",
+                    "metric_key": "odi_ocpu_hour",
+                    "start_month": 1,
+                    "end_month": 12,
+                    "interpolation": "step",
+                    "start_quantity": 1,
+                    "end_quantity": 1,
+                    "quantity_unit": "units",
+                }],
+            }],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["licensing_model"] == "license_included"
+    assert payload["service_config"]["ODI"]["byol"] is False
+    assert payload["environments"][0]["phases"][0]["sku_mapping_id"] == license_included.id
+
+
+@pytest.mark.asyncio
+async def test_scenario_assistant_defaults_to_license_included_for_dynamic_byol_products(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(name="Assistant licensing", status=ProjectStatus.ACTIVE, owner_id="owner")
+        session.add(project)
+        await session.flush()
+        snapshot = VolumetrySnapshot(
+            project_id=project.id,
+            assumption_set_version="1.0.0",
+            triggered_by="test",
+            row_results={},
+            consolidated={},
+            snapshot_metadata={},
+        )
+        integration = CatalogIntegration(
+            project_id=project.id,
+            seq_number=1,
+            interface_name="OIC flow",
+            source_system="ERP",
+            destination_system="CRM",
+            core_tools="OIC3",
+        )
+        session.add_all([
+            snapshot,
+            integration,
+            _scenario_mapping(
+                service_id="OIC3",
+                part_number="OIC-LI",
+                predicates={"edition": "standard", "byol": False},
+                metric_key="oic_peak_packs_hour",
+            ),
+            _scenario_mapping(
+                service_id="OIC3",
+                part_number="OIC-BYOL",
+                predicates={"edition": "standard", "byol": True},
+                metric_key="oic_peak_packs_hour",
+            ),
+        ])
+        await session.commit()
+
+        assistant = await bom_service.build_scenario_assistant(project.id, session)
+
+    assert assistant.draft.licensing_model == "license_included"
+    assert assistant.draft.service_config["OIC3"]["byol"] is False
+    assert "Should Oracle Integration use Standard or Enterprise edition?" in assistant.required_questions
+    assert all("BYOL" not in question for question in assistant.required_questions)
 
 
 def test_price_tier_selection_isolated_by_commitment_model() -> None:

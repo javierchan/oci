@@ -538,6 +538,10 @@ class DeploymentScenarioCreateRequest(BaseModel):
         default="pay_as_you_go",
         pattern="^(pay_as_you_go|annual_commitment|annual_flex|monthly_flex)$",
     )
+    licensing_model: str = Field(
+        default="license_included",
+        pattern="^(license_included|byol)$",
+    )
     contract_months: int = Field(default=12, ge=1, le=120)
     start_date: date = Field(default_factory=date.today, strict=False)
     proration_policy: str = Field(default="full_month", pattern="^full_month$")
@@ -586,6 +590,7 @@ class DeploymentScenarioResponse(BaseModel):
     region: str
     price_mode: str
     commitment_model: str
+    licensing_model: str
     technical_snapshot_id: str
     contract_months: int
     start_date: date

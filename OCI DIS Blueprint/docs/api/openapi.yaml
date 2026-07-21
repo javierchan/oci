@@ -7765,6 +7765,12 @@
             "title": "Environments",
             "type": "array"
           },
+          "licensing_model": {
+            "default": "license_included",
+            "pattern": "^(license_included|byol)$",
+            "title": "Licensing Model",
+            "type": "string"
+          },
           "name": {
             "default": "Baseline deployment",
             "maxLength": 255,
@@ -7909,6 +7915,10 @@
             "title": "Id",
             "type": "string"
           },
+          "licensing_model": {
+            "title": "Licensing Model",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -7962,6 +7972,7 @@
           "region",
           "price_mode",
           "commitment_model",
+          "licensing_model",
           "technical_snapshot_id",
           "contract_months",
           "start_date",

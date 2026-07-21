@@ -517,6 +517,9 @@ class DeploymentScenario(Base, UUIDMixin, TimestampMixin):
     commitment_model: Mapped[str] = mapped_column(
         String(32), default="pay_as_you_go", nullable=False
     )
+    licensing_model: Mapped[str] = mapped_column(
+        String(32), default="license_included", nullable=False
+    )
     technical_snapshot_id: Mapped[str] = mapped_column(ForeignKey("volumetry_snapshots.id"), nullable=False)
     contract_months: Mapped[int] = mapped_column(Integer, default=12, nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)

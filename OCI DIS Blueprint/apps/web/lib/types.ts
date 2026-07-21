@@ -2440,6 +2440,7 @@ export interface DeploymentScenarioCreate {
   region: string;
   price_mode: "public_list" | "contract_rate" | "manual_rate_card";
   commitment_model: "pay_as_you_go" | "annual_commitment" | "annual_flex" | "monthly_flex";
+  licensing_model: "license_included" | "byol";
   contract_months: number;
   start_date: string;
   proration_policy: "full_month";
@@ -2458,6 +2459,7 @@ export interface DeploymentScenario {
   region: string;
   price_mode: string;
   commitment_model: "pay_as_you_go" | "annual_commitment" | "annual_flex" | "monthly_flex";
+  licensing_model: "license_included" | "byol";
   technical_snapshot_id: string;
   contract_months: number;
   start_date: string;
