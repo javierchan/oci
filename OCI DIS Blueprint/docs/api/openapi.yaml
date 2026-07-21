@@ -6553,6 +6553,11 @@
             "title": "Current Blocked",
             "type": "integer"
           },
+          "dependent_entitlement_count": {
+            "minimum": 0.0,
+            "title": "Dependent Entitlement Count",
+            "type": "integer"
+          },
           "direct_metered_count": {
             "minimum": 0.0,
             "title": "Direct Metered Count",
@@ -6574,6 +6579,16 @@
           "external_rate_card_count": {
             "minimum": 0.0,
             "title": "External Rate Card Count",
+            "type": "integer"
+          },
+          "governed_non_priced_count": {
+            "minimum": 0.0,
+            "title": "Governed Non Priced Count",
+            "type": "integer"
+          },
+          "input_required_count": {
+            "minimum": 0.0,
+            "title": "Input Required Count",
             "type": "integer"
           },
           "projected_approved": {
@@ -6676,6 +6691,9 @@
           "candidate_count",
           "direct_metered_count",
           "external_rate_card_count",
+          "input_required_count",
+          "dependent_entitlement_count",
+          "governed_non_priced_count",
           "current_approved",
           "current_blocked",
           "projected_approved",

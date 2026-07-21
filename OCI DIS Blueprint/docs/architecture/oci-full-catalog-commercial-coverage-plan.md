@@ -479,6 +479,42 @@ exports show an explicit contractual-rate requirement instead of the internal
 non-null zero sentinel. `direct_metered` candidates retain their existing public
 price requirement and behavior.
 
+### Carril 3 — governed non-priced dispositions
+
+The remaining catalog classifications do not become free or silently disappear
+when a public or contractual rate is unavailable. `blocked_input_required` is
+materialized as an `input_required` commercial policy with
+`manual_pricing_required` publication semantics. The BOM recognizes the product,
+keeps it unpriced, lowers completion, and records the client pricing or entitlement
+evidence required before publication. No billable SKU mapping is generated.
+
+`dependent_entitlement` is materialized as a `dependencies_required` policy. Its
+parent service identifiers come only from exact `requires` relationships that are
+resolved deterministically against the governed product taxonomy. A relationship
+may remain pending source review because the Product Coverage candidate still
+requires explicit human approval before materialization; rejected, ambiguous,
+missing, or self-referential relationships remain blocked. The BOM reports the
+entitlement as included when every parent is present and otherwise identifies the
+missing parent; it never invents a standalone price.
+
+Exact resolution accepts an already-linked commercial SKU, a governed target part
+number, one unambiguous OCI part number embedded in the official prerequisite text,
+or an exact taxonomy product name. Text that presents multiple alternatives without
+an approved target selection remains blocked instead of turning every alternative
+into a simultaneous prerequisite.
+
+Both dispositions can be `ready` as governed product policies while retaining
+`input_required` commercial readiness. They bypass only the quoteable-SKU and
+release requirements that cannot apply to a deliberately non-priced disposition;
+product identity, taxonomy, exact dependency evidence, human approval, audit, and
+all priced-product gates remain intact. Carril 3 adds no schema migration and does
+not change direct-metered or external-rate calculations.
+
+The complete taxonomy `product_key` remains the public product identity. Where it
+exceeds the legacy 50-character `service_id` column, materialization uses a stable
+readable prefix plus an eight-character SHA-256 suffix. Dependency policies use the
+same resolver, and an occupied canonical ID remains an explicit collision blocker.
+
 - [x] The latest official products, presets, and metrics sources complete one atomic sync.
 - [x] Approved Price List and Supplement snapshots are immutable, hashed, and bound
       to the structured source release through field-level authority.

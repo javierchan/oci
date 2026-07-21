@@ -408,11 +408,13 @@ function CommercialCatalogWorkspace(): JSX.Element {
             </div>
             {coveragePreview ? (
               <div className="mt-5 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)]">
-                <div className="grid gap-px bg-[var(--color-border)] sm:grid-cols-2 xl:grid-cols-6">
+                <div className="grid gap-px bg-[var(--color-border)] sm:grid-cols-2 xl:grid-cols-4">
                   {[
                     [coveragePreview.dry_run ? "Would resolve" : "Resolved", coveragePreview.dry_run ? coveragePreview.eligible_open_exceptions : coveragePreview.resolved_exceptions],
                     ["PAYG ready", coveragePreview.projected_direct_metered_approved],
                     ["Rate card ready", coveragePreview.projected_external_rate_card_approved],
+                    ["Client input required", coveragePreview.input_required_count],
+                    ["Dependent entitlement", coveragePreview.dependent_entitlement_count],
                     ["Still blocked", coveragePreview.projected_blocked],
                     ["Approved in release", coveragePreview.release_part_number_count],
                     ["Enabled for BOM", coveragePreview.release_bom_part_number_count],

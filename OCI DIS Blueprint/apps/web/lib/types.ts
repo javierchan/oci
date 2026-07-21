@@ -2034,6 +2034,9 @@ export interface CommercialCoverageReport {
   candidate_count: number;
   direct_metered_count: number;
   external_rate_card_count: number;
+  input_required_count: number;
+  dependent_entitlement_count: number;
+  governed_non_priced_count: number;
   current_approved: number;
   current_blocked: number;
   projected_approved: number;
@@ -2268,7 +2271,7 @@ export interface ProductCoverageRow {
   sku_count: number;
   mapping_count: number;
   readiness_status: "ready" | "blocked_release" | "blocked_evidence";
-  commercial_readiness: "quote_ready" | "rate_card_required" | "blocked";
+  commercial_readiness: "quote_ready" | "rate_card_required" | "input_required" | "blocked";
   status: "pending_review" | "approved" | "rejected";
   promotable: boolean;
   blocker_count: number;

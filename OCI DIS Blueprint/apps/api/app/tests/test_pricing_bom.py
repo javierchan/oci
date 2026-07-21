@@ -799,6 +799,42 @@ def test_product_detection_does_not_depend_on_sku_mapping() -> None:
     assert tools == {"OCI Data Catalog"}
 
 
+def test_manual_pricing_policy_creates_visible_unpriced_bom_line() -> None:
+    """Missing client commercial evidence must never become a fabricated zero-price SKU."""
+
+    policy = ServiceCommercialPolicy(
+        id="manual-policy",
+        service_profile_id="manual-profile",
+        service_id="CLIENT_PRICED_PRODUCT",
+        classification="blocked_input_required",
+        readiness="input_required",
+        publication_policy="manual_pricing_required",
+        tool_aliases=["Client Priced Product"],
+        dependent_service_ids=[],
+        required_inputs=["customer price or entitlement"],
+        guidance="Provide client pricing evidence before approval.",
+        source_urls=[],
+        status="approved",
+        version="test",
+        confidence=1,
+    )
+
+    line = bom_service._commercial_policy_line(
+        policy,
+        {"name": "Production"},
+        status="input_required",
+        warning=policy.guidance,
+    )
+
+    assert line["status"] == "input_required"
+    assert line["part_number"] is None
+    assert line["unit_price"] == 0
+    assert line["monthly_amount"] == 0
+    assert line["formula"] == "manual_pricing_required"
+    assert line["warnings"] == [policy.guidance]
+    assert line["status"] in bom_service.UNRESOLVED_BOM_LINE_STATUSES
+
+
 def test_non_billable_mapping_cannot_replace_governed_commercial_policy() -> None:
     """Every detected product must be normalized and commercially classified."""
 

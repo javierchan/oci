@@ -2084,8 +2084,16 @@ async def _catalog_coverage_report(
     projected_approved = 0
     projected_direct_metered_approved = 0
     projected_external_rate_card_approved = 0
+    input_required_count = 0
+    dependent_entitlement_count = 0
     blockers_by_reason: dict[str, int] = {}
     for candidate in candidates:
+        if candidate.classification == "blocked_input_required":
+            input_required_count += 1
+            continue
+        if candidate.classification == "dependent_entitlement":
+            dependent_entitlement_count += 1
+            continue
         rule_id = candidate.proposed_mapping.get("commercial_rule_family_id")
         blockers = catalog_finalization_blockers(
             candidate=candidate,
@@ -2140,10 +2148,20 @@ async def _catalog_coverage_report(
         "candidate_count": len(candidates),
         "direct_metered_count": direct_metered_count,
         "external_rate_card_count": external_rate_card_count,
+        "input_required_count": input_required_count,
+        "dependent_entitlement_count": dependent_entitlement_count,
+        "governed_non_priced_count": (
+            input_required_count + dependent_entitlement_count
+        ),
         "current_approved": current_approved,
         "current_blocked": current_blocked,
         "projected_approved": projected_approved,
-        "projected_blocked": len(candidates) - projected_approved,
+        "projected_blocked": (
+            len(candidates)
+            - projected_approved
+            - input_required_count
+            - dependent_entitlement_count
+        ),
         "projected_direct_metered_approved": projected_direct_metered_approved,
         "projected_direct_metered_blocked": (
             direct_metered_count - projected_direct_metered_approved

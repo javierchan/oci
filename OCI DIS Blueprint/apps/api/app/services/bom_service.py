@@ -123,7 +123,7 @@ class GovernedSkuCommercialContract:
     classification: str
 
 
-UNRESOLVED_BOM_LINE_STATUSES = {"blocked", "rate_card_required"}
+UNRESOLVED_BOM_LINE_STATUSES = {"blocked", "rate_card_required", "input_required"}
 
 
 def _now() -> datetime:
@@ -571,11 +571,14 @@ def _bom_action_workspace(snapshot: BomSnapshot) -> AiReviewActionWorkspace:
     rate_card_required_count = int(
         _as_float(snapshot.summary.get("rate_card_required_line_count"))
     )
+    input_required_count = int(
+        _as_float(snapshot.summary.get("input_required_line_count"))
+    )
     unresolved_count = int(
         _as_float(
             snapshot.summary.get(
                 "unresolved_line_count",
-                blocked_count + rate_card_required_count,
+                blocked_count + rate_card_required_count + input_required_count,
             )
         )
     )
@@ -588,12 +591,14 @@ def _bom_action_workspace(snapshot: BomSnapshot) -> AiReviewActionWorkspace:
                 title="Close pricing coverage before commercial sign-off",
                 summary=(
                     f"{unresolved_count} BOM line(s) remain unresolved "
-                    f"({rate_card_required_count} require an approved customer rate card) "
+                    f"({rate_card_required_count} require an approved customer rate card; "
+                    f"{input_required_count} require client pricing or entitlement evidence) "
                     f"and governed coverage is {snapshot.coverage_pct:.1f}%."
                 ),
                 what_to_change=[
                     "Map every detected Service Product to an approved SKU and billing metric.",
                     "Provide an approved customer rate card with exact part-number matches for external-rate SKUs.",
+                    "Capture client pricing or entitlement evidence for products without an authoritative public rate.",
                     "Capture missing real-unit monthly quantities for every active environment.",
                 ],
                 implementation_steps=[
@@ -1279,8 +1284,8 @@ async def _current_bom_state(
             )
         ).all()
     )
-    # Blocked and customer-rate-card-required lines are unresolved. Included and
-    # non-billable evidence are terminal governed lines, not coverage gaps.
+    # Blocked, customer-rate-card-required, and client-input-required lines are
+    # unresolved. Included evidence is terminal governed coverage, not a gap.
     unresolved_count = sum(
         1 for line in lines if line.status in UNRESOLVED_BOM_LINE_STATUSES
     )
@@ -2777,6 +2782,13 @@ async def calculate_bom(
                 line = _blocked_service_line(service_id, environment, "No approved commercial policy exists for this detected product.")
             elif policy.publication_policy == "included_zero":
                 line = _commercial_policy_line(policy, environment, status="included", warning=policy.guidance)
+            elif policy.publication_policy == "manual_pricing_required":
+                line = _commercial_policy_line(
+                    policy,
+                    environment,
+                    status="input_required",
+                    warning=policy.guidance,
+                )
             elif policy.publication_policy == "dependencies_required":
                 present = [str(item) for item in policy.dependent_service_ids if str(item) in detected_services]
                 if present:
@@ -3010,6 +3022,9 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
     rate_card_required = [
         line for line in line_payloads if line["status"] == "rate_card_required"
     ]
+    input_required = [
+        line for line in line_payloads if line["status"] == "input_required"
+    ]
     covered = len(line_payloads) - len(unresolved)
     snapshot = BomSnapshot(
         project_id=job.project_id,
@@ -3034,6 +3049,7 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
             "priced_line_count": covered,
             "blocked_line_count": len(blocked),
             "rate_card_required_line_count": len(rate_card_required),
+            "input_required_line_count": len(input_required),
             "unresolved_line_count": len(unresolved),
             "detected_services": calculation.detected_services,
             "commercial_release": {

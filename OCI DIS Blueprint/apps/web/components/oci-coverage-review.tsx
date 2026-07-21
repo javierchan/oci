@@ -56,6 +56,13 @@ function readinessPresentation(product: ProductCoverageRow): {
         Icon: ShieldCheck,
       };
     }
+    if (product.commercial_readiness === "input_required") {
+      return {
+        label: "Ready · governed input required",
+        className: "border-sky-400/55 text-sky-800 dark:text-sky-300",
+        Icon: ShieldCheck,
+      };
+    }
     return {
       label: "Ready for review",
       className: "border-emerald-400/45 text-emerald-700 dark:text-emerald-300",
@@ -269,6 +276,12 @@ export function OciCoverageReview(): JSX.Element {
                           <p className="mt-1">The product definition and quantity rules are ready. A BOM can price these SKUs only when the selected approved customer rate card contains an exact part-number match.</p>
                         </div>
                       ) : null}
+                      {detail.commercial_readiness === "input_required" ? (
+                        <div className="rounded-lg border border-sky-400/45 bg-sky-500/5 p-4 text-sm leading-6 text-[var(--color-text-secondary)]">
+                          <p className="font-semibold text-sky-800 dark:text-sky-300">Governed product disposition</p>
+                          <p className="mt-1">{String(detail.proposed_policy.guidance ?? "This product remains visible in the BOM but requires client evidence or its governed parent product before commercial approval.")}</p>
+                        </div>
+                      ) : null}
                       <div>
                         <p className="app-label">Readiness blockers</p>
                         {detail.readiness_blockers.length ? (
@@ -304,7 +317,7 @@ export function OciCoverageReview(): JSX.Element {
                             ))}
                           </tbody>
                         </table>
-                        {detail.proposed_mappings.length === 0 ? <p className="px-3 py-5 text-sm text-[var(--color-text-muted)]">No complete SKU mappings can be proposed from current evidence.</p> : null}
+                        {detail.proposed_mappings.length === 0 ? <p className="px-3 py-5 text-sm text-[var(--color-text-muted)]">{detail.commercial_readiness === "input_required" ? "No billable SKU mapping is created for this governed disposition. The approved product policy keeps the requirement visible in the BOM." : "No complete SKU mappings can be proposed from current evidence."}</p> : null}
                       </div>
                     </div>
                   </div>

@@ -136,6 +136,7 @@ function lineQuantityLabel(line: BomLineItem): string {
   const active = line.periods.filter((period) => period.quantity > 0 || period.amount > 0);
   if (active.length === 0) {
     if (line.status === "rate_card_required") return `${formatNumber(line.quantity)} ${line.unit} · rate card required`;
+    if (line.status === "input_required") return "Client pricing or entitlement input required";
     return line.status === "non_billable" ? "Included / no metered charge" : `0 ${line.unit}`;
   }
   const quantities = [...new Set(active.map((period) => period.quantity))];
@@ -244,6 +245,7 @@ function LinePeriodShape({
   const maximumAmount = Math.max(...amounts, 0);
   const included = line.status === "non_billable" && maximumQuantity === 0 && maximumAmount === 0;
   const rateCardRequired = line.status === "rate_card_required";
+  const inputRequired = line.status === "input_required";
 
   return (
     <div
@@ -285,6 +287,11 @@ function LinePeriodShape({
       {rateCardRequired ? (
         <span className="absolute left-3 top-3 rounded border border-amber-400/45 bg-[var(--color-surface)] px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
           Customer rate card required
+        </span>
+      ) : null}
+      {inputRequired ? (
+        <span className="absolute left-3 top-3 rounded border border-sky-400/45 bg-[var(--color-surface)] px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">
+          Client input required
         </span>
       ) : null}
     </div>

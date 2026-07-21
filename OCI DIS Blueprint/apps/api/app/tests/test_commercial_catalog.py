@@ -1328,6 +1328,20 @@ async def test_bulk_exception_resolution_is_allowlisted_previewable_and_idempote
             exception_code="PRODUCT_IDENTITY_VARIANCE",
             exception_severity="high",
         )
+        await _add_catalog_contract_candidate(
+            db,
+            document=document,
+            part_number="BTESTINPUT",
+            classification="blocked_input_required",
+            with_api_price=False,
+        )
+        await _add_catalog_contract_candidate(
+            db,
+            document=document,
+            part_number="BTESTENTITLEMENT",
+            classification="dependent_entitlement",
+            with_api_price=False,
+        )
         await db.commit()
 
     rejected = await api_client.post(
@@ -1360,6 +1374,9 @@ async def test_bulk_exception_resolution_is_allowlisted_previewable_and_idempote
     assert preview_report["resolved_exceptions"] == 0
     assert preview_report["skipped_by_reason"]["severity_not_low:high"] == 1
     assert preview_report["projected_direct_metered_approved"] >= 1
+    assert preview_report["input_required_count"] == 1
+    assert preview_report["dependent_entitlement_count"] == 1
+    assert preview_report["governed_non_priced_count"] == 2
 
     async with session_factory() as db:
         low_exception = await db.scalar(
