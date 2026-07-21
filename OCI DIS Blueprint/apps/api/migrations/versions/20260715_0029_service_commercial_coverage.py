@@ -67,6 +67,7 @@ def upgrade() -> None:
     op.create_index("ix_service_commercial_policy_readiness", "service_commercial_policies", ["readiness", "status"])
 
     now = datetime.now(UTC)
+    _ensure_service_profiles(now)
     table = sa.table(
         "service_commercial_policies",
         sa.column("id", sa.String()), sa.column("service_profile_id", sa.String()),
@@ -117,6 +118,66 @@ def upgrade() -> None:
         (17, "B92809", "log_analytics_archival_storage_unit_hours", "storage unit-hours"),
     ]:
         _insert_mapping(f"02910000-0000-4000-8000-{index:012d}", "OBSERVABILITY", "OCI Observability", part, metric, unit, "continuous", 0.000001, "optional", "Select this meter only when telemetry scope and retention are evidenced.")
+
+
+def _ensure_service_profiles(now: datetime) -> None:
+    """Make the migration independent from the application seed order.
+
+    Fresh databases run Alembic before the governed seed command.  The seed later
+    enriches these deterministic baseline rows with the complete capability and
+    limit evidence, while existing environments keep their current profiles.
+    """
+    bind = op.get_bind()
+    existing_service_ids = {
+        row.service_id
+        for row in bind.execute(sa.text("SELECT service_id FROM service_capability_profiles"))
+    }
+    missing_profiles = []
+    for index, policy in enumerate(POLICIES, start=1):
+        service_id, classification, _readiness, _publication, aliases, _dependencies, _inputs, guidance, urls = policy
+        if service_id in existing_service_ids:
+            continue
+        missing_profiles.append(
+            {
+                "id": f"02920000-0000-4000-8000-{index:012d}",
+                "service_id": service_id,
+                "name": aliases[0],
+                "category": "COMMERCIAL_COVERAGE",
+                "sla_uptime_pct": None,
+                "pricing_model": classification.replace("_", " "),
+                "limits": {},
+                "architectural_fit": guidance,
+                "anti_patterns": None,
+                "interoperability_notes": None,
+                "oracle_docs_urls": "|".join(urls),
+                "is_active": True,
+                "version": "1.0.0",
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+    if not missing_profiles:
+        return
+
+    profiles = sa.table(
+        "service_capability_profiles",
+        sa.column("id", sa.String()),
+        sa.column("service_id", sa.String()),
+        sa.column("name", sa.String()),
+        sa.column("category", sa.String()),
+        sa.column("sla_uptime_pct", sa.Float()),
+        sa.column("pricing_model", sa.String()),
+        sa.column("limits", sa.JSON()),
+        sa.column("architectural_fit", sa.Text()),
+        sa.column("anti_patterns", sa.Text()),
+        sa.column("interoperability_notes", sa.Text()),
+        sa.column("oracle_docs_urls", sa.Text()),
+        sa.column("is_active", sa.Boolean()),
+        sa.column("version", sa.String()),
+        sa.column("created_at", sa.DateTime(timezone=True)),
+        sa.column("updated_at", sa.DateTime(timezone=True)),
+    )
+    op.bulk_insert(profiles, missing_profiles)
 
 
 def _insert_mapping(mapping_id: str, service_id: str, tool_key: str, part_number: str, metric: str, unit: str, behavior: str, increment: float, selection: str, guidance: str, predicates: str = "{}", *, billable: bool = True) -> None:
