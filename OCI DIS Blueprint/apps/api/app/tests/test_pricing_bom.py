@@ -1635,6 +1635,74 @@ async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_
         assert dry_run.line_payloads[0]["commercial_rule_family_id"] is not None
         assert dry_run.line_payloads[0]["evidence_reference_ids"]
         async with session.begin():
+            newer_sync_job = PriceSyncJob(
+                source_id=source.id,
+                requested_by="test",
+                currency="USD",
+                status="completed",
+            )
+            session.add(newer_sync_job)
+            await session.flush()
+            newer_catalog = PriceCatalogSnapshot(
+                source_id=source.id,
+                sync_job_id=newer_sync_job.id,
+                currency="USD",
+                retrieved_at=datetime.now(UTC),
+                content_hash="newer-unreleased-public-catalog",
+                item_count=1,
+                approval_status="approved",
+                approved_by="test",
+                approved_at=datetime.now(UTC),
+                snapshot_metadata={},
+            )
+            catalog.approval_status = "superseded"
+            session.add(newer_catalog)
+            await session.flush()
+            session.add_all(
+                [
+                    PriceItem(
+                        snapshot_id=newer_catalog.id,
+                        part_number="B89639",
+                        display_name="Oracle Integration newer price",
+                        metric_name="5K messages per hour",
+                        service_category="Integration",
+                        price_type="HOUR",
+                        currency="USD",
+                        model="PAY_AS_YOU_GO",
+                        value=9.9999,
+                    ),
+                    GovernanceChangeSet(
+                        sync_job_id=newer_sync_job.id,
+                        price_source_id=source.id,
+                        price_snapshot_id=newer_catalog.id,
+                        trigger_type="test",
+                        currency="USD",
+                        status="promoted",
+                        drift_classification="material",
+                        materiality_score=1,
+                        source_manifest={},
+                        drift_summary={},
+                        impact_summary={},
+                        validation_status="passed",
+                        regression_summary={"families": 1, "passed": 1, "failed": 0},
+                        approval_status="approved",
+                        approved_by="test",
+                        approved_at=datetime.now(UTC),
+                        promoted_at=datetime.now(UTC),
+                    ),
+                ]
+            )
+        async with session.begin():
+            stable_release = await bom_service.calculate_bom(
+                project_id=project.id,
+                scenario=scenario,
+                technical=technical.consolidated,
+                db=session,
+            )
+        assert stable_release.price_snapshot.id == catalog.id
+        assert stable_release.commercial_release.id == commercial_release.id
+        assert stable_release.monthly_total == 960.06
+        async with session.begin():
             job_response = await bom_service.create_bom_job(project.id, scenario.id, "architect", session)
         async with session.begin():
             job = await bom_service.run_bom_job(job_response.id, session)

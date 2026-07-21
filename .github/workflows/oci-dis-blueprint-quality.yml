@@ -128,6 +128,9 @@ jobs:
       - name: Seed governed browser project
         run: docker compose exec -T --user app api python scripts/seed_synthetic_enterprise_project.py
 
+      - name: Seed isolated browser commercial release
+        run: docker compose exec -T -e ALLOW_BROWSER_COMMERCIAL_FIXTURE=1 --user app api python scripts/seed_browser_commercial_fixture.py
+
       - name: Install Playwright Chromium
         run: npm --prefix apps/web run test:e2e:install
 

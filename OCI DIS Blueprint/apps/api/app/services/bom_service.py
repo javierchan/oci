@@ -801,6 +801,43 @@ async def _resolve_commercial_release(
     return release
 
 
+async def _resolve_public_release_context(
+    *,
+    currency: str,
+    db: AsyncSession,
+) -> tuple[CommercialRelease, PriceCatalogSnapshot, PriceSource]:
+    """Resolve the latest atomic public release and its pinned price evidence."""
+
+    release = await db.scalar(
+        select(CommercialRelease)
+        .join(
+            PriceCatalogSnapshot,
+            PriceCatalogSnapshot.id == CommercialRelease.price_catalog_snapshot_id,
+        )
+        .join(PriceSource, PriceSource.id == PriceCatalogSnapshot.source_id)
+        .where(
+            CommercialRelease.status == "approved",
+            CommercialRelease.validation_status == "passed",
+            CommercialRelease.open_exception_count == 0,
+            PriceCatalogSnapshot.currency == currency,
+            PriceSource.source_type == "public_list",
+        )
+        .order_by(CommercialRelease.approved_at.desc(), CommercialRelease.created_at.desc())
+    )
+    if release is None:
+        raise ValueError(f"No approved CommercialRelease exists for {currency}")
+    price_snapshot = await db.get(
+        PriceCatalogSnapshot,
+        release.price_catalog_snapshot_id,
+    )
+    if price_snapshot is None:
+        raise ValueError("Approved CommercialRelease price catalog not found")
+    price_source = await db.get(PriceSource, price_snapshot.source_id)
+    if price_source is None or price_source.source_type != "public_list":
+        raise ValueError("Approved CommercialRelease public price source not found")
+    return release, price_snapshot, price_source
+
+
 async def _governed_sku_contracts(
     *,
     release: CommercialRelease,
@@ -2620,34 +2657,42 @@ async def calculate_bom(
 ) -> BomCalculation:
     """Calculate a complete BOM in memory using the same governed pricing path as persistence."""
 
-    allowed_source_types = {
-        "public_list": {"public_list"},
-        "contract_rate": {"manual_rate_card", "contract_rate"},
-        "manual_rate_card": {"manual_rate_card"},
-    }[scenario.price_mode]
-    price_snapshot = await db.scalar(
-        select(PriceCatalogSnapshot)
-        .join(PriceSource, PriceSource.id == PriceCatalogSnapshot.source_id)
-        .where(
-            PriceCatalogSnapshot.currency == scenario.currency,
-            PriceCatalogSnapshot.approval_status == "approved",
-            PriceSource.source_type.in_(allowed_source_types),
+    if scenario.price_mode == "public_list":
+        commercial_release, price_snapshot, price_source = (
+            await _resolve_public_release_context(
+                currency=scenario.currency,
+                db=db,
+            )
         )
-        .order_by(PriceCatalogSnapshot.created_at.desc())
-    )
-    if price_snapshot is None:
-        raise ValueError(f"No approved {scenario.currency} price catalog is available")
-    price_source = await db.get(PriceSource, price_snapshot.source_id)
-    if price_source is None:
-        raise ValueError("Approved price catalog source not found")
-    if price_source is not None and price_source.source_type == "public_list":
         await pricing_governance_service.ensure_public_snapshot_is_current(price_snapshot, db)
-    commercial_release = await _resolve_commercial_release(
-        price_snapshot=price_snapshot,
-        price_source=price_source,
-        currency=scenario.currency,
-        db=db,
-    )
+    else:
+        allowed_source_types = {
+            "contract_rate": {"manual_rate_card", "contract_rate"},
+            "manual_rate_card": {"manual_rate_card"},
+        }[scenario.price_mode]
+        selected_price_snapshot = await db.scalar(
+            select(PriceCatalogSnapshot)
+            .join(PriceSource, PriceSource.id == PriceCatalogSnapshot.source_id)
+            .where(
+                PriceCatalogSnapshot.currency == scenario.currency,
+                PriceCatalogSnapshot.approval_status == "approved",
+                PriceSource.source_type.in_(allowed_source_types),
+            )
+            .order_by(PriceCatalogSnapshot.created_at.desc())
+        )
+        if selected_price_snapshot is None:
+            raise ValueError(f"No approved {scenario.currency} price catalog is available")
+        selected_price_source = await db.get(PriceSource, selected_price_snapshot.source_id)
+        if selected_price_source is None:
+            raise ValueError("Approved price catalog source not found")
+        price_snapshot = selected_price_snapshot
+        price_source = selected_price_source
+        commercial_release = await _resolve_commercial_release(
+            price_snapshot=price_snapshot,
+            price_source=price_source,
+            currency=scenario.currency,
+            db=db,
+        )
 
     integrations = await _project_integrations(project_id, db)
     mappings = await _active_mappings(db)
