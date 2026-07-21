@@ -402,6 +402,31 @@ async def test_support_explains_scenario_licensing_without_requiring_a_product_s
 
 
 @pytest.mark.asyncio
+async def test_support_uses_only_a_resolved_service_for_a_narrow_commercial_follow_up(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            evidence = await support_service.build_support_evidence(
+                None,
+                None,
+                {
+                    "question": "¿Qué métricas se suman para ese servicio?",
+                    "route": "/admin/pricing",
+                    "attachments": [],
+                    "transcript": [{"role": "user", "content": "¿Cómo se cobra OCI Functions?"}],
+                    "conversation_state": {
+                        "active_service": {"id": "FUNCTIONS", "name": "OCI Functions"},
+                    },
+                },
+                session,
+            )
+
+    assert evidence["question_intent"] == "commercial_guidance"
+
+
+@pytest.mark.asyncio
 async def test_support_conversation_is_isolated_and_out_of_scope_is_refused(
     api_client: AsyncClient,
     test_engine: AsyncEngine,

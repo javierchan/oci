@@ -46,6 +46,10 @@ LICENSING_WORKFLOW_PATTERN = re.compile(
     r"\b(byol|license included|licencia incluida|modelo de licencia|licensing model)\b",
     re.IGNORECASE,
 )
+COMMERCIAL_FOLLOW_UP_PATTERN = re.compile(
+    r"\b(metric\w*|m[eé]tric\w*|unit\w*|unidad\w*|sum\w*|add\w*|cantidad\w*|quantity\w*)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -79,3 +83,9 @@ def route_support_question(
     if needs_project_scope:
         return SupportRoute("project_context", False, False)
     return SupportRoute("app_guidance", False, False)
+
+
+def is_commercial_follow_up(question: str) -> bool:
+    """Recognize a narrow commercial ellipsis after a service was resolved."""
+
+    return bool(COMMERCIAL_FOLLOW_UP_PATTERN.search(question))

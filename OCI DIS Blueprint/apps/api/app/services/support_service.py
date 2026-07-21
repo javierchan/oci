@@ -45,6 +45,7 @@ from app.services.serializers import sanitize_for_json
 from app.services.support_routing_service import (
     PROJECT_PORTFOLIO_PATTERN,
     SupportRoute,
+    is_commercial_follow_up,
     route_support_question,
 )
 
@@ -1068,6 +1069,16 @@ async def build_support_evidence(
         project_is_explicit=project_is_explicit,
         needs_project_scope=needs_project_scope,
     )
+    # A follow-up such as “what metrics are added for that service?” can use
+    # only a Service Product reference that was previously resolved and stored
+    # in the compact ledger.  This is deliberately narrower than carrying the
+    # entire old intent into unrelated questions.
+    if (
+        support_route.intent == "app_guidance"
+        and isinstance(conversation_state.get("active_service"), dict)
+        and is_commercial_follow_up(question)
+    ):
+        support_route = SupportRoute("commercial_guidance", True, False)
     question_intent = support_route.intent
     is_commercial_question = support_route.needs_commercial_evidence
     pattern_count = int(
