@@ -26,6 +26,7 @@ from app.core.config import Settings
 from app.routers import agents as agents_router
 from app.services import agent_service
 from app.services import genai_client
+from scripts import prune_agent_history
 
 
 HEADERS = {"X-Actor-Id": "architect-user", "X-Actor-Role": "Admin"}
@@ -41,6 +42,63 @@ def test_production_api_prunes_agent_history_before_uvicorn_start() -> None:
 
     assert 'if [ "${1:-}" = "uvicorn" ]' in entrypoint
     assert "su-exec app python -m scripts.prune_agent_history" in entrypoint
+
+
+@pytest.mark.asyncio
+async def test_agent_history_pruning_defers_until_schema_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fresh deployment can start before Alembic creates agent_runs."""
+
+    class FakeSession:
+        async def __aenter__(self) -> "FakeSession":
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+        def begin(self) -> "FakeSession":
+            return self
+
+        async def scalar(self, _: object) -> None:
+            return None
+
+    async def unexpected_prune(_: object) -> int:
+        raise AssertionError("Retention must not query an unavailable table")
+
+    monkeypatch.setattr(prune_agent_history, "AsyncSessionLocal", FakeSession)
+    monkeypatch.setattr(prune_agent_history, "prune_agent_run_history", unexpected_prune)
+
+    assert await prune_agent_history.prune_history() is None
+
+
+@pytest.mark.asyncio
+async def test_agent_history_pruning_runs_after_schema_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The normal retention policy still runs after migrations are installed."""
+
+    class FakeSession:
+        async def __aenter__(self) -> "FakeSession":
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+        def begin(self) -> "FakeSession":
+            return self
+
+        async def scalar(self, _: object) -> str:
+            return "agent_runs"
+
+    async def fake_prune(session: object) -> int:
+        assert isinstance(session, FakeSession)
+        return 3
+
+    monkeypatch.setattr(prune_agent_history, "AsyncSessionLocal", FakeSession)
+    monkeypatch.setattr(prune_agent_history, "prune_agent_run_history", fake_prune)
+
+    assert await prune_agent_history.prune_history() == 3
 
 
 def test_guardrail_refusal_does_not_degrade_provider_health() -> None:
