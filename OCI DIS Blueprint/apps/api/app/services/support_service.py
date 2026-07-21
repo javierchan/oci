@@ -457,15 +457,17 @@ def _support_fallback_answer(evidence: dict[str, object]) -> str:
                     "sized quantity and the scenario to calculate the total."
                 )
             if isinstance(sku_options, list) and len(sku_options) == 1 and isinstance(sku_options[0], dict):
-                option = sku_options[0]
-                price = option.get("price")
-                if isinstance(price, dict):
+                single_option = cast(dict[str, object], sku_options[0])
+                single_price = single_option.get("price")
+                if isinstance(single_price, dict):
                     service_name = str(commercial_context.get("service_name") or "the selected service")
-                    part_number = str(option.get("part_number") or "the selected SKU")
-                    display_name = str(price.get("display_name") or service_name)
-                    metric = str(price.get("metric_name") or "the governed metric")
-                    unit_price = _unit_price(price.get("value"), price.get("currency"))
-                    price_type = str(price.get("price_type") or "unit")
+                    part_number = str(single_option.get("part_number") or "the selected SKU")
+                    display_name = str(single_price.get("display_name") or service_name)
+                    metric = str(single_price.get("metric_name") or "the governed metric")
+                    unit_price = _unit_price(
+                        single_price.get("value"), single_price.get("currency")
+                    )
+                    price_type = str(single_price.get("price_type") or "unit")
                     if spanish:
                         localized_price_type = _price_type_label(price_type, spanish=True)
                         return (

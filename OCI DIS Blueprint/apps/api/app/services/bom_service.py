@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 import json
 import math
-from typing import Iterable, cast
+from typing import AbstractSet, Iterable, cast
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -1107,7 +1107,7 @@ def _apply_licensing_model(
     service_config: dict[str, dict[str, object]],
     licensing_model: str,
     service_ids: Iterable[str],
-    byol_gated_service_ids: set[str],
+    byol_gated_service_ids: AbstractSet[str],
 ) -> dict[str, dict[str, object]]:
     """Apply the scenario-wide license selection to dynamically BYOL-gated products."""
 
@@ -1121,7 +1121,7 @@ def _apply_licensing_model(
 def _default_service_config(
     service_ids: Iterable[str],
     licensing_model: str = "license_included",
-    byol_gated_service_ids: set[str] = frozenset(),
+    byol_gated_service_ids: AbstractSet[str] = frozenset(),
 ) -> dict[str, dict[str, object]]:
     service_config: dict[str, dict[str, object]] = {}
     for service_id in service_ids:

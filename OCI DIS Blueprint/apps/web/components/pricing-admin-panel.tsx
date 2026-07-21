@@ -33,6 +33,7 @@ import type {
   CommercialCandidate,
   CommercialCandidateDetail,
   CommercialCandidateDecision,
+  CommercialCoverageReport,
   CommercialExceptionDecision,
   CommercialWorkspace,
   PriceCatalogSnapshot,
@@ -93,6 +94,9 @@ function CommercialCatalogWorkspace(): JSX.Element {
   const [candidateDetails, setCandidateDetails] = useState<Record<string, CommercialCandidateDetail>>({});
   const [detailLoading, setDetailLoading] = useState<Record<string, boolean>>({});
   const [finalizeRationale, setFinalizeRationale] = useState("");
+  const [coverageRationale, setCoverageRationale] = useState("");
+  const [coveragePromote, setCoveragePromote] = useState(false);
+  const [coveragePreview, setCoveragePreview] = useState<CommercialCoverageReport | null>(null);
   const [candidateDrafts, setCandidateDrafts] = useState<Record<string, CandidateDraft>>({});
   const [exceptionDrafts, setExceptionDrafts] = useState<Record<string, ExceptionDraft>>({});
 
@@ -231,6 +235,53 @@ function CommercialCatalogWorkspace(): JSX.Element {
     );
   }
 
+  async function previewCoverageAdvance(): Promise<void> {
+    if (!workspace.document) return;
+    setBusy("coverage-preview");
+    try {
+      const result = await api.advanceCommercialCatalogCoverage(workspace.document.id, {
+        rationale: coverageRationale.trim(),
+        dry_run: true,
+        promote: coveragePromote,
+      });
+      setWorkspace(result);
+      setCoveragePreview(result.coverage_report);
+      setError("");
+      emitToast("success", "Coverage preview is ready. No governance state was changed.");
+    } catch (caughtError) {
+      const message = getErrorMessage(caughtError, "Unable to preview catalog coverage.");
+      setError(message);
+      emitToast("error", message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function confirmCoverageAdvance(): Promise<void> {
+    if (!workspace.document || !coveragePreview) return;
+    setBusy("coverage-confirm");
+    try {
+      const result = await api.advanceCommercialCatalogCoverage(workspace.document.id, {
+        rationale: coverageRationale.trim(),
+        dry_run: false,
+        promote: coveragePromote,
+      });
+      setWorkspace(result);
+      setCoveragePreview(result.coverage_report);
+      setError("");
+      const promotionNote = result.coverage_report.promotion_status === "skipped"
+        ? ` Release promotion was skipped: ${result.coverage_report.promotion_detail ?? "preconditions are incomplete"}.`
+        : "";
+      emitToast("success", `Coverage advanced through deterministic finalization.${promotionNote}`);
+    } catch (caughtError) {
+      const message = getErrorMessage(caughtError, "Unable to advance catalog coverage.");
+      setError(message);
+      emitToast("error", message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section className="app-table-shell min-w-0 overflow-hidden" aria-labelledby="commercial-catalog-title">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--color-border)] px-5 py-5">
@@ -339,6 +390,86 @@ function CommercialCatalogWorkspace(): JSX.Element {
               {!loading && Object.keys(workspace.field_authority).length === 0 ? <tr><td className="px-5 py-6 text-[var(--color-text-secondary)]" colSpan={3}>Field authority will appear after the commercial catalog service is available.</td></tr> : null}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="border-t border-[var(--color-border)]">
+        <div className="grid min-w-0 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
+          <div className="min-w-0 border-b border-[var(--color-border)] px-5 py-5 xl:border-b-0 xl:border-r">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-accent)]" />
+              <div className="min-w-0">
+                <p className="app-label">Coverage Advancement</p>
+                <h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Safely unlock direct-metered OCI coverage</h3>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+                  Resolve only low-severity product identity naming variance, then apply the existing deterministic review gate. Dependency, metric, term, and repeated-source conflicts remain blocked for individual review.
+                </p>
+              </div>
+            </div>
+            {coveragePreview ? (
+              <div className="mt-5 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)]">
+                <div className="grid gap-px bg-[var(--color-border)] sm:grid-cols-2 xl:grid-cols-5">
+                  {[
+                    [coveragePreview.dry_run ? "Would resolve" : "Resolved", coveragePreview.dry_run ? coveragePreview.eligible_open_exceptions : coveragePreview.resolved_exceptions],
+                    ["Direct metered ready", coveragePreview.projected_direct_metered_approved],
+                    ["Still blocked", coveragePreview.projected_blocked],
+                    ["Approved in release", coveragePreview.release_part_number_count],
+                    ["Enabled for BOM", coveragePreview.release_bom_part_number_count],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="min-w-0 bg-[var(--color-surface)] px-4 py-3">
+                      <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{label}</p>
+                      <p className="mt-1 text-xl font-semibold text-[var(--color-text-primary)]">{formatNumber(Number(value))}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="px-4 py-3 text-xs leading-5 text-[var(--color-text-secondary)]">
+                  {coveragePreview.dry_run
+                    ? `${formatNumber(coveragePreview.projected_approved)} of ${formatNumber(coveragePreview.candidate_count)} candidates would pass finalization. No records changed.`
+                    : `${formatNumber(coveragePreview.current_approved)} candidates are approved after finalization; ${formatNumber(coveragePreview.release_bom_part_number_count)} also have an approved App mapping and can enter a BOM. Promotion: ${humanize(coveragePreview.promotion_status)}.`}
+                  {coveragePreview.promotion_detail ? <span className="mt-1 block text-amber-700 dark:text-amber-300">{coveragePreview.promotion_detail}</span> : null}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-5 border-l-2 border-[var(--color-accent)] bg-[var(--color-surface-2)] px-4 py-3 text-xs leading-5 text-[var(--color-text-secondary)]">
+                Preview computes the exact candidate funnel without mutating exceptions, review dispositions, releases, mappings, or BOMs.
+              </div>
+            )}
+            {coveragePreview && Object.keys(coveragePreview.blockers_by_reason).length > 0 ? (
+              <div className="mt-4">
+                <p className="app-label">Remaining governed blockers</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {Object.entries(coveragePreview.blockers_by_reason).slice(0, 6).map(([reason, count]) => (
+                    <span key={reason} className="app-theme-chip">{humanize(reason)} · {formatNumber(count)}</span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <div className="min-w-0 px-5 py-5">
+            <label className="block text-xs font-semibold text-[var(--color-text-secondary)]" htmlFor="coverage-advance-rationale">Governance rationale</label>
+            <textarea
+              id="coverage-advance-rationale"
+              className="mt-2 min-h-24 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-primary)]"
+              placeholder="Explain why low-risk identity variance can be closed in this official source snapshot."
+              value={coverageRationale}
+              onChange={(event) => { setCoverageRationale(event.target.value); setCoveragePreview(null); }}
+            />
+            <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-3 text-xs leading-5 text-[var(--color-text-secondary)]">
+              <input className="mt-1 h-4 w-4 accent-[var(--color-accent)]" type="checkbox" checked={coveragePromote} onChange={(event) => { setCoveragePromote(event.target.checked); setCoveragePreview(null); }} />
+              <span><strong className="block text-[var(--color-text-primary)]">Promote release after finalization</strong>Promotion remains gated by approved pricing, structured OCI artifacts, and a validated change set. If incomplete, finalization persists and promotion is truthfully skipped.</span>
+            </label>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button className="app-button-secondary gap-2" type="button" disabled={!workspace.document || !evidenceApproved || coverageRationale.trim().length < 8 || busy !== null} onClick={() => void previewCoverageAdvance()}>
+                {busy === "coverage-preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                Preview
+              </button>
+              <button className="app-button-primary gap-2" type="button" disabled={!coveragePreview?.dry_run || busy !== null} onClick={() => void confirmCoverageAdvance()}>
+                {busy === "coverage-confirm" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Confirm
+              </button>
+            </div>
+            {workspace.document && !evidenceApproved ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Approve official evidence before previewing or advancing coverage.</p> : null}
+          </div>
         </div>
       </div>
 

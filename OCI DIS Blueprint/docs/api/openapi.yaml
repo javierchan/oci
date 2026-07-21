@@ -6137,6 +6137,38 @@
         "title": "CatalogQaRefreshResponse",
         "type": "object"
       },
+      "CommercialBulkResolveRequest": {
+        "additionalProperties": false,
+        "description": "Allowlisted bulk resolution of non-material low-risk exceptions.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "exception_codes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Exception Codes",
+            "type": "array"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 8,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exception_codes",
+          "rationale"
+        ],
+        "title": "CommercialBulkResolveRequest",
+        "type": "object"
+      },
       "CommercialCandidateDetailResponse": {
         "additionalProperties": false,
         "description": "Full immutable commercial evidence for one explicitly opened candidate.",
@@ -6466,6 +6498,276 @@
           "exceptions"
         ],
         "title": "CommercialCatalogSummaryResponse",
+        "type": "object"
+      },
+      "CommercialCoverageAdvanceRequest": {
+        "additionalProperties": false,
+        "description": "Preview or execute deterministic catalog coverage advancement.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "promote": {
+            "default": false,
+            "title": "Promote",
+            "type": "boolean"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 8,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rationale"
+        ],
+        "title": "CommercialCoverageAdvanceRequest",
+        "type": "object"
+      },
+      "CommercialCoverageReportResponse": {
+        "additionalProperties": false,
+        "description": "Aggregate preview or result of one governed catalog coverage advance.",
+        "properties": {
+          "blockers_by_reason": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Blockers By Reason",
+            "type": "object"
+          },
+          "candidate_count": {
+            "minimum": 0.0,
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "current_approved": {
+            "minimum": 0.0,
+            "title": "Current Approved",
+            "type": "integer"
+          },
+          "current_blocked": {
+            "minimum": 0.0,
+            "title": "Current Blocked",
+            "type": "integer"
+          },
+          "direct_metered_count": {
+            "minimum": 0.0,
+            "title": "Direct Metered Count",
+            "type": "integer"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "eligible_open_exceptions": {
+            "minimum": 0.0,
+            "title": "Eligible Open Exceptions",
+            "type": "integer"
+          },
+          "projected_approved": {
+            "minimum": 0.0,
+            "title": "Projected Approved",
+            "type": "integer"
+          },
+          "projected_blocked": {
+            "minimum": 0.0,
+            "title": "Projected Blocked",
+            "type": "integer"
+          },
+          "projected_direct_metered_approved": {
+            "minimum": 0.0,
+            "title": "Projected Direct Metered Approved",
+            "type": "integer"
+          },
+          "projected_direct_metered_blocked": {
+            "minimum": 0.0,
+            "title": "Projected Direct Metered Blocked",
+            "type": "integer"
+          },
+          "promotion_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promotion Detail"
+          },
+          "promotion_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promotion Error Code"
+          },
+          "promotion_status": {
+            "title": "Promotion Status",
+            "type": "string"
+          },
+          "release_bom_part_number_count": {
+            "minimum": 0.0,
+            "title": "Release Bom Part Number Count",
+            "type": "integer"
+          },
+          "release_part_number_count": {
+            "minimum": 0.0,
+            "title": "Release Part Number Count",
+            "type": "integer"
+          },
+          "requested_exception_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Requested Exception Codes",
+            "type": "array"
+          },
+          "resolved_exceptions": {
+            "minimum": 0.0,
+            "title": "Resolved Exceptions",
+            "type": "integer"
+          },
+          "skipped_by_reason": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Skipped By Reason",
+            "type": "object"
+          },
+          "skipped_exceptions": {
+            "minimum": 0.0,
+            "title": "Skipped Exceptions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "document_id",
+          "dry_run",
+          "eligible_open_exceptions",
+          "resolved_exceptions",
+          "skipped_exceptions",
+          "candidate_count",
+          "direct_metered_count",
+          "current_approved",
+          "current_blocked",
+          "projected_approved",
+          "projected_blocked",
+          "projected_direct_metered_approved",
+          "projected_direct_metered_blocked",
+          "promotion_status",
+          "promotion_error_code",
+          "promotion_detail",
+          "release_part_number_count",
+          "release_bom_part_number_count"
+        ],
+        "title": "CommercialCoverageReportResponse",
+        "type": "object"
+      },
+      "CommercialCoverageWorkspaceResponse": {
+        "additionalProperties": false,
+        "description": "Commercial workspace plus a bounded catalog coverage funnel.",
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/CommercialCandidateResponse"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "coverage_report": {
+            "$ref": "#/components/schemas/CommercialCoverageReportResponse"
+          },
+          "document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommercialDocumentResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exceptions": {
+            "items": {
+              "$ref": "#/components/schemas/CommercialExceptionResponse"
+            },
+            "title": "Exceptions",
+            "type": "array"
+          },
+          "exceptions_page": {
+            "minimum": 1.0,
+            "title": "Exceptions Page",
+            "type": "integer"
+          },
+          "exceptions_page_size": {
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Exceptions Page Size",
+            "type": "integer"
+          },
+          "exceptions_total": {
+            "minimum": 0.0,
+            "title": "Exceptions Total",
+            "type": "integer"
+          },
+          "field_authority": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Field Authority",
+            "type": "object"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "releases": {
+            "items": {
+              "$ref": "#/components/schemas/CommercialReleaseResponse"
+            },
+            "title": "Releases",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CommercialCatalogSummaryResponse"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "document",
+          "summary",
+          "page",
+          "page_size",
+          "total",
+          "exceptions_page",
+          "exceptions_page_size",
+          "exceptions_total",
+          "coverage_report"
+        ],
+        "title": "CommercialCoverageWorkspaceResponse",
         "type": "object"
       },
       "CommercialDocumentResponse": {
@@ -22508,6 +22810,77 @@
         ]
       }
     },
+    "/api/v1/pricing/commercial-documents/{document_id}/advance-coverage": {
+      "post": {
+        "operationId": "advance_commercial_catalog_coverage_api_v1_pricing_commercial_documents__document_id__advance_coverage_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialCoverageAdvanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommercialCoverageWorkspaceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview or execute governed OCI catalog coverage advancement",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
     "/api/v1/pricing/commercial-documents/{document_id}/approve": {
       "post": {
         "operationId": "approve_commercial_document_api_v1_pricing_commercial_documents__document_id__approve_post",
@@ -22564,6 +22937,77 @@
           }
         },
         "summary": "Approve an official document as evidence without approving mappings",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/commercial-documents/{document_id}/bulk-resolve-exceptions": {
+      "post": {
+        "operationId": "bulk_resolve_commercial_exceptions_api_v1_pricing_commercial_documents__document_id__bulk_resolve_exceptions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialBulkResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommercialCoverageWorkspaceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve allowlisted low-risk commercial exceptions in bulk",
         "tags": [
           "Pricing"
         ]

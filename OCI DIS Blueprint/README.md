@@ -447,6 +447,11 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M53 | Continuous OCI Source Verification + Quote Regression Governance | ✅ Complete | 2026-07-16 |
 | M54 | Governed Agentic Decision Workspaces | ✅ Complete | 2026-07-16 |
 | M55 | Technical Inclusion + en-US Capture Contract | ✅ Complete | 2026-07-17 |
+| M56 | Governed External Workbook Intake | ✅ Complete | 2026-07-17 |
+| M57 | Active Project Official Template Export | ✅ Complete | 2026-07-17 |
+| M58 | Governed Service Rule Semantics + Current BOM Agent Context | ✅ Complete | 2026-07-17 |
+| M59 | Governed OCI Product Coverage Proposals | ✅ Complete | 2026-07-21 |
+| M60 | Safe Commercial Coverage Advancement | ✅ Complete | 2026-07-21 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot

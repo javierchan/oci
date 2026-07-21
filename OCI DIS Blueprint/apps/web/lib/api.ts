@@ -38,9 +38,12 @@ import type {
   CatalogPage,
   CatalogParams,
   ConsolidatedMetrics,
+  CommercialBulkResolveRequest,
   CommercialCatalogFinalizeRequest,
   CommercialCandidateReviewRequest,
   CommercialCandidateDetail,
+  CommercialCoverageAdvanceRequest,
+  CommercialCoverageWorkspace,
   CommercialExceptionReviewRequest,
   CommercialWorkspace,
   DashboardSnapshot,
@@ -1065,6 +1068,24 @@ export const api = {
   ): Promise<CommercialWorkspace> =>
     apiFetch<CommercialWorkspace>(
       `/api/v1/pricing/commercial-documents/${encodeURIComponent(documentId)}/finalize-review`,
+      { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) },
+    ),
+
+  bulkResolveCommercialExceptions: (
+    documentId: string,
+    body: CommercialBulkResolveRequest,
+  ): Promise<CommercialCoverageWorkspace> =>
+    apiFetch<CommercialCoverageWorkspace>(
+      `/api/v1/pricing/commercial-documents/${encodeURIComponent(documentId)}/bulk-resolve-exceptions`,
+      { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) },
+    ),
+
+  advanceCommercialCatalogCoverage: (
+    documentId: string,
+    body: CommercialCoverageAdvanceRequest,
+  ): Promise<CommercialCoverageWorkspace> =>
+    apiFetch<CommercialCoverageWorkspace>(
+      `/api/v1/pricing/commercial-documents/${encodeURIComponent(documentId)}/advance-coverage`,
       { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) },
     ),
 

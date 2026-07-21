@@ -429,6 +429,34 @@ Current local production evidence after the first governed generation:
   after a blocked approval attempt returned `409` with explicit blockers.
 - A 50-product list response is 20,003 bytes, well below the 200 KB payload gate.
 
+### Carril 1 — safe direct-metered coverage advancement
+
+The App can now advance low-risk commercial evidence in a governed batch without
+creating a parallel approval mechanism. The batch resolver accepts only open,
+low-severity `PRODUCT_IDENTITY_VARIANCE` exceptions from an approved evidence
+document. It requires an Admin rationale, supports a non-mutating preview, is
+idempotent, and records one audit event with the affected exception identifiers.
+Dependency, medium, and high-severity exceptions remain blocked for individual
+review.
+
+After an optional batch resolution, the orchestrator invokes the existing
+deterministic catalog finalization and, when requested and eligible, the existing
+release promotion. It never invents an approval and reports unmet promotion
+preconditions rather than hiding them. The Admin Pricing workspace presents the
+same funnel before confirmation: eligible low-risk exceptions, terminal catalog
+dispositions, blocker classes, and release coverage.
+
+Two release scopes remain intentionally distinct:
+
+- `approved_part_numbers` records SKUs whose commercial evidence passed catalog
+  finalization and belongs to the approved release.
+- `part_numbers` remains the narrower BOM execution allowlist and includes only
+  SKUs connected through approved Service Product mappings.
+
+Carril 1 grows governed commercial coverage but does not activate a SKU in a BOM
+until the independent Phase 2B product profile, policy, mapping, and fixture gates
+also pass. No schema migration or BOM calculation change is introduced.
+
 - [x] The latest official products, presets, and metrics sources complete one atomic sync.
 - [x] Approved Price List and Supplement snapshots are immutable, hashed, and bound
       to the structured source release through field-level authority.

@@ -214,7 +214,7 @@ def test_official_sku_constraint_generation_matches_golden_regressions(
 
 
 def test_api_gateway_billing_semantics_override_estimator_whole_unit_hint() -> None:
-    overrides = {"B92072": True}
+    overrides: dict[str, bool | None] = {"B92072": True}
     assert _commercial_decimal_availability("B92072", False, overrides) is True
     assert _commercial_decimal_availability("B92598", False, overrides) is False
 
@@ -1010,6 +1010,7 @@ async def _add_catalog_contract_candidate(
     classification: str,
     with_api_price: bool,
     exception_code: str | None = None,
+    exception_severity: str = "high",
     unresolved_dependency: bool = False,
 ) -> CommercialMappingCandidate:
     sku = CommercialSku(
@@ -1137,7 +1138,7 @@ async def _add_catalog_contract_candidate(
                 candidate_id=candidate.id,
                 part_number=part_number,
                 exception_code=exception_code,
-                severity="high",
+                severity=exception_severity,
                 status="open",
                 details=exception_details,
                 proposed_resolution="Resolve the governed blocker before publication.",
@@ -1283,6 +1284,211 @@ async def test_finalize_catalog_review_disposes_every_candidate_once_with_aggreg
                 )
             )
         ) == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_exception_resolution_is_allowlisted_previewable_and_idempotent(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    document_id, headers = await _import_approved_document(api_client, test_engine)
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as db:
+        document = await db.get(CommercialDocumentSnapshot, document_id)
+        assert document is not None
+        low_candidate = await _add_catalog_contract_candidate(
+            db,
+            document=document,
+            part_number="BTESTBULKLOW",
+            classification="direct_metered",
+            with_api_price=True,
+            exception_code="PRODUCT_IDENTITY_VARIANCE",
+            exception_severity="low",
+        )
+        high_candidate = await _add_catalog_contract_candidate(
+            db,
+            document=document,
+            part_number="BTESTBULKHIGH",
+            classification="direct_metered",
+            with_api_price=True,
+            exception_code="PRODUCT_IDENTITY_VARIANCE",
+            exception_severity="high",
+        )
+        await db.commit()
+
+    rejected = await api_client.post(
+        f"/api/v1/pricing/commercial-documents/{document_id}/bulk-resolve-exceptions",
+        headers=headers,
+        json={
+            "exception_codes": ["DEPENDENCY_UNRESOLVED"],
+            "rationale": "Dependencies always require an exact human-reviewed target SKU.",
+            "dry_run": True,
+        },
+    )
+    assert rejected.status_code == 422, rejected.text
+    assert rejected.json()["detail"]["error_code"] == (
+        "COMMERCIAL_EXCEPTION_BULK_CODE_NOT_ALLOWED"
+    )
+
+    preview = await api_client.post(
+        f"/api/v1/pricing/commercial-documents/{document_id}/bulk-resolve-exceptions",
+        headers=headers,
+        json={
+            "exception_codes": ["PRODUCT_IDENTITY_VARIANCE"],
+            "rationale": "The documentary and estimator names identify the same priced SKU.",
+            "dry_run": True,
+        },
+    )
+    assert preview.status_code == 200, preview.text
+    preview_report = preview.json()["coverage_report"]
+    assert preview_report["dry_run"] is True
+    assert preview_report["eligible_open_exceptions"] == 1
+    assert preview_report["resolved_exceptions"] == 0
+    assert preview_report["skipped_by_reason"]["severity_not_low:high"] == 1
+    assert preview_report["projected_direct_metered_approved"] >= 1
+
+    async with session_factory() as db:
+        low_exception = await db.scalar(
+            select(CommercialException).where(
+                CommercialException.candidate_id == low_candidate.id
+            )
+        )
+        high_exception = await db.scalar(
+            select(CommercialException).where(
+                CommercialException.candidate_id == high_candidate.id
+            )
+        )
+        assert low_exception is not None and low_exception.status == "open"
+        assert high_exception is not None and high_exception.status == "open"
+
+    applied = await api_client.post(
+        f"/api/v1/pricing/commercial-documents/{document_id}/bulk-resolve-exceptions",
+        headers=headers,
+        json={
+            "exception_codes": ["PRODUCT_IDENTITY_VARIANCE"],
+            "rationale": "The documentary and estimator names identify the same priced SKU.",
+            "dry_run": False,
+        },
+    )
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["coverage_report"]["resolved_exceptions"] == 1
+
+    repeated = await api_client.post(
+        f"/api/v1/pricing/commercial-documents/{document_id}/bulk-resolve-exceptions",
+        headers=headers,
+        json={
+            "exception_codes": ["PRODUCT_IDENTITY_VARIANCE"],
+            "rationale": "The documentary and estimator names identify the same priced SKU.",
+            "dry_run": False,
+        },
+    )
+    assert repeated.status_code == 200, repeated.text
+    assert repeated.json()["coverage_report"]["resolved_exceptions"] == 0
+    assert repeated.json()["coverage_report"]["skipped_by_reason"]["already_closed"] == 1
+
+    async with session_factory() as db:
+        exceptions = {
+            item.candidate_id: item
+            for item in (
+                await db.scalars(
+                    select(CommercialException).where(
+                        CommercialException.candidate_id.in_(
+                            [low_candidate.id, high_candidate.id]
+                        )
+                    )
+                )
+            ).all()
+        }
+        assert exceptions[low_candidate.id].status == "resolved"
+        assert exceptions[high_candidate.id].status == "open"
+        assert (
+            await db.scalar(
+                select(func.count()).select_from(AuditEvent).where(
+                    AuditEvent.event_type == "commercial_exceptions_bulk_resolved",
+                    AuditEvent.entity_id == document_id,
+                )
+            )
+        ) == 1
+
+
+@pytest.mark.asyncio
+async def test_advance_coverage_resolves_low_variance_finalizes_and_promotes_release(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    document_id, headers = await _import_approved_document(api_client, test_engine)
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as db:
+        document = await db.get(CommercialDocumentSnapshot, document_id)
+        assert document is not None
+        await _add_catalog_contract_candidate(
+            db,
+            document=document,
+            part_number="BTESTADVANCE",
+            classification="direct_metered",
+            with_api_price=True,
+            exception_code="PRODUCT_IDENTITY_VARIANCE",
+            exception_severity="low",
+        )
+        await db.commit()
+
+    preview = await api_client.post(
+        f"/api/v1/pricing/commercial-documents/{document_id}/advance-coverage",
+        headers=headers,
+        json={
+            "rationale": "Part-number identity is stable across the approved official sources.",
+            "dry_run": True,
+            "promote": True,
+        },
+    )
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["coverage_report"]["promotion_status"] == "preview_only"
+    assert preview.json()["coverage_report"]["eligible_open_exceptions"] == 1
+
+    advanced = await api_client.post(
+        f"/api/v1/pricing/commercial-documents/{document_id}/advance-coverage",
+        headers=headers,
+        json={
+            "rationale": "Part-number identity is stable across the approved official sources.",
+            "dry_run": False,
+            "promote": True,
+        },
+    )
+    assert advanced.status_code == 200, advanced.text
+    report = advanced.json()["coverage_report"]
+    assert report["resolved_exceptions"] == 1
+    assert report["promotion_status"] == "promoted"
+    assert report["release_part_number_count"] >= 1
+
+    async with session_factory() as db:
+        reloaded_candidate = await db.scalar(
+            select(CommercialMappingCandidate).where(
+                CommercialMappingCandidate.document_snapshot_id == document_id,
+                CommercialMappingCandidate.part_number == "BTESTADVANCE",
+            )
+        )
+        assert reloaded_candidate is not None and reloaded_candidate.status == "approved"
+        low_exception = await db.scalar(
+            select(CommercialException).where(
+                CommercialException.document_snapshot_id == document_id,
+                CommercialException.part_number == "BTESTADVANCE",
+                CommercialException.exception_code == "PRODUCT_IDENTITY_VARIANCE",
+            )
+        )
+        assert low_exception is not None and low_exception.status == "resolved"
+        release = await db.scalar(
+            select(CommercialRelease).where(
+                CommercialRelease.document_snapshot_id == document_id,
+                CommercialRelease.status == "approved",
+            )
+        )
+        assert release is not None
+        approved_parts = cast(
+            list[object], release.release_metadata["approved_part_numbers"]
+        )
+        bom_parts = cast(list[object], release.release_metadata["part_numbers"])
+        assert "BTESTADVANCE" in approved_parts
+        assert "BTESTADVANCE" not in bom_parts
 
 
 @pytest.mark.asyncio

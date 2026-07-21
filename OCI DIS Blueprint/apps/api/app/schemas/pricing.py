@@ -216,6 +216,40 @@ class CommercialWorkspaceResponse(BaseModel):
     field_authority: dict[str, str] = Field(default_factory=dict)
 
 
+class CommercialCoverageReportResponse(BaseModel):
+    """Aggregate preview or result of one governed catalog coverage advance."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    document_id: str
+    dry_run: bool
+    requested_exception_codes: list[str] = Field(default_factory=list)
+    eligible_open_exceptions: int = Field(ge=0)
+    resolved_exceptions: int = Field(ge=0)
+    skipped_exceptions: int = Field(ge=0)
+    skipped_by_reason: dict[str, int] = Field(default_factory=dict)
+    candidate_count: int = Field(ge=0)
+    direct_metered_count: int = Field(ge=0)
+    current_approved: int = Field(ge=0)
+    current_blocked: int = Field(ge=0)
+    projected_approved: int = Field(ge=0)
+    projected_blocked: int = Field(ge=0)
+    projected_direct_metered_approved: int = Field(ge=0)
+    projected_direct_metered_blocked: int = Field(ge=0)
+    blockers_by_reason: dict[str, int] = Field(default_factory=dict)
+    promotion_status: str
+    promotion_error_code: Optional[str]
+    promotion_detail: Optional[str]
+    release_part_number_count: int = Field(ge=0)
+    release_bom_part_number_count: int = Field(ge=0)
+
+
+class CommercialCoverageWorkspaceResponse(CommercialWorkspaceResponse):
+    """Commercial workspace plus a bounded catalog coverage funnel."""
+
+    coverage_report: CommercialCoverageReportResponse
+
+
 class OciProductPriceSummaryResponse(BaseModel):
     """Bounded PAYG price range from the latest approved USD snapshot."""
 
@@ -371,6 +405,26 @@ class CommercialCatalogFinalizeRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     rationale: str = Field(min_length=8, max_length=2000)
+
+
+class CommercialBulkResolveRequest(BaseModel):
+    """Allowlisted bulk resolution of non-material low-risk exceptions."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    exception_codes: list[str] = Field(min_length=1, max_length=10)
+    rationale: str = Field(min_length=8, max_length=2000)
+    dry_run: bool = False
+
+
+class CommercialCoverageAdvanceRequest(BaseModel):
+    """Preview or execute deterministic catalog coverage advancement."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    rationale: str = Field(min_length=8, max_length=2000)
+    dry_run: bool = False
+    promote: bool = False
 
 
 class CommercialExceptionReviewRequest(BaseModel):

@@ -2011,6 +2011,42 @@ export interface CommercialCatalogFinalizeRequest {
   rationale: string;
 }
 
+export interface CommercialBulkResolveRequest {
+  exception_codes: string[];
+  rationale: string;
+  dry_run: boolean;
+}
+
+export interface CommercialCoverageAdvanceRequest {
+  rationale: string;
+  dry_run: boolean;
+  promote: boolean;
+}
+
+export interface CommercialCoverageReport {
+  document_id: string;
+  dry_run: boolean;
+  requested_exception_codes: string[];
+  eligible_open_exceptions: number;
+  resolved_exceptions: number;
+  skipped_exceptions: number;
+  skipped_by_reason: Record<string, number>;
+  candidate_count: number;
+  direct_metered_count: number;
+  current_approved: number;
+  current_blocked: number;
+  projected_approved: number;
+  projected_blocked: number;
+  projected_direct_metered_approved: number;
+  projected_direct_metered_blocked: number;
+  blockers_by_reason: Record<string, number>;
+  promotion_status: string;
+  promotion_error_code: string | null;
+  promotion_detail: string | null;
+  release_part_number_count: number;
+  release_bom_part_number_count: number;
+}
+
 export type CommercialExceptionDecision = "resolve" | "accept_risk" | "keep_open";
 
 export interface CommercialException {
@@ -2167,6 +2203,10 @@ export interface CommercialWorkspace {
   exceptions_total: number;
   releases: CommercialRelease[];
   field_authority: Record<string, string>;
+}
+
+export interface CommercialCoverageWorkspace extends CommercialWorkspace {
+  coverage_report: CommercialCoverageReport;
 }
 
 export interface OciProductPriceSummary {

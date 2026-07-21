@@ -14,6 +14,7 @@ import hashlib
 from io import BytesIO
 import json
 import re
+from typing import cast as typing_cast
 from fastapi import HTTPException
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,6 +58,8 @@ FIELD_AUTHORITY = {
     "metric_identity_and_display": "cloud_estimator_metrics",
     "estimator_composition_hints": "cloud_estimator_presets",
 }
+BULK_RESOLVABLE_EXCEPTION_CODES = frozenset({"PRODUCT_IDENTITY_VARIANCE"})
+_BULK_RESOLVABLE_SEVERITY = "low"
 _MINUTE_PATTERN = re.compile(r"(?:one|1)[ -]minute minimum", re.IGNORECASE)
 _INCREMENT_PATTERNS = (
     re.compile(
@@ -1920,6 +1923,339 @@ async def revalidate_candidate(
     return await commercial_workspace(db, document_id=candidate.document_snapshot_id)
 
 
+async def _apply_exception_decision(
+    commercial_exception: CommercialException,
+    *,
+    decision: str,
+    rationale: str,
+    target: CommercialSku | None,
+    actor_id: str,
+    now: datetime,
+    db: AsyncSession,
+) -> str:
+    """Apply one already-validated exception decision without emitting audit."""
+
+    old_status = commercial_exception.status
+    commercial_exception.status = {
+        "resolve": "resolved",
+        "accept_risk": "accepted_risk",
+        "keep_open": "open",
+    }[decision]
+    commercial_exception.decision_rationale = rationale
+    commercial_exception.reviewed_by = actor_id
+    commercial_exception.reviewed_at = now
+    relationship_id = commercial_exception.details.get("relationship_id")
+    if isinstance(relationship_id, str):
+        relationship = await db.get(SkuCommercialRelationship, relationship_id)
+        if relationship is not None:
+            if target is not None:
+                relationship.target_commercial_sku_id = target.id
+                relationship.target_part_number = target.part_number
+            relationship.resolution_status = {
+                "resolve": "resolved",
+                "accept_risk": "accepted_risk",
+                "keep_open": "unresolved",
+            }[decision]
+            relationship.status = {
+                "resolve": "approved",
+                "accept_risk": "accepted_risk",
+                "keep_open": "needs_review",
+            }[decision]
+    return old_status
+
+
+async def _catalog_coverage_report(
+    document_id: str,
+    *,
+    dry_run: bool,
+    requested_exception_codes: list[str],
+    eligible_open_exceptions: int,
+    resolved_exceptions: int,
+    skipped_exceptions: int,
+    skipped_by_reason: dict[str, int],
+    ignored_open_exception_ids: set[str],
+    promotion_status: str,
+    promotion_error_code: str | None,
+    promotion_detail: str | None,
+    db: AsyncSession,
+) -> dict[str, object]:
+    """Build an aggregate disposition funnel using the production finalization gate."""
+
+    candidates = list(
+        (
+            await db.scalars(
+                select(CommercialMappingCandidate).where(
+                    CommercialMappingCandidate.document_snapshot_id == document_id
+                )
+            )
+        ).all()
+    )
+    rule_ids = {
+        str(rule_id)
+        for candidate in candidates
+        if isinstance(
+            rule_id := candidate.proposed_mapping.get("commercial_rule_family_id"), str
+        )
+    }
+    rules = (
+        list(
+            (
+                await db.scalars(
+                    select(CommercialRuleFamily).where(CommercialRuleFamily.id.in_(rule_ids))
+                )
+            ).all()
+        )
+        if rule_ids
+        else []
+    )
+    rules_by_id = {rule.id: rule for rule in rules}
+    term_ids = {candidate.term_id for candidate in candidates if candidate.term_id}
+    terms = (
+        list(
+            (
+                await db.scalars(
+                    select(SkuCommercialTerm).where(SkuCommercialTerm.id.in_(term_ids))
+                )
+            ).all()
+        )
+        if term_ids
+        else []
+    )
+    terms_by_id = {term.id: term for term in terms}
+    open_exceptions = list(
+        (
+            await db.scalars(
+                select(CommercialException).where(
+                    CommercialException.document_snapshot_id == document_id,
+                    CommercialException.status == "open",
+                )
+            )
+        ).all()
+    )
+    exception_codes_by_part: dict[str, set[str]] = {}
+    for commercial_exception in open_exceptions:
+        if (
+            commercial_exception.id not in ignored_open_exception_ids
+            and commercial_exception.part_number
+        ):
+            exception_codes_by_part.setdefault(
+                str(commercial_exception.part_number), set()
+            ).add(commercial_exception.exception_code)
+    unresolved_relationships = list(
+        (
+            await db.scalars(
+                select(SkuCommercialRelationship).where(
+                    SkuCommercialRelationship.document_snapshot_id == document_id,
+                    SkuCommercialRelationship.resolution_status.in_(
+                        ("unresolved", "accepted_risk")
+                    ),
+                )
+            )
+        ).all()
+    )
+    relationship_statuses_by_part: dict[str, set[str]] = {}
+    for relationship in unresolved_relationships:
+        relationship_statuses_by_part.setdefault(relationship.part_number, set()).add(
+            relationship.resolution_status
+        )
+
+    projected_approved = 0
+    projected_direct_metered_approved = 0
+    blockers_by_reason: dict[str, int] = {}
+    for candidate in candidates:
+        rule_id = candidate.proposed_mapping.get("commercial_rule_family_id")
+        blockers = catalog_finalization_blockers(
+            candidate=candidate,
+            rule=rules_by_id.get(str(rule_id)) if isinstance(rule_id, str) else None,
+            term=terms_by_id.get(candidate.term_id) if candidate.term_id else None,
+            open_exception_codes=exception_codes_by_part.get(candidate.part_number, set()),
+            unresolved_relationship_statuses=relationship_statuses_by_part.get(
+                candidate.part_number, set()
+            ),
+        )
+        if not blockers:
+            projected_approved += 1
+            if candidate.classification == "direct_metered":
+                projected_direct_metered_approved += 1
+        for blocker in blockers:
+            blockers_by_reason[blocker] = blockers_by_reason.get(blocker, 0) + 1
+
+    direct_metered_count = sum(
+        candidate.classification == "direct_metered" for candidate in candidates
+    )
+    current_approved = sum(candidate.status == "approved" for candidate in candidates)
+    current_blocked = sum(candidate.status == "blocked" for candidate in candidates)
+    release = await db.scalar(
+        select(CommercialRelease)
+        .where(
+            CommercialRelease.document_snapshot_id == document_id,
+            CommercialRelease.status == "approved",
+        )
+        .order_by(CommercialRelease.created_at.desc())
+    )
+    release_catalog_parts = (
+        _string_list(release.release_metadata.get("approved_part_numbers"))
+        if release
+        else []
+    )
+    release_bom_parts = (
+        _string_list(release.release_metadata.get("part_numbers")) if release else []
+    )
+    return {
+        "document_id": document_id,
+        "dry_run": dry_run,
+        "requested_exception_codes": requested_exception_codes,
+        "eligible_open_exceptions": eligible_open_exceptions,
+        "resolved_exceptions": resolved_exceptions,
+        "skipped_exceptions": skipped_exceptions,
+        "skipped_by_reason": dict(sorted(skipped_by_reason.items())),
+        "candidate_count": len(candidates),
+        "direct_metered_count": direct_metered_count,
+        "current_approved": current_approved,
+        "current_blocked": current_blocked,
+        "projected_approved": projected_approved,
+        "projected_blocked": len(candidates) - projected_approved,
+        "projected_direct_metered_approved": projected_direct_metered_approved,
+        "projected_direct_metered_blocked": (
+            direct_metered_count - projected_direct_metered_approved
+        ),
+        "blockers_by_reason": dict(
+            sorted(blockers_by_reason.items(), key=lambda item: (-item[1], item[0]))
+        ),
+        "promotion_status": promotion_status,
+        "promotion_error_code": promotion_error_code,
+        "promotion_detail": promotion_detail,
+        "release_part_number_count": len(release_catalog_parts),
+        "release_bom_part_number_count": len(release_bom_parts),
+    }
+
+
+async def bulk_resolve_exceptions(
+    document_id: str,
+    *,
+    exception_codes: list[str],
+    decision: str = "resolve",
+    rationale: str,
+    actor_id: str,
+    db: AsyncSession,
+    dry_run: bool = False,
+) -> dict[str, object]:
+    """Resolve only explicitly allowlisted low-risk evidence variances in bulk."""
+
+    if decision != "resolve":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "detail": "Bulk commercial exception decisions only support resolve",
+                "error_code": "COMMERCIAL_EXCEPTION_BULK_DECISION_INVALID",
+            },
+        )
+    requested_codes = sorted(
+        {code.strip().upper() for code in exception_codes if code.strip()}
+    )
+    rejected_codes = sorted(set(requested_codes) - BULK_RESOLVABLE_EXCEPTION_CODES)
+    if not requested_codes or rejected_codes:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "detail": "Only low-severity product identity variance may be resolved in bulk",
+                "error_code": "COMMERCIAL_EXCEPTION_BULK_CODE_NOT_ALLOWED",
+                "allowed_codes": sorted(BULK_RESOLVABLE_EXCEPTION_CODES),
+                "rejected_codes": rejected_codes or requested_codes,
+            },
+        )
+    document = await db.get(CommercialDocumentSnapshot, document_id)
+    if document is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "detail": "Commercial document not found",
+                "error_code": "COMMERCIAL_DOCUMENT_NOT_FOUND",
+            },
+        )
+    if document.status != "approved_evidence":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Approve the source document as evidence before closing exceptions",
+                "error_code": "COMMERCIAL_DOCUMENT_APPROVAL_REQUIRED",
+            },
+        )
+
+    matching_exceptions = list(
+        (
+            await db.scalars(
+                select(CommercialException).where(
+                    CommercialException.document_snapshot_id == document_id,
+                    CommercialException.exception_code.in_(requested_codes),
+                )
+            )
+        ).all()
+    )
+    eligible = [
+        item
+        for item in matching_exceptions
+        if item.status == "open" and item.severity.casefold() == _BULK_RESOLVABLE_SEVERITY
+    ]
+    skipped_by_reason: dict[str, int] = {}
+    for item in matching_exceptions:
+        reason: str | None = None
+        if item.status != "open":
+            reason = "already_closed"
+        elif item.severity.casefold() != _BULK_RESOLVABLE_SEVERITY:
+            reason = f"severity_not_low:{item.severity}"
+        if reason:
+            skipped_by_reason[reason] = skipped_by_reason.get(reason, 0) + 1
+
+    affected_ids = {item.id for item in eligible}
+    if not dry_run:
+        now = _now()
+        for commercial_exception in eligible:
+            await _apply_exception_decision(
+                commercial_exception,
+                decision="resolve",
+                rationale=rationale,
+                target=None,
+                actor_id=actor_id,
+                now=now,
+                db=db,
+            )
+        if eligible:
+            await audit_service.emit(
+                "commercial_exceptions_bulk_resolved",
+                "commercial_document_snapshot",
+                document_id,
+                actor_id,
+                None,
+                {
+                    "count": len(eligible),
+                    "codes": requested_codes,
+                    "rationale": rationale,
+                    "exception_ids": sorted(affected_ids),
+                },
+                None,
+                db,
+            )
+            await db.flush()
+
+    report = await _catalog_coverage_report(
+        document_id,
+        dry_run=dry_run,
+        requested_exception_codes=requested_codes,
+        eligible_open_exceptions=len(eligible),
+        resolved_exceptions=0 if dry_run else len(eligible),
+        skipped_exceptions=sum(skipped_by_reason.values()),
+        skipped_by_reason=skipped_by_reason,
+        ignored_open_exception_ids=affected_ids if dry_run else set(),
+        promotion_status="not_requested",
+        promotion_error_code=None,
+        promotion_detail=None,
+        db=db,
+    )
+    workspace = await commercial_workspace(db, document_id=document_id)
+    return {**workspace, "coverage_report": report}
+
+
 async def review_exception(
     exception_id: str,
     *,
@@ -1970,7 +2306,6 @@ async def review_exception(
                 "error_code": "COMMERCIAL_DOCUMENT_APPROVAL_REQUIRED",
             },
         )
-    old_status = commercial_exception.status
     resolved_target: CommercialSku | None = None
     if is_dependency and decision == "resolve":
         normalized_target = (target_part_number or "").strip().upper()
@@ -2003,31 +2338,15 @@ async def review_exception(
                     "target_part_number": normalized_target,
                 },
             )
-    commercial_exception.status = {
-        "resolve": "resolved",
-        "accept_risk": "accepted_risk",
-        "keep_open": "open",
-    }[decision]
-    commercial_exception.decision_rationale = rationale
-    commercial_exception.reviewed_by = actor_id
-    commercial_exception.reviewed_at = _now()
-    relationship_id = commercial_exception.details.get("relationship_id")
-    if isinstance(relationship_id, str):
-        relationship = await db.get(SkuCommercialRelationship, relationship_id)
-        if relationship is not None:
-            if resolved_target is not None:
-                relationship.target_commercial_sku_id = resolved_target.id
-                relationship.target_part_number = resolved_target.part_number
-            relationship.resolution_status = {
-                "resolve": "resolved",
-                "accept_risk": "accepted_risk",
-                "keep_open": "unresolved",
-            }[decision]
-            relationship.status = {
-                "resolve": "approved",
-                "accept_risk": "accepted_risk",
-                "keep_open": "needs_review",
-            }[decision]
+    old_status = await _apply_exception_decision(
+        commercial_exception,
+        decision=decision,
+        rationale=rationale,
+        target=resolved_target,
+        actor_id=actor_id,
+        now=_now(),
+        db=db,
+    )
     await audit_service.emit(
         "commercial_exception_reviewed",
         "commercial_exception",
@@ -2388,6 +2707,77 @@ async def promote_release(document_id: str, actor_id: str, db: AsyncSession) -> 
         }, None, db,
     )
     return await commercial_workspace(db, document_id=document.id)
+
+
+async def advance_catalog_coverage(
+    document_id: str,
+    *,
+    rationale: str,
+    actor_id: str,
+    db: AsyncSession,
+    dry_run: bool = False,
+    promote: bool = False,
+) -> dict[str, object]:
+    """Advance safe catalog coverage and optionally promote its governed release."""
+
+    bulk_result = await bulk_resolve_exceptions(
+        document_id,
+        exception_codes=sorted(BULK_RESOLVABLE_EXCEPTION_CODES),
+        rationale=rationale,
+        actor_id=actor_id,
+        db=db,
+        dry_run=dry_run,
+    )
+    bulk_report = dict(typing_cast(dict[str, object], bulk_result["coverage_report"]))
+    if dry_run:
+        bulk_report["promotion_status"] = "preview_only" if promote else "not_requested"
+        return {**bulk_result, "coverage_report": bulk_report}
+
+    await finalize_catalog_review(
+        document_id,
+        rationale=rationale,
+        actor_id=actor_id,
+        db=db,
+    )
+    promotion_status = "not_requested"
+    promotion_error_code: str | None = None
+    promotion_detail: str | None = None
+    if promote:
+        try:
+            await promote_release(document_id, actor_id, db)
+            promotion_status = "promoted"
+        except HTTPException as exc:
+            if exc.status_code != 409:
+                raise
+            promotion_status = "skipped"
+            if isinstance(exc.detail, dict):
+                promotion_error_code = str(exc.detail.get("error_code") or "") or None
+                promotion_detail = str(exc.detail.get("detail") or "") or None
+            else:
+                promotion_detail = str(exc.detail)
+
+    report = await _catalog_coverage_report(
+        document_id,
+        dry_run=False,
+        requested_exception_codes=typing_cast(
+            list[str], bulk_report["requested_exception_codes"]
+        ),
+        eligible_open_exceptions=typing_cast(
+            int, bulk_report["eligible_open_exceptions"]
+        ),
+        resolved_exceptions=typing_cast(int, bulk_report["resolved_exceptions"]),
+        skipped_exceptions=typing_cast(int, bulk_report["skipped_exceptions"]),
+        skipped_by_reason=typing_cast(
+            dict[str, int], bulk_report["skipped_by_reason"]
+        ),
+        ignored_open_exception_ids=set(),
+        promotion_status=promotion_status,
+        promotion_error_code=promotion_error_code,
+        promotion_detail=promotion_detail,
+        db=db,
+    )
+    workspace = await commercial_workspace(db, document_id=document_id)
+    return {**workspace, "coverage_report": report}
 
 
 async def commercial_workspace(

@@ -637,6 +637,27 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       Ruff, mypy, TypeScript, ESLint, OpenAPI, Node 26 production build, migration
       symmetry, production Docker health, and responsive browser validation pass.
 
+### M60 — Safe Commercial Coverage Advancement
+- [x] Resolve commercial exceptions in bulk only through the explicit
+      `PRODUCT_IDENTITY_VARIANCE` low-severity allowlist; dependency, medium, and
+      high-severity evidence remains an individual human-review decision.
+- [x] Preserve individual and batch exception semantics through one shared,
+      auditable mutation helper with required rationale, dry-run preview,
+      idempotence, and transactional execution.
+- [x] Reuse the existing deterministic catalog finalization and release-promotion
+      gates instead of introducing a second approval path or bypass.
+- [x] Report the advancement funnel truthfully, distinguishing commercially
+      approved part numbers from the narrower SKU allowlist currently enabled for
+      BOM calculation through approved Service Product mappings.
+- [x] Add an Admin Pricing preview-and-confirm workflow with explicit blocker
+      summaries and optional release promotion.
+- [x] Preserve all existing BOM mappings and calculations until their independent
+      product-coverage gate is satisfied; this milestone adds no migration.
+- [x] **Exit criteria**: focused commercial-catalog, pricing-BOM, and product-
+      coverage tests; Ruff, mypy, frontend tests, TypeScript, ESLint, OpenAPI,
+      Node 26 production build, production Docker health, and browser preview
+      validation pass without mutating the active commercial catalog.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

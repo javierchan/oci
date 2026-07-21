@@ -7,9 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.schemas.pricing import (
+    CommercialBulkResolveRequest,
     CommercialCatalogFinalizeRequest,
     CommercialCandidateReviewRequest,
     CommercialCandidateDetailResponse,
+    CommercialCoverageAdvanceRequest,
+    CommercialCoverageWorkspaceResponse,
     CommercialExceptionReviewRequest,
     CommercialWorkspaceResponse,
     GovernanceChangeSetListResponse,
@@ -278,6 +281,56 @@ async def finalize_commercial_catalog_review(
             db=db,
         )
     return CommercialWorkspaceResponse.model_validate(payload)
+
+
+@router.post(
+    "/commercial-documents/{document_id}/bulk-resolve-exceptions",
+    response_model=CommercialCoverageWorkspaceResponse,
+    summary="Resolve allowlisted low-risk commercial exceptions in bulk",
+)
+async def bulk_resolve_commercial_exceptions(
+    document_id: str,
+    body: CommercialBulkResolveRequest,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialCoverageWorkspaceResponse:
+    require_admin(actor_role)
+    async with db.begin():
+        payload = await commercial_catalog_service.bulk_resolve_exceptions(
+            document_id,
+            exception_codes=body.exception_codes,
+            rationale=body.rationale,
+            actor_id=actor_id,
+            db=db,
+            dry_run=body.dry_run,
+        )
+    return CommercialCoverageWorkspaceResponse.model_validate(payload)
+
+
+@router.post(
+    "/commercial-documents/{document_id}/advance-coverage",
+    response_model=CommercialCoverageWorkspaceResponse,
+    summary="Preview or execute governed OCI catalog coverage advancement",
+)
+async def advance_commercial_catalog_coverage(
+    document_id: str,
+    body: CommercialCoverageAdvanceRequest,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialCoverageWorkspaceResponse:
+    require_admin(actor_role)
+    async with db.begin():
+        payload = await commercial_catalog_service.advance_catalog_coverage(
+            document_id,
+            rationale=body.rationale,
+            actor_id=actor_id,
+            db=db,
+            dry_run=body.dry_run,
+            promote=body.promote,
+        )
+    return CommercialCoverageWorkspaceResponse.model_validate(payload)
 
 
 @router.post(

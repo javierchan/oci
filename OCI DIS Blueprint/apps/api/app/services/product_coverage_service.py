@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 import re
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select
@@ -426,7 +426,9 @@ async def generate_coverage(actor_id: str, db: AsyncSession) -> ProductCoverageG
             generated += 1
         else:
             candidate.readiness_status = proposal["readiness_status"]
-            candidate.readiness_blockers = proposal["readiness_blockers"]
+            candidate.readiness_blockers = cast(
+                list[object], proposal["readiness_blockers"]
+            )
             candidate.source_document_snapshot_id = proposal["source_document_snapshot_id"]
             if candidate.status == "pending_review":
                 candidate.product_name = proposal["product_name"]
@@ -434,7 +436,9 @@ async def generate_coverage(actor_id: str, db: AsyncSession) -> ProductCoverageG
                 candidate.proposed_service_id = proposal["proposed_service_id"]
                 candidate.proposed_profile = proposal["proposed_profile"]
                 candidate.proposed_policy = proposal["proposed_policy"]
-                candidate.proposed_mappings = proposal["proposed_mappings"]
+                candidate.proposed_mappings = cast(
+                    list[object], proposal["proposed_mappings"]
+                )
                 candidate.generator_version = GENERATOR_VERSION
             refreshed += 1
         counts[proposal["readiness_status"]] += 1
