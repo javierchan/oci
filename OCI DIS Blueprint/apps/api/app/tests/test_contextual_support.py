@@ -328,7 +328,7 @@ async def test_support_does_not_carry_commercial_intent_into_a_new_pattern_quest
 
     assert evidence["question_intent"] == "app_guidance"
     assert "commercial_service_context" not in evidence
-    assert "direct_answer" not in evidence
+    assert evidence["direct_answer"] == evidence["fallback_answer"]
     assert "Request and Reply" in str(evidence["fallback_answer"])
     assert "OCI Functions" not in str(evidence["fallback_answer"])
 

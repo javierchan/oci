@@ -1558,7 +1558,8 @@ async def build_support_evidence(
         citations.append({"label": "Projects", "href": "/projects"})
 
     evidence["fallback_answer"] = _support_fallback_answer(evidence)
-    if question_intent in {"project_portfolio", "project_cost"}:
+    has_commercial_evidence = isinstance(evidence.get("commercial_service_context"), dict)
+    if question_intent in {"project_portfolio", "project_cost"} or _pattern_answer(evidence) or has_commercial_evidence:
         evidence["direct_answer"] = evidence["fallback_answer"]
     return cast(dict[str, object], sanitize_for_json(evidence))
 
