@@ -9,7 +9,13 @@ const workspace: CommercialWorkspace = {
   document: null,
   summary: { skus: 0, candidates: 0, pending: 0, approved: 0, blocked: 0, exceptions: 0 },
   candidates: [],
+  page: 1,
+  page_size: 50,
+  total: 0,
   exceptions: [],
+  exceptions_page: 1,
+  exceptions_page_size: 50,
+  exceptions_total: 0,
   releases: [],
   field_authority: {},
 };
@@ -31,14 +37,14 @@ afterEach(() => {
 });
 
 describe("commercial catalog API client", () => {
-  it("loads the typed workspace with search and bounded coverage", async () => {
+  it("loads the typed workspace with server pagination and filters", async () => {
     const fetchMock = vi.fn().mockResolvedValue(response());
     vi.stubGlobal("fetch", fetchMock);
 
-    await api.getCommercialCatalog({ document_id: "doc/1", search: "B95701", limit: 250 });
+    await api.getCommercialCatalog({ document_id: "doc/1", search: "B95701", status: "pending_review", page: 2, page_size: 50 });
 
     expect(requestPath(fetchMock.mock.calls[0])).toBe(
-      "/api/v1/pricing/commercial-catalog?document_id=doc%2F1&search=B95701&limit=250",
+      "/api/v1/pricing/commercial-catalog?document_id=doc%2F1&search=B95701&status=pending_review&page=2&page_size=50",
     );
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual(expect.any(Headers));
   });

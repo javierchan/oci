@@ -25,11 +25,11 @@ import { formatDate, formatNumber } from "@/lib/format";
 import {
   commercialCandidatePresentation,
   commercialReleaseCoverage,
-  filterCommercialCandidates,
   isPriceSyncTerminal,
 } from "@/lib/types";
 import type {
   CommercialCandidate,
+  CommercialCandidateDetail,
   CommercialCandidateDecision,
   CommercialExceptionDecision,
   CommercialWorkspace,
@@ -47,7 +47,9 @@ const EMPTY_COMMERCIAL_WORKSPACE: CommercialWorkspace = {
   document: null,
   summary: { skus: 0, candidates: 0, pending: 0, approved: 0, blocked: 0, exceptions: 0 },
   candidates: [],
+  page: 1, page_size: 50, total: 0,
   exceptions: [],
+  exceptions_page: 1, exceptions_page_size: 50, exceptions_total: 0,
   releases: [],
   field_authority: {},
 };
@@ -85,6 +87,9 @@ function CommercialCatalogWorkspace(): JSX.Element {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [candidateQuery, setCandidateQuery] = useState("");
   const [candidateStatus, setCandidateStatus] = useState("all");
+  const [candidatePage, setCandidatePage] = useState(1);
+  const [candidateDetails, setCandidateDetails] = useState<Record<string, CommercialCandidateDetail>>({});
+  const [detailLoading, setDetailLoading] = useState<Record<string, boolean>>({});
   const [finalizeRationale, setFinalizeRationale] = useState("");
   const [candidateDrafts, setCandidateDrafts] = useState<Record<string, CandidateDraft>>({});
   const [exceptionDrafts, setExceptionDrafts] = useState<Record<string, ExceptionDraft>>({});
@@ -92,14 +97,14 @@ function CommercialCatalogWorkspace(): JSX.Element {
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
-      setWorkspace(await api.getCommercialCatalog({ limit: 2000 }));
+      setWorkspace(await api.getCommercialCatalog({ page: candidatePage, page_size: 50, search: candidateQuery.trim() || undefined, status: candidateStatus }));
       setError("");
     } catch (caughtError) {
       setError(getErrorMessage(caughtError, "Unable to load official commercial evidence."));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [candidatePage, candidateQuery, candidateStatus]);
 
   useEffect(() => {
     const search = candidateQuery.trim();
@@ -109,7 +114,8 @@ function CommercialCatalogWorkspace(): JSX.Element {
     }
     let active = true;
     const timer = window.setTimeout(() => {
-      api.getCommercialCatalog({ search, limit: 2000 })
+      setLoading(true);
+      api.getCommercialCatalog({ search, page: candidatePage, page_size: 50, status: candidateStatus })
         .then((result) => {
           if (active) {
             setWorkspace(result);
@@ -120,18 +126,19 @@ function CommercialCatalogWorkspace(): JSX.Element {
           if (active) {
             setError(getErrorMessage(caughtError, "Unable to search the commercial review queue."));
           }
+        })
+        .finally(() => {
+          if (active) {
+            setLoading(false);
+          }
         });
     }, 250);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [candidateQuery, load]);
-
-  const visibleCandidates = useMemo(
-    () => filterCommercialCandidates(workspace.candidates, candidateQuery, candidateStatus),
-    [candidateQuery, candidateStatus, workspace.candidates],
-  );
+  }, [candidatePage, candidateQuery, candidateStatus, load]);
+  const visibleCandidates = workspace.candidates;
   const evidenceApproved = workspace.document?.status === "approved_evidence";
 
   function candidateDraft(candidateId: string): CandidateDraft {
@@ -145,11 +152,8 @@ function CommercialCatalogWorkspace(): JSX.Element {
   async function runAction(actionKey: string, action: () => Promise<CommercialWorkspace>, success: string): Promise<void> {
     setBusy(actionKey);
     try {
-      let updatedWorkspace = await action();
-      if (candidateQuery.trim()) {
-        updatedWorkspace = await api.getCommercialCatalog({ search: candidateQuery.trim(), limit: 2000 });
-      }
-      setWorkspace(updatedWorkspace);
+      await action();
+      await load();
       setError("");
       emitToast("success", success);
     } catch (caughtError) {
@@ -188,6 +192,19 @@ function CommercialCatalogWorkspace(): JSX.Element {
       () => api.revalidateCommercialCandidate(candidate.id),
       `Candidate ${candidate.part_number} revalidated against persisted official evidence. Its explicit review decision was not changed.`,
     );
+  }
+
+  async function loadCandidateDetail(candidateId: string): Promise<void> {
+    if (candidateDetails[candidateId] || detailLoading[candidateId]) return;
+    setDetailLoading((current) => ({ ...current, [candidateId]: true }));
+    try {
+      const detail = await api.getCommercialCandidate(candidateId);
+      setCandidateDetails((current) => ({ ...current, [candidateId]: detail }));
+    } catch (caughtError) {
+      emitToast("error", getErrorMessage(caughtError, "Unable to load commercial candidate detail."));
+    } finally {
+      setDetailLoading((current) => ({ ...current, [candidateId]: false }));
+    }
   }
 
   async function reviewException(exceptionId: string): Promise<void> {
@@ -327,12 +344,34 @@ function CommercialCatalogWorkspace(): JSX.Element {
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4">
           <div><p className="app-label">Candidate Review Queue</p><h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Generated proposals awaiting explicit disposition</h3></div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <label className="relative block min-w-0 sm:w-80"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[var(--color-text-muted)]" /><input aria-label="Search commercial candidates" className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3 text-sm" placeholder="Search SKU, product, metric, or family" value={candidateQuery} onChange={(event) => setCandidateQuery(event.target.value)} /></label>
-            <select aria-label="Filter candidate status" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm" value={candidateStatus} onChange={(event) => setCandidateStatus(event.target.value)}><option value="all">All statuses</option><option value="pending_review">Needs review</option><option value="approved">Explicitly approved</option><option value="blocked">Blocked</option><option value="rejected">Rejected</option></select>
+            <label className="relative block min-w-0 sm:w-80"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[var(--color-text-muted)]" /><input aria-label="Search commercial candidates" className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2.5 pl-9 pr-3 text-sm" placeholder="Search SKU, product, metric, or family" value={candidateQuery} onChange={(event) => { setCandidateQuery(event.target.value); setCandidatePage(1); }} /></label>
+            <select aria-label="Filter candidate status" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm" value={candidateStatus} onChange={(event) => { setCandidateStatus(event.target.value); setCandidatePage(1); }}><option value="all">All statuses</option><option value="pending_review">Needs review</option><option value="approved">Explicitly approved</option><option value="blocked">Blocked</option></select>
           </div>
         </div>
         <div className="divide-y divide-[var(--color-border)]">
           {visibleCandidates.map((candidate) => {
+            const detailCandidate: CommercialCandidateDetail = candidateDetails[candidate.id] ?? {
+              ...candidate,
+              identity: {
+                ...candidate.identity,
+                product_hierarchy: [],
+                product_paths: [],
+                official_location_count: 0,
+                structured_product: {},
+              },
+              commercial_term: candidate.commercial_term ? {
+                ...candidate.commercial_term,
+                commercial_prices: [],
+                additional_information: null,
+                notes: null,
+                source_sheet: "",
+                source_row: 0,
+                constraints: [],
+              } : null,
+              composition: [],
+              proposed_mapping: {},
+              reasons: [],
+            };
             const draft = candidateDraft(candidate.id);
             const presentation = commercialCandidatePresentation(candidate.status);
             const presentationTone = {
@@ -342,37 +381,40 @@ function CommercialCatalogWorkspace(): JSX.Element {
             }[presentation.tone];
             const approvalBlocked = draft.decision === "approve" && !evidenceApproved;
             return (
-              <details key={candidate.id} className="group px-5 py-4">
+              <details key={candidate.id} className="group px-5 py-4" onToggle={(event) => {
+                if (event.currentTarget.open) void loadCandidateDetail(candidate.id);
+              }}>
                 <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-xs font-semibold text-[var(--color-text-secondary)]">{candidate.part_number}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${presentationTone}`}>{presentation.label}</span><span className="app-theme-chip">{humanize(candidate.classification)}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClasses(candidate.rule_fixture_status ?? "missing")}`}>Fixture: {humanize(candidate.rule_fixture_status ?? "missing")}</span></div>
                     <p className="mt-2 text-sm font-semibold text-[var(--color-text-primary)]">{candidate.identity.display_name}</p>
-                    <p className="mt-1 truncate text-xs text-[var(--color-text-muted)]">{candidate.identity.product_hierarchy.length > 0 ? candidate.identity.product_hierarchy.join(" / ") : candidate.identity.service_category ?? "Official product placement is not established"}</p>
+                    <p className="mt-1 truncate text-xs text-[var(--color-text-muted)]">{candidate.identity.service_category ?? "Official product placement is not established"}</p>
                   </div>
                   <span className="text-xs font-semibold text-[var(--color-text-secondary)] group-open:hidden">Review details</span>
                 </summary>
-                <div className="mt-4 grid min-w-0 gap-5 border-t border-[var(--color-border)] pt-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
+                {detailLoading[candidate.id] && !candidateDetails[candidate.id] ? <div className="mt-4 flex items-center gap-2 border-t border-[var(--color-border)] pt-4 text-sm text-[var(--color-text-secondary)]"><Loader2 className="h-4 w-4 animate-spin" />Loading governed commercial evidence…</div> : <div className="mt-4 grid min-w-0 gap-5 border-t border-[var(--color-border)] pt-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
                   <div className="min-w-0">
-                    <div className="flex items-start gap-3"><PackageSearch className="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-accent)]" /><div className="min-w-0"><p className="app-label">Official product identity</p><h4 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">{candidate.identity.display_name}</h4><p className="mt-1 font-mono text-xs text-[var(--color-text-muted)]">{candidate.part_number}</p></div></div>
+                    <div className="flex items-start gap-3"><PackageSearch className="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-accent)]" /><div className="min-w-0"><p className="app-label">Official product identity</p><h4 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">{detailCandidate.identity.display_name}</h4><p className="mt-1 font-mono text-xs text-[var(--color-text-muted)]">{detailCandidate.part_number}</p></div></div>
                     <dl className="mt-4 grid gap-x-5 gap-y-3 sm:grid-cols-2">
-                      <div><dt className="text-xs text-[var(--color-text-muted)]">Product hierarchy</dt><dd className="mt-1 text-sm font-medium leading-5 text-[var(--color-text-primary)]">{candidate.identity.product_hierarchy.join(" → ") || "Not established"}</dd></div>
-                      <div><dt className="text-xs text-[var(--color-text-muted)]">Official workbook locations</dt><dd className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">{formatNumber(candidate.identity.official_location_count)}</dd></div>
-                      <div><dt className="text-xs text-[var(--color-text-muted)]">Billing metric</dt><dd className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">{candidate.commercial_term?.metric_name ?? "Not established"}</dd></div>
-                      <div><dt className="text-xs text-[var(--color-text-muted)]">Commercial term type</dt><dd className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">{humanize(candidate.commercial_term?.price_type ?? "not established")}</dd></div>
+                      <div><dt className="text-xs text-[var(--color-text-muted)]">Product hierarchy</dt><dd className="mt-1 text-sm font-medium leading-5 text-[var(--color-text-primary)]">{detailCandidate.identity.product_hierarchy.join(" → ") || "Not established"}</dd></div>
+                      <div><dt className="text-xs text-[var(--color-text-muted)]">Official workbook locations</dt><dd className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">{formatNumber(detailCandidate.identity.official_location_count)}</dd></div>
+                      <div><dt className="text-xs text-[var(--color-text-muted)]">Billing metric</dt><dd className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">{detailCandidate.commercial_term?.metric_name ?? "Not established"}</dd></div>
+                      <div><dt className="text-xs text-[var(--color-text-muted)]">Commercial term type</dt><dd className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">{humanize(detailCandidate.commercial_term?.price_type ?? "not established")}</dd></div>
                     </dl>
-                    {candidate.commercial_term?.additional_information ? <div className="mt-4 border-t border-[var(--color-border)] pt-4"><p className="app-label">Official billing guidance</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-text-secondary)]">{candidate.commercial_term.additional_information}</p></div> : null}
-                    {candidate.identity.product_paths.length > 1 ? <details className="mt-4 border-t border-[var(--color-border)] pt-4"><summary className="cursor-pointer text-sm font-semibold text-[var(--color-text-secondary)]">Review {formatNumber(candidate.identity.official_location_count)} official placements</summary><ul className="mt-3 space-y-2 text-xs leading-5 text-[var(--color-text-muted)]">{candidate.identity.product_paths.slice(0, 12).map((path, index) => <li key={`${candidate.id}-path-${index}`}>{path.join(" → ")}</li>)}</ul>{candidate.identity.official_location_count > 12 ? <p className="mt-2 text-xs text-[var(--color-text-muted)]">Showing 12 placements; all {formatNumber(candidate.identity.official_location_count)} remain persisted as source evidence.</p> : null}</details> : null}
-                    {candidate.composition.length > 0 ? <div className="mt-4 border-t border-[var(--color-border)] pt-4"><p className="app-label">Documented composition</p><ul className="mt-2 space-y-2 text-sm text-[var(--color-text-secondary)]">{candidate.composition.map((relationship, index) => <li key={`${candidate.id}-relationship-${index}`}><span className="font-semibold text-[var(--color-text-primary)]">{humanize(relationship.relationship_type)}:</span> {relationship.target_name}{relationship.target_part_number ? ` (${relationship.target_part_number})` : ""}</li>)}</ul></div> : null}
-                    <div className="mt-5 border-t border-[var(--color-border)] pt-4"><p className="app-label">Proposed commercial behavior</p><dl className="mt-3 grid gap-x-5 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(candidate.proposed_mapping).filter(([key]) => key !== "field_authority").map(([key, value]) => <div key={key}><dt className="text-xs text-[var(--color-text-muted)]">{humanize(key)}</dt><dd className="mt-1 break-words text-sm font-medium text-[var(--color-text-primary)]">{displayValue(value)}</dd></div>)}</dl></div>
-                    <p className="app-label mt-5">Why it was generated</p><ul className="mt-2 space-y-1 text-sm leading-5 text-[var(--color-text-secondary)]">{candidate.reasons.map((reason, index) => <li key={`${candidate.id}-reason-${index}`}>• {displayValue(reason)}</li>)}</ul>
+                    {detailCandidate.commercial_term?.additional_information ? <div className="mt-4 border-t border-[var(--color-border)] pt-4"><p className="app-label">Official billing guidance</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-text-secondary)]">{detailCandidate.commercial_term.additional_information}</p></div> : null}
+                    {detailCandidate.identity.product_paths.length > 1 ? <details className="mt-4 border-t border-[var(--color-border)] pt-4"><summary className="cursor-pointer text-sm font-semibold text-[var(--color-text-secondary)]">Review {formatNumber(detailCandidate.identity.official_location_count)} official placements</summary><ul className="mt-3 space-y-2 text-xs leading-5 text-[var(--color-text-muted)]">{detailCandidate.identity.product_paths.slice(0, 12).map((path, index) => <li key={`${candidate.id}-path-${index}`}>{path.join(" → ")}</li>)}</ul>{detailCandidate.identity.official_location_count > 12 ? <p className="mt-2 text-xs text-[var(--color-text-muted)]">Showing 12 placements; all {formatNumber(detailCandidate.identity.official_location_count)} remain persisted as source evidence.</p> : null}</details> : null}
+                    {detailCandidate.composition.length > 0 ? <div className="mt-4 border-t border-[var(--color-border)] pt-4"><p className="app-label">Documented composition</p><ul className="mt-2 space-y-2 text-sm text-[var(--color-text-secondary)]">{detailCandidate.composition.map((relationship, index) => <li key={`${candidate.id}-relationship-${index}`}><span className="font-semibold text-[var(--color-text-primary)]">{humanize(relationship.relationship_type)}:</span> {relationship.target_name}{relationship.target_part_number ? ` (${relationship.target_part_number})` : ""}</li>)}</ul></div> : null}
+                    <div className="mt-5 border-t border-[var(--color-border)] pt-4"><p className="app-label">Proposed commercial behavior</p><dl className="mt-3 grid gap-x-5 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(detailCandidate.proposed_mapping).filter(([key]) => key !== "field_authority").map(([key, value]) => <div key={key}><dt className="text-xs text-[var(--color-text-muted)]">{humanize(key)}</dt><dd className="mt-1 break-words text-sm font-medium text-[var(--color-text-primary)]">{displayValue(value)}</dd></div>)}</dl></div>
+                    <p className="app-label mt-5">Why it was generated</p><ul className="mt-2 space-y-1 text-sm leading-5 text-[var(--color-text-secondary)]">{detailCandidate.reasons.map((reason, index) => <li key={`${candidate.id}-reason-${index}`}>• {displayValue(reason)}</li>)}</ul>
                   </div>
                   <div className="min-w-0 border-l-0 border-[var(--color-border)] xl:border-l xl:pl-5"><p className="app-label">Deterministic validation</p><p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">Re-run the generated rule and quotation fixture against persisted official evidence. This action never approves the candidate.</p><button className="app-button-secondary mt-3 w-full gap-2" type="button" disabled={busy !== null} onClick={() => void revalidateCandidate(candidate)}>{busy === `revalidate:${candidate.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}Revalidate rule</button><div className="my-4 border-t border-[var(--color-border)]" /><p className="app-label">Explicit review decision</p><select aria-label={`Decision for ${candidate.part_number}`} className="mt-3 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm" value={draft.decision} onChange={(event) => setCandidateDrafts((current) => ({ ...current, [candidate.id]: { ...draft, decision: event.target.value as CommercialCandidateDecision } }))}><option value="keep_blocked">Keep blocked</option><option value="approve">Approve mapping and eligible rule</option><option value="reject">Reject proposal</option></select><textarea aria-label={`Rationale for ${candidate.part_number}`} className="mt-3 min-h-24 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm" placeholder="Document the commercial evidence and decision rationale (minimum 8 characters)." value={draft.rationale} onChange={(event) => setCandidateDrafts((current) => ({ ...current, [candidate.id]: { ...draft, rationale: event.target.value } }))} />{approvalBlocked ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Approve the official document as evidence before approving this candidate.</p> : null}<button className="app-button-primary mt-3 w-full gap-2" type="button" disabled={busy !== null || draft.rationale.trim().length < 8 || approvalBlocked} onClick={() => void reviewCandidate(candidate)}>{busy === `candidate:${candidate.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Record decision</button></div>
-                </div>
+                </div>}
               </details>
             );
           })}
           {!loading && visibleCandidates.length === 0 ? <p className="px-5 py-8 text-sm text-[var(--color-text-secondary)]">No candidates match the current search and status filter.</p> : null}
         </div>
+        {workspace.total > 0 ? <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border)] px-5 py-4 text-sm text-[var(--color-text-secondary)]"><span>Page {workspace.page} of {Math.max(1, Math.ceil(workspace.total / workspace.page_size))} · {formatNumber(workspace.total)} candidates</span><div className="flex gap-2"><button className="app-button-secondary" type="button" disabled={loading || workspace.page <= 1} onClick={() => setCandidatePage((current) => Math.max(1, current - 1))}>Previous</button><button className="app-button-secondary" type="button" disabled={loading || workspace.page >= Math.ceil(workspace.total / workspace.page_size)} onClick={() => setCandidatePage((current) => current + 1)}>Next</button></div></div> : null}
       </div>
 
       <div className="border-t border-[var(--color-border)]">

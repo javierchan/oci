@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.schemas.pricing import (
     CommercialCatalogFinalizeRequest,
     CommercialCandidateReviewRequest,
+    CommercialCandidateDetailResponse,
     CommercialExceptionReviewRequest,
     CommercialWorkspaceResponse,
     GovernanceChangeSetListResponse,
@@ -44,15 +45,33 @@ def _require_pricing_read(role: str | None) -> None:
 async def get_commercial_catalog(
     document_id: str | None = None,
     search: str | None = None,
-    limit: int = 100,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    status_filter: str = Query("all", alias="status", pattern="^(all|pending_review|approved|blocked)$"),
     db: AsyncSession = Depends(get_db),
     actor_role: str = Header(..., alias="X-Actor-Role"),
 ) -> CommercialWorkspaceResponse:
     _require_pricing_read(actor_role)
     return CommercialWorkspaceResponse.model_validate(
         await commercial_catalog_service.commercial_workspace(
-            db, document_id=document_id, search=search, limit=limit
+            db, document_id=document_id, search=search, page=page, page_size=page_size, status=status_filter
         )
+    )
+
+
+@router.get(
+    "/commercial-candidates/{candidate_id}",
+    response_model=CommercialCandidateDetailResponse,
+    summary="Inspect full governed commercial evidence for one candidate",
+)
+async def get_commercial_candidate(
+    candidate_id: str,
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialCandidateDetailResponse:
+    _require_pricing_read(actor_role)
+    return CommercialCandidateDetailResponse.model_validate(
+        await commercial_catalog_service.commercial_candidate_detail(candidate_id, db)
     )
 
 

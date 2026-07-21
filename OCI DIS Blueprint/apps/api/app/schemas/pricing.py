@@ -108,8 +108,46 @@ class CommercialRelationshipSummaryResponse(BaseModel):
     resolution_status: str
 
 
+class CommercialCandidateIdentitySummaryResponse(BaseModel):
+    """Small product projection safe for a paginated commercial queue row."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    display_name: str
+    service_category: Optional[str]
+
+
+class CommercialTermSummaryResponse(BaseModel):
+    """Small commercial-term projection safe for a paginated queue row."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    service_name: str
+    metric_name: Optional[str]
+    price_type: Optional[str]
+
+
 class CommercialCandidateResponse(BaseModel):
-    """Generated, never implicitly approved commercial mapping candidate."""
+    """Lightweight generated mapping candidate for a bounded review page."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    part_number: str
+    service_id: Optional[str]
+    family_key: Optional[str]
+    classification: str
+    confidence: float
+    status: str
+    generator_version: str
+    rule_status: Optional[str]
+    rule_fixture_status: Optional[str]
+    identity: CommercialCandidateIdentitySummaryResponse
+    commercial_term: Optional[CommercialTermSummaryResponse]
+
+
+class CommercialCandidateDetailResponse(BaseModel):
+    """Full immutable commercial evidence for one explicitly opened candidate."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
@@ -167,7 +205,13 @@ class CommercialWorkspaceResponse(BaseModel):
     document: Optional[CommercialDocumentResponse]
     summary: CommercialCatalogSummaryResponse
     candidates: list[CommercialCandidateResponse] = Field(default_factory=list)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=200)
+    total: int = Field(ge=0)
     exceptions: list[CommercialExceptionResponse] = Field(default_factory=list)
+    exceptions_page: int = Field(ge=1)
+    exceptions_page_size: int = Field(ge=1, le=200)
+    exceptions_total: int = Field(ge=0)
     releases: list[CommercialReleaseResponse] = Field(default_factory=list)
     field_authority: dict[str, str] = Field(default_factory=dict)
 

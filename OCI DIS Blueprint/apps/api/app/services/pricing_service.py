@@ -9,7 +9,7 @@ import hashlib
 from io import StringIO
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select
@@ -741,6 +741,16 @@ async def _serialize_change_set(
             .order_by(QuotationRegressionRun.family_key)
         )
     ).all()
+    return _change_set_response(change_set, artifacts, regressions)
+
+
+def _change_set_response(
+    change_set: GovernanceChangeSet,
+    artifacts: Sequence[GovernanceSourceArtifact],
+    regressions: Sequence[QuotationRegressionRun],
+) -> GovernanceChangeSetResponse:
+    """Serialize preloaded governance evidence without issuing database queries."""
+
     return GovernanceChangeSetResponse(
         id=change_set.id,
         sync_job_id=change_set.sync_job_id,
@@ -810,8 +820,41 @@ async def list_governance_change_sets(
             .limit(min(max(limit, 1), 100))
         )
     ).all()
+    change_set_ids = [row.id for row in rows]
+    artifacts_by_change_set: dict[str, list[GovernanceSourceArtifact]] = {
+        change_set_id: [] for change_set_id in change_set_ids
+    }
+    regressions_by_change_set: dict[str, list[QuotationRegressionRun]] = {
+        change_set_id: [] for change_set_id in change_set_ids
+    }
+    if change_set_ids:
+        artifacts = (
+            await db.scalars(
+                select(GovernanceSourceArtifact)
+                .where(GovernanceSourceArtifact.change_set_id.in_(change_set_ids))
+                .order_by(GovernanceSourceArtifact.change_set_id, GovernanceSourceArtifact.source_kind)
+            )
+        ).all()
+        regressions = (
+            await db.scalars(
+                select(QuotationRegressionRun)
+                .where(QuotationRegressionRun.change_set_id.in_(change_set_ids))
+                .order_by(QuotationRegressionRun.change_set_id, QuotationRegressionRun.family_key)
+            )
+        ).all()
+        for artifact in artifacts:
+            artifacts_by_change_set.setdefault(artifact.change_set_id, []).append(artifact)
+        for regression in regressions:
+            regressions_by_change_set.setdefault(regression.change_set_id, []).append(regression)
     return GovernanceChangeSetListResponse(
-        change_sets=[await _serialize_change_set(row, db) for row in rows],
+        change_sets=[
+            _change_set_response(
+                row,
+                artifacts_by_change_set[row.id],
+                regressions_by_change_set[row.id],
+            )
+            for row in rows
+        ],
         total=len(rows),
     )
 

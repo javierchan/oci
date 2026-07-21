@@ -250,6 +250,8 @@ class CommercialMappingCandidate(Base, UUIDMixin, TimestampMixin):
             name="uq_commercial_candidate_document_sku_generator",
         ),
         Index("ix_commercial_candidate_status_class", "status", "classification"),
+        Index("ix_commercial_candidate_document_part", "document_snapshot_id", "part_number"),
+        Index("ix_commercial_candidate_document_status", "document_snapshot_id", "status"),
     )
 
     document_snapshot_id: Mapped[str] = mapped_column(

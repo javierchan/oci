@@ -415,20 +415,42 @@ async def test_official_workbook_requires_human_review_before_atomic_release(
     assert candidate["rule_fixture_status"] == "passed"
     assert candidate["identity"]["display_name"] == "Oracle Autonomous AI Lakehouse - ECPU"
     assert candidate["identity"]["service_category"] == "Oracle Data Management Cloud Services"
-    assert candidate["identity"]["product_hierarchy"] == ["Oracle Data Management Cloud Services"]
-    assert candidate["identity"]["product_paths"] == [["Oracle Data Management Cloud Services"]]
-    assert candidate["identity"]["official_location_count"] == 1
-    assert candidate["identity"]["structured_product"]["name"] == (
+    assert "product_hierarchy" not in candidate["identity"]
+    assert candidate["commercial_term"] == {
+        "service_name": "Oracle Autonomous AI Lakehouse - ECPU",
+        "metric_name": "ECPU Per Hour",
+        "price_type": "HOUR",
+    }
+    detail = await api_client.get(
+        f"/api/v1/pricing/commercial-candidates/{candidate['id']}", headers=headers
+    )
+    assert detail.status_code == 200, detail.text
+    detail_candidate = detail.json()
+    assert detail_candidate["identity"]["product_hierarchy"] == ["Oracle Data Management Cloud Services"]
+    assert detail_candidate["identity"]["product_paths"] == [["Oracle Data Management Cloud Services"]]
+    assert detail_candidate["identity"]["official_location_count"] == 1
+    assert detail_candidate["identity"]["structured_product"]["name"] == (
         "Oracle Autonomous AI Lakehouse - ECPU"
     )
-    assert candidate["commercial_term"]["metric_name"] == "ECPU Per Hour"
+    assert detail_candidate["commercial_term"]["metric_name"] == "ECPU Per Hour"
     assert workspace["field_authority"]["contract_rate"] == "authorized_customer_rate_card"
     assert any(reference.endswith("ORACLE_LOCALIZABLE_PRICE_LIST.xlsx") for reference in isolated_object_storage)
+
+    first_page = await api_client.get(
+        "/api/v1/pricing/commercial-catalog",
+        headers=headers,
+        params={"document_id": document_id, "page": 1, "page_size": 1, "status": "pending_review"},
+    )
+    assert first_page.status_code == 200, first_page.text
+    assert first_page.json()["page"] == 1
+    assert first_page.json()["page_size"] == 1
+    assert first_page.json()["total"] == 2
+    assert len(first_page.json()["candidates"]) == 1
 
     filtered = await api_client.get(
         "/api/v1/pricing/commercial-catalog",
         headers=headers,
-        params={"document_id": document_id, "search": "B95701", "limit": 500},
+        params={"document_id": document_id, "search": "B95701", "page": 1, "page_size": 50},
     )
     assert filtered.status_code == 200, filtered.text
     assert {item["part_number"] for item in filtered.json()["candidates"]} == {"B95701"}
@@ -437,7 +459,7 @@ async def test_official_workbook_requires_human_review_before_atomic_release(
     filtered_by_name = await api_client.get(
         "/api/v1/pricing/commercial-catalog",
         headers=headers,
-        params={"document_id": document_id, "search": "Autonomous AI Lakehouse", "limit": 500},
+        params={"document_id": document_id, "search": "Autonomous AI Lakehouse", "page": 1, "page_size": 50},
     )
     assert filtered_by_name.status_code == 200, filtered_by_name.text
     assert {item["part_number"] for item in filtered_by_name.json()["candidates"]} == {
@@ -771,7 +793,12 @@ async def test_candidate_approval_requires_a_passing_rule_fixture(
         if item["id"] == candidate_payload["id"]
     )
     assert refreshed_candidate["status"] == "pending_review"
-    assert refreshed_candidate["proposed_mapping"]["commercial_rule_family_id"] != rule_id
+    refreshed_detail = await api_client.get(
+        f"/api/v1/pricing/commercial-candidates/{candidate_payload['id']}",
+        headers=headers,
+    )
+    assert refreshed_detail.status_code == 200, refreshed_detail.text
+    assert refreshed_detail.json()["proposed_mapping"]["commercial_rule_family_id"] != rule_id
 
     approved = await api_client.post(
         f"/api/v1/pricing/commercial-candidates/{candidate_payload['id']}/review",
@@ -791,10 +818,15 @@ async def test_candidate_approval_requires_a_passing_rule_fixture(
         if item["id"] == candidate_payload["id"]
     )
     assert stable_candidate["status"] == "approved"
-    assert stable_candidate["proposed_mapping"]["commercial_rule_family_id"] == (
-        refreshed_candidate["proposed_mapping"]["commercial_rule_family_id"]
+    stable_detail = await api_client.get(
+        f"/api/v1/pricing/commercial-candidates/{candidate_payload['id']}",
+        headers=headers,
     )
-    assert stable_candidate["reasons"].count(
+    assert stable_detail.status_code == 200, stable_detail.text
+    assert stable_detail.json()["proposed_mapping"]["commercial_rule_family_id"] == (
+        refreshed_detail.json()["proposed_mapping"]["commercial_rule_family_id"]
+    )
+    assert stable_detail.json()["reasons"].count(
         f"Deterministically revalidated with {GENERATOR_VERSION}."
     ) == 1
 

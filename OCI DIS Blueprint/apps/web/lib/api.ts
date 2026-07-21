@@ -40,6 +40,7 @@ import type {
   ConsolidatedMetrics,
   CommercialCatalogFinalizeRequest,
   CommercialCandidateReviewRequest,
+  CommercialCandidateDetail,
   CommercialExceptionReviewRequest,
   CommercialWorkspace,
   DashboardSnapshot,
@@ -968,9 +969,14 @@ export const api = {
     apiFetch<PriceSourceList>("/api/v1/pricing/sources", { headers: adminHeaders() }),
 
   getCommercialCatalog: (
-    params: { document_id?: string; search?: string; limit?: number } = {},
+    params: { document_id?: string; search?: string; status?: string; page?: number; page_size?: number } = {},
   ): Promise<CommercialWorkspace> =>
     apiFetch<CommercialWorkspace>(`/api/v1/pricing/commercial-catalog${withQuery(params)}`, {
+      headers: adminHeaders(),
+    }),
+
+  getCommercialCandidate: (candidateId: string): Promise<CommercialCandidateDetail> =>
+    apiFetch<CommercialCandidateDetail>(`/api/v1/pricing/commercial-candidates/${encodeURIComponent(candidateId)}`, {
       headers: adminHeaders(),
     }),
 

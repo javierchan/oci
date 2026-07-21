@@ -1988,6 +1988,11 @@ export interface CommercialCandidate {
   generator_version: string;
   rule_status: string | null;
   rule_fixture_status: string | null;
+  identity: Pick<CommercialProductIdentity, "display_name" | "service_category">;
+  commercial_term: Pick<CommercialTermEvidence, "service_name" | "metric_name" | "price_type"> | null;
+}
+
+export interface CommercialCandidateDetail extends CommercialCandidate {
   identity: CommercialProductIdentity;
   commercial_term: CommercialTermEvidence | null;
   composition: CommercialRelationshipSummary[];
@@ -2151,7 +2156,13 @@ export interface CommercialWorkspace {
   document: CommercialDocument | null;
   summary: CommercialCatalogSummary;
   candidates: CommercialCandidate[];
+  page: number;
+  page_size: number;
+  total: number;
   exceptions: CommercialException[];
+  exceptions_page: number;
+  exceptions_page_size: number;
+  exceptions_total: number;
   releases: CommercialRelease[];
   field_authority: Record<string, string>;
 }
@@ -2170,44 +2181,6 @@ export function commercialCandidatePresentation(status: string): {
     return { label: "Kept blocked", tone: "warning" };
   }
   return { label: "Generated · review required", tone: "warning" };
-}
-
-export function filterCommercialCandidates(
-  candidates: CommercialCandidate[],
-  query: string,
-  status: string,
-): CommercialCandidate[] {
-  const normalizeSearchValue = (value: string): string =>
-    value.replaceAll("_", " ").replaceAll("-", " ").toLocaleLowerCase();
-  const normalized = normalizeSearchValue(query.trim());
-  return candidates.filter((candidate) => {
-    if (status !== "all" && candidate.status !== status) {
-      return false;
-    }
-    if (!normalized) {
-      return true;
-    }
-    return [
-      candidate.part_number,
-      candidate.service_id,
-      candidate.family_key,
-      candidate.classification,
-      candidate.identity.display_name,
-      candidate.identity.service_category,
-      ...candidate.identity.product_hierarchy,
-      ...candidate.identity.product_paths.flat(),
-      candidate.commercial_term?.metric_name,
-      candidate.commercial_term?.additional_information,
-      candidate.commercial_term?.notes,
-      ...candidate.composition.flatMap((relationship) => [
-        relationship.target_part_number,
-        relationship.target_name,
-        relationship.guidance,
-      ]),
-      ...candidate.reasons.map((reason) => String(reason)),
-      JSON.stringify(candidate.proposed_mapping),
-    ].some((value) => value && normalizeSearchValue(value).includes(normalized));
-  });
 }
 
 export interface PriceSyncJob {

@@ -6137,9 +6137,9 @@
         "title": "CatalogQaRefreshResponse",
         "type": "object"
       },
-      "CommercialCandidateResponse": {
+      "CommercialCandidateDetailResponse": {
         "additionalProperties": false,
-        "description": "Generated, never implicitly approved commercial mapping candidate.",
+        "description": "Full immutable commercial evidence for one explicitly opened candidate.",
         "properties": {
           "classification": {
             "title": "Classification",
@@ -6254,6 +6254,136 @@
           "identity",
           "commercial_term",
           "proposed_mapping"
+        ],
+        "title": "CommercialCandidateDetailResponse",
+        "type": "object"
+      },
+      "CommercialCandidateIdentitySummaryResponse": {
+        "additionalProperties": false,
+        "description": "Small product projection safe for a paginated commercial queue row.",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "service_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Category"
+          }
+        },
+        "required": [
+          "display_name",
+          "service_category"
+        ],
+        "title": "CommercialCandidateIdentitySummaryResponse",
+        "type": "object"
+      },
+      "CommercialCandidateResponse": {
+        "additionalProperties": false,
+        "description": "Lightweight generated mapping candidate for a bounded review page.",
+        "properties": {
+          "classification": {
+            "title": "Classification",
+            "type": "string"
+          },
+          "commercial_term": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommercialTermSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "family_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Key"
+          },
+          "generator_version": {
+            "title": "Generator Version",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/CommercialCandidateIdentitySummaryResponse"
+          },
+          "part_number": {
+            "title": "Part Number",
+            "type": "string"
+          },
+          "rule_fixture_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Fixture Status"
+          },
+          "rule_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Status"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "part_number",
+          "service_id",
+          "family_key",
+          "classification",
+          "confidence",
+          "status",
+          "generator_version",
+          "rule_status",
+          "rule_fixture_status",
+          "identity",
+          "commercial_term"
         ],
         "title": "CommercialCandidateResponse",
         "type": "object"
@@ -6772,6 +6902,45 @@
         "title": "CommercialTermEvidenceResponse",
         "type": "object"
       },
+      "CommercialTermSummaryResponse": {
+        "additionalProperties": false,
+        "description": "Small commercial-term projection safe for a paginated queue row.",
+        "properties": {
+          "metric_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Name"
+          },
+          "price_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Type"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_name",
+          "metric_name",
+          "price_type"
+        ],
+        "title": "CommercialTermSummaryResponse",
+        "type": "object"
+      },
       "CommercialWorkspaceResponse": {
         "additionalProperties": false,
         "description": "Admin review workspace for official commercial evidence.",
@@ -6800,12 +6969,39 @@
             "title": "Exceptions",
             "type": "array"
           },
+          "exceptions_page": {
+            "minimum": 1.0,
+            "title": "Exceptions Page",
+            "type": "integer"
+          },
+          "exceptions_page_size": {
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Exceptions Page Size",
+            "type": "integer"
+          },
+          "exceptions_total": {
+            "minimum": 0.0,
+            "title": "Exceptions Total",
+            "type": "integer"
+          },
           "field_authority": {
             "additionalProperties": {
               "type": "string"
             },
             "title": "Field Authority",
             "type": "object"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
           },
           "releases": {
             "items": {
@@ -6816,11 +7012,22 @@
           },
           "summary": {
             "$ref": "#/components/schemas/CommercialCatalogSummaryResponse"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
           }
         },
         "required": [
           "document",
-          "summary"
+          "summary",
+          "page",
+          "page_size",
+          "total",
+          "exceptions_page",
+          "exceptions_page_size",
+          "exceptions_total"
         ],
         "title": "CommercialWorkspaceResponse",
         "type": "object"
@@ -21315,6 +21522,57 @@
         ]
       }
     },
+    "/api/v1/pricing/commercial-candidates/{candidate_id}": {
+      "get": {
+        "operationId": "get_commercial_candidate_api_v1_pricing_commercial_candidates__candidate_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommercialCandidateDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect full governed commercial evidence for one candidate",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
     "/api/v1/pricing/commercial-candidates/{candidate_id}/revalidate": {
       "post": {
         "operationId": "revalidate_commercial_candidate_api_v1_pricing_commercial_candidates__candidate_id__revalidate_post",
@@ -21485,12 +21743,36 @@
           },
           {
             "in": "query",
-            "name": "limit",
+            "name": "page",
             "required": false,
             "schema": {
-              "default": 100,
-              "title": "Limit",
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "pattern": "^(all|pending_review|approved|blocked)$",
+              "title": "Status",
+              "type": "string"
             }
           },
           {

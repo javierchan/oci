@@ -2458,8 +2458,11 @@ async def promote_release(document_id: str, actor_id: str, db: AsyncSession) -> 
 
 
 async def commercial_workspace(
-    db: AsyncSession, *, document_id: str | None = None, search: str | None = None, limit: int = 100
+    db: AsyncSession, *, document_id: str | None = None, search: str | None = None,
+    page: int = 1, page_size: int = 50, status: str = "all",
 ) -> dict[str, object]:
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 200)
     if document_id is None:
         document = await db.scalar(select(CommercialDocumentSnapshot).order_by(CommercialDocumentSnapshot.created_at.desc()))
     else:
@@ -2467,7 +2470,9 @@ async def commercial_workspace(
     if document is None:
         return {
             "document": None, "summary": {"skus": 0, "candidates": 0, "pending": 0, "exceptions": 0, "approved": 0, "blocked": 0},
-            "candidates": [], "exceptions": [], "releases": [], "field_authority": FIELD_AUTHORITY,
+            "candidates": [], "page": page, "page_size": page_size, "total": 0,
+            "exceptions": [], "exceptions_page": page, "exceptions_page_size": page_size,
+            "exceptions_total": 0, "releases": [], "field_authority": FIELD_AUTHORITY,
         }
     candidate_query = (
         select(CommercialMappingCandidate)
@@ -2487,12 +2492,14 @@ async def commercial_workspace(
                 SkuCommercialTerm.service_name.ilike(search_pattern),
             )
         )
-    response_limit = min(max(limit, 1), 2000)
+    if status != "all":
+        candidate_query = candidate_query.where(CommercialMappingCandidate.status == status)
+    total = int(await db.scalar(select(func.count()).select_from(candidate_query.subquery())) or 0)
     candidates = list(
         (
             await db.scalars(
                 candidate_query.order_by(CommercialMappingCandidate.part_number)
-                .limit(response_limit)
+                .offset((page - 1) * page_size).limit(page_size)
             )
         ).all()
     )
@@ -2520,52 +2527,8 @@ async def commercial_workspace(
         if candidate_term_ids
         else []
     )
-    candidate_constraints = (
-        list(
-            (
-                await db.scalars(
-                    select(SkuCommercialConstraint).where(
-                        SkuCommercialConstraint.term_id.in_(candidate_term_ids)
-                    )
-                )
-            ).all()
-        )
-        if candidate_term_ids
-        else []
-    )
-    candidate_relationships = (
-        list(
-            (
-                await db.scalars(
-                    select(SkuCommercialRelationship).where(
-                        SkuCommercialRelationship.document_snapshot_id == document.id,
-                        SkuCommercialRelationship.source_term_id.in_(candidate_term_ids),
-                    )
-                )
-            ).all()
-        )
-        if candidate_term_ids
-        else []
-    )
     candidate_skus_by_id = {item.id: item for item in candidate_skus}
     candidate_terms_by_id = {item.id: item for item in candidate_terms}
-    constraints_by_term: dict[str, list[dict[str, object]]] = {}
-    for item in candidate_constraints:
-        constraints_by_term.setdefault(item.term_id, []).append(
-            {
-                "type": item.constraint_type,
-                "scope": item.scope,
-                "value": str(item.numeric_value) if item.numeric_value is not None else item.text_value,
-                "unit": item.unit,
-                "behavior": item.behavior,
-            }
-        )
-    relationships_by_term: dict[str, list[SkuCommercialRelationship]] = {}
-    for relationship in candidate_relationships:
-        if relationship.source_term_id:
-            relationships_by_term.setdefault(relationship.source_term_id, []).append(
-                relationship
-            )
     candidate_rule_ids = {
         str(rule_id)
         for item in candidates
@@ -2594,12 +2557,13 @@ async def commercial_workspace(
         exception_query = exception_query.where(
             CommercialException.part_number.ilike(f"%{search.strip()}%")
         )
+    exceptions_total = int(await db.scalar(select(func.count()).select_from(exception_query.subquery())) or 0)
     exceptions = list(
         (
             await db.scalars(
                 exception_query.order_by(
                     CommercialException.severity, CommercialException.part_number
-                ).limit(response_limit)
+                ).offset((page - 1) * page_size).limit(page_size)
             )
         ).all()
     )
@@ -2631,6 +2595,9 @@ async def commercial_workspace(
                 "blocked": blocked_candidates,
                 "exceptions": open_exceptions,
             },
+            "page": page,
+            "page_size": page_size,
+            "total": total,
             "candidates": [
                 {
                     "id": item.id,
@@ -2666,52 +2633,16 @@ async def commercial_workspace(
                     "identity": {
                         "display_name": candidate_skus_by_id[item.commercial_sku_id].display_name,
                         "service_category": candidate_skus_by_id[item.commercial_sku_id].service_category,
-                        "product_hierarchy": _metadata_text_list(
-                            candidate_skus_by_id[item.commercial_sku_id].identity_metadata,
-                            "product_hierarchy",
-                        ),
-                        "product_paths": (
-                            product_paths := _metadata_paths(
-                                candidate_skus_by_id[
-                                    item.commercial_sku_id
-                                ].identity_metadata
-                            )
-                        ),
-                        "official_location_count": len(product_paths),
-                        "structured_product": _metadata_object(
-                            candidate_skus_by_id[item.commercial_sku_id].identity_metadata,
-                            "structured_product",
-                        ),
                     },
                     "commercial_term": (
                         {
                             "service_name": candidate_terms_by_id[item.term_id].service_name,
                             "metric_name": candidate_terms_by_id[item.term_id].metric_name,
                             "price_type": candidate_terms_by_id[item.term_id].price_type,
-                            "commercial_prices": candidate_terms_by_id[item.term_id].commercial_prices,
-                            "additional_information": candidate_terms_by_id[item.term_id].additional_information,
-                            "notes": candidate_terms_by_id[item.term_id].notes,
-                            "source_sheet": candidate_terms_by_id[item.term_id].source_sheet,
-                            "source_row": candidate_terms_by_id[item.term_id].source_row,
-                            "constraints": constraints_by_term.get(item.term_id, []),
                         }
                         if item.term_id and item.term_id in candidate_terms_by_id
                         else None
                     ),
-                    "composition": [
-                        {
-                            "relationship_type": relationship.relationship_type,
-                            "target_part_number": relationship.target_part_number,
-                            "target_name": relationship.target_name,
-                            "guidance": relationship.guidance,
-                            "resolution_status": relationship.resolution_status,
-                        }
-                        for relationship in relationships_by_term.get(item.term_id or "", [])
-                        if _meaningful_document_text(relationship.target_name)
-                        or _meaningful_document_text(relationship.target_part_number)
-                    ],
-                    "proposed_mapping": item.proposed_mapping,
-                    "reasons": item.reasons,
                 }
                 for item in candidates
             ],
@@ -2727,6 +2658,9 @@ async def commercial_workspace(
                 }
                 for item in exceptions
             ],
+            "exceptions_page": page,
+            "exceptions_page_size": page_size,
+            "exceptions_total": exceptions_total,
             "releases": [
                 {
                     "id": item.id,
@@ -2742,6 +2676,57 @@ async def commercial_workspace(
             ],
             "field_authority": FIELD_AUTHORITY,
         }
+
+
+async def commercial_candidate_detail(candidate_id: str, db: AsyncSession) -> dict[str, object]:
+    """Load the complete immutable evidence for one explicitly opened candidate."""
+
+    candidate = await db.get(CommercialMappingCandidate, candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail={"detail": "Commercial candidate not found", "error_code": "COMMERCIAL_CANDIDATE_NOT_FOUND"})
+    sku = await db.get(CommercialSku, candidate.commercial_sku_id)
+    term = await db.get(SkuCommercialTerm, candidate.term_id) if candidate.term_id else None
+    if sku is None:
+        raise HTTPException(status_code=404, detail={"detail": "Commercial SKU not found", "error_code": "COMMERCIAL_SKU_NOT_FOUND"})
+    constraints = list((await db.scalars(select(SkuCommercialConstraint).where(SkuCommercialConstraint.term_id == candidate.term_id))).all()) if candidate.term_id else []
+    relationships = list((await db.scalars(select(SkuCommercialRelationship).where(
+        SkuCommercialRelationship.document_snapshot_id == candidate.document_snapshot_id,
+        SkuCommercialRelationship.source_term_id == candidate.term_id,
+    ))).all()) if candidate.term_id else []
+    rule_id = candidate.proposed_mapping.get("commercial_rule_family_id")
+    rule = await db.get(CommercialRuleFamily, rule_id) if isinstance(rule_id, str) else None
+    product_paths = _metadata_paths(sku.identity_metadata)
+    return {
+        "id": candidate.id, "part_number": candidate.part_number,
+        "service_id": candidate.proposed_service_id, "family_key": candidate.family_key,
+        "classification": candidate.classification, "confidence": candidate.confidence,
+        "status": candidate.status, "generator_version": candidate.generator_version,
+        "rule_status": rule.status if rule else None,
+        "rule_fixture_status": rule.fixture_status if rule else None,
+        "identity": {
+            "display_name": sku.display_name, "service_category": sku.service_category,
+            "product_hierarchy": _metadata_text_list(sku.identity_metadata, "product_hierarchy"),
+            "product_paths": product_paths, "official_location_count": len(product_paths),
+            "structured_product": _metadata_object(sku.identity_metadata, "structured_product"),
+        },
+        "commercial_term": ({
+            "service_name": term.service_name, "metric_name": term.metric_name,
+            "price_type": term.price_type, "commercial_prices": term.commercial_prices,
+            "additional_information": term.additional_information, "notes": term.notes,
+            "source_sheet": term.source_sheet, "source_row": term.source_row,
+            "constraints": [{
+                "type": item.constraint_type, "scope": item.scope,
+                "value": str(item.numeric_value) if item.numeric_value is not None else item.text_value,
+                "unit": item.unit, "behavior": item.behavior,
+            } for item in constraints],
+        } if term else None),
+        "composition": [{
+            "relationship_type": item.relationship_type, "target_part_number": item.target_part_number,
+            "target_name": item.target_name, "guidance": item.guidance,
+            "resolution_status": item.resolution_status,
+        } for item in relationships if _meaningful_document_text(item.target_name) or _meaningful_document_text(item.target_part_number)],
+        "proposed_mapping": candidate.proposed_mapping, "reasons": candidate.reasons,
+    }
 
 
 async def commercial_agent_evidence(db: AsyncSession) -> dict[str, object]:
