@@ -108,7 +108,9 @@ test("launches a real project review from the workspace command palette", async 
   const projectsResponse = await request.get(`${apiBase}/api/v1/projects`);
   expect(projectsResponse.ok()).toBe(true);
   const projects = (await projectsResponse.json()) as ProjectList;
-  const activeProject = projects.projects.find((project) => project.status === "active");
+  const activeProject = projects.projects.find(
+    (project) => project.status === "active" && !project.name.includes("Smoke Validation Project"),
+  );
   expect(activeProject).toBeDefined();
   if (!activeProject) throw new Error("E2E requires one active project");
 

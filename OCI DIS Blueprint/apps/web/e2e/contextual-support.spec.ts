@@ -20,10 +20,15 @@ test("keeps contextual support available and bounded across App navigation", asy
 
   const assistant = page.getByRole("dialog", { name: "OCI DIS App Assistant", exact: true });
   await expect(assistant).toBeVisible();
-  await expect(assistant.getByText("Using Project Dashboard", { exact: true })).toBeVisible();
+  await expect(
+    assistant.getByText("General App help · context: Project Dashboard", { exact: true }),
+  ).toBeVisible();
   await assistant.getByRole("button", { name: "Add context", exact: true }).click();
-  const addedContext = assistant.getByRole("button", { name: "Context added", exact: true });
-  await expect(addedContext).toBeDisabled();
+  const currentContextGroup = assistant.getByText("Current view", { exact: true }).locator("..");
+  await currentContextGroup.getByRole("button").click();
+  await expect(assistant.getByRole("button", { name: "Add context (1)", exact: true })).toBeVisible();
+  await expect(assistant.getByTitle("Remove Project Dashboard context")).toBeVisible();
+  await assistant.getByRole("button", { name: "Close context picker", exact: true }).click();
 
   const input = assistant.getByRole("textbox", { name: "Ask OCI DIS App Assistant", exact: true });
   await input.fill("What is the weather today?");
@@ -35,7 +40,9 @@ test("keeps contextual support available and bounded across App navigation", asy
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/bom$`));
   await expect(assistant).toBeVisible();
   await expect(assistant.getByText("What is the weather today?", { exact: true })).toBeVisible();
-  await expect(assistant.getByText("Using BOM & Cost", { exact: true })).toBeVisible();
+  await expect(
+    assistant.getByText("General App help · context: BOM & Cost", { exact: true }),
+  ).toBeVisible();
 
   const addContextBox = await assistant.getByRole("button", { name: "Add context", exact: true }).boundingBox();
   const sendBox = await assistant.getByRole("button", { name: "Send message", exact: true }).boundingBox();

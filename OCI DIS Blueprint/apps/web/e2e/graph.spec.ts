@@ -61,7 +61,11 @@ test("investigates, re-weights, exports, and navigates the desktop topology", as
   await expect(page.getByText("Governed topology", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Integration system dependency topology")).toBeVisible();
   await expect(page.getByText(`${graph.nodes.length} systems`, { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Filter by business process family")).toBeVisible();
+  const processFilter = page.getByRole("combobox", {
+    name: "Filter by business process family",
+    exact: true,
+  });
+  await expect(processFilter).toBeVisible();
   await expect(page.getByLabel("Filter by brand")).toBeVisible();
 
   if (graph.meta.business_process_families.length > 0) {
@@ -69,10 +73,10 @@ test("investigates, re-weights, exports, and navigates the desktop topology", as
     const processResponse = page.waitForResponse((response) =>
       response.url().includes("business_process_family=") && response.ok(),
     );
-    await page.getByLabel("Filter by business process family").click();
+    await processFilter.click();
     await page.getByRole("option", { name: processFamily, exact: true }).click();
     await processResponse;
-    await expect(page.getByLabel("Filter by business process family")).toHaveValue(processFamily);
+    await expect(processFilter).toHaveValue(processFamily);
     await page.getByRole("button", { name: "Clear filters (1)" }).click();
   }
 

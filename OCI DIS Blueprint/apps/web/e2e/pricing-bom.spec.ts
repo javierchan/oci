@@ -4,6 +4,7 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 
 type PriceSourceList = { sources: Array<{ id: string; source_type: string }> };
 type PriceJob = { id: string; status: string; snapshot_id: string | null; item_count: number };
+type PriceSnapshot = { id: string; approval_status: string };
 type Scenario = { id: string; status: string };
 type MetricOption = {
   service_id: string;
@@ -115,6 +116,13 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   const completedSync = await readPriceJob(request, syncJob.id);
   expect(completedSync.snapshot_id).toMatch(/^[0-9a-f-]{36}$/i);
   expect(completedSync.item_count).toBeGreaterThan(0);
+  const snapshotId = completedSync.snapshot_id as string;
+  const approveCatalogResponse = await request.post(
+    `${apiBase}/api/v1/pricing/catalog-snapshots/${snapshotId}/approve`,
+    { headers: adminHeaders },
+  );
+  expect(approveCatalogResponse.ok(), await approveCatalogResponse.text()).toBe(true);
+  expect(((await approveCatalogResponse.json()) as PriceSnapshot).approval_status).toBe("approved");
 
   await page.goto("/admin/pricing");
   await expect(page.getByRole("heading", { name: "OCI Pricing" })).toBeVisible();
