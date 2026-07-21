@@ -40,7 +40,11 @@ from app.services.commercial_catalog_service import (
 
 
 GENERATOR_VERSION = "product-coverage-factory-1.0.0"
-SUPPORTED_CLASSIFICATIONS = {"direct_metered", "included_non_billable"}
+SUPPORTED_CLASSIFICATIONS = {
+    "direct_metered",
+    "external_rate_card",
+    "included_non_billable",
+}
 PROFILE_SERVICE_ID_MAX = 50
 PROFILE_NAME_MAX = 255
 PROFILE_CATEGORY_MAX = 100
@@ -154,6 +158,9 @@ def _candidate_row(candidate: ProductCoverageCandidate) -> ProductCoverageRowRes
         sku_count=_json_int(candidate.proposed_policy.get("sku_count", 0)),
         mapping_count=len(candidate.proposed_mappings),
         readiness_status=candidate.readiness_status,
+        commercial_readiness=str(
+            candidate.proposed_policy.get("readiness", "blocked")
+        ),
         status=candidate.status,
         promotable=candidate.readiness_status == "ready" and candidate.status == "pending_review",
         blocker_count=len(candidate.readiness_blockers),
@@ -291,7 +298,7 @@ async def _proposal_for_product(
             continue
         classifications.append(commercial_candidate.classification)
         if commercial_candidate.classification not in SUPPORTED_CLASSIFICATIONS:
-            blockers.append(_blocker(sku.part_number, f"classification:{commercial_candidate.classification}", "The SKU is not classified as directly metered or included non-billable."))
+            blockers.append(_blocker(sku.part_number, f"classification:{commercial_candidate.classification}", "The SKU is not classified as directly metered, customer-rate-card priced, or included non-billable."))
             continue
         rule_id = release_rule_ids.get(sku.part_number)
         if rule_id is None:
@@ -324,7 +331,11 @@ async def _proposal_for_product(
             continue
         family_keys.append(rule.family_key)
         required_inputs.append(metric_name)
-        is_billable = commercial_candidate.classification == "direct_metered"
+        is_external_rate = commercial_candidate.classification == "external_rate_card"
+        is_billable = commercial_candidate.classification in {
+            "direct_metered",
+            "external_rate_card",
+        }
         is_byol = "BYOL" in f"{term.service_name} {term.price_type or ''}".upper()
         mappings.append(
             {
@@ -336,7 +347,13 @@ async def _proposal_for_product(
                 "quantity_increment": _decimal_float(rule.quantity_increment),
                 "minimum_quantity": _decimal_float(rule.minimum_quantity),
                 "quantity_unit": metric_name,
-                "usage_basis": "metered_usage" if is_billable else "included_entitlement",
+                "usage_basis": (
+                    "external_rate_card"
+                    if is_external_rate
+                    else "metered_usage"
+                    if is_billable
+                    else "included_entitlement"
+                ),
                 "quote_rounding": rule.quote_rounding,
                 "aggregation_window": rule.aggregation_window,
                 "proration_policy": rule.proration_policy,
@@ -357,6 +374,7 @@ async def _proposal_for_product(
     release_only = bool(unique_blockers) and all(item["code"] == "sku_not_in_active_release" for item in unique_blockers)
     readiness = "ready" if not unique_blockers else "blocked_release" if release_only else "blocked_evidence"
     classification = "mixed" if len(set(classifications)) > 1 else classifications[0] if classifications else "unclassified"
+    requires_external_rate = "external_rate_card" in classifications
     source_urls = [document.source_url] if document and document.source_url else []
     profile: dict[str, object] = {
         "name": name,
@@ -367,11 +385,26 @@ async def _proposal_for_product(
     }
     policy: dict[str, object] = {
         "classification": classification,
-        "readiness": "quote_ready" if readiness == "ready" else "blocked",
-        "publication_policy": "explicit_product_selection",
+        "readiness": (
+            "rate_card_required"
+            if readiness == "ready" and requires_external_rate
+            else "quote_ready"
+            if readiness == "ready"
+            else "blocked"
+        ),
+        "publication_policy": (
+            "external_rate_required"
+            if requires_external_rate
+            else "explicit_product_selection"
+        ),
         "tool_aliases": [name, product_key],
         "required_inputs": sorted(set(item for item in required_inputs if item)),
-        "guidance": "Select an approved commercial SKU and provide its governed billing quantity.",
+        "guidance": (
+            "Select an approved commercial SKU and provide its governed billing quantity. "
+            "The BOM remains incomplete until an approved customer rate card contains every external-rate SKU."
+            if requires_external_rate
+            else "Select an approved commercial SKU and provide its governed billing quantity."
+        ),
         "source_urls": source_urls,
         "sku_count": len(skus),
     }

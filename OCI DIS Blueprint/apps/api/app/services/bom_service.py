@@ -120,6 +120,10 @@ class GovernedSkuCommercialContract:
     rule: CommercialRuleFamily
     constraints: tuple[SkuCommercialConstraint, ...]
     evidence_reference_ids: tuple[str, ...]
+    classification: str
+
+
+UNRESOLVED_BOM_LINE_STATUSES = {"blocked", "rate_card_required"}
 
 
 def _now() -> datetime:
@@ -564,7 +568,18 @@ def _bom_action_workspace(snapshot: BomSnapshot) -> AiReviewActionWorkspace:
 
     candidates: list[AiReviewActionCandidate] = []
     blocked_count = int(_as_float(snapshot.summary.get("blocked_line_count")))
-    if snapshot.coverage_pct < 100 or blocked_count:
+    rate_card_required_count = int(
+        _as_float(snapshot.summary.get("rate_card_required_line_count"))
+    )
+    unresolved_count = int(
+        _as_float(
+            snapshot.summary.get(
+                "unresolved_line_count",
+                blocked_count + rate_card_required_count,
+            )
+        )
+    )
+    if snapshot.coverage_pct < 100 or unresolved_count:
         candidates.append(
             AiReviewActionCandidate(
                 id="bom-action-coverage",
@@ -572,15 +587,17 @@ def _bom_action_workspace(snapshot: BomSnapshot) -> AiReviewActionWorkspace:
                 status="blocked",
                 title="Close pricing coverage before commercial sign-off",
                 summary=(
-                    f"{blocked_count} BOM line(s) remain blocked and governed coverage is "
-                    f"{snapshot.coverage_pct:.1f}%."
+                    f"{unresolved_count} BOM line(s) remain unresolved "
+                    f"({rate_card_required_count} require an approved customer rate card) "
+                    f"and governed coverage is {snapshot.coverage_pct:.1f}%."
                 ),
                 what_to_change=[
                     "Map every detected Service Product to an approved SKU and billing metric.",
+                    "Provide an approved customer rate card with exact part-number matches for external-rate SKUs.",
                     "Capture missing real-unit monthly quantities for every active environment.",
                 ],
                 implementation_steps=[
-                    "Open the blocked BOM lines and identify missing SKU mappings, price items, or quantities.",
+                    "Open unresolved BOM lines and identify missing SKU mappings, customer rate-card items, public price items, or quantities.",
                     "Update the governed mapping or deployment scenario; do not patch published line totals.",
                     "Generate a new BOM snapshot and compare it with this immutable estimate.",
                 ],
@@ -915,13 +932,23 @@ async def _governed_sku_contracts(
             rule=selected_rule,
             constraints=tuple(constraints_by_term[term.id]),
             evidence_reference_ids=evidence_ids,
+            classification=term.disposition,
         )
 
-    if outside_scope or unresolved_exceptions or missing_terms or missing_rules or missing_evidence:
+    effective_unresolved_exceptions = [
+        item
+        for item in unresolved_exceptions
+        if not (
+            item.exception_code == "API_PRICE_MISSING"
+            and item.part_number in terms_by_part
+            and terms_by_part[item.part_number].disposition == "external_rate_card"
+        )
+    ]
+    if outside_scope or effective_unresolved_exceptions or missing_terms or missing_rules or missing_evidence:
         details = {
             "outside_release_scope": outside_scope,
             "unresolved_exception_parts": sorted(
-                {item.part_number or "catalog" for item in unresolved_exceptions}
+                {item.part_number or "catalog" for item in effective_unresolved_exceptions}
             ),
             "missing_approved_terms": missing_terms,
             "missing_approved_rules": sorted(missing_rules),
@@ -1215,9 +1242,11 @@ async def _current_bom_state(
             )
         ).all()
     )
-    # BOM coverage and publication use `blocked` as the sole unresolved state.
-    # Included and non-billable evidence are terminal governed lines, not gaps.
-    unresolved_count = sum(1 for line in lines if line.status == "blocked")
+    # Blocked and customer-rate-card-required lines are unresolved. Included and
+    # non-billable evidence are terminal governed lines, not coverage gaps.
+    unresolved_count = sum(
+        1 for line in lines if line.status in UNRESOLVED_BOM_LINE_STATUSES
+    )
     technical_current = selected.technical_snapshot_id == technical_snapshot_id
     ready_for_use = (
         scenario.status == "approved"
@@ -2156,6 +2185,21 @@ def _price_mapping_line(
             line,
             explicit_quantities,
         )
+    if not items and commercial_contract is not None and commercial_contract.classification == "external_rate_card":
+        line = _rate_card_required_line(
+            mapping,
+            environment,
+            float(effective_quantity),
+            unit,
+            demand_warnings,
+            commercial_contract,
+        )
+        return line, _zero_period_payloads(
+            scenario.contract_months,
+            multipliers,
+            line,
+            explicit_quantities,
+        )
     if not items:
         line = _blocked_line(mapping, environment, float(effective_quantity), unit, [*demand_warnings, "Approved price item not found."])
         return line, _zero_period_payloads(scenario.contract_months, multipliers, line, explicit_quantities)
@@ -2165,6 +2209,21 @@ def _price_mapping_line(
         scenario.commitment_model or "pay_as_you_go",
         rate_card_override=scenario.price_mode in {"contract_rate", "manual_rate_card"},
     )
+    if not selected_items and commercial_contract is not None and commercial_contract.classification == "external_rate_card":
+        line = _rate_card_required_line(
+            mapping,
+            environment,
+            float(effective_quantity),
+            unit,
+            demand_warnings,
+            commercial_contract,
+        )
+        return line, _zero_period_payloads(
+            scenario.contract_months,
+            multipliers,
+            line,
+            explicit_quantities,
+        )
     if not selected_items:
         line = _blocked_line(
             mapping,
@@ -2307,6 +2366,9 @@ def _price_mapping_line(
             "commercial_release_version": (
                 commercial_contract.release.version if commercial_contract else None
             ),
+            "commercial_classification": (
+                commercial_contract.classification if commercial_contract else None
+            ),
             "public_commercial_price_snapshot_id": (
                 commercial_contract.release.price_catalog_snapshot_id
                 if commercial_contract else None
@@ -2411,6 +2473,58 @@ def _price_mapping_line(
         for period, raw_quantity in zip(schedule.periods, raw_period_quantities)
     ]
     return line, periods
+
+
+def _rate_card_required_line(
+    mapping: ServiceProductSkuMapping,
+    environment: dict[str, object],
+    quantity: float,
+    unit: str,
+    warnings: list[str],
+    contract: GovernedSkuCommercialContract,
+) -> dict[str, object]:
+    """Represent governed external pricing without inventing a zero-dollar quote."""
+
+    warning = (
+        f"Approved customer rate card does not contain SKU {mapping.part_number}. "
+        "Import or select an approved rate card with an exact part-number match."
+    )
+    return {
+        "environment": str(environment.get("name") or "Unspecified"),
+        "service_id": mapping.service_id,
+        "part_number": mapping.part_number,
+        "description": contract.term.service_name,
+        "metric_name": contract.term.metric_name or mapping.billing_metric_key,
+        "quantity": quantity,
+        "unit": unit,
+        "unit_price": 0.0,
+        "monthly_amount": 0.0,
+        "annual_amount": 0.0,
+        "contract_amount": 0.0,
+        "price_item_id": None,
+        "commercial_term_id": contract.term.id,
+        "commercial_rule_family_id": contract.rule.id,
+        "evidence_reference_ids": list(contract.evidence_reference_ids),
+        "formula": "external_rate_card_required",
+        "inputs": {
+            "quantity": quantity,
+            "commercial_classification": contract.classification,
+        },
+        "status": "rate_card_required",
+        "warnings": [*warnings, warning],
+        "provenance": {
+            **_mapping_provenance(mapping),
+            "commercial_release_id": contract.release.id,
+            "commercial_release_version": contract.release.version,
+            "public_commercial_price_snapshot_id": contract.release.price_catalog_snapshot_id,
+            "applied_price_snapshot_id": None,
+            "contract_price_override": False,
+            "commercial_classification": contract.classification,
+            "rate_card_required": True,
+            "commercial_term_id": contract.term.id,
+            "commercial_rule_family_id": contract.rule.id,
+        },
+    }
 
 
 def _blocked_line(
@@ -2721,8 +2835,12 @@ async def calculate_bom(
             line_payloads.append(line)
             period_payloads.append(periods)
 
-    blocked = [line for line in line_payloads if line["status"] == "blocked"]
-    covered = len(line_payloads) - len(blocked)
+    unresolved = [
+        line
+        for line in line_payloads
+        if line["status"] in UNRESOLVED_BOM_LINE_STATUSES
+    ]
+    covered = len(line_payloads) - len(unresolved)
     coverage_pct = round((covered / len(line_payloads) * 100.0), 1) if line_payloads else 0.0
     monthly_series: list[dict[str, object]] = []
     cumulative = 0.0
@@ -2807,7 +2925,11 @@ async def calculate_bom(
         detected_services=detected_services,
         by_service=dict(by_service),
         by_environment=dict(by_environment),
-        warnings=[warning for line in blocked for warning in _as_string_list(line.get("warnings"))],
+        warnings=[
+            warning
+            for line in unresolved
+            for warning in _as_string_list(line.get("warnings"))
+        ],
     )
 
 
@@ -2834,8 +2956,16 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
     )
     line_payloads = calculation.line_payloads
     period_payloads = calculation.period_payloads
+    unresolved = [
+        line
+        for line in line_payloads
+        if line["status"] in UNRESOLVED_BOM_LINE_STATUSES
+    ]
     blocked = [line for line in line_payloads if line["status"] == "blocked"]
-    covered = len(line_payloads) - len(blocked)
+    rate_card_required = [
+        line for line in line_payloads if line["status"] == "rate_card_required"
+    ]
+    covered = len(line_payloads) - len(unresolved)
     snapshot = BomSnapshot(
         project_id=job.project_id,
         scenario_id=scenario.id,
@@ -2858,6 +2988,8 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
             "line_count": len(line_payloads),
             "priced_line_count": covered,
             "blocked_line_count": len(blocked),
+            "rate_card_required_line_count": len(rate_card_required),
+            "unresolved_line_count": len(unresolved),
             "detected_services": calculation.detected_services,
             "commercial_release": {
                 "id": calculation.commercial_release.id,

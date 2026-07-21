@@ -1216,6 +1216,15 @@ async def test_finalize_catalog_review_disposes_every_candidate_once_with_aggreg
         await _add_catalog_contract_candidate(
             db,
             document=document,
+            part_number="BTESTEXTERNAL",
+            classification="external_rate_card",
+            with_api_price=False,
+            exception_code="API_PRICE_MISSING",
+            exception_severity="high",
+        )
+        await _add_catalog_contract_candidate(
+            db,
+            document=document,
             part_number="BTESTDEPEND",
             classification="dependent_entitlement",
             with_api_price=True,
@@ -1249,6 +1258,11 @@ async def test_finalize_catalog_review_disposes_every_candidate_once_with_aggreg
             )
         )
         assert missing_price_reasons & {"API_PRICE_MISSING", "approved_api_price_missing"}
+        assert candidates["BTESTEXTERNAL"].status == "approved"
+        assert "open_exception:API_PRICE_MISSING" not in cast(
+            list[str],
+            candidates["BTESTEXTERNAL"].proposed_mapping["catalog_disposition_reasons"],
+        )
         assert candidates["BTESTDEPEND"].status == "blocked"
         dependency_reasons = cast(
             list[str], candidates["BTESTDEPEND"].proposed_mapping["catalog_disposition_reasons"]

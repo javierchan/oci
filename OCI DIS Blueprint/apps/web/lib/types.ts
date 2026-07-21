@@ -2033,12 +2033,15 @@ export interface CommercialCoverageReport {
   skipped_by_reason: Record<string, number>;
   candidate_count: number;
   direct_metered_count: number;
+  external_rate_card_count: number;
   current_approved: number;
   current_blocked: number;
   projected_approved: number;
   projected_blocked: number;
   projected_direct_metered_approved: number;
   projected_direct_metered_blocked: number;
+  projected_external_rate_card_approved: number;
+  projected_external_rate_card_blocked: number;
   blockers_by_reason: Record<string, number>;
   promotion_status: string;
   promotion_error_code: string | null;
@@ -2265,6 +2268,7 @@ export interface ProductCoverageRow {
   sku_count: number;
   mapping_count: number;
   readiness_status: "ready" | "blocked_release" | "blocked_evidence";
+  commercial_readiness: "quote_ready" | "rate_card_required" | "blocked";
   status: "pending_review" | "approved" | "rejected";
   promotable: boolean;
   blocker_count: number;
@@ -2287,6 +2291,7 @@ export interface ProductCoverageMapping {
   quantity_increment: number;
   minimum_quantity: number;
   quantity_unit: string;
+  usage_basis: string;
   selection_policy: string;
   is_billable: boolean;
   entry_guidance: string;

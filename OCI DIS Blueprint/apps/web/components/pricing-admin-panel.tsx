@@ -400,7 +400,7 @@ function CommercialCatalogWorkspace(): JSX.Element {
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-accent)]" />
               <div className="min-w-0">
                 <p className="app-label">Coverage Advancement</p>
-                <h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Safely unlock direct-metered OCI coverage</h3>
+                <h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Safely advance public and customer-rate coverage</h3>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
                   Resolve only low-severity product identity naming variance, then apply the existing deterministic review gate. Dependency, metric, term, and repeated-source conflicts remain blocked for individual review.
                 </p>
@@ -408,10 +408,11 @@ function CommercialCatalogWorkspace(): JSX.Element {
             </div>
             {coveragePreview ? (
               <div className="mt-5 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)]">
-                <div className="grid gap-px bg-[var(--color-border)] sm:grid-cols-2 xl:grid-cols-5">
+                <div className="grid gap-px bg-[var(--color-border)] sm:grid-cols-2 xl:grid-cols-6">
                   {[
                     [coveragePreview.dry_run ? "Would resolve" : "Resolved", coveragePreview.dry_run ? coveragePreview.eligible_open_exceptions : coveragePreview.resolved_exceptions],
-                    ["Direct metered ready", coveragePreview.projected_direct_metered_approved],
+                    ["PAYG ready", coveragePreview.projected_direct_metered_approved],
+                    ["Rate card ready", coveragePreview.projected_external_rate_card_approved],
                     ["Still blocked", coveragePreview.projected_blocked],
                     ["Approved in release", coveragePreview.release_part_number_count],
                     ["Enabled for BOM", coveragePreview.release_bom_part_number_count],

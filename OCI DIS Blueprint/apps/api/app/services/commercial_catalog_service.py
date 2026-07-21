@@ -1171,13 +1171,25 @@ async def import_commercial_workbook(
                 "commercial_rule_family_id": rule.id,
                 "field_authority": FIELD_AUTHORITY,
             },
-            confidence=0.98 if existing_mapping and term and api_items else 0.75 if term and api_items else 0.4,
+            confidence=(
+                0.98
+                if existing_mapping and term and api_items
+                else 0.75
+                if term and (api_items or classification == "external_rate_card")
+                else 0.4
+            ),
             generator_version=GENERATOR_VERSION,
             status="pending_review",
             reasons=[
                 "Existing approved mapping matched by exact part number" if existing_mapping else "No existing service mapping",
                 "Official document term present" if term else "Official document term missing",
-                "Approved API price present" if api_items else "Approved API price missing",
+                (
+                    "Approved API price present"
+                    if api_items
+                    else "Approved customer rate card required"
+                    if classification == "external_rate_card"
+                    else "Approved API price missing"
+                ),
             ],
         )
         db.add(candidate)
@@ -1204,7 +1216,7 @@ async def import_commercial_workbook(
             )
         if term is None:
             exception_specs.append(("DOCUMENT_TERM_MISSING", "high", {"part_number": part_number}))
-        if numeric_price and not api_items:
+        if numeric_price and not api_items and classification != "external_rate_card":
             exception_specs.append(("API_PRICE_MISSING", "high", {"part_number": part_number}))
         if record and _meaningful_document_text(record.prerequisites):
             relationship = SkuCommercialRelationship(
@@ -1429,7 +1441,11 @@ def catalog_finalization_blockers(
     """Return deterministic blockers for one global catalog disposition."""
 
     blockers: list[str] = []
-    if candidate.classification not in {"direct_metered", "included_non_billable"}:
+    if candidate.classification not in {
+        "direct_metered",
+        "external_rate_card",
+        "included_non_billable",
+    }:
         blockers.append(f"classification:{candidate.classification}")
     if candidate.generator_version != GENERATOR_VERSION:
         blockers.append("candidate_generator_outdated")
@@ -1444,7 +1460,13 @@ def catalog_finalization_blockers(
             blockers.append("rule_generator_outdated")
         if rule.fixture_status != "passed":
             blockers.append("commercial_fixture_not_passed")
-    blockers.extend(f"open_exception:{code}" for code in sorted(open_exception_codes))
+    effective_exception_codes = set(open_exception_codes)
+    if candidate.classification == "external_rate_card":
+        # Older snapshots represented the expected absence of a public API price as
+        # an exception. Preserve that evidence, but do not let it block a SKU whose
+        # governed pricing contract explicitly requires a customer rate card.
+        effective_exception_codes.discard("API_PRICE_MISSING")
+    blockers.extend(f"open_exception:{code}" for code in sorted(effective_exception_codes))
     blockers.extend(
         f"relationship_not_resolved:{status}"
         for status in sorted(unresolved_relationship_statuses)
@@ -2061,6 +2083,7 @@ async def _catalog_coverage_report(
 
     projected_approved = 0
     projected_direct_metered_approved = 0
+    projected_external_rate_card_approved = 0
     blockers_by_reason: dict[str, int] = {}
     for candidate in candidates:
         rule_id = candidate.proposed_mapping.get("commercial_rule_family_id")
@@ -2077,11 +2100,16 @@ async def _catalog_coverage_report(
             projected_approved += 1
             if candidate.classification == "direct_metered":
                 projected_direct_metered_approved += 1
+            elif candidate.classification == "external_rate_card":
+                projected_external_rate_card_approved += 1
         for blocker in blockers:
             blockers_by_reason[blocker] = blockers_by_reason.get(blocker, 0) + 1
 
     direct_metered_count = sum(
         candidate.classification == "direct_metered" for candidate in candidates
+    )
+    external_rate_card_count = sum(
+        candidate.classification == "external_rate_card" for candidate in candidates
     )
     current_approved = sum(candidate.status == "approved" for candidate in candidates)
     current_blocked = sum(candidate.status == "blocked" for candidate in candidates)
@@ -2111,6 +2139,7 @@ async def _catalog_coverage_report(
         "skipped_by_reason": dict(sorted(skipped_by_reason.items())),
         "candidate_count": len(candidates),
         "direct_metered_count": direct_metered_count,
+        "external_rate_card_count": external_rate_card_count,
         "current_approved": current_approved,
         "current_blocked": current_blocked,
         "projected_approved": projected_approved,
@@ -2118,6 +2147,10 @@ async def _catalog_coverage_report(
         "projected_direct_metered_approved": projected_direct_metered_approved,
         "projected_direct_metered_blocked": (
             direct_metered_count - projected_direct_metered_approved
+        ),
+        "projected_external_rate_card_approved": projected_external_rate_card_approved,
+        "projected_external_rate_card_blocked": (
+            external_rate_card_count - projected_external_rate_card_approved
         ),
         "blockers_by_reason": dict(
             sorted(blockers_by_reason.items(), key=lambda item: (-item[1], item[0]))

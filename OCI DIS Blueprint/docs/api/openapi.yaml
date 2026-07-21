@@ -6571,6 +6571,11 @@
             "title": "Eligible Open Exceptions",
             "type": "integer"
           },
+          "external_rate_card_count": {
+            "minimum": 0.0,
+            "title": "External Rate Card Count",
+            "type": "integer"
+          },
           "projected_approved": {
             "minimum": 0.0,
             "title": "Projected Approved",
@@ -6589,6 +6594,16 @@
           "projected_direct_metered_blocked": {
             "minimum": 0.0,
             "title": "Projected Direct Metered Blocked",
+            "type": "integer"
+          },
+          "projected_external_rate_card_approved": {
+            "minimum": 0.0,
+            "title": "Projected External Rate Card Approved",
+            "type": "integer"
+          },
+          "projected_external_rate_card_blocked": {
+            "minimum": 0.0,
+            "title": "Projected External Rate Card Blocked",
             "type": "integer"
           },
           "promotion_detail": {
@@ -6660,12 +6675,15 @@
           "skipped_exceptions",
           "candidate_count",
           "direct_metered_count",
+          "external_rate_card_count",
           "current_approved",
           "current_blocked",
           "projected_approved",
           "projected_blocked",
           "projected_direct_metered_approved",
           "projected_direct_metered_blocked",
+          "projected_external_rate_card_approved",
+          "projected_external_rate_card_blocked",
           "promotion_status",
           "promotion_error_code",
           "promotion_detail",
@@ -12453,6 +12471,10 @@
             ],
             "title": "Category"
           },
+          "commercial_readiness": {
+            "title": "Commercial Readiness",
+            "type": "string"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -12579,6 +12601,7 @@
           "sku_count",
           "mapping_count",
           "readiness_status",
+          "commercial_readiness",
           "status",
           "promotable",
           "blocker_count",
@@ -12726,6 +12749,10 @@
             ],
             "title": "Category"
           },
+          "commercial_readiness": {
+            "title": "Commercial Readiness",
+            "type": "string"
+          },
           "generator_version": {
             "title": "Generator Version",
             "type": "string"
@@ -12768,6 +12795,7 @@
           "sku_count",
           "mapping_count",
           "readiness_status",
+          "commercial_readiness",
           "status",
           "promotable",
           "blocker_count",

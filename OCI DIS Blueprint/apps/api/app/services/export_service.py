@@ -45,6 +45,12 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _bom_export_value(status: str, value: object) -> object | None:
+    """Suppress persistence sentinels that are not governed commercial prices."""
+
+    return None if status == "rate_card_required" else value
+
+
 async def _load_project(project_id: str, db: AsyncSession) -> Project:
     project = await db.get(Project, project_id)
     if project is None:
@@ -723,11 +729,18 @@ async def create_bom_xlsx_export(
         ]
     )
     for line in bom.line_items:
+        requires_rate_card = line.status == "rate_card_required"
         lines.append(
             [
                 line.environment, line.service_id, line.provenance.get("commercial_variant"), line.part_number, line.description, line.metric_name,
-                line.quantity, line.unit, line.unit_price, line.monthly_amount, line.annual_amount,
-                line.contract_amount, line.status, line.formula, _excel_cell_value(line.warnings),
+                line.quantity, line.unit,
+                _bom_export_value(line.status, line.unit_price),
+                _bom_export_value(line.status, line.monthly_amount),
+                _bom_export_value(line.status, line.annual_amount),
+                _bom_export_value(line.status, line.contract_amount),
+                line.status,
+                "Approved customer rate card required" if requires_rate_card else line.formula,
+                _excel_cell_value(line.warnings),
             ]
         )
 
@@ -764,8 +777,10 @@ async def create_bom_xlsx_export(
                     line.id, line.environment, line.service_id, line.part_number,
                     line_period.period_index, line_period.period_start,
                     line_period.multiplier, line_period.quantity,
-                    line_period.active_hours, line_period.unit_price,
-                    line_period.amount, line_period.status,
+                    line_period.active_hours,
+                    _bom_export_value(line_period.status, line_period.unit_price),
+                    _bom_export_value(line_period.status, line_period.amount),
+                    line_period.status,
                 ]
             )
 
@@ -893,10 +908,15 @@ async def create_bom_pdf_export(
         "Top line items:",
     ]
     for item in sorted(bom.line_items, key=lambda line: line.monthly_amount, reverse=True)[:20]:
+        amount_label = (
+            "Approved customer rate card required"
+            if item.status == "rate_card_required"
+            else f"{bom.currency} {item.monthly_amount:,.2f}/month"
+        )
         lines.append(
             f"{item.environment} | {item.service_id} | {item.provenance.get('commercial_variant', 'Governed default')} | {item.part_number or 'N/A'} | "
             f"{item.quantity:,.3f} {item.unit} | "
-            f"{bom.currency} {item.monthly_amount:,.2f}/month | {item.status}"
+            f"{amount_label} | {item.status}"
         )
     lines.extend(["", "Planning estimate only; not an Oracle quote."])
     _ensure_export_dirs()

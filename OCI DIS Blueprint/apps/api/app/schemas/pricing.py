@@ -230,12 +230,15 @@ class CommercialCoverageReportResponse(BaseModel):
     skipped_by_reason: dict[str, int] = Field(default_factory=dict)
     candidate_count: int = Field(ge=0)
     direct_metered_count: int = Field(ge=0)
+    external_rate_card_count: int = Field(ge=0)
     current_approved: int = Field(ge=0)
     current_blocked: int = Field(ge=0)
     projected_approved: int = Field(ge=0)
     projected_blocked: int = Field(ge=0)
     projected_direct_metered_approved: int = Field(ge=0)
     projected_direct_metered_blocked: int = Field(ge=0)
+    projected_external_rate_card_approved: int = Field(ge=0)
+    projected_external_rate_card_blocked: int = Field(ge=0)
     blockers_by_reason: dict[str, int] = Field(default_factory=dict)
     promotion_status: str
     promotion_error_code: Optional[str]
@@ -334,6 +337,7 @@ class ProductCoverageRowResponse(BaseModel):
     sku_count: int = Field(ge=0)
     mapping_count: int = Field(ge=0)
     readiness_status: str
+    commercial_readiness: str
     status: str
     promotable: bool
     blocker_count: int = Field(ge=0)

@@ -47,6 +47,8 @@ async def _seed_approved_commercial_release(
     session: AsyncSession,
     catalog: PriceCatalogSnapshot,
     mappings: list[ServiceProductSkuMapping],
+    *,
+    classifications: dict[str, str] | None = None,
 ) -> CommercialRelease:
     """Create the minimum complete governed contract required by a new BOM."""
 
@@ -97,7 +99,7 @@ async def _seed_approved_commercial_release(
             price_type="HOUR" if mapping.formula_key == "hourly_capacity" else "MONTH",
             allow_decimal_quantity=mapping.quantity_behavior == "continuous",
             availability=[],
-            disposition="direct_metered",
+            disposition=(classifications or {}).get(mapping.part_number, "direct_metered"),
             family_key=family_key,
             status="approved",
             confidence=1,
@@ -215,6 +217,7 @@ def _direct_commercial_contract(
     price_type: str,
     behavior: str,
     constraints: tuple[SkuCommercialConstraint, ...],
+    classification: str = "direct_metered",
 ) -> bom_service.GovernedSkuCommercialContract:
     release = CommercialRelease(
         id="release-direct",
@@ -242,7 +245,7 @@ def _direct_commercial_contract(
         metric_name="Direct metric",
         price_type=price_type,
         availability=[],
-        disposition="direct_metered",
+        disposition=classification,
         family_key="direct-family",
         status="approved",
         source_sheet="Price List",
@@ -274,6 +277,7 @@ def _direct_commercial_contract(
         rule=rule,
         constraints=constraints,
         evidence_reference_ids=("evidence-direct",),
+        classification=classification,
     )
 
 
@@ -346,6 +350,112 @@ def test_release_does_not_require_a_commercial_sku_for_non_billable_mappings() -
     )
 
     bom_service._validate_release_mapping_scope(release, [mapping])
+
+
+def test_external_rate_card_without_exact_sku_is_unpriced_and_incomplete() -> None:
+    mapping = _scenario_mapping(
+        service_id="EXTERNAL_SERVICE",
+        part_number="EXTERNAL-SKU",
+        predicates={},
+    )
+    scenario = DeploymentScenario(
+        project_id="project",
+        name="External rate fixture",
+        status="approved",
+        currency="USD",
+        region="global",
+        price_mode="manual_rate_card",
+        commitment_model="annual_commitment",
+        technical_snapshot_id="technical",
+        contract_months=1,
+        start_date=date(2026, 1, 1),
+        proration_policy="full_month",
+        consumption_model="explicit_units",
+        service_config={},
+        scenario_assumptions={},
+        created_by="test",
+    )
+    contract = _direct_commercial_contract(
+        formula_key="metered_quantity",
+        price_type="MONTH",
+        behavior="continuous",
+        constraints=(),
+        classification="external_rate_card",
+    )
+
+    line, periods = bom_service._price_mapping_line(
+        mapping,
+        [],
+        3,
+        "units",
+        {"name": "Production", "active_hours_month": 744},
+        scenario,
+        [],
+        (Decimal("1"),),
+        (Decimal("3"),),
+        {},
+        contract,
+    )
+
+    assert line["status"] == "rate_card_required"
+    assert line["formula"] == "external_rate_card_required"
+    assert line["quantity"] == 3
+    assert line["price_item_id"] is None
+    assert line["commercial_term_id"] == contract.term.id
+    assert line["commercial_rule_family_id"] == contract.rule.id
+    assert line["evidence_reference_ids"] == ["evidence-direct"]
+    warnings = cast(list[object], line["warnings"])
+    assert "exact part-number match" in str(warnings[0])
+    assert periods[0]["status"] == "rate_card_required"
+    assert periods[0]["quantity"] == 3
+
+
+def test_direct_metered_without_price_remains_blocked() -> None:
+    mapping = _scenario_mapping(
+        service_id="DIRECT_SERVICE",
+        part_number="DIRECT-SKU",
+        predicates={},
+    )
+    scenario = DeploymentScenario(
+        project_id="project",
+        name="Direct price fixture",
+        status="approved",
+        currency="USD",
+        region="global",
+        price_mode="public_list",
+        commitment_model="pay_as_you_go",
+        technical_snapshot_id="technical",
+        contract_months=1,
+        start_date=date(2026, 1, 1),
+        proration_policy="full_month",
+        consumption_model="explicit_units",
+        service_config={},
+        scenario_assumptions={},
+        created_by="test",
+    )
+
+    line, _ = bom_service._price_mapping_line(
+        mapping,
+        [],
+        3,
+        "units",
+        {"name": "Production", "active_hours_month": 744},
+        scenario,
+        [],
+        (Decimal("1"),),
+        (Decimal("3"),),
+        {},
+        _direct_commercial_contract(
+            formula_key="metered_quantity",
+            price_type="MONTH",
+            behavior="continuous",
+            constraints=(),
+        ),
+    )
+
+    assert line["status"] == "blocked"
+    warnings = cast(list[object], line["warnings"])
+    assert "Approved price item not found" in str(warnings[0])
 
 
 def test_commercial_constraints_preserve_capacity_storage_and_time_scopes() -> None:
@@ -1842,7 +1952,10 @@ async def test_contract_rate_overrides_price_but_inherits_public_terms(
         session.add_all([public_catalog, contract_catalog, mapping])
         await session.flush()
         release = await _seed_approved_commercial_release(
-            session, public_catalog, [mapping]
+            session,
+            public_catalog,
+            [mapping],
+            classifications={"RATE-OVERRIDE": "external_rate_card"},
         )
         contract_price = PriceItem(
             snapshot_id=contract_catalog.id,
@@ -1902,12 +2015,14 @@ async def test_contract_rate_overrides_price_but_inherits_public_terms(
         )
 
         assert resolved_release.id == release.id
+        assert contracts["RATE-OVERRIDE"].classification == "external_rate_card"
         assert line["unit_price"] == 0.5
         assert line["quantity"] == 2
         assert line["monthly_amount"] == 744
         assert line["commercial_term_id"] == contracts["RATE-OVERRIDE"].term.id
         provenance = cast(dict[str, object], line["provenance"])
         assert provenance["contract_price_override"] is True
+        assert provenance["commercial_classification"] == "external_rate_card"
         assert provenance["public_commercial_price_snapshot_id"] == public_catalog.id
         assert provenance["applied_price_snapshot_id"] == contract_catalog.id
         assert periods[0]["commercial_rule_family_id"] == contracts["RATE-OVERRIDE"].rule.id

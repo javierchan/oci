@@ -658,6 +658,27 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       Node 26 production build, production Docker health, and browser preview
       validation pass without mutating the active commercial catalog.
 
+### M61 — Governed External Rate Card Coverage
+- [x] Finalize `external_rate_card` commercial candidates without requiring a
+      public OCI API price while preserving approved terms, rule fixtures, source
+      evidence, relationship gates, and human review.
+- [x] Price an external SKU only from an exact part-number match in the selected,
+      approved customer rate card; contractual evidence never becomes a public
+      catalog default.
+- [x] Represent missing contractual evidence as `rate_card_required`, preserve the
+      requested quantity and SKU, keep BOM coverage incomplete, and never present
+      the non-null persistence sentinel as a free or zero-cost service.
+- [x] Keep `direct_metered` behavior unchanged and distinguish PAYG-ready from
+      rate-card-ready coverage in the Admin Pricing funnel.
+- [x] Generate Product Coverage policies and mappings with
+      `external_rate_required` publication semantics and explicit Admin guidance.
+- [x] Surface the requirement consistently in BOM, rollout, XLSX/PDF export, and
+      OCI Coverage review UI without adding a migration.
+- [x] **Exit criteria**: focused commercial-catalog, pricing-BOM, product-coverage,
+      export, frontend, OpenAPI, Node 26 production build, production Docker, and
+      responsive browser validation pass; exact rate-card matching prices normally,
+      missing matching rates remain unresolved, and direct-metered regressions pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

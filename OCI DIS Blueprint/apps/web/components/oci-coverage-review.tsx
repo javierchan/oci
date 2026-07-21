@@ -49,6 +49,13 @@ function readinessPresentation(product: ProductCoverageRow): {
     };
   }
   if (product.readiness_status === "ready") {
+    if (product.commercial_readiness === "rate_card_required") {
+      return {
+        label: "Ready · rate card required",
+        className: "border-amber-400/55 text-amber-800 dark:text-amber-300",
+        Icon: ShieldCheck,
+      };
+    }
     return {
       label: "Ready for review",
       className: "border-emerald-400/45 text-emerald-700 dark:text-emerald-300",
@@ -256,6 +263,12 @@ export function OciCoverageReview(): JSX.Element {
                           <div><dt className="text-[var(--color-text-muted)]">Generator</dt><dd className="mt-1 font-mono text-xs text-[var(--color-text-primary)]">{detail.generator_version}</dd></div>
                         </dl>
                       </div>
+                      {detail.commercial_readiness === "rate_card_required" ? (
+                        <div className="rounded-lg border border-amber-400/45 bg-amber-500/5 p-4 text-sm leading-6 text-[var(--color-text-secondary)]">
+                          <p className="font-semibold text-amber-800 dark:text-amber-300">Customer rate card required at quote time</p>
+                          <p className="mt-1">The product definition and quantity rules are ready. A BOM can price these SKUs only when the selected approved customer rate card contains an exact part-number match.</p>
+                        </div>
+                      ) : null}
                       <div>
                         <p className="app-label">Readiness blockers</p>
                         {detail.readiness_blockers.length ? (

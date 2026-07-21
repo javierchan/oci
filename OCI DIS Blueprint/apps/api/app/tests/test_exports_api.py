@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.models import CatalogIntegration, DashboardSnapshot, Project, VolumetrySnapshot
-from app.services import capture_template_service, import_service
+from app.services import capture_template_service, export_service, import_service
 
 pytestmark = [
     pytest.mark.filterwarnings(
@@ -23,6 +23,14 @@ pytestmark = [
         "ignore:datetime.datetime.utcnow\\(\\) is deprecated and scheduled for removal.*:DeprecationWarning:openpyxl.writer.excel"
     ),
 ]
+
+
+def test_rate_card_required_export_values_are_not_presented_as_zero() -> None:
+    """A missing contractual rate must remain visibly unresolved in exports."""
+
+    assert export_service._bom_export_value("rate_card_required", 0) is None
+    assert export_service._bom_export_value("rate_card_required", 0.0) is None
+    assert export_service._bom_export_value("priced", 0) == 0
 
 
 @pytest.mark.asyncio

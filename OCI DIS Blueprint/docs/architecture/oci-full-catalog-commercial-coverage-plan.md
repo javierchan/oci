@@ -457,6 +457,28 @@ Carril 1 grows governed commercial coverage but does not activate a SKU in a BOM
 until the independent Phase 2B product profile, policy, mapping, and fixture gates
 also pass. No schema migration or BOM calculation change is introduced.
 
+### Carril 2 — governed external rate-card coverage
+
+`external_rate_card` identifies an OCI SKU whose commercial identity, metric,
+quantity behavior, and deterministic rule can be governed without claiming that a
+public PAYG rate exists. Catalog finalization therefore does not require an API
+price for this classification, but every other evidence, relationship, fixture,
+exception, and review gate remains authoritative.
+
+Product Coverage can promote an externally priced product when its technical and
+commercial semantics are complete. Its policy records `rate_card_required`
+readiness and `external_rate_required` publication semantics; the approved mapping
+does not make the SKU free and does not invent a rate.
+
+At BOM calculation time the selected approved customer rate card must contain an
+exact part-number match. When it does, the normal deterministic quantity and
+pricing path runs with contractual provenance. When it does not, the line remains
+visible as `rate_card_required`, retains its requested quantity and source
+evidence, lowers snapshot coverage, and blocks publication. UI and human-readable
+exports show an explicit contractual-rate requirement instead of the internal
+non-null zero sentinel. `direct_metered` candidates retain their existing public
+price requirement and behavior.
+
 - [x] The latest official products, presets, and metrics sources complete one atomic sync.
 - [x] Approved Price List and Supplement snapshots are immutable, hashed, and bound
       to the structured source release through field-level authority.

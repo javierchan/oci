@@ -38,6 +38,7 @@ async def _add_commercial_product(
     snapshot: PriceCatalogSnapshot,
     part_number: str,
     product_name: str,
+    classification: str = "direct_metered",
 ) -> tuple[CommercialMappingCandidate, SkuCommercialTerm, CommercialRuleFamily]:
     sku = CommercialSku(
         part_number=part_number,
@@ -55,16 +56,20 @@ async def _add_commercial_product(
     )
     db.add(sku)
     await db.flush()
-    price_item = PriceItem(
-        snapshot_id=snapshot.id,
-        part_number=part_number,
-        display_name=sku.display_name,
-        metric_name="Requests Per Month",
-        service_category="Governed Test Services",
-        price_type="MONTH",
-        currency="USD",
-        model="PAY_AS_YOU_GO",
-        value=1,
+    price_item = (
+        PriceItem(
+            snapshot_id=snapshot.id,
+            part_number=part_number,
+            display_name=sku.display_name,
+            metric_name="Requests Per Month",
+            service_category="Governed Test Services",
+            price_type="MONTH",
+            currency="USD",
+            model="PAY_AS_YOU_GO",
+            value=1,
+        )
+        if classification == "direct_metered"
+        else None
     )
     term = SkuCommercialTerm(
         document_snapshot_id=document.id,
@@ -80,7 +85,7 @@ async def _add_commercial_product(
         allow_decimal_quantity=False,
         availability=[],
         additional_information="Purchase in whole governed request units.",
-        disposition="direct_metered",
+        disposition=classification,
         family_key=f"month::requests::{part_number.casefold()}",
         status="approved",
         confidence=1,
@@ -108,17 +113,17 @@ async def _add_commercial_product(
         approved_by="fixture",
         approved_at=datetime.now(UTC),
     )
-    db.add_all([price_item, term, rule])
+    db.add_all([item for item in [price_item, term, rule] if item is not None])
     await db.flush()
     candidate = CommercialMappingCandidate(
         document_snapshot_id=document.id,
         commercial_sku_id=sku.id,
         term_id=term.id,
-        price_item_id=price_item.id,
+        price_item_id=price_item.id if price_item else None,
         part_number=part_number,
         proposed_service_id=None,
         family_key=rule.family_key,
-        classification="direct_metered",
+        classification=classification,
         proposed_mapping={"commercial_rule_family_id": rule.id},
         confidence=1,
         generator_version=COMMERCIAL_GENERATOR_VERSION,
@@ -132,7 +137,12 @@ async def _add_commercial_product(
     return candidate, term, rule
 
 
-async def _seed_coverage_evidence(test_engine: AsyncEngine, *, collision: bool = False) -> None:
+async def _seed_coverage_evidence(
+    test_engine: AsyncEngine,
+    *,
+    collision: bool = False,
+    include_external: bool = False,
+) -> None:
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as db:
         now = datetime.now(UTC)
@@ -180,6 +190,20 @@ async def _seed_coverage_evidence(test_engine: AsyncEngine, *, collision: bool =
             part_number="BREADY",
             product_name="Ready Product",
         )
+        external_contract: tuple[
+            CommercialMappingCandidate,
+            SkuCommercialTerm,
+            CommercialRuleFamily,
+        ] | None = None
+        if include_external:
+            external_contract = await _add_commercial_product(
+                db,
+                document=document,
+                snapshot=snapshot,
+                part_number="BEXTERNAL",
+                product_name="External Product",
+                classification="external_rate_card",
+            )
         await _add_commercial_product(
             db,
             document=document,
@@ -204,6 +228,16 @@ async def _seed_coverage_evidence(test_engine: AsyncEngine, *, collision: bool =
                     version="1.0.0",
                 )
             )
+        release_part_numbers = ["BREADY"]
+        term_ids_by_part = {"BREADY": ready_term.id}
+        rule_ids_by_part = {"BREADY": ready_rule.id}
+        candidate_ids_by_part = {"BREADY": ready_candidate.id}
+        if external_contract:
+            external_candidate, external_term, external_rule = external_contract
+            release_part_numbers.append("BEXTERNAL")
+            term_ids_by_part["BEXTERNAL"] = external_term.id
+            rule_ids_by_part["BEXTERNAL"] = external_rule.id
+            candidate_ids_by_part["BEXTERNAL"] = external_candidate.id
         release = CommercialRelease(
             version="coverage-release-1",
             price_catalog_snapshot_id=snapshot.id,
@@ -215,10 +249,10 @@ async def _seed_coverage_evidence(test_engine: AsyncEngine, *, collision: bool =
             validation_status="passed",
             open_exception_count=0,
             release_metadata={
-                "part_numbers": ["BREADY"],
-                "term_ids_by_part": {"BREADY": ready_term.id},
-                "rule_ids_by_part": {"BREADY": ready_rule.id},
-                "candidate_ids_by_part": {"BREADY": ready_candidate.id},
+                "part_numbers": release_part_numbers,
+                "term_ids_by_part": term_ids_by_part,
+                "rule_ids_by_part": rule_ids_by_part,
+                "candidate_ids_by_part": candidate_ids_by_part,
             },
             approved_by="fixture",
             approved_at=now,
@@ -339,6 +373,51 @@ async def test_service_id_collision_remains_visible_and_non_promotable(
     payload = detail.json()
     assert payload["promotable"] is False
     assert any(item["code"] == "service_id_collision" for item in payload["readiness_blockers"])
+
+
+@pytest.mark.asyncio
+async def test_external_rate_product_is_promotable_but_requires_rate_card_at_quote_time(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    await _seed_coverage_evidence(test_engine, include_external=True)
+    generated = await api_client.post(
+        "/api/v1/pricing/product-coverage/generate",
+        headers=ADMIN_HEADERS,
+    )
+    assert generated.status_code == 200, generated.text
+
+    detail = await api_client.get(
+        "/api/v1/pricing/product-coverage/EXTERNAL_PRODUCT",
+        headers={"X-Actor-Role": "Viewer"},
+    )
+    assert detail.status_code == 200, detail.text
+    payload = detail.json()
+    assert payload["readiness_status"] == "ready"
+    assert payload["commercial_readiness"] == "rate_card_required"
+    assert payload["promotable"] is True
+    assert payload["proposed_policy"]["publication_policy"] == "external_rate_required"
+    assert payload["proposed_mappings"][0]["usage_basis"] == "external_rate_card"
+
+    approved = await api_client.post(
+        "/api/v1/pricing/product-coverage/EXTERNAL_PRODUCT/review",
+        headers=ADMIN_HEADERS,
+        json={
+            "decision": "approve",
+            "rationale": "Product and quantity rules are governed; customer pricing remains quote-specific.",
+        },
+    )
+    assert approved.status_code == 200, approved.text
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as db:
+        mapping = await db.scalar(
+            select(ServiceProductSkuMapping).where(
+                ServiceProductSkuMapping.part_number == "BEXTERNAL"
+            )
+        )
+        assert mapping is not None
+        assert mapping.usage_basis == "external_rate_card"
 
 
 @pytest.mark.asyncio
