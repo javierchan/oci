@@ -49,6 +49,28 @@ describe("commercial catalog API client", () => {
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual(expect.any(Headers));
   });
 
+  it("loads the read-only product catalog with bounded filters", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.listOciProducts({ search: "Exadata", category: "Data Management", page: 2, page_size: 50 });
+
+    expect(requestPath(fetchMock.mock.calls[0])).toBe(
+      "/api/v1/pricing/product-catalog?search=Exadata&category=Data+Management&page=2&page_size=50",
+    );
+  });
+
+  it("loads one encoded product key and one bounded SKU page", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.getOciProduct("ORACLE/EXADATA", { page: 3, page_size: 25 });
+
+    expect(requestPath(fetchMock.mock.calls[0])).toBe(
+      "/api/v1/pricing/product-catalog/ORACLE%2FEXADATA?page=3&page_size=25",
+    );
+  });
+
   it("uploads an XLSX document as multipart evidence", async () => {
     const fetchMock = vi.fn().mockResolvedValue(response());
     vi.stubGlobal("fetch", fetchMock);

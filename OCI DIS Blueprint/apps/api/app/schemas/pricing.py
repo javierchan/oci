@@ -216,6 +216,69 @@ class CommercialWorkspaceResponse(BaseModel):
     field_authority: dict[str, str] = Field(default_factory=dict)
 
 
+class OciProductPriceSummaryResponse(BaseModel):
+    """Bounded PAYG price range from the latest approved USD snapshot."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    currency: str
+    min_payg_unit_price: float
+    max_payg_unit_price: float
+
+
+class OciProductCatalogRowResponse(BaseModel):
+    """Lightweight product taxonomy row for one paginated catalog page."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    product_key: str
+    name: str
+    category: Optional[str]
+    sku_count: int = Field(ge=1)
+    price_summary: Optional[OciProductPriceSummaryResponse]
+
+
+class OciProductCatalogListResponse(BaseModel):
+    """Paginated read-only OCI product taxonomy."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    products: list[OciProductCatalogRowResponse] = Field(default_factory=list)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=200)
+    total: int = Field(ge=0)
+
+
+class OciProductSkuResponse(BaseModel):
+    """One SKU projection inside an explicitly opened product."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    part_number: str
+    display_name: str
+    metric_name: Optional[str]
+    price_type: Optional[str]
+    current_payg_unit_price: Optional[float]
+    commercial_classification: Optional[str]
+    is_bom_mapped: bool
+
+
+class OciProductCatalogDetailResponse(BaseModel):
+    """One product identity with a paginated, bounded SKU list."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    product_key: str
+    name: str
+    category: Optional[str]
+    sku_count: int = Field(ge=1)
+    price_summary: Optional[OciProductPriceSummaryResponse]
+    skus: list[OciProductSkuResponse] = Field(default_factory=list)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=200)
+    total: int = Field(ge=0)
+
+
 class CommercialCandidateReviewRequest(BaseModel):
     """Explicit administrator disposition of one generated candidate."""
 

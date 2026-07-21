@@ -14,6 +14,8 @@ from app.schemas.pricing import (
     CommercialWorkspaceResponse,
     GovernanceChangeSetListResponse,
     GovernanceChangeSetResponse,
+    OciProductCatalogDetailResponse,
+    OciProductCatalogListResponse,
     PriceCatalogSnapshotListResponse,
     PriceCatalogSnapshotResponse,
     PriceItemListResponse,
@@ -25,7 +27,7 @@ from app.schemas.pricing import (
     SkuMappingPatchRequest,
     SkuMappingResponse,
 )
-from app.services import commercial_catalog_service, pricing_service
+from app.services import commercial_catalog_service, pricing_service, product_catalog_service
 from app.services.authz import require_admin, require_roles
 from app.workers.pricing_worker import execute_price_sync_job_task
 
@@ -35,6 +37,50 @@ router = APIRouter(prefix="/pricing", tags=["Pricing"])
 
 def _require_pricing_read(role: str | None) -> None:
     require_roles(role, {"Admin", "Architect", "Analyst", "Viewer"}, error_code="PRICING_READ_ROLE_REQUIRED")
+
+
+@router.get(
+    "/product-catalog",
+    response_model=OciProductCatalogListResponse,
+    summary="Browse the captured OCI product taxonomy",
+)
+async def get_product_catalog(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    search: str | None = None,
+    category: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> OciProductCatalogListResponse:
+    _require_pricing_read(actor_role)
+    return await product_catalog_service.list_products(
+        db,
+        page=page,
+        page_size=page_size,
+        search=search,
+        category=category,
+    )
+
+
+@router.get(
+    "/product-catalog/{product_key}",
+    response_model=OciProductCatalogDetailResponse,
+    summary="Inspect the paginated SKUs captured for one OCI product",
+)
+async def get_product_catalog_detail(
+    product_key: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> OciProductCatalogDetailResponse:
+    _require_pricing_read(actor_role)
+    return await product_catalog_service.product_detail(
+        db,
+        requested_key=product_key,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get(

@@ -10694,6 +10694,264 @@
         "title": "ObjectStorageReadinessResponse",
         "type": "object"
       },
+      "OciProductCatalogDetailResponse": {
+        "additionalProperties": false,
+        "description": "One product identity with a paginated, bounded SKU list.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "price_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OciProductPriceSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "product_key": {
+            "title": "Product Key",
+            "type": "string"
+          },
+          "sku_count": {
+            "minimum": 1.0,
+            "title": "Sku Count",
+            "type": "integer"
+          },
+          "skus": {
+            "items": {
+              "$ref": "#/components/schemas/OciProductSkuResponse"
+            },
+            "title": "Skus",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product_key",
+          "name",
+          "category",
+          "sku_count",
+          "price_summary",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "OciProductCatalogDetailResponse",
+        "type": "object"
+      },
+      "OciProductCatalogListResponse": {
+        "additionalProperties": false,
+        "description": "Paginated read-only OCI product taxonomy.",
+        "properties": {
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/OciProductCatalogRowResponse"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "OciProductCatalogListResponse",
+        "type": "object"
+      },
+      "OciProductCatalogRowResponse": {
+        "additionalProperties": false,
+        "description": "Lightweight product taxonomy row for one paginated catalog page.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OciProductPriceSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "product_key": {
+            "title": "Product Key",
+            "type": "string"
+          },
+          "sku_count": {
+            "minimum": 1.0,
+            "title": "Sku Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product_key",
+          "name",
+          "category",
+          "sku_count",
+          "price_summary"
+        ],
+        "title": "OciProductCatalogRowResponse",
+        "type": "object"
+      },
+      "OciProductPriceSummaryResponse": {
+        "additionalProperties": false,
+        "description": "Bounded PAYG price range from the latest approved USD snapshot.",
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "max_payg_unit_price": {
+            "title": "Max Payg Unit Price",
+            "type": "number"
+          },
+          "min_payg_unit_price": {
+            "title": "Min Payg Unit Price",
+            "type": "number"
+          }
+        },
+        "required": [
+          "currency",
+          "min_payg_unit_price",
+          "max_payg_unit_price"
+        ],
+        "title": "OciProductPriceSummaryResponse",
+        "type": "object"
+      },
+      "OciProductSkuResponse": {
+        "additionalProperties": false,
+        "description": "One SKU projection inside an explicitly opened product.",
+        "properties": {
+          "commercial_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commercial Classification"
+          },
+          "current_payg_unit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Payg Unit Price"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "is_bom_mapped": {
+            "title": "Is Bom Mapped",
+            "type": "boolean"
+          },
+          "metric_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Name"
+          },
+          "part_number": {
+            "title": "Part Number",
+            "type": "string"
+          },
+          "price_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Type"
+          }
+        },
+        "required": [
+          "part_number",
+          "display_name",
+          "metric_name",
+          "price_type",
+          "current_payg_unit_price",
+          "commercial_classification",
+          "is_bom_mapped"
+        ],
+        "title": "OciProductSkuResponse",
+        "type": "object"
+      },
       "OverrideJustificationRequest": {
         "additionalProperties": false,
         "description": "Override request payload.",
@@ -22237,6 +22495,177 @@
           }
         },
         "summary": "Get one official OCI source verification decision",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/product-catalog": {
+      "get": {
+        "operationId": "get_product_catalog_api_v1_pricing_product_catalog_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OciProductCatalogListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Browse the captured OCI product taxonomy",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/product-catalog/{product_key}": {
+      "get": {
+        "operationId": "get_product_catalog_detail_api_v1_pricing_product_catalog__product_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_key",
+            "required": true,
+            "schema": {
+              "title": "Product Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OciProductCatalogDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect the paginated SKUs captured for one OCI product",
         "tags": [
           "Pricing"
         ]

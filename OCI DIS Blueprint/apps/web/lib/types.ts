@@ -2169,6 +2169,49 @@ export interface CommercialWorkspace {
   field_authority: Record<string, string>;
 }
 
+export interface OciProductPriceSummary {
+  currency: string;
+  min_payg_unit_price: number;
+  max_payg_unit_price: number;
+}
+
+export interface OciProductCatalogRow {
+  product_key: string;
+  name: string;
+  category: string | null;
+  sku_count: number;
+  price_summary: OciProductPriceSummary | null;
+}
+
+export interface OciProductCatalogPage {
+  products: OciProductCatalogRow[];
+  page: number;
+  page_size: number;
+  total: number;
+}
+
+export interface OciProductSku {
+  part_number: string;
+  display_name: string;
+  metric_name: string | null;
+  price_type: string | null;
+  current_payg_unit_price: number | null;
+  commercial_classification: string | null;
+  is_bom_mapped: boolean;
+}
+
+export interface OciProductCatalogDetail {
+  product_key: string;
+  name: string;
+  category: string | null;
+  sku_count: number;
+  price_summary: OciProductPriceSummary | null;
+  skus: OciProductSku[];
+  page: number;
+  page_size: number;
+  total: number;
+}
+
 export function commercialCandidatePresentation(status: string): {
   label: string;
   tone: "success" | "warning" | "error";

@@ -383,6 +383,21 @@ one-to-two-day OCI Pricing review.
 
 ## Acceptance Criteria
 
+### Phase 2A — read-only product taxonomy
+
+The App exposes the already-captured commercial SKU taxonomy through
+`GET /api/v1/pricing/product-catalog` and its paginated product-detail route.
+Products are grouped by the final `product_hierarchy` value and categorized by
+the preceding value. Historical rows without a hierarchy remain visible by
+falling back to their captured `display_name` and `service_category`; the API
+does not rewrite source identity.
+
+The list response remains bounded to the requested page and summarizes PAYG
+prices only from the latest approved USD snapshot. Product detail lazily loads
+one bounded SKU page with captured terms, latest candidate classification, and
+the existence of a BOM mapping. This projection is read-only: it does not alter
+mapping, policy, capability, scenario, pricing, approval, or BOM behavior.
+
 - [x] The latest official products, presets, and metrics sources complete one atomic sync.
 - [x] Approved Price List and Supplement snapshots are immutable, hashed, and bound
       to the structured source release through field-level authority.

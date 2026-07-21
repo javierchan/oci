@@ -70,6 +70,8 @@ import type {
   ManualIntegrationCreate,
   OICEstimateRequest,
   OICEstimateResponse,
+  OciProductCatalogDetail,
+  OciProductCatalogPage,
   PatternDefinition,
   PatternDefinitionCreate,
   PatternList,
@@ -988,6 +990,22 @@ export const api = {
     apiFetch<CommercialWorkspace>(`/api/v1/pricing/commercial-catalog${withQuery(params)}`, {
       headers: adminHeaders(),
     }),
+
+  listOciProducts: (
+    params: { search?: string; category?: string; page?: number; page_size?: number } = {},
+  ): Promise<OciProductCatalogPage> =>
+    apiFetch<OciProductCatalogPage>(`/api/v1/pricing/product-catalog${withQuery(params)}`, {
+      headers: adminHeaders(),
+    }),
+
+  getOciProduct: (
+    productKey: string,
+    params: { page?: number; page_size?: number } = {},
+  ): Promise<OciProductCatalogDetail> =>
+    apiFetch<OciProductCatalogDetail>(
+      `/api/v1/pricing/product-catalog/${encodeURIComponent(productKey)}${withQuery(params)}`,
+      { headers: adminHeaders() },
+    ),
 
   getCommercialCandidate: (candidateId: string): Promise<CommercialCandidateDetail> =>
     apiFetch<CommercialCandidateDetail>(`/api/v1/pricing/commercial-candidates/${encodeURIComponent(candidateId)}`, {
