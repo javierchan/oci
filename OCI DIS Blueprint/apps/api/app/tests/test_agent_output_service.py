@@ -2,7 +2,7 @@
 
 from app.agents.registry import get_agent_definition
 from app.services.agent_decision_service import build_decision_workspace
-from app.services.agent_output_service import govern_agent_output
+from app.services.agent_output_service import govern_agent_output, normalize_agent_summary
 
 
 def test_service_verification_rejects_meta_reasoning_and_unverified_freshness() -> None:
@@ -318,6 +318,39 @@ def test_support_assistant_fails_closed_when_drafting_notes_prefix_an_answer() -
     assert output.quality.fallback_used is True
     assert output.summary == "Use the governed App workspace and its cited evidence."
     assert "craft" not in output.summary.casefold()
+
+
+def test_support_assistant_rejects_formatting_instructions_before_useful_content() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        (
+            "The answer should lead them to projects and capture workflow. "
+            "Use citations: route /projects, capture etc. No tables. "
+            "Use plain language, bullet lists up to 5. Mention next actions: navigate to Projects. "
+            "Provide guidance. To start an integration assessment, create or select a project."
+        ),
+        {
+            "fallback_answer": (
+                "Start in Projects, create or select an assessment, then open Capture "
+                "to define the first governed integration."
+            ),
+        },
+    )
+
+    assert output.quality.fallback_reason == "internal_reasoning"
+    assert output.summary.startswith("Start in Projects")
+    assert "The answer should" not in output.summary
+    assert "No tables" not in output.summary
+
+
+def test_agent_summary_joins_orphan_list_markers_to_their_text() -> None:
+    normalized = normalize_agent_summary(
+        "Start here:\n\n1.\nCreate or select a project\n\n2)\nOpen Capture\n\n-\nReview QA"
+    )
+
+    assert normalized == (
+        "Start here:\n\n1. Create or select a project\n\n2) Open Capture\n- Review QA"
+    )
 
 
 def test_agent_output_rejects_claim_that_the_agent_changed_governed_data() -> None:

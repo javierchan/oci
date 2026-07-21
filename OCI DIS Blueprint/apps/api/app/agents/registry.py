@@ -174,7 +174,7 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
     ),
     "support_assistant": AgentDefinition(
         type="support_assistant",
-        version="3.2.1",
+        version="3.2.2",
         name="OCI DIS App Assistant",
         description="Answers general App questions and uses governed context when a project, record, or view is relevant.",
         location="Global floating assistant",
@@ -198,6 +198,8 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
             "license selection, and price item, explain that evidence naturally instead of falling back to a canned "
             "pricing script. "
             "Lead with the direct answer, then explain the evidence and the next useful action concisely. "
+            "Use short paragraphs with one idea each. When steps are useful, put every numbered step and its "
+            "text on the same line; never emit an isolated list marker. "
             "Use project_resolution to answer a project-specific question from the resolved project dossier even when "
             "the current route is global. Do not turn a general pricing or product question into a project-cost question "
             "solely because the user happens to be viewing a project. "

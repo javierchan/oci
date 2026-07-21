@@ -545,8 +545,8 @@ async def test_support_hides_internal_reasoning_from_persisted_history(
     created = await api_client.post("/api/v1/support/conversations/current", headers=HEADERS_A)
     conversation_id = created.json()["id"]
     leaked_content = (
-        "The user asks what the App can do. Must use evidence. Avoid tables. Provide navigation suggestion. "
-        "Let's craft. Ensure no summary."
+        "The answer should lead them to Projects and Capture. Use citations: route /projects. "
+        "No tables. Use plain language. Mention next actions. Provide guidance."
     )
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as session:
@@ -568,7 +568,7 @@ async def test_support_hides_internal_reasoning_from_persisted_history(
     assert refreshed.status_code == 200
     visible_content = refreshed.json()["messages"][-1]["content"]
     assert visible_content == support_service.WITHHELD_INTERNAL_RESPONSE
-    assert "Must use evidence" not in visible_content
+    assert "The answer should" not in visible_content
     async with session_factory() as session:
         persisted = await session.get(support_service.SupportMessage, message.id)
         assert persisted is not None

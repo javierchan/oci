@@ -8,8 +8,23 @@ describe("parseGovernedNarrative", () => {
   it("turns bullets and numbered actions into scan-friendly blocks", () => {
     const blocks = parseGovernedNarrative("Direct answer.\n- Inspect QA rows\n2. Recalculate the project");
 
-    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "bullet", "ordered"]);
-    expect(blocks[1].text).toBe("Inspect QA rows");
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "list", "list"]);
+    expect(blocks[1]).toMatchObject({ kind: "list", ordered: false, items: ["Inspect QA rows"] });
+    expect(blocks[2]).toMatchObject({ kind: "list", ordered: true, start: 2, items: ["Recalculate the project"] });
+  });
+
+  it("repairs orphan markers and groups consecutive steps into one ordered list", () => {
+    const blocks = parseGovernedNarrative(
+      "Start with a governed project.\n\n1.\nCreate or select a project\n\n2. Open Capture\n\n3) Add the first integration",
+    );
+
+    expect(blocks).toHaveLength(2);
+    expect(blocks[1]).toEqual({
+      kind: "list",
+      ordered: true,
+      start: 1,
+      items: ["Create or select a project", "Open Capture", "Add the first integration"],
+    });
   });
 
   it("breaks a malformed one-line markdown table into bounded content", () => {
@@ -17,9 +32,9 @@ describe("parseGovernedNarrative", () => {
     const blocks = parseGovernedNarrative(raw);
 
     expect(blocks.length).toBeGreaterThan(4);
-    expect(blocks.every((block) => !block.text.includes("|"))).toBe(true);
+    expect(blocks.every((block) => block.kind === "list" ? block.items.every((item) => !item.includes("|")) : !block.text.includes("|"))).toBe(true);
     expect(blocks.some((block) => block.kind === "heading" && block.text === "Canvas")).toBe(true);
-    expect(blocks.some((block) => block.text === "Current Status: 246 warnings")).toBe(true);
+    expect(blocks.some((block) => block.kind !== "list" && block.text === "Current Status: 246 warnings")).toBe(true);
   });
 
   it("caps unexpectedly verbose provider output", () => {

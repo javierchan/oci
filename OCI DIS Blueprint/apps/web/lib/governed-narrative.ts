@@ -1,7 +1,8 @@
 /* Small, dependency-free formatter for bounded model narratives. */
 
 export type GovernedNarrativeBlock =
-  | { kind: "heading" | "paragraph" | "bullet" | "ordered"; text: string }
+  | { kind: "heading" | "paragraph"; text: string }
+  | { kind: "list"; ordered: boolean; items: string[]; start?: number }
   | { kind: "notice"; text: string };
 
 const MAX_BLOCKS = 24;
@@ -52,7 +53,7 @@ function parseInlineTable(content: string): GovernedNarrativeBlock[] | null {
 }
 
 function narrativeLines(content: string): string[] {
-  return content
+  const lines = content
     .replace(/\r/g, "")
     .split(/\n+/)
     .flatMap((line) => {
@@ -62,6 +63,19 @@ function narrativeLines(content: string): string[] {
     })
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !/^:?-{3,}:?$/.test(line));
+
+  const normalized: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const next = lines[index + 1];
+    if (/^(?:\d+[.)]|[-•])$/.test(line) && next && !/^(?:\d+[.)]|[-•])(?:\s|$)/.test(next)) {
+      normalized.push(`${line} ${next}`);
+      index += 1;
+    } else {
+      normalized.push(line);
+    }
+  }
+  return normalized;
 }
 
 export function parseGovernedNarrative(content: string): GovernedNarrativeBlock[] {
@@ -71,17 +85,26 @@ export function parseGovernedNarrative(content: string): GovernedNarrativeBlock[
   const lines = narrativeLines(content);
   const blocks: GovernedNarrativeBlock[] = [];
 
-  for (const line of lines) {
-    if (blocks.length >= MAX_BLOCKS) break;
+  for (let lineIndex = 0; lineIndex < lines.length && lineIndex < MAX_BLOCKS; lineIndex += 1) {
+    const line = lines[lineIndex];
     const bullet = line.match(/^[-•]\s+(.+)$/);
-    const ordered = line.match(/^\d+[.)]\s+(.+)$/);
-    const clean = stripInlineMarkdown((bullet ?? ordered)?.[1] ?? line);
+    const ordered = line.match(/^(\d+)[.)]\s+(.+)$/);
+    const clean = stripInlineMarkdown(bullet?.[1] ?? ordered?.[2] ?? line);
     if (!clean) continue;
 
-    if (bullet) {
-      blocks.push({ kind: "bullet", text: clean });
-    } else if (ordered) {
-      blocks.push({ kind: "ordered", text: clean });
+    if (bullet || ordered) {
+      const isOrdered = Boolean(ordered);
+      const previous = blocks.at(-1);
+      if (previous?.kind === "list" && previous.ordered === isOrdered) {
+        previous.items.push(clean);
+      } else {
+        blocks.push({
+          kind: "list",
+          ordered: isOrdered,
+          items: [clean],
+          ...(ordered ? { start: Number(ordered[1]) } : {}),
+        });
+      }
     } else if (/^#{1,4}\s+/.test(line) || (clean.endsWith(":") && clean.length < 64)) {
       blocks.push({ kind: "heading", text: clean.replace(/:$/, "") });
     } else {

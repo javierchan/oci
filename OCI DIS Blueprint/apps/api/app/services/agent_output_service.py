@@ -36,10 +36,14 @@ FINAL_ANSWER_HEADING_PATTERN = re.compile(
 SUPPORT_DRAFT_INSTRUCTION_PATTERN = re.compile(
     r"(?:^|[.!?]\s+)(?:"
     r"(?:must|should)\s+(?:use|avoid|provide|include|mention|cite|answer|reply|respond)\b|"
+    r"(?:the\s+)?(?:answer|response)\s+should\b|"
     r"avoid\s+(?:markdown\s+)?tables?\b|"
+    r"no\s+(?:markdown\s+)?tables?\b|"
     r"provide\s+(?:a\s+)?(?:navigation|validation|evidence|citations?|next actions?|"
-    r"how\s+(?:the\s+)?user\s+can\s+validate)\b|"
+    r"guidance|how\s+(?:the\s+)?user\s+can\s+validate)\b|"
+    r"mention\s+(?:the\s+)?next actions?\b|"
     r"use\s+(?:attached\s+)?citations?(?:\s+with\s+href)?\b|"
+    r"use\s+plain\s+language\b|"
     r"use\s+(?:simple|short|plain)\s+paragraphs?\b|"
     r"(?:also\s+)?after\s+(?:the\s+)?answer\b|"
     r"so\s+(?:give|provide|write|return)\s+(?:a\s+)?(?:direct|concise|final)\s+answer\b|"
@@ -164,6 +168,8 @@ def normalize_agent_summary(value: str | None) -> str:
     normalized = normalized.replace("`", "")
     normalized = re.sub(r"(?m)^#{1,6}\s+", "", normalized)
     normalized = re.sub(r"(?m)^\s*[-*]\s+", "- ", normalized)
+    normalized = re.sub(r"(?m)^(\s*\d+[.)])\s*\n+\s*(?=\S)", r"\1 ", normalized)
+    normalized = re.sub(r"(?m)^(\s*[-•])\s*\n+\s*(?=\S)", r"\1 ", normalized)
     normalized = re.sub(r"[ \t]+", " ", normalized)
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)
     return normalized.strip()

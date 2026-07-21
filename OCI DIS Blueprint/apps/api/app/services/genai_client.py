@@ -788,7 +788,8 @@ async def _synthesize(
     retry_count = 0
     prompt = (
         "INSTRUCTIONS\n"
-        "Return plain text only, without Markdown, HTML, headings, or emphasis markers.\n"
+        "Return only the final user-facing answer as plain text, without HTML or emphasis markers. "
+        "Use short paragraphs and keep each numbered or bulleted item on one complete line.\n"
         f"{system_instruction.strip()}\n\n"
         "GOVERNED EVIDENCE (JSON)\n"
         f"{json.dumps(_redact_prompt_value(evidence), ensure_ascii=False, sort_keys=True)}"
