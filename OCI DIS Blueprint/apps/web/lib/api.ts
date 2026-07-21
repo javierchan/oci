@@ -99,6 +99,7 @@ import type {
   SkuMappingList,
   SkuMappingPatch,
   SourceRowList,
+  SupportContextKey,
   SupportConversation,
   SupportMessageInput,
   SyntheticGenerationJob,
@@ -526,6 +527,19 @@ export const api = {
   ): Promise<SupportConversation> =>
     apiFetch<SupportConversation>(
       `/api/v1/support/conversations/${encodeURIComponent(conversationId)}/messages`,
+      {
+        method: "DELETE",
+        headers: supportHeaders(sessionId),
+      },
+    ),
+
+  removeSupportConversationContext: (
+    conversationId: string,
+    sessionId: string,
+    contextKey: SupportContextKey,
+  ): Promise<SupportConversation> =>
+    apiFetch<SupportConversation>(
+      `/api/v1/support/conversations/${encodeURIComponent(conversationId)}/context/${encodeURIComponent(contextKey)}`,
       {
         method: "DELETE",
         headers: supportHeaders(sessionId),

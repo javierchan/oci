@@ -4,14 +4,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, Bot, Check, Loader2, MessageCircle, Paperclip, Send, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Bot, Check, Loader2, MessageCircle, Paperclip, Search, Send, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { api, getErrorMessage } from "@/lib/api";
 import { GovernedNarrative } from "@/components/governed-narrative";
-import { deriveSupportRouteContext, sameSupportAttachment } from "@/lib/support-context";
-import type { SupportAttachmentInput, SupportConversation } from "@/lib/types";
+import { buildSupportContextCatalog, deriveSupportRouteContext, sameSupportAttachment } from "@/lib/support-context";
+import type { Project, SupportAttachmentInput, SupportContextKey, SupportConversation } from "@/lib/types";
 
 const SESSION_KEY = "oci-dis-support-session-id";
 const OPEN_KEY = "oci-dis-support-open";
@@ -37,6 +37,10 @@ export function ContextualSupportAssistant(): JSX.Element {
   const [sending, setSending] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [contextPickerOpen, setContextPickerOpen] = useState(false);
+  const [contextQuery, setContextQuery] = useState("");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [contextBusy, setContextBusy] = useState<SupportContextKey | null>(null);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -52,21 +56,36 @@ export function ContextualSupportAssistant(): JSX.Element {
       .then(setConversation)
       .catch((caught) => setError(getErrorMessage(caught, "Unable to load App support.")))
       .finally(() => setLoading(false));
+    void api.listProjects().then((result) => setProjects(result.projects)).catch(() => undefined);
   }, []);
 
   const pending = conversation?.messages.some((message) => message.status === "pending") ?? false;
   const latestMessage = conversation?.messages.at(-1);
-  const currentContextAdded = attachments.some((item) => sameSupportAttachment(item, routeContext.attachment));
   const contextLedger = useMemo(() => {
     const state = conversation?.context_state ?? {};
-    const items: string[] = [];
+    const items: Array<{ key: SupportContextKey; label: string }> = [];
     const service = state.active_service as { name?: unknown } | undefined;
     const pattern = state.active_pattern as { name?: unknown } | undefined;
-    if (typeof service?.name === "string") items.push(service.name);
-    if (typeof pattern?.name === "string") items.push(pattern.name);
-    if (typeof state.topic === "string") items.push(state.topic.replaceAll("_", " "));
-    return items.slice(0, 3);
-  }, [conversation?.context_state]);
+    if (typeof service?.name === "string") items.push({ key: "active_service", label: service.name });
+    if (typeof pattern?.name === "string") items.push({ key: "active_pattern", label: pattern.name });
+    if (typeof state.active_project_id === "string") {
+      const project = projects.find((item) => item.id === state.active_project_id);
+      items.push({ key: "active_project_id", label: project?.name ?? `Project ${state.active_project_id.slice(0, 8)}` });
+    }
+    if (typeof state.topic === "string") items.push({ key: "topic", label: state.topic.replaceAll("_", " ") });
+    return items;
+  }, [conversation?.context_state, projects]);
+  const contextOptions = useMemo(
+    () => buildSupportContextCatalog(projects, routeContext.attachment),
+    [projects, routeContext.attachment],
+  );
+  const filteredContextOptions = useMemo(() => {
+    const query = contextQuery.trim().toLocaleLowerCase();
+    if (!query) return contextOptions;
+    return contextOptions.filter((item) =>
+      `${item.group} ${item.label} ${item.description}`.toLocaleLowerCase().includes(query)
+    );
+  }, [contextOptions, contextQuery]);
 
   useEffect(() => {
     if (!pending || !conversation || !supportSessionId) return;
@@ -112,12 +131,25 @@ export function ContextualSupportAssistant(): JSX.Element {
     window.localStorage.setItem(OPEN_KEY, String(next));
   }
 
-  function attachCurrentView(): void {
+  function toggleAttachment(item: SupportAttachmentInput): void {
     setAttachments((current) =>
-      current.some((item) => sameSupportAttachment(item, routeContext.attachment))
-        ? current
-        : [...current, routeContext.attachment].slice(-8),
+      current.some((candidate) => sameSupportAttachment(candidate, item))
+        ? current.filter((candidate) => !sameSupportAttachment(candidate, item))
+        : [...current, item].slice(-8),
     );
+  }
+
+  async function removeActiveContext(contextKey: SupportContextKey): Promise<void> {
+    if (!conversation || !supportSessionId || pending || contextBusy) return;
+    setContextBusy(contextKey);
+    setError(null);
+    try {
+      setConversation(await api.removeSupportConversationContext(conversation.id, supportSessionId, contextKey));
+    } catch (caught) {
+      setError(getErrorMessage(caught, "Unable to remove this conversation context."));
+    } finally {
+      setContextBusy(null);
+    }
   }
 
   async function submit(event?: FormEvent): Promise<void> {
@@ -155,6 +187,7 @@ export function ContextualSupportAssistant(): JSX.Element {
       setAttachments([]);
       setInput("");
       setClearConfirmOpen(false);
+      setContextPickerOpen(false);
       window.setTimeout(() => inputRef.current?.focus(), 0);
     } catch (caught) {
       setError(getErrorMessage(caught, "Unable to clear the assistant history."));
@@ -201,8 +234,8 @@ export function ContextualSupportAssistant(): JSX.Element {
 
           {contextLedger.length ? (
             <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Active context</span>
-              {contextLedger.map((item) => <span key={item} className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-text-secondary)]">{item}</span>)}
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Conversation memory</span>
+              {contextLedger.map((item) => <button key={item.key} type="button" onClick={() => void removeActiveContext(item.key)} disabled={pending || contextBusy !== null} className="inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-text-secondary)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-text-primary)] disabled:opacity-50" title={`Remove ${item.label} from conversation memory`}><span className="truncate capitalize">{item.label}</span>{contextBusy === item.key ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}</button>)}
             </div>
           ) : null}
 
@@ -286,6 +319,23 @@ export function ContextualSupportAssistant(): JSX.Element {
           </div>
 
           <footer className="relative z-10 border-t border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            {contextPickerOpen ? (
+              <div className="mb-2.5 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg">
+                <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-3 py-2.5">
+                  <div><p className="text-xs font-semibold text-[var(--color-text-primary)]">Choose App context</p><p className="mt-0.5 text-[10px] text-[var(--color-text-muted)]">Select up to 8 pages or workspaces for your next question.</p></div>
+                  <button type="button" onClick={() => setContextPickerOpen(false)} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]" aria-label="Close context picker"><X className="h-4 w-4" /></button>
+                </div>
+                <label className="relative m-2 block"><Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-[var(--color-text-muted)]" /><input value={contextQuery} onChange={(event) => setContextQuery(event.target.value)} className="h-9 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] pl-8 pr-3 text-xs text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]" placeholder="Search projects, BOM, pricing, patterns…" aria-label="Search App context" /></label>
+                <div className="max-h-60 overflow-y-auto border-t border-[var(--color-border)] p-1.5">
+                  {filteredContextOptions.map((option, index) => {
+                    const selected = attachments.some((item) => sameSupportAttachment(item, option.attachment));
+                    const showGroup = index === 0 || filteredContextOptions[index - 1]?.group !== option.group;
+                    return <div key={option.id}>{showGroup ? <p className="px-2 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">{option.group}</p> : null}<button type="button" onClick={() => toggleAttachment(option.attachment)} className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition ${selected ? "bg-[var(--color-hover)]" : "hover:bg-[var(--color-surface-2)]"}`}><span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${selected ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white" : "border-[var(--color-border)]"}`}>{selected ? <Check className="h-3 w-3" /> : null}</span><span className="min-w-0"><span className="block truncate text-xs font-medium text-[var(--color-text-primary)]">{option.label}</span><span className="mt-0.5 block truncate text-[10px] text-[var(--color-text-muted)]">{option.description}</span></span></button></div>;
+                  })}
+                  {!filteredContextOptions.length ? <p className="px-3 py-5 text-center text-xs text-[var(--color-text-muted)]">No App context matches this search.</p> : null}
+                </div>
+              </div>
+            ) : null}
             {attachments.length ? (
               <div className="mb-2.5 flex max-h-20 flex-wrap gap-1.5 overflow-y-auto">
                 {attachments.map((item) => (
@@ -300,9 +350,9 @@ export function ContextualSupportAssistant(): JSX.Element {
               <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 shadow-sm transition focus-within:border-[var(--color-accent)]">
                 <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(); } }} className="max-h-32 min-h-14 w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-6 text-[var(--color-text-primary)] outline-none" placeholder="Ask anything about OCI DIS Architect" maxLength={2000} disabled={sending || pending} aria-label="Ask OCI DIS App Assistant" />
                 <div className="mt-1 flex min-h-9 items-center justify-between gap-2">
-                  <button type="button" className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-[var(--color-text-secondary)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-60" onClick={attachCurrentView} disabled={currentContextAdded}>
-                    {currentContextAdded ? <Check className="h-3.5 w-3.5 shrink-0 text-[var(--color-trend-up)]" /> : <Paperclip className="h-3.5 w-3.5 shrink-0" />}
-                    <span className="truncate">{currentContextAdded ? "Context added" : "Add context"}</span>
+                  <button type="button" className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-[var(--color-text-secondary)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)]" onClick={() => setContextPickerOpen((current) => !current)} aria-expanded={contextPickerOpen}>
+                    <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">Add context{attachments.length ? ` (${attachments.length})` : ""}</span>
                   </button>
                   <button type="submit" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--color-accent)] text-white transition hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-40" disabled={!input.trim() || sending || pending} aria-label="Send message" title="Send">
                     {sending || pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

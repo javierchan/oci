@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.schemas.agent import AgentCreateRequest, SupportConversationResponse, SupportMessageCreateRequest
+from app.schemas.agent import (
+    AgentCreateRequest,
+    SupportContextKey,
+    SupportConversationResponse,
+    SupportMessageCreateRequest,
+)
 from app.services import agent_service, support_service
 from app.services.authz import require_roles
 from app.workers.agent_worker import execute_agent_run_task
@@ -74,6 +79,30 @@ async def clear_support_conversation_history(
     async with db.begin():
         return await support_service.clear_conversation_history(
             conversation_id, session_id, actor_id, db
+        )
+
+
+@router.delete(
+    "/conversations/{conversation_id}/context/{context_key}",
+    response_model=SupportConversationResponse,
+    summary="Remove one resolved item from assistant conversation memory",
+)
+async def remove_support_conversation_context(
+    conversation_id: str,
+    context_key: SupportContextKey,
+    db: AsyncSession = Depends(get_db),
+    session_id: str = Header(..., alias="X-Support-Session-Id"),
+    actor_id: str = Header("web-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
+) -> SupportConversationResponse:
+    require_roles(
+        actor_role,
+        {"Admin", "Architect", "Analyst", "Viewer"},
+        error_code="SUPPORT_ROLE_REQUIRED",
+    )
+    async with db.begin():
+        return await support_service.remove_conversation_context(
+            conversation_id, session_id, context_key, actor_id, db
         )
 
 

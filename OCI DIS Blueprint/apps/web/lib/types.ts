@@ -259,6 +259,8 @@ export type SupportAttachmentType =
   | "bom"
   | "admin";
 
+export type SupportContextKey = "active_service" | "active_pattern" | "active_project_id" | "topic";
+
 export interface SupportAttachmentInput {
   attachment_type: SupportAttachmentType;
   label: string;

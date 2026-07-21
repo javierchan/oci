@@ -1,6 +1,6 @@
 /* Derives bounded contextual-assistant metadata from App routes. */
 
-import type { SupportAttachmentInput, SupportAttachmentType } from "@/lib/types";
+import type { Project, SupportAttachmentInput, SupportAttachmentType } from "@/lib/types";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -11,6 +11,33 @@ export type SupportRouteContext = {
   attachment: SupportAttachmentInput;
   suggestions: string[];
 };
+
+export type SupportContextOption = {
+  id: string;
+  group: "Current view" | "App" | "Governance" | "Projects";
+  label: string;
+  description: string;
+  attachment: SupportAttachmentInput;
+};
+
+const GLOBAL_CONTEXT_ROUTES = [
+  ["/projects", "App", "All projects and project lifecycle"],
+  ["/admin", "Governance", "Governance library and reference ownership"],
+  ["/admin/patterns", "Governance", "Integration pattern library"],
+  ["/admin/dictionaries", "Governance", "Governed dictionaries and normalized values"],
+  ["/admin/assumptions", "Governance", "Workload assumptions and versioning"],
+  ["/admin/pricing", "Governance", "OCI pricing evidence and commercial governance"],
+  ["/admin/agents", "Governance", "Agent definitions, runs, and operations"],
+] as const;
+
+const PROJECT_CONTEXT_SECTIONS = [
+  ["", "Project overview and technical dashboard"],
+  ["import", "Workbook imports and source evidence"],
+  ["capture", "Manual integration capture"],
+  ["catalog", "Governed integration catalog and QA"],
+  ["map", "System topology and dependencies"],
+  ["bom", "Deployment scenarios, BOM, and cost"],
+] as const;
 
 function routeLabel(section: string | undefined): string {
   if (!section) return "Project Dashboard";
@@ -83,4 +110,54 @@ export function sameSupportAttachment(
   right: SupportAttachmentInput,
 ): boolean {
   return left.attachment_type === right.attachment_type && left.entity_id === right.entity_id && left.href === right.href;
+}
+
+export function buildSupportContextCatalog(
+  projects: Project[],
+  current: SupportAttachmentInput,
+): SupportContextOption[] {
+  const options: SupportContextOption[] = [{
+    id: `current:${current.href}`,
+    group: "Current view",
+    label: current.label,
+    description: "The page or record currently open in the App",
+    attachment: current,
+  }];
+
+  for (const [href, group, description] of GLOBAL_CONTEXT_ROUTES) {
+    const route = deriveSupportRouteContext(href);
+    options.push({
+      id: `global:${href}`,
+      group,
+      label: route.pageTitle,
+      description,
+      attachment: route.attachment,
+    });
+  }
+
+  for (const project of projects) {
+    for (const [section, description] of PROJECT_CONTEXT_SECTIONS) {
+      const href = `/projects/${project.id}${section ? `/${section}` : ""}`;
+      const route = deriveSupportRouteContext(href);
+      options.push({
+        id: `project:${project.id}:${section || "dashboard"}`,
+        group: "Projects",
+        label: `${project.name} · ${route.pageTitle}`,
+        description: `${description}${project.status === "archived" ? " · Archived project" : ""}`,
+        attachment: {
+          ...route.attachment,
+          label: `${project.name} · ${route.pageTitle}`,
+          context: {
+            ...route.attachment.context,
+            project_name: project.name,
+            project_status: project.status,
+          },
+        },
+      });
+    }
+  }
+
+  return options.filter((option, index) =>
+    options.findIndex((candidate) => sameSupportAttachment(candidate.attachment, option.attachment)) === index
+  );
 }

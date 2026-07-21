@@ -289,6 +289,7 @@ class AgentRunListResponse(BaseModel):
 SupportAttachmentType = Literal[
     "page", "project", "integration", "catalog", "topology", "canvas", "import", "bom", "admin"
 ]
+SupportContextKey = Literal["active_service", "active_pattern", "active_project_id", "topic"]
 
 
 class SupportAttachmentRequest(BaseModel):

@@ -489,6 +489,7 @@ async def test_support_conversation_is_isolated_and_out_of_scope_is_refused(
     assert cleared.status_code == 200
     assert cleared.json()["id"] == conversation_id
     assert cleared.json()["messages"] == []
+    assert cleared.json()["context_state"] == {}
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as session:
         event = await session.scalar(
@@ -500,6 +501,40 @@ async def test_support_conversation_is_isolated_and_out_of_scope_is_refused(
     assert event is not None
     assert event.old_value == {"message_count": 2, "attachment_count": 0}
     assert event.new_value == {"message_count": 0, "attachment_count": 0}
+
+
+@pytest.mark.asyncio
+async def test_support_user_can_remove_one_resolved_context_item(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    created = await api_client.post("/api/v1/support/conversations/current", headers=HEADERS_A)
+    conversation_id = created.json()["id"]
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            conversation = await session.get(support_service.SupportConversation, conversation_id)
+            assert conversation is not None
+            conversation.context_state = {
+                "active_service": {"id": "OIC3", "name": "Oracle Integration 3"},
+                "active_pattern": {"id": "P01", "name": "Request-Reply"},
+                "topic": "app_guidance",
+            }
+
+    removed = await api_client.delete(
+        f"/api/v1/support/conversations/{conversation_id}/context/active_service",
+        headers=HEADERS_A,
+    )
+    assert removed.status_code == 200, removed.text
+    assert removed.json()["context_state"] == {
+        "active_pattern": {"id": "P01", "name": "Request-Reply"},
+        "topic": "app_guidance",
+    }
+    isolated = await api_client.delete(
+        f"/api/v1/support/conversations/{conversation_id}/context/topic",
+        headers=HEADERS_B,
+    )
+    assert isolated.status_code == 404
 
 
 @pytest.mark.asyncio

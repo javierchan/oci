@@ -24645,6 +24645,92 @@
         ]
       }
     },
+    "/api/v1/support/conversations/{conversation_id}/context/{context_key}": {
+      "delete": {
+        "operationId": "remove_support_conversation_context_api_v1_support_conversations__conversation_id__context__context_key__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "context_key",
+            "required": true,
+            "schema": {
+              "enum": [
+                "active_service",
+                "active_pattern",
+                "active_project_id",
+                "topic"
+              ],
+              "title": "Context Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Support-Session-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Support-Session-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "web-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove one resolved item from assistant conversation memory",
+        "tags": [
+          "Contextual Support"
+        ]
+      }
+    },
     "/api/v1/support/conversations/{conversation_id}/messages": {
       "delete": {
         "operationId": "clear_support_conversation_history_api_v1_support_conversations__conversation_id__messages_delete",

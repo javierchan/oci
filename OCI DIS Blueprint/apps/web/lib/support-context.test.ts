@@ -2,7 +2,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { deriveSupportRouteContext, sameSupportAttachment } from "./support-context";
+import { buildSupportContextCatalog, deriveSupportRouteContext, sameSupportAttachment } from "./support-context";
+import type { Project } from "./types";
 
 const PROJECT_ID = "20a23466-dd52-4d5a-a3f5-1bc66f659c78";
 const INTEGRATION_ID = "55d40a1b-bad5-4426-af01-606074e3b857";
@@ -29,5 +30,27 @@ describe("contextual support route context", () => {
     const current = deriveSupportRouteContext(`/projects/${PROJECT_ID}/bom`).attachment;
     expect(sameSupportAttachment(current, { ...current })).toBe(true);
     expect(sameSupportAttachment(current, deriveSupportRouteContext(`/projects/${PROJECT_ID}/map`).attachment)).toBe(false);
+  });
+
+  it("lists global governance and every project workspace as selectable context", () => {
+    const project: Project = {
+      id: PROJECT_ID,
+      name: "Enterprise Integration",
+      owner_id: "architect",
+      description: null,
+      status: "active",
+      project_metadata: null,
+      created_at: "2026-07-21T00:00:00Z",
+      updated_at: "2026-07-21T00:00:00Z",
+    };
+    const options = buildSupportContextCatalog(
+      [project],
+      deriveSupportRouteContext("/projects").attachment,
+    );
+
+    expect(options.some((item) => item.attachment.href === "/admin/pricing")).toBe(true);
+    expect(options.some((item) => item.label === "Enterprise Integration · Integration Topology")).toBe(true);
+    expect(options.some((item) => item.label === "Enterprise Integration · BOM & Cost")).toBe(true);
+    expect(options.filter((item) => item.attachment.href === "/projects")).toHaveLength(1);
   });
 });

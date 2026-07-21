@@ -815,6 +815,7 @@ async def clear_conversation_history(
     await db.execute(
         delete(SupportMessage).where(SupportMessage.conversation_id == conversation.id)
     )
+    conversation.context_state = {}
     conversation.updated_at = datetime.now(UTC)
     await audit_service.emit(
         event_type="support_conversation_history_cleared",
@@ -823,6 +824,60 @@ async def clear_conversation_history(
         actor_id=actor_id or conversation.actor_id,
         old_value={"message_count": message_count, "attachment_count": attachment_count},
         new_value={"message_count": 0, "attachment_count": 0},
+        project_id=None,
+        correlation_id=conversation.id,
+        db=db,
+    )
+    return await serialize_conversation(conversation, db)
+
+
+async def remove_conversation_context(
+    conversation_id: str,
+    session_id: str,
+    context_key: str,
+    actor_id: str,
+    db: AsyncSession,
+) -> SupportConversationResponse:
+    """Remove one user-selected semantic reference from an isolated conversation."""
+
+    normalized_session = validate_support_session_id(session_id)
+    conversation = await db.get(SupportConversation, conversation_id)
+    if conversation is None or conversation.session_id != normalized_session or conversation.status != "active":
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Support conversation not found", "error_code": "SUPPORT_CONVERSATION_NOT_FOUND"},
+        )
+    pending_count = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(SupportMessage)
+            .where(
+                SupportMessage.conversation_id == conversation.id,
+                SupportMessage.status == "pending",
+            )
+        )
+        or 0
+    )
+    if pending_count:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Wait for the current support response before changing conversation context",
+                "error_code": "SUPPORT_TURN_PENDING",
+            },
+        )
+    state = dict(conversation.context_state or {})
+    before_count = len(state)
+    state.pop(context_key, None)
+    conversation.context_state = cast(dict, sanitize_for_json(state))
+    conversation.updated_at = datetime.now(UTC)
+    await audit_service.emit(
+        event_type="support_conversation_context_removed",
+        entity_type="support_conversation",
+        entity_id=conversation.id,
+        actor_id=actor_id or conversation.actor_id,
+        old_value={"context_key_count": before_count},
+        new_value={"context_key_count": len(state), "removed_key": context_key},
         project_id=None,
         correlation_id=conversation.id,
         db=db,
