@@ -398,6 +398,37 @@ one bounded SKU page with captured terms, latest candidate classification, and
 the existence of a BOM mapping. This projection is read-only: it does not alter
 mapping, policy, capability, scenario, pricing, approval, or BOM behavior.
 
+### Phase 2B — governed product coverage proposals
+
+The App generates one isolated `ProductCoverageCandidate` for every product in
+the captured taxonomy. Each candidate proposes a capability profile, commercial
+policy, and SKU mappings exclusively from approved commercial terms and
+deterministic rule-family evidence. Generation is idempotent and never writes to
+the operational BOM mapping tables.
+
+Promotion remains an explicit Admin decision. A product is promotable only when
+every quoteable SKU belongs to the active approved `CommercialRelease`, its term
+and rule family are approved, its quotation fixture passed, and it has no open
+commercial exception or unresolved relationship. Approval materializes the
+profile, policy, and mappings in one transaction; rejected or approved decisions
+remain terminal when the generator refreshes source readiness.
+
+The Admin Pricing workspace exposes the full paginated queue, lazy proposal
+details, SKU-level blockers, and explicit approval rationale. Phase 2B does not
+change project product detection, deployment-scenario selection, or BOM
+calculation. Those workflows continue to consume only `approved` mappings.
+
+Current local production evidence after the first governed generation:
+
+- 444 product proposals generated from 1,163 captured SKUs.
+- 30 products blocked only by active-release scope.
+- 414 products blocked by incomplete or conflicting commercial evidence.
+- Zero products auto-approved; the current release has no product whose complete
+  quoteable SKU set passes every promotion invariant.
+- 34 pre-existing approved BOM mappings remained unchanged after generation and
+  after a blocked approval attempt returned `409` with explicit blockers.
+- A 50-product list response is 20,003 bytes, well below the 200 KB payload gate.
+
 - [x] The latest official products, presets, and metrics sources complete one atomic sync.
 - [x] Approved Price List and Supplement snapshots are immutable, hashed, and bound
       to the structured source release through field-level authority.

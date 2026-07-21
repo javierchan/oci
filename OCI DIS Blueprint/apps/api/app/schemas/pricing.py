@@ -279,6 +279,83 @@ class OciProductCatalogDetailResponse(BaseModel):
     total: int = Field(ge=0)
 
 
+class ProductCoverageBlockerResponse(BaseModel):
+    """Machine-readable reason that prevents one product or SKU from promotion."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    part_number: Optional[str]
+    code: str
+    detail: str
+
+
+class ProductCoverageRowResponse(BaseModel):
+    """Lightweight product coverage candidate used by paginated review."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    product_key: str
+    product_name: str
+    category: Optional[str]
+    sku_count: int = Field(ge=0)
+    mapping_count: int = Field(ge=0)
+    readiness_status: str
+    status: str
+    promotable: bool
+    blocker_count: int = Field(ge=0)
+    generator_version: str
+
+
+class ProductCoverageListResponse(BaseModel):
+    """Bounded page of governed product coverage proposals."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    products: list[ProductCoverageRowResponse] = Field(default_factory=list)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=200)
+    total: int = Field(ge=0)
+
+
+class ProductCoverageDetailResponse(ProductCoverageRowResponse):
+    """Complete proposed operational materialization for one OCI product."""
+
+    proposed_service_id: str
+    proposed_profile: dict[str, Any]
+    proposed_policy: dict[str, Any]
+    proposed_mappings: list[dict[str, Any]] = Field(default_factory=list)
+    readiness_blockers: list[ProductCoverageBlockerResponse] = Field(default_factory=list)
+    source_document_snapshot_id: Optional[str]
+    review_rationale: Optional[str]
+    reviewed_by: Optional[str]
+    reviewed_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProductCoverageGenerationResponse(BaseModel):
+    """Deterministic coverage-generation summary."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    generated: int = Field(ge=0)
+    refreshed: int = Field(ge=0)
+    ready: int = Field(ge=0)
+    blocked_release: int = Field(ge=0)
+    blocked_evidence: int = Field(ge=0)
+    total: int = Field(ge=0)
+    generator_version: str
+
+
+class ProductCoverageReviewRequest(BaseModel):
+    """Explicit administrator disposition for one product coverage proposal."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    decision: str = Field(pattern="^(approve|reject)$")
+    rationale: str = Field(min_length=8, max_length=2000)
+
+
 class CommercialCandidateReviewRequest(BaseModel):
     """Explicit administrator disposition of one generated candidate."""
 

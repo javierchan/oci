@@ -231,6 +231,27 @@ async def _resolve_product(
     return str(match.name), str(match.category) if match.category is not None else None
 
 
+async def product_sku_records(
+    db: AsyncSession,
+    *,
+    requested_key: str,
+) -> tuple[str, str | None, list[CommercialSku]]:
+    """Return one resolved product identity and all captured SKU records."""
+
+    name, category = await _resolve_product(db, requested_key)
+    name_expression, _ = _product_expressions(db)
+    skus = list(
+        (
+            await db.scalars(
+                select(CommercialSku)
+                .where(name_expression == name)
+                .order_by(CommercialSku.part_number, CommercialSku.id)
+            )
+        ).all()
+    )
+    return name, category, skus
+
+
 async def _product_price_summary(
     db: AsyncSession,
     *,

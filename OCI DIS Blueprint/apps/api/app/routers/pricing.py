@@ -16,6 +16,10 @@ from app.schemas.pricing import (
     GovernanceChangeSetResponse,
     OciProductCatalogDetailResponse,
     OciProductCatalogListResponse,
+    ProductCoverageDetailResponse,
+    ProductCoverageGenerationResponse,
+    ProductCoverageListResponse,
+    ProductCoverageReviewRequest,
     PriceCatalogSnapshotListResponse,
     PriceCatalogSnapshotResponse,
     PriceItemListResponse,
@@ -27,7 +31,12 @@ from app.schemas.pricing import (
     SkuMappingPatchRequest,
     SkuMappingResponse,
 )
-from app.services import commercial_catalog_service, pricing_service, product_catalog_service
+from app.services import (
+    commercial_catalog_service,
+    pricing_service,
+    product_catalog_service,
+    product_coverage_service,
+)
 from app.services.authz import require_admin, require_roles
 from app.workers.pricing_worker import execute_price_sync_job_task
 
@@ -37,6 +46,83 @@ router = APIRouter(prefix="/pricing", tags=["Pricing"])
 
 def _require_pricing_read(role: str | None) -> None:
     require_roles(role, {"Admin", "Architect", "Analyst", "Viewer"}, error_code="PRICING_READ_ROLE_REQUIRED")
+
+
+@router.post(
+    "/product-coverage/generate",
+    response_model=ProductCoverageGenerationResponse,
+    summary="Generate or refresh governed OCI product coverage proposals",
+)
+async def generate_product_coverage(
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> ProductCoverageGenerationResponse:
+    require_admin(actor_role)
+    async with db.begin():
+        return await product_coverage_service.generate_coverage(actor_id, db)
+
+
+@router.get(
+    "/product-coverage",
+    response_model=ProductCoverageListResponse,
+    summary="Review paginated OCI product coverage proposals",
+)
+async def get_product_coverage(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    search: str | None = None,
+    status_filter: str = Query("all", alias="status", pattern="^(all|pending_review|approved|rejected)$"),
+    readiness_status: str = Query("all", pattern="^(all|ready|blocked_release|blocked_evidence)$"),
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> ProductCoverageListResponse:
+    _require_pricing_read(actor_role)
+    return await product_coverage_service.list_coverage(
+        db,
+        page=page,
+        page_size=page_size,
+        search=search,
+        status=status_filter,
+        readiness_status=readiness_status,
+    )
+
+
+@router.get(
+    "/product-coverage/{product_key}",
+    response_model=ProductCoverageDetailResponse,
+    summary="Inspect one governed OCI product coverage proposal",
+)
+async def get_product_coverage_detail(
+    product_key: str,
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> ProductCoverageDetailResponse:
+    _require_pricing_read(actor_role)
+    return await product_coverage_service.get_coverage(product_key, db)
+
+
+@router.post(
+    "/product-coverage/{product_key}/review",
+    response_model=ProductCoverageDetailResponse,
+    summary="Approve or reject one governed OCI product coverage proposal",
+)
+async def review_product_coverage(
+    product_key: str,
+    body: ProductCoverageReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> ProductCoverageDetailResponse:
+    require_admin(actor_role)
+    async with db.begin():
+        return await product_coverage_service.review_coverage(
+            product_key,
+            decision=body.decision,
+            rationale=body.rationale,
+            actor_id=actor_id,
+            db=db,
+        )
 
 
 @router.get(

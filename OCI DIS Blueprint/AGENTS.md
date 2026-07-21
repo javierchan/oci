@@ -618,6 +618,25 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       calc-engine, pricing-engine, frontend, OpenAPI, Docker, real agent, BOM API,
       responsive browser, and console validation pass.
 
+### M59 — Governed OCI Product Coverage Proposals
+- [x] Generate one isolated profile, policy, and SKU-mapping proposal for every
+      product in the captured OCI taxonomy without activating BOM behavior.
+- [x] Derive quantity semantics only from governed SKU terms and fixture-passed
+      commercial rule families; never infer pricing behavior with free-form AI.
+- [x] Gate promotion on active-release membership, approved term and rule status,
+      passed fixtures, and the absence of open exceptions or unresolved relations.
+- [x] Require an explicit Admin rationale before materializing approved capability,
+      policy, and mapping records in one idempotent transaction.
+- [x] Expose a paginated Admin Pricing review queue with lazy details, per-SKU
+      blockers, readiness filters, and disabled approval for non-promotable products.
+- [x] Preserve terminal review decisions across refreshes and keep existing BOM
+      mappings unchanged until an individual product passes every gate and is approved.
+- [x] **Exit criteria**: migration head `20260721_0049`; 444 real product proposals;
+      blocked approval returns `409`; approved mapping count remains unchanged by
+      generation; 255 API, 55 calc-engine, 35 pricing-engine, and 102 frontend tests;
+      Ruff, mypy, TypeScript, ESLint, OpenAPI, Node 26 production build, migration
+      symmetry, production Docker health, and responsive browser validation pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

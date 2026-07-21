@@ -72,6 +72,9 @@ import type {
   OICEstimateResponse,
   OciProductCatalogDetail,
   OciProductCatalogPage,
+  ProductCoverageDetail,
+  ProductCoverageGeneration,
+  ProductCoveragePage,
   PatternDefinition,
   PatternDefinitionCreate,
   PatternList,
@@ -1005,6 +1008,34 @@ export const api = {
     apiFetch<OciProductCatalogDetail>(
       `/api/v1/pricing/product-catalog/${encodeURIComponent(productKey)}${withQuery(params)}`,
       { headers: adminHeaders() },
+    ),
+
+  generateProductCoverage: (): Promise<ProductCoverageGeneration> =>
+    apiFetch<ProductCoverageGeneration>("/api/v1/pricing/product-coverage/generate", {
+      method: "POST",
+      headers: adminHeaders(),
+    }),
+
+  listProductCoverage: (
+    params: { search?: string; status?: string; readiness_status?: string; page?: number; page_size?: number } = {},
+  ): Promise<ProductCoveragePage> =>
+    apiFetch<ProductCoveragePage>(`/api/v1/pricing/product-coverage${withQuery(params)}`, {
+      headers: adminHeaders(),
+    }),
+
+  getProductCoverage: (productKey: string): Promise<ProductCoverageDetail> =>
+    apiFetch<ProductCoverageDetail>(
+      `/api/v1/pricing/product-coverage/${encodeURIComponent(productKey)}`,
+      { headers: adminHeaders() },
+    ),
+
+  reviewProductCoverage: (
+    productKey: string,
+    body: { decision: "approve" | "reject"; rationale: string },
+  ): Promise<ProductCoverageDetail> =>
+    apiFetch<ProductCoverageDetail>(
+      `/api/v1/pricing/product-coverage/${encodeURIComponent(productKey)}/review`,
+      { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) },
     ),
 
   getCommercialCandidate: (candidateId: string): Promise<CommercialCandidateDetail> =>

@@ -1415,7 +1415,7 @@ async def review_candidate(
     return await commercial_workspace(db, document_id=candidate.document_snapshot_id)
 
 
-def _catalog_finalization_blockers(
+def catalog_finalization_blockers(
     *,
     candidate: CommercialMappingCandidate,
     rule: CommercialRuleFamily | None,
@@ -1447,6 +1447,10 @@ def _catalog_finalization_blockers(
         for status in sorted(unresolved_relationship_statuses)
     )
     return sorted(set(blockers))
+
+
+# Backward-compatible private alias retained for current finalization callers.
+_catalog_finalization_blockers = catalog_finalization_blockers
 
 
 async def finalize_catalog_review(

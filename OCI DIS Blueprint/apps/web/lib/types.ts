@@ -2212,6 +2212,70 @@ export interface OciProductCatalogDetail {
   total: number;
 }
 
+export interface ProductCoverageBlocker {
+  part_number: string | null;
+  code: string;
+  detail: string;
+}
+
+export interface ProductCoverageRow {
+  product_key: string;
+  product_name: string;
+  category: string | null;
+  sku_count: number;
+  mapping_count: number;
+  readiness_status: "ready" | "blocked_release" | "blocked_evidence";
+  status: "pending_review" | "approved" | "rejected";
+  promotable: boolean;
+  blocker_count: number;
+  generator_version: string;
+}
+
+export interface ProductCoveragePage {
+  products: ProductCoverageRow[];
+  page: number;
+  page_size: number;
+  total: number;
+}
+
+export interface ProductCoverageMapping {
+  part_number: string;
+  display_name: string;
+  billing_metric_key: string;
+  formula_key: string;
+  quantity_behavior: string;
+  quantity_increment: number;
+  minimum_quantity: number;
+  quantity_unit: string;
+  selection_policy: string;
+  is_billable: boolean;
+  entry_guidance: string;
+}
+
+export interface ProductCoverageDetail extends ProductCoverageRow {
+  proposed_service_id: string;
+  proposed_profile: Record<string, unknown>;
+  proposed_policy: Record<string, unknown>;
+  proposed_mappings: ProductCoverageMapping[];
+  readiness_blockers: ProductCoverageBlocker[];
+  source_document_snapshot_id: string | null;
+  review_rationale: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductCoverageGeneration {
+  generated: number;
+  refreshed: number;
+  ready: number;
+  blocked_release: number;
+  blocked_evidence: number;
+  total: number;
+  generator_version: string;
+}
+
 export function commercialCandidatePresentation(status: string): {
   label: string;
   tone: "success" | "warning" | "error";

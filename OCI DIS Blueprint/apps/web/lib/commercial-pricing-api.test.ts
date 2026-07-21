@@ -71,6 +71,50 @@ describe("commercial catalog API client", () => {
     );
   });
 
+  it("loads the governed product coverage queue with bounded filters", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.listProductCoverage({
+      search: "Exadata",
+      status: "pending_review",
+      readiness_status: "blocked_release",
+      page: 2,
+      page_size: 50,
+    });
+
+    expect(requestPath(fetchMock.mock.calls[0])).toBe(
+      "/api/v1/pricing/product-coverage?search=Exadata&status=pending_review&readiness_status=blocked_release&page=2&page_size=50",
+    );
+  });
+
+  it.each([
+    ["generate coverage", () => api.generateProductCoverage(), "/api/v1/pricing/product-coverage/generate", undefined],
+    ["review coverage", () => api.reviewProductCoverage("ORACLE/EXADATA", { decision: "approve", rationale: "Official evidence and fixtures passed." }), "/api/v1/pricing/product-coverage/ORACLE%2FEXADATA/review", { decision: "approve", rationale: "Official evidence and fixtures passed." }],
+  ])("calls the governed %s endpoint", async (_label, action, expectedPath, expectedBody) => {
+    const fetchMock = vi.fn().mockResolvedValue(response());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await action();
+
+    expect(requestPath(fetchMock.mock.calls[0])).toBe(expectedPath);
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
+    if (expectedBody) {
+      expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(expectedBody);
+    }
+  });
+
+  it("loads one encoded product coverage proposal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.getProductCoverage("ORACLE/EXADATA");
+
+    expect(requestPath(fetchMock.mock.calls[0])).toBe(
+      "/api/v1/pricing/product-coverage/ORACLE%2FEXADATA",
+    );
+  });
+
   it("uploads an XLSX document as multipart evidence", async () => {
     const fetchMock = vi.fn().mockResolvedValue(response());
     vi.stubGlobal("fetch", fetchMock);

@@ -295,6 +295,37 @@ class CommercialMappingCandidate(Base, UUIDMixin, TimestampMixin):
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
+class ProductCoverageCandidate(Base, UUIDMixin, TimestampMixin):
+    """Governed product-level proposal awaiting explicit BOM coverage approval."""
+
+    __tablename__ = "product_coverage_candidates"
+    __table_args__ = (
+        UniqueConstraint("product_key", name="uq_product_coverage_candidate_key"),
+        Index("ix_product_coverage_candidate_status", "status"),
+        Index("ix_product_coverage_candidate_readiness", "readiness_status"),
+    )
+
+    product_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(1000), nullable=False)
+    category: Mapped[Optional[str]] = mapped_column(String(500))
+    proposed_service_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    proposed_profile: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    proposed_policy: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    proposed_mappings: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    readiness_status: Mapped[str] = mapped_column(
+        String(32), default="blocked_evidence", nullable=False
+    )
+    readiness_blockers: Mapped[list[object]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(32), default="pending_review", nullable=False)
+    generator_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    review_rationale: Mapped[Optional[str]] = mapped_column(Text)
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(100))
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    source_document_snapshot_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("commercial_document_snapshots.id")
+    )
+
+
 class CommercialException(Base, UUIDMixin, TimestampMixin):
     """Auditable ambiguity or source conflict that blocks automatic publication."""
 

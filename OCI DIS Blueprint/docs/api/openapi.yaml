@@ -12099,6 +12099,381 @@
         "title": "PriceSyncRequest",
         "type": "object"
       },
+      "ProductCoverageBlockerResponse": {
+        "additionalProperties": false,
+        "description": "Machine-readable reason that prevents one product or SKU from promotion.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "part_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Number"
+          }
+        },
+        "required": [
+          "part_number",
+          "code",
+          "detail"
+        ],
+        "title": "ProductCoverageBlockerResponse",
+        "type": "object"
+      },
+      "ProductCoverageDetailResponse": {
+        "additionalProperties": false,
+        "description": "Complete proposed operational materialization for one OCI product.",
+        "properties": {
+          "blocker_count": {
+            "minimum": 0.0,
+            "title": "Blocker Count",
+            "type": "integer"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "generator_version": {
+            "title": "Generator Version",
+            "type": "string"
+          },
+          "mapping_count": {
+            "minimum": 0.0,
+            "title": "Mapping Count",
+            "type": "integer"
+          },
+          "product_key": {
+            "title": "Product Key",
+            "type": "string"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "promotable": {
+            "title": "Promotable",
+            "type": "boolean"
+          },
+          "proposed_mappings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Proposed Mappings",
+            "type": "array"
+          },
+          "proposed_policy": {
+            "additionalProperties": true,
+            "title": "Proposed Policy",
+            "type": "object"
+          },
+          "proposed_profile": {
+            "additionalProperties": true,
+            "title": "Proposed Profile",
+            "type": "object"
+          },
+          "proposed_service_id": {
+            "title": "Proposed Service Id",
+            "type": "string"
+          },
+          "readiness_blockers": {
+            "items": {
+              "$ref": "#/components/schemas/ProductCoverageBlockerResponse"
+            },
+            "title": "Readiness Blockers",
+            "type": "array"
+          },
+          "readiness_status": {
+            "title": "Readiness Status",
+            "type": "string"
+          },
+          "review_rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Rationale"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "sku_count": {
+            "minimum": 0.0,
+            "title": "Sku Count",
+            "type": "integer"
+          },
+          "source_document_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Document Snapshot Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_key",
+          "product_name",
+          "category",
+          "sku_count",
+          "mapping_count",
+          "readiness_status",
+          "status",
+          "promotable",
+          "blocker_count",
+          "generator_version",
+          "proposed_service_id",
+          "proposed_profile",
+          "proposed_policy",
+          "source_document_snapshot_id",
+          "review_rationale",
+          "reviewed_by",
+          "reviewed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProductCoverageDetailResponse",
+        "type": "object"
+      },
+      "ProductCoverageGenerationResponse": {
+        "additionalProperties": false,
+        "description": "Deterministic coverage-generation summary.",
+        "properties": {
+          "blocked_evidence": {
+            "minimum": 0.0,
+            "title": "Blocked Evidence",
+            "type": "integer"
+          },
+          "blocked_release": {
+            "minimum": 0.0,
+            "title": "Blocked Release",
+            "type": "integer"
+          },
+          "generated": {
+            "minimum": 0.0,
+            "title": "Generated",
+            "type": "integer"
+          },
+          "generator_version": {
+            "title": "Generator Version",
+            "type": "string"
+          },
+          "ready": {
+            "minimum": 0.0,
+            "title": "Ready",
+            "type": "integer"
+          },
+          "refreshed": {
+            "minimum": 0.0,
+            "title": "Refreshed",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generated",
+          "refreshed",
+          "ready",
+          "blocked_release",
+          "blocked_evidence",
+          "total",
+          "generator_version"
+        ],
+        "title": "ProductCoverageGenerationResponse",
+        "type": "object"
+      },
+      "ProductCoverageListResponse": {
+        "additionalProperties": false,
+        "description": "Bounded page of governed product coverage proposals.",
+        "properties": {
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/ProductCoverageRowResponse"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "ProductCoverageListResponse",
+        "type": "object"
+      },
+      "ProductCoverageReviewRequest": {
+        "additionalProperties": false,
+        "description": "Explicit administrator disposition for one product coverage proposal.",
+        "properties": {
+          "decision": {
+            "pattern": "^(approve|reject)$",
+            "title": "Decision",
+            "type": "string"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 8,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "rationale"
+        ],
+        "title": "ProductCoverageReviewRequest",
+        "type": "object"
+      },
+      "ProductCoverageRowResponse": {
+        "additionalProperties": false,
+        "description": "Lightweight product coverage candidate used by paginated review.",
+        "properties": {
+          "blocker_count": {
+            "minimum": 0.0,
+            "title": "Blocker Count",
+            "type": "integer"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "generator_version": {
+            "title": "Generator Version",
+            "type": "string"
+          },
+          "mapping_count": {
+            "minimum": 0.0,
+            "title": "Mapping Count",
+            "type": "integer"
+          },
+          "product_key": {
+            "title": "Product Key",
+            "type": "string"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "promotable": {
+            "title": "Promotable",
+            "type": "boolean"
+          },
+          "readiness_status": {
+            "title": "Readiness Status",
+            "type": "string"
+          },
+          "sku_count": {
+            "minimum": 0.0,
+            "title": "Sku Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_key",
+          "product_name",
+          "category",
+          "sku_count",
+          "mapping_count",
+          "readiness_status",
+          "status",
+          "promotable",
+          "blocker_count",
+          "generator_version"
+        ],
+        "title": "ProductCoverageRowResponse",
+        "type": "object"
+      },
       "ProjectArchiveResponse": {
         "additionalProperties": false,
         "description": "Archive action result for one project.",
@@ -22666,6 +23041,283 @@
           }
         },
         "summary": "Inspect the paginated SKUs captured for one OCI product",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/product-coverage": {
+      "get": {
+        "operationId": "get_product_coverage_api_v1_pricing_product_coverage_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "pattern": "^(all|pending_review|approved|rejected)$",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "readiness_status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "pattern": "^(all|ready|blocked_release|blocked_evidence)$",
+              "title": "Readiness Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductCoverageListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review paginated OCI product coverage proposals",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/product-coverage/generate": {
+      "post": {
+        "operationId": "generate_product_coverage_api_v1_pricing_product_coverage_generate_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductCoverageGenerationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate or refresh governed OCI product coverage proposals",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/product-coverage/{product_key}": {
+      "get": {
+        "operationId": "get_product_coverage_detail_api_v1_pricing_product_coverage__product_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_key",
+            "required": true,
+            "schema": {
+              "title": "Product Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductCoverageDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect one governed OCI product coverage proposal",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/product-coverage/{product_key}/review": {
+      "post": {
+        "operationId": "review_product_coverage_api_v1_pricing_product_coverage__product_key__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_key",
+            "required": true,
+            "schema": {
+              "title": "Product Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductCoverageReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductCoverageDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve or reject one governed OCI product coverage proposal",
         "tags": [
           "Pricing"
         ]

@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { emitToast } from "@/hooks/use-toast";
 import { OciProductCatalog } from "@/components/oci-product-catalog";
+import { OciCoverageReview } from "@/components/oci-coverage-review";
 import { api, getErrorMessage } from "@/lib/api";
 import { formatDate, formatNumber } from "@/lib/format";
 import {
@@ -711,6 +712,7 @@ export function PricingAdminPanel(): JSX.Element {
   return (
     <div className="min-w-0 space-y-5">
       <OciProductCatalog />
+      <OciCoverageReview />
       <CommercialCatalogWorkspace />
 
       {error ? (

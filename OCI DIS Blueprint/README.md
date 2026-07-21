@@ -183,6 +183,13 @@ five unresolved commercial dependencies remain excluded. Global coverage means
 every SKU is governed, not that every public OCI SKU is quote-ready. See
 [`docs/architecture/oci-full-catalog-commercial-coverage-plan.md`](./docs/architecture/oci-full-catalog-commercial-coverage-plan.md).
 
+Admin Pricing also exposes a governed OCI Coverage queue for all 444 captured
+products. Generation proposes capability profiles, policies, and SKU mappings but
+does not activate them. Only products whose complete quoteable SKU scope passes
+the approved-release, term, deterministic fixture, exception, and relationship
+gates can be explicitly promoted by an Admin. Project detection and scenario
+selection remain unchanged until the separate product-selection phase.
+
 Continuous source governance keeps the currently approved commercial families
 current without self-approving source drift. Celery verifies the Oracle public
 price feed plus Cloud Estimator products, metrics, and presets every day as one
