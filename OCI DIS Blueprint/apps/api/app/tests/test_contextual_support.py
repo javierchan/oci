@@ -884,7 +884,9 @@ async def test_support_evidence_connects_integration_to_business_process_and_gov
     pattern_library = cast(list[dict[str, object]], evidence["pattern_library"])
     service_library = cast(list[dict[str, object]], evidence["service_product_library"])
     assert evidence["in_scope"] is True
-    assert len(cast(list[object], evidence["app_sections"])) == 8
+    app_knowledge = cast(dict[str, object], evidence["app_knowledge"])
+    assert app_knowledge["documented"] is True
+    assert cast(list[object], app_knowledge["entries"])
     assert integration_evidence["description"] == "Receives a validated customer order."
     assert process_evidence["name"] == "Order to Cash"
     assert process_evidence["captured_predecessor"] is None

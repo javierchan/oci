@@ -166,7 +166,12 @@ async def test_agent_catalog_create_execute_and_read(
         "topology_investigation",
         "bom_scenario",
         "support_assistant",
+        "knowledge_maintenance",
     }
+    models = {item["type"]: item["model"] for item in catalog_response.json()}
+    assert models["support_assistant"] == "OpenAI gpt-oss-120b"
+    assert models["knowledge_maintenance"] == "OpenAI gpt-oss-120b"
+    assert models["architecture_review"] == "OpenAI gpt-oss-20b"
     provider_response = await api_client.get("/api/v1/agents/provider-status", headers=HEADERS)
     assert provider_response.status_code == 200
     assert provider_response.json()["runtime"] == "docker_celery_agents_queue"
@@ -602,6 +607,10 @@ async def test_oci_tool_loop_sends_project_header_and_returns_tool_evidence(
         "_create_provider_http_client",
         lambda _: FakeClient(),
     )
+    def unexpected_http_client(**_: object) -> None:
+        raise AssertionError("OCI provider tests must not construct an unmocked HTTP client")
+
+    monkeypatch.setattr(genai_client.httpx, "AsyncClient", unexpected_http_client)
 
     async def executor(_: dict[str, object]) -> dict[str, object]:
         return {"evidence_id": "E-1", "status": "ready"}

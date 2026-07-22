@@ -273,6 +273,11 @@ def _grounding_failure(
     if not _part_numbers_are_grounded(normalized_summary, evidence):
         return "unsupported_sku_claim"
     if definition.type == "support_assistant":
+        from app.services.app_knowledge_service import knowledge_grounding_failure
+
+        knowledge_failure = knowledge_grounding_failure(normalized_summary, evidence)
+        if knowledge_failure is not None:
+            return knowledge_failure
         question = _text(evidence.get("current_question")).casefold()
         answer = normalized_summary.casefold()
         if "oci dis" in question and not re.search(r"\boci\s+dis\b|\barchitect\b|\bapp\b", answer):

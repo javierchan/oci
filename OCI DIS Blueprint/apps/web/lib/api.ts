@@ -8,6 +8,8 @@ import type {
   AgentRunList,
   AgentRunRequest,
   AgentValueMetrics,
+  KnowledgeMaintenanceFinding,
+  KnowledgeMaintenanceJob,
   AssumptionList,
   AssumptionSet,
   AssumptionSetCreate,
@@ -499,6 +501,25 @@ export const api = {
       headers: adminHeaders(),
       body: JSON.stringify(body),
     }),
+
+  listKnowledgeMaintenanceJobs: (limit = 20): Promise<KnowledgeMaintenanceJob[]> =>
+    apiFetch<KnowledgeMaintenanceJob[]>(`/api/v1/agents/knowledge-maintenance/jobs${withQuery({ limit })}`, {
+      headers: adminHeaders(),
+    }),
+
+  reviewKnowledgeMaintenanceFinding: (
+    findingId: string,
+    decision: "accept" | "reject",
+    rationale: string,
+  ): Promise<KnowledgeMaintenanceFinding> =>
+    apiFetch<KnowledgeMaintenanceFinding>(
+      `/api/v1/agents/knowledge-maintenance/findings/${encodeURIComponent(findingId)}/review`,
+      {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ decision, rationale }),
+      },
+    ),
 
   cancelAgentRun: (runId: string): Promise<AgentRun> =>
     apiFetch<AgentRun>(`/api/v1/agents/runs/${encodeURIComponent(runId)}/cancel`, {

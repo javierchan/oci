@@ -15,7 +15,7 @@ def test_architecture_review_agent_requests_plain_language_decision_brief() -> N
 def test_support_assistant_resolves_global_project_dossiers() -> None:
     definition = get_agent_definition("support_assistant")
 
-    assert definition.version == "4.0.0"
+    assert definition.version == "5.0.0"
     assert "primary author" in definition.instruction
     assert "verified_facts" in definition.instruction
     assert "next_actions" in definition.instruction

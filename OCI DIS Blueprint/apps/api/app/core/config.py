@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     )
     OCI_GENAI_MODEL_ID: str = "openai.gpt-oss-20b"
     OCI_GENAI_MODEL_NAME: str = "OpenAI gpt-oss-20b"
+    OCI_GENAI_SUPPORT_MODEL_ID: str = "openai.gpt-oss-120b"
+    OCI_GENAI_SUPPORT_MODEL_NAME: str = "OpenAI gpt-oss-120b"
+    OCI_GENAI_KNOWLEDGE_MODEL_ID: str = "openai.gpt-oss-120b"
+    OCI_GENAI_KNOWLEDGE_MODEL_NAME: str = "OpenAI gpt-oss-120b"
+    OCI_GENAI_LARGE_READ_TIMEOUT_SECONDS: float = 300.0
+    OCI_GENAI_LARGE_MAX_OUTPUT_TOKENS: int = 3072
     OCI_GENAI_PROJECT_ID: str = ""
     OCI_GENAI_COMPARTMENT_ID: str = ""
     OCI_GENAI_API_KEY_FILE: str = "/tmp/oci-dis-home/.oci-genai/api_key"
@@ -81,3 +87,28 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def get_genai_settings_for_use_case(use_case: str) -> Settings:
+    """Return an immutable per-use-case model projection without global state."""
+
+    settings = get_settings()
+    if use_case == "support_assistant":
+        return settings.model_copy(
+            update={
+                "OCI_GENAI_MODEL_ID": settings.OCI_GENAI_SUPPORT_MODEL_ID,
+                "OCI_GENAI_MODEL_NAME": settings.OCI_GENAI_SUPPORT_MODEL_NAME,
+                "OCI_GENAI_READ_TIMEOUT_SECONDS": settings.OCI_GENAI_LARGE_READ_TIMEOUT_SECONDS,
+                "OCI_GENAI_MAX_OUTPUT_TOKENS": settings.OCI_GENAI_LARGE_MAX_OUTPUT_TOKENS,
+            }
+        )
+    if use_case == "knowledge_maintenance":
+        return settings.model_copy(
+            update={
+                "OCI_GENAI_MODEL_ID": settings.OCI_GENAI_KNOWLEDGE_MODEL_ID,
+                "OCI_GENAI_MODEL_NAME": settings.OCI_GENAI_KNOWLEDGE_MODEL_NAME,
+                "OCI_GENAI_READ_TIMEOUT_SECONDS": settings.OCI_GENAI_LARGE_READ_TIMEOUT_SECONDS,
+                "OCI_GENAI_MAX_OUTPUT_TOKENS": settings.OCI_GENAI_LARGE_MAX_OUTPUT_TOKENS,
+            }
+        )
+    return settings

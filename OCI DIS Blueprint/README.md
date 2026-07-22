@@ -126,6 +126,9 @@ Generative AI authors normal responses from a labeled `verified_facts` contract 
 executable `next_actions`; deterministic answers are reserved for provider or grounding
 failure. Model history is not evidence, and an output-grounding gate replaces unsupported synthesis with a concise governed brief. See
 [`docs/architecture/contextual-support-assistant.md`](./docs/architecture/contextual-support-assistant.md).
+The executable product boundary, CI drift gate, deterministic fallback, and
+human-reviewed Knowledge Maintenance Agent are documented in
+[`docs/architecture/app-knowledge-base.md`](./docs/architecture/app-knowledge-base.md).
 Users can clear their current browser-session transcript from the assistant header;
 the App removes messages and attached contexts while retaining sanitized AgentRun
 audit evidence.

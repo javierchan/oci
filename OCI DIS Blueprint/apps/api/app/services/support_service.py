@@ -42,6 +42,10 @@ from app.schemas.agent import (
 )
 from app.services import audit_service
 from app.services.agent_output_service import support_output_contains_internal_reasoning
+from app.services.app_knowledge_service import (
+    build_app_knowledge_evidence,
+    knowledge_grounding_failure,
+)
 from app.services.serializers import sanitize_for_json
 from app.services.support_routing_service import (
     PROJECT_PORTFOLIO_PATTERN,
@@ -89,18 +93,6 @@ PROJECT_SCOPE_PATTERN = re.compile(
 )
 PROJECT_ROUTE_PATTERN = re.compile(r"/projects/([0-9a-f-]{36})(?:/|$)", re.IGNORECASE)
 
-APP_SECTIONS: tuple[dict[str, str], ...] = (
-    {"name": "Projects", "route": "/projects", "purpose": "Open and manage independent architecture assessments."},
-    {"name": "Dashboard", "route": "/projects/{project_id}", "purpose": "Review coverage, products, maturity, and prioritized risks."},
-    {"name": "Import", "route": "/projects/{project_id}/import", "purpose": "Download, upload, trace, and review governed workbook capture."},
-    {"name": "Capture", "route": "/projects/{project_id}/capture", "purpose": "Define an integration through the governed capture workflow."},
-    {"name": "Catalog", "route": "/projects/{project_id}/catalog", "purpose": "Review integration definitions, lineage, QA, patterns, and design decisions."},
-    {"name": "Map", "route": "/projects/{project_id}/graph", "purpose": "Investigate system dependencies, paths, concentration, and blast radius."},
-    {"name": "BOM & Cost", "route": "/projects/{project_id}/bom", "purpose": "Build governed deployment scenarios and immutable OCI estimates."},
-    {"name": "Library", "route": "/admin", "purpose": "Govern patterns, dictionaries, assumptions, Service Products, pricing, and agents."},
-)
-
-
 def validate_support_session_id(value: str) -> str:
     """Require a canonical UUID so callers cannot probe another session namespace."""
 
@@ -142,6 +134,8 @@ def support_summary_is_grounded(summary: str, evidence: dict[str, object]) -> bo
         normalized = claim.casefold().replace("usd", "").replace("$", "").replace(",", "").strip()
         if normalized not in serialized_evidence:
             return False
+    if knowledge_grounding_failure(summary, evidence) is not None:
+        return False
     return True
 
 
@@ -445,83 +439,6 @@ def _pattern_answer(evidence: dict[str, object]) -> str | None:
     return "\n\n".join(parts)
 
 
-def _workflow_answer(evidence: dict[str, object]) -> str | None:
-    """Explain an App workflow without delegating routine navigation to the model."""
-
-    if evidence.get("question_intent") != "workflow_guidance":
-        return None
-    question = str(evidence.get("current_question") or "").casefold()
-    spanish = evidence.get("response_language") == "es"
-    mentions_import = any(term in question for term in ("import", "importar", "importaci"))
-    mentions_capture = any(term in question for term in ("capture", "captura"))
-    if mentions_import and mentions_capture:
-        return (
-            "Usa **Import** cuando ya existe un archivo de inventario: la App conserva el lote, las columnas fuente y las filas incluidas o excluidas. Usa **Capture** para registrar una integración individual que no viene en un archivo. Ambos caminos terminan en el mismo catálogo gobernado, QA y cálculo de volumetría."
-            if spanish
-            else "Use **Import** when an inventory file already exists: the App preserves the batch, source columns, and included or excluded rows. Use **Capture** to record one integration that does not come from a file. Both paths end in the same governed catalog, QA, and volumetry calculation."
-        )
-    workflows: tuple[tuple[tuple[str, ...], str, str], ...] = (
-        (
-            ("import", "importar", "importaci"),
-            "Para importar, abre **Import**, descarga el template gobernado si lo necesitas, carga el archivo y revisa qué filas fueron incluidas, excluidas y por qué. Después revisa QA en **Catalog** y ejecuta el recálculo para producir un snapshot técnico.",
-            "To import, open **Import**, download the governed template if needed, upload the file, and review which rows were included, excluded, and why. Then review QA in **Catalog** and run recalculation to create a technical snapshot.",
-        ),
-        (
-            ("capture", "captura"),
-            "Para registrar una integración sin archivo, abre **Capture** y completa el flujo guiado: sistemas origen/destino, comportamiento técnico, patrón y datos de volumetría. La integración entra al mismo catálogo gobernado y pasa por las mismas validaciones de QA.",
-            "To record an integration without a file, open **Capture** and complete the guided flow: source/destination systems, technical behavior, pattern, and volumetry inputs. The integration enters the same governed catalog and receives the same QA validation.",
-        ),
-        (
-            ("catalog", "catálogo", "catalogo", "qa", "calidad"),
-            "**Catalog** es el registro gobernado de las integraciones. Filtra una fila, revisa su lineage, corrige los campos de arquitectura requeridos y usa las razones de QA como lista de remediación. No se inventan datos para que QA quede verde.",
-            "**Catalog** is the governed integration record. Filter to a row, inspect its lineage, correct required architecture fields, and use QA reasons as the remediation list. The App never invents data simply to turn QA green.",
-        ),
-        (
-            ("volumetry", "volumetría", "volumetria", "recalculate", "recalcular"),
-            "La volumetría parte del catálogo gobernado y de las suposiciones activas. Completa frecuencia, payload, patrón y herramientas; después ejecuta el recálculo. El snapshot conserva los resultados por integración y los consolidados, por lo que puede auditarse su origen.",
-            "Volumetry starts from the governed catalog and active assumptions. Complete frequency, payload, pattern, and tools, then run recalculation. The snapshot retains per-integration and consolidated results, so its origin is auditable.",
-        ),
-        (
-            ("dashboard", "riesgo", "risk"),
-            "**Dashboard** resume el último snapshot técnico: cobertura, madurez, mezcla de patrones, distribución de payload y riesgos. Úsalo para priorizar investigación; los datos comerciales se mantienen separados en **BOM & Cost**.",
-            "**Dashboard** summarizes the latest technical snapshot: coverage, maturity, pattern mix, payload distribution, and risks. Use it to prioritize investigation; commercial data remains separate in **BOM & Cost**.",
-        ),
-        (
-            ("map", "topology", "topología", "topologia"),
-            "**Map** muestra dependencias entre sistemas a partir del catálogo. Selecciona un sistema o una ruta para investigar conexiones, concentración y alcance potencial; luego abre la integración relacionada para revisar su evidencia y diseño.",
-            "**Map** shows system dependencies from the catalog. Select a system or path to investigate connections, concentration, and potential impact; then open the related integration to inspect its evidence and design.",
-        ),
-        (
-            ("bom", "scenario", "escenario", "byol", "license included", "licencia incluida"),
-            "En **BOM & Cost**, crea un escenario de despliegue a partir de un snapshot técnico, define ambientes y rampa mensual, y genera el BOM. La App elige SKU y precio solo desde catálogos aprobados; revisa cobertura, cantidades, rampas y procedencia antes de publicar o compartir una estimación.",
-            "In **BOM & Cost**, create a deployment scenario from a technical snapshot, define environments and the monthly ramp, and generate the BOM. The App selects SKU and price only from approved catalogs; review coverage, quantities, ramps, and provenance before publishing or sharing an estimate.",
-        ),
-        (
-            ("export", "exportar"),
-            "Las exportaciones salen de artefactos gobernados: catálogo y snapshot técnico, o un BOM inmutable cuando se trata de costos. Genera el artefacto desde el workspace correspondiente y conserva su procedencia; una exportación comercial es una estimación de planeación, no una cotización de Oracle.",
-            "Exports come from governed artifacts: the catalog and technical snapshot, or an immutable BOM for costs. Generate the artifact from its workspace and retain its provenance; a commercial export is a planning estimate, not an Oracle quote.",
-        ),
-        (
-            ("dictionary", "diccionario", "assumption", "supuesto", "governance", "gobernanza"),
-            "La zona de **Governance** controla patrones, diccionarios, supuestos, Service Products y pricing. Cambia referencias allí, con su auditoría, para que los cálculos y recomendaciones usen una fuente común en vez de reglas dispersas.",
-            "The **Governance** area controls patterns, dictionaries, assumptions, Service Products, and pricing. Change references there, with auditability, so calculations and recommendations use one common source rather than scattered rules.",
-        ),
-        (
-            ("agent", "agente", "assistant", "asistente"),
-            "Los agentes de la App investigan evidencia acotada y proponen o explican decisiones; no cambian datos por sí solos. El asistente global puede guiarte por cualquier workflow y conserva solo referencias resueltas de la conversación, nunca respuestas del modelo como hechos.",
-            "App agents investigate bounded evidence and propose or explain decisions; they do not change data by themselves. The global assistant can guide any workflow and keeps only resolved conversation references, never model answers as facts.",
-        ),
-    )
-    for terms, spanish_answer, english_answer in workflows:
-        if any(term in question for term in terms):
-            return spanish_answer if spanish else english_answer
-    return (
-        "OCI DIS Architect cubre Projects, Import, Capture, Catalog, Dashboard, Map, BOM & Cost y Governance. Dime el objetivo —por ejemplo importar, corregir QA, dimensionar, analizar dependencias o preparar un BOM— y te indico el flujo y la evidencia a revisar."
-        if spanish
-        else "OCI DIS Architect covers Projects, Import, Capture, Catalog, Dashboard, Map, BOM & Cost, and Governance. Tell me the goal—such as importing, fixing QA, sizing, analyzing dependencies, or preparing a BOM—and I will point you to the workflow and evidence to review."
-    )
-
-
 def _support_fallback_answer(evidence: dict[str, object]) -> str:
     """Build a concise App-owned answer when provider grounding is insufficient."""
 
@@ -542,9 +459,6 @@ def _support_fallback_answer(evidence: dict[str, object]) -> str:
     pattern_answer = _pattern_answer(evidence)
     if pattern_answer:
         return pattern_answer
-    workflow_answer = _workflow_answer(evidence)
-    if workflow_answer:
-        return workflow_answer
     integration = evidence.get("integration")
     process = evidence.get("business_process_flow")
     if evidence.get("question_intent") == "commercial_guidance":
@@ -777,6 +691,14 @@ def _support_fallback_answer(evidence: dict[str, object]) -> str:
                 if spanish
                 else f"I found multiple active projects: {names}. Name the project or open its workspace so I can use the right evidence."
             )
+    app_knowledge = evidence.get("app_knowledge")
+    if isinstance(app_knowledge, dict) and evidence.get("question_intent") in {
+        "app_guidance",
+        "workflow_guidance",
+    }:
+        fallback = app_knowledge.get("fallback_answer")
+        if isinstance(fallback, str) and fallback:
+            return fallback
     if spanish:
         return (
             "OCI DIS Architect te ayuda a importar y gobernar integraciones, revisar su calidad, calcular volumetría, "
@@ -1319,6 +1241,14 @@ async def build_support_evidence(
         or 0
     )
     assumption_count = int(await db.scalar(select(func.count()).select_from(AssumptionSet)) or 0)
+    response_language = "es" if SPANISH_QUESTION_PATTERN.search(dialogue_text) else "en"
+    app_knowledge = build_app_knowledge_evidence(
+        question,
+        route,
+        language=response_language,
+        project_id=resolved_project_id,
+        integration_id=integration_id,
+    )
     evidence: dict[str, object] = {
         "in_scope": True,
         "application": "OCI DIS Architect",
@@ -1327,7 +1257,7 @@ async def build_support_evidence(
             "unknowns": "Say what evidence is missing instead of supplying generic external facts.",
             "style": "Answer naturally and directly. Use short paragraphs, lists, bold text, or a compact Markdown table when it improves comprehension.",
         },
-        "response_language": "es" if SPANISH_QUESTION_PATTERN.search(dialogue_text) else "en",
+        "response_language": response_language,
         "current_question": question,
         "current_context": {
             "route": route,
@@ -1368,7 +1298,7 @@ async def build_support_evidence(
             "process": "Do not invent predecessors, successors, events, approvals, or runtime behavior outside the captured ordered integrations.",
             "actions": "Recommend only navigation, review, or missing capture supported by this result; never invent an approval workflow.",
         },
-        "app_sections": list(APP_SECTIONS),
+        "app_knowledge": app_knowledge,
         "governance_summary": {
             "active_patterns": pattern_count,
             "active_service_products": service_count,
@@ -1377,6 +1307,18 @@ async def build_support_evidence(
         },
         "citations": citations,
     }
+    knowledge_entries = app_knowledge.get("entries")
+    if isinstance(knowledge_entries, list) and knowledge_entries:
+        primary_entry = knowledge_entries[0]
+        if isinstance(primary_entry, dict):
+            entry_routes = primary_entry.get("routes")
+            if isinstance(entry_routes, list) and entry_routes:
+                citations.append(
+                    {
+                        "label": str(primary_entry.get("name") or "App knowledge"),
+                        "href": str(entry_routes[0]),
+                    }
+                )
 
     wants_patterns = any(term in question_lower for term in ("pattern", "patrón", "patron")) or "/patterns" in route
     wants_services = any(
@@ -1879,6 +1821,21 @@ async def build_support_evidence(
     evidence["verified_facts"] = _verified_facts(evidence)
     evidence["next_actions"] = _support_next_actions(evidence)
     actions = evidence["next_actions"]
+    raw_allowed_routes = app_knowledge.get("allowed_routes")
+    allowed_route_items = raw_allowed_routes if isinstance(raw_allowed_routes, list) else []
+    allowed_routes = {
+        str(item).split("?", 1)[0].rstrip("/") or "/"
+        for item in allowed_route_items
+    }
+    if route.startswith("/"):
+        allowed_routes.add(route.split("?", 1)[0].rstrip("/") or "/")
+    if isinstance(actions, list):
+        allowed_routes.update(
+            str(action.get("href")).split("?", 1)[0].rstrip("/") or "/"
+            for action in actions
+            if isinstance(action, dict) and str(action.get("href") or "").startswith("/")
+        )
+    app_knowledge["allowed_routes"] = sorted(allowed_routes)
     if isinstance(actions, list) and actions and isinstance(actions[0], dict):
         evidence["recommended_next_action"] = str(actions[0].get("label") or "Open the relevant App workspace")
         evidence["recommended_next_action_route"] = str(actions[0].get("href") or "/projects")

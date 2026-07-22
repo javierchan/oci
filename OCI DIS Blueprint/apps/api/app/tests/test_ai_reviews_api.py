@@ -885,6 +885,10 @@ async def test_oci_genai_uses_bearer_key_chat_completions_and_canonical_model(
         "_create_provider_http_client",
         lambda _: FakeAsyncClient(),
     )
+    def unexpected_http_client(**_: object) -> None:
+        raise AssertionError("OCI provider tests must not construct an unmocked HTTP client")
+
+    monkeypatch.setattr(genai_client.httpx, "AsyncClient", unexpected_http_client)
     settings = Settings(
         OCI_GENAI_API_KEY_FILE=str(api_key_path),
         OCI_GENAI_PROJECT_ID="ocid1.generativeaiproject.oc1.test",

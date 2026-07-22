@@ -79,6 +79,9 @@ jobs:
       - name: OpenAPI artifact check
         run: cd apps/api && python scripts/export_openapi.py --check
 
+      - name: App knowledge contract check
+        run: cd apps/api && python scripts/build_app_knowledge.py --check
+
       - name: Frontend type check
         run: cd apps/web && npx tsc --noEmit --skipLibCheck
 

@@ -15,13 +15,53 @@ from app.schemas.agent import (
     AgentRunListResponse,
     AgentRunResponse,
     AgentValueMetricsResponse,
+    KnowledgeMaintenanceFindingResponse,
+    KnowledgeMaintenanceJobResponse,
+    KnowledgeMaintenanceReviewRequest,
 )
 from app.services import agent_service
+from app.services import knowledge_maintenance_service
 from app.services.authz import require_roles
 from app.workers.agent_worker import execute_agent_run_task
 
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
+
+
+@router.get(
+    "/knowledge-maintenance/jobs",
+    response_model=list[KnowledgeMaintenanceJobResponse],
+    summary="List App knowledge maintenance jobs and review candidates",
+)
+async def list_knowledge_maintenance_jobs(
+    limit: int = Query(20, ge=1, le=50),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
+    db: AsyncSession = Depends(get_db),
+) -> list[KnowledgeMaintenanceJobResponse]:
+    require_roles(actor_role, {"Admin"}, error_code="KNOWLEDGE_MAINTENANCE_ROLE_REQUIRED")
+    return await knowledge_maintenance_service.list_jobs(db, limit=limit)
+
+
+@router.post(
+    "/knowledge-maintenance/findings/{finding_id}/review",
+    response_model=KnowledgeMaintenanceFindingResponse,
+    summary="Review an App knowledge maintenance candidate",
+)
+async def review_knowledge_maintenance_finding(
+    finding_id: str,
+    body: KnowledgeMaintenanceReviewRequest,
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Viewer", alias="X-Actor-Role"),
+    db: AsyncSession = Depends(get_db),
+) -> KnowledgeMaintenanceFindingResponse:
+    require_roles(actor_role, {"Admin"}, error_code="KNOWLEDGE_MAINTENANCE_ROLE_REQUIRED")
+    async with db.begin():
+        return await knowledge_maintenance_service.review_finding(
+            finding_id,
+            body,
+            actor_id=actor_id,
+            db=db,
+        )
 
 
 @router.get(

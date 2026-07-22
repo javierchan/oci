@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from statistics import median
 from typing import Literal, cast
@@ -12,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.registry import AGENT_DEFINITIONS, AgentDefinition, get_agent_definition
 from app.agents.tools import build_tool_executor
-from app.core.config import get_settings
+from app.core.config import get_genai_settings_for_use_case, get_settings
 from app.models import (
     AgentApproval,
     AgentArtifact,
@@ -140,6 +141,7 @@ def _status_value(run: AgentRun) -> str:
 def serialize_definition(definition: AgentDefinition) -> AgentDefinitionResponse:
     """Serialize one immutable agent definition."""
 
+    model_settings = get_genai_settings_for_use_case(definition.type)
     return AgentDefinitionResponse(
         type=definition.type,
         version=definition.version,
@@ -150,6 +152,7 @@ def serialize_definition(definition: AgentDefinition) -> AgentDefinitionResponse
         allowed_roles=sorted(definition.allowed_roles),
         mutates_data=definition.mutates_data,
         requires_project=definition.requires_project,
+        model=model_settings.OCI_GENAI_MODEL_NAME,
     )
 
 
@@ -632,8 +635,9 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
     db.add(provider_step)
     await db.flush()
     if include_provider:
+        provider_settings = get_genai_settings_for_use_case(definition.type)
         result = await run_governed_tool_agent(
-            settings=get_settings(), instruction=definition.instruction,
+            settings=provider_settings, instruction=definition.instruction,
             user_message=str(context.get("message") or f"Run {definition.name} for the governed scope."),
             tool_name=tool_name, tool_description=description,
             tool_parameters=parameters, tool_executor=cached_executor,
@@ -650,7 +654,7 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
             and result.error == "required_tool_not_called"
         ):
             synthesis = await synthesize_governed_summary(
-                settings=get_settings(),
+                settings=provider_settings,
                 system_instruction=(
                     f"{definition.instruction} The governed App-context tool has already returned the evidence. "
                     "Answer only from that evidence."
@@ -677,6 +681,19 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         if result and result.tool_output is not None
         else preflight_evidence
     )
+    if definition.type == "knowledge_maintenance" and result and result.status == "completed" and result.summary:
+        from app.services.knowledge_maintenance_service import persist_semantic_candidates
+
+        knowledge_job_id = context.get("knowledge_job_id") or evidence.get("id")
+        semantic_summary = (
+            await persist_semantic_candidates(str(knowledge_job_id), result.summary, db)
+            if knowledge_job_id
+            else None
+        )
+        result = replace(
+            result,
+            summary=semantic_summary or _deterministic_summary(definition, evidence),
+        )
     safety_refused = bool(result and result.error == "input_guardrails_blocked")
     provider_step.status = (
         "policy_refused"
@@ -856,6 +873,11 @@ def _deterministic_summary(definition: AgentDefinition, evidence: dict[str, obje
         if evidence.get("in_scope") is False:
             return str(evidence.get("refusal") or "This question is outside OCI DIS Architect support scope.")
         return str(evidence.get("fallback_answer") or "Governed App context is ready for review.")
+    if definition.type == "knowledge_maintenance":
+        return (
+            "App knowledge review completed with "
+            f"{evidence.get('finding_count', 0)} deterministic candidate(s); semantic drafts require explicit human review."
+        )
     brief = evidence.get("decision_brief")
     if isinstance(brief, dict) and isinstance(brief.get("headline"), str):
         return str(brief["headline"])

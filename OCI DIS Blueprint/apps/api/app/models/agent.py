@@ -108,6 +108,42 @@ class AgentArtifact(Base, UUIDMixin, TimestampMixin):
     content_hash: Mapped[Optional[str]] = mapped_column(String(128))
 
 
+class KnowledgeMaintenanceJob(Base, UUIDMixin, TimestampMixin):
+    """One governed comparison of executable App contracts against curated knowledge."""
+
+    __tablename__ = "knowledge_maintenance_jobs"
+
+    requested_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending", index=True)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    finding_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_details: Mapped[Optional[dict]] = mapped_column(JSON)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class KnowledgeMaintenanceFinding(Base, UUIDMixin, TimestampMixin):
+    """Reviewable documentation candidate; acceptance never mutates the curated YAML."""
+
+    __tablename__ = "knowledge_maintenance_findings"
+
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("knowledge_maintenance_jobs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    section_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    finding_type: Mapped[str] = mapped_column(String(48), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    current_value: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    candidate_value: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
+    review_status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending", index=True)
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(36))
+    review_note: Mapped[Optional[str]] = mapped_column(Text)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
 class SupportConversation(Base, UUIDMixin, TimestampMixin):
     """One browser-session-isolated support conversation."""
 

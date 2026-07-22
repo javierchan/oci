@@ -44,7 +44,8 @@ export type AgentType =
   | "integration_design"
   | "topology_investigation"
   | "bom_scenario"
-  | "support_assistant";
+  | "support_assistant"
+  | "knowledge_maintenance";
 export type AgentRunStatus = "pending" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
 
 export interface AgentDefinition {
@@ -57,6 +58,38 @@ export interface AgentDefinition {
   allowed_roles: string[];
   mutates_data: boolean;
   requires_project: boolean;
+  model: string;
+}
+
+export interface KnowledgeMaintenanceFinding {
+  id: string;
+  job_id: string;
+  section_id: string;
+  finding_type: string;
+  severity: string;
+  title: string;
+  summary: string;
+  current_value: Record<string, unknown>;
+  candidate_value: Record<string, unknown>;
+  rationale: string;
+  review_status: "pending" | "accepted" | "rejected";
+  reviewed_by: string | null;
+  review_note: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface KnowledgeMaintenanceJob {
+  id: string;
+  requested_by: string;
+  status: "pending" | "running" | "completed" | "failed";
+  source_hash: string;
+  finding_count: number;
+  error_details: Record<string, unknown> | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  findings: KnowledgeMaintenanceFinding[];
 }
 
 export interface AgentProviderStatus {

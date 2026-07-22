@@ -1,0 +1,269 @@
+version: 1.0.0
+sections:
+  - id: projects
+    name: Projects
+    purpose: Create and manage isolated architecture assessment workspaces, then review each project's technical dashboard and governed lifecycle.
+    when_to_use: Start here to select a customer assessment, create a project, inspect its latest technical snapshot, or archive completed work.
+    steps:
+      - Open Projects and select or create an assessment workspace.
+      - Open the project dashboard to review integration coverage, captured products, maturity, and prioritized risks.
+      - Continue to Import, Capture, Catalog, Map, or BOM & Cost for the decision you need to make.
+    routes:
+      - /
+      - /projects
+      - /projects/[projectId]
+      - /projects/[projectId]/capture
+      - /projects/[projectId]/capture/new
+      - /projects/[projectId]/graph
+      - /projects/[projectId]/map
+    endpoints:
+      - { method: GET, path: /api/v1/projects/ }
+      - { method: POST, path: /api/v1/projects/ }
+      - { method: GET, path: "/api/v1/projects/{project_id}" }
+      - { method: PATCH, path: "/api/v1/projects/{project_id}" }
+      - { method: POST, path: "/api/v1/projects/{project_id}/archive" }
+      - { method: GET, path: "/api/v1/dashboard/{project_id}/snapshots" }
+      - { method: GET, path: "/api/v1/catalog/{project_id}/graph" }
+    exports:
+      - method: GET
+        path: /api/v1/exports/{project_id}/brief
+        media_types: [text/markdown; charset=utf-8]
+    entities: [Project, DashboardSnapshot, VolumetrySnapshot, AuditEvent]
+    supported_actions: [create project, open dashboard, archive project, inspect technical snapshot, open map, download executive brief]
+    unsupported_claims: [delete all customer data automatically, publish a customer quote from the dashboard]
+    keywords: [project, dashboard, capture, map, topology, technical snapshot, assessment]
+
+  - id: import
+    name: Import
+    purpose: Ingest an official or external workbook through governed parsing, mapping review, lineage preservation, and controlled catalog materialization.
+    when_to_use: Use Import when integration information already exists in a workbook or when an external file needs explicit mapping decisions before catalog creation.
+    steps:
+      - Download the official template or choose a workbook to upload.
+      - Review the staged mapping contract and resolve ambiguous external columns when the App requests guidance.
+      - Approve the mapping contract, then inspect loaded, technical-only, and excluded rows with their source lineage.
+    routes: ["/projects/[projectId]/import"]
+    endpoints:
+      - { method: POST, path: "/api/v1/imports/{project_id}" }
+      - { method: GET, path: "/api/v1/imports/{project_id}/{batch_id}" }
+      - { method: PATCH, path: "/api/v1/imports/{project_id}/{batch_id}/mapping-review" }
+      - { method: POST, path: "/api/v1/imports/{project_id}/{batch_id}/mapping-review/approve" }
+      - { method: GET, path: "/api/v1/imports/{project_id}/{batch_id}/rows" }
+    exports:
+      - method: GET
+        path: /api/v1/exports/template/xlsx
+        media_types: [application/vnd.openxmlformats-officedocument.spreadsheetml.sheet]
+      - method: GET
+        path: /api/v1/exports/{project_id}/template/xlsx
+        media_types: [application/vnd.openxmlformats-officedocument.spreadsheetml.sheet]
+    entities: [ImportBatch, ImportMappingProfile, SourceIntegrationRow, CatalogIntegration]
+    supported_actions: [download template, upload workbook, review mappings, approve mapping contract, inspect source rows, remove import batch]
+    unsupported_claims: [silently repair ambiguous source data, accept workbook formulas, bypass mapping approval]
+    keywords: [import, importar, workbook, archivo, template, external file, mapping, lineage, spreadsheet, rows, filas]
+
+  - id: catalog
+    name: Catalog and QA
+    purpose: Maintain the governed integration record, source lineage, architecture fields, QA reasons, volumetry inputs, pattern assignment, and saved design canvas for each integration.
+    when_to_use: Use Catalog and QA to search integration records, remediate evidence gaps, review one integration, or recalculate technical results.
+    steps:
+      - Filter or search the catalog to locate the integration or QA condition.
+      - Open an integration to inspect source data, lineage, QA reasons, selected pattern, volumetry, and canvas.
+      - Apply explicit architect-owned changes, refresh QA, and recalculate when the governed inputs are ready.
+    routes:
+      - /projects/[projectId]/catalog
+      - /projects/[projectId]/catalog/[integrationId]
+    endpoints:
+      - { method: GET, path: "/api/v1/catalog/{project_id}" }
+      - { method: GET, path: "/api/v1/catalog/{project_id}/{integration_id}" }
+      - { method: PATCH, path: "/api/v1/catalog/{project_id}/{integration_id}" }
+      - { method: GET, path: "/api/v1/catalog/{project_id}/{integration_id}/lineage" }
+      - { method: POST, path: "/api/v1/catalog/{project_id}/refresh-qa" }
+      - { method: POST, path: "/api/v1/recalculate/{project_id}" }
+    exports:
+      - method: GET
+        path: /api/v1/exports/{project_id}/xlsx
+        media_types: [application/vnd.openxmlformats-officedocument.spreadsheetml.sheet]
+    entities: [CatalogIntegration, SourceIntegrationRow, JustificationRecord, PatternDefinition]
+    supported_actions: [filter catalog, inspect lineage, edit architect fields, refresh QA, design canvas, recalculate, export catalog XLSX]
+    unsupported_claims: [invent missing evidence, turn QA green automatically, mutate an approved design without saving]
+    keywords: [catalog, qa, integration, lineage, canvas, volumetry, recalculation, source row]
+
+  - id: patterns
+    name: Patterns
+    purpose: Govern the reusable, tool-agnostic integration patterns that guide architecture selection, QA explanations, canvas recommendations, and exports.
+    when_to_use: Use Patterns to understand when a pattern applies, its anti-pattern, technical flow, business value, and certified implementation guidance.
+    steps:
+      - Open Patterns and select a pattern by code or name.
+      - Review its description, when-to-use guidance, anti-pattern, flow, supported status, and mapped services.
+      - Return to an integration to assign the pattern and validate the design against governed guidance.
+    routes: ["/admin/patterns"]
+    endpoints:
+      - { method: GET, path: /api/v1/patterns/ }
+      - { method: GET, path: "/api/v1/patterns/{pattern_id}" }
+      - { method: PATCH, path: "/api/v1/patterns/{pattern_id}" }
+    exports: []
+    entities: [PatternDefinition]
+    supported_actions: [list patterns, inspect pattern guidance, edit governed pattern metadata, assign pattern from an integration]
+    unsupported_claims: [execute an integration pattern, deploy OCI resources from the pattern library]
+    keywords: [pattern, anti-pattern, request-reply, event-driven, cdc, certification, technical flow]
+
+  - id: library
+    name: Library
+    purpose: Provide the administration hub for governed patterns, Service Products, dictionaries, assumptions, and deterministic synthetic validation assets.
+    when_to_use: Use Library when the shared reference data that governs every project must be inspected or maintained.
+    steps:
+      - Open Library and choose the reference category you need.
+      - Inspect its current version, evidence, limits, interoperability, or synthetic validation history.
+      - Make authorized changes in the category-specific workspace so downstream calculations use one governed source.
+    routes:
+      - /admin
+      - /admin/services
+      - /admin/services/[serviceId]
+      - /admin/synthetic
+      - /admin/synthetic/[jobId]
+    endpoints:
+      - { method: GET, path: /api/v1/service-products }
+      - { method: GET, path: "/api/v1/service-products/{service_id}" }
+      - { method: GET, path: "/api/v1/service-products/{service_id}/limits" }
+      - { method: GET, path: "/api/v1/service-products/{service_id}/interoperability" }
+      - { method: GET, path: /api/v1/admin/synthetic/jobs }
+    exports: []
+    entities: [ServiceCapabilityProfile, ServiceProductVersion, ServiceLimit, ServiceInteroperabilityRule, SyntheticGenerationJob]
+    supported_actions: [open governance category, inspect service evidence, inspect limits, inspect interoperability, run synthetic validation]
+    unsupported_claims: [edit Oracle public documentation, deploy a Service Product directly]
+    keywords: [library, service product, limits, interoperability, synthetic lab, governance]
+
+  - id: dictionaries
+    name: Dictionaries
+    purpose: Govern the option sets and normalization aliases used consistently by capture, import, catalog, QA, and calculation workflows.
+    when_to_use: Use Dictionaries to inspect or administer accepted values such as frequency, trigger, tool, and other governed classifications.
+    steps:
+      - Open Dictionaries and choose a category.
+      - Review each code, display value, aliases, active state, and category metadata.
+      - Add or update an option as an administrator, then validate the affected capture or import flow.
+    routes: ["/admin/dictionaries", "/admin/dictionaries/[category]"]
+    endpoints:
+      - { method: GET, path: /api/v1/dictionaries/ }
+      - { method: GET, path: "/api/v1/dictionaries/{category}" }
+      - { method: POST, path: "/api/v1/dictionaries/{category}" }
+      - { method: PATCH, path: "/api/v1/dictionaries/{category}/{option_id}" }
+    exports: []
+    entities: [DictionaryOption]
+    supported_actions: [list dictionary categories, inspect options, add option, edit option, deactivate option]
+    unsupported_claims: [normalize an unknown value without review, change historical source evidence]
+    keywords: [dictionary, frequency, trigger, tool, option, code, alias, normalization]
+
+  - id: assumptions
+    name: Assumptions
+    purpose: Version client workload assumptions that are not supplied by captured integrations and affect project-wide technical or deployment calculations.
+    when_to_use: Use Assumptions when a missing client input needs an explicit, versioned default rather than a hidden hard-coded value.
+    steps:
+      - Open Assumptions and inspect the default version.
+      - Open a version to review its client workload inputs and rationale.
+      - Create or update a version, then explicitly make it the default before recalculating affected projects.
+    routes: ["/admin/assumptions", "/admin/assumptions/[version]"]
+    endpoints:
+      - { method: GET, path: /api/v1/assumptions/ }
+      - { method: GET, path: "/api/v1/assumptions/{version}" }
+      - { method: PATCH, path: "/api/v1/assumptions/{version}" }
+      - { method: POST, path: "/api/v1/assumptions/{version}/default" }
+    exports: []
+    entities: [AssumptionSet]
+    supported_actions: [list assumption versions, inspect default, create version, edit version, set default]
+    unsupported_claims: [replace Oracle service limits with client assumptions, rewrite previous snapshots]
+    keywords: [assumption, default, workload input, version, client variable]
+
+  - id: pricing
+    name: Pricing
+    purpose: Govern Oracle commercial evidence from source capture through classification, deterministic validation, human approval, immutable release, and BOM calculation readiness.
+    when_to_use: Use Pricing to synchronize public prices, inspect SKU identity and terms, resolve review candidates, approve commercial evidence, and publish a release that BOM can consume.
+    steps:
+      - Inspect the active sources, snapshots, documents, candidates, exceptions, and product coverage.
+      - Review unresolved identity, metric, dependency, term, or fixture evidence with an explicit rationale.
+      - Finalize approved evidence and promote an immutable commercial release before using its SKUs in BOM scenarios.
+    routes: ["/admin/pricing"]
+    endpoints:
+      - { method: GET, path: /api/v1/pricing/sources }
+      - { method: GET, path: /api/v1/pricing/commercial-catalog }
+      - { method: POST, path: "/api/v1/pricing/commercial-candidates/{candidate_id}/review" }
+      - { method: POST, path: "/api/v1/pricing/commercial-documents/{document_id}/finalize-review" }
+      - { method: POST, path: "/api/v1/pricing/commercial-documents/{document_id}/releases" }
+      - { method: GET, path: /api/v1/pricing/product-coverage }
+    exports: []
+    entities: [PriceCatalogSnapshot, PriceItem, CommercialMappingCandidate, CommercialException, CommercialRelease, ProductCoverageCandidate]
+    supported_actions: [synchronize pricing, inspect SKU description, review candidate, resolve exception, finalize catalog review, promote commercial release, review product coverage]
+    unsupported_claims: [approve evidence automatically, silently substitute a customer rate, treat a part number alone as quote-ready]
+    keywords: [pricing, sku, part number, commercial release, payg, annual commitment, candidate, exception, price]
+
+  - id: bom
+    name: BOM & Cost
+    purpose: Convert approved technical demand into deployment-aware OCI quantities and an immutable cost estimate using approved products, SKUs, commercial rules, environments, and monthly activation ramps.
+    when_to_use: Use BOM and Cost after technical inputs and commercial coverage are ready to compare deployment scenarios, calculate monthly consumption, and publish a governed planning estimate.
+    steps:
+      - Create or open a deployment scenario and define region, currency, contract timing, environments, products, exact commercial variants, metrics, quantities, and activation schedules.
+      - Generate a BOM job from the approved scenario and inspect every line's SKU, unit, quantity, tier, price, warnings, and provenance.
+      - Review or publish a complete snapshot, compare alternatives, and download the governed XLSX, JSON, or PDF artifact.
+    routes: ["/projects/[projectId]/bom"]
+    endpoints:
+      - { method: GET, path: "/api/v1/projects/{project_id}/selectable-products" }
+      - { method: GET, path: "/api/v1/projects/{project_id}/selectable-products/{service_id}/metric-options" }
+      - { method: POST, path: "/api/v1/projects/{project_id}/deployment-scenarios" }
+      - { method: POST, path: "/api/v1/projects/{project_id}/bom-jobs" }
+      - { method: POST, path: "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/review" }
+    exports:
+      - method: GET
+        path: "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/exports/xlsx"
+        media_types: [application/vnd.openxmlformats-officedocument.spreadsheetml.sheet]
+      - method: GET
+        path: "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/exports/json"
+        media_types: [application/json]
+      - method: GET
+        path: "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/exports/pdf"
+        media_types: [application/pdf]
+    entities: [DeploymentScenario, DeploymentEnvironmentPlan, DeploymentRampPhase, BomJob, BomSnapshot, BomLineItem, BomLinePeriod]
+    supported_actions: [create scenario, choose governed product, select SKU metric option, plan environment ramp, generate BOM, review provenance, publish BOM, export XLSX, export JSON, export PDF]
+    unsupported_claims: [drag and drop OCI components, configure OCI instances directly, save a BOM as CSV, treat a planning estimate as an Oracle quote]
+    keywords: [bom, bill of materials, cost, sku selection, environment, scenario, escenario, monthly ramp, quantity, estimate, export, licensing, license included, byol, licencia]
+
+  - id: agents
+    name: Agents
+    purpose: Monitor governed OCI Generative AI agents, their authorized evidence tools, execution states, provider telemetry, proposals, and explicit human decisions.
+    when_to_use: Use Agents to inspect why an agent produced an outcome, monitor runtime health, cancel active work, or decide an approval-gated proposal.
+    steps:
+      - Open Agent Operations and review provider readiness, resilience signals, definitions, and retained executions.
+      - Inspect a run to see its governed evidence, decision workspace, output quality, and proposal state.
+      - Approve or reject a reviewable proposal; execute only proposals whose deterministic action remains valid.
+    routes: ["/admin/agents"]
+    endpoints:
+      - { method: GET, path: /api/v1/agents }
+      - { method: GET, path: /api/v1/agents/runs }
+      - { method: POST, path: /api/v1/agents/runs }
+      - { method: GET, path: "/api/v1/agents/runs/{run_id}" }
+      - { method: POST, path: "/api/v1/agents/runs/{run_id}/approvals/{approval_id}" }
+    exports: []
+    entities: [AgentRun, AgentStep, AgentApproval, AgentArtifact, SupportConversation, SupportMessage]
+    supported_actions: [list agents, inspect run, cancel run, review proposal, execute approved deterministic proposal, inspect provider telemetry]
+    unsupported_claims: [let an agent write arbitrary SQL, let an agent publish unreviewed changes, expose chain of thought]
+    keywords: [agent, assistant, run, proposal, approval, provider, telemetry, grounding]
+
+  - id: ai-review
+    name: AI Review
+    purpose: Produce an evidence-backed architecture decision brief that explains deterministic findings, compares bounded recommendations, and keeps every catalog mutation behind explicit approval.
+    when_to_use: Use AI Review from a project or integration when architecture readiness, QA, design compatibility, stress, drift, or remediation alternatives need a governed review.
+    steps:
+      - Start a project or integration review from its contextual action.
+      - Read the current recommendation, what was found, why it matters, next actions, readiness, and supporting evidence before historical runs.
+      - Select or accept a recommendation only when its deterministic patch and validation plan are appropriate; then recalculate and review the outcome.
+    routes: []
+    endpoints:
+      - { method: POST, path: "/api/v1/ai-reviews/projects/{project_id}" }
+      - { method: GET, path: "/api/v1/ai-reviews/{job_id}" }
+      - { method: POST, path: "/api/v1/ai-reviews/{job_id}/findings/{finding_id}/accept" }
+      - { method: POST, path: "/api/v1/ai-reviews/{job_id}/findings/{finding_id}/apply-patch" }
+    exports:
+      - method: GET
+        path: /api/v1/ai-reviews/{job_id}/export
+        media_types: [text/markdown; charset=utf-8]
+    entities: [AiReviewJob, AiReviewBaseline, AgentRun]
+    supported_actions: [start architecture review, inspect decision brief, compare recommendations, accept finding, apply approved patch, export Markdown]
+    unsupported_claims: [approve an architecture automatically, mutate catalog data without explicit approval, treat model prose as deterministic evidence]
+    keywords: [ai review, architecture review, readiness, remediation, recommendation, drift, stress, decision brief]

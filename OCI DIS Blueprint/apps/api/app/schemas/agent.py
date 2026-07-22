@@ -16,6 +16,7 @@ AgentType = Literal[
     "topology_investigation",
     "bom_scenario",
     "support_assistant",
+    "knowledge_maintenance",
 ]
 AgentRunStatusValue = Literal[
     "pending", "running", "waiting_approval", "completed", "failed", "cancelled"
@@ -110,6 +111,55 @@ class AgentDefinitionResponse(BaseModel):
     allowed_roles: list[str]
     mutates_data: bool
     requires_project: bool
+    model: str
+
+
+class KnowledgeMaintenanceFindingResponse(BaseModel):
+    """One persisted, human-reviewable App knowledge candidate."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    job_id: str
+    section_id: str
+    finding_type: str
+    severity: str
+    title: str
+    summary: str
+    current_value: dict[str, object]
+    candidate_value: dict[str, object]
+    rationale: str
+    review_status: Literal["pending", "accepted", "rejected"]
+    reviewed_by: Optional[str]
+    review_note: Optional[str]
+    reviewed_at: Optional[datetime]
+    created_at: datetime
+
+
+class KnowledgeMaintenanceJobResponse(BaseModel):
+    """One persisted knowledge-maintenance execution."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    id: str
+    requested_by: str
+    status: Literal["pending", "running", "completed", "failed"]
+    source_hash: str
+    finding_count: int
+    error_details: Optional[dict[str, object]]
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    created_at: datetime
+    findings: list[KnowledgeMaintenanceFindingResponse] = Field(default_factory=list)
+
+
+class KnowledgeMaintenanceReviewRequest(BaseModel):
+    """Explicit human disposition for a knowledge candidate."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    decision: Literal["accept", "reject"]
+    rationale: str = Field(min_length=3, max_length=2000)
 
 
 class AgentProviderStatusResponse(BaseModel):

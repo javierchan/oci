@@ -1,0 +1,3292 @@
+{
+  "endpoints": [
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/admin/synthetic/jobs",
+      "summary": "List recent synthetic-generation jobs"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/admin/synthetic/jobs",
+      "summary": "Submit a new synthetic-generation job"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/admin/synthetic/jobs/{job_id}",
+      "summary": "Inspect one synthetic-generation job"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/admin/synthetic/jobs/{job_id}/cleanup",
+      "summary": "Archive and remove a synthetic job's generated assets"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/admin/synthetic/jobs/{job_id}/retry",
+      "summary": "Retry a failed synthetic-generation job"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/admin/synthetic/presets",
+      "summary": "List governed synthetic-generation presets"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/agents",
+      "summary": "List governed agent definitions"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/agents/knowledge-maintenance/findings/{finding_id}/review",
+      "summary": "Review an App knowledge maintenance candidate"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/agents/knowledge-maintenance/jobs",
+      "summary": "List App knowledge maintenance jobs and review candidates"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/agents/provider-metrics",
+      "summary": "Inspect privacy-safe OCI provider metrics"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/agents/provider-status",
+      "summary": "Inspect agent provider readiness"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/agents/runs",
+      "summary": "List governed agent runs"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/agents/runs",
+      "summary": "Create an agent run"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/agents/runs/{run_id}",
+      "summary": "Inspect one agent run"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/agents/runs/{run_id}/approvals/{approval_id}",
+      "summary": "Decide an agent proposal"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/agents/runs/{run_id}/approvals/{approval_id}/execute",
+      "summary": "Execute an approved deterministic agent proposal"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/agents/runs/{run_id}/cancel",
+      "summary": "Request agent cancellation"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/agents/value-metrics",
+      "summary": "Inspect observable agent product-value signals"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/ai-reviews/projects/{project_id}",
+      "summary": "Submit a governed project or integration AI review job"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/ai-reviews/projects/{project_id}/baseline",
+      "summary": "Get the active planned baseline for one AI review scope"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/ai-reviews/projects/{project_id}/baseline",
+      "summary": "Approve the current project or integration state as the planned baseline"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/ai-reviews/projects/{project_id}/baselines",
+      "summary": "List active and historical planned baselines for one AI review scope"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/ai-reviews/projects/{project_id}/integrations/{integration_id}/simulate-draft",
+      "summary": "Simulate technical and commercial impact for an unsaved canvas draft"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/ai-reviews/projects/{project_id}/jobs",
+      "summary": "List persisted AI review jobs for one project"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/ai-reviews/projects/{project_id}/jobs/compare",
+      "summary": "Compare two completed AI review jobs for trend/evolution analysis"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/ai-reviews/provider-status",
+      "summary": "Inspect configured AI review provider status and caller quota"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/ai-reviews/{job_id}",
+      "summary": "Inspect one AI review job"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "text/markdown; charset=utf-8"
+      ],
+      "method": "GET",
+      "path": "/api/v1/ai-reviews/{job_id}/export",
+      "summary": "Export one completed AI review job as Markdown"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/ai-reviews/{job_id}/findings/{finding_id}/accept",
+      "summary": "Accept one AI review recommendation without catalog mutation"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/ai-reviews/{job_id}/findings/{finding_id}/apply-patch",
+      "summary": "Apply one deterministic suggested patch after human confirmation"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/ai-reviews/{job_id}/recommendations/{candidate_id}/select-draft",
+      "summary": "Select a governed integration recommendation for local canvas preview"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/assumptions/",
+      "summary": "List assumption sets"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/assumptions/",
+      "summary": "Create a governed assumption set"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/assumptions/default",
+      "summary": "Get default assumption set"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/assumptions/{version}",
+      "summary": "Get assumption set by version"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "PATCH",
+      "path": "/api/v1/assumptions/{version}",
+      "summary": "Update a governed assumption set"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/assumptions/{version}/default",
+      "summary": "Promote an assumption set to default"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/audit/{project_id}",
+      "summary": "Query audit events"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/catalog/{project_id}",
+      "summary": "List catalog integrations with filters/search"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/catalog/{project_id}",
+      "summary": "Create a catalog integration from manual capture"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/catalog/{project_id}/bulk-patch",
+      "summary": "Bulk update selected rows"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/catalog/{project_id}/duplicates",
+      "summary": "Check for duplicate source/destination/business process matches"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/catalog/{project_id}/estimate",
+      "summary": "Get a live OIC estimate for capture inputs"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/catalog/{project_id}/facets",
+      "summary": "List catalog filter facets"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/catalog/{project_id}/graph",
+      "summary": "Get the system dependency graph"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/catalog/{project_id}/refresh-qa",
+      "summary": "Refresh derived QA state from current governed evidence"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/catalog/{project_id}/systems",
+      "summary": "List unique systems for autocomplete"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "DELETE",
+      "path": "/api/v1/catalog/{project_id}/{integration_id}",
+      "summary": "Remove a catalog integration and recalculate the project"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/catalog/{project_id}/{integration_id}",
+      "summary": "Get single integration with lineage"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "PATCH",
+      "path": "/api/v1/catalog/{project_id}/{integration_id}",
+      "summary": "Update architect-owned fields"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/catalog/{project_id}/{integration_id}/lineage",
+      "summary": "Get source lineage for a row"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/dashboard/{project_id}/snapshots",
+      "summary": "List dashboard snapshots"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/dashboard/{project_id}/snapshots/{snapshot_id}",
+      "summary": "Get dashboard snapshot"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/dictionaries/",
+      "summary": "List all dictionary categories"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/dictionaries/canvas-governance",
+      "summary": "List governed tools, overlays, and standard combinations for the design canvas"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/dictionaries/{category}",
+      "summary": "List options for a category"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/dictionaries/{category}",
+      "summary": "Create a governed dictionary option"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "DELETE",
+      "path": "/api/v1/dictionaries/{category}/{option_id}",
+      "summary": "Deactivate a governed dictionary option"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "PATCH",
+      "path": "/api/v1/dictionaries/{category}/{option_id}",
+      "summary": "Update a governed dictionary option"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/template/metadata",
+      "summary": "Describe the current governed offline capture template"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/template/xlsx",
+      "summary": "Download the offline capture template workbook"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "text/markdown; charset=utf-8"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/{project_id}/brief",
+      "summary": "Download executive project brief as Markdown"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/{project_id}/jobs/{job_id}",
+      "summary": "Poll export job status"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/markdown; charset=utf-8"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/{project_id}/jobs/{job_id}/download",
+      "summary": "Download generated export artifact"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/exports/{project_id}/json",
+      "summary": "Export project snapshot as JSON"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/exports/{project_id}/pdf",
+      "summary": "Export dashboard as PDF"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/{project_id}/template/xlsx",
+      "summary": "Export an active project into the official offline capture template"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/{project_id}/xlsx",
+      "summary": "Download catalog export as XLSX using the latest snapshot"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/exports/{project_id}/xlsx",
+      "summary": "Export catalog as XLSX"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/imports/{project_id}",
+      "summary": "List import batches for a project"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/imports/{project_id}",
+      "summary": "Upload source file and queue an import batch"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/imports/{project_id}/mapping-profiles",
+      "summary": "List approved project-scoped external import mappings"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "DELETE",
+      "path": "/api/v1/imports/{project_id}/{batch_id}",
+      "summary": "Remove an import batch and recalculate the project"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/imports/{project_id}/{batch_id}",
+      "summary": "Get import batch status and stats"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "PATCH",
+      "path": "/api/v1/imports/{project_id}/{batch_id}/mapping-review",
+      "summary": "Save a draft external workbook mapping review"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/imports/{project_id}/{batch_id}/mapping-review/approve",
+      "summary": "Approve a reviewed external mapping and queue catalog materialization"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/imports/{project_id}/{batch_id}/quality-agent",
+      "summary": "Run the governed import quality agent"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/imports/{project_id}/{batch_id}/quality-assistant",
+      "summary": "Get deterministic import data-quality assistant guidance"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/imports/{project_id}/{batch_id}/rows",
+      "summary": "Get source rows with inclusion/exclusion reasons"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/justifications/templates",
+      "summary": "List narrative templates"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/justifications/templates",
+      "summary": "Create narrative template"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/justifications/templates/{version}",
+      "summary": "Get narrative template"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "PATCH",
+      "path": "/api/v1/justifications/templates/{version}",
+      "summary": "Update narrative template"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/justifications/templates/{version}/default",
+      "summary": "Set default narrative template"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/justifications/{project_id}",
+      "summary": "List justification records"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "DELETE",
+      "path": "/api/v1/justifications/{project_id}/{integration_id}",
+      "summary": "Reset justification narrative"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/justifications/{project_id}/{integration_id}",
+      "summary": "Get justification for an integration"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/justifications/{project_id}/{integration_id}/approve",
+      "summary": "Approve a justification narrative"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/justifications/{project_id}/{integration_id}/override",
+      "summary": "Override with custom narrative"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/patterns/",
+      "summary": "List all integration patterns"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/patterns/",
+      "summary": "Create a custom pattern definition"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "DELETE",
+      "path": "/api/v1/patterns/{pattern_id}",
+      "summary": "Delete a custom pattern definition"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/patterns/{pattern_id}",
+      "summary": "Get a pattern by ID (e.g. #01)"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "PATCH",
+      "path": "/api/v1/patterns/{pattern_id}",
+      "summary": "Update a pattern definition"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/catalog-snapshots",
+      "summary": "List immutable OCI price catalogs"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/catalog-snapshots/{snapshot_id}/approve",
+      "summary": "Approve a reviewed price catalog"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/catalog-snapshots/{snapshot_id}/items",
+      "summary": "List normalized price items"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/commercial-candidates/{candidate_id}",
+      "summary": "Inspect full governed commercial evidence for one candidate"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/commercial-candidates/{candidate_id}/revalidate",
+      "summary": "Revalidate one derived commercial candidate against persisted evidence"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/commercial-candidates/{candidate_id}/review",
+      "summary": "Record an explicit commercial candidate decision"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/commercial-catalog",
+      "summary": "Inspect normalized official OCI commercial evidence"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/commercial-documents",
+      "summary": "Import an official OCI Price List and Supplement workbook"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/commercial-documents/{document_id}/advance-coverage",
+      "summary": "Preview or execute governed OCI catalog coverage advancement"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/commercial-documents/{document_id}/approve",
+      "summary": "Approve an official document as evidence without approving mappings"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/commercial-documents/{document_id}/bulk-resolve-exceptions",
+      "summary": "Resolve allowlisted low-risk commercial exceptions in bulk"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/commercial-documents/{document_id}/finalize-review",
+      "summary": "Finalize global OCI catalog dispositions with deterministic gates"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/commercial-documents/{document_id}/releases",
+      "summary": "Promote an atomic global OCI commercial release"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/commercial-exceptions/{exception_id}/review",
+      "summary": "Record an explicit decision for a commercial evidence exception"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/governance-change-sets",
+      "summary": "List official OCI source verification decisions"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/governance-change-sets/{change_set_id}",
+      "summary": "Get one official OCI source verification decision"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/product-catalog",
+      "summary": "Browse the captured OCI product taxonomy"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/product-catalog/{product_key}",
+      "summary": "Inspect the paginated SKUs captured for one OCI product"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/product-coverage",
+      "summary": "Review paginated OCI product coverage proposals"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/product-coverage/generate",
+      "summary": "Generate or refresh governed OCI product coverage proposals"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/product-coverage/{product_key}",
+      "summary": "Inspect one governed OCI product coverage proposal"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/product-coverage/{product_key}/review",
+      "summary": "Approve or reject one governed OCI product coverage proposal"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/rate-card-imports",
+      "summary": "Import an authorized contract rate card CSV"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/sku-mappings",
+      "summary": "List governed SKU mappings"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "PATCH",
+      "path": "/api/v1/pricing/sku-mappings/{mapping_id}",
+      "summary": "Update a SKU mapping"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/sources",
+      "summary": "List governed OCI price sources"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/sync-jobs",
+      "summary": "List price sync jobs"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/pricing/sync-jobs",
+      "summary": "Synchronize one governed OCI price source"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/pricing/sync-jobs/{job_id}",
+      "summary": "Get one price sync job"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/",
+      "summary": "List all projects"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/projects/",
+      "summary": "Create a project"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "DELETE",
+      "path": "/api/v1/projects/{project_id}",
+      "summary": "Delete one archived project"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}",
+      "summary": "Get project by ID"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "PATCH",
+      "path": "/api/v1/projects/{project_id}",
+      "summary": "Update project metadata"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/projects/{project_id}/archive",
+      "summary": "Archive one project"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/bom-jobs",
+      "summary": "List BOM jobs"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/projects/{project_id}/bom-jobs",
+      "summary": "Generate a governed OCI BOM"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/bom-jobs/{job_id}",
+      "summary": "Get one BOM job"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/bom-snapshots",
+      "summary": "List BOM snapshots"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/bom-snapshots/compare",
+      "summary": "Compare two governed BOMs"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}",
+      "summary": "Get one BOM snapshot"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/exports/json",
+      "summary": "Download governed BOM as JSON"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "application/pdf"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/exports/pdf",
+      "summary": "Download governed BOM as PDF"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/exports/xlsx",
+      "summary": "Download governed BOM as XLSX"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/review",
+      "summary": "Approve or publish a complete BOM"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/deployment-scenarios",
+      "summary": "List deployment scenarios"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/projects/{project_id}/deployment-scenarios",
+      "summary": "Create a deployment scenario"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/projects/{project_id}/deployment-scenarios/agent",
+      "summary": "Run the governed BOM scenario agent"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/deployment-scenarios/assistant",
+      "summary": "Draft a smart deployment scenario"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/projects/{project_id}/deployment-scenarios/{scenario_id}/approve",
+      "summary": "Approve a deployment scenario"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/selectable-products",
+      "summary": "List approved OCI products selectable for a BOM scenario"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/selectable-products/{service_id}/metric-options",
+      "summary": "Resolve governed metric options for one selected OCI product"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/recalculate/{project_id}",
+      "summary": "Trigger full project recalculation"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/recalculate/{project_id}/jobs/{job_id}",
+      "summary": "Poll recalculation job status"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/recalculate/{project_id}/scoped",
+      "summary": "Recalculate a subset of rows"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/service-products",
+      "summary": "List governed service products"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/service-products/",
+      "summary": "List governed service products"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/service-products/matrix",
+      "summary": "Get the service interoperability matrix"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/service-products/verification-alerts",
+      "summary": "List service verification freshness alerts"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/service-products/verification-jobs",
+      "summary": "List service verification jobs"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/service-products/verification-jobs",
+      "summary": "Create a service evidence verification job"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/service-products/verification-jobs/{job_id}",
+      "summary": "Get one service verification job"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/service-products/verification-jobs/{job_id}/findings",
+      "summary": "List findings for one service verification job"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/service-products/verification-jobs/{job_id}/findings/{finding_id}/review",
+      "summary": "Record a manual review decision for one verification finding"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/service-products/{service_id}",
+      "summary": "Get governed service product detail"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/service-products/{service_id}/interoperability",
+      "summary": "Get interoperability rules for a service product"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/service-products/{service_id}/limits",
+      "summary": "Get normalized limits for a service product"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/support/conversations/current",
+      "summary": "Get or create the current isolated support conversation"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/support/conversations/{conversation_id}",
+      "summary": "Read one isolated support conversation"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "DELETE",
+      "path": "/api/v1/support/conversations/{conversation_id}/context/{context_key}",
+      "summary": "Remove one resolved item from assistant conversation memory"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "DELETE",
+      "path": "/api/v1/support/conversations/{conversation_id}/messages",
+      "summary": "Clear one isolated support conversation history"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/support/conversations/{conversation_id}/messages",
+      "summary": "Submit one contextual App support question"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/volumetry/{project_id}/snapshots",
+      "summary": "List volumetry snapshots"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/volumetry/{project_id}/snapshots/{snapshot_id}",
+      "summary": "Get full volumetry snapshot"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/volumetry/{project_id}/snapshots/{snapshot_id}/consolidated",
+      "summary": "Consolidated driver totals"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/volumetry/{project_id}/snapshots/{snapshot_id}/rows",
+      "summary": "Row-level volumetry results"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/health",
+      "summary": "Health"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/readiness",
+      "summary": "Readiness"
+    }
+  ],
+  "entities": [
+    {
+      "kind": "model",
+      "name": "AgentApproval",
+      "source": "apps/api/app/models/agent.py"
+    },
+    {
+      "kind": "model",
+      "name": "AgentArtifact",
+      "source": "apps/api/app/models/agent.py"
+    },
+    {
+      "kind": "model",
+      "name": "AgentRun",
+      "source": "apps/api/app/models/agent.py"
+    },
+    {
+      "kind": "model",
+      "name": "AgentRunStatus",
+      "source": "apps/api/app/models/agent.py"
+    },
+    {
+      "kind": "model",
+      "name": "AgentStep",
+      "source": "apps/api/app/models/agent.py"
+    },
+    {
+      "kind": "model",
+      "name": "KnowledgeMaintenanceFinding",
+      "source": "apps/api/app/models/agent.py"
+    },
+    {
+      "kind": "model",
+      "name": "KnowledgeMaintenanceJob",
+      "source": "apps/api/app/models/agent.py"
+    },
+    {
+      "kind": "model",
+      "name": "SupportAttachment",
+      "source": "apps/api/app/models/agent.py"
+    },
+    {
+      "kind": "model",
+      "name": "SupportConversation",
+      "source": "apps/api/app/models/agent.py"
+    },
+    {
+      "kind": "model",
+      "name": "SupportMessage",
+      "source": "apps/api/app/models/agent.py"
+    },
+    {
+      "kind": "model",
+      "name": "AiReviewBaseline",
+      "source": "apps/api/app/models/ai_review.py"
+    },
+    {
+      "kind": "model",
+      "name": "AiReviewJob",
+      "source": "apps/api/app/models/ai_review.py"
+    },
+    {
+      "kind": "model",
+      "name": "AiReviewJobStatus",
+      "source": "apps/api/app/models/ai_review.py"
+    },
+    {
+      "kind": "model",
+      "name": "Base",
+      "source": "apps/api/app/models/base.py"
+    },
+    {
+      "kind": "model",
+      "name": "TimestampMixin",
+      "source": "apps/api/app/models/base.py"
+    },
+    {
+      "kind": "model",
+      "name": "UUIDMixin",
+      "source": "apps/api/app/models/base.py"
+    },
+    {
+      "kind": "model",
+      "name": "AssumptionSet",
+      "source": "apps/api/app/models/governance.py"
+    },
+    {
+      "kind": "model",
+      "name": "DictionaryOption",
+      "source": "apps/api/app/models/governance.py"
+    },
+    {
+      "kind": "model",
+      "name": "PatternDefinition",
+      "source": "apps/api/app/models/governance.py"
+    },
+    {
+      "kind": "model",
+      "name": "PromptTemplateVersion",
+      "source": "apps/api/app/models/governance.py"
+    },
+    {
+      "kind": "model",
+      "name": "ServiceCapabilityProfile",
+      "source": "apps/api/app/models/governance.py"
+    },
+    {
+      "kind": "model",
+      "name": "ServiceEvidenceSource",
+      "source": "apps/api/app/models/governance.py"
+    },
+    {
+      "kind": "model",
+      "name": "ServiceInteroperabilityRule",
+      "source": "apps/api/app/models/governance.py"
+    },
+    {
+      "kind": "model",
+      "name": "ServiceLimit",
+      "source": "apps/api/app/models/governance.py"
+    },
+    {
+      "kind": "model",
+      "name": "ServiceProductVersion",
+      "source": "apps/api/app/models/governance.py"
+    },
+    {
+      "kind": "model",
+      "name": "ServiceVerificationFinding",
+      "source": "apps/api/app/models/governance.py"
+    },
+    {
+      "kind": "model",
+      "name": "ServiceVerificationJob",
+      "source": "apps/api/app/models/governance.py"
+    },
+    {
+      "kind": "model",
+      "name": "BomJob",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "BomLineItem",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "BomLinePeriod",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "BomSnapshot",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "CommercialBillingSemanticOverride",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "CommercialDocumentSnapshot",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "CommercialEvidenceReference",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "CommercialException",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "CommercialMappingCandidate",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "CommercialRelease",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "CommercialRuleFamily",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "CommercialSku",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "DeploymentEnvironmentPlan",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "DeploymentRampPeriodQuantity",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "DeploymentRampPhase",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "DeploymentScenario",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "GovernanceChangeSet",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "GovernanceSourceArtifact",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "PriceCatalogSnapshot",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "PriceItem",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "PriceSource",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "PriceSyncJob",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "ProductCoverageCandidate",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "QuotationRegressionRun",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "ServiceCommercialPolicy",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "ServiceProductSkuMapping",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "SkuCommercialConstraint",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "SkuCommercialRelationship",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "SkuCommercialTerm",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "CatalogIntegration",
+      "source": "apps/api/app/models/project.py"
+    },
+    {
+      "kind": "model",
+      "name": "ImportBatch",
+      "source": "apps/api/app/models/project.py"
+    },
+    {
+      "kind": "model",
+      "name": "ImportMappingProfile",
+      "source": "apps/api/app/models/project.py"
+    },
+    {
+      "kind": "model",
+      "name": "ImportStatus",
+      "source": "apps/api/app/models/project.py"
+    },
+    {
+      "kind": "model",
+      "name": "IntegrationStatus",
+      "source": "apps/api/app/models/project.py"
+    },
+    {
+      "kind": "model",
+      "name": "Project",
+      "source": "apps/api/app/models/project.py"
+    },
+    {
+      "kind": "model",
+      "name": "ProjectStatus",
+      "source": "apps/api/app/models/project.py"
+    },
+    {
+      "kind": "model",
+      "name": "QAStatus",
+      "source": "apps/api/app/models/project.py"
+    },
+    {
+      "kind": "model",
+      "name": "SourceIntegrationRow",
+      "source": "apps/api/app/models/project.py"
+    },
+    {
+      "kind": "model",
+      "name": "AuditEvent",
+      "source": "apps/api/app/models/snapshot.py"
+    },
+    {
+      "kind": "model",
+      "name": "DashboardSnapshot",
+      "source": "apps/api/app/models/snapshot.py"
+    },
+    {
+      "kind": "model",
+      "name": "JustificationRecord",
+      "source": "apps/api/app/models/snapshot.py"
+    },
+    {
+      "kind": "model",
+      "name": "VolumetrySnapshot",
+      "source": "apps/api/app/models/snapshot.py"
+    },
+    {
+      "kind": "model",
+      "name": "SyntheticGenerationJob",
+      "source": "apps/api/app/models/synthetic.py"
+    },
+    {
+      "kind": "model",
+      "name": "SyntheticGenerationJobStatus",
+      "source": "apps/api/app/models/synthetic.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentApprovalDecisionRequest",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentApprovalResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentCreateRequest",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentDecisionAlternative",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentDecisionImpact",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentDecisionWorkspace",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentDefinitionResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentOutputBrief",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentOutputQuality",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentProviderMetricCounters",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentProviderMetricsResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentProviderStatusResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentRunListResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentRunResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentStepResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AgentValueMetricsResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "KnowledgeMaintenanceFindingResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "KnowledgeMaintenanceJobResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "KnowledgeMaintenanceReviewRequest",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SupportAttachmentRequest",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SupportAttachmentResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SupportConversationResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SupportMessageCreateRequest",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SupportMessageResponse",
+      "source": "apps/api/app/schemas/agent.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewAcceptRecommendationRequest",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewActionCandidate",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewActionWorkspace",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewApplyPatchRequest",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewApplyPatchResponse",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewBaselineCreateRequest",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewBaselineListResponse",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewBaselineLookupResponse",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewBaselineResponse",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewCanvasChangeSet",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewCreateRequest",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewDecisionBrief",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewDraftCommercialImpact",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewDraftCostPeriod",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewDraftMetricDelta",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewDraftSimulationRequest",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewDraftSimulationResponse",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewDriftItem",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewDriftReport",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewEvidence",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewFieldDiff",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewFinding",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewGraphContext",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewGroup",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewJobCompareResponse",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewJobListResponse",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewJobResponse",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewMetric",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewPersonaSummary",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewProviderStatus",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewQuotaState",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewRecommendationAcceptance",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewRecommendationCandidate",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewRecommendationCheck",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewRecommendationCostImpact",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewRecommendationWorkspace",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewRemediationStep",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewResponse",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewRetryPolicy",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewSafetyStatus",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewSelectDraftRequest",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewSelectDraftResponse",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewStressScenario",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewSuggestedPatch",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewTopologyInsight",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AiReviewTransportStrategy",
+      "source": "apps/api/app/schemas/ai_review.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AuditEventListResponse",
+      "source": "apps/api/app/schemas/audit.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AuditEventResponse",
+      "source": "apps/api/app/schemas/audit.py"
+    },
+    {
+      "kind": "schema",
+      "name": "BulkPatchRequest",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "BulkPatchResult",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CatalogFacetsResponse",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CatalogIntegrationDeleteResponse",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CatalogIntegrationDetail",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CatalogIntegrationPatch",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CatalogIntegrationResponse",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CatalogListResponse",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CatalogQaRefreshResponse",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "LineageDetail",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ManualIntegrationCreate",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "OICEstimateRequest",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "OICEstimateResponse",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CompletenessChart",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CoverageChart",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CoverageMetric",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DashboardCharts",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DashboardForecastConfidence",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DashboardKPIStrip",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DashboardMaturity",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DashboardProductFootprint",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DashboardProductUsage",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DashboardRisk",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DashboardServiceRuleStatus",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DashboardSnapshotListResponse",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DashboardSnapshotResponse",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DashboardSnapshotSummary",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PatternMixEntry",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PayloadDistributionBucket",
+      "source": "apps/api/app/schemas/dashboard.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CaptureTemplateColumnMetadata",
+      "source": "apps/api/app/schemas/export.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CaptureTemplateMetadata",
+      "source": "apps/api/app/schemas/export.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ExportJobResponse",
+      "source": "apps/api/app/schemas/export.py"
+    },
+    {
+      "kind": "schema",
+      "name": "GraphEdge",
+      "source": "apps/api/app/schemas/graph.py"
+    },
+    {
+      "kind": "schema",
+      "name": "GraphIntegrationSummary",
+      "source": "apps/api/app/schemas/graph.py"
+    },
+    {
+      "kind": "schema",
+      "name": "GraphMeta",
+      "source": "apps/api/app/schemas/graph.py"
+    },
+    {
+      "kind": "schema",
+      "name": "GraphNode",
+      "source": "apps/api/app/schemas/graph.py"
+    },
+    {
+      "kind": "schema",
+      "name": "GraphResponse",
+      "source": "apps/api/app/schemas/graph.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ImportBatchDeleteResponse",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ImportBatchListResponse",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ImportBatchResponse",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ImportMappingFieldDecision",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ImportMappingProfileListResponse",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ImportMappingProfileResponse",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ImportMappingReviewApproveRequest",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ImportMappingReviewUpdateRequest",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ImportQualityAssistantResponse",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ImportQualityFinding",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ImportQualityMetric",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "NormalizationEventResponse",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SourceRowListResponse",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SourceRowResponse",
+      "source": "apps/api/app/schemas/imports.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ApproveJustificationRequest",
+      "source": "apps/api/app/schemas/justification.py"
+    },
+    {
+      "kind": "schema",
+      "name": "JustificationListResponse",
+      "source": "apps/api/app/schemas/justification.py"
+    },
+    {
+      "kind": "schema",
+      "name": "JustificationNarrative",
+      "source": "apps/api/app/schemas/justification.py"
+    },
+    {
+      "kind": "schema",
+      "name": "JustificationRecordResponse",
+      "source": "apps/api/app/schemas/justification.py"
+    },
+    {
+      "kind": "schema",
+      "name": "MethodologyBlock",
+      "source": "apps/api/app/schemas/justification.py"
+    },
+    {
+      "kind": "schema",
+      "name": "OverrideJustificationRequest",
+      "source": "apps/api/app/schemas/justification.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PromptTemplateVersionCreate",
+      "source": "apps/api/app/schemas/justification.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PromptTemplateVersionListResponse",
+      "source": "apps/api/app/schemas/justification.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PromptTemplateVersionResponse",
+      "source": "apps/api/app/schemas/justification.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PromptTemplateVersionUpdate",
+      "source": "apps/api/app/schemas/justification.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ResetJustificationRequest",
+      "source": "apps/api/app/schemas/justification.py"
+    },
+    {
+      "kind": "schema",
+      "name": "BomComparisonResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "BomGenerationRequest",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "BomJobListResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "BomJobResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "BomLineItemResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "BomLinePeriodResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "BomPeriodSummary",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "BomReviewRequest",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "BomSnapshotListResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "BomSnapshotResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialBulkResolveRequest",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialCandidateDetailResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialCandidateIdentitySummaryResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialCandidateResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialCandidateReviewRequest",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialCatalogFinalizeRequest",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialCatalogSummaryResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialCoverageAdvanceRequest",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialCoverageReportResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialCoverageWorkspaceResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialDocumentResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialExceptionResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialExceptionReviewRequest",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialProductIdentityResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialRelationshipSummaryResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialReleaseResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialTermEvidenceResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialTermSummaryResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialWorkspaceResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CurrentBomContextResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DeploymentEnvironmentInput",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DeploymentMonthlyQuantityInput",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DeploymentRampPhaseInput",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DeploymentScenarioCreateRequest",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DeploymentScenarioListResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DeploymentScenarioResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "GovernanceChangeSetListResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "GovernanceChangeSetResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "GovernanceSourceArtifactResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "OciProductCatalogDetailResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "OciProductCatalogListResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "OciProductCatalogRowResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "OciProductPriceSummaryResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "OciProductSkuResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PriceCatalogSnapshotListResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PriceCatalogSnapshotResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PriceItemListResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PriceItemResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PriceSourceListResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PriceSourceResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PriceSyncJobListResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PriceSyncJobResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PriceSyncRequest",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ProductCoverageBlockerResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ProductCoverageDetailResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ProductCoverageGenerationResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ProductCoverageListResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ProductCoverageReviewRequest",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ProductCoverageRowResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "QuantityPresetResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "QuotationRegressionRunResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ScenarioAssistantResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ScenarioCommercialCoverageResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ScenarioMetricOptionResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ScenarioSkuVariantResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SelectableProductPageResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SelectableProductResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SkuMappingListResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SkuMappingPatchRequest",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SkuMappingResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ProjectArchiveResponse",
+      "source": "apps/api/app/schemas/project.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ProjectCreateRequest",
+      "source": "apps/api/app/schemas/project.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ProjectDeleteResponse",
+      "source": "apps/api/app/schemas/project.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ProjectListResponse",
+      "source": "apps/api/app/schemas/project.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ProjectPatchRequest",
+      "source": "apps/api/app/schemas/project.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ProjectResponse",
+      "source": "apps/api/app/schemas/project.py"
+    },
+    {
+      "kind": "schema",
+      "name": "MigrationReadinessResponse",
+      "source": "apps/api/app/schemas/readiness.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ObjectStorageReadinessResponse",
+      "source": "apps/api/app/schemas/readiness.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ReadinessResponse",
+      "source": "apps/api/app/schemas/readiness.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AssumptionSetCreate",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AssumptionSetListResponse",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AssumptionSetResponse",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "AssumptionSetUpdate",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CanvasCombinationResponse",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CanvasGovernanceResponse",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DictionaryCategoryListResponse",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DictionaryCategorySummary",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DictionaryOptionCreate",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DictionaryOptionListResponse",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DictionaryOptionResponse",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DictionaryOptionUpdate",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PatternDefinitionCreate",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PatternDefinitionResponse",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PatternDefinitionUpdate",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PatternListResponse",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PatternSupportDimensionsResponse",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "PatternSupportResponse",
+      "source": "apps/api/app/schemas/reference.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceEvidenceSourceResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceInteroperabilityMatrixResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceInteroperabilityRuleResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceLimitResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceProductDetailResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceProductListResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceProductSummaryResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceProductVersionResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceVerificationAlertListResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceVerificationAlertResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceVerificationFindingResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceVerificationFindingReviewRequest",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceVerificationJobListResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceVerificationJobResponse",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ServiceVerificationRunRequest",
+      "source": "apps/api/app/schemas/service_products.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SyntheticArtifactExportJobResponse",
+      "source": "apps/api/app/schemas/synthetic.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SyntheticArtifactManifestResponse",
+      "source": "apps/api/app/schemas/synthetic.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SyntheticGenerationJobCreateRequest",
+      "source": "apps/api/app/schemas/synthetic.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SyntheticGenerationJobListResponse",
+      "source": "apps/api/app/schemas/synthetic.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SyntheticGenerationJobResponse",
+      "source": "apps/api/app/schemas/synthetic.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SyntheticGenerationPresetListResponse",
+      "source": "apps/api/app/schemas/synthetic.py"
+    },
+    {
+      "kind": "schema",
+      "name": "SyntheticGenerationPresetResponse",
+      "source": "apps/api/app/schemas/synthetic.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ConsolidatedMetrics",
+      "source": "apps/api/app/schemas/volumetry.py"
+    },
+    {
+      "kind": "schema",
+      "name": "DIMetrics",
+      "source": "apps/api/app/schemas/volumetry.py"
+    },
+    {
+      "kind": "schema",
+      "name": "FunctionsMetrics",
+      "source": "apps/api/app/schemas/volumetry.py"
+    },
+    {
+      "kind": "schema",
+      "name": "OICMetrics",
+      "source": "apps/api/app/schemas/volumetry.py"
+    },
+    {
+      "kind": "schema",
+      "name": "QueueMetrics",
+      "source": "apps/api/app/schemas/volumetry.py"
+    },
+    {
+      "kind": "schema",
+      "name": "RecalculationJobStatusResponse",
+      "source": "apps/api/app/schemas/volumetry.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ScopedRecalculationRequest",
+      "source": "apps/api/app/schemas/volumetry.py"
+    },
+    {
+      "kind": "schema",
+      "name": "StreamingMetrics",
+      "source": "apps/api/app/schemas/volumetry.py"
+    },
+    {
+      "kind": "schema",
+      "name": "VolumetrySnapshotListResponse",
+      "source": "apps/api/app/schemas/volumetry.py"
+    },
+    {
+      "kind": "schema",
+      "name": "VolumetrySnapshotResponse",
+      "source": "apps/api/app/schemas/volumetry.py"
+    },
+    {
+      "kind": "schema",
+      "name": "VolumetrySnapshotRowResultsResponse",
+      "source": "apps/api/app/schemas/volumetry.py"
+    },
+    {
+      "kind": "schema",
+      "name": "VolumetrySnapshotSummary",
+      "source": "apps/api/app/schemas/volumetry.py"
+    }
+  ],
+  "exports": [
+    {
+      "media_types": [
+        "application/json",
+        "text/markdown; charset=utf-8"
+      ],
+      "method": "GET",
+      "path": "/api/v1/ai-reviews/{job_id}/export",
+      "summary": "Export one completed AI review job as Markdown"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/template/metadata",
+      "summary": "Describe the current governed offline capture template"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/template/xlsx",
+      "summary": "Download the offline capture template workbook"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "text/markdown; charset=utf-8"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/{project_id}/brief",
+      "summary": "Download executive project brief as Markdown"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/{project_id}/jobs/{job_id}",
+      "summary": "Poll export job status"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/markdown; charset=utf-8"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/{project_id}/jobs/{job_id}/download",
+      "summary": "Download generated export artifact"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/exports/{project_id}/json",
+      "summary": "Export project snapshot as JSON"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/exports/{project_id}/pdf",
+      "summary": "Export dashboard as PDF"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/{project_id}/template/xlsx",
+      "summary": "Export an active project into the official offline capture template"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ],
+      "method": "GET",
+      "path": "/api/v1/exports/{project_id}/xlsx",
+      "summary": "Download catalog export as XLSX using the latest snapshot"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "POST",
+      "path": "/api/v1/exports/{project_id}/xlsx",
+      "summary": "Export catalog as XLSX"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/exports/json",
+      "summary": "Download governed BOM as JSON"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "application/pdf"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/exports/pdf",
+      "summary": "Download governed BOM as PDF"
+    },
+    {
+      "media_types": [
+        "application/json",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ],
+      "method": "GET",
+      "path": "/api/v1/projects/{project_id}/bom-snapshots/{snapshot_id}/exports/xlsx",
+      "summary": "Download governed BOM as XLSX"
+    }
+  ],
+  "routes": [
+    {
+      "route": "/admin/agents",
+      "source": "apps/web/app/admin/agents/page.tsx"
+    },
+    {
+      "route": "/admin/assumptions/[version]",
+      "source": "apps/web/app/admin/assumptions/[version]/page.tsx"
+    },
+    {
+      "route": "/admin/assumptions",
+      "source": "apps/web/app/admin/assumptions/page.tsx"
+    },
+    {
+      "route": "/admin/dictionaries/[category]",
+      "source": "apps/web/app/admin/dictionaries/[category]/page.tsx"
+    },
+    {
+      "route": "/admin/dictionaries",
+      "source": "apps/web/app/admin/dictionaries/page.tsx"
+    },
+    {
+      "route": "/admin",
+      "source": "apps/web/app/admin/page.tsx"
+    },
+    {
+      "route": "/admin/patterns",
+      "source": "apps/web/app/admin/patterns/page.tsx"
+    },
+    {
+      "route": "/admin/pricing",
+      "source": "apps/web/app/admin/pricing/page.tsx"
+    },
+    {
+      "route": "/admin/services/[serviceId]",
+      "source": "apps/web/app/admin/services/[serviceId]/page.tsx"
+    },
+    {
+      "route": "/admin/services",
+      "source": "apps/web/app/admin/services/page.tsx"
+    },
+    {
+      "route": "/admin/synthetic/[jobId]",
+      "source": "apps/web/app/admin/synthetic/[jobId]/page.tsx"
+    },
+    {
+      "route": "/admin/synthetic",
+      "source": "apps/web/app/admin/synthetic/page.tsx"
+    },
+    {
+      "route": "/",
+      "source": "apps/web/app/page.tsx"
+    },
+    {
+      "route": "/projects/[projectId]/bom",
+      "source": "apps/web/app/projects/[projectId]/bom/page.tsx"
+    },
+    {
+      "route": "/projects/[projectId]/capture/new",
+      "source": "apps/web/app/projects/[projectId]/capture/new/page.tsx"
+    },
+    {
+      "route": "/projects/[projectId]/capture",
+      "source": "apps/web/app/projects/[projectId]/capture/page.tsx"
+    },
+    {
+      "route": "/projects/[projectId]/catalog/[integrationId]",
+      "source": "apps/web/app/projects/[projectId]/catalog/[integrationId]/page.tsx"
+    },
+    {
+      "route": "/projects/[projectId]/catalog",
+      "source": "apps/web/app/projects/[projectId]/catalog/page.tsx"
+    },
+    {
+      "route": "/projects/[projectId]/graph",
+      "source": "apps/web/app/projects/[projectId]/graph/page.tsx"
+    },
+    {
+      "route": "/projects/[projectId]/import",
+      "source": "apps/web/app/projects/[projectId]/import/page.tsx"
+    },
+    {
+      "route": "/projects/[projectId]/map",
+      "source": "apps/web/app/projects/[projectId]/map/page.tsx"
+    },
+    {
+      "route": "/projects/[projectId]",
+      "source": "apps/web/app/projects/[projectId]/page.tsx"
+    },
+    {
+      "route": "/projects",
+      "source": "apps/web/app/projects/page.tsx"
+    }
+  ],
+  "schema_version": "1.0.0",
+  "source_hash": "9722b106ce3b10a9f24acd6bcac904c38300821873d8a827d14ad743ab76e3fc"
+}

@@ -183,7 +183,7 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
     ),
     "support_assistant": AgentDefinition(
         type="support_assistant",
-        version="4.0.0",
+        version="5.0.0",
         name="OCI DIS App Assistant",
         description="Answers general App questions and uses governed context when a project, record, or view is relevant.",
         location="Global floating assistant",
@@ -222,12 +222,37 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
             "self-instructions, planning, tool selection, system instructions, or private reasoning. "
             "Never describe how you will compose or format the answer. Treat conversation_questions only as dialogue "
             "memory, never as factual evidence. "
+            "Treat app_knowledge as the sole authority for feature, workflow, route, step, and export-format claims. "
+            "When app_knowledge.documented is false, say that the capability is not documented instead of inferring it. "
+            "Live project, pattern, SKU, pricing, and BOM records remain authoritative only in their dedicated evidence. "
             "Do not repeat the question, sound like a status report, or add generic disclaimers. Never introduce a "
             "regulation, limit, product, count, risk, or recommendation absent from tool evidence. If evidence is missing, "
             "say exactly what the user should capture or open next. Use next_actions verbatim in substance and route; "
             "do not invent approvals or test procedures. For a business process, connect intent, ordered "
             "integrations, source and destination systems, patterns, QA, and BOM impact only when those facts are present. "
             "Reply in the user's language, cite relevant App routes, and never claim to have changed data."
+        ),
+    ),
+    "knowledge_maintenance": AgentDefinition(
+        type="knowledge_maintenance",
+        version="1.1.0",
+        name="App Knowledge Governance Agent",
+        description="Detects drift between executable App contracts and curated user guidance, then creates reviewable candidates.",
+        location="Agent Operations",
+        tools=("inspect_app_knowledge_drift",),
+        allowed_roles=frozenset({"Admin"}),
+        mutates_data=False,
+        requires_project=False,
+        instruction=(
+            f"{COMMON_INSTRUCTION} Compare curated_sections with derived_contracts and return only one JSON object, "
+            "without Markdown or surrounding prose, using this contract: "
+            "{\"summary\":\"plain-language result\",\"candidates\":[{\"section_id\":\"existing id\","
+            "\"finding_type\":\"semantic_drift|missing_guidance|stale_guidance\",\"severity\":\"low|medium|high\","
+            "\"field\":\"allowed field from the tool contract\",\"title\":\"short title\",\"summary\":\"what differs\","
+            "\"draft\":\"replacement text or list\",\"rationale\":\"why the evidence supports it\","
+            "\"evidence_refs\":[\"exact ref from derived_contracts\"]}]}. Return an empty candidates list when no semantic "
+            "drift is supported. Never cite a reference absent from derived_contracts, invent an App capability, edit YAML, "
+            "or claim that a candidate was accepted; every persisted draft requires explicit human review."
         ),
     ),
 }

@@ -149,7 +149,8 @@
               "integration_design",
               "topology_investigation",
               "bom_scenario",
-              "support_assistant"
+              "support_assistant",
+              "knowledge_maintenance"
             ],
             "title": "Agent Type",
             "type": "string"
@@ -224,6 +225,10 @@
             "title": "Location",
             "type": "string"
           },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
           "mutates_data": {
             "title": "Mutates Data",
             "type": "boolean"
@@ -251,7 +256,8 @@
               "integration_design",
               "topology_investigation",
               "bom_scenario",
-              "support_assistant"
+              "support_assistant",
+              "knowledge_maintenance"
             ],
             "title": "Type",
             "type": "string"
@@ -270,7 +276,8 @@
           "tools",
           "allowed_roles",
           "mutates_data",
-          "requires_project"
+          "requires_project",
+          "model"
         ],
         "title": "AgentDefinitionResponse",
         "type": "object"
@@ -506,7 +513,8 @@
               "integration_design",
               "topology_investigation",
               "bom_scenario",
-              "support_assistant"
+              "support_assistant",
+              "knowledge_maintenance"
             ],
             "title": "Agent Type",
             "type": "string"
@@ -10325,6 +10333,240 @@
         "title": "JustificationRecordResponse",
         "type": "object"
       },
+      "KnowledgeMaintenanceFindingResponse": {
+        "additionalProperties": false,
+        "description": "One persisted, human-reviewable App knowledge candidate.",
+        "properties": {
+          "candidate_value": {
+            "additionalProperties": true,
+            "title": "Candidate Value",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_value": {
+            "additionalProperties": true,
+            "title": "Current Value",
+            "type": "object"
+          },
+          "finding_type": {
+            "title": "Finding Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "review_status": {
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected"
+            ],
+            "title": "Review Status",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "section_id": {
+            "title": "Section Id",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "job_id",
+          "section_id",
+          "finding_type",
+          "severity",
+          "title",
+          "summary",
+          "current_value",
+          "candidate_value",
+          "rationale",
+          "review_status",
+          "reviewed_by",
+          "review_note",
+          "reviewed_at",
+          "created_at"
+        ],
+        "title": "KnowledgeMaintenanceFindingResponse",
+        "type": "object"
+      },
+      "KnowledgeMaintenanceJobResponse": {
+        "additionalProperties": false,
+        "description": "One persisted knowledge-maintenance execution.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Details"
+          },
+          "finding_count": {
+            "title": "Finding Count",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeMaintenanceFindingResponse"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "source_hash": {
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "requested_by",
+          "status",
+          "source_hash",
+          "finding_count",
+          "error_details",
+          "started_at",
+          "completed_at",
+          "created_at"
+        ],
+        "title": "KnowledgeMaintenanceJobResponse",
+        "type": "object"
+      },
+      "KnowledgeMaintenanceReviewRequest": {
+        "additionalProperties": false,
+        "description": "Explicit human disposition for a knowledge candidate.",
+        "properties": {
+          "decision": {
+            "enum": [
+              "accept",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 3,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "rationale"
+        ],
+        "title": "KnowledgeMaintenanceReviewRequest",
+        "type": "object"
+      },
       "LineageDetail": {
         "additionalProperties": false,
         "description": "Source lineage for a catalog row.",
@@ -17370,6 +17612,137 @@
           }
         },
         "summary": "List governed agent definitions",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
+    "/api/v1/agents/knowledge-maintenance/findings/{finding_id}/review": {
+      "post": {
+        "operationId": "review_knowledge_maintenance_finding_api_v1_agents_knowledge_maintenance_findings__finding_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeMaintenanceReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeMaintenanceFindingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review an App knowledge maintenance candidate",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
+    "/api/v1/agents/knowledge-maintenance/jobs": {
+      "get": {
+        "operationId": "list_knowledge_maintenance_jobs_api_v1_agents_knowledge_maintenance_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeMaintenanceJobResponse"
+                  },
+                  "title": "Response List Knowledge Maintenance Jobs Api V1 Agents Knowledge Maintenance Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List App knowledge maintenance jobs and review candidates",
         "tags": [
           "Agents"
         ]

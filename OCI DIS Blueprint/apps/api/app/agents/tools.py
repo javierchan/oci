@@ -471,6 +471,16 @@ def build_tool_executor(
 
         return await build_support_evidence(project_id, integration_id, context, db)
 
+    async def knowledge_maintenance(_: dict[str, object]) -> dict[str, object]:
+        from app.services.knowledge_maintenance_service import create_job, execute_job
+
+        job_id = context.get("knowledge_job_id")
+        if not isinstance(job_id, str) or not job_id:
+            job = await create_job(actor_id, db)
+            job_id = job.id
+            context["knowledge_job_id"] = job_id
+        return await execute_job(job_id, db)
+
     if agent_type == "architecture_review":
         return (
             "load_architecture_review_evidence",
@@ -522,6 +532,13 @@ def build_tool_executor(
             "Inspect the current published BOM or the governed scenario draft and genuine missing inputs.",
             EMPTY_PARAMETERS,
             bom,
+        )
+    if agent_type == "knowledge_maintenance":
+        return (
+            "inspect_app_knowledge_drift",
+            "Compare executable App contracts with curated user guidance and persist reviewable candidates.",
+            EMPTY_PARAMETERS,
+            knowledge_maintenance,
         )
     return (
         "answer_app_support_question",
