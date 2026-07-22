@@ -2,17 +2,38 @@
 
 import { expect, test } from "@playwright/test";
 
-type ProjectList = { projects: Array<{ id: string; name: string; status: string }> };
+type ProjectList = {
+  projects: Array<{
+    id: string;
+    name: string;
+    status: string;
+    project_metadata: Record<string, unknown> | null;
+  }>;
+};
 
 const apiBase = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8000";
+
+function selectPersistentProject(projects: ProjectList["projects"]) {
+  const activeProjects = projects.filter((candidate) => candidate.status === "active");
+  return (
+    activeProjects.find(
+      (candidate) => candidate.project_metadata?.seed_type === "synthetic-enterprise",
+    ) ??
+    activeProjects.find(
+      (candidate) => !String(candidate.project_metadata?.seed_type ?? "").startsWith("synthetic-smoke"),
+    )
+  );
+}
 
 test("keeps contextual support available and bounded across App navigation", async ({ page, request }) => {
   const projectsResponse = await request.get(`${apiBase}/api/v1/projects`);
   expect(projectsResponse.ok()).toBe(true);
   const projects = (await projectsResponse.json()) as ProjectList;
-  const project = projects.projects.find((candidate) => candidate.status === "active") ?? projects.projects[0];
+  // Other specs create and delete smoke projects concurrently. Use the retained
+  // enterprise fixture so assistant persistence cannot race fixture cleanup.
+  const project = selectPersistentProject(projects.projects);
   expect(project).toBeDefined();
-  if (!project) throw new Error("E2E requires one project");
+  if (!project) throw new Error("E2E requires one persistent active project");
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/projects/${project.id}`);
