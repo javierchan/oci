@@ -32,9 +32,45 @@ describe("parseGovernedNarrative", () => {
     const blocks = parseGovernedNarrative(raw);
 
     expect(blocks.length).toBeGreaterThan(4);
-    expect(blocks.every((block) => block.kind === "list" ? block.items.every((item) => !item.includes("|")) : !block.text.includes("|"))).toBe(true);
+    expect(blocks.every((block) => {
+      if (block.kind === "list") return block.items.every((item) => !item.includes("|"));
+      if (block.kind === "table") return false;
+      return !block.text.includes("|");
+    })).toBe(true);
     expect(blocks.some((block) => block.kind === "heading" && block.text === "Canvas")).toBe(true);
-    expect(blocks.some((block) => block.kind !== "list" && block.text === "Current Status: 246 warnings")).toBe(true);
+    expect(blocks.some((block) => (
+      block.kind === "heading" || block.kind === "paragraph" || block.kind === "notice"
+    ) && block.text === "Current Status: 246 warnings")).toBe(true);
+  });
+
+  it("preserves a valid compact Markdown table as structured rows", () => {
+    const blocks = parseGovernedNarrative(
+      "**Direct answer:** Production drives the estimate.\n\n| Product | Monthly cost |\n|---|---:|\n| OIC Enterprise | USD 2,400 |\n| API Gateway | USD 18 |",
+    );
+
+    expect(blocks[0]).toEqual({
+      kind: "paragraph",
+      text: "**Direct answer:** Production drives the estimate.",
+    });
+    expect(blocks[1]).toEqual({
+      kind: "table",
+      headers: ["Product", "Monthly cost"],
+      rows: [
+        ["OIC Enterprise", "USD 2,400"],
+        ["API Gateway", "USD 18"],
+      ],
+    });
+  });
+
+  it("preserves bold emphasis and safe internal action links", () => {
+    const blocks = parseGovernedNarrative(
+      "**Next action:** [Open BOM & Cost](/projects/project-1/bom)",
+    );
+
+    expect(blocks).toEqual([{
+      kind: "paragraph",
+      text: "**Next action:** [Open BOM & Cost](/projects/project-1/bom)",
+    }]);
   });
 
   it("caps unexpectedly verbose provider output", () => {

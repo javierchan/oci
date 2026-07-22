@@ -101,9 +101,10 @@ metric dimension. If Redis is unavailable, inference remains operational and
 the endpoint truthfully reports process-local fallback metrics.
 
 Every agent answer also passes one repository-owned outcome contract. The API
-rejects provider meta-reasoning, Markdown tables, unsupported material numbers,
-claims that a proposal was applied, and source-verification claims without
-retrieved evidence. Rejected synthesis is replaced by a deterministic brief that
+rejects provider meta-reasoning, unsupported material numbers, unknown SKU or price
+claims, claims that a proposal was applied, and source-verification claims without
+retrieved evidence. The contextual assistant can render bounded Markdown tables,
+lists, emphasis, and same-origin App links. Rejected synthesis is replaced by a deterministic brief that
 always separates the finding, why it matters, next actions, validation, evidence,
 and confidence. Agent Operations reports provider health and observed outcome
 quality separately; value signals come only from retained executions and human
@@ -120,8 +121,10 @@ See [`docs/architecture/oci-agent-runtime.md`](./docs/architecture/oci-agent-run
 The global OCI DIS App Assistant persists across navigation, understands the
 current integration and its ordered business process as well as project,
 governance, import, BOM, and topology evidence, accepts explicitly added App
-contexts, and refuses unrelated questions. Model history is not evidence, and an
-output-grounding gate replaces unsupported synthesis with a concise governed brief. See
+contexts, and redirects unrelated questions toward useful App capabilities. OCI
+Generative AI authors normal responses from a labeled `verified_facts` contract and
+executable `next_actions`; deterministic answers are reserved for provider or grounding
+failure. Model history is not evidence, and an output-grounding gate replaces unsupported synthesis with a concise governed brief. See
 [`docs/architecture/contextual-support-assistant.md`](./docs/architecture/contextual-support-assistant.md).
 Users can clear their current browser-session transcript from the assistant header;
 the App removes messages and attached contexts while retaining sanitized AgentRun

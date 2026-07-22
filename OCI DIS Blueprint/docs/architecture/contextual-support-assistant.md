@@ -13,7 +13,8 @@ capture, catalog, integrations, topology, patterns, Service Products, volumetry,
 pricing, BOM, governance, exports, and specialized agents. Current project or
 route context is optional: it improves a record-specific answer but never blocks
 general App guidance. It does not answer clearly unrelated questions and cannot
-mutate project data.
+mutate project data. OCI Generative AI is the primary response author; deterministic
+services assemble verified facts, executable App routes, and validation boundaries.
 
 ## Session Isolation
 
@@ -46,9 +47,9 @@ conversation contract to its authenticated subject.
   evidence, and lets the provider explain the result naturally. A project-cost
   question loads the latest immutable BOM totals, monthly and peak run rate, price
   coverage, publication status, and the project/BOM routes.
-- Exact portfolio counts and commercial totals render from deterministic App
-  evidence. OCI synthesis remains available for explanation, comparison, and
-  recommendations, but it cannot relabel or paraphrase authoritative quantities.
+- Exact portfolio counts, SKU identities, metrics, prices, and commercial totals are
+  projected into a labeled `verified_facts` contract. OCI synthesis explains and
+  recommends from those values, but it cannot invent or replace authoritative quantities.
 - Previous user questions provide continuity. Previous model answers are never
   reintroduced as architecture evidence.
 - A small persisted context ledger retains only resolved, App-owned references:
@@ -61,24 +62,25 @@ conversation contract to its authenticated subject.
   general App-help contracts are distinct. Conversation history may resolve a
   reference such as “that service”, but cannot carry an old commercial topic
   into a new question about a pattern, import, or topology.
-- Routine workflow questions use concise application-owned explanations before
-  OCI synthesis: Import, Capture, Catalog/QA, volumetry, Dashboard, Map,
-  BOM & Cost, exports, Governance, and agents. Product, project, and price
-  facts are still retrieved dynamically from approved App evidence; no Service
-  Product list is embedded in the response policy.
+- Routine workflow questions use the same model-first path as project and commercial
+  questions. The application-owned explanations remain in the evidence as a provider-
+  failure fallback; they do not bypass inference during normal operation.
+- Every evidence package contains `next_actions` selected from executable internal
+  routes. The model must end with one exact clickable action appropriate to the current
+  route and resolved project or integration.
 - Citations are App routes, not fabricated external references.
 
 ## Domain Boundary
 
-A deterministic preflight classifier runs before OCI inference. Clearly external
-topics are refused. A question submitted from an App route is treated as a general
-App-help request even when it does not name a feature; the current view provides
-context rather than a restriction. Refusal responses are application-owned; OCI
-cannot override them. Provider failure returns an honest deterministic fallback.
-A single centralized output-grounding gate also rejects unsupported sensitive claims, invented
-approval/deployment actions, Markdown tables, and excessive verbosity. Rejected
-synthesis is replaced by a concise App-owned answer built from the same evidence,
-while the AgentRun records that grounding fallback occurred.
+A deterministic preflight classifies intent and loads evidence before OCI inference.
+Clearly external topics receive a brief, friendly redirect to App capabilities rather
+than an unsafe-topic refusal. Safety refusals are reserved for OCI Guardrails findings.
+Provider failure returns an honest deterministic fallback. A single centralized
+output-grounding gate rejects unsupported sensitive claims, invented governed values,
+unknown SKU or price claims, internal generation notes, and claims that an approval or
+deployment occurred. Rich Markdown is allowed when safe: compact tables, headings,
+lists, emphasis, and internal App links. Rejected synthesis is replaced by a concise
+App-owned answer built from the same evidence, while the AgentRun records the fallback.
 
 ## Persistence
 
@@ -115,9 +117,10 @@ existing theme tokens and remains responsive on mobile and desktop without cover
 its own controls. A separate icon command opens the accessible Clear history
 confirmation and is disabled when history is empty or a response is running.
 
-Provider synthesis is constrained to short, decision-oriented answers in the
-user's language. It prioritizes governed counts and statuses, avoids Markdown
-tables, and cannot introduce unsupported regulations, products, limits, or risks.
+Provider synthesis starts with a direct answer in the user's language, then explains
+why it matters and how to proceed. It may use compact Markdown tables, bold emphasis,
+or lists when they improve comprehension, and it cannot introduce unsupported
+regulations, products, SKUs, prices, limits, or risks.
 Internal redaction markers and unresolved route placeholders fail the output-
 grounding gate and are replaced with the App-owned governed answer.
 The fallback uses the same project dossier, so a provider degradation still
@@ -135,13 +138,12 @@ portfolio, or workflow explanation is already available. Agent Operations shows
 grounding/fallback state and evidence completeness for retained executions.
 The conversation serializer also suppresses legacy persisted messages that match
 the internal-reasoning signature without deleting their governed audit record.
-User-visible synthesis is normalized into short paragraphs and complete list
-items before persistence; the shared narrative renderer groups consecutive steps
-into semantic ordered or unordered lists instead of presenting orphan markers.
-When that direct answer is selected, the worker skips OCI inference entirely;
-this avoids adding latency, cost, and model variance to facts the App has
-already resolved. The run records that deterministic path alongside the same
-evidence artifact and citations.
+User-visible synthesis is normalized into semantic paragraphs, lists, and bounded
+tables before persistence. The shared renderer supports bold emphasis and only
+clickable same-origin App routes; external Markdown links degrade to text. The worker
+always attempts OCI inference for a benign question. It uses the application-owned
+answer only when OCI or output grounding fails, and records that fallback beside the
+same evidence artifact and citations.
 
 `apps/api/scripts/evaluate_support_assistant.py` exercises the public support
 API with fresh session IDs. Its bounded suite covers each major App workspace,

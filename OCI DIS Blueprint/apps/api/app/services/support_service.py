@@ -51,29 +51,15 @@ from app.services.support_routing_service import (
 )
 
 
-OUT_OF_SCOPE_RESPONSE = (
-    "I’m here to help with OCI DIS Architect and everything available in this App. "
-    "Ask me about workflows, projects, imports, catalog, topology, Service Products, pricing, BOM, governance, or agents."
-)
 WITHHELD_INTERNAL_RESPONSE = (
     "This response was withheld because it contained internal generation notes. "
     "Please ask the question again to receive a governed answer."
-)
-APP_DOMAIN_PATTERN = re.compile(
-    r"\b(oci|dis|architect|app|application|project|integration|interface|catalog|capture|import|dashboard|"
-    r"map|topology|canvas|pattern|service|product|volumetry|payload|frequency|qa|governance|assumption|"
-    r"pricing|price|cost|precio|costo|billing|bill|factura|facturar|cobro|license|licencia|enterprise|bom|"
-    r"bill of materials|sku|scenario|escenario|agent|review|export|"
-    r"workbook|oracle|proyecto|proyectos|streaming|"
-    r"queue|functions|goldengate|data integrator|api gateway)\b",
-    re.IGNORECASE,
 )
 OUTSIDE_TOPIC_PATTERN = re.compile(
     r"\b(weather|forecast outside|sports|score|recipe|poem|song|politics|president|celebrity|horoscope|"
     r"clima|deportes|receta|poema|cancion|politica|presidente|celebridad|horoscopo)\b",
     re.IGNORECASE,
 )
-MARKDOWN_TABLE_PATTERN = re.compile(r"(?m)^\s*\|.+\|\s*$")
 INTERNAL_PLACEHOLDER_PATTERN = re.compile(
     r"\[(?:redacted|removed)\]|\{(?:project|integration)_id\}",
     re.IGNORECASE,
@@ -129,32 +115,183 @@ def validate_support_session_id(value: str) -> str:
 
 
 def question_is_in_scope(question: str, *, has_context: bool) -> bool:
-    """Accept general App help while refusing clearly unrelated requests."""
+    """Accept every non-empty benign question so the assistant can redirect helpfully.
+
+    OCI Guardrails remains the authority for unsafe or abusive input. Topic matching
+    is presentation guidance, not a second safety system.
+    """
 
     normalized = question.strip()
-    if not normalized:
-        return False
-    if OUTSIDE_TOPIC_PATTERN.search(normalized):
-        return False
-    if APP_DOMAIN_PATTERN.search(normalized):
-        return True
-    if normalized.lower() in {"hello", "hi", "help", "hola", "ayuda", "what can you do?", "que puedes hacer?"}:
-        return True
-    return has_context
+    del has_context
+    return bool(normalized)
 
 
 def support_summary_is_grounded(summary: str, evidence: dict[str, object]) -> bool:
-    """Keep the assistant expressive while blocking structural or sensitive failures."""
+    """Allow rich explanations while blocking placeholders and invented governed facts."""
 
     normalized_summary = summary.casefold()
-    serialized_evidence = str(sanitize_for_json(evidence)).casefold()
-    if (
-        len(summary.split()) > 280
-        or MARKDOWN_TABLE_PATTERN.search(summary)
-        or INTERNAL_PLACEHOLDER_PATTERN.search(summary)
-    ):
+    serialized_evidence = str(sanitize_for_json(evidence)).casefold().replace(",", "")
+    if INTERNAL_PLACEHOLDER_PATTERN.search(summary):
         return False
-    return not any(term in normalized_summary and term not in serialized_evidence for term in UNGROUNDED_SENSITIVE_TERMS)
+    if any(term in normalized_summary and term not in serialized_evidence for term in UNGROUNDED_SENSITIVE_TERMS):
+        return False
+    for part_number in re.findall(r"\bB\d{5,}\b", summary, re.IGNORECASE):
+        if part_number.casefold() not in serialized_evidence:
+            return False
+    for claim in re.findall(r"(?:USD\s*)?\$\s*\d[\d,]*(?:\.\d+)?|USD\s+\d[\d,]*(?:\.\d+)?", summary, re.IGNORECASE):
+        normalized = claim.casefold().replace("usd", "").replace("$", "").replace(",", "").strip()
+        if normalized not in serialized_evidence:
+            return False
+    return True
+
+
+def _verified_facts(evidence: dict[str, object]) -> list[dict[str, object]]:
+    """Project the sensitive App facts the model may quote verbatim."""
+
+    facts: list[dict[str, object]] = []
+
+    def add(fact_id: str, label: str, value: object, *, unit: str | None = None, source: str) -> None:
+        if value is None or value == "":
+            return
+        fact: dict[str, object] = {"id": fact_id, "label": label, "value": value, "source": source}
+        if unit:
+            fact["unit"] = unit
+        facts.append(fact)
+
+    governance = evidence.get("governance_summary")
+    if isinstance(governance, dict):
+        for key, label in (
+            ("active_patterns", "Active integration patterns"),
+            ("active_service_products", "Active Service Products"),
+            ("active_dictionary_options", "Active dictionary options"),
+            ("assumption_versions", "Assumption versions"),
+        ):
+            add(f"governance.{key}", label, governance.get(key), source="governance_summary")
+
+    project_resolution = evidence.get("project_resolution")
+    if isinstance(project_resolution, dict):
+        add(
+            "portfolio.active_project_count",
+            "Active projects",
+            project_resolution.get("active_project_count"),
+            source="project_resolution",
+        )
+
+    project = evidence.get("project")
+    if isinstance(project, dict):
+        add("project.name", "Project", project.get("name"), source="project")
+        add("project.status", "Project status", project.get("status"), source="project")
+        add("project.integration_count", "Governed integrations", project.get("integration_count"), source="project")
+        latest_bom = project.get("latest_bom")
+        if isinstance(latest_bom, dict):
+            currency = str(latest_bom.get("currency") or "USD")
+            for key, label in (
+                ("contract_total", "Contract total"),
+                ("monthly_total", "Monthly run rate"),
+                ("peak_monthly_total", "Peak monthly total"),
+                ("ramp_deferred_amount", "Ramp timing effect"),
+            ):
+                add(f"bom.{key}", label, latest_bom.get(key), unit=currency, source="project.latest_bom")
+            add("bom.coverage_pct", "BOM price coverage", latest_bom.get("coverage_pct"), unit="percent", source="project.latest_bom")
+            add("bom.publication_status", "BOM publication status", latest_bom.get("publication_status"), source="project.latest_bom")
+
+    integration = evidence.get("integration")
+    if isinstance(integration, dict):
+        for key, label in (
+            ("name", "Integration"),
+            ("source_system", "Source system"),
+            ("destination_system", "Destination system"),
+            ("pattern", "Selected pattern"),
+            ("qa_status", "Integration QA status"),
+            ("frequency", "Frequency"),
+            ("payload_per_execution_kb", "Payload per execution"),
+        ):
+            add(
+                f"integration.{key}",
+                label,
+                integration.get(key),
+                unit="KB" if key == "payload_per_execution_kb" else None,
+                source="integration",
+            )
+
+    commercial = evidence.get("commercial_service_context")
+    if isinstance(commercial, dict):
+        add("commercial.service", "Service Product", commercial.get("service_name"), source="commercial_service_context")
+        sku_options = commercial.get("sku_options")
+        if isinstance(sku_options, list):
+            for index, option in enumerate(sku_options[:8]):
+                if not isinstance(option, dict):
+                    continue
+                prefix = f"commercial.sku_options.{index}"
+                add(f"{prefix}.part_number", "Oracle SKU", option.get("part_number"), source="commercial_service_context")
+                add(f"{prefix}.metric", "Billing metric", option.get("billing_metric_key"), source="commercial_service_context")
+                price = option.get("price")
+                if isinstance(price, dict):
+                    add(
+                        f"{prefix}.unit_price",
+                        "Governed unit price",
+                        price.get("value"),
+                        unit=str(price.get("currency") or "USD"),
+                        source="commercial_service_context",
+                    )
+    return facts
+
+
+def _support_next_actions(evidence: dict[str, object]) -> list[dict[str, str]]:
+    """Return only executable internal routes suitable for a clickable answer."""
+
+    spanish = evidence.get("response_language") == "es"
+    current_context = evidence.get("current_context")
+    current_route = str(current_context.get("route") or "") if isinstance(current_context, dict) else ""
+    project = evidence.get("project")
+    project_id = str(project.get("id")) if isinstance(project, dict) and project.get("id") else None
+    integration = evidence.get("integration")
+    if isinstance(integration, dict) and integration.get("id") and project_id:
+        return [{
+            "label": "Abrir detalle de integración" if spanish else "Open integration detail",
+            "href": f"/projects/{project_id}/catalog/{integration['id']}",
+            "reason": "Review the governed row, QA evidence, and design canvas.",
+        }]
+    intent = str(evidence.get("question_intent") or "")
+    if project_id:
+        suffix_by_intent = {
+            "project_cost": "/bom",
+            "commercial_guidance": "/bom",
+            "business_process": "/catalog",
+        }
+        suffix = suffix_by_intent.get(intent, "")
+        labels = {
+            "/bom": ("Abrir BOM & Cost", "Open BOM & Cost"),
+            "/catalog": ("Abrir catálogo", "Open Catalog"),
+            "": ("Abrir dashboard del proyecto", "Open project dashboard"),
+        }
+        return [{
+            "label": labels[suffix][0 if spanish else 1],
+            "href": f"/projects/{project_id}{suffix}",
+            "reason": "Continue in the governed workspace for this project.",
+        }]
+    if intent == "commercial_guidance":
+        return [{"label": "Abrir Pricing" if spanish else "Open Pricing", "href": "/admin/pricing", "reason": "Review governed products, SKUs, metrics, and releases."}]
+    if "pattern_library" in evidence:
+        return [{"label": "Abrir patrones" if spanish else "Open Patterns", "href": "/admin/patterns", "reason": "Review the governed pattern definition and applicability."}]
+    if "service_product_library" in evidence:
+        return [{"label": "Abrir productos" if spanish else "Open Service Products", "href": "/admin/services", "reason": "Review governed service evidence and interoperability."}]
+    if current_route.startswith("/"):
+        return [{"label": "Continuar en esta vista" if spanish else "Continue in this view", "href": current_route, "reason": "Use the current App context."}]
+    return [{"label": "Abrir proyectos" if spanish else "Open Projects", "href": "/projects", "reason": "Select the project or workspace you want to investigate."}]
+
+
+def _fallback_with_action(answer: str, evidence: dict[str, object]) -> str:
+    """Keep provider-failure answers useful and navigable."""
+
+    actions = evidence.get("next_actions")
+    if not isinstance(actions, list) or not actions or not isinstance(actions[0], dict):
+        return answer
+    action = actions[0]
+    label = str(action.get("label") or "Open workspace")
+    href = str(action.get("href") or "/projects")
+    prefix = "**Siguiente paso:**" if evidence.get("response_language") == "es" else "**Next action:**"
+    return f"{answer}\n\n{prefix} [{label}]({href})"
 
 
 def _question_needs_project_scope(question: str) -> bool:
@@ -1084,12 +1221,14 @@ async def build_support_evidence(
             if isinstance(item, dict) and item.get("role") == "user"
         ]
     )
-    has_context = bool(context.get("route") or attachments or project_id or integration_id)
-    if not question_is_in_scope(question, has_context=has_context):
+    if not question_is_in_scope(
+        question,
+        has_context=bool(context.get("route") or attachments or project_id or integration_id),
+    ):
         return {
             "in_scope": False,
-            "refusal": OUT_OF_SCOPE_RESPONSE,
-            "authority": "app_domain_policy",
+            "refusal": "Enter a question so I can help with OCI DIS Architect.",
+            "authority": "empty_input_policy",
             "citations": [],
         }
 
@@ -1173,7 +1312,7 @@ async def build_support_evidence(
         "answer_policy": {
             "authority": "Only facts in this tool result are authoritative.",
             "unknowns": "Say what evidence is missing instead of supplying generic external facts.",
-            "style": "Answer naturally and directly. Use short paragraphs or bullets, never a Markdown table.",
+            "style": "Answer naturally and directly. Use short paragraphs, lists, bold text, or a compact Markdown table when it improves comprehension.",
         },
         "response_language": "es" if SPANISH_QUESTION_PATTERN.search(dialogue_text) else "en",
         "current_question": question,
@@ -1185,9 +1324,18 @@ async def build_support_evidence(
         "response_contract": {
             "intent": question_intent,
             "requires_governed_commercial_evidence": support_route.needs_commercial_evidence,
-            "deterministic_answer_preferred": support_route.should_answer_deterministically,
+            "model_authorship": "primary",
+            "deterministic_fallback": "provider_failure_or_grounding_failure_only",
             "rule": "A new question replaces the previous topic; conversation state only resolves an explicit reference.",
         },
+        "app_redirect": (
+            {
+                "required": True,
+                "reason": "The question is outside OCI DIS Architect. Acknowledge it briefly without answering the external topic, then redirect to useful App capabilities.",
+            }
+            if OUTSIDE_TOPIC_PATTERN.search(question)
+            else {"required": False}
+        ),
         "project_resolution": {
             "resolved_project_id": resolved_project_id,
             "method": project_resolution,
@@ -1715,14 +1863,13 @@ async def build_support_evidence(
         ]
         citations.append({"label": "Projects", "href": "/projects"})
 
-    evidence["fallback_answer"] = _support_fallback_answer(evidence)
-    has_commercial_evidence = isinstance(evidence.get("commercial_service_context"), dict)
-    if (
-        support_route.should_answer_deterministically
-        or _pattern_answer(evidence)
-        or has_commercial_evidence
-    ):
-        evidence["direct_answer"] = evidence["fallback_answer"]
+    evidence["verified_facts"] = _verified_facts(evidence)
+    evidence["next_actions"] = _support_next_actions(evidence)
+    actions = evidence["next_actions"]
+    if isinstance(actions, list) and actions and isinstance(actions[0], dict):
+        evidence["recommended_next_action"] = str(actions[0].get("label") or "Open the relevant App workspace")
+        evidence["recommended_next_action_route"] = str(actions[0].get("href") or "/projects")
+    evidence["fallback_answer"] = _fallback_with_action(_support_fallback_answer(evidence), evidence)
     return cast(dict[str, object], sanitize_for_json(evidence))
 
 

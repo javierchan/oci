@@ -24,6 +24,7 @@ from app.models import (
 )
 from app.routers import support as support_router
 from app.services import agent_service, support_service
+from app.services.genai_client import GenAiAgentResult
 from app.services.support_routing_service import route_support_question
 
 
@@ -33,12 +34,13 @@ HEADERS_A = {"X-Actor-Id": "support-user", "X-Actor-Role": "Viewer", "X-Support-
 HEADERS_B = {"X-Actor-Id": "other-user", "X-Actor-Role": "Viewer", "X-Support-Session-Id": SESSION_B}
 
 
-def test_support_domain_boundary_accepts_general_app_help_and_refuses_external_topics() -> None:
+def test_support_domain_boundary_accepts_benign_topics_for_graceful_redirect() -> None:
     assert support_service.question_is_in_scope("How does BOM pricing work?", has_context=False)
     assert support_service.question_is_in_scope("What does this mean?", has_context=True)
     assert support_service.question_is_in_scope("¿Cómo se factura al cliente?", has_context=True)
-    assert not support_service.question_is_in_scope("What is the weather today?", has_context=True)
-    assert not support_service.question_is_in_scope("Write a poem", has_context=False)
+    assert support_service.question_is_in_scope("What is the weather today?", has_context=True)
+    assert support_service.question_is_in_scope("Write a poem", has_context=False)
+    assert not support_service.question_is_in_scope("", has_context=True)
     assert not support_service._question_needs_project_scope("¿Cuántos proyectos tenemos?")
     assert support_service._question_needs_project_scope("¿Cuál es el precio total de este proyecto?")
 
@@ -95,7 +97,9 @@ async def test_support_resolves_single_active_project_for_global_cost_question(
     assert any(item["href"] == f"/projects/{project.id}" for item in citations)
     assert any(item["href"] == f"/projects/{project.id}/bom" for item in citations)
     assert "todavía no tiene un BOM calculado" in str(evidence["fallback_answer"])
-    assert evidence["direct_answer"] == evidence["fallback_answer"]
+    assert "direct_answer" not in evidence
+    assert cast(dict[str, object], evidence["response_contract"])["model_authorship"] == "primary"
+    assert any(item["id"] == "project.integration_count" for item in cast(list[dict[str, object]], evidence["verified_facts"]))
 
 
 @pytest.mark.asyncio
@@ -339,13 +343,13 @@ async def test_support_does_not_carry_commercial_intent_into_a_new_pattern_quest
 
     assert evidence["question_intent"] == "app_guidance"
     assert "commercial_service_context" not in evidence
-    assert evidence["direct_answer"] == evidence["fallback_answer"]
+    assert "direct_answer" not in evidence
     assert "Request and Reply" in str(evidence["fallback_answer"])
     assert "OCI Functions" not in str(evidence["fallback_answer"])
 
 
 @pytest.mark.asyncio
-async def test_support_answers_workflow_questions_deterministically_without_stale_topic_leakage(
+async def test_support_builds_model_grounding_without_stale_topic_leakage(
     test_engine: AsyncEngine,
 ) -> None:
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
@@ -371,8 +375,9 @@ async def test_support_answers_workflow_questions_deterministically_without_stal
 
     contract = cast(dict[str, object], evidence["response_contract"])
     assert evidence["question_intent"] == "workflow_guidance"
-    assert contract["deterministic_answer_preferred"] is True
-    assert evidence["direct_answer"] == evidence["fallback_answer"]
+    assert contract["model_authorship"] == "primary"
+    assert contract["deterministic_fallback"] == "provider_failure_or_grounding_failure_only"
+    assert "direct_answer" not in evidence
     assert "**Import**" in str(evidence["fallback_answer"])
     assert "OCI Functions" not in str(evidence["fallback_answer"])
 
@@ -397,7 +402,7 @@ async def test_support_explains_scenario_licensing_without_requiring_a_product_s
             )
 
     assert evidence["question_intent"] == "workflow_guidance"
-    assert evidence["direct_answer"] == evidence["fallback_answer"]
+    assert "direct_answer" not in evidence
     assert "**BOM & Cost**" in str(evidence["fallback_answer"])
 
 
@@ -427,7 +432,7 @@ async def test_support_uses_only_a_resolved_service_for_a_narrow_commercial_foll
 
 
 @pytest.mark.asyncio
-async def test_support_conversation_is_isolated_and_out_of_scope_is_refused(
+async def test_support_conversation_is_isolated_and_external_topic_is_redirected(
     api_client: AsyncClient,
     test_engine: AsyncEngine,
     monkeypatch: pytest.MonkeyPatch,
@@ -438,6 +443,20 @@ async def test_support_conversation_is_isolated_and_out_of_scope_is_refused(
         return SimpleNamespace(id=task_id)
 
     monkeypatch.setattr(support_router.execute_agent_run_task, "apply_async", fake_apply_async)
+
+    async def redirect_with_app_help(*args: object, **kwargs: object) -> GenAiAgentResult:
+        return GenAiAgentResult(
+            status="completed",
+            model="mock-support-model",
+            summary=(
+                "I can’t help with weather, but I can help you inspect governed OCI integration evidence.\n\n"
+                "**Next action:** [Open Projects](/projects)"
+            ),
+            tool_name="answer_app_support_question",
+            transport="responses",
+        )
+
+    monkeypatch.setattr(agent_service, "run_governed_tool_agent", redirect_with_app_help)
     created = await api_client.post("/api/v1/support/conversations/current", headers=HEADERS_A)
     assert created.status_code == 200
     conversation_id = created.json()["id"]
@@ -471,13 +490,13 @@ async def test_support_conversation_is_isolated_and_out_of_scope_is_refused(
 
     assert completed.status == "completed"
     assert completed.result is not None
-    assert completed.result["provider_status"] == "skipped"
+    assert completed.result["provider_status"] == "completed"
     refreshed = await api_client.get(
         f"/api/v1/support/conversations/{conversation_id}", headers=HEADERS_A
     )
     final_message = refreshed.json()["messages"][-1]
-    assert final_message["status"] == "refused"
-    assert "help with OCI DIS Architect" in final_message["content"]
+    assert final_message["status"] == "completed"
+    assert "[Open Projects](/projects)" in final_message["content"]
 
     isolated_clear = await api_client.delete(
         f"/api/v1/support/conversations/{conversation_id}/messages", headers=HEADERS_B
@@ -615,7 +634,7 @@ async def test_support_refuses_to_persist_internal_reasoning_as_a_completed_answ
 
 
 @pytest.mark.asyncio
-async def test_support_skips_provider_for_a_resolved_deterministic_workflow_answer(
+async def test_support_uses_provider_as_primary_author_for_a_resolved_workflow_answer(
     api_client: AsyncClient,
     test_engine: AsyncEngine,
     monkeypatch: pytest.MonkeyPatch,
@@ -626,10 +645,25 @@ async def test_support_skips_provider_for_a_resolved_deterministic_workflow_answ
         lambda **kwargs: SimpleNamespace(id=kwargs["task_id"]),
     )
 
-    async def provider_must_not_run(*args: object, **kwargs: object) -> object:
-        raise AssertionError("A resolved workflow answer must not call OCI inference")
+    calls = 0
 
-    monkeypatch.setattr(agent_service, "run_governed_tool_agent", provider_must_not_run)
+    async def provider_authors_answer(*args: object, **kwargs: object) -> GenAiAgentResult:
+        nonlocal calls
+        calls += 1
+        return GenAiAgentResult(
+            status="completed",
+            model="mock-support-model",
+            summary=(
+                "Importa el libro desde el workspace del proyecto; la App conservará el lote y la trazabilidad.\n\n"
+                "1. Descarga o prepara el template gobernado.\n"
+                "2. Sube el archivo y revisa el resultado de mapeo.\n\n"
+                "**Siguiente paso:** [Abrir proyectos](/projects)"
+            ),
+            tool_name="answer_app_support_question",
+            transport="responses",
+        )
+
+    monkeypatch.setattr(agent_service, "run_governed_tool_agent", provider_authors_answer)
     created = await api_client.post("/api/v1/support/conversations/current", headers=HEADERS_A)
     conversation_id = created.json()["id"]
     submitted = await api_client.post(
@@ -652,12 +686,68 @@ async def test_support_skips_provider_for_a_resolved_deterministic_workflow_answ
             completed = await agent_service.run_agent(assistant["agent_run_id"], session)
 
     assert completed.result is not None
-    assert completed.result["provider_status"] == "skipped"
+    assert calls == 1
+    assert completed.result["provider_status"] == "completed"
     assert completed.steps[2].status == "completed"
     refreshed = await api_client.get(
         f"/api/v1/support/conversations/{conversation_id}", headers=HEADERS_A
     )
-    assert "Para importar" in refreshed.json()["messages"][-1]["content"]
+    assert "Importa el libro" in refreshed.json()["messages"][-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_support_uses_deterministic_fallback_only_when_provider_fails(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        support_router.execute_agent_run_task,
+        "apply_async",
+        lambda **kwargs: SimpleNamespace(id=kwargs["task_id"]),
+    )
+
+    async def failed_provider(*args: object, **kwargs: object) -> GenAiAgentResult:
+        return GenAiAgentResult(
+            status="failed",
+            model="mock-support-model",
+            summary=None,
+            tool_name="answer_app_support_question",
+            error="provider_unavailable",
+            transport="responses",
+        )
+
+    monkeypatch.setattr(agent_service, "run_governed_tool_agent", failed_provider)
+    created = await api_client.post("/api/v1/support/conversations/current", headers=HEADERS_A)
+    conversation_id = created.json()["id"]
+    submitted = await api_client.post(
+        f"/api/v1/support/conversations/{conversation_id}/messages",
+        headers=HEADERS_A,
+        json={
+            "content": "How do I import a workbook?",
+            "route": "/projects",
+            "page_title": "Projects",
+            "attachments": [],
+        },
+    )
+    assert submitted.status_code == 202, submitted.text
+    assistant = submitted.json()["messages"][-1]
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            await agent_service.mark_agent_run_running(assistant["agent_run_id"], session)
+        async with session.begin():
+            completed = await agent_service.run_agent(assistant["agent_run_id"], session)
+
+    assert completed.result is not None
+    assert completed.result["provider_status"] == "failed"
+    refreshed = await api_client.get(
+        f"/api/v1/support/conversations/{conversation_id}", headers=HEADERS_A
+    )
+    content = refreshed.json()["messages"][-1]["content"]
+    assert "**Import**" in content
+    assert "[Continue in this view](/projects)" in content
 
 
 @pytest.mark.asyncio
@@ -815,11 +905,19 @@ def test_support_summary_grounding_rejects_unsupported_actions_and_sensitive_cla
     assert support_service.support_summary_is_grounded(
         "Review the integration before approval and deployment.", evidence
     )
+    assert support_service.support_summary_is_grounded(
+        "| Finding | Action |\n|---|---|\n| QA | Review the integration |", evidence
+    )
+    assert support_service.support_summary_is_grounded(" ".join(["grounded"] * 400), evidence)
     assert not support_service.support_summary_is_grounded(
         "This avoids GDPR sanctions.", evidence
     )
     assert not support_service.support_summary_is_grounded(
         "Open /projects/{project_id} for [REDACTED] details.", evidence
+    )
+    assert not support_service.support_summary_is_grounded("Use Oracle SKU B999999.", evidence)
+    assert support_service.support_summary_is_grounded(
+        "Use Oracle SKU B999999.", {"verified_facts": [{"value": "B999999"}]}
     )
     spanish_fallback = support_service._support_fallback_answer(
         {

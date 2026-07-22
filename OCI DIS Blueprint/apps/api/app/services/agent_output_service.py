@@ -69,6 +69,7 @@ HIGH_RISK_NUMBER_PATTERN = re.compile(
     r"(?<![\w.-])(?:USD\s*)?\$?\d[\d,]*(?:\.\d+)?%?(?![\w.-])",
     re.IGNORECASE,
 )
+PART_NUMBER_PATTERN = re.compile(r"\bB\d{5,}\b", re.IGNORECASE)
 POSITIVE_VERIFICATION_PATTERN = re.compile(
     r"\b(?:verified|current|up[ -]?to[ -]?date|officially recognized|within parameters|"
     r"no issues|all services)\b",
@@ -157,16 +158,17 @@ def _confidence(value: object, *, default: Literal["high", "medium", "low"]) -> 
     return cast(Literal["high", "medium", "low"], candidate) if candidate in {"high", "medium", "low"} else default
 
 
-def normalize_agent_summary(value: str | None) -> str:
+def normalize_agent_summary(value: str | None, *, preserve_markdown: bool = False) -> str:
     """Remove presentation markup without trying to rescue unsafe reasoning."""
 
     if not value:
         return ""
     normalized = value.replace("\r", "").strip()
-    normalized = re.sub(r"\*\*(.+?)\*\*", r"\1", normalized)
-    normalized = re.sub(r"__(.+?)__", r"\1", normalized)
-    normalized = normalized.replace("`", "")
-    normalized = re.sub(r"(?m)^#{1,6}\s+", "", normalized)
+    if not preserve_markdown:
+        normalized = re.sub(r"\*\*(.+?)\*\*", r"\1", normalized)
+        normalized = re.sub(r"__(.+?)__", r"\1", normalized)
+        normalized = normalized.replace("`", "")
+        normalized = re.sub(r"(?m)^#{1,6}\s+", "", normalized)
     normalized = re.sub(r"(?m)^\s*[-*]\s+", "- ", normalized)
     normalized = re.sub(r"(?m)^(\s*\d+[.)])\s*\n+\s*(?=\S)", r"\1 ", normalized)
     normalized = re.sub(r"(?m)^(\s*[-•])\s*\n+\s*(?=\S)", r"\1 ", normalized)
@@ -239,6 +241,11 @@ def _numbers_are_grounded(summary: str, evidence: dict[str, object]) -> bool:
     return True
 
 
+def _part_numbers_are_grounded(summary: str, evidence: dict[str, object]) -> bool:
+    serialized = _evidence_text(evidence)
+    return all(part_number.casefold() in serialized for part_number in PART_NUMBER_PATTERN.findall(summary))
+
+
 def _grounding_failure(
     definition: AgentDefinition,
     raw_summary: str,
@@ -247,7 +254,11 @@ def _grounding_failure(
 ) -> str | None:
     if not normalized_summary:
         return "empty_provider_summary"
-    if MARKDOWN_TABLE_PATTERN.search(raw_summary) and TABLE_DIVIDER_PATTERN.search(raw_summary):
+    if (
+        definition.type != "support_assistant"
+        and MARKDOWN_TABLE_PATTERN.search(raw_summary)
+        and TABLE_DIVIDER_PATTERN.search(raw_summary)
+    ):
         return "markdown_table"
     if META_REASONING_PATTERN.search(raw_summary):
         return "internal_reasoning"
@@ -259,6 +270,8 @@ def _grounding_failure(
         return "word_limit_exceeded"
     if not _numbers_are_grounded(normalized_summary, evidence):
         return "unsupported_numeric_claim"
+    if not _part_numbers_are_grounded(normalized_summary, evidence):
+        return "unsupported_sku_claim"
     if definition.type == "support_assistant":
         question = _text(evidence.get("current_question")).casefold()
         answer = normalized_summary.casefold()
@@ -446,7 +459,7 @@ def build_agent_brief(definition: AgentDefinition, evidence: dict[str, object]) 
     if definition.type == "bom_scenario":
         return _bom_brief(evidence)
     if definition.type == "support_assistant":
-        answer = _text(evidence.get("direct_answer")) or _text(evidence.get("fallback_answer"))
+        answer = _text(evidence.get("fallback_answer"))
         return AgentOutputBrief(
             headline="Answer from governed App context",
             finding=answer or "The App context does not contain enough evidence for a specific answer.",
@@ -494,7 +507,10 @@ def govern_agent_output(
     if definition.type == "support_assistant":
         raw_summary = _remove_support_meta_reasoning(raw_summary)
         raw_summary = _remove_support_internal_placeholder_sentences(raw_summary)
-    normalized_summary = normalize_agent_summary(raw_summary)
+    normalized_summary = normalize_agent_summary(
+        raw_summary,
+        preserve_markdown=definition.type == "support_assistant",
+    )
     failure = (
         "internal_reasoning"
         if support_draft_instructions

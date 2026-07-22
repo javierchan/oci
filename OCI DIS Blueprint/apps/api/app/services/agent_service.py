@@ -609,15 +609,6 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
     preflight_evidence = await executor({})
     if definition.type == "support_assistant" and preflight_evidence.get("in_scope") is False:
         include_provider = False
-    # When the bounded App evidence already selects a precise answer, invoking
-    # OCI can only add latency, cost, and stylistic variance.  The deterministic
-    # answer is still audited through the same AgentRun and evidence artifact.
-    deterministic_support_answer = (
-        definition.type == "support_assistant"
-        and isinstance(preflight_evidence.get("direct_answer"), str)
-    )
-    if deterministic_support_answer:
-        include_provider = False
     tool_step = AgentStep(
         run_id=run.id,
         sequence=1,
@@ -691,18 +682,12 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         "policy_refused"
         if definition.type == "support_assistant" and (evidence.get("in_scope") is False or safety_refused)
         else "completed"
-        if deterministic_support_answer
-        else "completed"
         if result and result.status == "completed"
         else "fallback"
     )
     provider_step.output_payload = {
-        "summary": (
-            "Deterministic App response selected from governed evidence."
-            if deterministic_support_answer
-            else "Provider output is pending governed normalization."
-        ),
-        "provider_status": result.status if result else "deterministic" if deterministic_support_answer else "skipped",
+        "summary": "Provider output is pending governed normalization.",
+        "provider_status": result.status if result else "skipped",
         "transport": result.transport if result else None,
         "retry_count": result.retry_count if result else 0,
         "guardrails_status": result.guardrails_status if result else "skipped",
@@ -714,12 +699,9 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         payload=cast(dict[str, object], sanitize_for_json(evidence)),
     )
     db.add(artifact)
-    direct_answer = evidence.get("direct_answer")
     summary = (
         "I could not process that request because OCI safety controls detected unsafe or manipulative instructions."
         if definition.type == "support_assistant" and safety_refused
-        else str(direct_answer)
-        if definition.type == "support_assistant" and isinstance(direct_answer, str)
         else result.summary
         if result and result.summary
         else _deterministic_summary(definition, evidence)

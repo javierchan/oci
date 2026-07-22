@@ -696,6 +696,26 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       frontend tests/build, terminal browser E2E, production Docker health, responsive
       light/dark visual inspection, and browser console validation pass.
 
+### M63 — Model-First Contextual App Assistant
+- [x] Make OCI Generative AI the primary author for every safe support question,
+      with deterministic App evidence as context and canned text reserved for
+      provider or grounding failure.
+- [x] Supply clearly labeled verified facts and route-aware next actions so the
+      model can explain exact governed values without inventing prices, SKUs,
+      metrics, approvals, or application behavior.
+- [x] Replace hard off-topic refusals with a concise, context-aware redirect while
+      retaining OCI Guardrails as the authority for unsafe input and output.
+- [x] Support bounded Markdown headings, emphasis, lists, tables, and safe internal
+      links in the floating assistant without permitting arbitrary HTML or external
+      navigation.
+- [x] Preserve conversation isolation, citations, context attachments, persistence,
+      and history clearing while upgrading the response contract and warm persona.
+- [x] **Exit criteria**: 273 API tests, 115 frontend tests, Ruff, mypy,
+      TypeScript/ESLint, Node 26 production build, healthy production Docker stack,
+      real OCI Responses and Guardrails calls, grounded project/BOM answer, graceful
+      off-topic redirect, responsive dark-mode browser inspection, and zero browser
+      console errors pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector
