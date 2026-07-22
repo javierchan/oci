@@ -6,13 +6,14 @@ from datetime import UTC, datetime
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Awaitable, Callable, cast
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.core.config import Settings
 from app.models import (
     AuditEvent,
     CatalogIntegration,
@@ -78,9 +79,12 @@ async def test_support_capability_eval_matrix_uses_governed_evidence_and_mocked_
     async def governed_mock_provider(*args: object, **kwargs: object) -> GenAiAgentResult:
         nonlocal provider_calls
         provider_calls += 1
-        settings = kwargs["settings"]
+        settings = cast(Settings, kwargs["settings"])
         assert settings.OCI_GENAI_MODEL_NAME == "OpenAI gpt-oss-120b"
-        executor = kwargs["tool_executor"]
+        executor = cast(
+            Callable[[dict[str, object]], Awaitable[dict[str, object]]],
+            kwargs["tool_executor"],
+        )
         evidence = await executor({})
         return GenAiAgentResult(
             status="completed",
@@ -116,12 +120,15 @@ async def test_support_capability_eval_matrix_uses_governed_evidence_and_mocked_
                 completed = await agent_service.run_agent(assistant["agent_run_id"], session)
 
         assert completed.result is not None
-        evidence = completed.result["evidence"]
+        result = cast(dict[str, object], completed.result)
+        evidence = cast(dict[str, object], result["evidence"])
         assert evidence["question_intent"] == case["expected_intent"], case["id"]
-        assessment = evidence["app_knowledge"].get("capability_assessment")
+        app_knowledge = cast(dict[str, object], evidence["app_knowledge"])
+        assessment = app_knowledge.get("capability_assessment")
         if case["expected_capability"] is None:
             assert assessment is None, case["id"]
         else:
+            assert isinstance(assessment, dict), case["id"]
             assert assessment["status"] == case["expected_capability"], case["id"]
 
         refreshed = await api_client.get(

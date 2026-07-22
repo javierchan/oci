@@ -145,7 +145,7 @@ def test_support_grounding_requires_one_real_next_action_for_non_ambiguous_answe
         project_id=None,
         integration_id=None,
     )
-    wrapped = {"app_knowledge": evidence}
+    wrapped: dict[str, object] = {"app_knowledge": evidence}
 
     assert knowledge_grounding_failure(
         "Yes, the App supports project creation.",
