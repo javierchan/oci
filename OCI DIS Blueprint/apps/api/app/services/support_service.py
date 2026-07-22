@@ -116,6 +116,25 @@ def question_is_in_scope(question: str, *, has_context: bool) -> bool:
     return bool(normalized)
 
 
+def _deduplicate_citations(citations: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Keep one unambiguous App destination per visible citation label."""
+
+    normalized: list[dict[str, str]] = []
+    label_indexes: dict[str, int] = {}
+    for citation in citations:
+        label = str(citation.get("label") or "App context").strip() or "App context"
+        href = str(citation.get("href") or "/projects").strip() or "/projects"
+        label_key = label.casefold()
+        existing_index = label_indexes.get(label_key)
+        if existing_index is None:
+            label_indexes[label_key] = len(normalized)
+            normalized.append({"label": label, "href": href})
+            continue
+        if normalized[existing_index]["href"] == "/" and href != "/":
+            normalized[existing_index] = {"label": label, "href": href}
+    return normalized
+
+
 def support_summary_is_grounded(summary: str, evidence: dict[str, object]) -> bool:
     """Allow rich explanations while blocking placeholders and invented governed facts."""
 
@@ -1812,6 +1831,7 @@ async def build_support_evidence(
     if isinstance(actions, list) and actions and isinstance(actions[0], dict):
         evidence["recommended_next_action"] = str(actions[0].get("label") or "Open the relevant App workspace")
         evidence["recommended_next_action_route"] = str(actions[0].get("href") or "/projects")
+    citations[:] = _deduplicate_citations(citations)
     evidence["fallback_answer"] = _fallback_with_action(_evidence_fallback(evidence), evidence)
     return cast(dict[str, object], sanitize_for_json(evidence))
 
@@ -1836,7 +1856,7 @@ async def complete_support_message(
     else:
         message.content = content[:12000]
         message.status = status
-        message.citations = cast(list, sanitize_for_json(citations[:12]))
+        message.citations = cast(list, sanitize_for_json(_deduplicate_citations(citations)[:12]))
     await db.flush()
 
 

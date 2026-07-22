@@ -216,6 +216,8 @@ async def test_support_capability_eval_matrix_uses_governed_evidence_and_mocked_
         message = refreshed.json()["messages"][-1]
         content = message["content"].casefold()
         assert content.count("**next action:**") == 1, case["id"]
+        citation_labels = [citation["label"].casefold() for citation in message["citations"]]
+        assert len(citation_labels) == len(set(citation_labels)), case["id"]
         for citation in message["citations"]:
             assert citation["href"].startswith("/"), case["id"]
             assert "[" not in citation["href"] and "{" not in citation["href"], case["id"]

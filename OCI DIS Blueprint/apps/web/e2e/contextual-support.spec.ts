@@ -55,7 +55,7 @@ test("keeps contextual support available and bounded across App navigation", asy
   await input.fill("What is the weather today?");
   await assistant.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(
-    assistant.getByText("I’m here to help with OCI DIS Architect", { exact: false }),
+    assistant.getByText("That request is outside OCI DIS Architect's scope", { exact: false }),
   ).toBeVisible({ timeout: 30_000 });
   await expect(assistant.getByText("BOM & Cost", { exact: false })).toBeVisible();
   await expect(assistant.getByText("What is the weather today?", { exact: true })).toBeVisible();
