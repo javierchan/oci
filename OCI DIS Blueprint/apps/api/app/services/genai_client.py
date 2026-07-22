@@ -163,6 +163,17 @@ def _resolved_oci_config(settings: Settings) -> OciGenAiRuntimeConfig:
     )
 
 
+def _create_provider_http_client(runtime: OciGenAiRuntimeConfig) -> httpx.AsyncClient:
+    """Create the isolated HTTP client used for OCI provider requests."""
+
+    return httpx.AsyncClient(
+        timeout=httpx.Timeout(
+            runtime.read_timeout_seconds,
+            connect=runtime.connect_timeout_seconds,
+        )
+    )
+
+
 def _responses_url(runtime: OciGenAiRuntimeConfig) -> str:
     """Return OCI's API-key Responses endpoint for the configured inference host."""
 
@@ -797,12 +808,7 @@ async def _synthesize(
         f"{json.dumps(_redact_prompt_value(evidence), ensure_ascii=False, sort_keys=True)}"
     )
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(
-                runtime.read_timeout_seconds,
-                connect=runtime.connect_timeout_seconds,
-            )
-        ) as client:
+        async with _create_provider_http_client(runtime) as client:
             input_guard = await _apply_guardrails(
                 client,
                 settings=settings,
@@ -1108,9 +1114,7 @@ async def run_governed_tool_agent(
         "strict": True,
     }
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(runtime.read_timeout_seconds, connect=runtime.connect_timeout_seconds)
-        ) as client:
+        async with _create_provider_http_client(runtime) as client:
             input_guard = await _apply_guardrails(
                 client,
                 settings=settings,

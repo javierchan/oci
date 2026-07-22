@@ -526,6 +526,19 @@ def _support_fallback_answer(evidence: dict[str, object]) -> str:
     """Build a concise App-owned answer when provider grounding is insufficient."""
 
     spanish = evidence.get("response_language") == "es"
+    app_redirect = evidence.get("app_redirect")
+    if isinstance(app_redirect, dict) and app_redirect.get("required") is True:
+        if spanish:
+            return (
+                "No puedo responder sobre ese tema externo. Estoy aqui para ayudarte con OCI DIS Architect: "
+                "integraciones, procesos, topologia, gobernanza, dimensionamiento y BOM & Cost.\n\n"
+                "Dime que decision de arquitectura necesitas tomar y usare la evidencia gobernada disponible."
+            )
+        return (
+            "I can’t answer that external-topic question. I’m here to help with OCI DIS Architect: "
+            "integrations, business processes, topology, governance, sizing, and BOM & Cost.\n\n"
+            "Tell me the architecture decision you need to make and I’ll use the available governed evidence."
+        )
     pattern_answer = _pattern_answer(evidence)
     if pattern_answer:
         return pattern_answer

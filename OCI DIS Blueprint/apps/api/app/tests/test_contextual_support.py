@@ -457,6 +457,17 @@ async def test_support_conversation_is_isolated_and_external_topic_is_redirected
         )
 
     monkeypatch.setattr(agent_service, "run_governed_tool_agent", redirect_with_app_help)
+
+    fallback = support_service._support_fallback_answer(
+        {
+            "response_language": "en",
+            "app_redirect": {"required": True},
+        }
+    )
+    assert "I can’t answer that external-topic question" in fallback
+    assert "I’m here to help with OCI DIS Architect" in fallback
+    assert "weather" not in fallback.casefold()
+
     created = await api_client.post("/api/v1/support/conversations/current", headers=HEADERS_A)
     assert created.status_code == 200
     conversation_id = created.json()["id"]

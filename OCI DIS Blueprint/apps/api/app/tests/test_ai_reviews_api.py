@@ -880,7 +880,11 @@ async def test_oci_genai_uses_bearer_key_chat_completions_and_canonical_model(
                 request=Request("POST", url),
             )
 
-    monkeypatch.setattr(genai_client.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(
+        genai_client,
+        "_create_provider_http_client",
+        lambda _: FakeAsyncClient(),
+    )
     settings = Settings(
         OCI_GENAI_API_KEY_FILE=str(api_key_path),
         OCI_GENAI_PROJECT_ID="ocid1.generativeaiproject.oc1.test",

@@ -597,7 +597,11 @@ async def test_oci_tool_loop_sends_project_header_and_returns_tool_evidence(
                 },
             )
 
-    monkeypatch.setattr(genai_client.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(
+        genai_client,
+        "_create_provider_http_client",
+        lambda _: FakeClient(),
+    )
 
     async def executor(_: dict[str, object]) -> dict[str, object]:
         return {"evidence_id": "E-1", "status": "ready"}
