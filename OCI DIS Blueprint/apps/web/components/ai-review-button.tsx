@@ -346,13 +346,14 @@ function RecommendationWorkspace({
     <section className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-3xl">
-          <p className="app-label">Recommendation workspace</p>
+          <p className="app-label">Governed alternatives (optional)</p>
           <h4 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
             Compare governed designs before changing the canvas
           </h4>
           <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
-            {workspace.recommendation_basis} Previewing records your decision for audit; it does not save the
-            integration. Apply a candidate to the unsaved draft and use Simulate impact before deciding to save.
+            {workspace.recommendation_basis} The current design stays authoritative until an architect applies a
+            candidate to the unsaved draft and runs Simulate impact or recalculation. Previewing only records the
+            comparison for audit; it does not save the integration.
           </p>
         </div>
         <span className="app-theme-chip">{workspace.candidates.length} alternatives</span>
@@ -914,9 +915,9 @@ function AiReviewDialog({
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {review.llm_summary ? (
+                    {review.llm_status === "completed" && review.llm_summary ? (
                       <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
-                        LLM synthesis completed
+                        Grounded AI explanation available
                       </span>
                     ) : null}
                     <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-3)] px-3 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
@@ -928,15 +929,21 @@ function AiReviewDialog({
                       </span>
                     ) : null}
                   </div>
-                  {review.llm_summary ? (
+                  <div className="mt-4 rounded-2xl border border-current/15 bg-white/45 p-4 dark:bg-black/15">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] opacity-60">Governed review summary</p>
+                    <p className="mt-2 text-sm leading-6">{review.summary}</p>
+                  </div>
+                  {review.llm_status === "completed" && review.llm_summary ? (
                     <details className="mt-4 rounded-2xl border border-current/15 bg-white/45 p-4 dark:bg-black/15">
-                      <summary className="cursor-pointer text-sm font-semibold">Read the OCI Generative AI explanation</summary>
+                      <summary className="cursor-pointer text-sm font-semibold">AI explanation of the governed review</summary>
                       <div className="mt-3">
                         <GovernedNarrative content={review.llm_summary} />
                       </div>
                     </details>
                   ) : (
-                    <p className="mt-4 text-sm leading-6 opacity-80">{review.summary}</p>
+                    <p className="mt-4 text-xs leading-5 opacity-70">
+                      AI explanation withheld because it was not completed or could not be fully grounded in the governed review evidence.
+                    </p>
                   )}
                   {job?.status === "completed" ? (
                     <a

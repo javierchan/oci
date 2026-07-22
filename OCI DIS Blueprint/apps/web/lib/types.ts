@@ -691,7 +691,7 @@ export interface AiReviewResponse {
   readiness_score: number;
   readiness_label: string;
   summary: string;
-  llm_status: "not_configured" | "completed" | "failed" | "skipped";
+  llm_status: "not_configured" | "completed" | "discarded_ungrounded" | "failed" | "skipped";
   llm_model: string | null;
   llm_summary: string | null;
   graph_context: AiReviewGraphContext | null;

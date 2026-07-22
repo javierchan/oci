@@ -663,10 +663,12 @@ def _build_prompt(
         {
             "role": "instruction",
             "content": (
-                "You are an OCI integration architecture review assistant. Use only the provided evidence. "
-                "Do not invent facts, counts, services, or blockers. Return a concise executive review summary "
-                "in US English, 90-130 words. Mention the sign-off status, top risk theme, topology or stress "
-                "signal if present, and the next architect action."
+                "You are an OCI integration architecture review explanation assistant. Rephrase and summarize "
+                "only the deterministic governed review supplied as evidence. Never introduce a new fact, number, "
+                "service, SKU, finding, risk, recommendation, action, or conclusion. Do not infer missing context "
+                "or expand a recommendation beyond its supplied wording. Return a concise explanation in US English, "
+                "90-130 words. Preserve the governed sign-off status and describe only evidenced risk themes, "
+                "topology or stress signals, and architect actions that are explicitly present in the payload."
             ),
         },
         {

@@ -716,6 +716,25 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       off-topic redirect, responsive dark-mode browser inspection, and zero browser
       console errors pass.
 
+### M64 — Grounded Optional AI Review Explanations
+- [x] Keep the deterministic Architecture Review decision, findings, risks,
+      recommendations, actions, metrics, service identities, and SKU evidence as the
+      sole authoritative review record.
+- [x] Restrict OCI Generative AI to a bounded US-English explanation of the exact
+      deterministic review evidence without introducing new facts or conclusions.
+- [x] Validate every generated identifier, number, service, SKU, finding, risk,
+      recommendation, and action against the deterministic evidence before persistence.
+- [x] Discard an explanation in full as `discarded_ungrounded` when any unsupported
+      claim is detected; never expose or partially retain unverifiable model output.
+- [x] Present the governed review first, label valid model text as an optional AI
+      explanation, disclose withheld explanations, and keep governed alternatives
+      optional until an architect applies a draft and runs deterministic validation.
+- [x] **Exit criteria**: mocked faithful and invented-model tests, unchanged
+      deterministic-review regression, Ruff, mypy, frontend tests, TypeScript/ESLint,
+      Node 26 production build, regenerated OpenAPI, healthy production Docker stack,
+      project and integration review browser validation, and zero browser console
+      warnings or errors pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

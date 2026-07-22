@@ -3337,6 +3337,7 @@
             "enum": [
               "not_configured",
               "completed",
+              "discarded_ungrounded",
               "failed",
               "skipped"
             ],

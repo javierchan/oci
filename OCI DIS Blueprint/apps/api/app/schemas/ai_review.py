@@ -616,7 +616,13 @@ class AiReviewResponse(BaseModel):
     readiness_score: int
     readiness_label: str
     summary: str
-    llm_status: Literal["not_configured", "completed", "failed", "skipped"] = "not_configured"
+    llm_status: Literal[
+        "not_configured",
+        "completed",
+        "discarded_ungrounded",
+        "failed",
+        "skipped",
+    ] = "not_configured"
     llm_model: Optional[str] = None
     llm_summary: Optional[str] = None
     graph_context: Optional[AiReviewGraphContext] = None

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime
+import json
+import re
 from typing import Iterable, Literal, Optional, cast
 from urllib.parse import quote_plus
 
@@ -112,6 +114,70 @@ DRIFT_SEVERITY_RANK: dict[Literal["critical", "high", "medium", "low"], int] = {
     "medium": 2,
     "low": 1,
 }
+
+AI_REVIEW_ACTION_TERMS = frozenset(
+    {
+        "add",
+        "apply",
+        "change",
+        "configure",
+        "deploy",
+        "migrate",
+        "open",
+        "recalculate",
+        "recommend",
+        "remove",
+        "replace",
+        "resolve",
+        "retire",
+        "review",
+        "run",
+        "select",
+        "set",
+        "upgrade",
+        "validate",
+    }
+)
+AI_REVIEW_ASSERTION_TERMS = frozenset({"blocker", "finding", "issue", "risk", "warning"})
+AI_REVIEW_GROUNDING_STOP_WORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "before",
+        "by",
+        "can",
+        "current",
+        "for",
+        "from",
+        "in",
+        "is",
+        "it",
+        "of",
+        "on",
+        "or",
+        "project",
+        "should",
+        "the",
+        "then",
+        "this",
+        "to",
+        "with",
+    }
+)
+AI_REVIEW_IDENTIFIER_PATTERN = re.compile(r"\b(?:EV-\d+|B\d{5,}|STEP-\d+|#[0-9]{2})\b", re.IGNORECASE)
+AI_REVIEW_MATERIAL_NUMBER_PATTERN = re.compile(
+    r"(?<![\w.-])(?:USD\s*|\$)?\d[\d,]*(?:\.\d+)?%?(?![\w.-])",
+    re.IGNORECASE,
+)
+AI_REVIEW_SERVICE_PATTERN = re.compile(
+    r"\b(?:OCI|Oracle)\s+[A-Z][A-Za-z0-9+.-]*(?:\s+[A-Z][A-Za-z0-9+.-]*){0,4}\b"
+)
+AI_REVIEW_SENTENCE_PATTERN = re.compile(r"[^.!?\n]+[.!?]?", re.MULTILINE)
 
 
 def _has_text(value: str | None) -> bool:
@@ -1125,6 +1191,81 @@ def _remediation_plan(findings: list[AiReviewFinding]) -> list[AiReviewRemediati
 
 def _compact_findings(findings: list[AiReviewFinding]) -> list[AiReviewFinding]:
     return findings[:8]
+
+
+def _grounding_tokens(value: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", value.casefold())
+        if len(token) > 2 and token not in AI_REVIEW_GROUNDING_STOP_WORDS
+    }
+
+
+def _normalized_claim(value: str) -> str:
+    return re.sub(r"[\s,]+", "", value.casefold())
+
+
+def ai_review_summary_is_grounded(
+    summary: str,
+    *,
+    deterministic_summary: str,
+    metrics: list[AiReviewMetric],
+    findings: list[AiReviewFinding],
+    evidence_pack: list[str],
+    decision_brief: dict[str, object],
+    topology_insights: list[dict[str, object]],
+    stress_scenarios: list[dict[str, object]],
+    remediation_plan: list[dict[str, object]],
+) -> bool:
+    """Reject optional prose that asserts facts or actions outside governed review evidence."""
+
+    if not summary.strip():
+        return False
+
+    evidence = {
+        "deterministic_summary": deterministic_summary,
+        "metrics": [metric.model_dump(mode="json") for metric in metrics],
+        "findings": [finding.model_dump(mode="json") for finding in findings],
+        "evidence_pack": evidence_pack,
+        "decision_brief": decision_brief,
+        "topology_insights": topology_insights,
+        "stress_scenarios": stress_scenarios,
+        "remediation_plan": remediation_plan,
+    }
+    evidence_text = json.dumps(sanitize_for_json(evidence), ensure_ascii=False, sort_keys=True)
+    normalized_evidence = evidence_text.casefold()
+    normalized_claims = {
+        _normalized_claim(item)
+        for item in AI_REVIEW_MATERIAL_NUMBER_PATTERN.findall(evidence_text)
+    }
+
+    for identifier in AI_REVIEW_IDENTIFIER_PATTERN.findall(summary):
+        if identifier.casefold() not in normalized_evidence:
+            return False
+
+    for number in AI_REVIEW_MATERIAL_NUMBER_PATTERN.findall(summary):
+        if _normalized_claim(number) not in normalized_claims:
+            return False
+
+    for service_name in AI_REVIEW_SERVICE_PATTERN.findall(summary):
+        if service_name.casefold() not in normalized_evidence:
+            return False
+
+    evidence_tokens = _grounding_tokens(evidence_text)
+    for sentence_match in AI_REVIEW_SENTENCE_PATTERN.finditer(summary):
+        sentence = sentence_match.group(0).strip()
+        sentence_tokens = _grounding_tokens(sentence)
+        if not sentence_tokens:
+            continue
+        makes_action_claim = bool(sentence_tokens & AI_REVIEW_ACTION_TERMS)
+        makes_risk_claim = bool(sentence_tokens & AI_REVIEW_ASSERTION_TERMS)
+        if not (makes_action_claim or makes_risk_claim):
+            continue
+        claim_subjects = sentence_tokens - AI_REVIEW_ACTION_TERMS - AI_REVIEW_ASSERTION_TERMS
+        if claim_subjects and not (claim_subjects & evidence_tokens):
+            return False
+
+    return True
 
 
 def _accepted_recommendations(job: AiReviewJob) -> list[AiReviewRecommendationAcceptance]:
@@ -2227,6 +2368,29 @@ async def build_review_result(
         if include_llm
         else GenAiResult(status="skipped", model=None, summary=None)
     )
+    llm_status: Literal[
+        "not_configured",
+        "completed",
+        "discarded_ungrounded",
+        "failed",
+        "skipped",
+    ] = llm_result.status
+    llm_summary = llm_result.summary
+    if llm_status == "completed" and llm_summary is not None:
+        grounded = ai_review_summary_is_grounded(
+            llm_summary,
+            deterministic_summary=deterministic_summary,
+            metrics=metrics,
+            findings=_compact_findings(findings),
+            evidence_pack=evidence_pack,
+            decision_brief=decision_brief.model_dump(mode="json"),
+            topology_insights=[item.model_dump(mode="json") for item in topology_insights],
+            stress_scenarios=[item.model_dump(mode="json") for item in stress_scenarios],
+            remediation_plan=[item.model_dump(mode="json") for item in remediation_plan],
+        )
+        if not grounded:
+            llm_status = "discarded_ungrounded"
+            llm_summary = None
 
     return AiReviewResponse(
         project_id=project_id,
@@ -2237,9 +2401,9 @@ async def build_review_result(
         readiness_score=score,
         readiness_label=label,
         summary=deterministic_summary,
-        llm_status=llm_result.status,
+        llm_status=llm_status,
         llm_model=llm_result.model,
-        llm_summary=llm_result.summary,
+        llm_summary=llm_summary,
         graph_context=graph_context,
         metrics=metrics,
         decision_brief=decision_brief,

@@ -20,10 +20,11 @@ export function ActionRecommendationWorkspace({
     <section className="space-y-4 border-t border-[var(--color-border)] pt-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-4xl">
-          <p className="app-label">Prescriptive recommendations</p>
+          <p className="app-label">Governed alternatives (optional)</p>
           <h3 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">{workspace.title}</h3>
           <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
-            {workspace.recommendation_basis}
+            {workspace.recommendation_basis} The current design stays authoritative until an architect applies a
+            candidate and runs Simulate impact or recalculation.
           </p>
         </div>
         <span className="app-theme-chip">{workspace.candidates.length} actions</span>

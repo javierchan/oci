@@ -238,6 +238,108 @@ async def test_project_ai_review_job_create_run_get_and_accept(
 
 
 @pytest.mark.asyncio
+async def test_ai_review_discards_ungrounded_llm_recommendation_without_changing_governed_result(
+    test_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An invented number and service action must never reach the review response."""
+
+    project_id, _ = await _seed_review_fixture(test_engine)
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+
+    async with session_factory() as session:
+        governed = await ai_review_service.build_review_result(
+            project_id=project_id,
+            scope="project",
+            integration_id=None,
+            include_llm=False,
+            graph_context=None,
+            reviewer_personas=["architect"],
+            db=session,
+        )
+
+    async def ungrounded_summary(**_: object) -> genai_client.GenAiResult:
+        return genai_client.GenAiResult(
+            status="completed",
+            model="test-model",
+            summary="Upgrade 37 integrations to Oracle Autonomous Database before sign-off.",
+        )
+
+    monkeypatch.setattr(ai_review_service, "synthesize_review_summary", ungrounded_summary)
+    async with session_factory() as session:
+        reviewed = await ai_review_service.build_review_result(
+            project_id=project_id,
+            scope="project",
+            integration_id=None,
+            include_llm=True,
+            graph_context=None,
+            reviewer_personas=["architect"],
+            db=session,
+        )
+
+    assert reviewed.llm_status == "discarded_ungrounded"
+    assert reviewed.llm_summary is None
+    assert reviewed.summary == governed.summary
+    assert [item.model_dump(mode="json") for item in reviewed.findings] == [
+        item.model_dump(mode="json") for item in governed.findings
+    ]
+
+
+@pytest.mark.asyncio
+async def test_ai_review_keeps_faithful_llm_rephrase_without_changing_governed_result(
+    test_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rephrase composed only from governed fields remains an optional explanation."""
+
+    project_id, _ = await _seed_review_fixture(test_engine)
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+
+    async with session_factory() as session:
+        governed = await ai_review_service.build_review_result(
+            project_id=project_id,
+            scope="project",
+            integration_id=None,
+            include_llm=False,
+            graph_context=None,
+            reviewer_personas=["architect"],
+            db=session,
+        )
+
+    async def faithful_summary(**kwargs: object) -> genai_client.GenAiResult:
+        decision_brief = kwargs["decision_brief"]
+        assert isinstance(decision_brief, dict)
+        summary = (
+            f"{kwargs['readiness_label']}. {decision_brief['primary_risk']} "
+            f"{decision_brief['recommended_next_action']}"
+        )
+        return genai_client.GenAiResult(
+            status="completed",
+            model="test-model",
+            summary=summary,
+        )
+
+    monkeypatch.setattr(ai_review_service, "synthesize_review_summary", faithful_summary)
+    async with session_factory() as session:
+        reviewed = await ai_review_service.build_review_result(
+            project_id=project_id,
+            scope="project",
+            integration_id=None,
+            include_llm=True,
+            graph_context=None,
+            reviewer_personas=["architect"],
+            db=session,
+        )
+
+    assert reviewed.llm_status == "completed"
+    assert reviewed.llm_summary is not None
+    assert reviewed.summary == governed.summary
+    assert [item.model_dump(mode="json") for item in reviewed.findings] == [
+        item.model_dump(mode="json") for item in governed.findings
+    ]
+
+
+@pytest.mark.asyncio
 async def test_integration_scoped_ai_review_requires_and_uses_integration_id(
     api_client: AsyncClient,
     test_engine: AsyncEngine,
@@ -825,3 +927,5 @@ def test_oci_prompt_redacts_sensitive_values() -> None:
     assert "jane.doe@example.com" not in payload
     assert "abcdef1234567890abcdef1234567890" not in payload
     assert "[REDACTED]" in payload
+    assert "Never introduce a new fact, number, service, SKU, finding, risk, recommendation, action" in prompt[0]["content"]
+    assert "US English" in prompt[0]["content"]
