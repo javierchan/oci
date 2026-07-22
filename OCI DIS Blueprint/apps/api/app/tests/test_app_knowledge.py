@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+import pytest
+
 from app.core.config import get_genai_settings_for_use_case, get_settings
+from app.knowledge import builder as knowledge_builder
 from app.knowledge.builder import (
     DERIVED_PATH,
     _discover_repo_root,
@@ -12,10 +15,13 @@ from app.knowledge.builder import (
     load_curated_knowledge,
     validate_knowledge_base,
 )
+from app.services import app_knowledge_service
 from app.services.app_knowledge_service import (
     build_app_knowledge_evidence,
     knowledge_grounding_failure,
 )
+from app.services.genai_client import GenAiEmbeddingResult
+from scripts.build_app_knowledge import _discover_source_repo_root, _load_manifest_for_build
 
 
 def test_repo_root_discovery_is_safe_in_the_shallow_production_layout(tmp_path) -> None:
@@ -25,6 +31,26 @@ def test_repo_root_discovery_is_safe_in_the_shallow_production_layout(tmp_path) 
     packaged_knowledge.mkdir(parents=True)
 
     assert _discover_repo_root(packaged_knowledge) == tmp_path
+
+
+def test_knowledge_build_script_uses_committed_manifest_in_shallow_image(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """Provider enrichment must work without frontend sources in production."""
+
+    api_root = tmp_path / "app-image"
+    knowledge_dir = api_root / "app" / "knowledge"
+    knowledge_dir.mkdir(parents=True)
+    derived = knowledge_dir / "derived_app_knowledge.json"
+    derived.write_text('{"schema_version":"2.0.0","retrieval_units":[]}', encoding="utf-8")
+    monkeypatch.setattr("scripts.build_app_knowledge.API_ROOT", api_root)
+    monkeypatch.setattr("scripts.build_app_knowledge.DERIVED_PATH", derived)
+
+    assert _discover_source_repo_root(api_root) is None
+    assert _load_manifest_for_build(provider_embeddings=True)["schema_version"] == "2.0.0"
+    with pytest.raises(RuntimeError, match="requires a source checkout"):
+        _load_manifest_for_build(provider_embeddings=False)
 
 
 def test_committed_app_knowledge_matches_executable_contracts() -> None:
@@ -62,30 +88,34 @@ def test_app_knowledge_check_rejects_uncovered_route_and_stale_export() -> None:
     assert any("does not expose media type text/csv" in error for error in errors)
 
 
-def test_unknown_capability_returns_not_documented_and_rejects_invented_route() -> None:
+@pytest.mark.asyncio
+async def test_unknown_capability_returns_not_documented_and_rejects_invented_route() -> None:
     """Feature claims fail closed when no matching App knowledge exists."""
 
-    evidence = build_app_knowledge_evidence(
-        "Can the App deploy a Kubernetes cluster to Mars?",
+    evidence = await build_app_knowledge_evidence(
+        "Can the App automatically provision the OCI resources in a BOM?",
         "/projects",
         language="en",
         project_id=None,
         integration_id=None,
     )
 
-    assert evidence["documented"] is False
-    assert "capability is not documented" in str(evidence["fallback_answer"])
+    assessment = evidence["capability_assessment"]
+    assert isinstance(assessment, dict)
+    assert assessment["status"] == "not_documented"
+    assert "is not documented" in str(evidence["fallback_answer"])
     assert knowledge_grounding_failure(
         "The App can deploy it from [Launch](/admin/mars-deployments).",
         {"app_knowledge": evidence},
     ) == "unsupported_app_route"
 
 
-def test_capability_matching_uses_action_plus_section_and_asks_once_when_ambiguous() -> None:
-    """Generic action wording is safe only when a governed section anchors it."""
+@pytest.mark.asyncio
+async def test_capability_matching_uses_semantic_units_and_fails_closed() -> None:
+    """Semantic retrieval resolves explicit capabilities and fails closed for unknowns."""
 
-    documented = build_app_knowledge_evidence(
-        "Can I export a BOM?",
+    documented = await build_app_knowledge_evidence(
+        "Can I export a BOM as XLSX?",
         "/projects",
         language="en",
         project_id=None,
@@ -100,25 +130,26 @@ def test_capability_matching_uses_action_plus_section_and_asks_once_when_ambiguo
         {"app_knowledge": documented},
     ) is None
 
-    ambiguous = build_app_knowledge_evidence(
-        "Can I do that?",
+    unknown = await build_app_knowledge_evidence(
+        "Can project users chat with each other inside the App?",
         "/projects",
         language="en",
         project_id=None,
         integration_id=None,
     )
-    ambiguous_assessment = ambiguous["capability_assessment"]
-    assert isinstance(ambiguous_assessment, dict)
-    assert ambiguous_assessment["status"] == "ambiguous"
-    fallback = str(ambiguous["fallback_answer"])
-    assert fallback.count("?") == 1
-    assert knowledge_grounding_failure(fallback, {"app_knowledge": ambiguous}) is None
+    unknown_assessment = unknown["capability_assessment"]
+    assert isinstance(unknown_assessment, dict)
+    assert unknown_assessment["status"] == "not_documented"
+    assert knowledge_grounding_failure(
+        str(unknown["fallback_answer"]), {"app_knowledge": unknown}
+    ) is None
 
 
-def test_undocumented_cost_alert_uses_bom_as_the_closest_governed_workflow() -> None:
+@pytest.mark.asyncio
+async def test_undocumented_cost_alert_uses_bom_as_the_closest_governed_workflow() -> None:
     """A missing alert feature must not drift into pricing or unrelated assumptions."""
 
-    evidence = build_app_knowledge_evidence(
+    evidence = await build_app_knowledge_evidence(
         "Can I set up automated email alerts when cost exceeds a threshold?",
         "/projects",
         language="en",
@@ -135,10 +166,11 @@ def test_undocumented_cost_alert_uses_bom_as_the_closest_governed_workflow() -> 
     assert "BOM & Cost" in str(evidence["fallback_answer"])
 
 
-def test_support_grounding_requires_one_real_next_action_for_non_ambiguous_answers() -> None:
+@pytest.mark.asyncio
+async def test_support_grounding_requires_one_real_next_action() -> None:
     """Provider prose cannot omit or duplicate the executable handoff."""
 
-    evidence = build_app_knowledge_evidence(
+    evidence = await build_app_knowledge_evidence(
         "Can I create a new project?",
         "/projects",
         language="en",
@@ -161,6 +193,60 @@ def test_support_grounding_requires_one_real_next_action_for_non_ambiguous_answe
         str(evidence["fallback_answer"]),
         wrapped,
     ) is None
+
+
+@pytest.mark.asyncio
+async def test_semantic_retrieval_embeds_once_and_never_needs_provider_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider-vector retrieval stays deterministic behind one mocked embedding call."""
+
+    manifest = deepcopy(knowledge_builder.load_derived_manifest())
+    retrieval_units = manifest["retrieval_units"]
+    assert isinstance(retrieval_units, list)
+    for unit in retrieval_units:
+        assert isinstance(unit, dict)
+        unit["provider_embedding"] = list(unit["local_embedding"])
+
+    monkeypatch.setattr(app_knowledge_service, "load_derived_manifest", lambda: manifest)
+    monkeypatch.setattr(knowledge_builder, "load_derived_manifest", lambda: manifest)
+    knowledge_builder.load_knowledge_base.cache_clear()
+    calls: list[list[str]] = []
+
+    async def fake_generate_embeddings(
+        texts: list[str],
+        _settings: object,
+        *,
+        input_type: str,
+    ) -> GenAiEmbeddingResult:
+        assert input_type == "SEARCH_QUERY"
+        calls.append(texts)
+        return GenAiEmbeddingResult(
+            status="completed",
+            model="mock-provider-embedding",
+            embeddings=[knowledge_builder.local_semantic_embedding(text) for text in texts],
+        )
+
+    monkeypatch.setattr(
+        app_knowledge_service,
+        "generate_embeddings",
+        fake_generate_embeddings,
+    )
+    try:
+        evidence = await build_app_knowledge_evidence(
+            "How do I import a customer workbook?",
+            "/projects/project-1/import",
+            language="en",
+            project_id="project-1",
+            integration_id=None,
+        )
+    finally:
+        knowledge_builder.load_knowledge_base.cache_clear()
+
+    assert calls == [["How do I import a customer workbook?"]]
+    assert evidence["embedding_space"] == "provider"
+    assert evidence["intent"] == "workflow_guidance"
+    assert evidence["mode"] == "knowledge"
 
 
 def test_genai_model_overrides_are_isolated_by_use_case(monkeypatch) -> None:

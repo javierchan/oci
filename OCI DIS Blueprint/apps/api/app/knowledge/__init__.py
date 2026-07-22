@@ -5,7 +5,8 @@ from app.knowledge.builder import (
     build_derived_manifest,
     load_derived_manifest,
     load_knowledge_base,
-    retrieve_knowledge,
+    local_semantic_embedding,
+    retrieve_semantic_knowledge,
     validate_knowledge_base,
 )
 
@@ -14,6 +15,7 @@ __all__ = [
     "build_derived_manifest",
     "load_derived_manifest",
     "load_knowledge_base",
-    "retrieve_knowledge",
+    "local_semantic_embedding",
+    "retrieve_semantic_knowledge",
     "validate_knowledge_base",
 ]

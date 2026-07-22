@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,8 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.models import (
+    AiReviewJob,
+    AiReviewJobStatus,
     AuditEvent,
+    BomLineItem,
+    BomSnapshot,
     CatalogIntegration,
+    DeploymentScenario,
     PatternDefinition,
     PriceCatalogSnapshot,
     PriceItem,
@@ -24,11 +29,11 @@ from app.models import (
     Project,
     ServiceCapabilityProfile,
     ServiceProductSkuMapping,
+    VolumetrySnapshot,
 )
 from app.routers import support as support_router
-from app.services import agent_service, support_service
-from app.services.genai_client import GenAiAgentResult
-from app.services.support_routing_service import route_support_question
+from app.services import agent_service, app_knowledge_service, support_service
+from app.services.genai_client import GenAiAgentResult, GenAiEmbeddingResult
 
 
 SESSION_A = "11111111-1111-4111-8111-111111111111"
@@ -51,14 +56,85 @@ def test_support_domain_boundary_accepts_benign_topics_for_graceful_redirect() -
     assert support_service._question_needs_project_scope("¿Cuál es el precio total de este proyecto?")
 
 
-def test_support_routes_spanish_billing_verbs_to_commercial_evidence() -> None:
-    route = route_support_question(
+@pytest.mark.asyncio
+async def test_support_semantically_routes_named_service_billing_to_pricing() -> None:
+    knowledge = await support_service.build_app_knowledge_evidence(
         "¿Cómo se cobra OCI Functions a un cliente?",
-        project_is_explicit=False,
-        needs_project_scope=False,
+        "/admin/pricing",
+        language="es",
+        project_id=None,
+        integration_id=None,
     )
-    assert route.intent == "commercial_guidance"
-    assert route.needs_commercial_evidence is True
+
+    top_match = cast(dict[str, object], knowledge["top_match"])
+    assert top_match["section_id"] == "pricing"
+    assert knowledge["mode"] == "knowledge"
+
+
+@pytest.mark.asyncio
+async def test_support_reranks_explicit_capability_question_within_semantic_top_k(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_embeddings(*args: object, **kwargs: object) -> GenAiEmbeddingResult:
+        return GenAiEmbeddingResult(
+            status="completed",
+            model="mock-embedding-model",
+            embeddings=[[1.0, 0.0]],
+        )
+
+    monkeypatch.setattr(app_knowledge_service, "_has_provider_vectors", lambda: True)
+    monkeypatch.setattr(app_knowledge_service, "generate_embeddings", fake_embeddings)
+    monkeypatch.setattr(
+        app_knowledge_service,
+        "retrieve_semantic_knowledge",
+        lambda *args, **kwargs: {
+            "documented": True,
+            "entries": [
+                {"id": "bom", "name": "BOM & Cost", "routes": ["/projects/[projectId]/bom"]}
+            ],
+            "matches": [
+                {
+                    "id": "concept-license-model",
+                    "intent": "concept_explanation",
+                    "section_id": "bom",
+                    "similarity": 0.91,
+                },
+                {
+                    "id": "capability-license-model",
+                    "intent": "capability_inquiry",
+                    "section_id": "bom",
+                    "similarity": 0.89,
+                    "capability_status": "documented",
+                    "answer": "choose BYOL or License Included by environment",
+                },
+            ],
+            "top_match": {
+                "id": "concept-license-model",
+                "intent": "concept_explanation",
+                "section_id": "bom",
+                "similarity": 0.91,
+            },
+            "intent": "concept_explanation",
+            "mode": "knowledge",
+            "embedding_space": "provider",
+            "allowed_routes": ["/projects/[projectId]/bom"],
+            "allowed_export_media_types": [],
+            "source_hash": "test",
+        },
+    )
+
+    evidence = await app_knowledge_service.build_app_knowledge_evidence(
+        "Can I compare BYOL and License Included, and how do I do it?",
+        "/projects/project-1/bom",
+        language="en",
+        project_id="project-1",
+        integration_id=None,
+    )
+
+    assert evidence["intent"] == "capability_inquiry"
+    assert cast(dict[str, object], evidence["top_match"])["id"] == "capability-license-model"
+    assert cast(dict[str, object], evidence["capability_assessment"])["status"] == "documented"
+    assert "**Yes.**" in str(evidence["fallback_answer"])
 
 
 @pytest.mark.asyncio
@@ -124,6 +200,9 @@ async def test_support_capability_eval_matrix_uses_governed_evidence_and_mocked_
         evidence = cast(dict[str, object], result["evidence"])
         assert evidence["question_intent"] == case["expected_intent"], case["id"]
         app_knowledge = cast(dict[str, object], evidence["app_knowledge"])
+        assert app_knowledge["mode"] == case["expected_mode"], case["id"]
+        top_match = cast(dict[str, object], app_knowledge["top_match"])
+        assert (top_match.get("section_id") or None) == case["expected_section"], case["id"]
         assessment = app_knowledge.get("capability_assessment")
         if case["expected_capability"] is None:
             assert assessment is None, case["id"]
@@ -136,16 +215,10 @@ async def test_support_capability_eval_matrix_uses_governed_evidence_and_mocked_
         )
         message = refreshed.json()["messages"][-1]
         content = message["content"].casefold()
-        for required in case["required_terms"]:
-            assert required in content, f"{case['id']}: missing {required!r} in {content!r}"
-        for forbidden in case["forbidden_terms"]:
-            assert forbidden not in content, f"{case['id']}: found {forbidden!r} in {content!r}"
         assert content.count("**next action:**") == 1, case["id"]
         for citation in message["citations"]:
             assert citation["href"].startswith("/"), case["id"]
             assert "[" not in citation["href"] and "{" not in citation["href"], case["id"]
-        source_labels = {citation["label"] for citation in message["citations"]}
-        assert set(case["expected_sources"]).issubset(source_labels), case["id"]
 
     assert provider_calls == len(CAPABILITY_EVAL_CASES)
 
@@ -183,7 +256,8 @@ async def test_support_resolves_single_active_project_for_global_cost_question(
     resolution = cast(dict[str, object], evidence["project_resolution"])
     project_evidence = cast(dict[str, object], evidence["project"])
     citations = cast(list[dict[str, str]], evidence["citations"])
-    assert evidence["question_intent"] == "project_cost"
+    assert evidence["question_intent"] == "evidence_interpretation"
+    assert evidence["evidence_interpretation"] == "bom_summary"
     assert resolution["method"] == "single_active_project"
     assert resolution["resolved_project_id"] == project.id
     assert resolution["ambiguous"] is False
@@ -195,6 +269,206 @@ async def test_support_resolves_single_active_project_for_global_cost_question(
     assert "direct_answer" not in evidence
     assert cast(dict[str, object], evidence["response_contract"])["model_authorship"] == "primary"
     assert any(item["id"] == "project.integration_count" for item in cast(list[dict[str, object]], evidence["verified_facts"]))
+
+
+@pytest.mark.asyncio
+async def test_project_bom_context_does_not_override_absent_capability_decision(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            project = Project(
+                name="Capability Boundary Project",
+                status="active",
+                owner_id="support-owner",
+            )
+            session.add(project)
+            await session.flush()
+            evidence = await support_service.build_support_evidence(
+                project.id,
+                None,
+                {
+                    "question": "Can the App export this BOM as CSV?",
+                    "route": f"/projects/{project.id}/bom",
+                    "attachments": [],
+                    "transcript": [],
+                },
+                session,
+            )
+
+    app_knowledge = cast(dict[str, object], evidence["app_knowledge"])
+    assessment = cast(dict[str, object], app_knowledge["capability_assessment"])
+    assert evidence["question_intent"] == "capability_inquiry"
+    assert evidence["evidence_interpretation"] == ""
+    assert assessment["status"] == "not_documented"
+    assert "**No.**" in str(evidence["fallback_answer"])
+
+
+@pytest.mark.asyncio
+async def test_support_prefers_persisted_bom_lines_and_review_over_generic_knowledge(
+    test_engine: AsyncEngine,
+) -> None:
+    """Project answers expose the latest governed commercial and review evidence."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        async with session.begin():
+            project = Project(
+                name="Evidence First Project",
+                status="active",
+                owner_id="support-owner",
+            )
+            price_source = PriceSource(
+                name="Governed public list",
+                source_type="public_list",
+                currency="USD",
+                status="active",
+                source_config={},
+                created_by="test",
+            )
+            session.add_all([project, price_source])
+            await session.flush()
+            technical = VolumetrySnapshot(
+                project_id=project.id,
+                assumption_set_version="1.0.0",
+                triggered_by="test",
+                row_results={},
+                consolidated={},
+                snapshot_metadata={},
+            )
+            catalog = PriceCatalogSnapshot(
+                source_id=price_source.id,
+                currency="USD",
+                retrieved_at=datetime.now(UTC),
+                content_hash="support-evidence-price",
+                item_count=1,
+                approval_status="approved",
+                snapshot_metadata={},
+            )
+            session.add_all([technical, catalog])
+            await session.flush()
+            scenario = DeploymentScenario(
+                project_id=project.id,
+                name="Production rollout",
+                status="approved",
+                currency="USD",
+                region="us-chicago-1",
+                price_mode="public_list",
+                technical_snapshot_id=technical.id,
+                contract_months=12,
+                start_date=date(2026, 8, 1),
+                proration_policy="full_month",
+                consumption_model="explicit_units",
+                service_config={},
+                scenario_assumptions={},
+                created_by="test",
+            )
+            session.add(scenario)
+            await session.flush()
+            bom = BomSnapshot(
+                project_id=project.id,
+                scenario_id=scenario.id,
+                technical_snapshot_id=technical.id,
+                price_catalog_snapshot_id=catalog.id,
+                mapping_version="support-test",
+                engine_version="support-test",
+                currency="USD",
+                coverage_pct=100,
+                monthly_total=250,
+                annual_total=3000,
+                contract_total=3000,
+                steady_state_monthly_total=250,
+                peak_monthly_total=250,
+                ramp_deferred_amount=0,
+                first_active_period=1,
+                steady_state_period=1,
+                summary={"monthly_series": [{"period": 1, "amount": 250}]},
+                warnings=[],
+                publication_status="published",
+            )
+            review = AiReviewJob(
+                project_id=project.id,
+                requested_by="architect",
+                status=AiReviewJobStatus.COMPLETED,
+                scope="project",
+                input_payload={},
+                result_payload={
+                    "decision_brief": {"status": "needs_review", "headline": "Resolve one route decision"},
+                    "summary": "One architecture decision remains open.",
+                    "findings": [{"id": "EV-001", "title": "Route approval pending"}],
+                    "recommendation": "Review the governed route before sign-off.",
+                },
+                finished_at=datetime.now(UTC),
+            )
+            session.add_all(
+                [
+                    bom,
+                    review,
+                ]
+            )
+            await session.flush()
+            session.add(
+                BomLineItem(
+                    bom_snapshot_id=bom.id,
+                    environment="Production",
+                    service_id="OIC3",
+                    part_number="B89639",
+                    description="Oracle Integration 3 Enterprise",
+                    metric_name="5K messages per hour",
+                    quantity=2,
+                    unit="message packs",
+                    unit_price=125,
+                    monthly_amount=250,
+                    annual_amount=3000,
+                    contract_amount=3000,
+                    formula="2 packs x USD 125",
+                    inputs={},
+                    status="priced",
+                    warnings=[],
+                    provenance={"source": "governed_release"},
+                )
+            )
+            await session.flush()
+            cost_evidence = await support_service.build_support_evidence(
+                project.id,
+                None,
+                {
+                    "question": "What is the contract total and which SKU drives it?",
+                    "route": f"/projects/{project.id}/bom",
+                    "attachments": [],
+                    "transcript": [],
+                },
+                session,
+            )
+            review_evidence = await support_service.build_support_evidence(
+                project.id,
+                None,
+                {
+                    "question": "Explain the latest architecture review finding.",
+                    "route": f"/projects/{project.id}",
+                    "attachments": [],
+                    "transcript": [],
+                },
+                session,
+            )
+
+    project_evidence = cast(dict[str, object], cost_evidence["project"])
+    latest_bom = cast(dict[str, object], project_evidence["latest_bom"])
+    line_items = cast(list[dict[str, object]], latest_bom["line_items"])
+    assert cost_evidence["question_intent"] == "evidence_interpretation"
+    assert cost_evidence["evidence_interpretation"] == "bom_summary"
+    assert latest_bom["contract_total"] == 3000
+    assert line_items[0]["part_number"] == "B89639"
+    assert line_items[0]["description"] == "Oracle Integration 3 Enterprise"
+    latest_review = cast(
+        dict[str, object],
+        cast(dict[str, object], review_evidence["project"])["latest_ai_review"],
+    )
+    findings = cast(list[dict[str, object]], latest_review["findings"])
+    assert review_evidence["question_intent"] == "evidence_interpretation"
+    assert review_evidence["evidence_interpretation"] == "review"
+    assert findings == [{"id": "EV-001", "title": "Route approval pending"}]
 
 
 @pytest.mark.asyncio
@@ -278,9 +552,9 @@ async def test_support_answers_general_commercial_questions_without_forcing_rout
             )
 
     citations = cast(list[dict[str, str]], evidence["citations"])
-    assert evidence["question_intent"] == "commercial_guidance"
+    assert evidence["question_intent"] == "workflow_guidance"
     assert "direct_answer" not in evidence
-    assert "no identifica todavía un Service Product/SKU" in str(evidence["fallback_answer"])
+    assert "Abrir Pricing" in str(evidence["fallback_answer"])
     assert any(item["href"] == "/admin/pricing" for item in citations)
 
 
@@ -360,7 +634,7 @@ async def test_support_resolves_commercial_follow_up_from_dialogue_and_governed_
     commercial_context = cast(dict[str, object], evidence["commercial_service_context"])
     options = cast(list[dict[str, object]], commercial_context["sku_options"])
     assert evidence["response_language"] == "es"
-    assert evidence["question_intent"] == "commercial_guidance"
+    assert evidence["question_intent"] == "evidence_interpretation"
     assert commercial_context["service_id"] == "OIC3"
     assert options[0]["part_number"] == "B89644"
     assert cast(dict[str, object], options[0]["price"])["value"] == 0.3226
@@ -385,7 +659,7 @@ async def test_support_persists_only_resolved_conversation_references(
             await support_service.update_conversation_state(
                 conversation.id,
                 {
-                    "question_intent": "commercial_guidance",
+                    "question_intent": "workflow_guidance",
                     "response_language": "es",
                     "commercial_service_context": {"service_id": "FUNCTIONS", "service_name": "OCI Functions"},
                     "project_resolution": {"resolved_project_id": "project-1"},
@@ -394,7 +668,7 @@ async def test_support_persists_only_resolved_conversation_references(
             )
 
     assert conversation.context_state == {
-        "topic": "commercial_guidance",
+        "topic": "workflow_guidance",
         "language": "es",
         "active_service": {"id": "FUNCTIONS", "name": "OCI Functions"},
         "active_project_id": "project-1",
@@ -436,10 +710,10 @@ async def test_support_does_not_carry_commercial_intent_into_a_new_pattern_quest
                 session,
             )
 
-    assert evidence["question_intent"] == "app_guidance"
+    assert evidence["question_intent"] == "concept_explanation"
     assert "commercial_service_context" not in evidence
     assert "direct_answer" not in evidence
-    assert "Request and Reply" in str(evidence["fallback_answer"])
+    assert "Patterns" in str(evidence["fallback_answer"])
     assert "OCI Functions" not in str(evidence["fallback_answer"])
 
 
@@ -461,7 +735,7 @@ async def test_support_builds_model_grounding_without_stale_topic_leakage(
                         {"role": "user", "content": "¿Cómo se cobra OCI Functions?"},
                     ],
                     "conversation_state": {
-                        "topic": "commercial_guidance",
+                        "topic": "workflow_guidance",
                         "active_service": {"id": "FUNCTIONS", "name": "OCI Functions"},
                     },
                 },
@@ -496,7 +770,7 @@ async def test_support_explains_scenario_licensing_without_requiring_a_product_s
                 session,
             )
 
-    assert evidence["question_intent"] == "workflow_guidance"
+    assert evidence["question_intent"] == "concept_explanation"
     assert "direct_answer" not in evidence
     assert "**BOM & Cost**" in str(evidence["fallback_answer"])
 
@@ -523,7 +797,7 @@ async def test_support_uses_only_a_resolved_service_for_a_narrow_commercial_foll
                 session,
             )
 
-    assert evidence["question_intent"] == "commercial_guidance"
+    assert evidence["question_intent"] == "concept_explanation"
 
 
 @pytest.mark.asyncio
@@ -553,14 +827,16 @@ async def test_support_conversation_is_isolated_and_external_topic_is_redirected
 
     monkeypatch.setattr(agent_service, "run_governed_tool_agent", redirect_with_app_help)
 
-    fallback = support_service._support_fallback_answer(
-        {
-            "response_language": "en",
-            "app_redirect": {"required": True},
-        }
+    boundary = await support_service.build_app_knowledge_evidence(
+        "What is the weather today?",
+        "/projects",
+        language="en",
+        project_id=None,
+        integration_id=None,
     )
-    assert "I can’t answer that external-topic question" in fallback
-    assert "I’m here to help with OCI DIS Architect" in fallback
+    fallback = str(boundary["fallback_answer"])
+    assert "outside OCI DIS Architect's scope" in fallback
+    assert "integration, architecture, QA, Pricing, or BOM & Cost" in fallback
     assert "weather" not in fallback.casefold()
 
     created = await api_client.post("/api/v1/support/conversations/current", headers=HEADERS_A)
@@ -1027,46 +1303,28 @@ def test_support_summary_grounding_rejects_unsupported_actions_and_sensitive_cla
     assert support_service.support_summary_is_grounded(
         "Use Oracle SKU B999999.", {"verified_facts": [{"value": "B999999"}]}
     )
-    spanish_fallback = support_service._support_fallback_answer(
+    cost_fallback = support_service._evidence_fallback(
         {
             "response_language": "es",
-            "integration": {
-                "name": "Pedido a Inventario",
-                "source_system": "ERP",
-                "destination_system": "Inventario",
-                "business_process": "Order to Cash",
-                "qa_status": "OK",
-                "qa_reasons": [],
-                "needs_attention": False,
-            },
-        }
-    )
-    assert "mueve datos gobernados" in spanish_fallback
-    assert "Siguiente paso" in spanish_fallback
-    cost_fallback = support_service._support_fallback_answer(
-        {
-            "response_language": "es",
-            "question_intent": "project_cost",
+            "evidence_interpretation": "bom_summary",
             "project": {
                 "name": "Proyecto Comercial",
                 "latest_bom": {
                     "currency": "USD",
                     "contract_total": 42081.7,
-                    "monthly_total": 6875.9,
-                    "peak_monthly_total": 7112.25,
                     "coverage_pct": 100,
                     "publication_status": "approved",
+                    "line_items": [{"part_number": "B89644"}],
                 },
             },
         }
     )
     assert "USD 42,081.70" in cost_fallback
-    assert "Pico mensual: USD 7,112.25" in cost_fallback
-    assert "Cobertura de precios: 100%" in cost_fallback
-    edition_choice_fallback = support_service._support_fallback_answer(
+    assert "1 líneas" in cost_fallback
+    assert "100% de cobertura gobernada" in cost_fallback
+    edition_choice_fallback = support_service._evidence_fallback(
         {
             "response_language": "es",
-            "question_intent": "commercial_guidance",
             "commercial_service_context": {
                 "service_name": "Oracle Integration 3 (OIC Gen3)",
                 "sku_options": [

@@ -19,22 +19,39 @@ exist.
 
 The derived manifest is deterministic and committed as
 `app/knowledge/derived_app_knowledge.json`. Its SHA-256 source hash makes drift
-visible without treating generated content as a second source of truth.
+visible without treating generated content as a second source of truth. Each
+retrieval unit carries a deterministic local semantic vector. Release builds
+may also cache OCI Cohere Embed v4 vectors in the same artifact; the build
+script never sends a support question or customer evidence when generating
+that cache.
 
 ## Runtime flow
 
 1. `build_support_evidence` resolves the current route, explicit contexts, and
    relevant live database evidence.
-2. The knowledge retriever ranks curated sections by question terms and current
-   route. Explicit question terms outrank a generic route match.
-3. Capability questions are matched only against explicit `supported_actions`.
-   The resulting `documented`, `not_documented`, or `ambiguous` assessment is an
-   authoritative deterministic input, not a model inference.
-4. The provider receives only the bounded entries, allowed routes, live facts,
-   and answer contract.
-5. The output gate rejects unsupported feature, workflow, route, export, SKU,
+2. The knowledge retriever embeds the question once and ranks small curated
+retrieval units by cosine similarity. It uses cached OCI vectors when they
+exist and a deterministic feature-hash semantic vector otherwise. Route
+affinity is only a bounded tie-breaker.
+   Cached vectors use OCI's native `EmbedText` inference API with
+   `SEARCH_DOCUMENT`; runtime questions use `SEARCH_QUERY`. Embedding transport
+   is intentionally separate from the OpenAI-compatible Chat and Responses
+   transports used for synthesis.
+3. Retrieval assigns one of five response intents: capability inquiry, workflow
+   guidance, concept explanation, evidence interpretation, or off-topic.
+4. For a project or integration question, persisted evidence takes priority:
+   current integration/process context, latest BOM and line items, latest
+   completed Architecture Review, commercial coverage, and the latest scenario
+   including environments and ramp phases.
+5. Capability questions are matched only against explicit `supported_actions`.
+   The resulting `documented` or `not_documented` assessment is an authoritative
+   input, not a model inference.
+6. The provider receives only the bounded entries, allowed routes, live facts,
+   and answer contract. A named Service Product is expanded with commercial
+   evidence only when the question actually asks for pricing, billing, or BOM.
+7. The output gate rejects unsupported feature, workflow, route, export, SKU,
    price, or mutation claims.
-6. When the provider is unavailable or its answer fails grounding, the App
+8. When the provider is unavailable or its answer fails grounding, the App
    returns a deterministic answer from the same knowledge entry. Unknown
    capabilities are stated as not documented and point to the closest executable
    workflow. User-visible citations identify those sections as `Based on` links.
@@ -73,6 +90,7 @@ or create a candidate.
 ```bash
 cd apps/api
 ../../.venv/bin/python scripts/build_app_knowledge.py
+../../.venv/bin/python scripts/build_app_knowledge.py --provider-embeddings
 ../../.venv/bin/python scripts/build_app_knowledge.py --check
 ```
 
@@ -82,6 +100,8 @@ the executable router. Tests also inject a fake route and fake CSV export to
 prove the negative gate. Provider tests use mocked transport and do not call
 OCI.
 The support capability matrix additionally asserts the `openai.gpt-oss-120b`
-use-case override, documented versus absent capabilities, governed export media
-types, source attribution, and placeholder-free App routes through a mocked
-provider execution.
+use-case override, the five-intent contract, documented versus absent
+capabilities, governed export media types, source attribution, and
+placeholder-free App routes through a mocked provider execution. Embedding
+tests supply provider vectors and a mocked embedding transport, and evidence
+tests seed BOM lines and Architecture Review results. No test calls OCI.

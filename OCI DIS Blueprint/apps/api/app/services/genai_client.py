@@ -28,6 +28,7 @@ LOGGER = structlog.get_logger(__name__)
 
 RETRYABLE_STATUS_CODES = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 RESPONSES_UNSUPPORTED_STATUS_CODES = frozenset({404, 405})
+OCI_EMBED_TEXT_MAX_INPUTS = 95
 _RESPONSES_CAPABILITY_CACHE: dict[str, tuple[bool, float]] = {}
 
 PROMPT_REDACTION_POLICY = [
@@ -78,6 +79,18 @@ class GenAiAgentResult:
     transport: Literal["responses", "chat_completions"] | None = None
     retry_count: int = 0
     guardrails_status: Literal["completed", "blocked", "failed", "skipped"] = "skipped"
+
+
+@dataclass(frozen=True)
+class GenAiEmbeddingResult:
+    """Normalized OCI native EmbedText response."""
+
+    status: Literal["not_configured", "completed", "failed"]
+    model: str
+    embeddings: list[list[float]]
+    error: str | None = None
+    opc_request_id: str | None = None
+    retry_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -184,6 +197,148 @@ def _responses_url(runtime: OciGenAiRuntimeConfig) -> str:
     if runtime.base_url.endswith("/20231130/actions/v1"):
         return f"{runtime.base_url}/responses"
     return f"{runtime.base_url}/responses"
+
+
+def _native_embed_url(runtime: OciGenAiRuntimeConfig) -> str:
+    """Return OCI's native EmbedText endpoint for the inference host."""
+
+    openai_suffix = "/openai/v1"
+    if runtime.base_url.endswith(openai_suffix):
+        origin = runtime.base_url[: -len(openai_suffix)]
+        return f"{origin}/20231130/actions/embedText"
+    native_suffix = "/20231130/actions"
+    if runtime.base_url.endswith(native_suffix):
+        return f"{runtime.base_url}/embedText"
+    return f"{runtime.base_url}/20231130/actions/embedText"
+
+
+def _embedding_vectors(payload: object) -> list[list[float]]:
+    """Extract float embeddings from OCI native and legacy-compatible payloads."""
+
+    if not isinstance(payload, dict):
+        raise ValueError("embedding_response_has_no_data")
+    rows = payload.get("embeddings")
+    if not isinstance(rows, list):
+        by_type = payload.get("embeddingsByType")
+        if isinstance(by_type, dict):
+            rows = by_type.get("float")
+    if isinstance(rows, list):
+        return [
+            [float(component) for component in row]
+            for row in rows
+            if isinstance(row, list)
+        ]
+    legacy_rows = payload.get("data")
+    if isinstance(legacy_rows, list):
+        ordered = sorted(
+            (item for item in legacy_rows if isinstance(item, dict)),
+            key=lambda item: int(item.get("index") or 0),
+        )
+        return [
+            [float(component) for component in item.get("embedding", [])]
+            for item in ordered
+        ]
+    raise ValueError("embedding_response_has_no_data")
+
+
+async def generate_embeddings(
+    texts: list[str],
+    settings: Settings,
+    *,
+    input_type: Literal["SEARCH_DOCUMENT", "SEARCH_QUERY"] = "SEARCH_DOCUMENT",
+) -> GenAiEmbeddingResult:
+    """Embed bounded KB text through OCI without sharing synthesis state.
+
+    Callers own the deterministic local fallback. Keeping this transport small
+    makes provider usage fully mockable and prevents embedding failures from
+    changing the support assistant's availability.
+    """
+
+    runtime = _resolved_oci_config(settings)
+    api_key = _read_api_key(runtime.api_key_file)
+    model_id = settings.OCI_GENAI_EMBEDDING_MODEL_ID.strip()
+    model_name = settings.OCI_GENAI_EMBEDDING_MODEL_NAME.strip() or model_id
+    if not api_key or not runtime.compartment_id or not model_id:
+        return GenAiEmbeddingResult(
+            status="not_configured",
+            model=model_name,
+            embeddings=[],
+        )
+    if not texts:
+        return GenAiEmbeddingResult(
+            status="completed",
+            model=model_name,
+            embeddings=[],
+        )
+    request_id = str(uuid.uuid4())
+    try:
+        embeddings: list[list[float]] = []
+        retry_count = 0
+        provider_request_id = request_id
+        async with _create_provider_http_client(runtime) as client:
+            for offset in range(0, len(texts), OCI_EMBED_TEXT_MAX_INPUTS):
+                chunk = texts[offset : offset + OCI_EMBED_TEXT_MAX_INPUTS]
+                request_id = str(uuid.uuid4())
+                response, retries = await _post_with_retry(
+                    client,
+                    url=_native_embed_url(runtime),
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "opc-request-id": request_id,
+                    },
+                    json_payload={
+                        "servingMode": {
+                            "servingType": "ON_DEMAND",
+                            "modelId": model_id,
+                        },
+                        "compartmentId": runtime.compartment_id,
+                        "inputs": chunk,
+                        "inputType": input_type,
+                        "truncate": "END",
+                        "embeddingTypes": ["float"],
+                        "outputDimensions": 512,
+                    },
+                    settings=settings,
+                    operation="knowledge_embeddings",
+                )
+                response.raise_for_status()
+                chunk_embeddings = _embedding_vectors(response.json())
+                if len(chunk_embeddings) != len(chunk) or any(
+                    not vector for vector in chunk_embeddings
+                ):
+                    raise ValueError("embedding_response_count_mismatch")
+                embeddings.extend(chunk_embeddings)
+                retry_count += retries
+                provider_request_id = response.headers.get("opc-request-id", request_id)
+        return GenAiEmbeddingResult(
+            status="completed",
+            model=model_name,
+            embeddings=embeddings,
+            opc_request_id=provider_request_id,
+            retry_count=retry_count,
+        )
+    except Exception as exc:  # pragma: no cover - provider behavior is environment-specific.
+        error = (
+            _safe_http_error(exc.response)
+            if isinstance(exc, httpx.HTTPStatusError)
+            else exc.__class__.__name__
+        )
+        await LOGGER.awarning(
+            "oci_genai_embeddings_failed",
+            error_type=exc.__class__.__name__,
+            error=error,
+            model=model_name,
+            region=runtime.region,
+        )
+        return GenAiEmbeddingResult(
+            status="failed",
+            model=model_name,
+            embeddings=[],
+            error="embedding_provider_unavailable",
+            opc_request_id=request_id,
+        )
 
 
 def _capability_cache_key(runtime: OciGenAiRuntimeConfig, settings: Settings) -> str:

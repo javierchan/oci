@@ -25,6 +25,127 @@ def _settings(key_path: Path, **overrides: object) -> Settings:
 
 
 @pytest.mark.asyncio
+async def test_embeddings_use_native_oci_contract_without_network(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """KB embeddings use EmbedText with explicit retrieval semantics."""
+
+    key_path = tmp_path / "api_key"
+    key_path.write_text("sk-test", encoding="utf-8")
+    calls: list[dict[str, object]] = []
+
+    class FakeClient:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+        async def post(
+            self,
+            url: str,
+            *,
+            headers: dict[str, str],
+            json: dict[str, object],
+        ) -> Response:
+            calls.append({"url": url, "headers": headers, "json": json})
+            return Response(
+                200,
+                request=Request("POST", url),
+                headers={"opc-request-id": "embed-native"},
+                json={"embeddings": [[0.25, -0.5, 0.75]]},
+            )
+
+    monkeypatch.setattr(genai_client.httpx, "AsyncClient", FakeClient)
+    result = await genai_client.generate_embeddings(
+        ["governed product evidence"],
+        _settings(key_path),
+        input_type="SEARCH_QUERY",
+    )
+
+    assert result.status == "completed"
+    assert result.model == "Cohere Embed v4.0"
+    assert result.embeddings == [[0.25, -0.5, 0.75]]
+    assert result.opc_request_id == "embed-native"
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["url"] == "https://example.test/20231130/actions/embedText"
+    headers = call["headers"]
+    assert isinstance(headers, dict)
+    assert headers["Authorization"] == "Bearer sk-test"
+    assert "OpenAI-Project" not in headers
+    payload = call["json"]
+    assert isinstance(payload, dict)
+    assert payload == {
+        "servingMode": {
+            "servingType": "ON_DEMAND",
+            "modelId": "cohere.embed-v4.0",
+        },
+        "compartmentId": "ocid1.compartment.oc1..test",
+        "inputs": ["governed product evidence"],
+        "inputType": "SEARCH_QUERY",
+        "truncate": "END",
+        "embeddingTypes": ["float"],
+        "outputDimensions": 512,
+    }
+
+
+@pytest.mark.asyncio
+async def test_embeddings_batch_below_oci_input_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A large manifest is split below OCI's strict 96-input ceiling."""
+
+    key_path = tmp_path / "api_key"
+    key_path.write_text("sk-test", encoding="utf-8")
+    batch_sizes: list[int] = []
+
+    class FakeClient:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+        async def post(
+            self,
+            url: str,
+            *,
+            headers: dict[str, str],
+            json: dict[str, object],
+        ) -> Response:
+            del headers
+            inputs = json["inputs"]
+            assert isinstance(inputs, list)
+            batch_sizes.append(len(inputs))
+            return Response(
+                200,
+                request=Request("POST", url),
+                json={"embeddingsByType": {"float": [[float(len(batch_sizes))]] * len(inputs)}},
+            )
+
+    monkeypatch.setattr(genai_client.httpx, "AsyncClient", FakeClient)
+    result = await genai_client.generate_embeddings(
+        [f"unit-{index}" for index in range(208)],
+        _settings(key_path),
+    )
+
+    assert result.status == "completed"
+    assert batch_sizes == [95, 95, 18]
+    assert len(result.embeddings) == 208
+    assert result.embeddings[0] == [1.0]
+    assert result.embeddings[-1] == [3.0]
+
+
+@pytest.mark.asyncio
 async def test_provider_retries_429_and_sends_hashed_safety_identifier(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     OCI_GENAI_SUPPORT_MODEL_NAME: str = "OpenAI gpt-oss-120b"
     OCI_GENAI_KNOWLEDGE_MODEL_ID: str = "openai.gpt-oss-120b"
     OCI_GENAI_KNOWLEDGE_MODEL_NAME: str = "OpenAI gpt-oss-120b"
+    OCI_GENAI_EMBEDDING_MODEL_ID: str = "cohere.embed-v4.0"
+    OCI_GENAI_EMBEDDING_MODEL_NAME: str = "Cohere Embed v4.0"
     OCI_GENAI_LARGE_READ_TIMEOUT_SECONDS: float = 300.0
     OCI_GENAI_LARGE_MAX_OUTPUT_TOKENS: int = 3072
     OCI_GENAI_PROJECT_ID: str = ""

@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import math
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -43,32 +44,8 @@ REPO_ROOT = _discover_repo_root(KNOWLEDGE_DIR)
 CURATED_PATH = KNOWLEDGE_DIR / "app_knowledge.yaml"
 DERIVED_PATH = KNOWLEDGE_DIR / "derived_app_knowledge.json"
 ROUTE_PARAMETER_PATTERN = re.compile(r"\[[^/]+\]|\{[^/]+\}")
-TOKEN_PATTERN = re.compile(r"[a-z0-9][a-z0-9&+-]*", re.IGNORECASE)
-STOPWORDS = frozenset(
-    {
-        "a", "an", "and", "app", "can", "de", "del", "el", "en", "es", "esta", "for",
-        "i", "la", "las", "los", "of", "or", "para", "por", "que", "the", "to", "un",
-        "una", "use", "with", "y",
-    }
-)
-ROUTE_CONTEXT_QUESTION_PATTERN = re.compile(
-    r"\b(?:what can i do|how (?:do|can) i|this (?:page|view)|here|"
-    r"qu[eé] puedo hacer|c[oó]mo (?:uso|puedo)|esta (?:p[aá]gina|vista)|aqu[ií])\b",
-    re.IGNORECASE,
-)
-TOKEN_ALIASES = {
-    "archivo": "workbook",
-    "archivos": "workbook",
-    "byol": "licensing",
-    "escenario": "scenario",
-    "escenarios": "scenario",
-    "filas": "rows",
-    "importacion": "import",
-    "importar": "import",
-    "importo": "import",
-    "licencia": "licensing",
-    "licencias": "licensing",
-}
+LOCAL_EMBEDDING_MODEL = "local-semantic-hash-v1"
+LOCAL_EMBEDDING_DIMENSIONS = 384
 
 
 class KnowledgeValidationError(ValueError):
@@ -230,6 +207,130 @@ def _derive_entities(repo_root: Path) -> list[dict[str, str]]:
     return rows
 
 
+def _normalized_embedding_text(value: object) -> str:
+    normalized = str(value).casefold()
+    return (
+        normalized.replace("á", "a")
+        .replace("é", "e")
+        .replace("í", "i")
+        .replace("ó", "o")
+        .replace("ú", "u")
+        .replace("ñ", "n")
+    )
+
+
+def local_semantic_embedding(value: object) -> list[float]:
+    """Create a deterministic dense vector for offline semantic retrieval.
+
+    This is a feature-hashed character/word n-gram embedding, not a keyword
+    score. It provides a stable fallback when OCI embeddings are unavailable
+    and keeps CI completely network independent.
+    """
+
+    text = f"  {_normalized_embedding_text(value)}  "
+    features = [text[index : index + 3] for index in range(max(0, len(text) - 2))]
+    words = re.findall(r"[a-z0-9]+", text)
+    features.extend(f"w:{word}" for word in words)
+    features.extend(f"b:{left}:{right}" for left, right in zip(words, words[1:]))
+    vector = [0.0] * LOCAL_EMBEDDING_DIMENSIONS
+    for feature in features:
+        digest = hashlib.blake2b(feature.encode("utf-8"), digest_size=8).digest()
+        bucket = int.from_bytes(digest[:4], "big") % LOCAL_EMBEDDING_DIMENSIONS
+        sign = 1.0 if digest[4] & 1 else -1.0
+        vector[bucket] += sign
+    magnitude = math.sqrt(sum(component * component for component in vector))
+    return [round(component / magnitude, 8) for component in vector] if magnitude else vector
+
+
+def cosine_similarity(left: list[float], right: list[float]) -> float:
+    if len(left) != len(right) or not left:
+        return 0.0
+    left_norm = math.sqrt(sum(item * item for item in left))
+    right_norm = math.sqrt(sum(item * item for item in right))
+    if left_norm == 0.0 or right_norm == 0.0:
+        return 0.0
+    return sum(a * b for a, b in zip(left, right)) / (left_norm * right_norm)
+
+
+def _retrieval_units(curated: dict[str, object]) -> list[dict[str, object]]:
+    units: list[dict[str, object]] = []
+    for raw_section in _as_list(curated.get("sections")):
+        if not isinstance(raw_section, dict):
+            continue
+        section_id = str(raw_section.get("id") or "")
+        section_name = str(raw_section.get("name") or section_id)
+        for kind, intent, value in (
+            ("section_purpose", "concept_explanation", raw_section.get("purpose")),
+            ("when_to_use", "concept_explanation", raw_section.get("when_to_use")),
+        ):
+            if value:
+                units.append(
+                    {
+                        "id": f"{section_id}:{kind}",
+                        "section_id": section_id,
+                        "kind": kind,
+                        "intent": intent,
+                        "mode": "knowledge",
+                        "text": f"{section_name}. {value}",
+                    }
+                )
+        for index, step in enumerate(_as_list(raw_section.get("steps")), start=1):
+            units.append(
+                {
+                    "id": f"{section_id}:step:{index}",
+                    "section_id": section_id,
+                    "kind": "step",
+                    "intent": "workflow_guidance",
+                    "mode": "knowledge",
+                    "text": f"How to use {section_name}. Step {index}: {step}",
+                }
+            )
+        for index, action in enumerate(_as_list(raw_section.get("supported_actions")), start=1):
+            units.append(
+                {
+                    "id": f"{section_id}:capability:{index}",
+                    "section_id": section_id,
+                    "kind": "capability",
+                    "intent": "capability_inquiry",
+                    "mode": "knowledge",
+                    "capability_status": "documented",
+                    "answer": str(action),
+                    "text": f"OCI DIS Architect supports {action} in {section_name}.",
+                }
+            )
+        for index, claim in enumerate(_as_list(raw_section.get("unsupported_claims")), start=1):
+            units.append(
+                {
+                    "id": f"{section_id}:unsupported:{index}",
+                    "section_id": section_id,
+                    "kind": "unsupported_capability",
+                    "intent": "capability_inquiry",
+                    "mode": "knowledge",
+                    "capability_status": "not_documented",
+                    "answer": str(claim),
+                    "text": f"OCI DIS Architect does not document support for {claim}.",
+                }
+            )
+    for index, raw in enumerate(_as_list(curated.get("semantic_examples")), start=1):
+        if not isinstance(raw, dict) or not raw.get("text"):
+            continue
+        units.append(
+            {
+                "id": str(raw.get("id") or f"example:{index}"),
+                "section_id": str(raw.get("section_id") or ""),
+                "kind": str(raw.get("kind") or "example"),
+                "intent": str(raw.get("intent") or "concept_explanation"),
+                "mode": str(raw.get("mode") or "knowledge"),
+                "capability_status": raw.get("capability_status"),
+                "answer": raw.get("answer"),
+                "text": str(raw["text"]),
+            }
+        )
+    for unit in units:
+        unit["local_embedding"] = local_semantic_embedding(unit["text"])
+    return units
+
+
 def build_derived_manifest(repo_root: Path = REPO_ROOT) -> dict[str, object]:
     """Build a deterministic manifest from executable repository contracts."""
 
@@ -244,13 +345,26 @@ def build_derived_manifest(repo_root: Path = REPO_ROOT) -> dict[str, object]:
         or str(endpoint["path"]).endswith("/xlsx")
         or str(endpoint["path"]).endswith("/brief")
     ]
+    curated = _load_curated(CURATED_PATH)
+    retrieval_units = _retrieval_units(curated)
     facts = {
         "routes": routes,
         "endpoints": endpoints,
         "entities": entities,
         "exports": exports,
+        "retrieval_units": retrieval_units,
     }
-    return {"schema_version": "1.0.0", "source_hash": _stable_hash(facts), **facts}
+    return {
+        "schema_version": "2.0.0",
+        "source_hash": _stable_hash(facts),
+        "embedding_spaces": {
+            "local": {
+                "model": LOCAL_EMBEDDING_MODEL,
+                "dimensions": LOCAL_EMBEDDING_DIMENSIONS,
+            }
+        },
+        **facts,
+    }
 
 
 def _load_curated(curated_path: Path = CURATED_PATH) -> dict[str, object]:
@@ -375,58 +489,45 @@ def load_knowledge_base() -> dict[str, object]:
     }
 
 
-def _tokens(value: object) -> set[str]:
-    tokens: set[str] = set()
-    for item in TOKEN_PATTERN.findall(str(value)):
-        normalized = item.casefold()
-        normalized = (
-            normalized.replace("á", "a")
-            .replace("é", "e")
-            .replace("í", "i")
-            .replace("ó", "o")
-            .replace("ú", "u")
-        )
-        normalized = TOKEN_ALIASES.get(normalized, normalized)
-        if len(normalized) > 1 and normalized not in STOPWORDS:
-            tokens.add(normalized)
-    return tokens
-
-
-def retrieve_knowledge(question: str, current_route: str, *, limit: int = 3) -> dict[str, object]:
-    """Select bounded entries using route affinity plus deterministic term overlap."""
+def retrieve_semantic_knowledge(
+    question: str,
+    current_route: str,
+    *,
+    query_embedding: list[float] | None = None,
+    embedding_space: str = "local",
+    limit: int = 3,
+) -> dict[str, object]:
+    """Retrieve KB units by cosine similarity, with route as a bounded tie-break."""
 
     knowledge = load_knowledge_base()
-    question_tokens = _tokens(question)
-    scored: list[tuple[int, int, dict[str, object]]] = []
-    for raw in _as_list(knowledge.get("sections")):
-        if not isinstance(raw, dict):
+    derived = knowledge["derived"]
+    if not isinstance(derived, dict):
+        raise KnowledgeValidationError("Derived knowledge is missing")
+    units = [dict(item) for item in _as_list(derived.get("retrieval_units")) if isinstance(item, dict)]
+    vector_key = "provider_embedding" if embedding_space == "provider" else "local_embedding"
+    query_vector = query_embedding or local_semantic_embedding(question)
+    sections = {
+        str(item.get("id")): dict(item)
+        for item in _as_list(knowledge.get("sections"))
+        if isinstance(item, dict)
+    }
+    scored: list[tuple[float, str, dict[str, object]]] = []
+    for unit in units:
+        raw_vector = unit.get(vector_key)
+        if not isinstance(raw_vector, list):
             continue
-        section = dict(raw)
-        searchable = " ".join(
-            str(section.get(key) or "")
-            for key in ("name", "purpose", "when_to_use", "keywords", "supported_actions")
-        )
-        lexical_score = len(question_tokens & _tokens(searchable)) * 4
-        score = lexical_score
-        if any(_route_matches(current_route, str(route)) for route in _as_list(section.get("routes"))):
-            # The current view is useful context, but an explicit question such
-            # as "how do I import?" must outrank the generic Projects route.
-            # Route affinity becomes authoritative only for contextual prompts
-            # such as "what can I do here?".
-            score += 7 if ROUTE_CONTEXT_QUESTION_PATTERN.search(question) else 1
-        if score:
-            scored.append((score, lexical_score, section))
-    scored.sort(key=lambda item: (-item[0], str(item[2].get("name") or "")))
-    entries = [item for _, _, item in scored[:limit]]
-    if not entries:
-        entries = [
-            dict(item)
-            for item in _as_list(knowledge.get("sections"))
-            if isinstance(item, dict) and item.get("id") == "projects"
-        ][:1]
-    documented = any(lexical_score > 0 for _, lexical_score, _ in scored) or bool(
-        ROUTE_CONTEXT_QUESTION_PATTERN.search(question)
-    )
+        vector = [float(item) for item in raw_vector]
+        score = cosine_similarity(query_vector, vector)
+        section = sections.get(str(unit.get("section_id") or ""))
+        if section and any(_route_matches(current_route, str(route)) for route in _as_list(section.get("routes"))):
+            score += 0.002
+        scored.append((score, str(unit.get("id") or ""), unit))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    matches = [dict(unit, similarity=round(score, 6)) for score, _, unit in scored[:limit]]
+    best = matches[0] if matches else {}
+    section_ids = [str(item.get("section_id") or "") for item in matches]
+    entries = [sections[item] for item in dict.fromkeys(section_ids) if item in sections]
+    documented = bool(best) and str(best.get("mode") or "knowledge") != "boundary"
     allowed_routes = sorted({str(route) for item in entries for route in _as_list(item.get("routes"))})
     export_formats = sorted(
         {
@@ -440,6 +541,11 @@ def retrieve_knowledge(question: str, current_route: str, *, limit: int = 3) -> 
     return {
         "documented": documented,
         "entries": entries,
+        "matches": matches,
+        "top_match": best or None,
+        "intent": str(best.get("intent") or "concept_explanation"),
+        "mode": str(best.get("mode") or "knowledge"),
+        "embedding_space": embedding_space,
         "allowed_routes": allowed_routes,
         "allowed_export_media_types": export_formats,
         "source_hash": knowledge["source_hash"],

@@ -66,6 +66,15 @@ def _redis_client(url: str) -> Redis:
     return client
 
 
+async def close_genai_telemetry_clients() -> None:
+    """Close cached Redis pools before a short-lived event loop exits."""
+
+    clients = list(_REDIS_CLIENTS.values())
+    _REDIS_CLIENTS.clear()
+    for client in clients:
+        await client.aclose()
+
+
 def _record_local(metric: GenAiMetricName, amount: int, timestamp: str) -> None:
     """Maintain a process fallback without storing request or actor dimensions."""
 
