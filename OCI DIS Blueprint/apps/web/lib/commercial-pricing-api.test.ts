@@ -115,6 +115,33 @@ describe("commercial catalog API client", () => {
     );
   });
 
+  it("lists governed products selectable for one BOM scenario", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.listSelectableOciProducts("project-1", {
+      search: "Database",
+      page: 2,
+      page_size: 8,
+      scenario_id: "scenario-1",
+    });
+
+    expect(requestPath(fetchMock.mock.calls[0])).toBe(
+      "/api/v1/projects/project-1/selectable-products?search=Database&page=2&page_size=8&scenario_id=scenario-1",
+    );
+  });
+
+  it("loads governed metrics for a manually selected OCI product", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.getSelectableOciProductMetrics("project-1", "DATABASE_MANAGEMENT");
+
+    expect(requestPath(fetchMock.mock.calls[0])).toBe(
+      "/api/v1/projects/project-1/selectable-products/DATABASE_MANAGEMENT/metric-options",
+    );
+  });
+
   it("uploads an XLSX document as multipart evidence", async () => {
     const fetchMock = vi.fn().mockResolvedValue(response());
     vi.stubGlobal("fetch", fetchMock);

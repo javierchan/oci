@@ -891,6 +891,30 @@ class ScenarioMetricOptionResponse(BaseModel):
     variants: list["ScenarioSkuVariantResponse"] = Field(default_factory=list)
 
 
+class SelectableProductResponse(BaseModel):
+    """One approved OCI product that can be added explicitly to a BOM scenario."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    service_id: str
+    product_name: str
+    category: str
+    classification: str
+    readiness: str
+    already_in_scenario: bool
+
+
+class SelectableProductPageResponse(BaseModel):
+    """Paginated approved OCI product catalog for scenario composition."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    items: list[SelectableProductResponse] = Field(default_factory=list)
+    page: int
+    page_size: int
+    total: int
+
+
 class ScenarioSkuVariantResponse(BaseModel):
     """One approved commercial variant selectable for an environment metric."""
 

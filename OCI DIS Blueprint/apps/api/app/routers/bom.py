@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,8 @@ from app.schemas.pricing import (
     DeploymentScenarioListResponse,
     DeploymentScenarioResponse,
     ScenarioAssistantResponse,
+    ScenarioMetricOptionResponse,
+    SelectableProductPageResponse,
 )
 from app.schemas.agent import AgentCreateRequest, AgentRunResponse
 from app.services import agent_service, bom_service, export_service
@@ -40,6 +42,46 @@ def _require_bom_run(role: str | None) -> None:
 
 def _require_bom_approve(role: str | None) -> None:
     require_roles(role, {"Admin", "Architect"}, error_code="BOM_APPROVE_ROLE_REQUIRED")
+
+
+@router.get(
+    "/selectable-products",
+    response_model=SelectableProductPageResponse,
+    summary="List approved OCI products selectable for a BOM scenario",
+)
+async def list_selectable_products(
+    project_id: str,
+    search: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    scenario_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> SelectableProductPageResponse:
+    _require_bom_run(actor_role)
+    return await bom_service.list_selectable_products(
+        project_id,
+        db,
+        search=search,
+        page=page,
+        page_size=page_size,
+        scenario_id=scenario_id,
+    )
+
+
+@router.get(
+    "/selectable-products/{service_id}/metric-options",
+    response_model=list[ScenarioMetricOptionResponse],
+    summary="Resolve governed metric options for one selected OCI product",
+)
+async def get_selectable_product_metric_options(
+    project_id: str,
+    service_id: str,
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> list[ScenarioMetricOptionResponse]:
+    _require_bom_run(actor_role)
+    return await bom_service.selectable_product_metric_options(project_id, service_id, db)
 
 
 @router.get("/deployment-scenarios", response_model=DeploymentScenarioListResponse, summary="List deployment scenarios")

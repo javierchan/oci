@@ -13888,6 +13888,78 @@
         "title": "ScopedRecalculationRequest",
         "type": "object"
       },
+      "SelectableProductPageResponse": {
+        "additionalProperties": false,
+        "description": "Paginated approved OCI product catalog for scenario composition.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SelectableProductResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "SelectableProductPageResponse",
+        "type": "object"
+      },
+      "SelectableProductResponse": {
+        "additionalProperties": false,
+        "description": "One approved OCI product that can be added explicitly to a BOM scenario.",
+        "properties": {
+          "already_in_scenario": {
+            "title": "Already In Scenario",
+            "type": "boolean"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "classification": {
+            "title": "Classification",
+            "type": "string"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "readiness": {
+            "title": "Readiness",
+            "type": "string"
+          },
+          "service_id": {
+            "title": "Service Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_id",
+          "product_name",
+          "category",
+          "classification",
+          "readiness",
+          "already_in_scenario"
+        ],
+        "title": "SelectableProductResponse",
+        "type": "object"
+      },
       "ServiceEvidenceSourceResponse": {
         "additionalProperties": false,
         "description": "Trusted evidence source tracked for verification.",
@@ -25414,6 +25486,176 @@
           }
         },
         "summary": "Approve a deployment scenario",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/selectable-products": {
+      "get": {
+        "operationId": "list_selectable_products_api_v1_projects__project_id__selectable_products_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scenario_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scenario Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectableProductPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List approved OCI products selectable for a BOM scenario",
+        "tags": [
+          "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/selectable-products/{service_id}/metric-options": {
+      "get": {
+        "operationId": "get_selectable_product_metric_options_api_v1_projects__project_id__selectable_products__service_id__metric_options_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "service_id",
+            "required": true,
+            "schema": {
+              "title": "Service Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScenarioMetricOptionResponse"
+                  },
+                  "title": "Response Get Selectable Product Metric Options Api V1 Projects  Project Id  Selectable Products  Service Id  Metric Options Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve governed metric options for one selected OCI product",
         "tags": [
           "Bill of Materials"
         ]

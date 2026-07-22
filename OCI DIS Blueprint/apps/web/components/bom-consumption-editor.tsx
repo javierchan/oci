@@ -7,14 +7,16 @@ import {
   ChevronRight,
   Clock3,
   LayoutList,
+  Loader2,
   PackageCheck,
   Plus,
   Search,
   Table2,
   Trash2,
 } from "lucide-react";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
+import { api, getErrorMessage } from "@/lib/api";
 import {
   explicitPlanReadiness,
   explicitQuantityPhase,
@@ -26,12 +28,16 @@ import type {
   DeploymentRampPhaseInput,
   ScenarioMetricOption,
   ScenarioSkuVariant,
+  SelectableOciProduct,
+  SelectableOciProductPage,
 } from "@/lib/types";
 
 type ConsumptionEditorProps = {
+  projectId: string;
   contractMonths: number;
   environments: DeploymentEnvironmentInput[];
   metricOptions: ScenarioMetricOption[];
+  detectedServiceIds: string[];
   onChange: (_environments: DeploymentEnvironmentInput[]) => void;
 };
 
@@ -91,9 +97,11 @@ function basisLabel(basis: string): string {
 }
 
 export function BomConsumptionEditor({
+  projectId,
   contractMonths,
   environments,
   metricOptions,
+  detectedServiceIds,
   onChange,
 }: ConsumptionEditorProps): JSX.Element {
   const [mode, setMode] = useState<"standard" | "monthly">("standard");
@@ -101,6 +109,16 @@ export function BomConsumptionEditor({
   const [selectedProducts, setSelectedProducts] = useState<Record<number, string>>({});
   const [metricToAdd, setMetricToAdd] = useState<Record<number, string>>({});
   const [addMetricOpen, setAddMetricOpen] = useState<Set<number>>(new Set());
+  const [catalogEnvironment, setCatalogEnvironment] = useState<number | null>(null);
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogPage, setCatalogPage] = useState(1);
+  const [catalogResult, setCatalogResult] = useState<SelectableOciProductPage | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
+  const [rehydrationError, setRehydrationError] = useState("");
+  const [addingServiceId, setAddingServiceId] = useState("");
+  const [supplementalMetricOptions, setSupplementalMetricOptions] = useState<ScenarioMetricOption[]>([]);
+  const rehydratingServices = useRef(new Set<string>());
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(
     () => new Set(environments.flatMap((environment, index) => {
       const serviceId = environment.phases[0]?.service_id;
@@ -108,14 +126,58 @@ export function BomConsumptionEditor({
     })),
   );
   const readiness = useMemo(() => explicitPlanReadiness(environments), [environments]);
+  const detectedServices = useMemo(() => new Set(detectedServiceIds), [detectedServiceIds]);
+  const allMetricOptions = useMemo(() => {
+    const unique = new Map<string, ScenarioMetricOption>();
+    for (const option of [...metricOptions, ...supplementalMetricOptions]) {
+      unique.set(optionKey(option), option);
+    }
+    return [...unique.values()];
+  }, [metricOptions, supplementalMetricOptions]);
 
   const optionsByService = useMemo(() => {
     const grouped = new Map<string, ScenarioMetricOption[]>();
-    for (const option of metricOptions) {
+    for (const option of allMetricOptions) {
       grouped.set(option.service_id, [...(grouped.get(option.service_id) ?? []), option]);
     }
     return grouped;
-  }, [metricOptions]);
+  }, [allMetricOptions]);
+
+  useEffect(() => {
+    const plannedServiceIds = new Set(
+      environments.flatMap((environment) => environment.phases.map((phase) => phase.service_id).filter(Boolean)),
+    );
+    const loadedServiceIds = new Set(allMetricOptions.map((option) => option.service_id));
+    for (const serviceId of plannedServiceIds) {
+      if (!serviceId || loadedServiceIds.has(serviceId) || rehydratingServices.current.has(serviceId)) continue;
+      rehydratingServices.current.add(serviceId);
+      void api.getSelectableOciProductMetrics(projectId, serviceId)
+        .then((options) => {
+          setSupplementalMetricOptions((current) => [...current, ...options]);
+          setRehydrationError("");
+        })
+        .catch((error: unknown) => {
+          setRehydrationError(getErrorMessage(error, `Commercial details for ${serviceId} could not be restored.`));
+        })
+        .finally(() => rehydratingServices.current.delete(serviceId));
+    }
+  }, [allMetricOptions, environments, projectId]);
+
+  useEffect(() => {
+    if (catalogEnvironment === null) return undefined;
+    const timeout = window.setTimeout(() => {
+      setCatalogLoading(true);
+      setCatalogError("");
+      void api.listSelectableOciProducts(projectId, {
+        search: catalogQuery.trim() || undefined,
+        page: catalogPage,
+        page_size: 8,
+      }).then(setCatalogResult).catch((error: unknown) => {
+        setCatalogError(getErrorMessage(error, "The governed OCI product catalog could not be loaded."));
+      }).finally(() => setCatalogLoading(false));
+    }, 200);
+    return () => window.clearTimeout(timeout);
+  }, [catalogEnvironment, catalogPage, catalogQuery, projectId]);
 
   function patchEnvironment(index: number, patch: Partial<DeploymentEnvironmentInput>): void {
     onChange(environments.map((environment, current) => current === index ? { ...environment, ...patch } : environment));
@@ -144,7 +206,49 @@ export function BomConsumptionEditor({
 
   function availableOptions(environmentIndex: number): ScenarioMetricOption[] {
     const existing = new Set(environments[environmentIndex].phases.map((phase) => `${phase.service_id}:${phase.metric_key}`));
-    return metricOptions.filter((candidate) => !existing.has(optionKey(candidate)));
+    return allMetricOptions.filter((candidate) => !existing.has(optionKey(candidate)));
+  }
+
+  async function addCatalogProduct(environmentIndex: number, product: SelectableOciProduct): Promise<void> {
+    setAddingServiceId(product.service_id);
+    setCatalogError("");
+    try {
+      const options = await api.getSelectableOciProductMetrics(projectId, product.service_id);
+      setSupplementalMetricOptions((current) => [...current, ...options]);
+      const existing = new Set(
+        environments[environmentIndex].phases.map((phase) => `${phase.service_id}:${phase.metric_key}`),
+      );
+      const productPhases = options
+        .filter((option) => !existing.has(optionKey(option)))
+        .filter((option, index) => option.default_selected || (index === 0 && !options.some((candidate) => candidate.default_selected)))
+        .map((option) => explicitQuantityPhase(option, contractMonths));
+      if (productPhases.length > 0) {
+        patchEnvironment(environmentIndex, {
+          phases: [...environments[environmentIndex].phases, ...productPhases],
+        });
+      }
+      setSelectedProducts((current) => ({ ...current, [environmentIndex]: product.service_id }));
+      setExpandedProducts((current) => new Set(current).add(`${environmentIndex}:${product.service_id}`));
+      setCatalogEnvironment(null);
+      setCatalogQuery("");
+      setCatalogPage(1);
+    } catch (error) {
+      setCatalogError(getErrorMessage(error, "This OCI product could not be added to the scenario."));
+    } finally {
+      setAddingServiceId("");
+    }
+  }
+
+  function removeProduct(environmentIndex: number, serviceId: string): void {
+    patchEnvironment(environmentIndex, {
+      phases: environments[environmentIndex].phases.filter((phase) => phase.service_id !== serviceId),
+    });
+    setSelectedProducts((current) => ({ ...current, [environmentIndex]: "" }));
+    setExpandedProducts((current) => {
+      const next = new Set(current);
+      next.delete(`${environmentIndex}:${serviceId}`);
+      return next;
+    });
   }
 
   function addMetric(environmentIndex: number): void {
@@ -273,7 +377,7 @@ export function BomConsumptionEditor({
       if (selectedServiceId && group.serviceId !== selectedServiceId) return false;
       if (!query) return true;
       return group.name.toLowerCase().includes(query) || group.phases.some(({ phase }) => {
-        const option = metricOptions.find((candidate) => candidate.service_id === phase.service_id && candidate.metric_key === phase.metric_key);
+        const option = allMetricOptions.find((candidate) => candidate.service_id === phase.service_id && candidate.metric_key === phase.metric_key);
         return option?.metric_label.toLowerCase().includes(query)
           || option?.variants.some((variant) => variant.part_number?.toLowerCase().includes(query));
       });
@@ -310,6 +414,7 @@ export function BomConsumptionEditor({
         <span className="sr-only">Find product, metric, or SKU</span>
         <input value={productQuery} onChange={(event) => setProductQuery(event.target.value)} placeholder="Find product, metric, or SKU..." className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] pl-9 pr-3 text-sm text-[var(--color-text-primary)]" />
       </label>
+      {rehydrationError ? <p role="alert" className="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-300">{rehydrationError}</p> : null}
 
       <div className="mt-2 divide-y divide-[var(--color-border)]">
         {environments.map((environment, environmentIndex) => {
@@ -318,6 +423,8 @@ export function BomConsumptionEditor({
           const selectedProduct = selectedProducts[environmentIndex] ?? "";
           const groups = phaseGroups(environment, selectedProduct);
           const isAddMetricOpen = addMetricOpen.has(environmentIndex);
+          const isCatalogOpen = catalogEnvironment === environmentIndex;
+          const plannedServiceIds = new Set(environment.phases.map((phase) => phase.service_id));
           return (
             <section key={`environment-${environmentIndex}`} className="py-5" aria-label={`${environment.name || `Environment ${environmentIndex + 1}`} consumption plan`}>
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -338,9 +445,30 @@ export function BomConsumptionEditor({
                 <div><p className="app-label">Products</p><p className="mt-1 text-xs text-[var(--color-text-muted)]">Select one product to review, or show the complete environment plan.</p></div>
                 <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-2">
                   <label className="min-w-64 max-w-md flex-1 text-xs text-[var(--color-text-muted)]"><span className="sr-only">Product to review in {environment.name}</span><select aria-label={`Product to review in ${environment.name}`} className="h-9 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-text-primary)]" value={selectedProduct} onChange={(event) => { const serviceId = event.target.value; setSelectedProducts((current) => ({ ...current, [environmentIndex]: serviceId })); if (serviceId) setExpandedProducts((current) => new Set(current).add(`${environmentIndex}:${serviceId}`)); }} disabled={allGroups.length === 0}><option value="">{allGroups.length === 0 ? "No planned products" : `All products (${allGroups.length})`}</option>{allGroups.map((group) => <option key={group.serviceId} value={group.serviceId}>{group.name} · {group.phases.length} metric{group.phases.length === 1 ? "" : "s"}</option>)}</select></label>
+                  <button type="button" className="app-button-secondary h-9 gap-2 px-3" aria-expanded={isCatalogOpen} onClick={() => { setCatalogEnvironment(isCatalogOpen ? null : environmentIndex); setCatalogPage(1); setCatalogResult(null); setCatalogError(""); }}><Search className="h-3.5 w-3.5" />Add OCI product</button>
                   <button type="button" className="app-button-secondary h-9 gap-2 px-3" aria-expanded={isAddMetricOpen} disabled={available.length === 0} onClick={() => setAddMetricOpen((current) => { const next = new Set(current); if (next.has(environmentIndex)) next.delete(environmentIndex); else next.add(environmentIndex); return next; })}><Plus className="h-3.5 w-3.5" />Add metric</button>
                 </div>
               </div>
+
+              {isCatalogOpen ? (
+                <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div><p className="text-sm font-semibold text-[var(--color-text-primary)]">Governed OCI product catalog</p><p className="mt-1 text-xs text-[var(--color-text-muted)]">Only approved products with quote-ready commercial mappings can be added.</p></div>
+                    <button type="button" className="app-button-secondary h-9 px-3" onClick={() => setCatalogEnvironment(null)}>Close</button>
+                  </div>
+                  <label className="relative mt-3 block">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                    <span className="sr-only">Search governed OCI products</span>
+                    <input autoFocus value={catalogQuery} onChange={(event) => { setCatalogQuery(event.target.value); setCatalogPage(1); }} placeholder="Search product, category, or service ID..." className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] pl-9 pr-3 text-sm text-[var(--color-text-primary)]" />
+                  </label>
+                  {catalogError ? <p role="alert" className="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-300">{catalogError}</p> : null}
+                  {catalogLoading ? <p className="mt-3 inline-flex items-center gap-2 text-sm text-[var(--color-text-muted)]"><Loader2 className="h-4 w-4 animate-spin" />Loading governed products...</p> : null}
+                  {!catalogLoading && catalogResult ? <div className="mt-3 space-y-2">{catalogResult.items.map((product) => {
+                    const isPlanned = plannedServiceIds.has(product.service_id);
+                    return <div key={product.service_id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5"><div className="min-w-0"><p className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{product.product_name}</p><p className="mt-0.5 text-xs text-[var(--color-text-muted)]">{product.category} · {policyLabel(product.classification)} · {policyLabel(product.readiness)}</p></div><button type="button" className="app-button-primary h-9 px-3" disabled={isPlanned || addingServiceId !== ""} onClick={() => void addCatalogProduct(environmentIndex, product)}>{addingServiceId === product.service_id ? <Loader2 className="h-4 w-4 animate-spin" /> : isPlanned ? "Added" : "Add product"}</button></div>;
+                  })}{catalogResult.items.length === 0 ? <p className="py-4 text-center text-sm text-[var(--color-text-muted)]">No approved OCI products match this search.</p> : null}<div className="flex items-center justify-between pt-1 text-xs text-[var(--color-text-muted)]"><span>{catalogResult.total} approved product{catalogResult.total === 1 ? "" : "s"}</span><div className="flex items-center gap-2"><button type="button" className="app-button-secondary h-8 px-2.5" disabled={catalogPage <= 1} onClick={() => setCatalogPage((current) => current - 1)}>Previous</button><span>Page {catalogPage}</span><button type="button" className="app-button-secondary h-8 px-2.5" disabled={catalogPage * catalogResult.page_size >= catalogResult.total} onClick={() => setCatalogPage((current) => current + 1)}>Next</button></div></div></div> : null}
+                </div>
+              ) : null}
 
               {isAddMetricOpen ? (
                 <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
@@ -361,14 +489,14 @@ export function BomConsumptionEditor({
                     const activeMonths = group.phases.flatMap(({ phase }) => [phase.start_month, phase.end_month]);
                     return (
                       <article key={groupKey} className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
-                        <button type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-[var(--color-surface-2)]" aria-expanded={expanded} onClick={() => toggleProduct(groupKey)}>
+                        <div className="flex items-center gap-2 pr-3 hover:bg-[var(--color-surface-2)]"><button type="button" className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left" aria-expanded={expanded} onClick={() => toggleProduct(groupKey)}>
                           {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" /> : <ChevronRight className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />}
                           <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${productDot(group.serviceId)}`} aria-hidden="true" />
-                          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">{group.name}</span><span className="mt-0.5 block text-xs text-[var(--color-text-muted)]">{group.phases.length} metric{group.phases.length === 1 ? "" : "s"} · M{Math.min(...activeMonths)}–M{Math.max(...activeMonths)}</span></span>
+                          <span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2"><span className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{group.name}</span><span className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">{detectedServices.has(group.serviceId) ? "Detected" : "Added"}</span></span><span className="mt-0.5 block text-xs text-[var(--color-text-muted)]">{group.phases.length} metric{group.phases.length === 1 ? "" : "s"} · M{Math.min(...activeMonths)}–M{Math.max(...activeMonths)}</span></span>
                           <span className="hidden rounded-full bg-[var(--color-surface-2)] px-2.5 py-1 text-xs font-medium text-[var(--color-text-secondary)] sm:inline">{[...new Set(group.phases.map(({ phase }) => phase.quantity_unit).filter(Boolean))].join(" · ")}</span>
-                        </button>
+                        </button><button type="button" className="app-icon-button shrink-0" title={`Remove ${group.name} from ${environment.name}`} onClick={() => removeProduct(environmentIndex, group.serviceId)}><Trash2 className="h-4 w-4" /></button></div>
                         {expanded ? <div className="border-t border-[var(--color-border)] px-4 pb-4">{group.phases.map(({ phase, phaseIndex }) => {
-                          const selectedOption = metricOptions.find((option) => option.service_id === phase.service_id && option.metric_key === phase.metric_key);
+                          const selectedOption = allMetricOptions.find((option) => option.service_id === phase.service_id && option.metric_key === phase.metric_key);
                           const selectedVariant = selectedOption?.variants.find((variant) => variant.sku_mapping_id === phase.sku_mapping_id)
                             ?? selectedOption?.variants.find((variant) => variant.sku_mapping_id === selectedOption.default_sku_mapping_id)
                             ?? selectedOption?.variants[0];
@@ -403,7 +531,7 @@ export function BomConsumptionEditor({
                 <div className="mt-3 overflow-x-auto border-y border-[var(--color-border)]">
                   <table className="min-w-max text-left text-xs">
                     <thead className="bg-[var(--color-surface-2)] text-[var(--color-text-muted)]"><tr><th className="sticky left-0 z-10 min-w-72 bg-[var(--color-surface-2)] px-3 py-2.5">Product metric</th>{Array.from({ length: contractMonths }, (_, index) => <th key={index} className="min-w-24 px-2 py-2.5 text-center">M{index + 1}</th>)}</tr></thead>
-                    <tbody>{groups.map((group) => <Fragment key={`matrix-group-${environmentIndex}-${group.serviceId}`}><tr className="border-t border-[var(--color-border)] bg-[var(--color-surface-2)]"><th colSpan={contractMonths + 1} className="px-3 py-2"><span className="inline-flex items-center gap-2 font-semibold text-[var(--color-text-primary)]"><span className={`h-2.5 w-2.5 rounded-full ${productDot(group.serviceId)}`} />{group.name}</span></th></tr>{group.phases.map(({ phase, phaseIndex }) => { const option = metricOptions.find((candidate) => candidate.service_id === phase.service_id && candidate.metric_key === phase.metric_key); const variant = option?.variants.find((candidate) => candidate.sku_mapping_id === phase.sku_mapping_id); return <tr key={`matrix-${environmentIndex}-${phaseIndex}`} className="border-t border-[var(--color-border)]"><th className="sticky left-0 z-10 bg-[var(--color-surface)] px-3 py-3"><span className="block text-sm font-semibold text-[var(--color-text-primary)]">{option?.metric_label ?? phase.metric_key}</span><span className="mt-1 block font-normal text-[var(--color-text-muted)]">{variant?.label ?? "Commercial variant pending"}</span><span className="mt-1 block font-normal text-[var(--color-text-muted)]">{phase.quantity_unit}</span></th>{phaseMonthlyQuantities(phase, contractMonths).map((quantity, monthIndex) => <td key={monthIndex} className="px-1.5 py-2"><input aria-label={`${environment.name} ${option?.metric_label ?? phase.metric_key} month ${monthIndex + 1}`} type="number" min={0} step={variant?.quantity_increment ?? option?.quantity_increment ?? "any"} className="w-20 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-2 text-right font-mono text-xs" value={quantity} onChange={(event) => patchPhase(environmentIndex, phaseIndex, withMonthlyQuantity(phase, contractMonths, monthIndex + 1, Number(event.target.value)))} /></td>)}</tr>; })}</Fragment>)}</tbody>
+                    <tbody>{groups.map((group) => <Fragment key={`matrix-group-${environmentIndex}-${group.serviceId}`}><tr className="border-t border-[var(--color-border)] bg-[var(--color-surface-2)]"><th colSpan={contractMonths + 1} className="px-3 py-2"><span className="inline-flex items-center gap-2 font-semibold text-[var(--color-text-primary)]"><span className={`h-2.5 w-2.5 rounded-full ${productDot(group.serviceId)}`} />{group.name}</span></th></tr>{group.phases.map(({ phase, phaseIndex }) => { const option = allMetricOptions.find((candidate) => candidate.service_id === phase.service_id && candidate.metric_key === phase.metric_key); const variant = option?.variants.find((candidate) => candidate.sku_mapping_id === phase.sku_mapping_id); return <tr key={`matrix-${environmentIndex}-${phaseIndex}`} className="border-t border-[var(--color-border)]"><th className="sticky left-0 z-10 bg-[var(--color-surface)] px-3 py-3"><span className="block text-sm font-semibold text-[var(--color-text-primary)]">{option?.metric_label ?? phase.metric_key}</span><span className="mt-1 block font-normal text-[var(--color-text-muted)]">{variant?.label ?? "Commercial variant pending"}</span><span className="mt-1 block font-normal text-[var(--color-text-muted)]">{phase.quantity_unit}</span></th>{phaseMonthlyQuantities(phase, contractMonths).map((quantity, monthIndex) => <td key={monthIndex} className="px-1.5 py-2"><input aria-label={`${environment.name} ${option?.metric_label ?? phase.metric_key} month ${monthIndex + 1}`} type="number" min={0} step={variant?.quantity_increment ?? option?.quantity_increment ?? "any"} className="w-20 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-2 text-right font-mono text-xs" value={quantity} onChange={(event) => patchPhase(environmentIndex, phaseIndex, withMonthlyQuantity(phase, contractMonths, monthIndex + 1, Number(event.target.value)))} /></td>)}</tr>; })}</Fragment>)}</tbody>
                   </table>
                 </div>
               )}

@@ -11,7 +11,7 @@ import math
 from typing import AbstractSet, Iterable, cast
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pricing_engine import (
@@ -49,6 +49,7 @@ from app.models import (
     PriceItem,
     PriceSource,
     Project,
+    ServiceCapabilityProfile,
     ServiceCommercialPolicy,
     ServiceProductSkuMapping,
     SkuCommercialConstraint,
@@ -72,6 +73,8 @@ from app.schemas.pricing import (
     DeploymentScenarioListResponse,
     DeploymentScenarioResponse,
     ScenarioAssistantResponse,
+    SelectableProductPageResponse,
+    SelectableProductResponse,
     CurrentBomContextResponse,
     ScenarioMetricOptionResponse,
     ScenarioSkuVariantResponse,
@@ -764,6 +767,168 @@ async def _active_commercial_policies(db: AsyncSession) -> list[ServiceCommercia
             )
         ).all()
     )
+
+
+async def _scenario_service_ids(
+    project_id: str,
+    scenario_id: str | None,
+    db: AsyncSession,
+) -> set[str]:
+    """Return explicitly planned services for one project-owned scenario."""
+
+    if scenario_id is None:
+        return set()
+    scenario = await db.scalar(
+        select(DeploymentScenario).where(
+            DeploymentScenario.id == scenario_id,
+            DeploymentScenario.project_id == project_id,
+        )
+    )
+    if scenario is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Deployment scenario not found", "error_code": "DEPLOYMENT_SCENARIO_NOT_FOUND"},
+        )
+    service_ids = (
+        await db.scalars(
+            select(DeploymentRampPhase.service_id)
+            .join(
+                DeploymentEnvironmentPlan,
+                DeploymentEnvironmentPlan.id == DeploymentRampPhase.environment_plan_id,
+            )
+            .where(
+                DeploymentEnvironmentPlan.scenario_id == scenario_id,
+                DeploymentRampPhase.service_id.is_not(None),
+            )
+            .distinct()
+        )
+    ).all()
+    return {service_id for service_id in service_ids if service_id}
+
+
+async def list_selectable_products(
+    project_id: str,
+    db: AsyncSession,
+    *,
+    search: str | None = None,
+    page: int = 1,
+    page_size: int = 25,
+    scenario_id: str | None = None,
+) -> SelectableProductPageResponse:
+    """List approved OCI products with at least one approved commercial mapping."""
+
+    await _project_and_snapshot(project_id, db)
+    scenario_service_ids = await _scenario_service_ids(project_id, scenario_id, db)
+    approved_mapping = exists(
+        select(ServiceProductSkuMapping.id).where(
+            ServiceProductSkuMapping.service_id == ServiceCommercialPolicy.service_id,
+            ServiceProductSkuMapping.status == "approved",
+        )
+    )
+    statement = (
+        select(ServiceCommercialPolicy, ServiceCapabilityProfile)
+        .join(
+            ServiceCapabilityProfile,
+            ServiceCapabilityProfile.id == ServiceCommercialPolicy.service_profile_id,
+        )
+        .where(
+            ServiceCommercialPolicy.status == "approved",
+            ServiceCapabilityProfile.is_active.is_(True),
+            approved_mapping,
+        )
+    )
+    normalized_search = (search or "").strip()
+    if normalized_search:
+        pattern = f"%{normalized_search}%"
+        statement = statement.where(
+            or_(
+                ServiceCapabilityProfile.name.ilike(pattern),
+                ServiceCapabilityProfile.category.ilike(pattern),
+                ServiceCommercialPolicy.service_id.ilike(pattern),
+            )
+        )
+    total = int(await db.scalar(select(func.count()).select_from(statement.subquery())) or 0)
+    rows = (
+        await db.execute(
+            statement
+            .order_by(ServiceCapabilityProfile.name, ServiceCommercialPolicy.service_id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).all()
+    return SelectableProductPageResponse(
+        items=[
+            SelectableProductResponse(
+                service_id=policy.service_id,
+                product_name=profile.name,
+                category=profile.category,
+                classification=policy.classification,
+                readiness=policy.readiness,
+                already_in_scenario=policy.service_id in scenario_service_ids,
+            )
+            for policy, profile in rows
+        ],
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
+
+
+async def selectable_product_metric_options(
+    project_id: str,
+    service_id: str,
+    db: AsyncSession,
+) -> list[ScenarioMetricOptionResponse]:
+    """Resolve approved commercial metrics for an explicitly selected OCI product."""
+
+    _, snapshot = await _project_and_snapshot(project_id, db)
+    approved_mapping = exists(
+        select(ServiceProductSkuMapping.id).where(
+            ServiceProductSkuMapping.service_id == ServiceCommercialPolicy.service_id,
+            ServiceProductSkuMapping.status == "approved",
+        )
+    )
+    row = (
+        await db.execute(
+            select(ServiceCommercialPolicy, ServiceCapabilityProfile)
+        .join(
+            ServiceCapabilityProfile,
+            ServiceCapabilityProfile.id == ServiceCommercialPolicy.service_profile_id,
+        )
+        .where(
+            ServiceCommercialPolicy.service_id == service_id,
+            ServiceCommercialPolicy.status == "approved",
+            ServiceCapabilityProfile.is_active.is_(True),
+            approved_mapping,
+        )
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "detail": "Selectable OCI product not found",
+                "error_code": "SELECTABLE_PRODUCT_NOT_FOUND",
+            },
+        )
+    policy, profile = row
+    integrations = await _project_integrations(project_id, db)
+    options = _metric_options(
+        [service_id],
+        await _active_mappings(db),
+        _commercial_consolidated(snapshot),
+        integrations,
+        {},
+    )
+    if not options:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "The approved product has no selectable commercial metrics",
+                "error_code": "SELECTABLE_PRODUCT_METRICS_UNAVAILABLE",
+            },
+        )
+    return [option.model_copy(update={"product_name": profile.name}) for option in options]
 
 
 async def _resolve_commercial_release(
@@ -2703,15 +2868,22 @@ async def calculate_bom(
     mappings = await _active_mappings(db)
     policies = await _active_commercial_policies(db)
     policy_by_service = {policy.service_id: policy for policy in policies}
-    detected_services, _ = _detected_services(integrations, mappings, policies, tool_overrides)
-    mappings_by_id = {mapping.id: mapping for mapping in mappings}
     environments = [
         item.model_dump(mode="json")
         for item in await _scenario_environments(scenario.id, db)
     ]
+    detected_services, _ = _detected_services(integrations, mappings, policies, tool_overrides)
+    planned_services = {
+        str(phase.get("service_id"))
+        for environment in environments
+        for phase in _environment_phase_payloads(environment)
+        if phase.get("service_id")
+    }
+    bom_services = sorted({*detected_services, *planned_services})
+    mappings_by_id = {mapping.id: mapping for mapping in mappings}
     default_mappings: list[ServiceProductSkuMapping] = []
     unmapped_services: list[str] = []
-    for service_id in detected_services:
+    for service_id in bom_services:
         config = _config_for(scenario, service_id)
         candidates = [mapping for mapping in mappings if mapping.service_id == service_id]
         matched = [
@@ -2790,7 +2962,7 @@ async def calculate_bom(
                     warning=policy.guidance,
                 )
             elif policy.publication_policy == "dependencies_required":
-                present = [str(item) for item in policy.dependent_service_ids if str(item) in detected_services]
+                present = [str(item) for item in policy.dependent_service_ids if str(item) in bom_services]
                 if present:
                     line = _commercial_policy_line(
                         policy,
@@ -2979,7 +3151,7 @@ async def calculate_bom(
         first_active_period=first_active_period,
         steady_state_period=steady_state_period,
         monthly_series=monthly_series,
-        detected_services=detected_services,
+        detected_services=bom_services,
         by_service=dict(by_service),
         by_environment=dict(by_environment),
         warnings=[

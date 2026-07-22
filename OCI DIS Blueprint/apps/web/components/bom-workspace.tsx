@@ -390,9 +390,11 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
             </div>
             <div className="md:col-span-2 xl:col-span-4">
               <BomConsumptionEditor
+                projectId={projectId}
                 contractMonths={draft.contract_months}
                 environments={draft.environments}
                 metricOptions={assistant?.metric_options ?? []}
+                detectedServiceIds={assistant?.detected_services ?? []}
                 onChange={(environments) => patchDraft({ environments, consumption_model: "explicit_units" })}
               />
             </div>

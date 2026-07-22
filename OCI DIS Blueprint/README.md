@@ -188,7 +188,11 @@ products. Generation proposes capability profiles, policies, and SKU mappings bu
 does not activate them. Only products whose complete quoteable SKU scope passes
 the approved-release, term, deterministic fixture, exception, and relationship
 gates can be explicitly promoted by an Admin. Project detection and scenario
-selection remain unchanged until the separate product-selection phase.
+composition now remain separate decisions: integration tools seed the baseline,
+while an architect can search and add any active product with an approved policy
+and mapping to a specific environment. Explicit additions preserve SKU, real-unit
+quantity, activation, release, and evidence provenance through the same governed
+BOM path; unapproved products never appear in the selector.
 
 Continuous source governance keeps the currently approved commercial families
 current without self-approving source drift. Celery verifies the Oracle public
@@ -453,6 +457,7 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M59 | Governed OCI Product Coverage Proposals | ✅ Complete | 2026-07-21 |
 | M60 | Safe Commercial Coverage Advancement | ✅ Complete | 2026-07-21 |
 | M61 | Governed External Rate Card Coverage | ✅ Complete | 2026-07-21 |
+| M62 | Governed OCI Product Selection in BOM Scenarios | ✅ Complete | 2026-07-21 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot

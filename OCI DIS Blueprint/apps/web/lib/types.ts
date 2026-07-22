@@ -2671,6 +2671,22 @@ export interface ScenarioMetricOption {
   variants: ScenarioSkuVariant[];
 }
 
+export interface SelectableOciProduct {
+  service_id: string;
+  product_name: string;
+  category: string;
+  classification: string;
+  readiness: "quote_ready" | "rate_card_required" | "input_required" | string;
+  already_in_scenario: boolean;
+}
+
+export interface SelectableOciProductPage {
+  items: SelectableOciProduct[];
+  page: number;
+  page_size: number;
+  total: number;
+}
+
 export interface ScenarioSkuVariant {
   sku_mapping_id: string;
   label: string;

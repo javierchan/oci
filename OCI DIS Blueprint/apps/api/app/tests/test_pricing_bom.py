@@ -32,6 +32,7 @@ from app.models import (
     PriceSource,
     PriceSyncJob,
     Project,
+    ServiceCapabilityProfile,
     ServiceProductSkuMapping,
     ServiceCommercialPolicy,
     VolumetrySnapshot,
@@ -1146,6 +1147,150 @@ async def test_scenario_rejects_unbalanced_environment_shares(
 
 
 @pytest.mark.asyncio
+async def test_selectable_product_catalog_is_governed_paginated_and_scenario_aware(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """Only active products with approved policies and mappings are selectable."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(name="Selectable product test", status=ProjectStatus.ACTIVE, owner_id="owner")
+        session.add(project)
+        await session.flush()
+        snapshot = VolumetrySnapshot(
+            project_id=project.id,
+            assumption_set_version="1.0.0",
+            triggered_by="test",
+            row_results={},
+            consolidated={},
+            snapshot_metadata={},
+        )
+        profiles = [
+            ServiceCapabilityProfile(service_id="MANUAL_DATABASE", name="OCI Database Service", category="Database", is_active=True),
+            ServiceCapabilityProfile(service_id="MANUAL_STORAGE", name="OCI Object Storage", category="Storage", is_active=True),
+            ServiceCapabilityProfile(service_id="PENDING_PRODUCT", name="Pending Product", category="Other", is_active=True),
+        ]
+        session.add_all([snapshot, *profiles])
+        await session.flush()
+        session.add_all([
+            ServiceCommercialPolicy(
+                service_profile_id=profiles[0].id,
+                service_id="MANUAL_DATABASE",
+                classification="direct_metered",
+                readiness="quote_ready",
+                publication_policy="explicit_product_selection",
+                tool_aliases=[], dependent_service_ids=[], required_inputs=[], guidance="Enter database capacity.", source_urls=[], status="approved",
+            ),
+            ServiceCommercialPolicy(
+                service_profile_id=profiles[1].id,
+                service_id="MANUAL_STORAGE",
+                classification="direct_metered",
+                readiness="quote_ready",
+                publication_policy="explicit_product_selection",
+                tool_aliases=[], dependent_service_ids=[], required_inputs=[], guidance="Enter storage capacity.", source_urls=[], status="approved",
+            ),
+            ServiceCommercialPolicy(
+                service_profile_id=profiles[2].id,
+                service_id="PENDING_PRODUCT",
+                classification="direct_metered",
+                readiness="quote_ready",
+                publication_policy="explicit_product_selection",
+                tool_aliases=[], dependent_service_ids=[], required_inputs=[], guidance="Pending review.", source_urls=[], status="pending_review",
+            ),
+        ])
+        mappings = [
+            _scenario_mapping(service_id="MANUAL_DATABASE", part_number="DB-001", predicates={}, metric_key="database_ocpu_hours"),
+            _scenario_mapping(service_id="MANUAL_STORAGE", part_number="ST-001", predicates={}, metric_key="storage_gb_month"),
+            _scenario_mapping(service_id="PENDING_PRODUCT", part_number="PN-001", predicates={}, metric_key="pending_units"),
+        ]
+        for mapping in mappings:
+            mapping.requires_explicit_quantity = True
+            mapping.entry_guidance = "Enter the client-approved quantity."
+        scenario = DeploymentScenario(
+            project_id=project.id,
+            name="Manual database scenario",
+            status="draft",
+            currency="USD",
+            region="global",
+            price_mode="public_list",
+            technical_snapshot_id=snapshot.id,
+            contract_months=12,
+            start_date=date(2026, 1, 1),
+            proration_policy="full_month",
+            consumption_model="explicit_units",
+            service_config={},
+            scenario_assumptions={},
+            created_by="test",
+        )
+        session.add_all([*mappings, scenario])
+        await session.flush()
+        environment = DeploymentEnvironmentPlan(
+            scenario_id=scenario.id,
+            name="Production",
+            sequence=1,
+            active_hours_month=744,
+            demand_share=1,
+            ha_multiplier=1,
+            dr_role="primary",
+        )
+        session.add(environment)
+        await session.flush()
+        session.add(
+            DeploymentRampPhase(
+                environment_plan_id=environment.id,
+                service_id="MANUAL_DATABASE",
+                metric_key="database_ocpu_hours",
+                sku_mapping_id=mappings[0].id,
+                start_month=1,
+                end_month=12,
+                start_multiplier=1,
+                end_multiplier=1,
+                interpolation="step",
+                start_quantity=2,
+                end_quantity=2,
+                quantity_unit="units",
+            )
+        )
+        await session.commit()
+
+    response = await api_client.get(
+        f"/api/v1/projects/{project.id}/selectable-products",
+        params={"search": "OCI", "page": 1, "page_size": 1, "scenario_id": scenario.id},
+        headers={"X-Actor-Role": "Architect"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["total"] == 2
+    assert payload["page_size"] == 1
+    assert payload["items"][0]["product_name"] == "OCI Database Service"
+    assert payload["items"][0]["already_in_scenario"] is True
+    assert all(item["service_id"] != "PENDING_PRODUCT" for item in payload["items"])
+
+    viewer_response = await api_client.get(
+        f"/api/v1/projects/{project.id}/selectable-products",
+        headers={"X-Actor-Role": "Viewer"},
+    )
+    assert viewer_response.status_code == 403
+
+    metrics = await api_client.get(
+        f"/api/v1/projects/{project.id}/selectable-products/MANUAL_DATABASE/metric-options",
+        headers={"X-Actor-Role": "Architect"},
+    )
+    assert metrics.status_code == 200, metrics.text
+    assert metrics.json()[0]["metric_key"] == "database_ocpu_hours"
+    assert metrics.json()[0]["baseline_quantity"] == 0
+    assert metrics.json()[0]["requires_explicit_quantity"] is True
+
+    blocked = await api_client.get(
+        f"/api/v1/projects/{project.id}/selectable-products/PENDING_PRODUCT/metric-options",
+        headers={"X-Actor-Role": "Architect"},
+    )
+    assert blocked.status_code == 404
+    assert blocked.json()["detail"]["error_code"] == "SELECTABLE_PRODUCT_NOT_FOUND"
+
+
+@pytest.mark.asyncio
 async def test_scenario_persists_exact_monthly_product_quantities(
     api_client: AsyncClient,
     test_engine: AsyncEngine,
@@ -1506,7 +1651,9 @@ def test_price_tier_selection_isolated_by_commitment_model() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_engine: AsyncEngine) -> None:
+async def test_manually_selected_non_detected_product_produces_traceable_bom_line(
+    test_engine: AsyncEngine,
+) -> None:
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as session:
         project = Project(name="BOM test", status=ProjectStatus.ACTIVE, owner_id="owner")
@@ -1560,8 +1707,8 @@ async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_
             snapshot_metadata={},
         )
         mapping = ServiceProductSkuMapping(
-            service_id="OIC3",
-            tool_key="OIC Gen3",
+            service_id="MANUAL_DATABASE",
+            tool_key="OCI Database Service",
             part_number="B89639",
             billing_metric_key="oic_peak_packs_hour",
             formula_key="hourly_capacity",
@@ -1587,7 +1734,7 @@ async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_
             start_date=date(2026, 1, 1),
             proration_policy="full_month",
             consumption_model="explicit_units",
-            service_config={"OIC3": {"edition": "standard", "byol": False}},
+            service_config={"MANUAL_DATABASE": {"edition": "standard", "byol": False}},
             scenario_assumptions={"free_tier_enabled": False},
             created_by="test",
         )
@@ -1626,7 +1773,7 @@ async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_
         session.add(
             DeploymentRampPhase(
                 environment_plan_id=environment.id,
-                service_id="OIC3",
+                service_id="MANUAL_DATABASE",
                 metric_key="oic_peak_packs_hour",
                 start_month=1,
                 end_month=12,
@@ -1656,6 +1803,8 @@ async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_
             session, catalog, [mapping]
         )
         await session.commit()
+        detected_services, _ = bom_service._detected_services([integration], [mapping])
+        assert "MANUAL_DATABASE" not in detected_services
         async with session.begin():
             dry_run = await bom_service.calculate_bom(
                 project_id=project.id,
@@ -1666,6 +1815,8 @@ async def test_bom_uses_requested_price_source_and_produces_traceable_line(test_
         assert dry_run.monthly_total == 960.06
         assert dry_run.contract_total == 11520.72
         assert dry_run.coverage_pct == 100.0
+        assert dry_run.detected_services == ["MANUAL_DATABASE"]
+        assert dry_run.line_payloads[0]["service_id"] == "MANUAL_DATABASE"
         assert dry_run.commercial_release.id == commercial_release.id
         assert dry_run.line_payloads[0]["commercial_term_id"] is not None
         assert dry_run.line_payloads[0]["commercial_rule_family_id"] is not None

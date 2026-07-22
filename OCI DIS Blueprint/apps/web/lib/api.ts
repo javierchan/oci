@@ -103,6 +103,8 @@ import type {
   ServiceVerificationJob,
   ServiceVerificationRunRequest,
   ScenarioAssistant,
+  ScenarioMetricOption,
+  SelectableOciProductPage,
   SkuMapping,
   SkuMappingList,
   SkuMappingPatch,
@@ -1194,6 +1196,24 @@ export const api = {
     apiFetch<DeploymentScenarioList>(`/api/v1/projects/${projectId}/deployment-scenarios`, {
       headers: adminHeaders(),
     }),
+
+  listSelectableOciProducts: (
+    projectId: string,
+    params: { search?: string; page?: number; page_size?: number; scenario_id?: string } = {},
+  ): Promise<SelectableOciProductPage> =>
+    apiFetch<SelectableOciProductPage>(
+      `/api/v1/projects/${projectId}/selectable-products${withQuery(params)}`,
+      { headers: adminHeaders() },
+    ),
+
+  getSelectableOciProductMetrics: (
+    projectId: string,
+    serviceId: string,
+  ): Promise<ScenarioMetricOption[]> =>
+    apiFetch<ScenarioMetricOption[]>(
+      `/api/v1/projects/${projectId}/selectable-products/${encodeURIComponent(serviceId)}/metric-options`,
+      { headers: adminHeaders() },
+    ),
 
   getDeploymentScenarioAssistant: (projectId: string, includeLlm = false): Promise<ScenarioAssistant> =>
     apiFetch<ScenarioAssistant>(

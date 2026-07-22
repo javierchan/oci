@@ -21,6 +21,19 @@ type ScenarioAssistant = {
   detected_services: string[];
   metric_options: MetricOption[];
 };
+type SelectableProductPage = {
+  items: Array<{
+    service_id: string;
+    product_name: string;
+    category: string;
+    classification: string;
+    readiness: string;
+    already_in_scenario: boolean;
+  }>;
+  page: number;
+  page_size: number;
+  total: number;
+};
 type BomJob = { id: string; status: string; bom_snapshot_id: string | null };
 type BomSnapshot = {
   id: string;
@@ -169,6 +182,22 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   const dataIntegrationWorkspace = assistant.metric_options.find((option) => option.metric_key === "di_workspace_hours");
   expect(dataIntegrationWorkspace?.requires_explicit_quantity).toBe(true);
   expect(dataIntegrationWorkspace?.baseline_quantity).toBe(0);
+  const selectableResponse = await request.get(
+    `${apiBase}/api/v1/projects/${projectId}/selectable-products?page=1&page_size=100`,
+    { headers: architectHeaders },
+  );
+  expect(selectableResponse.ok(), await selectableResponse.text()).toBe(true);
+  const selectable = (await selectableResponse.json()) as SelectableProductPage;
+  const manuallySelectableProduct = selectable.items.find(
+    (product) => !assistant.detected_services.includes(product.service_id),
+  );
+  expect(manuallySelectableProduct, "fixture should expose an approved product outside integration detection").toBeDefined();
+  const selectableMetricsResponse = await request.get(
+    `${apiBase}/api/v1/projects/${projectId}/selectable-products/${encodeURIComponent(manuallySelectableProduct?.service_id ?? "")}/metric-options`,
+    { headers: architectHeaders },
+  );
+  expect(selectableMetricsResponse.ok(), await selectableMetricsResponse.text()).toBe(true);
+  expect(((await selectableMetricsResponse.json()) as MetricOption[]).length).toBeGreaterThan(0);
   const quantityPhases = (scale: number, startMonth: number) => assistant.metric_options.map((option) => ({
     service_id: option.service_id,
     metric_key: option.metric_key,
@@ -275,6 +304,21 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await productSearch.clear();
 
   const productionPlan = page.getByRole("region", { name: "Production consumption plan" });
+  await productionPlan.getByRole("button", { name: "Add OCI product" }).click();
+  await productionPlan.getByPlaceholder("Search product, category, or service ID...").fill(
+    manuallySelectableProduct?.product_name ?? "",
+  );
+  await expect(productionPlan.getByText(manuallySelectableProduct?.product_name ?? "", { exact: true })).toBeVisible();
+  await productionPlan.getByRole("button", { name: "Add product" }).click();
+  const manuallyAddedProduct = productionPlan.locator("article").filter({
+    hasText: manuallySelectableProduct?.product_name ?? "",
+  });
+  await expect(manuallyAddedProduct).toBeVisible();
+  await expect(manuallyAddedProduct.getByText("Added", { exact: true })).toBeVisible();
+  await manuallyAddedProduct.getByTitle(
+    `Remove ${manuallySelectableProduct?.product_name ?? ""} from Production`,
+  ).click();
+  await expect(manuallyAddedProduct).toHaveCount(0);
   const productReview = productionPlan.getByLabel("Product to review in Production");
   const dataIntegrationValue = await productReview.locator("option").filter({ hasText: "OCI Data Integration" }).first().getAttribute("value");
   expect(dataIntegrationValue).toBeTruthy();

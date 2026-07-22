@@ -679,6 +679,23 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       responsive browser validation pass; exact rate-card matching prices normally,
       missing matching rates remain unresolved, and direct-metered regressions pass.
 
+### M62 — Governed OCI Product Selection in BOM Scenarios
+- [x] List only active products with approved commercial policies and approved SKU
+      mappings through a paginated, searchable, project-scoped selector.
+- [x] Resolve product metrics lazily from the same governed mapping and technical-
+      snapshot path used by detected integration products.
+- [x] Add and remove approved products per environment, distinguish detected from
+      explicitly added scope, and restore commercial metadata after navigation or reload.
+- [x] Preserve real-unit quantities, commercial variants, monthly activation, release
+      validation, and provenance through the existing normalized scenario contract.
+- [x] Calculate the union of integration-detected and explicitly planned services so
+      manual selection cannot disappear between scenario persistence and BOM execution.
+- [x] Keep unapproved products absent, require a BOM-edit role, and add no migration or
+      alternate pricing path.
+- [x] **Exit criteria**: pricing-BOM and product-coverage regressions, API contract,
+      frontend tests/build, terminal browser E2E, production Docker health, responsive
+      light/dark visual inspection, and browser console validation pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

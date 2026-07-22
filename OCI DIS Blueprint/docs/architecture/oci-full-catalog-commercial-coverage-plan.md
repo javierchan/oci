@@ -515,6 +515,31 @@ exceeds the legacy 50-character `service_id` column, materialization uses a stab
 readable prefix plus an eight-character SHA-256 suffix. Dependency policies use the
 same resolver, and an occupied canonical ID remains an explicit collision blocker.
 
+### Phase 2C — governed product selection in deployment scenarios
+
+Project tool detection remains the authoritative source of the initial integration
+product baseline, but it is no longer the only way to compose a deployment
+scenario. Architects can search a paginated catalog containing only active products
+with approved commercial policies and approved SKU mappings. Selecting a product
+loads its governed metrics and variants lazily, starts from zero when project traffic
+cannot establish demand, and persists the choice as the same normalized environment
+phase used by detected products.
+
+The scenario editor labels the origin of each product as detected or explicitly
+added, supports per-environment removal, and rehydrates saved product metadata after
+navigation or reload. There is no parallel product, price, or quantity model.
+
+The original design assumed that explicit mapping identifiers alone were sufficient
+for BOM execution. Regression coverage showed that the calculation still iterated
+only over integration-detected services before evaluating those identifiers. The
+effective BOM scope is therefore the deterministic union of integration-detected
+services and service identifiers persisted in scenario phases. Release membership,
+approved term and rule evidence, fixture status, exact mapping provenance, pricing,
+and publication gates remain unchanged. This correction is required for a manually
+selected approved product to survive persistence and produce a traceable line; it
+does not alter the behavior or totals of scenarios that contain only detected
+products.
+
 - [x] The latest official products, presets, and metrics sources complete one atomic sync.
 - [x] Approved Price List and Supplement snapshots are immutable, hashed, and bound
       to the structured source release through field-level authority.
