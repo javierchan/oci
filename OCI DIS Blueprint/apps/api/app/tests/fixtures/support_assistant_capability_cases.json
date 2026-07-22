@@ -1,0 +1,38 @@
+[
+  {
+    "id": "documented-project-creation",
+    "question": "Can I create a new project?",
+    "expected_intent": "capability_inquiry",
+    "expected_capability": "documented",
+    "required_terms": ["yes", "create project"],
+    "forbidden_terms": ["not documented"],
+    "expected_sources": ["Projects"]
+  },
+  {
+    "id": "absent-cost-email-alerts",
+    "question": "Can I set up automated email alerts when cost exceeds a threshold?",
+    "expected_intent": "capability_inquiry",
+    "expected_capability": "not_documented",
+    "required_terms": ["not documented", "closest available workflow", "bom & cost"],
+    "forbidden_terms": ["dialogue does not yet identify", "service product/sku"],
+    "expected_sources": ["BOM & Cost"]
+  },
+  {
+    "id": "documented-export-formats",
+    "question": "What export formats are available for a governed BOM?",
+    "expected_intent": "workflow_guidance",
+    "expected_capability": null,
+    "required_terms": ["xlsx", "json", "pdf"],
+    "forbidden_terms": ["csv"],
+    "expected_sources": ["BOM & Cost"]
+  },
+  {
+    "id": "external-weather-topic",
+    "question": "What is the weather today?",
+    "expected_intent": "unsupported_or_out_of_scope",
+    "expected_capability": null,
+    "required_terms": ["external-topic", "oci dis architect"],
+    "forbidden_terms": ["forecast", "temperature"],
+    "expected_sources": []
+  }
+]

@@ -14,6 +14,8 @@ from typing import Literal
 
 
 SupportIntent = Literal[
+    "capability_inquiry",
+    "unsupported_or_out_of_scope",
     "project_portfolio",
     "project_cost",
     "commercial_guidance",
@@ -21,6 +23,21 @@ SupportIntent = Literal[
     "project_context",
     "app_guidance",
 ]
+
+
+CAPABILITY_INQUIRY_PATTERN = re.compile(
+    r"\b(?:can|could|does)\s+(?:i|we|it|the app|this app|oci dis architect)\b|"
+    r"\b(?:is there|does (?:the )?app (?:allow|support|provide)|supports? the app)\b|"
+    r"\bis\b.{1,80}\b(?:supported|available)\b|"
+    r"\b(?:puedo|podemos|se puede|la app (?:permite|soporta|ofrece)|oci dis architect (?:permite|soporta|ofrece))\b",
+    re.IGNORECASE,
+)
+
+OUTSIDE_TOPIC_PATTERN = re.compile(
+    r"\b(weather|forecast outside|sports|score|recipe|poem|song|politics|president|celebrity|horoscope|"
+    r"clima|deportes|receta|poema|cancion|politica|presidente|celebridad|horoscopo)\b",
+    re.IGNORECASE,
+)
 
 
 PROJECT_PORTFOLIO_PATTERN = re.compile(
@@ -69,8 +86,15 @@ def route_support_question(
 ) -> SupportRoute:
     """Classify the current turn only; conversation history must not steer intent."""
 
+    if OUTSIDE_TOPIC_PATTERN.search(question):
+        return SupportRoute("unsupported_or_out_of_scope", False, True)
     if PROJECT_PORTFOLIO_PATTERN.search(question):
         return SupportRoute("project_portfolio", False, True)
+    # Capability checks must run before commercial routing. A question such as
+    # "Can I configure cost-threshold email alerts?" contains a cost token, but
+    # it asks whether an App action exists rather than requesting pricing data.
+    if CAPABILITY_INQUIRY_PATTERN.search(question):
+        return SupportRoute("capability_inquiry", False, True)
     # A BOM/scenario/licensing question describes an App workflow unless it
     # also asks for a price or billing fact.  This prevents “what is BYOL in a
     # scenario?” from being treated as an incomplete SKU lookup.

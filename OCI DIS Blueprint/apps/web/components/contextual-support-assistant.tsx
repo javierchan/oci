@@ -299,7 +299,7 @@ export function ContextualSupportAssistant(): JSX.Element {
                   {message.attachments.length ? <p className="mt-1.5 text-[10px] text-[var(--color-text-muted)]">Context: {message.attachments.map((item) => item.label).join(", ")}</p> : null}
                   {message.citations.length ? (
                     <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                      <span className="mr-0.5 text-[10px] font-semibold uppercase text-[var(--color-text-muted)]">Sources</span>
+                      <span className="mr-0.5 text-[10px] font-semibold uppercase text-[var(--color-text-muted)]">Based on</span>
                       {message.citations.map((citation) => <Link key={`${message.id}-${citation.href}`} href={citation.href} className="inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1 text-[10px] font-medium text-[var(--color-text-secondary)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)]"><span className="truncate">{citation.label}</span><ArrowUpRight className="h-3 w-3 shrink-0" /></Link>)}
                     </div>
                   ) : null}

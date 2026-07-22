@@ -3,7 +3,7 @@
 **Status:** Implemented
 **Agent:** `support_assistant`
 **Runtime:** Docker `agent-worker`, Celery `agents` queue
-**Provider:** OCI Generative AI `openai.gpt-oss-20b`
+**Provider:** OCI Generative AI `openai.gpt-oss-120b`
 
 ## Purpose
 
@@ -58,17 +58,27 @@ conversation contract to its authenticated subject.
   user profile. The assistant shows the resolved ledger in the conversation UI
   so a user can see which governed context is active.
 - A typed routing policy classifies the **current** turn before evidence is
-  loaded. Portfolio, project-cost, commercial, workflow, project-context, and
-  general App-help contracts are distinct. Conversation history may resolve a
+  loaded. Capability inquiry, unsupported/out-of-scope, portfolio, project-cost,
+  commercial, workflow, project-context, and general App-help contracts are
+  distinct. Capability checks run before commercial routing, so a question about
+  whether cost alerts exist cannot be mistaken for a request to price a SKU.
+  Conversation history may resolve a
   reference such as “that service”, but cannot carry an old commercial topic
   into a new question about a pattern, import, or topology.
+- Capability answers are compared only with explicit `supported_actions` in the
+  curated knowledge base. A documented action receives a direct yes and its real
+  route. An absent action receives an explicit abstention plus the closest real
+  workflow. A capability request with no verifiable action asks one precise
+  clarification question instead of selecting a domain template.
 - Routine workflow questions use the same model-first path as project and commercial
   questions. The application-owned explanations remain in the evidence as a provider-
   failure fallback; they do not bypass inference during normal operation.
 - Every evidence package contains `next_actions` selected from executable internal
   routes. The model must end with one exact clickable action appropriate to the current
   route and resolved project or integration.
-- Citations are App routes, not fabricated external references.
+- Citations are App routes, not fabricated external references. The UI labels
+  them `Based on` so users can see the App section that supports an answer and
+  navigate to it directly.
 
 ## Domain Boundary
 
@@ -144,6 +154,12 @@ clickable same-origin App routes; external Markdown links degrade to text. The w
 always attempts OCI inference for a benign question. It uses the application-owned
 answer only when OCI or output grounding fails, and records that fallback beside the
 same evidence artifact and citations.
+
+`apps/api/app/tests/fixtures/support_assistant_capability_cases.json` is the
+deterministic CI matrix for capability routing. It runs through the complete
+assistant/AgentRun pipeline with OCI inference mocked and verifies documented
+features, absent cost-email alerts, governed BOM export formats, off-topic
+redirection, source-section attribution, and executable same-origin routes.
 
 `apps/api/scripts/evaluate_support_assistant.py` exercises the public support
 API with fresh session IDs. Its bounded suite covers each major App workspace,

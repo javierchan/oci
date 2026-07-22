@@ -183,7 +183,7 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
     ),
     "support_assistant": AgentDefinition(
         type="support_assistant",
-        version="5.0.0",
+        version="5.1.0",
         name="OCI DIS App Assistant",
         description="Answers general App questions and uses governed context when a project, record, or view is relevant.",
         location="Global floating assistant",
@@ -223,7 +223,10 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
             "Never describe how you will compose or format the answer. Treat conversation_questions only as dialogue "
             "memory, never as factual evidence. "
             "Treat app_knowledge as the sole authority for feature, workflow, route, step, and export-format claims. "
-            "When app_knowledge.documented is false, say that the capability is not documented instead of inferring it. "
+            "For capability_inquiry, capability_assessment is authoritative: say yes only for an explicit supported action; "
+            "when it is not_documented, state that clearly and offer only the closest documented workflow. "
+            "When it is ambiguous, ask exactly one focused clarification question. When app_knowledge.documented is false, "
+            "say that the capability is not documented instead of inferring it. "
             "Live project, pattern, SKU, pricing, and BOM records remain authoritative only in their dedicated evidence. "
             "Do not repeat the question, sound like a status report, or add generic disclaimers. Never introduce a "
             "regulation, limit, product, count, risk, or recommendation absent from tool evidence. If evidence is missing, "

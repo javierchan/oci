@@ -27,13 +27,17 @@ visible without treating generated content as a second source of truth.
    relevant live database evidence.
 2. The knowledge retriever ranks curated sections by question terms and current
    route. Explicit question terms outrank a generic route match.
-3. The provider receives only the bounded entries, allowed routes, live facts,
+3. Capability questions are matched only against explicit `supported_actions`.
+   The resulting `documented`, `not_documented`, or `ambiguous` assessment is an
+   authoritative deterministic input, not a model inference.
+4. The provider receives only the bounded entries, allowed routes, live facts,
    and answer contract.
-4. The output gate rejects unsupported feature, workflow, route, export, SKU,
+5. The output gate rejects unsupported feature, workflow, route, export, SKU,
    price, or mutation claims.
-5. When the provider is unavailable or its answer fails grounding, the App
+6. When the provider is unavailable or its answer fails grounding, the App
    returns a deterministic answer from the same knowledge entry. Unknown
-   capabilities are stated as not documented.
+   capabilities are stated as not documented and point to the closest executable
+   workflow. User-visible citations identify those sections as `Based on` links.
 
 Support and Knowledge Maintenance use the settings-driven
 `openai.gpt-oss-120b` override. Specialized architecture agents continue to use
@@ -77,3 +81,7 @@ route, missing endpoint, stale entity, or export media type that differs from
 the executable router. Tests also inject a fake route and fake CSV export to
 prove the negative gate. Provider tests use mocked transport and do not call
 OCI.
+The support capability matrix additionally asserts the `openai.gpt-oss-120b`
+use-case override, documented versus absent capabilities, governed export media
+types, source attribution, and placeholder-free App routes through a mocked
+provider execution.

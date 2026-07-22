@@ -74,11 +74,93 @@ def test_unknown_capability_returns_not_documented_and_rejects_invented_route() 
     )
 
     assert evidence["documented"] is False
-    assert "don't have that capability documented" in str(evidence["fallback_answer"])
+    assert "capability is not documented" in str(evidence["fallback_answer"])
     assert knowledge_grounding_failure(
         "The App can deploy it from [Launch](/admin/mars-deployments).",
         {"app_knowledge": evidence},
     ) == "unsupported_app_route"
+
+
+def test_capability_matching_uses_action_plus_section_and_asks_once_when_ambiguous() -> None:
+    """Generic action wording is safe only when a governed section anchors it."""
+
+    documented = build_app_knowledge_evidence(
+        "Can I export a BOM?",
+        "/projects",
+        language="en",
+        project_id=None,
+        integration_id=None,
+    )
+    assessment = documented["capability_assessment"]
+    assert isinstance(assessment, dict)
+    assert assessment["status"] == "documented"
+    assert "export XLSX" in str(assessment["matched_actions"])
+    assert knowledge_grounding_failure(
+        str(documented["fallback_answer"]),
+        {"app_knowledge": documented},
+    ) is None
+
+    ambiguous = build_app_knowledge_evidence(
+        "Can I do that?",
+        "/projects",
+        language="en",
+        project_id=None,
+        integration_id=None,
+    )
+    ambiguous_assessment = ambiguous["capability_assessment"]
+    assert isinstance(ambiguous_assessment, dict)
+    assert ambiguous_assessment["status"] == "ambiguous"
+    fallback = str(ambiguous["fallback_answer"])
+    assert fallback.count("?") == 1
+    assert knowledge_grounding_failure(fallback, {"app_knowledge": ambiguous}) is None
+
+
+def test_undocumented_cost_alert_uses_bom_as_the_closest_governed_workflow() -> None:
+    """A missing alert feature must not drift into pricing or unrelated assumptions."""
+
+    evidence = build_app_knowledge_evidence(
+        "Can I set up automated email alerts when cost exceeds a threshold?",
+        "/projects",
+        language="en",
+        project_id=None,
+        integration_id=None,
+    )
+
+    assessment = evidence["capability_assessment"]
+    assert isinstance(assessment, dict)
+    assert assessment["status"] == "not_documented"
+    closest = assessment["closest_entry"]
+    assert isinstance(closest, dict)
+    assert closest["name"] == "BOM & Cost"
+    assert "BOM & Cost" in str(evidence["fallback_answer"])
+
+
+def test_support_grounding_requires_one_real_next_action_for_non_ambiguous_answers() -> None:
+    """Provider prose cannot omit or duplicate the executable handoff."""
+
+    evidence = build_app_knowledge_evidence(
+        "Can I create a new project?",
+        "/projects",
+        language="en",
+        project_id=None,
+        integration_id=None,
+    )
+    wrapped = {"app_knowledge": evidence}
+
+    assert knowledge_grounding_failure(
+        "Yes, the App supports project creation.",
+        wrapped,
+    ) == "invalid_next_action_count"
+    assert knowledge_grounding_failure(
+        "**Yes.** The App documents project creation.\n\n"
+        "**Next action:** [Open Projects](/projects)\n\n"
+        "**Next action:** [Open Projects](/projects)",
+        wrapped,
+    ) == "invalid_next_action_count"
+    assert knowledge_grounding_failure(
+        str(evidence["fallback_answer"]),
+        wrapped,
+    ) is None
 
 
 def test_genai_model_overrides_are_isolated_by_use_case(monkeypatch) -> None:

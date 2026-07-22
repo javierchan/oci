@@ -5,13 +5,40 @@ from __future__ import annotations
 import re
 from typing import cast
 
-from app.knowledge.builder import retrieve_knowledge
+from app.knowledge.builder import load_knowledge_base, retrieve_knowledge
+from app.services.support_routing_service import CAPABILITY_INQUIRY_PATTERN
 
 
 MARKDOWN_ROUTE_PATTERN = re.compile(r"\]\((/[^)\s]+)\)")
 CSV_CLAIM_PATTERN = re.compile(r"\b(?:csv|comma[- ]separated)\b", re.IGNORECASE)
 FEATURE_ASSERTION_PATTERN = re.compile(
     r"\b(?:can|allows?|supports?|lets? you|puede|permite|soporta)\b",
+    re.IGNORECASE,
+)
+CAPABILITY_ABSTENTION_PATTERN = re.compile(
+    r"\b(?:not (?:a )?documented|is not documented|does not document|not supported by the documented|"
+    r"no (?:es|esta|está) documentad[oa]|no figura como (?:una )?capacidad documentada|"
+    r"no (?:se )?documenta (?:esa|esta) capacidad)\b",
+    re.IGNORECASE,
+)
+CAPABILITY_NOISE = frozenset(
+    {
+        "automatic", "automated", "can", "configure", "could", "does", "have", "provide",
+        "set", "setup", "support", "supported", "when", "puedo", "podemos", "permite",
+        "soporta", "ofrece", "configurar", "crear", "cuando", "do", "that", "this", "it",
+        "anything", "something",
+    }
+)
+CAPABILITY_ACTION_TOKENS = frozenset(
+    {
+        "add", "approve", "archive", "cancel", "choose", "create", "deactivate", "design",
+        "download", "edit", "execute", "export", "filter", "finalize", "generate", "inspect",
+        "list", "monitor", "open", "plan", "promote", "publish", "recalculate", "remove",
+        "resolve", "review", "run", "select", "synchronize", "upload",
+    }
+)
+NEXT_ACTION_PATTERN = re.compile(
+    r"\*\*(?:Next action|Siguiente paso):\*\*",
     re.IGNORECASE,
 )
 
@@ -26,7 +53,143 @@ def _resolve_route(route: str, *, project_id: str | None, integration_id: str | 
         resolved = resolved.replace("[projectId]", project_id)
     if integration_id:
         resolved = resolved.replace("[integrationId]", integration_id)
+    # A source citation and next action must always be executable. A scoped KB
+    # route without the required entity context safely falls back to Projects.
+    if "[" in resolved or "{" in resolved:
+        return "/projects"
     return resolved
+
+
+def _tokens(value: object) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", str(value).casefold())
+        if len(token) > 1 and token not in CAPABILITY_NOISE
+    }
+
+
+def _closest_capability_entry(
+    question_tokens: set[str],
+    *,
+    fallback_entries: list[dict[str, object]],
+    project_id: str | None,
+    integration_id: str | None,
+) -> dict[str, object] | None:
+    """Choose the nearest documented workflow by semantic evidence, not route order."""
+
+    ranked: list[tuple[int, str, dict[str, object]]] = []
+    for raw in _as_list(load_knowledge_base().get("sections")):
+        if not isinstance(raw, dict):
+            continue
+        section = dict(raw)
+        section_tokens = _tokens(
+            " ".join(
+                str(section.get(field) or "")
+                for field in (
+                    "id",
+                    "name",
+                    "purpose",
+                    "when_to_use",
+                    "keywords",
+                    "supported_actions",
+                )
+            )
+        )
+        overlap = len(question_tokens & section_tokens)
+        if not overlap:
+            continue
+        section["routes"] = [
+            _resolve_route(str(route), project_id=project_id, integration_id=integration_id)
+            for route in _as_list(section.get("routes"))
+        ]
+        ranked.append((-overlap, str(section.get("name") or ""), section))
+    if ranked:
+        ranked.sort(key=lambda item: (item[0], item[1]))
+        return ranked[0][2]
+    return fallback_entries[0] if fallback_entries else None
+
+
+def _capability_assessment(
+    question: str,
+    *,
+    project_id: str | None,
+    integration_id: str | None,
+    closest_entries: list[dict[str, object]],
+) -> dict[str, object]:
+    """Match a capability question only against explicit supported actions."""
+
+    question_tokens = _tokens(question)
+    matches: list[tuple[float, int, dict[str, object], str]] = []
+    for raw in _as_list(load_knowledge_base().get("sections")):
+        if not isinstance(raw, dict):
+            continue
+        section = dict(raw)
+        section_tokens = _tokens(
+            " ".join(
+                str(section.get(field) or "")
+                for field in ("id", "name", "purpose", "when_to_use", "keywords")
+            )
+        )
+        for raw_action in _as_list(section.get("supported_actions")):
+            action = str(raw_action)
+            action_tokens = _tokens(action)
+            overlap = len(question_tokens & action_tokens)
+            if not action_tokens or not overlap:
+                continue
+            coverage = overlap / len(action_tokens)
+            # Require either a complete short action match or enough shared
+            # meaning to avoid treating a generic word such as "cost" as proof.
+            has_action_and_section_anchor = bool(
+                question_tokens & action_tokens & CAPABILITY_ACTION_TOKENS
+                and question_tokens & section_tokens
+            )
+            if coverage >= 0.6 or (overlap >= 2 and coverage >= 0.4) or has_action_and_section_anchor:
+                matches.append((coverage, overlap, section, action))
+    matches.sort(key=lambda item: (-item[0], -item[1], str(item[2].get("name") or "")))
+    if not question_tokens:
+        return {
+            "status": "ambiguous",
+            "reason": "The requested App action is not specific enough to verify.",
+            "matched_actions": [],
+            "closest_entry": closest_entries[0] if closest_entries else None,
+        }
+    closest_entry = _closest_capability_entry(
+        question_tokens,
+        fallback_entries=closest_entries,
+        project_id=project_id,
+        integration_id=integration_id,
+    )
+    if matches:
+        best_score = matches[0][0:2]
+        selected = [item for item in matches if item[0:2] == best_score][:3]
+        matched_entries: list[dict[str, object]] = []
+        matched_actions: list[dict[str, str]] = []
+        seen_sections: set[str] = set()
+        for _, _, section, action in selected:
+            section_id = str(section.get("id") or "")
+            matched_actions.append({"section_id": section_id, "action": action})
+            if section_id in seen_sections:
+                continue
+            seen_sections.add(section_id)
+            projected = dict(section)
+            projected["routes"] = [
+                _resolve_route(str(route), project_id=project_id, integration_id=integration_id)
+                for route in _as_list(section.get("routes"))
+            ]
+            matched_entries.append(projected)
+        return {
+            "status": "documented",
+            "reason": "The requested action matches an explicit supported_actions entry.",
+            "matched_actions": matched_actions,
+            "matched_entries": matched_entries,
+            "closest_entry": matched_entries[0],
+        }
+    return {
+        "status": "not_documented",
+        "reason": "No supported_actions entry matches the requested capability.",
+        "matched_actions": [],
+        "closest_entry": closest_entry,
+    }
 
 
 def build_app_knowledge_evidence(
@@ -36,6 +199,7 @@ def build_app_knowledge_evidence(
     language: str,
     project_id: str | None,
     integration_id: str | None,
+    capability_inquiry: bool | None = None,
 ) -> dict[str, object]:
     """Retrieve bounded product facts and add a safe deterministic answer."""
 
@@ -47,6 +211,18 @@ def build_app_knowledge_evidence(
             for route in _as_list(entry.get("routes"))
         ]
     evidence["entries"] = entries
+    is_capability_inquiry = (
+        bool(CAPABILITY_INQUIRY_PATTERN.search(question))
+        if capability_inquiry is None
+        else capability_inquiry
+    )
+    if is_capability_inquiry:
+        evidence["capability_assessment"] = _capability_assessment(
+            question,
+            project_id=project_id,
+            integration_id=integration_id,
+            closest_entries=entries,
+        )
     evidence["allowed_routes"] = sorted(
         {
             str(route)
@@ -67,6 +243,52 @@ def deterministic_knowledge_answer(evidence: dict[str, object], *, language: str
     """Explain a documented workflow without provider inference."""
 
     entries = [item for item in _as_list(evidence.get("entries")) if isinstance(item, dict)]
+    assessment = evidence.get("capability_assessment")
+    if isinstance(assessment, dict):
+        status = str(assessment.get("status") or "")
+        closest = assessment.get("closest_entry")
+        closest_entry = closest if isinstance(closest, dict) else (entries[0] if entries else {})
+        name = str(closest_entry.get("name") or "Projects")
+        purpose = str(closest_entry.get("purpose") or "")
+        routes = [str(route) for route in _as_list(closest_entry.get("routes"))]
+        route = next((candidate for candidate in routes if candidate != "/"), routes[0] if routes else "/projects")
+        matched_actions = [
+            str(item.get("action"))
+            for item in _as_list(assessment.get("matched_actions"))
+            if isinstance(item, dict) and item.get("action")
+        ]
+        if status == "documented" and matched_actions:
+            if len(matched_actions) == 1:
+                action = matched_actions[0]
+            else:
+                action = ", ".join(matched_actions[:-1]) + f", and {matched_actions[-1]}"
+            if language == "es":
+                return (
+                    f"**Sí.** OCI DIS Architect documenta **{action}** en **{name}**.\n\n"
+                    f"{purpose}\n\n**Siguiente paso:** [Abrir {name}]({route})"
+                )
+            return (
+                f"**Yes.** OCI DIS Architect documents **{action}** in **{name}**.\n\n"
+                f"{purpose}\n\n**Next action:** [Open {name}]({route})"
+            )
+        if status == "not_documented":
+            if language == "es":
+                return (
+                    "**No.** Esa capacidad no está documentada en OCI DIS Architect.\n\n"
+                    f"La alternativa más cercana es **{name}**: {purpose}\n\n"
+                    f"**Siguiente paso:** [Abrir {name}]({route})"
+                )
+            return (
+                "**No.** That capability is not documented in OCI DIS Architect.\n\n"
+                f"The closest available workflow is **{name}**: {purpose}\n\n"
+                f"**Next action:** [Open {name}]({route})"
+            )
+        if status == "ambiguous":
+            return (
+                "**Necesito una precisión:** ¿qué acción de la App quieres verificar? Por ejemplo, importar un workbook, exportar un BOM o revisar QA."
+                if language == "es"
+                else "**I need one detail:** which App action do you want to verify? For example, importing a workbook, exporting a BOM, or reviewing QA."
+            )
     if not evidence.get("documented") or not entries:
         return (
             "No tengo esa capacidad documentada en OCI DIS Architect. Revisa [Projects](/projects) "
@@ -115,6 +337,15 @@ def knowledge_grounding_failure(summary: str, evidence: dict[str, object]) -> st
     if CSV_CLAIM_PATTERN.search(summary) and not any("csv" in item for item in allowed_media):
         return "unsupported_export_format"
     normalized = summary.casefold()
+    assessment = knowledge.get("capability_assessment")
+    if isinstance(assessment, dict) and assessment.get("status") == "ambiguous":
+        if summary.count("?") != 1:
+            return "invalid_capability_clarification"
+    elif len(NEXT_ACTION_PATTERN.findall(summary)) != 1:
+        return "invalid_next_action_count"
+    if isinstance(assessment, dict) and assessment.get("status") == "not_documented":
+        if not CAPABILITY_ABSTENTION_PATTERN.search(summary):
+            return "undocumented_app_capability"
     for entry in _as_list(knowledge.get("entries")):
         if not isinstance(entry, dict):
             continue

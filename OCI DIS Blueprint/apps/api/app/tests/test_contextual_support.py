@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -32,6 +34,9 @@ SESSION_A = "11111111-1111-4111-8111-111111111111"
 SESSION_B = "22222222-2222-4222-8222-222222222222"
 HEADERS_A = {"X-Actor-Id": "support-user", "X-Actor-Role": "Viewer", "X-Support-Session-Id": SESSION_A}
 HEADERS_B = {"X-Actor-Id": "other-user", "X-Actor-Role": "Viewer", "X-Support-Session-Id": SESSION_B}
+CAPABILITY_EVAL_CASES = json.loads(
+    (Path(__file__).parent / "fixtures" / "support_assistant_capability_cases.json").read_text()
+)
 
 
 def test_support_domain_boundary_accepts_benign_topics_for_graceful_redirect() -> None:
@@ -53,6 +58,89 @@ def test_support_routes_spanish_billing_verbs_to_commercial_evidence() -> None:
     )
     assert route.intent == "commercial_guidance"
     assert route.needs_commercial_evidence is True
+
+
+@pytest.mark.asyncio
+async def test_support_capability_eval_matrix_uses_governed_evidence_and_mocked_genai(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep capability routing, abstention, exports, and citations deterministic."""
+
+    monkeypatch.setattr(
+        support_router.execute_agent_run_task,
+        "apply_async",
+        lambda **kwargs: SimpleNamespace(id=kwargs["task_id"]),
+    )
+    provider_calls = 0
+
+    async def governed_mock_provider(*args: object, **kwargs: object) -> GenAiAgentResult:
+        nonlocal provider_calls
+        provider_calls += 1
+        settings = kwargs["settings"]
+        assert settings.OCI_GENAI_MODEL_NAME == "OpenAI gpt-oss-120b"
+        executor = kwargs["tool_executor"]
+        evidence = await executor({})
+        return GenAiAgentResult(
+            status="completed",
+            model="OpenAI gpt-oss-120b",
+            summary=str(evidence["fallback_answer"]),
+            tool_name=str(kwargs["tool_name"]),
+            tool_output=evidence,
+            transport="responses",
+        )
+
+    monkeypatch.setattr(agent_service, "run_governed_tool_agent", governed_mock_provider)
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    created = await api_client.post("/api/v1/support/conversations/current", headers=HEADERS_A)
+    conversation_id = created.json()["id"]
+
+    for case in CAPABILITY_EVAL_CASES:
+        submitted = await api_client.post(
+            f"/api/v1/support/conversations/{conversation_id}/messages",
+            headers=HEADERS_A,
+            json={
+                "content": case["question"],
+                "route": "/projects",
+                "page_title": "Projects",
+                "attachments": [],
+            },
+        )
+        assert submitted.status_code == 202, f"{case['id']}: {submitted.text}"
+        assistant = submitted.json()["messages"][-1]
+        async with session_factory() as session:
+            async with session.begin():
+                await agent_service.mark_agent_run_running(assistant["agent_run_id"], session)
+            async with session.begin():
+                completed = await agent_service.run_agent(assistant["agent_run_id"], session)
+
+        assert completed.result is not None
+        evidence = completed.result["evidence"]
+        assert evidence["question_intent"] == case["expected_intent"], case["id"]
+        assessment = evidence["app_knowledge"].get("capability_assessment")
+        if case["expected_capability"] is None:
+            assert assessment is None, case["id"]
+        else:
+            assert assessment["status"] == case["expected_capability"], case["id"]
+
+        refreshed = await api_client.get(
+            f"/api/v1/support/conversations/{conversation_id}", headers=HEADERS_A
+        )
+        message = refreshed.json()["messages"][-1]
+        content = message["content"].casefold()
+        for required in case["required_terms"]:
+            assert required in content, f"{case['id']}: missing {required!r} in {content!r}"
+        for forbidden in case["forbidden_terms"]:
+            assert forbidden not in content, f"{case['id']}: found {forbidden!r} in {content!r}"
+        assert content.count("**next action:**") == 1, case["id"]
+        for citation in message["citations"]:
+            assert citation["href"].startswith("/"), case["id"]
+            assert "[" not in citation["href"] and "{" not in citation["href"], case["id"]
+        source_labels = {citation["label"] for citation in message["citations"]}
+        assert set(case["expected_sources"]).issubset(source_labels), case["id"]
+
+    assert provider_calls == len(CAPABILITY_EVAL_CASES)
 
 
 @pytest.mark.asyncio
@@ -758,7 +846,7 @@ async def test_support_uses_deterministic_fallback_only_when_provider_fails(
     )
     content = refreshed.json()["messages"][-1]["content"]
     assert "**Import**" in content
-    assert "[Continue in this view](/projects)" in content
+    assert "[Open Import](/projects)" in content
 
 
 @pytest.mark.asyncio

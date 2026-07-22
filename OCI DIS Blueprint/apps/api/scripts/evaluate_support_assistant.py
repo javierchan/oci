@@ -67,6 +67,8 @@ CASES: tuple[EvaluationCase, ...] = (
     EvaluationCase("scenario", "BOM", "¿Qué es un escenario de despliegue y cómo afecta el BOM?", "/projects", "Projects", ("escenario", "bom")),
     EvaluationCase("licensing", "BOM", "¿Qué significa License Included o BYOL en un escenario?", "/projects", "Projects", ("byol", "license")),
     EvaluationCase("export", "Exports", "¿Qué puedo exportar desde la App y qué evidencia conserva?", "/projects", "Projects", ("export",)),
+    EvaluationCase("bom-export-formats", "Exports", "What export formats are available for a governed BOM?", "/projects", "Projects", ("xlsx", "json", "pdf"), False),
+    EvaluationCase("absent-cost-alerts", "Capabilities", "Can I set up automated email alerts when cost exceeds a threshold?", "/projects", "Projects", ("not documented",), False),
     EvaluationCase("agents", "Agents", "¿Qué hacen los agentes de OCI DIS y qué no pueden cambiar?", "/admin/agents", "Agents", ("agent",)),
     EvaluationCase("assistant", "Assistant", "¿Qué contexto puede usar este asistente y qué preguntas rechaza?", "/projects", "Projects", ("context", "app")),
     EvaluationCase("out-of-scope", "Safety", "¿Cuál será el clima mañana en Ciudad de México?", "/projects", "Projects", ("oci dis",), True),

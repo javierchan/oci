@@ -48,6 +48,7 @@ from app.services.app_knowledge_service import (
 )
 from app.services.serializers import sanitize_for_json
 from app.services.support_routing_service import (
+    OUTSIDE_TOPIC_PATTERN,
     PROJECT_PORTFOLIO_PATTERN,
     SupportRoute,
     is_commercial_follow_up,
@@ -58,11 +59,6 @@ from app.services.support_routing_service import (
 WITHHELD_INTERNAL_RESPONSE = (
     "This response was withheld because it contained internal generation notes. "
     "Please ask the question again to receive a governed answer."
-)
-OUTSIDE_TOPIC_PATTERN = re.compile(
-    r"\b(weather|forecast outside|sports|score|recipe|poem|song|politics|president|celebrity|horoscope|"
-    r"clima|deportes|receta|poema|cancion|politica|presidente|celebridad|horoscopo)\b",
-    re.IGNORECASE,
 )
 INTERNAL_PLACEHOLDER_PATTERN = re.compile(
     r"\[(?:redacted|removed)\]|\{(?:project|integration)_id\}",
@@ -237,6 +233,19 @@ def _support_next_actions(evidence: dict[str, object]) -> list[dict[str, str]]:
     spanish = evidence.get("response_language") == "es"
     current_context = evidence.get("current_context")
     current_route = str(current_context.get("route") or "") if isinstance(current_context, dict) else ""
+    knowledge = evidence.get("app_knowledge")
+    if evidence.get("question_intent") == "capability_inquiry" and isinstance(knowledge, dict):
+        assessment = knowledge.get("capability_assessment")
+        closest = assessment.get("closest_entry") if isinstance(assessment, dict) else None
+        if isinstance(closest, dict):
+            routes = closest.get("routes")
+            href = str(routes[0]) if isinstance(routes, list) and routes else "/projects"
+            name = str(closest.get("name") or "Projects")
+            return [{
+                "label": f"Abrir {name}" if spanish else f"Open {name}",
+                "href": href,
+                "reason": "Use the closest documented App workflow.",
+            }]
     project = evidence.get("project")
     project_id = str(project.get("id")) if isinstance(project, dict) and project.get("id") else None
     integration = evidence.get("integration")
@@ -278,6 +287,8 @@ def _support_next_actions(evidence: dict[str, object]) -> list[dict[str, str]]:
 def _fallback_with_action(answer: str, evidence: dict[str, object]) -> str:
     """Keep provider-failure answers useful and navigable."""
 
+    if re.search(r"\*\*(?:Next action|Siguiente paso):\*\*", answer, re.IGNORECASE):
+        return answer
     actions = evidence.get("next_actions")
     if not isinstance(actions, list) or not actions or not isinstance(actions[0], dict):
         return answer
@@ -695,6 +706,7 @@ def _support_fallback_answer(evidence: dict[str, object]) -> str:
     if isinstance(app_knowledge, dict) and evidence.get("question_intent") in {
         "app_guidance",
         "workflow_guidance",
+        "capability_inquiry",
     }:
         fallback = app_knowledge.get("fallback_answer")
         if isinstance(fallback, str) and fallback:
@@ -1248,6 +1260,7 @@ async def build_support_evidence(
         language=response_language,
         project_id=resolved_project_id,
         integration_id=integration_id,
+        capability_inquiry=question_intent == "capability_inquiry",
     )
     evidence: dict[str, object] = {
         "in_scope": True,
@@ -1269,7 +1282,11 @@ async def build_support_evidence(
             "requires_governed_commercial_evidence": support_route.needs_commercial_evidence,
             "model_authorship": "primary",
             "deterministic_fallback": "provider_failure_or_grounding_failure_only",
-            "rule": "A new question replaces the previous topic; conversation state only resolves an explicit reference.",
+            "rule": (
+                "Start with the bottom line, explain briefly, and end with exactly one executable next action. "
+                "A new question replaces the previous topic; conversation state only resolves an explicit reference. "
+                "For capability_inquiry, capability_assessment is authoritative and absence requires explicit abstention."
+            ),
         },
         "app_redirect": (
             {
@@ -1308,17 +1325,24 @@ async def build_support_evidence(
         "citations": citations,
     }
     knowledge_entries = app_knowledge.get("entries")
-    if isinstance(knowledge_entries, list) and knowledge_entries:
-        primary_entry = knowledge_entries[0]
-        if isinstance(primary_entry, dict):
-            entry_routes = primary_entry.get("routes")
-            if isinstance(entry_routes, list) and entry_routes:
-                citations.append(
-                    {
-                        "label": str(primary_entry.get("name") or "App knowledge"),
-                        "href": str(entry_routes[0]),
-                    }
-                )
+    capability_assessment = app_knowledge.get("capability_assessment")
+    if isinstance(capability_assessment, dict) and capability_assessment.get("status") == "documented":
+        assessed_entries = capability_assessment.get("matched_entries")
+        if isinstance(assessed_entries, list):
+            knowledge_entries = assessed_entries
+    if isinstance(knowledge_entries, list):
+        for entry in knowledge_entries[:3]:
+            if not isinstance(entry, dict):
+                continue
+            entry_routes = entry.get("routes")
+            if not isinstance(entry_routes, list) or not entry_routes:
+                continue
+            citation = {
+                "label": str(entry.get("name") or "App knowledge"),
+                "href": str(entry_routes[0]),
+            }
+            if citation not in citations:
+                citations.append(citation)
 
     wants_patterns = any(term in question_lower for term in ("pattern", "patrón", "patron")) or "/patterns" in route
     wants_services = any(
