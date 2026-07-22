@@ -18,6 +18,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api, getErrorMessage } from "@/lib/api";
 import { formatNumber } from "@/lib/format";
 import {
+  PRICING_CERTIFICATION_STAGES,
+  PRICING_CLASSIFICATIONS,
   nextPricingAction,
   type PricingWorkspaceView,
 } from "@/lib/pricing-workspace";
@@ -142,22 +144,7 @@ export function PricingCertificationOverview({
     },
   ];
 
-  const stages = [
-    { label: "Capture", detail: "Oracle documents, APIs, and customer rate cards", Icon: FileCheck2, view: "sources" as const },
-    { label: "Identify", detail: "Product, SKU, metric, edition, and licensing identity", Icon: Tags, view: "products" as const },
-    { label: "Classify", detail: "Choose the pricing path that matches the commercial evidence", Icon: GitCompareArrows, view: "decisions" as const },
-    { label: "Validate", detail: "Run deterministic rule and quote fixtures", Icon: BookOpenCheck, view: "decisions" as const },
-    { label: "Approve", detail: "Record explicit human disposition and rationale", Icon: ShieldCheck, view: "decisions" as const },
-    { label: "Release", detail: "Publish an immutable catalog scope", Icon: PackageCheck, view: "releases" as const },
-    { label: "Calculate", detail: "Let the BOM engine apply quantities, tiers, and terms", Icon: Scale, view: "releases" as const },
-  ];
-
-  const classifications = [
-    ["Directly metered", "A public Oracle unit price and deterministic usage rule are available. The BOM can price the measured quantity."],
-    ["Contract rate", "The SKU is valid, but the price must come from an authorized customer rate card instead of the public list."],
-    ["Input required", "Oracle bills a real unit that cannot be inferred safely. The architect must provide the missing quantity or deployment choice."],
-    ["Dependent entitlement", "The SKU is included, prerequisite-driven, or priced through another commercial component; it is not added independently."],
-  ];
+  const stageIcons = [FileCheck2, Tags, GitCompareArrows, BookOpenCheck, ShieldCheck, PackageCheck, Scale];
 
   return (
     <div className="min-w-0 space-y-5">
@@ -204,7 +191,9 @@ export function PricingCertificationOverview({
           <p className="mt-2 max-w-4xl text-sm leading-6 text-[var(--color-text-secondary)]">A SKU identifies an Oracle commercial unit, but its existence alone does not make it quote-ready. Identity, pricing behavior, evidence quality, and explicit approval remain separate so the App cannot silently turn incomplete data into a customer commitment.</p>
         </div>
         <div className="grid gap-px bg-[var(--color-border)] sm:grid-cols-2 xl:grid-cols-7">
-          {stages.map(({ label, detail, Icon, view }, index) => (
+          {PRICING_CERTIFICATION_STAGES.map(({ label, detail, view }, index) => {
+            const Icon = stageIcons[index];
+            return (
             <button key={label} type="button" className="group flex min-h-40 flex-col items-stretch justify-start bg-[var(--color-surface)] p-4 text-left transition-colors hover:bg-[var(--color-surface-2)]" onClick={() => onNavigate(view)}>
               <div className="flex h-8 shrink-0 items-center justify-between gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--color-border)] text-[var(--color-accent)]"><Icon className="h-4 w-4" /></span>
@@ -213,7 +202,8 @@ export function PricingCertificationOverview({
               <p className="mt-4 text-sm font-semibold text-[var(--color-text-primary)]">{label}</p>
               <p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">{detail}</p>
             </button>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -224,7 +214,7 @@ export function PricingCertificationOverview({
           <p className="mt-2 max-w-4xl text-sm leading-6 text-[var(--color-text-secondary)]">The categories describe how Oracle sells and measures each component. They are not quality grades. Keeping them distinct prevents a public unit price, a customer contract rate, a deployment input, and an included entitlement from being treated as interchangeable.</p>
         </div>
         <div className="grid gap-px bg-[var(--color-border)] md:grid-cols-2 xl:grid-cols-4">
-          {classifications.map(([title, detail], index) => (
+          {PRICING_CLASSIFICATIONS.map(({ title, detail }, index) => (
             <div key={title} className="bg-[var(--color-surface)] p-5">
               <span className="font-mono text-xs text-[var(--color-text-muted)]">PATH {index + 1}</span>
               <h3 className="mt-3 text-base font-semibold text-[var(--color-text-primary)]">{title}</h3>

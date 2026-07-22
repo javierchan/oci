@@ -21,6 +21,84 @@ export interface PricingWorkspaceViewDefinition {
   description: string;
   Icon: LucideIcon;
 }
+
+export const PRICING_GLOSSARY = {
+  deterministic_review_gate: {
+    label: "Deterministic review gate",
+    definition: "A fixed set of evidence and fixture checks that must pass before a SKU can advance. The model does not decide the result.",
+  },
+  candidate_funnel: {
+    label: "Candidate funnel",
+    definition: "The path from captured OCI SKUs to quote-ready, customer-rate, input-required, or blocked outcomes.",
+  },
+  terminal_disposition: {
+    label: "Terminal disposition",
+    definition: "A recorded final review state for a proposal: approved, blocked, or rejected, with its rationale preserved.",
+  },
+  field_authority: {
+    label: "Field authority",
+    definition: "The source allowed to govern a commercial field when several sources describe the same SKU.",
+  },
+  change_set: {
+    label: "Change set",
+    definition: "A versioned comparison of official pricing evidence, including detected drift and regression results.",
+  },
+  quote_ready: {
+    label: "Quote-ready",
+    definition: "The SKU has approved evidence, a validated pricing rule, and the release coverage needed for deterministic BOM calculation.",
+  },
+  predicates: {
+    label: "Conditions",
+    definition: "Selection rules such as edition, license, or BYOL that determine when a SKU mapping applies.",
+  },
+} as const;
+
+export type PricingGlossaryKey = keyof typeof PRICING_GLOSSARY;
+
+export const PRICING_CERTIFICATION_STAGES = [
+  { label: "Capture", detail: "Oracle documents, APIs, and customer rate cards", view: "sources" as const },
+  { label: "Identify", detail: "Product, SKU, metric, edition, and licensing identity", view: "products" as const },
+  { label: "Classify", detail: "Choose the pricing path that matches the commercial evidence", view: "decisions" as const },
+  { label: "Validate", detail: "Run deterministic rule and quote fixtures", view: "decisions" as const },
+  { label: "Approve", detail: "Record explicit human disposition and rationale", view: "decisions" as const },
+  { label: "Release", detail: "Publish an immutable catalog scope", view: "releases" as const },
+  { label: "Calculate", detail: "Let the BOM engine apply quantities, tiers, and terms", view: "releases" as const },
+] as const;
+
+export const PRICING_CLASSIFICATIONS = [
+  { title: "Directly metered", detail: "A public Oracle unit price and deterministic usage rule are available. The BOM can price the measured quantity." },
+  { title: "Contract rate", detail: "The SKU is valid, but the price must come from an authorized customer rate card instead of the public list." },
+  { title: "Input required", detail: "Oracle bills a real unit that cannot be inferred safely. The architect must provide the missing quantity or deployment choice." },
+  { title: "Dependent entitlement", detail: "The SKU is included, prerequisite-driven, or priced through another commercial component; it is not added independently." },
+] as const;
+
+function predicateLabel(key: string): string {
+  const aliases: Record<string, string> = {
+    byol: "BYOL",
+    edition: "Edition",
+    license_model: "License model",
+    service_tier: "Service tier",
+  };
+  return aliases[key] ?? key.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function predicateValue(value: unknown): string {
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  if (typeof value === "string") return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+  if (Array.isArray(value)) return value.map(predicateValue).join(", ");
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, nested]) => `${predicateLabel(key)}: ${predicateValue(nested)}`)
+      .join("; ");
+  }
+  return String(value ?? "not set");
+}
+
+export function describePricingPredicates(predicates: Record<string, unknown>): string[] {
+  const entries = Object.entries(predicates);
+  if (entries.length === 0) return ["No conditions"];
+  return entries.map(([key, value]) => `${predicateLabel(key)}: ${predicateValue(value)}`);
+}
 export const PRICING_WORKSPACE_VIEWS: PricingWorkspaceViewDefinition[] = [
   {
     id: "overview",

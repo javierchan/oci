@@ -4,6 +4,7 @@
 
 import {
   AlertTriangle,
+  ArrowRight,
   Check,
   CheckCircle2,
   FileCheck2,
@@ -23,10 +24,12 @@ import { emitToast } from "@/hooks/use-toast";
 import { OciProductCatalog } from "@/components/oci-product-catalog";
 import { OciCoverageReview } from "@/components/oci-coverage-review";
 import { PricingCertificationOverview } from "@/components/pricing-certification-overview";
+import { CoverageFunnel, PricingTerm } from "@/components/pricing-guidance";
 import { api, getErrorMessage } from "@/lib/api";
 import { formatDate, formatNumber } from "@/lib/format";
 import {
   PRICING_WORKSPACE_VIEWS,
+  describePricingPredicates,
   type PricingWorkspaceView,
 } from "@/lib/pricing-workspace";
 import {
@@ -87,7 +90,7 @@ type ExceptionDraft = {
   target_part_number?: string;
 };
 
-function CommercialCatalogWorkspace(): JSX.Element {
+function CommercialCatalogWorkspace({ onWorkspaceChange }: { onWorkspaceChange?: (_workspace: CommercialWorkspace) => void }): JSX.Element {
   const [workspace, setWorkspace] = useState<CommercialWorkspace>(EMPTY_COMMERCIAL_WORKSPACE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -149,6 +152,10 @@ function CommercialCatalogWorkspace(): JSX.Element {
       window.clearTimeout(timer);
     };
   }, [candidatePage, candidateQuery, candidateStatus, load]);
+
+  useEffect(() => {
+    onWorkspaceChange?.(workspace);
+  }, [onWorkspaceChange, workspace]);
   const visibleCandidates = workspace.candidates;
   const evidenceApproved = workspace.document?.status === "approved_evidence";
 
@@ -311,6 +318,39 @@ function CommercialCatalogWorkspace(): JSX.Element {
         </div>
       ) : null}
 
+      <div className="border-b border-[var(--color-border)] bg-[var(--color-surface-2)] px-5 py-5">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div>
+            <p className="app-label">What to do next</p>
+            <h3 className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">
+              {!workspace.document ? "Import the official commercial workbook" : !evidenceApproved ? "Approve the evidence baseline" : !coveragePreview ? "Preview the candidate funnel" : coveragePreview.dry_run ? "Confirm the reviewed advancement" : "Review the resulting governed scope"}
+            </h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+              {!workspace.document
+                ? "Begin with immutable Oracle evidence. No candidate can be certified without a source snapshot."
+                : !evidenceApproved
+                  ? "Evidence approval confirms provenance only; it does not approve SKU rules or mappings."
+                  : !coveragePreview
+                    ? "Preview shows exactly which SKUs can advance and which remain blocked, without changing any record."
+                    : coveragePreview.dry_run
+                      ? `${formatNumber(coveragePreview.projected_approved)} candidates would pass the deterministic review gate; ${formatNumber(coveragePreview.projected_blocked)} would remain blocked.`
+                      : "The latest action is complete. Advanced queues and release controls remain available below when a specialist needs them."}
+            </p>
+          </div>
+          {!workspace.document ? (
+            <button className="app-button-primary gap-2" type="button" onClick={() => document.getElementById("commercial-evidence-import")?.scrollIntoView({ behavior: "smooth", block: "center" })}>Import evidence<ArrowRight className="h-4 w-4" /></button>
+          ) : !evidenceApproved ? (
+            <button className="app-button-primary gap-2" type="button" disabled={busy !== null} onClick={() => void runAction("approve-evidence", () => api.approveCommercialDocument(workspace.document!.id), "Official document approved as evidence. Candidate reviews remain separate.")}>{busy === "approve-evidence" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}Approve evidence</button>
+          ) : !coveragePreview ? (
+            <button className="app-button-primary gap-2" type="button" onClick={() => document.getElementById("coverage-advance-rationale")?.focus()}>Prepare preview<ArrowRight className="h-4 w-4" /></button>
+          ) : coveragePreview.dry_run ? (
+            <button className="app-button-primary gap-2" type="button" disabled={busy !== null} onClick={() => void confirmCoverageAdvance()}>{busy === "coverage-confirm" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Confirm advancement</button>
+          ) : (
+            <button className="app-button-secondary gap-2" type="button" onClick={() => { const advanced = document.getElementById("pricing-advanced-review") as HTMLDetailsElement | null; if (advanced) advanced.open = true; advanced?.scrollIntoView({ behavior: "smooth" }); }}>Open advanced review<ArrowRight className="h-4 w-4" /></button>
+          )}
+        </div>
+      </div>
+
       <div className="grid gap-px bg-[var(--color-border)] sm:grid-cols-2 xl:grid-cols-4">
         {[
           ["Normalized SKUs", workspace.summary.skus, "Official and structured catalog coverage"],
@@ -365,7 +405,7 @@ function CommercialCatalogWorkspace(): JSX.Element {
           </div>
         </div>
 
-        <div className="min-w-0 p-5">
+        <div id="commercial-evidence-import" className="min-w-0 p-5">
           <p className="app-label">Import Official Evidence</p>
           <h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Price List + Supplement workbook</h3>
           <p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">Upload the Oracle XLSX as a new immutable snapshot. Existing releases remain unchanged.</p>
@@ -380,7 +420,12 @@ function CommercialCatalogWorkspace(): JSX.Element {
         </div>
       </div>
 
-      <div className="border-t border-[var(--color-border)]">
+      <details className="border-t border-[var(--color-border)]">
+        <summary className="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-[var(--color-text-primary)]">
+          <PricingTerm term="field_authority">Learn more: which source governs each field</PricingTerm>
+          <span className="ml-2 text-xs font-normal text-[var(--color-text-muted)]">Reference</span>
+        </summary>
+        <div className="border-t border-[var(--color-border)]">
         <div className="border-b border-[var(--color-border)] px-5 py-4">
           <p className="app-label">Field Authority</p>
           <h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Which source governs each commercial decision</h3>
@@ -396,9 +441,10 @@ function CommercialCatalogWorkspace(): JSX.Element {
             </tbody>
           </table>
         </div>
-      </div>
+        </div>
+      </details>
 
-      <div className="border-t border-[var(--color-border)]">
+      <div>
         <div className="grid min-w-0 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
           <div className="min-w-0 border-b border-[var(--color-border)] px-5 py-5 xl:border-b-0 xl:border-r">
             <div className="flex items-start gap-3">
@@ -407,10 +453,11 @@ function CommercialCatalogWorkspace(): JSX.Element {
                 <p className="app-label">Coverage Advancement</p>
                 <h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Safely advance public and customer-rate coverage</h3>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-                  Resolve only low-severity product identity naming variance, then apply the existing deterministic review gate. Dependency, metric, term, and repeated-source conflicts remain blocked for individual review.
+                  Resolve only low-severity product identity naming variance, then apply the existing <PricingTerm term="deterministic_review_gate" />. Dependency, metric, term, and repeated-source conflicts remain blocked for individual review.
                 </p>
               </div>
             </div>
+            <div className="mt-5"><CoverageFunnel report={coveragePreview} /></div>
             {coveragePreview ? (
               <div className="mt-5 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)]">
                 <div className="grid gap-px bg-[var(--color-border)] sm:grid-cols-2 xl:grid-cols-4">
@@ -437,11 +484,7 @@ function CommercialCatalogWorkspace(): JSX.Element {
                   {coveragePreview.promotion_detail ? <span className="mt-1 block text-amber-700 dark:text-amber-300">{coveragePreview.promotion_detail}</span> : null}
                 </div>
               </div>
-            ) : (
-              <div className="mt-5 border-l-2 border-[var(--color-accent)] bg-[var(--color-surface-2)] px-4 py-3 text-xs leading-5 text-[var(--color-text-secondary)]">
-                Preview computes the exact candidate funnel without mutating exceptions, review dispositions, releases, mappings, or BOMs.
-              </div>
-            )}
+            ) : null}
             {coveragePreview && Object.keys(coveragePreview.blockers_by_reason).length > 0 ? (
               <div className="mt-4">
                 <p className="app-label">Remaining governed blockers</p>
@@ -481,6 +524,16 @@ function CommercialCatalogWorkspace(): JSX.Element {
         </div>
       </div>
 
+      <details id="pricing-advanced-review" className="group border-t border-[var(--color-border)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-5">
+          <div>
+            <p className="app-label">Advanced / Reference</p>
+            <h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Candidate decisions, exceptions, and release controls</h3>
+            <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">Open this workspace when the guided action identifies evidence that needs individual disposition.</p>
+          </div>
+          <ArrowRight className="h-4 w-4 shrink-0 text-[var(--color-text-muted)] transition-transform group-open:rotate-90" />
+        </summary>
+        <div className="border-t border-[var(--color-border)]">
       <div className="border-t border-[var(--color-border)]">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4">
           <div><p className="app-label">Candidate Review Queue</p><h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Generated proposals awaiting explicit disposition</h3></div>
@@ -527,15 +580,15 @@ function CommercialCatalogWorkspace(): JSX.Element {
               }}>
                 <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-xs font-semibold text-[var(--color-text-secondary)]">{candidate.part_number}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${presentationTone}`}>{presentation.label}</span><span className="app-theme-chip">{humanize(candidate.classification)}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClasses(candidate.rule_fixture_status ?? "missing")}`}>Fixture: {humanize(candidate.rule_fixture_status ?? "missing")}</span></div>
-                    <p className="mt-2 text-sm font-semibold text-[var(--color-text-primary)]">{candidate.identity.display_name}</p>
-                    <p className="mt-1 truncate text-xs text-[var(--color-text-muted)]">{candidate.identity.service_category ?? "Official product placement is not established"}</p>
+                    <p className="text-sm font-semibold text-[var(--color-text-primary)]">{candidate.identity.display_name}</p>
+                    <p className="mt-1 truncate text-xs text-[var(--color-text-muted)]">{candidate.commercial_term?.metric_name ?? "Billing metric not established"} · {candidate.identity.service_category ?? "Official product placement is not established"}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${presentationTone}`}>{presentation.label}</span><span className="app-theme-chip">{humanize(candidate.classification)}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClasses(candidate.rule_fixture_status ?? "missing")}`}>Fixture: {humanize(candidate.rule_fixture_status ?? "missing")}</span></div>
                   </div>
                   <span className="text-xs font-semibold text-[var(--color-text-secondary)] group-open:hidden">Review details</span>
                 </summary>
                 {detailLoading[candidate.id] && !candidateDetails[candidate.id] ? <div className="mt-4 flex items-center gap-2 border-t border-[var(--color-border)] pt-4 text-sm text-[var(--color-text-secondary)]"><Loader2 className="h-4 w-4 animate-spin" />Loading governed commercial evidence…</div> : <div className="mt-4 grid min-w-0 gap-5 border-t border-[var(--color-border)] pt-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
                   <div className="min-w-0">
-                    <div className="flex items-start gap-3"><PackageSearch className="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-accent)]" /><div className="min-w-0"><p className="app-label">Official product identity</p><h4 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">{detailCandidate.identity.display_name}</h4><p className="mt-1 font-mono text-xs text-[var(--color-text-muted)]">{detailCandidate.part_number}</p></div></div>
+                    <div className="flex items-start gap-3"><PackageSearch className="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-accent)]" /><div className="min-w-0"><p className="app-label">Official product identity</p><h4 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">{detailCandidate.identity.display_name}</h4><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{detailCandidate.commercial_term?.metric_name ?? "Billing metric not established"}</p></div></div>
                     <dl className="mt-4 grid gap-x-5 gap-y-3 sm:grid-cols-2">
                       <div><dt className="text-xs text-[var(--color-text-muted)]">Product hierarchy</dt><dd className="mt-1 text-sm font-medium leading-5 text-[var(--color-text-primary)]">{detailCandidate.identity.product_hierarchy.join(" → ") || "Not established"}</dd></div>
                       <div><dt className="text-xs text-[var(--color-text-muted)]">Official workbook locations</dt><dd className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">{formatNumber(detailCandidate.identity.official_location_count)}</dd></div>
@@ -543,7 +596,7 @@ function CommercialCatalogWorkspace(): JSX.Element {
                       <div><dt className="text-xs text-[var(--color-text-muted)]">Commercial term type</dt><dd className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">{humanize(detailCandidate.commercial_term?.price_type ?? "not established")}</dd></div>
                     </dl>
                     {detailCandidate.commercial_term?.additional_information ? <div className="mt-4 border-t border-[var(--color-border)] pt-4"><p className="app-label">Official billing guidance</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-text-secondary)]">{detailCandidate.commercial_term.additional_information}</p></div> : null}
-                    {detailCandidate.identity.product_paths.length > 1 ? <details className="mt-4 border-t border-[var(--color-border)] pt-4"><summary className="cursor-pointer text-sm font-semibold text-[var(--color-text-secondary)]">Review {formatNumber(detailCandidate.identity.official_location_count)} official placements</summary><ul className="mt-3 space-y-2 text-xs leading-5 text-[var(--color-text-muted)]">{detailCandidate.identity.product_paths.slice(0, 12).map((path, index) => <li key={`${candidate.id}-path-${index}`}>{path.join(" → ")}</li>)}</ul>{detailCandidate.identity.official_location_count > 12 ? <p className="mt-2 text-xs text-[var(--color-text-muted)]">Showing 12 placements; all {formatNumber(detailCandidate.identity.official_location_count)} remain persisted as source evidence.</p> : null}</details> : null}
+                    <details className="mt-4 border-t border-[var(--color-border)] pt-4"><summary className="cursor-pointer text-sm font-semibold text-[var(--color-text-secondary)]">Technical details</summary><dl className="mt-3 grid gap-x-5 gap-y-3 sm:grid-cols-2"><div><dt className="text-xs text-[var(--color-text-muted)]">OCI part number</dt><dd className="mt-1 font-mono text-sm text-[var(--color-text-primary)]">{detailCandidate.part_number}</dd></div><div><dt className="text-xs text-[var(--color-text-muted)]">Generator confidence</dt><dd className="mt-1 text-sm text-[var(--color-text-primary)]">{formatNumber(detailCandidate.confidence * 100)}%</dd></div></dl>{detailCandidate.identity.product_paths.length > 1 ? <><p className="mt-4 text-xs font-semibold text-[var(--color-text-secondary)]">Official placements</p><ul className="mt-2 space-y-2 text-xs leading-5 text-[var(--color-text-muted)]">{detailCandidate.identity.product_paths.slice(0, 12).map((path, index) => <li key={`${candidate.id}-path-${index}`}>{path.join(" → ")}</li>)}</ul>{detailCandidate.identity.official_location_count > 12 ? <p className="mt-2 text-xs text-[var(--color-text-muted)]">Showing 12 placements; all {formatNumber(detailCandidate.identity.official_location_count)} remain persisted as source evidence.</p> : null}</> : null}</details>
                     {detailCandidate.composition.length > 0 ? <div className="mt-4 border-t border-[var(--color-border)] pt-4"><p className="app-label">Documented composition</p><ul className="mt-2 space-y-2 text-sm text-[var(--color-text-secondary)]">{detailCandidate.composition.map((relationship, index) => <li key={`${candidate.id}-relationship-${index}`}><span className="font-semibold text-[var(--color-text-primary)]">{humanize(relationship.relationship_type)}:</span> {relationship.target_name}{relationship.target_part_number ? ` (${relationship.target_part_number})` : ""}</li>)}</ul></div> : null}
                     <div className="mt-5 border-t border-[var(--color-border)] pt-4"><p className="app-label">Proposed commercial behavior</p><dl className="mt-3 grid gap-x-5 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(detailCandidate.proposed_mapping).filter(([key]) => key !== "field_authority").map(([key, value]) => <div key={key}><dt className="text-xs text-[var(--color-text-muted)]">{humanize(key)}</dt><dd className="mt-1 break-words text-sm font-medium text-[var(--color-text-primary)]">{displayValue(value)}</dd></div>)}</dl></div>
                     <p className="app-label mt-5">Why it was generated</p><ul className="mt-2 space-y-1 text-sm leading-5 text-[var(--color-text-secondary)]">{detailCandidate.reasons.map((reason, index) => <li key={`${candidate.id}-reason-${index}`}>• {displayValue(reason)}</li>)}</ul>
@@ -606,6 +659,17 @@ function CommercialCatalogWorkspace(): JSX.Element {
         </div>
       </div>
 
+      <div className="border-t border-[var(--color-border)] px-5 py-4">
+        <p className="app-label">Expected effect</p>
+        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+          {coveragePreview
+            ? coveragePreview.dry_run
+              ? `Finalization would approve ${formatNumber(coveragePreview.projected_approved)} candidate(s), keep ${formatNumber(coveragePreview.projected_blocked)} blocked, and ${coveragePromote ? "request release promotion through its existing gates" : "leave the current release unchanged"}. No records have changed.`
+              : `${formatNumber(coveragePreview.current_approved)} candidate(s) are approved. ${formatNumber(coveragePreview.release_bom_part_number_count)} are enabled for deterministic BOM use; promotion is ${humanize(coveragePreview.promotion_status)}.`
+            : "Run Preview in the working surface above before finalizing or promoting. It explains the exact candidate disposition and whether release promotion is eligible without changing records."}
+        </p>
+      </div>
+
       <div className="grid min-w-0 border-t border-[var(--color-border)] xl:grid-cols-[minmax(0,1fr)_24rem]">
         <div className="min-w-0 border-b border-[var(--color-border)] xl:border-b-0 xl:border-r">
           <div className="border-b border-[var(--color-border)] px-5 py-4"><p className="app-label">Release History</p><h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Global governed commercial baselines</h3><p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">Each release separates total catalog disposition from quote-ready coverage and current App mappings.</p></div>
@@ -630,6 +694,8 @@ function CommercialCatalogWorkspace(): JSX.Element {
         </div>
         <div className="min-w-0 p-5"><ShieldCheck className="h-5 w-5 text-[var(--color-accent)]" /><p className="app-label mt-3">Catalog Review Gate</p><h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Finalize catalog review</h3><p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">Approve only unambiguous SKUs backed by passing deterministic fixtures. Every other SKU is kept visible and blocked with governed reasons.</p><div className="mt-3 border-l-2 border-[var(--color-accent)] bg-[var(--color-surface-2)] px-3 py-2.5 text-xs leading-5 text-[var(--color-text-secondary)]">This action does not resolve exceptions and does not modify any BOM, price total, or deployment scenario.</div><label className="mt-4 block text-xs font-semibold text-[var(--color-text-secondary)]" htmlFor="commercial-finalize-rationale">Review rationale</label><textarea id="commercial-finalize-rationale" className="mt-2 min-h-24 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-primary)]" placeholder="Explain why the deterministic catalog disposition can be recorded (minimum 8 characters)." value={finalizeRationale} onChange={(event) => setFinalizeRationale(event.target.value)} /><button className="app-button-primary mt-3 w-full gap-2" type="button" disabled={!workspace.document || !evidenceApproved || finalizeRationale.trim().length < 8 || busy !== null} onClick={() => void finalizeCatalogReview()}>{busy === "finalize-catalog-review" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}Finalize catalog review</button>{workspace.document && !evidenceApproved ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Approve official evidence before finalizing catalog review.</p> : null}<div className="my-5 border-t border-[var(--color-border)]" /><PackageCheck className="h-5 w-5 text-[var(--color-accent)]" /><p className="app-label mt-3">Promotion Gate</p><h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Promote reviewed release</h3><p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">The backend verifies terminal catalog dispositions, approved official evidence, quote-ready rules, App mappings, and scoped exceptions atomically. A blocked promotion changes nothing.</p><button className="app-button-secondary mt-4 w-full gap-2" type="button" disabled={!workspace.document || !evidenceApproved || busy !== null} onClick={() => workspace.document ? void runAction("promote-release", () => api.promoteCommercialRelease(workspace.document!.id), "Commercial release promoted and ready for governed BOM use.") : undefined}>{busy === "promote-release" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}Promote release</button></div>
       </div>
+        </div>
+      </details>
     </section>
   );
 }
@@ -667,6 +733,7 @@ export function PricingAdminPanel(): JSX.Element {
   const [snapshots, setSnapshots] = useState<PriceCatalogSnapshot[]>([]);
   const [changeSets, setChangeSets] = useState<GovernanceChangeSet[]>([]);
   const [mappings, setMappings] = useState<SkuMapping[]>([]);
+  const [commercialContext, setCommercialContext] = useState<CommercialWorkspace | null>(null);
   const [items, setItems] = useState<PriceItem[]>([]);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("");
   const [itemSearch, setItemSearch] = useState<string>("");
@@ -703,18 +770,20 @@ export function PricingAdminPanel(): JSX.Element {
       setLoading(true);
     }
     try {
-      const [sourceResult, jobResult, snapshotResult, mappingResult, changeSetResult] = await Promise.all([
+      const [sourceResult, jobResult, snapshotResult, mappingResult, changeSetResult, commercialResult] = await Promise.all([
         api.listPriceSources(),
         api.listPriceSyncJobs(12),
         api.listPriceCatalogSnapshots(12),
         api.listSkuMappings(),
         api.listGovernanceChangeSets(12),
+        api.getCommercialCatalog({ page: 1, page_size: 1, status: "all" }),
       ]);
       setSources(sourceResult.sources);
       setJobs(jobResult.jobs);
       setSnapshots(snapshotResult.snapshots);
       setMappings(mappingResult.mappings);
       setChangeSets(changeSetResult.change_sets);
+      setCommercialContext(commercialResult);
       setSelectedSnapshotId((current) => current || snapshotResult.snapshots[0]?.id || "");
       setError("");
     } catch (caughtError) {
@@ -868,6 +937,8 @@ export function PricingAdminPanel(): JSX.Element {
 
   const approvedMappings = mappings.filter((mapping) => mapping.status === "approved").length;
   const latestChangeSet = changeSets[0];
+  const activeRelease = commercialContext?.releases[0];
+  const selectedSnapshot = snapshots.find((snapshot) => snapshot.id === selectedSnapshotId);
 
   return (
     <div className="min-w-0 space-y-5">
@@ -894,6 +965,24 @@ export function PricingAdminPanel(): JSX.Element {
           })}
         </div>
       </nav>
+
+      <section aria-label="Active pricing context" className="grid gap-px overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-border)] sm:grid-cols-3">
+        <div className="min-w-0 bg-[var(--color-surface)] px-4 py-3">
+          <p className="app-label">Evidence</p>
+          <p className="mt-1 truncate text-sm font-semibold text-[var(--color-text-primary)]">{commercialContext?.document?.original_filename ?? "No official workbook"}</p>
+          <p className="mt-1 text-xs text-[var(--color-text-muted)]">{commercialContext?.document ? humanize(commercialContext.document.status) : "Import required"}</p>
+        </div>
+        <div className="min-w-0 bg-[var(--color-surface)] px-4 py-3">
+          <p className="app-label"><PricingTerm term="quote_ready">Active release</PricingTerm></p>
+          <p className="mt-1 truncate text-sm font-semibold text-[var(--color-text-primary)]">{activeRelease?.version ?? "No commercial release"}</p>
+          <p className="mt-1 text-xs text-[var(--color-text-muted)]">{activeRelease ? `${humanize(activeRelease.status)} · ${formatNumber(commercialReleaseCoverage(activeRelease).quoteReady)} quote-ready` : "Certification is not published"}</p>
+        </div>
+        <div className="min-w-0 bg-[var(--color-surface)] px-4 py-3">
+          <p className="app-label">Price snapshot</p>
+          <p className="mt-1 truncate text-sm font-semibold text-[var(--color-text-primary)]">{selectedSnapshot ? `${formatNumber(selectedSnapshot.item_count)} normalized price items` : "No snapshot selected"}</p>
+          <p className="mt-1 text-xs text-[var(--color-text-muted)]">{selectedSnapshot ? `${humanize(selectedSnapshot.approval_status)} · ${selectedSnapshot.currency}` : "Source sync required"}</p>
+        </div>
+      </section>
 
       <section className="border-b border-[var(--color-border)] pb-4" aria-live="polite">
         <p className="app-label">{PRICING_WORKSPACE_VIEWS.find((item) => item.id === activeView)?.label}</p>
@@ -929,7 +1018,7 @@ export function PricingAdminPanel(): JSX.Element {
         </div>
       ) : null}
 
-      {activeView === "decisions" ? <div id="pricing-view-decisions" role="tabpanel"><CommercialCatalogWorkspace /></div> : null}
+      {activeView === "decisions" ? <div id="pricing-view-decisions" role="tabpanel"><CommercialCatalogWorkspace onWorkspaceChange={setCommercialContext} /></div> : null}
 
       {error ? (
         <div role="alert" className="rounded-lg border border-rose-400/45 bg-[var(--color-surface-2)] p-4 text-sm text-rose-700 dark:text-rose-300">
@@ -1113,10 +1202,30 @@ export function PricingAdminPanel(): JSX.Element {
       {activeView === "releases" ? <div className="min-w-0 space-y-5">
       <section className="app-table-shell min-w-0 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4"><div><p className="app-label">SKU Mapping Coverage</p><h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Service demand to commercial SKU</h2></div><p className="text-sm font-semibold text-[var(--color-text-primary)]">{approvedMappings} of {mappings.length} approved</p></div>
+        <div className="grid gap-3 p-5 lg:grid-cols-2">
+          {mappings.map((mapping) => (
+            <article key={`summary-${mapping.id}`} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">{humanize(mapping.tool_key)}</h3>
+                  <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">{humanize(mapping.billing_metric_key)} · {humanize(mapping.quantity_behavior)}</p>
+                </div>
+                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses(mapping.status)}`}>{humanize(mapping.status)}</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {describePricingPredicates(mapping.predicates).map((condition) => <span key={condition} className="app-theme-chip">{condition}</span>)}
+              </div>
+              <p className="mt-3 text-xs leading-5 text-[var(--color-text-muted)]">{mapping.entry_guidance || `${mapping.quantity_increment} ${mapping.quantity_unit} increment · ${mapping.minimum_quantity} minimum`}</p>
+            </article>
+          ))}
+        </div>
+        <details className="border-t border-[var(--color-border)]">
+          <summary className="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-[var(--color-text-primary)]"><PricingTerm term="predicates">Technical mapping details and editing</PricingTerm><span className="ml-2 text-xs font-normal text-[var(--color-text-muted)]">SKU, formula, raw conditions, and rule controls</span></summary>
         <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-[var(--color-surface-2)] text-xs uppercase tracking-[0.12em] text-[var(--color-text-muted)]"><tr><th className="px-5 py-3">Service / tool</th><th className="px-5 py-3">Part number</th><th className="px-5 py-3">Metric / formula</th><th className="px-5 py-3">Predicates</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-[var(--color-border)]">{mappings.map((mapping) => {
           const editing = editingMappingId === mapping.id && mappingDraft !== null;
           return <tr key={mapping.id} className="align-top"><td className="px-5 py-4"><p className="font-semibold text-[var(--color-text-primary)]">{mapping.service_id}</p><p className="mt-1 text-xs text-[var(--color-text-muted)]">{mapping.tool_key}</p></td><td className="px-5 py-4">{editing ? <input aria-label={`Part number for ${mapping.tool_key}`} className="w-36 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-2 font-mono" value={mappingDraft.partNumber} onChange={(event) => setMappingDraft({ ...mappingDraft, partNumber: event.target.value })} /> : <span className="font-mono text-[var(--color-text-primary)]">{mapping.part_number ?? "Non-billable"}</span>}</td><td className="min-w-72 px-5 py-4"><p className="text-[var(--color-text-primary)]">{mapping.billing_metric_key}</p><p className="mt-1 text-xs text-[var(--color-text-muted)]">{mapping.formula_key}</p>{editing ? <div className="mt-3 grid grid-cols-2 gap-2"><label className="text-xs text-[var(--color-text-muted)]">Rule<select className="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5" value={mappingDraft.quantityBehavior} onChange={(event) => setMappingDraft({ ...mappingDraft, quantityBehavior: event.target.value as SkuMapping["quantity_behavior"] })}><option value="packaged">Packaged</option><option value="fixed_capacity">Fixed capacity</option><option value="hourly">Hourly</option><option value="continuous">Continuous</option><option value="manual_monthly">Manual monthly</option></select></label><label className="text-xs text-[var(--color-text-muted)]">Unit<input className="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5" value={mappingDraft.quantityUnit} onChange={(event) => setMappingDraft({ ...mappingDraft, quantityUnit: event.target.value })} /></label><label className="text-xs text-[var(--color-text-muted)]">Increment<input type="number" min={0.000001} step="any" className="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5" value={mappingDraft.quantityIncrement} onChange={(event) => setMappingDraft({ ...mappingDraft, quantityIncrement: Number(event.target.value) })} /></label><label className="text-xs text-[var(--color-text-muted)]">Minimum<input type="number" min={0} step="any" className="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5" value={mappingDraft.minimumQuantity} onChange={(event) => setMappingDraft({ ...mappingDraft, minimumQuantity: Number(event.target.value) })} /></label><label className="col-span-2 text-xs text-[var(--color-text-muted)]">Scenario selection<select className="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5" value={mappingDraft.selectionPolicy} onChange={(event) => setMappingDraft({ ...mappingDraft, selectionPolicy: event.target.value as SkuMapping["selection_policy"] })}><option value="required">Required by default</option><option value="optional">Optional add-on</option><option value="dependent">Dependency-owned</option></select></label></div> : <><p className="mt-2 text-xs text-[var(--color-text-secondary)]">{mapping.quantity_behavior.replaceAll("_", " ")} · {mapping.quantity_increment} increment · {mapping.minimum_quantity} minimum · {mapping.quantity_unit}</p><p className="mt-1 text-xs text-[var(--color-text-muted)]">{mapping.aggregation_window.replaceAll("_", " ")} · {mapping.proration_policy.replaceAll("_", " ")}{mapping.free_tier_scope !== "none" ? ` · free tier ${mapping.free_tier_scope.replaceAll("_", " ")}` : ""}</p><span className="mt-2 inline-flex rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--color-text-muted)]">{mapping.selection_policy.replaceAll("_", " ")}</span></>}</td><td className="max-w-xs px-5 py-4">{editing ? <textarea aria-label={`Predicates for ${mapping.tool_key}`} className="min-h-24 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-2 font-mono text-xs" value={mappingDraft.predicates} onChange={(event) => setMappingDraft({ ...mappingDraft, predicates: event.target.value })} /> : <code className="break-all text-xs text-[var(--color-text-secondary)]">{JSON.stringify(mapping.predicates)}</code>}</td><td className="px-5 py-4">{editing ? <select aria-label={`Status for ${mapping.tool_key}`} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-2" value={mappingDraft.status} onChange={(event) => setMappingDraft({ ...mappingDraft, status: event.target.value as SkuMappingStatus })}><option value="draft">Draft</option><option value="approved">Approved</option><option value="retired">Retired</option></select> : <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses(mapping.status)}`}>{mapping.status}</span>}</td><td className="px-5 py-4 text-right">{editing ? <div className="flex justify-end gap-2"><button type="button" aria-label={`Cancel editing ${mapping.tool_key}`} className="app-button-secondary h-9 w-9 p-0" onClick={() => { setEditingMappingId(null); setMappingDraft(null); }}><X className="h-4 w-4" /></button><button type="button" aria-label={`Save ${mapping.tool_key}`} className="app-button-primary h-9 w-9 p-0" disabled={busyAction === mapping.id} onClick={() => void saveMapping(mapping)}>{busyAction === mapping.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}</button></div> : <button type="button" aria-label={`Edit ${mapping.tool_key}`} className="app-button-secondary h-9 w-9 p-0" onClick={() => startMappingEdit(mapping)}><Pencil className="h-4 w-4" /></button>}</td></tr>;
         })}</tbody></table></div>
+        </details>
       </section>
 
       {jobs.length > 0 ? <section className="app-card p-5"><p className="app-label">Recent Sync Jobs</p><div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{jobs.slice(0, 6).map((job) => <div key={job.id} className="rounded-lg border border-[var(--color-border)] p-3"><div className="flex items-center justify-between gap-3"><span className="font-mono text-xs text-[var(--color-text-muted)]">{compactId(job.id)}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClasses(job.status)}`}>{job.status}</span></div><p className="mt-2 text-sm text-[var(--color-text-secondary)]">{job.item_count} items · {job.changes_detected} changes</p></div>)}</div></section> : null}

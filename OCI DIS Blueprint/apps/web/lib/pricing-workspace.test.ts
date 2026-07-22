@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { nextPricingAction } from "./pricing-workspace";
+import {
+  PRICING_GLOSSARY,
+  describePricingPredicates,
+  nextPricingAction,
+} from "./pricing-workspace";
 
 const ready = {
   sourceCount: 2,
@@ -33,5 +37,30 @@ describe("pricing workspace next action", () => {
       view: "releases",
       title: "Commercial governance is ready for BOM use",
     });
+  });
+});
+
+describe("pricing workspace language", () => {
+  it("keeps the required governance terms in one glossary", () => {
+    expect(Object.keys(PRICING_GLOSSARY)).toEqual(expect.arrayContaining([
+      "deterministic_review_gate",
+      "candidate_funnel",
+      "terminal_disposition",
+      "field_authority",
+      "change_set",
+      "quote_ready",
+      "predicates",
+    ]));
+  });
+
+  it("describes empty conditions without exposing JSON", () => {
+    expect(describePricingPredicates({})).toEqual(["No conditions"]);
+  });
+
+  it("translates licensing and edition predicates for reviewers", () => {
+    expect(describePricingPredicates({ byol: true, edition: "standard" })).toEqual([
+      "BYOL: yes",
+      "Edition: Standard",
+    ]);
   });
 });
