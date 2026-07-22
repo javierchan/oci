@@ -17,7 +17,7 @@ export default function AdminPricingPage(): JSX.Element {
             <p className="app-kicker">Admin Governance · Commercial Evidence</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">OCI Pricing</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-              Synchronize price evidence, review immutable catalogs, and govern the mappings that convert technical service demand into OCI SKUs.
+              Turn official Oracle evidence into explainable, certified inputs for customer BOMs. Follow each product from source capture through SKU review, release, and deterministic calculation.
             </p>
             <div className="mt-4"><Breadcrumb items={[{ label: "Home", href: "/projects" }, { label: "Admin", href: "/admin" }, { label: "Pricing" }]} /></div>
           </div>

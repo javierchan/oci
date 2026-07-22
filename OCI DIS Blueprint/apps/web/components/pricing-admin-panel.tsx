@@ -22,8 +22,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { emitToast } from "@/hooks/use-toast";
 import { OciProductCatalog } from "@/components/oci-product-catalog";
 import { OciCoverageReview } from "@/components/oci-coverage-review";
+import { PricingCertificationOverview } from "@/components/pricing-certification-overview";
 import { api, getErrorMessage } from "@/lib/api";
 import { formatDate, formatNumber } from "@/lib/format";
+import {
+  PRICING_WORKSPACE_VIEWS,
+  type PricingWorkspaceView,
+} from "@/lib/pricing-workspace";
 import {
   commercialCandidatePresentation,
   commercialReleaseCoverage,
@@ -655,6 +660,8 @@ type MappingDraft = {
 };
 
 export function PricingAdminPanel(): JSX.Element {
+  const [activeView, setActiveView] = useState<PricingWorkspaceView>("overview");
+  const [productView, setProductView] = useState<"catalog" | "readiness">("catalog");
   const [sources, setSources] = useState<PriceSource[]>([]);
   const [jobs, setJobs] = useState<PriceSyncJob[]>([]);
   const [snapshots, setSnapshots] = useState<PriceCatalogSnapshot[]>([]);
@@ -671,6 +678,25 @@ export function PricingAdminPanel(): JSX.Element {
   const [loading, setLoading] = useState<boolean>(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
+
+  useEffect(() => {
+    const view = new URLSearchParams(window.location.search).get("view");
+    if (PRICING_WORKSPACE_VIEWS.some((item) => item.id === view)) {
+      setActiveView(view as PricingWorkspaceView);
+    }
+  }, []);
+
+  function navigateToView(view: PricingWorkspaceView): void {
+    setActiveView(view);
+    const url = new URL(window.location.href);
+    if (view === "overview") {
+      url.searchParams.delete("view");
+    } else {
+      url.searchParams.set("view", view);
+    }
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   const load = useCallback(async (silent = false): Promise<void> => {
     if (!silent) {
@@ -845,9 +871,65 @@ export function PricingAdminPanel(): JSX.Element {
 
   return (
     <div className="min-w-0 space-y-5">
-      <OciProductCatalog />
-      <OciCoverageReview />
-      <CommercialCatalogWorkspace />
+      <nav aria-label="Pricing workspace" className="app-card sticky top-2 z-20 min-w-0 overflow-hidden p-1.5 shadow-sm">
+        <div className="flex min-w-max gap-1 overflow-x-auto" role="tablist" aria-label="Pricing workspace views">
+          {PRICING_WORKSPACE_VIEWS.map(({ id, label, shortLabel, description, Icon }) => {
+            const selected = activeView === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls={`pricing-view-${id}`}
+                title={description}
+                className={`flex min-h-12 items-center gap-2 rounded-md px-3.5 text-sm font-semibold transition-colors ${selected ? "bg-[var(--color-text-primary)] text-[var(--color-surface)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-primary)]"}`}
+                onClick={() => navigateToView(id)}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="hidden xl:inline">{label}</span>
+                <span className="xl:hidden">{shortLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      <section className="border-b border-[var(--color-border)] pb-4" aria-live="polite">
+        <p className="app-label">{PRICING_WORKSPACE_VIEWS.find((item) => item.id === activeView)?.label}</p>
+        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{PRICING_WORKSPACE_VIEWS.find((item) => item.id === activeView)?.description}</p>
+      </section>
+
+      {activeView === "overview" ? (
+        <div id="pricing-view-overview" role="tabpanel">
+          <PricingCertificationOverview
+            sourceCount={sources.length}
+            approvedMappingCount={approvedMappings}
+            mappingCount={mappings.length}
+            latestChangeSet={latestChangeSet}
+            onNavigate={navigateToView}
+          />
+        </div>
+      ) : null}
+
+      {activeView === "products" ? (
+        <div id="pricing-view-products" role="tabpanel" className="min-w-0 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--color-border)] pb-4">
+            <div>
+              <p className="app-label">Product workspace</p>
+              <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Browse evidence or review BOM readiness</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">The catalog answers what Oracle sells. BOM readiness answers whether this App has enough governed evidence to calculate it.</p>
+            </div>
+            <div className="inline-flex rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-1" role="tablist" aria-label="Product workspace views">
+              <button type="button" role="tab" aria-selected={productView === "catalog"} className={`rounded-md px-3 py-2 text-sm font-semibold ${productView === "catalog" ? "bg-[var(--color-surface)] text-[var(--color-text-primary)] shadow-sm" : "text-[var(--color-text-secondary)]"}`} onClick={() => setProductView("catalog")}>Product catalog</button>
+              <button type="button" role="tab" aria-selected={productView === "readiness"} className={`rounded-md px-3 py-2 text-sm font-semibold ${productView === "readiness" ? "bg-[var(--color-surface)] text-[var(--color-text-primary)] shadow-sm" : "text-[var(--color-text-secondary)]"}`} onClick={() => setProductView("readiness")}>BOM readiness</button>
+            </div>
+          </div>
+          {productView === "catalog" ? <OciProductCatalog /> : <OciCoverageReview />}
+        </div>
+      ) : null}
+
+      {activeView === "decisions" ? <div id="pricing-view-decisions" role="tabpanel"><CommercialCatalogWorkspace /></div> : null}
 
       {error ? (
         <div role="alert" className="rounded-lg border border-rose-400/45 bg-[var(--color-surface-2)] p-4 text-sm text-rose-700 dark:text-rose-300">
@@ -855,6 +937,7 @@ export function PricingAdminPanel(): JSX.Element {
         </div>
       ) : null}
 
+      {activeView === "sources" ? <div id="pricing-view-sources" role="tabpanel" className="min-w-0 space-y-5">
       <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(20rem,0.7fr)]">
         <div className="app-card min-w-0 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -989,6 +1072,9 @@ export function PricingAdminPanel(): JSX.Element {
         ) : null}
       </section>
 
+      </div> : null}
+
+      {activeView === "releases" ? <div id="pricing-view-releases" role="tabpanel" className="min-w-0 space-y-5">
       <section className="app-card min-w-0 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><p className="app-label">Immutable Catalogs</p><h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Review and approval queue</h2></div>
@@ -1009,6 +1095,9 @@ export function PricingAdminPanel(): JSX.Element {
         </div>
       </section>
 
+      </div> : null}
+
+      {activeView === "sources" ? <div className="min-w-0">
       <section className="app-table-shell min-w-0 overflow-hidden">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4">
           <div><p className="app-label">Normalized Price Items</p><h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Selected catalog evidence</h2></div>
@@ -1019,6 +1108,9 @@ export function PricingAdminPanel(): JSX.Element {
         </div>
       </section>
 
+      </div> : null}
+
+      {activeView === "releases" ? <div className="min-w-0 space-y-5">
       <section className="app-table-shell min-w-0 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4"><div><p className="app-label">SKU Mapping Coverage</p><h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Service demand to commercial SKU</h2></div><p className="text-sm font-semibold text-[var(--color-text-primary)]">{approvedMappings} of {mappings.length} approved</p></div>
         <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-[var(--color-surface-2)] text-xs uppercase tracking-[0.12em] text-[var(--color-text-muted)]"><tr><th className="px-5 py-3">Service / tool</th><th className="px-5 py-3">Part number</th><th className="px-5 py-3">Metric / formula</th><th className="px-5 py-3">Predicates</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-[var(--color-border)]">{mappings.map((mapping) => {
@@ -1028,6 +1120,7 @@ export function PricingAdminPanel(): JSX.Element {
       </section>
 
       {jobs.length > 0 ? <section className="app-card p-5"><p className="app-label">Recent Sync Jobs</p><div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{jobs.slice(0, 6).map((job) => <div key={job.id} className="rounded-lg border border-[var(--color-border)] p-3"><div className="flex items-center justify-between gap-3"><span className="font-mono text-xs text-[var(--color-text-muted)]">{compactId(job.id)}</span><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClasses(job.status)}`}>{job.status}</span></div><p className="mt-2 text-sm text-[var(--color-text-secondary)]">{job.item_count} items · {job.changes_detected} changes</p></div>)}</div></section> : null}
+      </div> : null}
     </div>
   );
 }

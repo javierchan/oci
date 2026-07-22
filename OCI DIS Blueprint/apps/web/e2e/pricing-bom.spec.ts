@@ -126,9 +126,11 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
 
   await page.goto("/admin/pricing");
   await expect(page.getByRole("heading", { name: "OCI Pricing" })).toBeVisible();
+  await page.getByRole("tab", { name: "Official Sources" }).click();
   await expect(
     page.getByText("Oracle OCI Public List Pricing", { exact: true }).filter({ visible: true }).first(),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Releases & BOM" }).click();
   await expect(page.getByText(`${completedSync.item_count} items`, { exact: true }).first()).toBeVisible();
 
   const syntheticResponse = await request.post(`${apiBase}/api/v1/admin/synthetic/jobs`, {
