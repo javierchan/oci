@@ -38,13 +38,17 @@ TOOL_TO_SERVICE_ID: dict[str, str] = {
     "Process Automation": "PROCESS_AUTOMATION",
     "OCI Process Automation": "PROCESS_AUTOMATION",
     "Oracle Integration Process Automation": "PROCESS_AUTOMATION",
-    "SFTP": "OBJECT_STORAGE",
+    "SFTP": "SFTP_TRANSFER",
+    "SFTP File Transfer": "SFTP_TRANSFER",
+    "OCI AI Services": "AI_SERVICES",
+    "OKE / Service Mesh": "OKE",
+    "OCI Kubernetes Engine (OKE)": "OKE",
 }
 
-# These pattern-level dependencies are intentionally outside OCI DIS Architect's
-# commercial sizing boundary. They remain visible in architecture evidence, but
-# must not be presented as unresolved OCI Service Products or added to the BOM.
-EXTERNAL_DEPENDENCY_TOOL_KEYS = frozenset({"OCI AI Services", "OKE / Service Mesh"})
+# All governed Dictionary capabilities resolve to a normalized Service Product.
+# Product-family and composite capabilities can still require explicit commercial
+# selection; they are not silently treated as quote-ready.
+EXTERNAL_DEPENDENCY_TOOL_KEYS: frozenset[str] = frozenset()
 
 CONNECTOR_HUB_ALLOWED_SOURCES = frozenset({"QUEUE", "STREAMING"})
 CONNECTOR_HUB_ALLOWED_TARGETS = frozenset({"FUNCTIONS", "STREAMING", "OBJECT_STORAGE"})

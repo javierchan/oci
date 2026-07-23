@@ -348,6 +348,7 @@ async def list_dictionary_categories(db: AsyncSession) -> DictionaryCategoryList
 
     result = await db.execute(
         select(DictionaryOption.category, func.count(DictionaryOption.id))
+        .where(DictionaryOption.is_active.is_(True))
         .group_by(DictionaryOption.category)
         .order_by(DictionaryOption.category)
     )

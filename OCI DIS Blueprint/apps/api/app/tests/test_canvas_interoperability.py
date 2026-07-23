@@ -99,8 +99,11 @@ def test_capture_taxonomy_aliases_resolve_to_normalized_service_products() -> No
     assert TOOL_TO_SERVICE_ID["OCI Data Catalog"] == "DATA_CATALOG"
     assert TOOL_TO_SERVICE_ID["OCI IAM and Security Services"] == "IAM"
     assert TOOL_TO_SERVICE_ID["OCI Observability"] == "OBSERVABILITY"
-    assert "OCI AI Services" not in TOOL_TO_SERVICE_ID
-    assert "OKE / Service Mesh" not in TOOL_TO_SERVICE_ID
+    assert TOOL_TO_SERVICE_ID["OCI AI Services"] == "AI_SERVICES"
+    assert TOOL_TO_SERVICE_ID["OKE / Service Mesh"] == "OKE"
+    assert TOOL_TO_SERVICE_ID["OCI Kubernetes Engine (OKE)"] == "OKE"
+    assert TOOL_TO_SERVICE_ID["SFTP"] == "SFTP_TRANSFER"
+    assert TOOL_TO_SERVICE_ID["SFTP File Transfer"] == "SFTP_TRANSFER"
 
 
 def test_context_overlay_is_preserved_without_becoming_a_payload_route_step() -> None:

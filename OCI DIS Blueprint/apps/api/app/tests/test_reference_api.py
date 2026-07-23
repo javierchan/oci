@@ -96,6 +96,14 @@ async def test_dictionary_api_returns_volumetric_metadata(
     assert all_tools_response.status_code == 200
     assert "Deprecated Tool" in [option["value"] for option in all_tools_response.json()["options"]]
 
+    categories_response = await api_client.get("/api/v1/dictionaries/")
+    assert categories_response.status_code == 200
+    category_counts = {
+        item["category"]: item["option_count"]
+        for item in categories_response.json()["categories"]
+    }
+    assert category_counts["TOOLS"] == 1
+
     frequency_response = await api_client.get("/api/v1/dictionaries/FREQUENCY")
     assert frequency_response.status_code == 200
     frequency_payload = frequency_response.json()

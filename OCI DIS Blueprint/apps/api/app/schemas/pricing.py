@@ -764,8 +764,17 @@ class DeploymentEnvironmentInput(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     active_hours_month: float = Field(default=744.0, ge=0, le=744)
     demand_share: float = Field(default=1.0, ge=0, le=1)
-    ha_multiplier: float = Field(default=1.0, ge=1, le=10)
-    dr_role: str = Field(default="primary", pattern="^(primary|standby|none)$")
+    ha_multiplier: float = Field(
+        default=1.0,
+        ge=1,
+        le=10,
+        description="1.0 is a normal deployment; values above 1.0 add explicitly planned HA capacity.",
+    )
+    dr_role: str = Field(
+        default="none",
+        pattern="^(primary|standby|none)$",
+        description="None unless the approved topology explicitly assigns this environment a DR role.",
+    )
     phases: list[DeploymentRampPhaseInput] = Field(default_factory=list, max_length=100)
 
 

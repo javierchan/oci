@@ -207,7 +207,7 @@ PATTERN_PLANS: dict[str, PatternPlan] = {
     "#13": PatternPlan("#13", ("OIC Gen3",), ("OCI API Gateway", "OCI IAM and Security Services"), "REST", "Protected Integration", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Medio", (32, 1024), 0.22),
     "#14": PatternPlan("#14", ("OCI Streaming", "OIC Gen3"), ("OCI API Gateway", "OCI Data Catalog"), "Event", "Governed Event API", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Medio", (32, 768), 0.12),
     "#15": PatternPlan("#15", ("OIC Gen3", "OCI Functions"), ("OCI API Gateway", "OCI AI Services"), "REST", "AI-Assisted Orchestration", ("Cada 1 hora", "Cada 4 horas", "Bajo demanda"), "Alto", (64, 1024), 0.18),
-    "#16": PatternPlan("#16", ("OIC Gen3", "OCI Functions"), ("OCI API Gateway", "OKE / Service Mesh", "OCI Observability", "OCI IAM and Security Services"), "REST", "Mesh Edge", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (48, 768), 0.20),
+    "#16": PatternPlan("#16", ("OIC Gen3", "OCI Functions"), ("OCI API Gateway", "OCI Kubernetes Engine (OKE)", "OCI Observability", "OCI IAM and Security Services"), "REST", "Mesh Edge", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (48, 768), 0.20),
     "#17": PatternPlan("#17", ("OIC Gen3", "OCI Functions", "OCI Queue"), ("OCI API Gateway",), "Webhook", "Webhook Distribution", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (24, 640), 0.10, (2, 3, 4)),
 }
 

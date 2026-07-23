@@ -272,7 +272,7 @@ def _product_resolution_status(
 ]:
     if tool_key in EXTERNAL_DEPENDENCY_TOOL_KEYS:
         return "external_dependency"
-    if service_id is None:
+    if service_id is None or commercial_classification is None:
         return "product_selection_required"
     if commercial_classification in INCLUDED_OR_DEPENDENT_CLASSIFICATIONS:
         return "included_or_dependent"

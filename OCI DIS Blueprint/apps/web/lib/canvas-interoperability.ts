@@ -70,7 +70,11 @@ export const TOOL_TO_SERVICE_ID: Record<string, string> = {
   "Process Automation": "PROCESS_AUTOMATION",
   "OCI Process Automation": "PROCESS_AUTOMATION",
   "Oracle Integration Process Automation": "PROCESS_AUTOMATION",
-  SFTP: "OBJECT_STORAGE",
+  SFTP: "SFTP_TRANSFER",
+  "SFTP File Transfer": "SFTP_TRANSFER",
+  "OCI AI Services": "AI_SERVICES",
+  "OKE / Service Mesh": "OKE",
+  "OCI Kubernetes Engine (OKE)": "OKE",
 };
 
 const CONNECTOR_HUB_ALLOWED_SOURCES = new Set<string>(["QUEUE", "STREAMING"]);

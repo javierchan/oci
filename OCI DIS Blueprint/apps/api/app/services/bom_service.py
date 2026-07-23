@@ -1528,7 +1528,7 @@ def _metric_options(
         "active_hours_month": 744.0,
         "demand_share": 1.0,
         "ha_multiplier": 1.0,
-        "dr_role": "primary",
+        "dr_role": "none",
     }
     options: list[ScenarioMetricOptionResponse] = []
     grouped: dict[tuple[str, str], list[ServiceProductSkuMapping]] = defaultdict(list)

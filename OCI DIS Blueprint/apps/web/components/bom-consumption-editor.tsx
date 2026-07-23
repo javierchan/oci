@@ -437,8 +437,24 @@ export function BomConsumptionEditor({
 
               <div className="mt-4 grid gap-3 md:grid-cols-3">
                 <label className="text-xs font-semibold text-[var(--color-text-secondary)]">Runtime ceiling / month<input type="number" min={0} max={744} className={inputClass} value={environment.active_hours_month} onChange={(event) => patchEnvironment(environmentIndex, { active_hours_month: Number(event.target.value) })} /><span className="mt-1.5 block font-normal leading-5 text-[var(--color-text-muted)]">Used by capacity SKUs that truly run by the hour. Product runtime can be planned separately below.</span></label>
-                <label className="text-xs font-semibold text-[var(--color-text-secondary)]">HA multiplier<input type="number" min={1} max={10} step={0.1} className={inputClass} value={environment.ha_multiplier} onChange={(event) => patchEnvironment(environmentIndex, { ha_multiplier: Number(event.target.value) })} /></label>
-                <label className="text-xs font-semibold text-[var(--color-text-secondary)]">DR role<select className={inputClass} value={environment.dr_role} onChange={(event) => patchEnvironment(environmentIndex, { dr_role: event.target.value as DeploymentEnvironmentInput["dr_role"] })}><option value="primary">Primary</option><option value="standby">Standby</option><option value="none">None</option></select></label>
+                <label className="text-xs font-semibold text-[var(--color-text-secondary)]">
+                  HA multiplier
+                  <input type="number" min={1} max={10} step={0.1} className={inputClass} value={environment.ha_multiplier} onChange={(event) => patchEnvironment(environmentIndex, { ha_multiplier: Number(event.target.value) })} />
+                  <span className="mt-1 block text-[11px] font-normal leading-4 text-[var(--color-text-muted)]">
+                    1× is the normal deployment. Use a value above 1× only when the approved design adds HA capacity.
+                  </span>
+                </label>
+                <label className="text-xs font-semibold text-[var(--color-text-secondary)]">
+                  DR role
+                  <select className={inputClass} value={environment.dr_role} onChange={(event) => patchEnvironment(environmentIndex, { dr_role: event.target.value as DeploymentEnvironmentInput["dr_role"] })}>
+                    <option value="none">None</option>
+                    <option value="primary">Primary</option>
+                    <option value="standby">Standby</option>
+                  </select>
+                  <span className="mt-1 block text-[11px] font-normal leading-4 text-[var(--color-text-muted)]">
+                    Select a DR role only when the customer-approved topology includes disaster recovery.
+                  </span>
+                </label>
               </div>
 
               <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-t border-[var(--color-border)] pt-4">

@@ -150,8 +150,12 @@ const TOOL_KINDS: Record<string, ToolKind> = {
   ATP: "db",
   "Oracle DB": "db",
   SFTP: "storage",
+  "SFTP File Transfer": "storage",
   "OCI Object Storage": "storage",
   "OCI APM": "oic",
+  "OCI AI Services": "functions",
+  "OKE / Service Mesh": "oic",
+  "OCI Kubernetes Engine (OKE)": "oic",
 };
 
 const TOOL_KIND_STYLES: Record<ToolKind, ToolDefinition> = {

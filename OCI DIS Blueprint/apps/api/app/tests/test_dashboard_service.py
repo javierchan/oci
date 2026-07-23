@@ -119,6 +119,7 @@ def test_build_charts_represents_every_captured_product_once_per_integration() -
                 "OIC3": "direct_metered",
                 "PROCESS_AUTOMATION": "dependent_entitlement",
                 "STREAMING": "direct_metered",
+                "AI_SERVICES": "dependent_cost",
             },
         ),
     )
@@ -128,8 +129,8 @@ def test_build_charts_represents_every_captured_product_once_per_integration() -
     assert footprint["captured_product_count"] == 7
     assert footprint["represented_product_count"] == 7
     assert footprint["verified_product_count"] == 4
-    assert footprint["included_or_dependent_count"] == 2
-    assert footprint["external_dependency_count"] == 1
+    assert footprint["included_or_dependent_count"] == 3
+    assert footprint["external_dependency_count"] == 0
     assert footprint["selection_required_count"] == 0
     assert footprint["rows_with_products"] == 3
     assert products["OCI Events"]["integration_count"] == 1
@@ -138,8 +139,8 @@ def test_build_charts_represents_every_captured_product_once_per_integration() -
     assert products["OCI Events"]["resolution_status"] == "included_or_dependent"
     assert products["Oracle GoldenGate"]["service_id"] == "GOLDENGATE"
     assert products["Process Automation"]["service_id"] == "PROCESS_AUTOMATION"
-    assert products["OCI AI Services"]["service_id"] is None
-    assert products["OCI AI Services"]["resolution_status"] == "external_dependency"
+    assert products["OCI AI Services"]["service_id"] == "AI_SERVICES"
+    assert products["OCI AI Services"]["resolution_status"] == "included_or_dependent"
 
 
 def test_enrich_product_footprint_upgrades_historical_aliases() -> None:
@@ -166,13 +167,13 @@ def test_enrich_product_footprint_upgrades_historical_aliases() -> None:
 
     enriched = dashboard_service._enrich_product_footprint(
         footprint,
-        {"DATA_CATALOG": "included_non_billable"},
+        {"DATA_CATALOG": "included_non_billable", "OKE": "dependent_cost"},
     )
 
     assert enriched.represented_product_count == 2
-    assert enriched.included_or_dependent_count == 1
-    assert enriched.external_dependency_count == 1
+    assert enriched.included_or_dependent_count == 2
+    assert enriched.external_dependency_count == 0
     assert enriched.selection_required_count == 0
     assert enriched.products[0].service_id == "DATA_CATALOG"
-    assert enriched.products[1].service_id is None
-    assert enriched.products[1].resolution_status == "external_dependency"
+    assert enriched.products[1].service_id == "OKE"
+    assert enriched.products[1].resolution_status == "included_or_dependent"

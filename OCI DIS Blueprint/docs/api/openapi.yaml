@@ -8081,13 +8081,15 @@
             "type": "number"
           },
           "dr_role": {
-            "default": "primary",
+            "default": "none",
+            "description": "None unless the approved topology explicitly assigns this environment a DR role.",
             "pattern": "^(primary|standby|none)$",
             "title": "Dr Role",
             "type": "string"
           },
           "ha_multiplier": {
             "default": 1.0,
+            "description": "1.0 is a normal deployment; values above 1.0 add explicitly planned HA capacity.",
             "maximum": 10.0,
             "minimum": 1.0,
             "title": "Ha Multiplier",

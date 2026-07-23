@@ -1525,6 +1525,109 @@ SERVICE_PROFILES: list[dict[str, object]] = [
             "https://www.oracle.com/integration/pricing/"
         ),
     },
+    {
+        "service_id": "SFTP_TRANSFER",
+        "name": "SFTP File Transfer",
+        "category": "FILE_TRANSFER_CAPABILITY",
+        "sla_uptime_pct": None,
+        "pricing_model": (
+            "No standalone OCI SFTP SKU. Select Oracle Integration File Server, "
+            "customer-managed SFTP on OCI Compute, or an external SFTP endpoint."
+        ),
+        "limits": {
+            "oic_file_server_storage_gb": 500,
+            "oic_file_server_concurrent_connections": 50,
+            "oic_integration_file_limit_kb": 1048576,
+            "oic_billing_increment_kb": 50,
+            "deployment_variant_required": True,
+            "label": "documented",
+        },
+        "architectural_fit": (
+            "Governed SFTP transfer capability for file exchange. Oracle Integration File Server "
+            "is included with Oracle Integration and follows OIC message accounting. A custom SFTP "
+            "host on OCI Compute requires explicit compute, storage, network, operations, and availability sizing."
+        ),
+        "anti_patterns": (
+            "Do not represent SFTP as a standalone OCI product or silently map it to Object Storage. "
+            "Do not assume high availability, disaster recovery, runtime, or storage capacity."
+        ),
+        "interoperability_notes": (
+            "Choose exactly one deployment variant: OIC File Server, customer-managed SFTP on OCI Compute, "
+            "or external/customer-managed SFTP. Preserve the selected endpoint and commercial dependencies."
+        ),
+        "oracle_docs_urls": (
+            "https://docs.oracle.com/en/cloud/paas/application-integration/int-get-started/file-server.html|"
+            "https://docs.oracle.com/en/cloud/paas/application-integration/file-server/file-server-faq.html|"
+            "https://docs.oracle.com/en-us/iaas/integration/doc/monitoring-billable-messages.html"
+        ),
+    },
+    {
+        "service_id": "OKE",
+        "name": "OCI Kubernetes Engine (OKE)",
+        "category": "CONTAINER_PLATFORM",
+        "sla_uptime_pct": None,
+        "pricing_model": (
+            "Price the selected OKE control-plane option and every dependent node, storage, "
+            "network, and observability SKU. Capacity and HA are explicit scenario inputs."
+        ),
+        "limits": {
+            "exact_node_shape_required": True,
+            "runtime_hours_required": True,
+            "ha_optional": True,
+            "service_mesh_status": "OCI Service Mesh retired May 31, 2025; use Istio when mesh behavior is required",
+            "label": "documented",
+        },
+        "architectural_fit": (
+            "Managed Kubernetes platform for containerized integration adapters, APIs, and custom services. "
+            "Use Istio only when the workload requires governed mesh traffic policy, mTLS, or telemetry."
+        ),
+        "anti_patterns": (
+            "Do not quote a generic OKE label without node shapes and runtime. Do not force HA or DR. "
+            "Do not select the retired OCI Service Mesh service."
+        ),
+        "interoperability_notes": (
+            "Integrates with API Gateway, Load Balancer, IAM, Vault, Observability, Functions, Streaming, "
+            "and other OCI services; each dependent product retains its own meter and limits."
+        ),
+        "oracle_docs_urls": (
+            "https://docs.oracle.com/en-us/iaas/Content/ContEng/home.htm|"
+            "https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengservice-mesh-intro-topic.htm|"
+            "https://www.oracle.com/cloud/cloud-native/container-engine-kubernetes/pricing/"
+        ),
+    },
+    {
+        "service_id": "AI_SERVICES",
+        "name": "OCI AI Services",
+        "category": "AI_PRODUCT_FAMILY",
+        "sla_uptime_pct": None,
+        "pricing_model": (
+            "Product-family capability. Quote the exact OCI AI service, model, region, capacity mode, "
+            "and billing metric selected for the workload."
+        ),
+        "limits": {
+            "exact_service_required": True,
+            "model_or_capability_required": True,
+            "region_required": True,
+            "billing_metric_required": True,
+            "label": "documented",
+        },
+        "architectural_fit": (
+            "Governed AI enrichment, inference, document understanding, speech, vision, language, "
+            "or Generative AI capability attached to an integration route."
+        ),
+        "anti_patterns": (
+            "Do not publish a BOM line named only OCI AI Services. The family label is architectural "
+            "evidence until the exact product, model or capability, region, and meter are approved."
+        ),
+        "interoperability_notes": (
+            "OIC, Functions, API Gateway, Object Storage, and Streaming can participate in AI-enabled "
+            "flows, but their demand and the selected AI product demand must be calculated separately."
+        ),
+        "oracle_docs_urls": (
+            "https://docs.oracle.com/en-us/iaas/Content/ai-services.htm|"
+            "https://www.oracle.com/artificial-intelligence/pricing/"
+        ),
+    },
 ]
 
 SERVICE_INTEROPERABILITY_RULES: list[dict[str, object]] = [

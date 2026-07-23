@@ -113,8 +113,11 @@ describe("canvas-interoperability", () => {
     expect(resolveCanvasServiceId("OCI Data Catalog")).toBe("DATA_CATALOG");
     expect(resolveCanvasServiceId("OCI IAM and Security Services")).toBe("IAM");
     expect(resolveCanvasServiceId("OCI Observability")).toBe("OBSERVABILITY");
-    expect(resolveCanvasServiceId("OCI AI Services")).toBeNull();
-    expect(resolveCanvasServiceId("OKE / Service Mesh")).toBeNull();
+    expect(resolveCanvasServiceId("OCI AI Services")).toBe("AI_SERVICES");
+    expect(resolveCanvasServiceId("OKE / Service Mesh")).toBe("OKE");
+    expect(resolveCanvasServiceId("OCI Kubernetes Engine (OKE)")).toBe("OKE");
+    expect(resolveCanvasServiceId("SFTP")).toBe("SFTP_TRANSFER");
+    expect(resolveCanvasServiceId("SFTP File Transfer")).toBe("SFTP_TRANSFER");
   });
 
   it("blocks payloads that exceed documented service limits", () => {

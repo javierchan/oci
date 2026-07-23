@@ -41,7 +41,14 @@ from app.models import (
 )
 from app.models.project import ProjectStatus
 from app.services import bom_service, pricing_service
-from app.schemas.pricing import BomReviewRequest
+from app.schemas.pricing import BomReviewRequest, DeploymentEnvironmentInput
+
+
+def test_deployment_environment_defaults_to_standard_capacity_without_dr() -> None:
+    environment = DeploymentEnvironmentInput(name="Production")
+
+    assert environment.ha_multiplier == 1.0
+    assert environment.dr_role == "none"
 
 
 async def _seed_approved_commercial_release(
