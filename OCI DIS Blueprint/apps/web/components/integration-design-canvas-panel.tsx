@@ -4,7 +4,7 @@
 
 import { useRouter } from "next/navigation";
 import { Calculator, Check, GitCompare, Loader2, X } from "lucide-react";
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
 
 import { AiReviewButton } from "@/components/ai-review-button";
 import { IntegrationCanvas } from "@/components/integration-canvas";
@@ -14,6 +14,7 @@ import {
   deriveCanvasSemantics,
   parseCanvasState,
   serializeCanvasState,
+  technicalDemandSignature,
 } from "@/lib/canvas-governance";
 import type {
   AiReviewCanvasDraftSelection,
@@ -22,6 +23,7 @@ import type {
   CanvasServiceProfile,
   DictionaryOption,
   Integration,
+  IntegrationTechnicalDemand,
   PatternDefinition,
 } from "@/lib/types";
 
@@ -171,6 +173,23 @@ export function IntegrationDesignCanvasPanel({
   const [recommendationPreview, setRecommendationPreview] = useState<AiReviewCanvasDraftSelection | null>(null);
   const [simulation, setSimulation] = useState<AiReviewDraftSimulation | null>(null);
   const [simulating, setSimulating] = useState<boolean>(false);
+  const [technicalDemand, setTechnicalDemand] = useState<IntegrationTechnicalDemand | null>(null);
+  const [technicalDemandLoading, setTechnicalDemandLoading] = useState<boolean>(true);
+  const [technicalDemandError, setTechnicalDemandError] = useState<string>("");
+  const normalizedTechnicalDemandSignature = useMemo(
+    () =>
+      technicalDemandSignature(
+        normalizedCanvasSeed.serializedValue,
+        normalizedCanvasSeed.coreToolKeys,
+      ),
+    [normalizedCanvasSeed],
+  );
+  const [savedTechnicalDemandSignature, setSavedTechnicalDemandSignature] =
+    useState<string>(normalizedTechnicalDemandSignature);
+  const currentTechnicalDemandSignature = useMemo(
+    () => technicalDemandSignature(canvasState, toolKeys),
+    [canvasState, toolKeys],
+  );
   const maxPeriodDelta = useMemo(
     () => Math.max(...(simulation?.commercial_impact.periods.map((item) => Math.abs(item.delta)) ?? []), 1),
     [simulation],
@@ -178,6 +197,31 @@ export function IntegrationDesignCanvasPanel({
   const canvasDirty =
     canvasState !== normalizedCanvasSeed.serializedValue ||
     toolKeys.join("|") !== normalizedCanvasSeed.coreToolKeys.join("|");
+  const technicalDemandDirty =
+    currentTechnicalDemandSignature !== savedTechnicalDemandSignature;
+
+  const refreshTechnicalDemand = useCallback(async (): Promise<void> => {
+    setTechnicalDemandLoading(true);
+    setTechnicalDemandError("");
+    try {
+      setTechnicalDemand(
+        await api.getIntegrationTechnicalDemand(projectId, integration.id),
+      );
+    } catch (caughtError) {
+      setTechnicalDemand(null);
+      setTechnicalDemandError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to calculate the saved route.",
+      );
+    } finally {
+      setTechnicalDemandLoading(false);
+    }
+  }, [integration.id, projectId]);
+
+  useEffect(() => {
+    void refreshTechnicalDemand();
+  }, [refreshTechnicalDemand, normalizedCanvasSeed.serializedValue]);
 
   useEffect(() => {
     setCanvasState(normalizedCanvasSeed.serializedValue);
@@ -188,7 +232,8 @@ export function IntegrationDesignCanvasPanel({
     setError("");
     setRecommendationPreview(null);
     setSimulation(null);
-  }, [normalizedCanvasSeed]);
+    setSavedTechnicalDemandSignature(normalizedTechnicalDemandSignature);
+  }, [normalizedCanvasSeed, normalizedTechnicalDemandSignature]);
 
   useEffect(() => {
     setSimulation(null);
@@ -225,6 +270,8 @@ export function IntegrationDesignCanvasPanel({
         additional_tools_overlays: canvasState,
         core_tools: toolKeys,
       });
+      setSavedTechnicalDemandSignature(currentTechnicalDemandSignature);
+      await refreshTechnicalDemand();
       setStatusMessage("Canvas saved.");
       if (refreshAfterSave) {
         startTransition(() => {
@@ -278,9 +325,9 @@ export function IntegrationDesignCanvasPanel({
           <button
             type="button"
             onClick={() => void handleSimulateDraft()}
-            disabled={saving || simulating || !canvasDirty || !hasConnectedRoute}
+            disabled={saving || simulating || !technicalDemandDirty || !hasConnectedRoute}
             className="app-button-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-            title={canvasDirty ? "Calculate technical and commercial impact without saving" : "Change the canvas to simulate a draft"}
+            title={technicalDemandDirty ? "Calculate technical and commercial impact without saving" : "Change the route to simulate a draft"}
           >
             {simulating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
             {simulating ? "Simulating…" : "Simulate impact"}
@@ -513,6 +560,10 @@ export function IntegrationDesignCanvasPanel({
           onConnectionValidityChange={setHasConnectedRoute}
           onBlockingIssuesChange={setHasBlockingIssues}
           recommendationPreview={recommendationPreview}
+          technicalDemand={technicalDemand}
+          technicalDemandLoading={technicalDemandLoading}
+          technicalDemandError={technicalDemandError}
+          technicalDemandStale={technicalDemandDirty}
         />
       </div>
 

@@ -1,12 +1,21 @@
 /* Presentation helpers for readable, evidence-backed Integration Canvas node metrics. */
 
-import type { CanvasServiceProfile, ServiceLimit } from "./types";
+import type {
+  CanvasServiceProfile,
+  ServiceLimit,
+  TechnicalDemandNode,
+} from "./types";
 
 export type CanvasNodeMetrics = {
-  payload: string;
+  inputPayload: string;
+  outputPayload: string;
+  messageFlow: string;
+  monthlyUsage: string;
+  monthlyUsageDetail: string;
   cadence: string;
   sla: string;
   constraint: string;
+  status: TechnicalDemandNode["status"] | "not_calculated";
 };
 
 function numericLimit(
@@ -84,6 +93,54 @@ export function formatCanvasPayload(payloadKb: number | null): string {
   }).format(payloadKb)} KB`;
 }
 
+function formatCompactQuantity(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    notation: Math.abs(value) >= 10_000 ? "compact" : "standard",
+    maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2,
+  }).format(value);
+}
+
+function formatMessageFlow(node: TechnicalDemandNode | null): string {
+  if (!node) {
+    return "Not calculated";
+  }
+  const input = formatCompactQuantity(node.input_messages_per_execution);
+  const output = formatCompactQuantity(node.output_messages_per_execution);
+  return input === output ? `${input} / execution` : `${input} → ${output} / execution`;
+}
+
+function formatMonthlyUsage(
+  node: TechnicalDemandNode | null,
+  unavailableReason: string,
+): {
+  label: string;
+  detail: string;
+} {
+  if (!node) {
+    return {
+      label: "Not calculated",
+      detail: unavailableReason,
+    };
+  }
+  const resolved = node.metrics.filter(
+    (metric) => metric.status === "resolved" && metric.quantity !== null,
+  );
+  if (resolved.length === 0) {
+    return {
+      label:
+        node.status === "blocked" ? "Blocked" : "Input required",
+      detail: node.blockers[0] ?? "No resolved monthly quantity is available.",
+    };
+  }
+  const labels = resolved.map(
+    (metric) => `${formatCompactQuantity(metric.quantity ?? 0)} ${metric.unit}`,
+  );
+  return {
+    label: labels[0] ?? "Not calculated",
+    detail: labels.join(" · "),
+  };
+}
+
 export function formatCanvasSla(
   profile: CanvasServiceProfile | null,
   targetLatencySla: string | null,
@@ -99,14 +156,35 @@ export function formatCanvasSla(
 
 export function canvasNodeMetrics(
   profile: CanvasServiceProfile | null,
-  payloadKb: number | null,
   cadence: string | null,
   targetLatencySla: string | null,
+  technicalDemand: TechnicalDemandNode | null,
+  unavailableReason = "Save the route to calculate governed monthly units.",
 ): CanvasNodeMetrics {
+  const monthlyUsage = formatMonthlyUsage(technicalDemand, unavailableReason);
+  const primaryMetric = technicalDemand?.metrics.find(
+    (metric) => metric.status === "resolved",
+  ) ?? technicalDemand?.metrics[0];
   return {
-    payload: formatCanvasPayload(payloadKb),
+    inputPayload: technicalDemand
+      ? formatCanvasPayload(technicalDemand.input_payload_kb)
+      : "Not calculated",
+    outputPayload: technicalDemand
+      ? formatCanvasPayload(technicalDemand.output_payload_kb)
+      : "Not calculated",
+    messageFlow: formatMessageFlow(technicalDemand),
+    monthlyUsage: monthlyUsage.label,
+    monthlyUsageDetail: monthlyUsage.detail,
     cadence: cadence?.trim() || "Not captured",
     sla: formatCanvasSla(profile, targetLatencySla),
-    constraint: profile ? canvasNodeConstraint(profile, payloadKb) : "Open service profile",
+    constraint:
+      primaryMetric?.rule ??
+      technicalDemand?.blockers[0] ??
+      (technicalDemand
+        ? profile
+          ? canvasServiceConstraint(profile)
+          : "Open service profile"
+        : unavailableReason),
+    status: technicalDemand?.status ?? "not_calculated",
   };
 }

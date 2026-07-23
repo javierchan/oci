@@ -197,6 +197,65 @@ class CatalogIntegrationDetail(BaseModel):
     lineage: LineageDetail
 
 
+class TechnicalDemandMetricResponse(BaseModel):
+    """Explainable commercial demand derived for one service metric."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    mapping_id: str
+    part_number: Optional[str]
+    metric_key: str
+    quantity: Optional[float]
+    unit: str
+    status: Literal["resolved", "explicit_input_required", "blocked"]
+    adapter: str
+    messages_per_month: float
+    operations_per_month: dict[str, float] = Field(default_factory=dict)
+    billing_units_per_month: float
+    rule: str
+    source_url: Optional[str]
+    warnings: list[str] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+
+
+class TechnicalDemandNodeResponse(BaseModel):
+    """Sequential payload and usage evidence for one canvas service node."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    instance_id: str
+    service_id: str
+    tool_key: str
+    label: str
+    route_indexes: list[int] = Field(default_factory=list)
+    input_payload_kb: float
+    output_payload_kb: float
+    logical_payload_kb: float
+    input_messages_per_execution: float
+    output_messages_per_execution: float
+    fragment_count: float
+    fan_out_targets: int
+    payload_strategy: str
+    offloaded_payload_kb: float
+    status: Literal["resolved", "explicit_input_required", "blocked"]
+    source_urls: list[str] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+    metrics: list[TechnicalDemandMetricResponse] = Field(default_factory=list)
+
+
+class IntegrationTechnicalDemandResponse(BaseModel):
+    """Governed technical-demand projection for one saved integration route."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    project_id: str
+    integration_id: str
+    scenario_id: Optional[str]
+    scenario_status: Optional[str]
+    nodes: list[TechnicalDemandNodeResponse] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+
+
 class BulkPatchRequest(BaseModel):
     """Bulk patch request payload."""
 

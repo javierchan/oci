@@ -71,7 +71,7 @@ def test_committed_app_knowledge_matches_executable_contracts() -> None:
 def test_knowledge_build_preserves_only_matching_provider_embeddings() -> None:
     """Deterministic regeneration must not erase or misapply cached OCI vectors."""
 
-    current = {
+    current: dict[str, object] = {
         "embedding_spaces": {"local": {"model": "local"}},
         "retrieval_units": [
             {"id": "same", "text": "unchanged"},
@@ -79,7 +79,7 @@ def test_knowledge_build_preserves_only_matching_provider_embeddings() -> None:
             {"id": "new", "text": "new unit"},
         ],
     }
-    committed = {
+    committed: dict[str, object] = {
         "embedding_spaces": {
             "local": {"model": "local"},
             "provider": {"model": "oci-embed", "dimensions": 2},

@@ -1226,6 +1226,58 @@ export interface CatalogIntegrationDetail {
   lineage: LineageDetail;
 }
 
+export type TechnicalDemandStatus =
+  | "resolved"
+  | "explicit_input_required"
+  | "blocked";
+
+export interface TechnicalDemandMetric {
+  mapping_id: string;
+  part_number: string | null;
+  metric_key: string;
+  quantity: number | null;
+  unit: string;
+  status: TechnicalDemandStatus;
+  adapter: string;
+  messages_per_month: number;
+  operations_per_month: Record<string, number>;
+  billing_units_per_month: number;
+  rule: string;
+  source_url: string | null;
+  warnings: string[];
+  blockers: string[];
+}
+
+export interface TechnicalDemandNode {
+  instance_id: string;
+  service_id: string;
+  tool_key: string;
+  label: string;
+  route_indexes: number[];
+  input_payload_kb: number;
+  output_payload_kb: number;
+  logical_payload_kb: number;
+  input_messages_per_execution: number;
+  output_messages_per_execution: number;
+  fragment_count: number;
+  fan_out_targets: number;
+  payload_strategy: string;
+  offloaded_payload_kb: number;
+  status: TechnicalDemandStatus;
+  source_urls: string[];
+  blockers: string[];
+  metrics: TechnicalDemandMetric[];
+}
+
+export interface IntegrationTechnicalDemand {
+  project_id: string;
+  integration_id: string;
+  scenario_id: string | null;
+  scenario_status: string | null;
+  nodes: TechnicalDemandNode[];
+  blockers: string[];
+}
+
 export interface IntegrationPatch {
   selected_pattern?: string;
   pattern_rationale?: string;

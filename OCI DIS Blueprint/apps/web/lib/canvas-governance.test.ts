@@ -8,6 +8,7 @@ import {
   deriveCanvasSemantics,
   parseCanvasState,
   serializeCanvasState,
+  technicalDemandSignature,
   type CanvasEdge,
   type CanvasNode,
 } from "./canvas-governance";
@@ -187,6 +188,63 @@ describe("canvas-governance", () => {
 
     expect(parsed.nodes).toHaveLength(1);
     expect(parsed.endpointPositions).toEqual({});
+  });
+
+  it("invalidates technical demand only when route semantics change", () => {
+    const nodes = [node("oic", "OIC Gen3", "OIC"), node("queue", "OCI Queue", "Queue")];
+    const edges = [
+      edge("1", SOURCE_NODE_ID, "oic"),
+      edge("2", "oic", "queue"),
+      edge("3", "queue", DESTINATION_NODE_ID),
+    ];
+    const saved = serializeCanvasState(
+      nodes,
+      edges,
+      {
+        coreToolKeys: ["OIC Gen3", "OCI Queue"],
+        overlayKeys: [],
+      },
+      {
+        [SOURCE_NODE_ID]: { x: 20, y: 120 },
+        [DESTINATION_NODE_ID]: { x: 980, y: 120 },
+      },
+    );
+    const presentationOnly = serializeCanvasState(
+      nodes.map((item, index) => ({
+        ...item,
+        label: `${item.label} ${index + 1}`,
+        x: 300 + index * 320,
+        y: 220,
+      })),
+      edges.map((item) => ({ ...item, edgeId: `layout-${item.edgeId}` })),
+      {
+        coreToolKeys: ["OCI Queue", "OIC Gen3"],
+        overlayKeys: [],
+      },
+      {
+        [SOURCE_NODE_ID]: { x: 40, y: 250 },
+        [DESTINATION_NODE_ID]: { x: 1200, y: 250 },
+      },
+    );
+    const changedRoute = serializeCanvasState(
+      nodes,
+      [
+        edge("1", SOURCE_NODE_ID, "queue"),
+        edge("2", "queue", "oic"),
+        edge("3", "oic", DESTINATION_NODE_ID),
+      ],
+      {
+        coreToolKeys: ["OIC Gen3", "OCI Queue"],
+        overlayKeys: [],
+      },
+    );
+
+    expect(technicalDemandSignature(presentationOnly, [])).toBe(
+      technicalDemandSignature(saved, []),
+    );
+    expect(technicalDemandSignature(changedRoute, [])).not.toBe(
+      technicalDemandSignature(saved, []),
+    );
   });
 
   it("surfaces governed combination suggestions from the active stack", () => {

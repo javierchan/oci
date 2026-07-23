@@ -32,6 +32,16 @@ from engine.pattern_certification import (  # noqa: E402
     composition_issues,
     get_pattern_certification,
 )
+from engine.service_demand import (  # noqa: E402
+    DemandStatus,
+    FlowEvidence,
+    RouteServiceNode,
+    ServiceDemandContext,
+    ServiceDemandResult,
+    propagate_route_flow,
+    registered_metric_keys,
+    resolve_service_demand,
+)
 from engine.volumetry import (  # noqa: E402
     Assumptions,
     CalcResult,
@@ -62,6 +72,11 @@ __all__ = [
     "ParsedRow",
     "PatternCertificationProfile",
     "QAResult",
+    "DemandStatus",
+    "FlowEvidence",
+    "RouteServiceNode",
+    "ServiceDemandContext",
+    "ServiceDemandResult",
     "CERTIFICATION_VERSION",
     "composition_issues",
     "consolidate_project",
@@ -80,6 +95,9 @@ __all__ = [
     "parse_rows",
     "payload_per_hour_kb",
     "payload_per_month_kb",
+    "propagate_route_flow",
     "streaming_gb_per_month",
     "streaming_partition_count",
+    "registered_metric_keys",
+    "resolve_service_demand",
 ]

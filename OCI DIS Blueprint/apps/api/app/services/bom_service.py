@@ -31,6 +31,11 @@ from app.core.pricing_engine import (
     price_line_quantity_schedule,
     price_line_schedule,
 )
+from app.core.calc_engine import (
+    DemandStatus,
+    FlowEvidence,
+    ServiceDemandResult,
+)
 from app.models import (
     BomJob,
     BomLinePeriod,
@@ -83,12 +88,17 @@ from app.schemas.pricing import (
 )
 from app.schemas.ai_review import AiReviewActionCandidate, AiReviewActionWorkspace
 from app.services import audit_service, pricing_governance_service
+from app.services.technical_demand_service import (
+    build_flow_evidence as _flow_evidence,
+    integration_tools_with_overrides as _integration_tools_with_overrides,
+    mapping_predicates_match as _mapping_predicates_match,
+    resolve_mapping_demand,
+)
 
 
-BOM_ENGINE_VERSION = "pricing-engine-3.0.0"
+BOM_ENGINE_VERSION = "pricing-engine-4.0.0"
 DEFAULT_MONTH_DAYS = 31.0
 DEFAULT_QUEUE_BILLING_UNIT_KB = 64.0
-
 
 @dataclass(frozen=True)
 class BomCalculation:
@@ -167,55 +177,6 @@ def _as_string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, str)]
-
-
-def _split_tools(value: str | None) -> set[str]:
-    if not value:
-        return set()
-    return {item.strip() for item in value.split(",") if item.strip()}
-
-
-def _canvas_tools(value: str | None) -> set[str]:
-    if not value:
-        return set()
-    try:
-        payload = json.loads(value)
-    except json.JSONDecodeError:
-        return _split_tools(value)
-    if not isinstance(payload, dict):
-        return set()
-    result: set[str] = set()
-    for key in ("coreToolKeys", "overlayKeys"):
-        values = payload.get(key)
-        if isinstance(values, list):
-            result.update(str(item).strip() for item in values if str(item).strip())
-    return result
-
-
-def _integration_tools(row: CatalogIntegration) -> set[str]:
-    return _split_tools(row.core_tools) | _canvas_tools(row.additional_tools_overlays)
-
-
-def _integration_tools_with_overrides(
-    row: CatalogIntegration,
-    tool_overrides: dict[str, tuple[str, str]] | None = None,
-) -> set[str]:
-    override = (tool_overrides or {}).get(row.id)
-    if override is None:
-        return _integration_tools(row)
-    core_tools, canvas_state = override
-    return _split_tools(core_tools) | _canvas_tools(canvas_state)
-
-
-def _mapping_predicates_match(mapping: ServiceProductSkuMapping, config: dict[str, object]) -> bool:
-    for key, expected in mapping.predicates.items():
-        actual = config.get(key)
-        if isinstance(expected, str):
-            if str(actual or "").lower() != expected.lower():
-                return False
-        elif actual != expected:
-            return False
-    return True
 
 
 def _mapping_selection_policy(mapping: ServiceProductSkuMapping) -> str:
@@ -2077,6 +2038,95 @@ def _api_call_millions(
     return total / 1_000_000.0
 
 
+def _technical_demand_for_mapping(
+    mapping: ServiceProductSkuMapping,
+    environment: dict[str, object],
+    technical: dict[str, object],
+    service_config: dict[str, object],
+    flow_evidence: tuple[FlowEvidence, ...],
+    selected_service_ids: set[str],
+) -> ServiceDemandResult:
+    oic = _as_dict(technical.get("oic"))
+    data_integration = _as_dict(technical.get("data_integration"))
+    functions = _as_dict(technical.get("functions"))
+    streaming = _as_dict(technical.get("streaming"))
+    baseline = {
+        **oic,
+        **data_integration,
+        **functions,
+        **streaming,
+        "oic_peak_packs_hour": oic.get("peak_packs_hour", 0),
+        "di_data_processed_gb": data_integration.get(
+            "data_processed_gb_month",
+            technical.get("di_data_processed_gb_month", 0),
+        ),
+        "functions_execution_10k_gb_s": functions.get(
+            "total_execution_units_gb_s",
+            technical.get("functions_execution_10k_gb_s", 0),
+        ),
+        "functions_invocation_millions": (
+            Decimal(str(functions.get("total_invocations_month", 0))) / Decimal("1000000")
+        ),
+    }
+    return resolve_mapping_demand(
+        mapping,
+        flows=flow_evidence,
+        service_config=service_config,
+        technical_baseline=baseline,
+        active_hours_month=Decimal(
+            str(_as_float(environment.get("active_hours_month"), 744.0))
+        ),
+        demand_share=Decimal(str(_as_float(environment.get("demand_share"), 1.0))),
+        ha_multiplier=Decimal(str(_as_float(environment.get("ha_multiplier"), 1.0))),
+        selected_service_ids=selected_service_ids,
+    )
+
+
+def _attach_technical_demand(
+    line: dict[str, object],
+    periods: list[dict[str, object]],
+    demand: ServiceDemandResult,
+) -> None:
+    contract = demand.as_dict()
+    line["inputs"] = {**_as_dict(line.get("inputs")), "technical_demand": contract}
+    line["provenance"] = {**_as_dict(line.get("provenance")), "technical_demand": contract}
+    for period in periods:
+        period["inputs"] = {**_as_dict(period.get("inputs")), "technical_demand": contract}
+        period["provenance"] = {**_as_dict(period.get("provenance")), "technical_demand": contract}
+
+
+def _resolve_manual_scenario_demand(
+    demand: ServiceDemandResult,
+    quantity: Decimal,
+) -> ServiceDemandResult:
+    """Record an architect-supplied quantity for a product absent from the route."""
+
+    return replace(
+        demand,
+        quantity=quantity,
+        status=DemandStatus.RESOLVED,
+        adapter="governed_scenario_quantity",
+        rule=(
+            "Product is not evidenced by the integration route; the architect selected "
+            "it explicitly and supplied its governed scenario quantity."
+        ),
+        warnings=(
+            *tuple(
+                warning
+                for warning in demand.warnings
+                if "No governed flow evidence is tagged" not in warning
+            ),
+            "This product was added explicitly to the deployment scenario.",
+        ),
+        blockers=(),
+        details={
+            **dict(demand.details),
+            "quantity_source": "governed_scenario_quantity",
+            "route_evidence_required": False,
+        },
+    )
+
+
 def _demand_for_metric(
     metric_key: str,
     environment: dict[str, object],
@@ -2907,6 +2957,24 @@ async def calculate_bom(
             *(mappings_by_id[mapping_id] for mapping_id in explicit_mapping_ids if mapping_id in mappings_by_id),
         ]
     }.values())
+    service_configs = {
+        service_id: _config_for(scenario, service_id)
+        for service_id in bom_services
+    }
+    service_policies: dict[str, dict[str, object]] = {}
+    for mapping in sorted(
+        (item for item in mappings if item.service_id in bom_services),
+        key=lambda item: (item.service_id, item.billing_metric_key, item.id),
+    ):
+        metering_policy = service_policies.setdefault(mapping.service_id, {})
+        for key, value in mapping.metering_policy.items():
+            metering_policy.setdefault(key, value)
+    technical_flow_evidence = _flow_evidence(
+        integrations,
+        service_configs,
+        service_policies,
+        tool_overrides,
+    )
     _validate_release_mapping_scope(commercial_release, selected_mappings)
 
     part_numbers = {mapping.part_number for mapping in selected_mappings if mapping.part_number}
@@ -3000,14 +3068,21 @@ async def calculate_bom(
                 **_config_for(scenario, mapping.service_id),
                 **mapping.predicates,
             }
-            quantity, unit, warnings = _demand_for_metric(
-                mapping.billing_metric_key,
+            demand = _technical_demand_for_mapping(
+                mapping,
                 environment,
                 technical,
-                integrations,
                 config,
-                tool_overrides,
+                technical_flow_evidence,
+                set(bom_services),
             )
+            manually_selected = (
+                mapping.service_id not in detected_services
+                and mapping.service_id in planned_services
+            )
+            quantity = float(demand.quantity) if demand.quantity is not None else None
+            unit = demand.unit
+            warnings = [*demand.warnings, *demand.blockers]
             explicit_quantities = None
             if scenario.consumption_model == "explicit_units":
                 explicit_quantities = _explicit_quantity_schedule(
@@ -3018,10 +3093,6 @@ async def calculate_bom(
                 )
                 if explicit_quantities is None:
                     explicit_quantities = tuple(Decimal("0") for _ in range(scenario.contract_months))
-                    warnings = [
-                        *warnings,
-                        "No explicit monthly quantity plan exists for this product metric; all months remain at zero.",
-                    ]
                 peak_quantity = max(explicit_quantities, default=Decimal("0"))
                 multipliers = tuple(
                     current / peak_quantity if peak_quantity > 0 else Decimal("0")
@@ -3030,23 +3101,42 @@ async def calculate_bom(
                 unit = mapping.quantity_unit
             else:
                 multipliers = _ramp_multipliers(environment, mapping.service_id, scenario.contract_months)
-            if quantity is None and explicit_quantities is not None:
+            if demand.status is DemandStatus.RESOLVED:
+                # Explicit plans schedule deterministic demand; they cannot replace it.
+                explicit_quantities = None
+            elif (
+                demand.status is DemandStatus.EXPLICIT_INPUT_REQUIRED
+                and mapping.requires_explicit_quantity
+                and explicit_quantities is not None
+            ):
                 quantity = float(max(explicit_quantities, default=Decimal("0")))
                 warnings = [
                     *warnings,
-                    "Technical demand was unavailable; pricing uses the explicitly approved monthly quantities.",
+                    "This metric intrinsically requires a governed explicit architecture quantity.",
                 ]
+            elif (
+                manually_selected
+                and explicit_quantities is not None
+                and max(explicit_quantities, default=Decimal("0")) > 0
+            ):
+                governed_quantity = max(explicit_quantities, default=Decimal("0"))
+                demand = _resolve_manual_scenario_demand(
+                    demand,
+                    governed_quantity,
+                )
+                quantity = float(governed_quantity)
+                warnings = [*demand.warnings]
             if quantity is None:
                 line = _blocked_line(mapping, environment, 0.0, unit, warnings)
-                line_payloads.append(line)
-                period_payloads.append(
-                    _zero_period_payloads(
-                        scenario.contract_months,
-                        multipliers,
-                        line,
-                        explicit_quantities,
-                    )
+                periods = _zero_period_payloads(
+                    scenario.contract_months,
+                    multipliers,
+                    line,
+                    explicit_quantities,
                 )
+                _attach_technical_demand(line, periods, demand)
+                line_payloads.append(line)
+                period_payloads.append(periods)
                 continue
             line, periods = _price_mapping_line(
                 mapping,
@@ -3061,6 +3151,7 @@ async def calculate_bom(
                 free_tier_remaining,
                 commercial_contracts.get(mapping.part_number or ""),
             )
+            _attach_technical_demand(line, periods, demand)
             line_payloads.append(line)
             period_payloads.append(periods)
 
@@ -3499,6 +3590,40 @@ async def review_bom_snapshot(
             detail={
                 "detail": "The commercial release used by this BOM is not publishable",
                 "error_code": "BOM_COMMERCIAL_RELEASE_NOT_PUBLISHABLE",
+            },
+        )
+    all_lines = list(
+        (
+            await db.scalars(
+                select(BomLineItem).where(BomLineItem.bom_snapshot_id == snapshot.id)
+            )
+        ).all()
+    )
+    unresolved_demand: list[dict[str, object]] = []
+    for line in all_lines:
+        technical_demand = _as_dict(
+            _as_dict(line.inputs).get("technical_demand")
+        )
+        demand_status = technical_demand.get("status")
+        if demand_status not in {
+            DemandStatus.BLOCKED.value,
+            DemandStatus.EXPLICIT_INPUT_REQUIRED.value,
+        }:
+            continue
+        unresolved_demand.append(
+            {
+                "service_id": line.service_id,
+                "metric_name": line.metric_name,
+                "status": demand_status,
+            }
+        )
+    if unresolved_demand:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "detail": "Resolve technical demand evidence before approving or publishing this BOM",
+                "error_code": "BOM_TECHNICAL_DEMAND_INCOMPLETE",
+                "lines": unresolved_demand,
             },
         )
     scoped_lines = list(

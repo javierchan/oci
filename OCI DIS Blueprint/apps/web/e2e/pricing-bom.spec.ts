@@ -5,7 +5,7 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 type PriceSourceList = { sources: Array<{ id: string; source_type: string }> };
 type PriceJob = { id: string; status: string; snapshot_id: string | null; item_count: number };
 type PriceSnapshot = { id: string; approval_status: string };
-type Scenario = { id: string; status: string };
+type Scenario = { id: string; name: string; status: string };
 type MetricOption = {
   service_id: string;
   metric_key: string;

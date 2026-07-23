@@ -80,7 +80,7 @@ def test_reference_seed_is_idempotent_and_workbook_complete() -> None:
                 select(DictionaryOption).where(DictionaryOption.category == "OVERLAYS")
             ).all()
         }
-        assert governed_overlay_codes == {f"AO{index:02d}" for index in range(1, 10)}
+        assert governed_overlay_codes == {f"AO{index:02d}" for index in range(1, 11)}
 
     Base.metadata.drop_all(engine)
 

@@ -61,6 +61,7 @@ import type {
   DictionaryOption,
   OICEstimateResponse,
   PatternDefinition,
+  IntegrationTechnicalDemand,
 } from "@/lib/types";
 
 type PatternCategory = string;
@@ -134,6 +135,10 @@ type IntegrationCanvasProps = {
   isRealTime?: boolean | null;
   integrationType?: string | null;
   recommendationPreview?: AiReviewCanvasDraftSelection | null;
+  technicalDemand: IntegrationTechnicalDemand | null;
+  technicalDemandLoading: boolean;
+  technicalDemandError: string;
+  technicalDemandStale: boolean;
 };
 
 const TOOL_KINDS: Record<string, ToolKind> = {
@@ -916,6 +921,10 @@ export function IntegrationCanvas({
   isRealTime = null,
   integrationType = null,
   recommendationPreview = null,
+  technicalDemand,
+  technicalDemandLoading,
+  technicalDemandError,
+  technicalDemandStale,
 }: IntegrationCanvasProps): JSX.Element {
   const overlayToolKeys = useMemo(
     () => overlayOptions.map((option) => option.value),
@@ -930,6 +939,19 @@ export function IntegrationCanvas({
     () => new Map(patterns.map((pattern) => [pattern.pattern_id, pattern])),
     [patterns],
   );
+  const technicalDemandByNode = useMemo(
+    () =>
+      new Map(
+        (technicalDemand?.nodes ?? []).map((node) => [node.instance_id, node]),
+      ),
+    [technicalDemand],
+  );
+  const technicalDemandBlockerCount = technicalDemand?.blockers.length ?? 0;
+  const technicalDemandUnavailableReason = technicalDemandStale
+    ? "Save the route to recalculate governed usage."
+    : technicalDemandLoading
+      ? "Calculating governed usage..."
+      : technicalDemandError || "No governed usage evidence is available.";
   const initialParsedState = parseCanvasState(value, coreTools);
   const initialSemantics = deriveCanvasSemantics({
     nodes: initialParsedState.nodes,
@@ -1771,6 +1793,28 @@ export function IntegrationCanvas({
             Zoom {Math.round(viewport.scale * 100)}%
           </div>
           <div
+            className={`pointer-events-none absolute right-5 top-[4.25rem] z-10 rounded-full border px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur ${
+              technicalDemandStale
+                ? "border-amber-300 bg-amber-50/95 text-amber-800 dark:border-amber-800 dark:bg-amber-950/90 dark:text-amber-200"
+                : technicalDemandLoading
+                  ? "border-[var(--color-border)] bg-[var(--color-surface)]/95 text-[var(--color-text-secondary)]"
+                  : technicalDemandError || technicalDemandBlockerCount > 0
+                    ? "border-rose-300 bg-rose-50/95 text-rose-800 dark:border-rose-900 dark:bg-rose-950/90 dark:text-rose-200"
+                    : "border-emerald-300 bg-emerald-50/95 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/90 dark:text-emerald-200"
+            }`}
+            data-testid="canvas-technical-demand-status"
+          >
+            {technicalDemandStale
+              ? "Save to recalculate usage"
+              : technicalDemandLoading
+                ? "Calculating usage"
+                : technicalDemandError
+                  ? "Usage unavailable"
+                  : technicalDemandBlockerCount > 0
+                    ? `${technicalDemandBlockerCount} usage blocker${technicalDemandBlockerCount === 1 ? "" : "s"}`
+                    : "Governed usage calculated"}
+          </div>
+          <div
             className="max-w-full overflow-x-auto rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
             onDragOver={(event) => event.preventDefault()}
             onDrop={handleCanvasDrop}
@@ -2048,12 +2092,17 @@ export function IntegrationCanvas({
                   const labelLines = renderedLabelLines(node);
                   const labelX = node.fixed ? 60 : 58;
                   const subtitleY = labelLines.length > 1 ? 62 : 58;
+                  const nodeTechnicalDemand =
+                    !node.fixed && !technicalDemandStale
+                      ? technicalDemandByNode.get(node.instanceId) ?? null
+                      : null;
                   const metrics = !node.fixed
                       ? canvasNodeMetrics(
                           serviceProfile,
-                          payloadKb,
                           displayUiValue(frequency) ?? "Not captured",
                           displayUiValue(targetLatencySla),
+                          nodeTechnicalDemand,
+                          technicalDemandUnavailableReason,
                         )
                     : null;
 
@@ -2103,7 +2152,10 @@ export function IntegrationCanvas({
                         {[
                           node.label,
                           subtitleText,
-                          metrics ? `Payload ${metrics.payload}` : null,
+                          metrics ? `Input ${metrics.inputPayload}` : null,
+                          metrics ? `Output ${metrics.outputPayload}` : null,
+                          metrics ? `Messages ${metrics.messageFlow}` : null,
+                          metrics ? `Monthly usage ${metrics.monthlyUsageDetail}` : null,
                           metrics ? `Cadence ${metrics.cadence}` : null,
                           metrics ? `SLA ${metrics.sla}` : null,
                           metrics?.constraint,
@@ -2201,7 +2253,7 @@ export function IntegrationCanvas({
                       </text>
 
                       {!node.fixed && editingPayloadId === node.instanceId ? (
-                        <foreignObject x={12} y={76} width={width - 24} height={128}>
+                        <foreignObject x={12} y={76} width={width - 24} height={height - 88}>
                           <div className="h-full rounded-lg border border-[var(--color-accent)] bg-[var(--color-surface)] p-2 shadow-sm">
                             <label className="block text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
                               Implementation note
@@ -2245,10 +2297,10 @@ export function IntegrationCanvas({
                           </div>
                         </foreignObject>
                       ) : !node.fixed && metrics ? (
-                        <foreignObject x={12} y={76} width={width - 24} height={128}>
+                        <foreignObject x={12} y={76} width={width - 24} height={height - 88}>
                           <div
                             data-testid="canvas-node-metrics"
-                            className="grid h-full grid-cols-2 grid-rows-[40px_36px_1fr] gap-1.5"
+                            className="grid h-full grid-cols-2 grid-rows-[42px_42px_48px_42px_1fr] gap-1.5"
                             onDoubleClick={(event) => {
                               event.stopPropagation();
                               beginTextEdit("payload", node.instanceId, node.payloadNote);
@@ -2256,25 +2308,52 @@ export function IntegrationCanvas({
                           >
                             <div className="min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/82 px-2 py-1 shadow-sm">
                               <p className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
-                                Payload
+                                Input
                               </p>
                               <p className="truncate text-[11px] font-semibold leading-4 text-[var(--canvas-node-label)]">
-                                {metrics.payload}
+                                {metrics.inputPayload}
+                              </p>
+                            </div>
+                            <div className="min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/82 px-2 py-1 shadow-sm">
+                              <p className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+                                Output
+                              </p>
+                              <p className="truncate text-[11px] font-semibold leading-4 text-[var(--canvas-node-label)]">
+                                {metrics.outputPayload}
+                              </p>
+                            </div>
+                            <div className="col-span-2 min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/82 px-2 py-1 shadow-sm">
+                              <p className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+                                Message flow
+                              </p>
+                              <p className="truncate text-[11px] font-semibold leading-4 text-[var(--canvas-node-label)]">
+                                {metrics.messageFlow}
+                              </p>
+                            </div>
+                            <div
+                              className="col-span-2 min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/82 px-2 py-1 shadow-sm"
+                              title={metrics.monthlyUsageDetail}
+                            >
+                              <p className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+                                Monthly usage
+                              </p>
+                              <p className="truncate text-[11px] font-semibold leading-4 text-[var(--canvas-node-label)]">
+                                {metrics.monthlyUsage}
                               </p>
                             </div>
                             <div className="min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/82 px-2 py-1 shadow-sm">
                               <p className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
                                 Cadence
                               </p>
-                              <p className="truncate text-[11px] font-semibold leading-4 text-[var(--canvas-node-label)]">
+                              <p className="truncate text-[10px] font-semibold leading-4 text-[var(--canvas-node-label)]">
                                 {metrics.cadence}
                               </p>
                             </div>
-                            <div className="col-span-2 min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/82 px-2 py-1 shadow-sm">
+                            <div className="min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/82 px-2 py-1 shadow-sm">
                               <p className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
                                 SLA
                               </p>
-                              <p className="text-[11px] font-semibold leading-4 text-[var(--canvas-node-label)]">
+                              <p className="truncate text-[10px] font-semibold leading-4 text-[var(--canvas-node-label)]">
                                 {metrics.sla}
                               </p>
                             </div>
@@ -2282,10 +2361,26 @@ export function IntegrationCanvas({
                               className="col-span-2 min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/82 px-2 py-1.5 shadow-sm"
                               title={metrics.constraint}
                             >
-                              <p className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
-                                Key rule
+                              <p
+                                className={`text-[8px] font-semibold uppercase tracking-[0.08em] ${
+                                  metrics.status === "blocked"
+                                    ? "text-rose-600 dark:text-rose-300"
+                                    : metrics.status === "explicit_input_required"
+                                      ? "text-amber-700 dark:text-amber-300"
+                                      : metrics.status === "resolved"
+                                        ? "text-emerald-700 dark:text-emerald-300"
+                                        : "text-[var(--color-text-muted)]"
+                                }`}
+                              >
+                                {metrics.status === "resolved"
+                                  ? "Applied rule"
+                                  : metrics.status === "blocked"
+                                    ? "Blocked"
+                                    : metrics.status === "explicit_input_required"
+                                      ? "Input required"
+                                      : "Usage status"}
                               </p>
-                              <p className="line-clamp-2 break-words text-[10px] font-semibold leading-[13px] text-[var(--canvas-node-label)]">
+                              <p className="line-clamp-3 break-words text-[10px] font-semibold leading-[13px] text-[var(--canvas-node-label)]">
                                 {metrics.constraint}
                               </p>
                             </div>

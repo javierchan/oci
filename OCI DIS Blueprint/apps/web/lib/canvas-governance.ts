@@ -375,6 +375,37 @@ export function serializeCanvasState(
   return JSON.stringify(payload);
 }
 
+export function technicalDemandSignature(
+  value: string | null,
+  coreToolKeys: string[],
+): string {
+  const parsed = parseCanvasState(value, coreToolKeys);
+  return JSON.stringify({
+    nodes: parsed.nodes
+      .map((node) => ({
+        instanceId: node.instanceId,
+        toolKey: node.toolKey,
+      }))
+      .sort(
+        (left, right) =>
+          left.instanceId.localeCompare(right.instanceId) ||
+          left.toolKey.localeCompare(right.toolKey),
+      ),
+    edges: parsed.edges
+      .map((edge) => ({
+        sourceInstanceId: edge.sourceInstanceId,
+        targetInstanceId: edge.targetInstanceId,
+      }))
+      .sort(
+        (left, right) =>
+          left.sourceInstanceId.localeCompare(right.sourceInstanceId) ||
+          left.targetInstanceId.localeCompare(right.targetInstanceId),
+      ),
+    coreToolKeys: uniqueSorted(parsed.coreToolKeys),
+    overlayKeys: uniqueSorted(parsed.overlayKeys),
+  });
+}
+
 function reachableNodeIds(edges: CanvasEdge[], startId: string): Set<string> {
   const adjacency = new Map<string, string[]>();
   for (const edge of edges) {

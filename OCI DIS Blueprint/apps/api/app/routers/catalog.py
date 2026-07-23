@@ -14,6 +14,7 @@ from app.schemas.catalog import (
     CatalogIntegrationDetail,
     CatalogIntegrationPatch,
     CatalogIntegrationResponse,
+    IntegrationTechnicalDemandResponse,
     CatalogQaRefreshResponse,
     CatalogListResponse,
     LineageDetail,
@@ -22,7 +23,7 @@ from app.schemas.catalog import (
     OICEstimateResponse,
 )
 from app.schemas.graph import GraphResponse
-from app.services import catalog_service, graph_service
+from app.services import catalog_service, graph_service, technical_demand_service
 
 router = APIRouter(prefix="/catalog", tags=["Catalog"])
 
@@ -157,6 +158,25 @@ async def get_graph(
         business_process_family,
         brand,
         qa_status,
+        db,
+    )
+
+
+@router.get(
+    "/{project_id}/{integration_id}/technical-demand",
+    response_model=IntegrationTechnicalDemandResponse,
+    summary="Get governed per-node payload and commercial demand",
+)
+async def get_integration_technical_demand(
+    project_id: str,
+    integration_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> IntegrationTechnicalDemandResponse:
+    """Project the saved route through every governed DIS service adapter."""
+
+    return await technical_demand_service.get_integration_technical_demand(
+        project_id,
+        integration_id,
         db,
     )
 

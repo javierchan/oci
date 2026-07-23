@@ -424,6 +424,14 @@
         "application/json"
       ],
       "method": "GET",
+      "path": "/api/v1/catalog/{project_id}/{integration_id}/technical-demand",
+      "summary": "Get governed per-node payload and commercial demand"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
       "path": "/api/v1/dashboard/{project_id}/snapshots",
       "summary": "List dashboard snapshots"
     },
@@ -2234,6 +2242,11 @@
     },
     {
       "kind": "schema",
+      "name": "IntegrationTechnicalDemandResponse",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
       "name": "LineageDetail",
       "source": "apps/api/app/schemas/catalog.py"
     },
@@ -2250,6 +2263,16 @@
     {
       "kind": "schema",
       "name": "OICEstimateResponse",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "TechnicalDemandMetricResponse",
+      "source": "apps/api/app/schemas/catalog.py"
+    },
+    {
+      "kind": "schema",
+      "name": "TechnicalDemandNodeResponse",
       "source": "apps/api/app/schemas/catalog.py"
     },
     {
@@ -200127,5 +200150,5 @@
     }
   ],
   "schema_version": "2.0.0",
-  "source_hash": "18cf77809ea5f5c0ae7aa9f5a0ee825164b36128af88beb51920cd8ca821ebe7"
+  "source_hash": "ff0eec8f77efc590c42b3489d76b03a19d4d9ead18b34ad609e52636790db9e9"
 }

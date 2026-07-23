@@ -7,6 +7,7 @@ import {
   formatCanvasPayload,
 } from "./canvas-presentation";
 import type { CanvasServiceProfile, ServiceLimit } from "./types";
+import type { TechnicalDemandNode } from "./types";
 
 function limit(limitKey: string, value: number, unit: string): ServiceLimit {
   return {
@@ -85,12 +86,79 @@ describe("canvas presentation", () => {
       ),
     });
 
-    expect(canvasNodeMetrics(gateway, 352, "Real Time", "p95 under 5 seconds")).toEqual({
-      payload: "352 KB",
+    const demand: TechnicalDemandNode = {
+      instance_id: "gateway-1",
+      service_id: "API_GATEWAY",
+      tool_key: "OCI API Gateway",
+      label: "API Gateway",
+      route_indexes: [0],
+      input_payload_kb: 352,
+      output_payload_kb: 4,
+      logical_payload_kb: 352,
+      input_messages_per_execution: 1,
+      output_messages_per_execution: 1,
+      fragment_count: 1,
+      fan_out_targets: 1,
+      payload_strategy: "object_storage_pointer",
+      offloaded_payload_kb: 352,
+      status: "resolved",
+      blockers: [],
+      source_urls: ["https://docs.oracle.com/"],
+      metrics: [
+        {
+          mapping_id: "mapping-1",
+          part_number: "B92072",
+          metric_key: "api_gateway_call_millions",
+          quantity: 0.72,
+          unit: "million API calls",
+          status: "resolved",
+          adapter: "api_gateway",
+          messages_per_month: 720000,
+          operations_per_month: { request: 720000 },
+          billing_units_per_month: 0.72,
+          rule: "Requests / 1,000,000",
+          source_url: "https://docs.oracle.com/",
+          warnings: [],
+          blockers: [],
+        },
+      ],
+    };
+
+    expect(
+      canvasNodeMetrics(gateway, "Real Time", "p95 under 5 seconds", demand),
+    ).toEqual({
+      inputPayload: "352 KB",
+      outputPayload: "4 KB",
+      messageFlow: "1 / execution",
+      monthlyUsage: "0.72 million API calls",
+      monthlyUsageDetail: "0.72 million API calls",
       cadence: "Real Time",
       sla: "p95 under 5 seconds",
-      constraint: "20 MB request · 6 MB Functions",
+      constraint: "Requests / 1,000,000",
+      status: "resolved",
     });
     expect(formatCanvasPayload(null)).toBe("Not captured");
+  });
+
+  it("explains when a draft must be saved before usage can be recalculated", () => {
+    expect(
+      canvasNodeMetrics(
+        null,
+        "Every hour",
+        null,
+        null,
+        "Save the route to recalculate governed usage.",
+      ),
+    ).toEqual({
+      inputPayload: "Not calculated",
+      outputPayload: "Not calculated",
+      messageFlow: "Not calculated",
+      monthlyUsage: "Not calculated",
+      monthlyUsageDetail: "Save the route to recalculate governed usage.",
+      cadence: "Every hour",
+      sla: "Not published",
+      constraint: "Save the route to recalculate governed usage.",
+      status: "not_calculated",
+    });
   });
 });

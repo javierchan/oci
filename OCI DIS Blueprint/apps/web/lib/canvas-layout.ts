@@ -5,10 +5,10 @@ import {
   type CanvasNode,
 } from "./canvas-governance";
 
-export const CANVAS_HEIGHT = 620;
-export const ROUTE_NODE_GAP = 40;
-export const TOOL_NODE_WIDTH = 228;
-export const TOOL_NODE_HEIGHT = 216;
+export const CANVAS_HEIGHT = 760;
+export const ROUTE_NODE_GAP = 44;
+export const TOOL_NODE_WIDTH = 260;
+export const TOOL_NODE_HEIGHT = 316;
 export const SYSTEM_NODE_WIDTH = 208;
 export const SYSTEM_NODE_HEIGHT = 108;
 

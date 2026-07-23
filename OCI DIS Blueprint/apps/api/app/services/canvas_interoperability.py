@@ -136,6 +136,7 @@ class CanvasInteroperabilityRoute:
     """One source-to-destination active route in the canvas."""
 
     node_ids: tuple[str, ...]
+    service_node_ids: tuple[str, ...]
     tool_keys: tuple[str, ...]
     service_ids: tuple[str, ...]
 
@@ -582,17 +583,25 @@ def _build_routes(
             for node_id in path[1:-1]
             if node_id in node_by_id
         ]
+        service_nodes = tuple(
+            (node.instance_id, service_id)
+            for node in tool_nodes
+            if (service_id := _resolve_canvas_service_id(node.tool_key)) is not None
+        )
         route = CanvasInteroperabilityRoute(
             node_ids=tuple(path),
+            service_node_ids=tuple(instance_id for instance_id, _ in service_nodes),
             tool_keys=tuple(node.tool_key for node in tool_nodes),
-            service_ids=tuple(
-                service_id
-                for node in tool_nodes
-                if (service_id := _resolve_canvas_service_id(node.tool_key)) is not None
-            ),
+            service_ids=tuple(service_id for _, service_id in service_nodes),
         )
         deduped[route.node_ids] = route
     return tuple(deduped.values())
+
+
+def build_canvas_routes(state: ParsedCanvasState) -> tuple[CanvasInteroperabilityRoute, ...]:
+    """Expose sanitized source-to-destination routes for deterministic metering."""
+
+    return _build_routes(state.nodes, state.edges)
 
 
 def _push_unique_finding(

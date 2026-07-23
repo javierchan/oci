@@ -787,6 +787,25 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       chart interaction, responsive light/dark visual inspection, and zero browser
       console errors pass.
 
+### M68 — Deterministic DIS Technical Demand Propagation
+- [x] Propagate payload, messages, fan-out, fragments, and explicit payload
+      strategies sequentially through every directed Integration Canvas route.
+- [x] Register deterministic adapters for every approved required DIS commercial
+      metric used by the BOM and fail coverage tests for missing or orphaned keys.
+- [x] Calculate OIC billing blocks, Queue operations, Streaming operations and
+      retention, API Gateway calls, Functions demand, storage, execution, and
+      remaining governed DIS metrics from node-effective evidence.
+- [x] Keep explicit client planning inputs distinct from derivable technical
+      demand and block BOM approval or publication while either evidence or a
+      required transport strategy remains unresolved.
+- [x] Expose the same per-node input/output payload, messages, fragments, monthly
+      quantities, formulas, rule evidence, and blockers through the typed API and
+      Integration Canvas.
+- [x] **Exit criteria**: complete API, calc-engine, pricing-engine, frontend,
+      static-analysis and production-build gates; generated OpenAPI; production
+      Docker migration and health; real API reconciliation; embedded-browser
+      Canvas light/dark validation; and zero browser console errors pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

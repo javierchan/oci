@@ -39,6 +39,7 @@ import type {
   CatalogFacets,
   CatalogPage,
   CatalogParams,
+  IntegrationTechnicalDemand,
   ConsolidatedMetrics,
   CommercialBulkResolveRequest,
   CommercialCatalogFinalizeRequest,
@@ -879,6 +880,14 @@ export const api = {
 
   getIntegration: (projectId: string, integrationId: string): Promise<CatalogIntegrationDetail> =>
     apiFetch<CatalogIntegrationDetail>(`/api/v1/catalog/${projectId}/${integrationId}`),
+
+  getIntegrationTechnicalDemand: (
+    projectId: string,
+    integrationId: string,
+  ): Promise<IntegrationTechnicalDemand> =>
+    apiFetch<IntegrationTechnicalDemand>(
+      `/api/v1/catalog/${projectId}/${integrationId}/technical-demand`,
+    ),
 
   createIntegration: (projectId: string, body: ManualIntegrationCreate): Promise<Integration> =>
     apiFetch<Integration>(`/api/v1/catalog/${projectId}`, {

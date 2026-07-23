@@ -10816,6 +10816,64 @@
         "title": "ImportQualityMetric",
         "type": "object"
       },
+      "IntegrationTechnicalDemandResponse": {
+        "additionalProperties": false,
+        "description": "Governed technical-demand projection for one saved integration route.",
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/TechnicalDemandNodeResponse"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Status"
+          }
+        },
+        "required": [
+          "project_id",
+          "integration_id",
+          "scenario_id",
+          "scenario_status"
+        ],
+        "title": "IntegrationTechnicalDemandResponse",
+        "type": "object"
+      },
       "JustificationListResponse": {
         "additionalProperties": false,
         "description": "Project-level collection of justification narratives.",
@@ -17720,6 +17778,231 @@
         "title": "SyntheticGenerationPresetResponse",
         "type": "object"
       },
+      "TechnicalDemandMetricResponse": {
+        "additionalProperties": false,
+        "description": "Explainable commercial demand derived for one service metric.",
+        "properties": {
+          "adapter": {
+            "title": "Adapter",
+            "type": "string"
+          },
+          "billing_units_per_month": {
+            "title": "Billing Units Per Month",
+            "type": "number"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "mapping_id": {
+            "title": "Mapping Id",
+            "type": "string"
+          },
+          "messages_per_month": {
+            "title": "Messages Per Month",
+            "type": "number"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "operations_per_month": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Operations Per Month",
+            "type": "object"
+          },
+          "part_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Number"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "status": {
+            "enum": [
+              "resolved",
+              "explicit_input_required",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mapping_id",
+          "part_number",
+          "metric_key",
+          "quantity",
+          "unit",
+          "status",
+          "adapter",
+          "messages_per_month",
+          "billing_units_per_month",
+          "rule",
+          "source_url"
+        ],
+        "title": "TechnicalDemandMetricResponse",
+        "type": "object"
+      },
+      "TechnicalDemandNodeResponse": {
+        "additionalProperties": false,
+        "description": "Sequential payload and usage evidence for one canvas service node.",
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "fan_out_targets": {
+            "title": "Fan Out Targets",
+            "type": "integer"
+          },
+          "fragment_count": {
+            "title": "Fragment Count",
+            "type": "number"
+          },
+          "input_messages_per_execution": {
+            "title": "Input Messages Per Execution",
+            "type": "number"
+          },
+          "input_payload_kb": {
+            "title": "Input Payload Kb",
+            "type": "number"
+          },
+          "instance_id": {
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "logical_payload_kb": {
+            "title": "Logical Payload Kb",
+            "type": "number"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/TechnicalDemandMetricResponse"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "offloaded_payload_kb": {
+            "title": "Offloaded Payload Kb",
+            "type": "number"
+          },
+          "output_messages_per_execution": {
+            "title": "Output Messages Per Execution",
+            "type": "number"
+          },
+          "output_payload_kb": {
+            "title": "Output Payload Kb",
+            "type": "number"
+          },
+          "payload_strategy": {
+            "title": "Payload Strategy",
+            "type": "string"
+          },
+          "route_indexes": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Route Indexes",
+            "type": "array"
+          },
+          "service_id": {
+            "title": "Service Id",
+            "type": "string"
+          },
+          "source_urls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Urls",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "resolved",
+              "explicit_input_required",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tool_key": {
+            "title": "Tool Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance_id",
+          "service_id",
+          "tool_key",
+          "label",
+          "input_payload_kb",
+          "output_payload_kb",
+          "logical_payload_kb",
+          "input_messages_per_execution",
+          "output_messages_per_execution",
+          "fragment_count",
+          "fan_out_targets",
+          "payload_strategy",
+          "offloaded_payload_kb",
+          "status"
+        ],
+        "title": "TechnicalDemandNodeResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -21240,6 +21523,58 @@
           }
         },
         "summary": "Get source lineage for a row",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/{project_id}/{integration_id}/technical-demand": {
+      "get": {
+        "description": "Project the saved route through every governed DIS service adapter.",
+        "operationId": "get_integration_technical_demand_api_v1_catalog__project_id___integration_id__technical_demand_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "integration_id",
+            "required": true,
+            "schema": {
+              "title": "Integration Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationTechnicalDemandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get governed per-node payload and commercial demand",
         "tags": [
           "Catalog"
         ]
