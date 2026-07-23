@@ -44,9 +44,9 @@ describe("integration canvas layout", () => {
     const gateway = arranged.find((item) => item.instanceId === "gateway");
     const stream = arranged.find((item) => item.instanceId === "stream");
 
-    expect(catalog).toMatchObject({ x: 322, y: 28 });
-    expect(gateway).toMatchObject({ x: 570, y: 28 });
-    expect(stream).toMatchObject({ x: 322, y: 217 });
-    expect(catalog?.x).toBeGreaterThanOrEqual(40 + 218 + 64);
+    expect(catalog).toMatchObject({ x: 288, y: 28 });
+    expect(gateway).toMatchObject({ x: 556, y: 28 });
+    expect(stream).toMatchObject({ x: 288, y: 202 });
+    expect(catalog?.x).toBeGreaterThanOrEqual(40 + 208 + 40);
   });
 });

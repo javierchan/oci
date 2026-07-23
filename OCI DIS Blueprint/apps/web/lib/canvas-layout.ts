@@ -5,12 +5,12 @@ import {
   type CanvasNode,
 } from "./canvas-governance";
 
-export const CANVAS_HEIGHT = 560;
-export const ROUTE_NODE_GAP = 64;
-export const TOOL_NODE_WIDTH = 184;
-export const TOOL_NODE_HEIGHT = 126;
-export const SYSTEM_NODE_WIDTH = 218;
-export const SYSTEM_NODE_HEIGHT = 96;
+export const CANVAS_HEIGHT = 620;
+export const ROUTE_NODE_GAP = 40;
+export const TOOL_NODE_WIDTH = 228;
+export const TOOL_NODE_HEIGHT = 216;
+export const SYSTEM_NODE_WIDTH = 208;
+export const SYSTEM_NODE_HEIGHT = 108;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));

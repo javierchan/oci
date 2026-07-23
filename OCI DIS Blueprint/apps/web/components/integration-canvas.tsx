@@ -50,6 +50,10 @@ import {
   arrangeCanvasNodes,
   primaryRouteNodeIds,
 } from "@/lib/canvas-layout";
+import {
+  canvasNodeMetrics,
+  canvasServiceConstraint,
+} from "@/lib/canvas-presentation";
 import type {
   AiReviewCanvasDraftSelection,
   CanvasCombination,
@@ -119,6 +123,7 @@ type IntegrationCanvasProps = {
   patterns: PatternDefinition[];
   payloadKb: number | null;
   frequency: string | null;
+  targetLatencySla: string | null;
   patternCategory: PatternCategory | null;
   value: string | null;
   onChange: (_nextValue: string) => void;
@@ -220,23 +225,6 @@ function resolveServiceProfile(
 ): CanvasServiceProfile | null {
   const serviceId = resolveCanvasServiceId(toolKey);
   return serviceId ? serviceProfilesById.get(serviceId) ?? null : null;
-}
-
-function topConstraintLabel(profile: CanvasServiceProfile): string {
-  switch (profile.service_id) {
-    case "OIC3":
-      return "Max msg: 10 MB";
-    case "API_GATEWAY":
-      return "Body: 20 MB / Fn: 6 MB";
-    case "STREAMING":
-      return "1 MB msg | 1 MB/s/partition";
-    case "QUEUE":
-      return "256 KB msg | 10 queues/region";
-    case "FUNCTIONS":
-      return "6 MB body";
-    default:
-      return truncateLabel(profile.pricing_model ?? "See service profile", 40);
-  }
 }
 
 function findingCardClasses(severity: CanvasFindingSeverity): string {
@@ -830,25 +818,12 @@ function wrappedTextLines(value: string, maxChars: number, maxLines = 2): string
 }
 
 function renderedLabelLines(node: FlowNode): string[] {
-  return wrappedTextLines(node.label, node.fixed ? 18 : 17, 2);
+  return wrappedTextLines(node.label, node.fixed ? 20 : 22, 2);
 }
 
 function renderedSubtitle(node: FlowNode): string {
   const value = node.fixed ? node.subtitle ?? "System endpoint" : node.toolKey;
   return truncateLabel(value, node.fixed ? 24 : 26);
-}
-
-function renderedPayload(node: FlowNode, payloadKb: number | null, frequency: string | null): string {
-  if (node.fixed) {
-    return "";
-  }
-  const modeledContext = [
-    payloadKb !== null ? `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(payloadKb)} KB` : null,
-    frequency,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return truncateLabel(node.payloadNote || modeledContext || "Add payload context", 36);
 }
 
 function dominantHandle(source: FlowNode, target: FlowNode, outgoing: boolean): HandlePosition {
@@ -926,6 +901,7 @@ export function IntegrationCanvas({
   patterns,
   payloadKb,
   frequency,
+  targetLatencySla,
   patternCategory,
   value,
   onChange,
@@ -1647,7 +1623,7 @@ export function IntegrationCanvas({
         draggable
         onDragStart={(event) => event.dataTransfer.setData("text/tool-key", option.value)}
         onClick={() => addNode(option.value)}
-        className={`inline-flex h-10 min-w-[168px] items-center justify-start gap-2 whitespace-nowrap rounded-full px-3 text-sm font-medium text-[var(--color-text-primary)] transition hover:border-[var(--color-accent)] hover:bg-[var(--color-surface)] ${
+        className={`group grid h-[68px] w-full min-w-0 grid-cols-[32px_minmax(0,1fr)] items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[var(--color-text-primary)] transition hover:border-[var(--color-accent)] hover:bg-[var(--color-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${
           isOverlay
             ? "border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)]"
             : "border border-[var(--color-border)] bg-[var(--color-surface-2)]"
@@ -1655,22 +1631,34 @@ export function IntegrationCanvas({
         title={option.description ?? "Drag onto the canvas or click to add a node"}
       >
         <span
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg shadow-sm transition-transform group-hover:scale-105"
           style={{ backgroundColor: definition.accent, color: "white" }}
         >
           {definition.icon}
         </span>
-        {option.value}
+        <span className="min-w-0">
+          <span className="block break-words text-[13px] font-semibold leading-4">
+            {option.value}
+          </span>
+          <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+            {isOverlay ? "Context overlay" : "Core service"}
+          </span>
+        </span>
       </button>
     );
   }
 
   return (
     <div className="min-w-0 space-y-5">
-      <div className="min-w-0 space-y-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <div className="min-w-0 space-y-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="app-label">Core Tools</p>
+            <div className="flex items-center gap-2">
+              <p className="app-label">Core Tools</p>
+              <span className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-text-muted)]">
+                {toolOptions.length}
+              </span>
+            </div>
             <p className="mt-2 text-xs text-[var(--color-text-muted)]">
               Drag governed volumetric tools into the route, then connect them from source to destination.
             </p>
@@ -1685,25 +1673,38 @@ export function IntegrationCanvas({
           </button>
         </div>
 
-        <div className="flex min-w-0 gap-3 overflow-x-auto pb-1">{toolOptions.map((option) => renderPaletteButton(option, false))}</div>
+        <div
+          data-testid="canvas-core-tools"
+          className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(176px,1fr))] gap-2.5"
+        >
+          {toolOptions.map((option) => renderPaletteButton(option, false))}
+        </div>
 
-        <div className="border-t border-[var(--color-border)] pt-3">
-          <p className="app-label">Architectural Overlays</p>
+        <div className="border-t border-[var(--color-border)] pt-4">
+          <div className="flex items-center gap-2">
+            <p className="app-label">Architectural Overlays</p>
+            <span className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-text-muted)]">
+              {overlayOptions.length}
+            </span>
+          </div>
           <p className="mt-2 text-xs text-[var(--color-text-muted)]">
             Overlays document edge protection and runtime context. They do not satisfy the core-tools QA gate by themselves.
           </p>
-          <div className="mt-3 flex min-w-0 gap-3 overflow-x-auto pb-1">
+          <div
+            data-testid="canvas-overlay-tools"
+            className="mt-3 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(176px,1fr))] gap-2.5"
+          >
             {overlayOptions.map((option) => renderPaletteButton(option, true))}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-muted)]">
+        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-border)] pt-4 text-xs text-[var(--color-text-muted)]">
           <span>Drag or click to add a node. Endpoints and tools are movable; connect handles to create the flow.</span>
           <span
-            className={`rounded-full px-3 py-1 font-semibold ${
+            className={`rounded-md border px-3 py-1 font-semibold ${
               semantics.hasConnectedRoute
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-amber-50 text-amber-700"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+                : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
             }`}
           >
             {semantics.hasConnectedRoute
@@ -1735,7 +1736,7 @@ export function IntegrationCanvas({
         </section>
       ) : null}
 
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
         <div ref={canvasShellRef} className="relative min-w-0">
           <div className="absolute left-5 top-5 z-10 flex flex-wrap items-center gap-2">
             <div className="pointer-events-none inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] shadow-sm backdrop-blur">
@@ -2042,9 +2043,15 @@ export function IntegrationCanvas({
                       : serviceProfile?.architecture_role ?? renderedSubtitle(node);
                   const labelLines = renderedLabelLines(node);
                   const labelX = node.fixed ? 60 : 58;
-                  const subtitleY = labelLines.length > 1 ? 58 : 56;
-                  const payloadY = labelLines.length > 1 ? 78 : 75;
-                  const profileY = 91;
+                  const subtitleY = labelLines.length > 1 ? 62 : 58;
+                  const metrics = !node.fixed
+                      ? canvasNodeMetrics(
+                          serviceProfile,
+                          payloadKb,
+                          displayUiValue(frequency) ?? "Not captured",
+                          displayUiValue(targetLatencySla),
+                        )
+                    : null;
 
                   return (
                     <g
@@ -2089,12 +2096,23 @@ export function IntegrationCanvas({
                       }}
                     >
                       <title>
-                        {[node.label, subtitleText, node.payloadNote, serviceProfile?.summary].filter(Boolean).join(" · ")}
+                        {[
+                          node.label,
+                          subtitleText,
+                          metrics ? `Payload ${metrics.payload}` : null,
+                          metrics ? `Cadence ${metrics.cadence}` : null,
+                          metrics ? `SLA ${metrics.sla}` : null,
+                          metrics?.constraint,
+                          node.payloadNote,
+                          serviceProfile?.summary,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </title>
                       <rect
                         width={width}
                         height={height}
-                        rx={16}
+                        rx={12}
                         fill={definition.surface}
                         stroke={selected ? "var(--color-accent)" : definition.accent}
                         strokeWidth={selected ? 2.6 : 1.6}
@@ -2179,24 +2197,16 @@ export function IntegrationCanvas({
                       </text>
 
                       {!node.fixed && editingPayloadId === node.instanceId ? (
-                        <foreignObject x={14} y={payloadY - 17} width={width - 28} height={30}>
-                          <input
-                            autoFocus
-                            value={draftValue}
-                            onChange={(event) => setDraftValue(event.target.value)}
-                            onBlur={() => {
-                              setNodes((current) =>
-                                current.map((entry) =>
-                                  entry.instanceId === node.instanceId
-                                    ? { ...entry, payloadNote: draftValue.trim() }
-                                    : entry,
-                                ),
-                              );
-                              stopTextEdit();
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
+                        <foreignObject x={12} y={76} width={width - 24} height={128}>
+                          <div className="h-full rounded-lg border border-[var(--color-accent)] bg-[var(--color-surface)] p-2 shadow-sm">
+                            <label className="block text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+                              Implementation note
+                            </label>
+                            <input
+                              autoFocus
+                              value={draftValue}
+                              onChange={(event) => setDraftValue(event.target.value)}
+                              onBlur={() => {
                                 setNodes((current) =>
                                   current.map((entry) =>
                                     entry.instanceId === node.instanceId
@@ -2205,49 +2215,79 @@ export function IntegrationCanvas({
                                   ),
                                 );
                                 stopTextEdit();
-                              }
-                              if (event.key === "Escape") {
-                                event.preventDefault();
-                                stopTextEdit();
-                              }
-                            }}
-                            className="h-7 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-xs text-[var(--color-text-primary)]"
-                          />
-                        </foreignObject>
-                      ) : !node.fixed ? (
-                        <text
-                          x={14}
-                          y={payloadY}
-                          fontSize={11.5}
-                          fontWeight={node.payloadNote ? 600 : 500}
-                          fill={node.payloadNote ? "var(--canvas-node-sub)" : "var(--color-text-secondary)"}
-                          onDoubleClick={(event) => {
-                            event.stopPropagation();
-                            beginTextEdit("payload", node.instanceId, node.payloadNote);
-                          }}
-                        >
-                          {renderedPayload(node, payloadKb, frequency)}
-                        </text>
-                      ) : null}
-
-                      {!node.fixed && serviceProfile ? (
-                        <foreignObject x={14} y={profileY} width={width - 28} height={28}>
-                          <div className="flex h-full items-center justify-between gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]/80 px-2.5 text-[10.5px] text-[var(--color-text-secondary)] shadow-sm">
-                            <div
-                              className="shrink-0 font-semibold"
-                              style={{
-                                color:
-                                  (serviceProfile.sla_uptime_pct ?? 0) < 99.9
-                                    ? "var(--canvas-stream-border)"
-                                    : "var(--canvas-node-label)",
                               }}
-                            >
-                              SLA{" "}
-                              {serviceProfile.sla_uptime_pct !== null
-                                ? `${serviceProfile.sla_uptime_pct.toFixed(1).replace(/\.0$/, "")}%`
-                                : "n/a"}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  setNodes((current) =>
+                                    current.map((entry) =>
+                                      entry.instanceId === node.instanceId
+                                        ? { ...entry, payloadNote: draftValue.trim() }
+                                        : entry,
+                                    ),
+                                  );
+                                  stopTextEdit();
+                                }
+                                if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  stopTextEdit();
+                                }
+                              }}
+                              className="mt-1 h-8 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 text-[11px] text-[var(--color-text-primary)]"
+                            />
+                            <p className="mt-1 text-[9px] text-[var(--color-text-muted)]">
+                              Enter to save · Esc to cancel
+                            </p>
+                          </div>
+                        </foreignObject>
+                      ) : !node.fixed && metrics ? (
+                        <foreignObject x={12} y={76} width={width - 24} height={128}>
+                          <div
+                            data-testid="canvas-node-metrics"
+                            className="grid h-full grid-cols-2 grid-rows-[40px_36px_1fr] gap-1.5"
+                            onDoubleClick={(event) => {
+                              event.stopPropagation();
+                              beginTextEdit("payload", node.instanceId, node.payloadNote);
+                            }}
+                          >
+                            <div className="min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/82 px-2 py-1 shadow-sm">
+                              <p className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+                                Payload
+                              </p>
+                              <p className="truncate text-[11px] font-semibold leading-4 text-[var(--canvas-node-label)]">
+                                {metrics.payload}
+                              </p>
                             </div>
-                            <div className="truncate">{topConstraintLabel(serviceProfile)}</div>
+                            <div className="min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/82 px-2 py-1 shadow-sm">
+                              <p className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+                                Cadence
+                              </p>
+                              <p className="truncate text-[11px] font-semibold leading-4 text-[var(--canvas-node-label)]">
+                                {metrics.cadence}
+                              </p>
+                            </div>
+                            <div className="col-span-2 min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/82 px-2 py-1 shadow-sm">
+                              <p className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+                                SLA
+                              </p>
+                              <p className="text-[11px] font-semibold leading-4 text-[var(--canvas-node-label)]">
+                                {metrics.sla}
+                              </p>
+                            </div>
+                            <div
+                              className="col-span-2 min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/82 px-2 py-1.5 shadow-sm"
+                              title={metrics.constraint}
+                            >
+                              <p className="text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+                                Key rule
+                              </p>
+                              <p className="line-clamp-2 break-words text-[10px] font-semibold leading-[13px] text-[var(--canvas-node-label)]">
+                                {metrics.constraint}
+                              </p>
+                            </div>
+                            {node.payloadNote ? (
+                              <span className="sr-only">Implementation note: {node.payloadNote}</span>
+                            ) : null}
                           </div>
                         </foreignObject>
                       ) : null}
@@ -2430,7 +2470,7 @@ export function IntegrationCanvas({
                           <div className="min-w-0">
                             <dt className="text-[var(--color-text-muted)]">Key constraint</dt>
                             <dd className="mt-1 break-words font-semibold text-[var(--color-text-primary)] [overflow-wrap:anywhere]">
-                              {topConstraintLabel(selectedServiceProfile)}
+                              {canvasServiceConstraint(selectedServiceProfile)}
                             </dd>
                           </div>
                         </div>

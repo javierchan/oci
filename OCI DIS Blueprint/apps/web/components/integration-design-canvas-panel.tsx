@@ -502,6 +502,7 @@ export function IntegrationDesignCanvasPanel({
           patterns={patterns}
           payloadKb={integration.payload_per_execution_kb}
           frequency={integration.frequency}
+          targetLatencySla={integration.target_latency_sla}
           patternCategory={normalizePatternCategory(patternMap.get(integration.selected_pattern ?? "")?.category)}
           triggerType={integration.trigger_type}
           isRealTime={integration.is_real_time}
