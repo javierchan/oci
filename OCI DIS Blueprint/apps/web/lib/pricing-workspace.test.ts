@@ -24,6 +24,13 @@ describe("pricing workspace next action", () => {
     expect(nextPricingAction({ ...ready, sourceValidationPassed: false }).view).toBe("sources");
   });
 
+  it("keeps private workbook capture in official sources", () => {
+    expect(nextPricingAction({ ...ready, hasCommercialDocument: false })).toMatchObject({
+      view: "sources",
+      label: "Import private Oracle workbook",
+    });
+  });
+
   it("routes incomplete catalog dispositions to certification", () => {
     expect(nextPricingAction({ ...ready, pendingDecisions: 12 }).view).toBe("decisions");
   });

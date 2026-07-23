@@ -166,7 +166,15 @@ export function nextPricingAction(input: PricingReadinessInput): PricingNextActi
       detail: "Synchronize and validate the source set before any SKU can be certified.",
     };
   }
-  if (!input.hasCommercialDocument || !input.evidenceApproved) {
+  if (!input.hasCommercialDocument) {
+    return {
+      view: "sources",
+      label: "Import private Oracle workbook",
+      title: "Capture the commercial evidence baseline",
+      detail: "Import the private Price List and Supplement workbook before beginning SKU certification.",
+    };
+  }
+  if (!input.evidenceApproved) {
     return {
       view: "decisions",
       label: "Approve source evidence",

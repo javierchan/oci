@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   FileCheck2,
+  FileSpreadsheet,
   FileUp,
   Loader2,
   PackageCheck,
@@ -90,12 +91,17 @@ type ExceptionDraft = {
   target_part_number?: string;
 };
 
-function CommercialCatalogWorkspace({ onWorkspaceChange }: { onWorkspaceChange?: (_workspace: CommercialWorkspace) => void }): JSX.Element {
+function CommercialCatalogWorkspace({
+  onOpenSources,
+  onWorkspaceChange,
+}: {
+  onOpenSources: () => void;
+  onWorkspaceChange?: (_workspace: CommercialWorkspace) => void;
+}): JSX.Element {
   const [workspace, setWorkspace] = useState<CommercialWorkspace>(EMPTY_COMMERCIAL_WORKSPACE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [candidateQuery, setCandidateQuery] = useState("");
   const [candidateStatus, setCandidateStatus] = useState("all");
   const [candidatePage, setCandidatePage] = useState(1);
@@ -181,18 +187,6 @@ function CommercialCatalogWorkspace({ onWorkspaceChange }: { onWorkspaceChange?:
     } finally {
       setBusy(null);
     }
-  }
-
-  async function uploadDocument(): Promise<void> {
-    if (!uploadFile) {
-      return;
-    }
-    await runAction(
-      "commercial-upload",
-      () => api.importCommercialDocument(uploadFile),
-      "Official workbook imported as immutable review evidence.",
-    );
-    setUploadFile(null);
   }
 
   async function reviewCandidate(candidate: CommercialCandidate): Promise<void> {
@@ -338,7 +332,7 @@ function CommercialCatalogWorkspace({ onWorkspaceChange }: { onWorkspaceChange?:
             </p>
           </div>
           {!workspace.document ? (
-            <button className="app-button-primary gap-2" type="button" onClick={() => document.getElementById("commercial-evidence-import")?.scrollIntoView({ behavior: "smooth", block: "center" })}>Import evidence<ArrowRight className="h-4 w-4" /></button>
+            <button className="app-button-primary gap-2" type="button" onClick={onOpenSources}>Open Official Sources<ArrowRight className="h-4 w-4" /></button>
           ) : !evidenceApproved ? (
             <button className="app-button-primary gap-2" type="button" disabled={busy !== null} onClick={() => void runAction("approve-evidence", () => api.approveCommercialDocument(workspace.document!.id), "Official document approved as evidence. Candidate reviews remain separate.")}>{busy === "approve-evidence" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}Approve evidence</button>
           ) : !coveragePreview ? (
@@ -405,17 +399,15 @@ function CommercialCatalogWorkspace({ onWorkspaceChange }: { onWorkspaceChange?:
           </div>
         </div>
 
-        <div id="commercial-evidence-import" className="min-w-0 p-5">
-          <p className="app-label">Import Official Evidence</p>
-          <h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Price List + Supplement workbook</h3>
-          <p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">Upload the Oracle XLSX as a new immutable snapshot. Existing releases remain unchanged.</p>
-          <label className="mt-4 block text-sm font-semibold text-[var(--color-text-primary)]">
-            XLSX workbook
-            <input className="mt-2 block min-w-0 max-w-full text-sm text-[var(--color-text-secondary)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-surface-3)] file:px-3 file:py-2 file:font-semibold file:text-[var(--color-text-primary)]" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />
-          </label>
-          <button className="app-button-secondary mt-4 w-full gap-2" type="button" disabled={!uploadFile || busy !== null} onClick={() => void uploadDocument()}>
-            {busy === "commercial-upload" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
-            Import official workbook
+        <div className="min-w-0 p-5">
+          <p className="app-label">Evidence Acquisition</p>
+          <h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">Managed in Official Sources</h3>
+          <p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">
+            Upload private Oracle workbooks in the source workspace. This review area certifies captured evidence; it does not replace or silently re-import it.
+          </p>
+          <button className="app-button-secondary mt-4 w-full gap-2" type="button" onClick={onOpenSources}>
+            <FileSpreadsheet className="h-4 w-4" />
+            Open workbook import
           </button>
         </div>
       </div>
@@ -738,7 +730,9 @@ export function PricingAdminPanel(): JSX.Element {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("");
   const [itemSearch, setItemSearch] = useState<string>("");
   const [currency, setCurrency] = useState<string>("USD");
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [rateCardFile, setRateCardFile] = useState<File | null>(null);
+  const [commercialWorkbookFile, setCommercialWorkbookFile] = useState<File | null>(null);
+  const [commercialWorkbookInputKey, setCommercialWorkbookInputKey] = useState(0);
   const [rateCardName, setRateCardName] = useState<string>("Customer contract rate card");
   const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
   const [mappingDraft, setMappingDraft] = useState<MappingDraft | null>(null);
@@ -856,18 +850,37 @@ export function PricingAdminPanel(): JSX.Element {
   }
 
   async function uploadRateCard(): Promise<void> {
-    if (!uploadFile) {
+    if (!rateCardFile) {
       return;
     }
     setBusyAction("upload");
     try {
-      const snapshot = await api.importPriceRateCard(uploadFile, rateCardName.trim(), currency.toUpperCase());
+      const snapshot = await api.importPriceRateCard(rateCardFile, rateCardName.trim(), currency.toUpperCase());
       setSelectedSnapshotId(snapshot.id);
-      setUploadFile(null);
+      setRateCardFile(null);
       emitToast("success", "Rate card imported into an immutable snapshot.");
       await load(true);
     } catch (caughtError) {
       emitToast("error", getErrorMessage(caughtError, "Unable to import the rate card."));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function uploadCommercialWorkbook(): Promise<void> {
+    if (!commercialWorkbookFile) {
+      return;
+    }
+    setBusyAction("commercial-workbook-upload");
+    try {
+      const workspace = await api.importCommercialDocument(commercialWorkbookFile);
+      setCommercialContext(workspace);
+      setCommercialWorkbookFile(null);
+      setCommercialWorkbookInputKey((current) => current + 1);
+      emitToast("success", "Private Oracle workbook captured as immutable commercial evidence.");
+      await load(true);
+    } catch (caughtError) {
+      emitToast("error", getErrorMessage(caughtError, "Unable to import the private Oracle workbook."));
     } finally {
       setBusyAction(null);
     }
@@ -1018,7 +1031,11 @@ export function PricingAdminPanel(): JSX.Element {
         </div>
       ) : null}
 
-      {activeView === "decisions" ? <div id="pricing-view-decisions" role="tabpanel"><CommercialCatalogWorkspace onWorkspaceChange={setCommercialContext} /></div> : null}
+      {activeView === "decisions" ? (
+        <div id="pricing-view-decisions" role="tabpanel">
+          <CommercialCatalogWorkspace onOpenSources={() => navigateToView("sources")} onWorkspaceChange={setCommercialContext} />
+        </div>
+      ) : null}
 
       {error ? (
         <div role="alert" className="rounded-lg border border-rose-400/45 bg-[var(--color-surface-2)] p-4 text-sm text-rose-700 dark:text-rose-300">
@@ -1027,6 +1044,90 @@ export function PricingAdminPanel(): JSX.Element {
       ) : null}
 
       {activeView === "sources" ? <div id="pricing-view-sources" role="tabpanel" className="min-w-0 space-y-5">
+      <section id="commercial-evidence-import" className="app-card min-w-0 overflow-hidden">
+        <div className="grid min-w-0 xl:grid-cols-[minmax(0,1.2fr)_minmax(22rem,0.8fr)]">
+          <div className="min-w-0 border-b border-[var(--color-border)] p-5 xl:border-b-0 xl:border-r">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-accent)]">
+                <FileSpreadsheet className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="app-label">Private Oracle Commercial Evidence</p>
+                <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Import Price List + Supplement workbook</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+                  This private XLSX supplies the commercial hierarchy, SKU descriptions and placement, licensing and commitment terms, minimums, and additional Oracle guidance used during certification.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-px overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-border)] sm:grid-cols-3">
+              {[
+                ["Public pricing API", "Current public rates and typed price tiers"],
+                ["Private Oracle workbook", "SKU identity, hierarchy, terms, minimums, and guidance"],
+                ["Customer rate card", "Authorized customer-specific contract rates"],
+              ].map(([title, detail]) => (
+                <div key={title} className="min-w-0 bg-[var(--color-surface-2)] p-4">
+                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">{title}</p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">{detail}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {["Immutable snapshot", "Governed Object Storage", "Explicit certification required"].map((label) => (
+                <span key={label} className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">{label}</span>
+              ))}
+            </div>
+          </div>
+
+          <div className="min-w-0 p-5">
+            <p className="app-label">Workbook Capture</p>
+            {commercialContext?.document ? (
+              <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="min-w-0 break-words text-sm font-semibold text-[var(--color-text-primary)]">{commercialContext.document.original_filename}</p>
+                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses(commercialContext.document.status)}`}>{humanize(commercialContext.document.status)}</span>
+                </div>
+                <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+                  {formatNumber(commercialContext.document.record_count)} records · {formatDate(commercialContext.document.retrieved_at)}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">No private Oracle workbook has been captured yet.</p>
+            )}
+            <label className="mt-4 block text-sm font-semibold text-[var(--color-text-primary)]">
+              Oracle XLSX workbook
+              <input
+                key={commercialWorkbookInputKey}
+                aria-label="Private Oracle commercial workbook"
+                className="mt-2 block min-w-0 max-w-full text-sm text-[var(--color-text-secondary)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-surface-3)] file:px-3 file:py-2 file:font-semibold file:text-[var(--color-text-primary)]"
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={(event) => setCommercialWorkbookFile(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            {commercialWorkbookFile ? (
+              <p className="mt-2 break-words text-xs text-[var(--color-text-muted)]">
+                Selected: {commercialWorkbookFile.name} · {formatNumber(Math.ceil(commercialWorkbookFile.size / 1024))} KB
+              </p>
+            ) : null}
+            <button className="app-button-primary mt-4 w-full gap-2" type="button" disabled={!commercialWorkbookFile || busyAction !== null} onClick={() => void uploadCommercialWorkbook()}>
+              {busyAction === "commercial-workbook-upload" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+              Import private Oracle workbook
+            </button>
+            {commercialContext?.document ? (
+              <button className="app-button-secondary mt-2 w-full gap-2" type="button" onClick={() => navigateToView("decisions")}>
+                <ShieldCheck className="h-4 w-4" />
+                Review certification
+              </button>
+            ) : null}
+            <p className="mt-3 text-xs leading-5 text-[var(--color-text-muted)]">
+              Importing creates a new evidence snapshot. It does not publish a release, approve SKU rules, or overwrite customer rates.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(20rem,0.7fr)]">
         <div className="app-card min-w-0 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1091,9 +1192,9 @@ export function PricingAdminPanel(): JSX.Element {
           </label>
           <label className="mt-3 block text-sm font-semibold text-[var(--color-text-primary)]">
             CSV rate card
-            <input className="mt-2 block min-w-0 max-w-full text-sm text-[var(--color-text-secondary)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-surface-3)] file:px-3 file:py-2 file:font-semibold file:text-[var(--color-text-primary)]" type="file" accept=".csv,text/csv" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />
+            <input className="mt-2 block min-w-0 max-w-full text-sm text-[var(--color-text-secondary)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-surface-3)] file:px-3 file:py-2 file:font-semibold file:text-[var(--color-text-primary)]" type="file" accept=".csv,text/csv" onChange={(event) => setRateCardFile(event.target.files?.[0] ?? null)} />
           </label>
-          <button className="app-button-secondary mt-4 w-full gap-2" type="button" disabled={!uploadFile || !rateCardName.trim() || busyAction !== null} onClick={() => void uploadRateCard()}>
+          <button className="app-button-secondary mt-4 w-full gap-2" type="button" disabled={!rateCardFile || !rateCardName.trim() || busyAction !== null} onClick={() => void uploadRateCard()}>
             {busyAction === "upload" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
             Import rate card
           </button>

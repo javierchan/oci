@@ -143,6 +143,8 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(
     page.getByText("Oracle OCI Public List Pricing", { exact: true }).filter({ visible: true }).first(),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Import Price List + Supplement workbook" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import private Oracle workbook" })).toBeVisible();
   await page.getByRole("tab", { name: "Releases & BOM" }).click();
   await expect(page.getByText(`${completedSync.item_count} items`, { exact: true }).first()).toBeVisible();
 
@@ -285,7 +287,9 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
 
   await page.goto(`/projects/${projectId}/bom`);
   await expect(page.getByRole("heading", { name: "BOM & Cost" })).toBeVisible();
-  await expect(page.getByLabel("Deployment scenario")).toHaveValue(scenario.id);
+  await expect(page.getByRole("combobox", { name: "Deployment scenario" })).toContainText(
+    scenario.name,
+  );
   await expect(page.getByRole("heading", { name: "Demand, commercial variant, price and provenance" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "When capacity starts, what drives cost, and where it lands" })).toBeVisible();
 
@@ -319,14 +323,16 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
     `Remove ${manuallySelectableProduct?.product_name ?? ""} from Production`,
   ).click();
   await expect(manuallyAddedProduct).toHaveCount(0);
-  const productReview = productionPlan.getByLabel("Product to review in Production");
-  const dataIntegrationValue = await productReview.locator("option").filter({ hasText: "OCI Data Integration" }).first().getAttribute("value");
-  expect(dataIntegrationValue).toBeTruthy();
-  await productReview.selectOption(dataIntegrationValue ?? "");
+  const productReview = productionPlan.getByRole("combobox", {
+    name: "Product to review in Production",
+  });
+  await productReview.click();
+  await page.getByRole("option", { name: /^OCI Data Integration/ }).click();
   await expect(productionPlan.locator("article")).toHaveCount(1);
   await expect(productionPlan.locator("article").filter({ hasText: "OCI Data Integration" })).toBeVisible();
   await expect(productionPlan.locator("article").filter({ hasText: "OCI API Gateway" })).toHaveCount(0);
-  await productReview.selectOption("");
+  await productReview.click();
+  await page.getByRole("option", { name: /^All products/ }).click();
   await expect(productionPlan.locator("article").filter({ hasText: "OCI API Gateway" })).toBeVisible();
 
   await page.getByRole("button", { name: "Add environment" }).click();
@@ -338,7 +344,10 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(newEnvironmentName).toHaveValue("Disaster Recovery");
   const disasterRecovery = page.getByRole("region", { name: "Disaster Recovery consumption plan" });
   await disasterRecovery.getByRole("button", { name: "Add metric" }).click();
-  await disasterRecovery.getByLabel("Product metric to add to Disaster Recovery").selectOption({ index: 1 });
+  await disasterRecovery.getByRole("combobox", {
+    name: "Product metric to add to Disaster Recovery",
+  }).click();
+  await page.getByRole("option").first().click();
   await disasterRecovery.getByRole("button", { name: "Add selected metric" }).click();
   await expect(disasterRecovery.locator("article").first()).toBeVisible();
   await page.getByRole("button", { name: "Monthly matrix" }).click();

@@ -18,13 +18,28 @@ data by itself.
 | View | User question | Responsibility |
 | --- | --- | --- |
 | Overview | What is ready, and what must happen next? | Readiness signals, next action, certification rationale |
-| Official Sources | What evidence do we currently trust? | Oracle source sync, customer rate cards, verification artifacts, normalized price items |
+| Official Sources | What evidence do we currently trust? | Public Oracle price sync, private Price List + Supplement workbook capture, customer rate cards, verification artifacts, normalized price items |
 | Products & SKUs | What does Oracle sell, and can the App quote it? | Product catalog identity and BOM capability review |
 | Review & Certification | What still requires explicit disposition? | Candidate review, exceptions, field authority, approval rationale |
 | Releases & BOM | Which approved inputs can calculation consume? | Immutable catalog snapshots, service-to-SKU mappings, recent sync jobs |
 
 The selected top-level view is persisted in the `view` query parameter so the
 workspace survives reloads and can be linked directly.
+
+The three source lanes remain intentionally distinct:
+
+- the public pricing API governs current public rates and typed price tiers;
+- the private Oracle workbook governs commercial hierarchy, SKU descriptions
+  and placement, licensing and commitment terms, minimums, and supporting
+  guidance;
+- an authorized customer rate card governs customer-specific contract rates.
+
+Private workbooks are uploaded only through **Official Sources**, stored as
+immutable objects in MinIO or OCI Object Storage, and represented by a hashed
+database snapshot. The workbook is evidence, not an automatic approval:
+reviewer disposition, rule fixtures, release publication, and BOM calculation
+remain separate governed stages. Private workbook contents are never committed
+to this repository.
 
 ## Certification Path
 
