@@ -21,7 +21,7 @@ type CaptureTemplateMetadata = {
 const apiBase = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8000";
 
 test("downloads the governed offline-capture workbook from Import", async ({ page, request }) => {
-  const projectsResponse = await request.get(`${apiBase}/api/v1/projects?page=1&page_size=1`);
+  const projectsResponse = await request.get(`${apiBase}/api/v1/projects/?page=1&page_size=1`);
   expect(projectsResponse.ok()).toBe(true);
   const projects = (await projectsResponse.json()) as ProjectList;
   expect(projects.projects, "the production E2E environment must contain a project").not.toHaveLength(0);

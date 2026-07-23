@@ -26,7 +26,7 @@ function selectPersistentProject(projects: ProjectList["projects"]) {
 }
 
 test("keeps contextual support available and bounded across App navigation", async ({ page, request }) => {
-  const projectsResponse = await request.get(`${apiBase}/api/v1/projects`);
+  const projectsResponse = await request.get(`${apiBase}/api/v1/projects/`);
   expect(projectsResponse.ok()).toBe(true);
   const projects = (await projectsResponse.json()) as ProjectList;
   // Other specs create and delete smoke projects concurrently. Use the retained
@@ -102,7 +102,7 @@ test("keeps contextual support available and bounded across App navigation", asy
 });
 
 test("resolves an unambiguous project dossier from a global App route", async ({ page, request }) => {
-  const projectsResponse = await request.get(`${apiBase}/api/v1/projects`);
+  const projectsResponse = await request.get(`${apiBase}/api/v1/projects/`);
   expect(projectsResponse.ok()).toBe(true);
   const projects = (await projectsResponse.json()) as ProjectList;
   const activeProjects = projects.projects.filter((candidate) => candidate.status === "active");

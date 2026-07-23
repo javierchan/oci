@@ -24,7 +24,7 @@ const apiBase = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8000";
 async function findDashboardWithProducts(
   request: APIRequestContext,
 ): Promise<{ projectId: string; footprint: ProductFootprint }> {
-  const projectsResponse = await request.get(`${apiBase}/api/v1/projects`);
+  const projectsResponse = await request.get(`${apiBase}/api/v1/projects/`);
   expect(projectsResponse.ok()).toBe(true);
   const projects = (await projectsResponse.json()) as ProjectList;
   let best: { projectId: string; footprint: ProductFootprint } | null = null;
@@ -105,7 +105,7 @@ test("resolves captured architecture components and standardizes Dashboard actio
 });
 
 test("launches a real project review from the workspace command palette", async ({ page, request }) => {
-  const projectsResponse = await request.get(`${apiBase}/api/v1/projects`);
+  const projectsResponse = await request.get(`${apiBase}/api/v1/projects/`);
   expect(projectsResponse.ok()).toBe(true);
   const projects = (await projectsResponse.json()) as ProjectList;
   const activeProject = projects.projects.find(

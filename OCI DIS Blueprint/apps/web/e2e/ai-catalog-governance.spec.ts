@@ -14,7 +14,7 @@ const apiBase = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8000";
 async function findProjectIntegration(
   request: APIRequestContext,
 ): Promise<{ projectId: string; integrationId: string }> {
-  const projectsResponse = await request.get(`${apiBase}/api/v1/projects`);
+  const projectsResponse = await request.get(`${apiBase}/api/v1/projects/`);
   expect(projectsResponse.ok()).toBe(true);
   const projects = (await projectsResponse.json()) as ProjectList;
   let best: { projectId: string; integrationId: string; total: number } | null = null;

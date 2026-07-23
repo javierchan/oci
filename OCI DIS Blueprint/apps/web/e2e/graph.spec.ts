@@ -24,7 +24,7 @@ type GraphSummary = {
 const apiBase = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8000";
 
 async function findProjectWithTopology(request: APIRequestContext): Promise<{ projectId: string; graph: GraphSummary }> {
-  const projectsResponse = await request.get(`${apiBase}/api/v1/projects`);
+  const projectsResponse = await request.get(`${apiBase}/api/v1/projects/`);
   expect(projectsResponse.ok()).toBe(true);
   const projects = (await projectsResponse.json()) as ProjectList;
   let bestMatch: { projectId: string; graph: GraphSummary } | null = null;
