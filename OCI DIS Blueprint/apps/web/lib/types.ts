@@ -1844,6 +1844,7 @@ export interface GraphIntegrationSummary {
   trigger_type: string | null;
   interaction_mode: "SYNCHRONOUS" | "ASYNCHRONOUS" | "MIXED" | "UNSPECIFIED";
   executions_per_day: number | null;
+  payload_per_execution_kb: number | null;
   payload_per_hour_kb: number | null;
   updated_at: string;
 }
@@ -1864,8 +1865,10 @@ export interface GraphEdge {
   risk_score: number;
   interaction_mode: "SYNCHRONOUS" | "ASYNCHRONOUS" | "MIXED" | "UNSPECIFIED";
   total_executions_per_day: number;
+  total_payload_per_execution_kb: number;
   total_payload_per_hour_kb: number;
   executions_coverage: number;
+  payload_execution_coverage: number;
   payload_coverage: number;
   last_updated_at: string;
   integrations: GraphIntegrationSummary[];
@@ -1880,6 +1883,7 @@ export interface GraphMeta {
   brands: string[];
   latest_updated_at: string | null;
   executions_coverage: number;
+  payload_execution_coverage: number;
   payload_coverage: number;
 }
 

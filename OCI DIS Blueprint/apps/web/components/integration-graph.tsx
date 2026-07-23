@@ -34,6 +34,7 @@ type IntegrationGraphProps = {
   graph: GraphResponse;
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
+  highlightedEdgeIds: string[];
   onNodeClick: (_node: GraphNode) => void;
   onEdgeClick: (_edge: GraphEdge) => void;
   colorMode: "qa" | "bp";
@@ -268,7 +269,8 @@ function fitViewport(nodes: SimNode[], maxNodeCount: number): { x: number; y: nu
   );
 
   const padding = 44;
-  const topReserved = 52;
+  // Keep the first graph row below the interactive Topology Pulse overlay.
+  const topReserved = 215;
   const availableHeight = LOGICAL_HEIGHT - topReserved - padding;
   const contentWidth = Math.max(bounds.maxX - bounds.minX, 1);
   const contentHeight = Math.max(bounds.maxY - bounds.minY, 1);
@@ -289,6 +291,7 @@ export function IntegrationGraph({
   graph,
   selectedNodeId,
   selectedEdgeId,
+  highlightedEdgeIds,
   onNodeClick,
   onEdgeClick,
   colorMode,
@@ -318,6 +321,7 @@ export function IntegrationGraph({
     () => Math.max(1, ...graph.edges.map((edge) => edgeMetricValue(edge, metricMode))),
     [graph.edges, metricMode],
   );
+  const highlightedEdgeIdSet = useMemo(() => new Set(highlightedEdgeIds), [highlightedEdgeIds]);
   const processLegend = useMemo(() => {
     const counts = new Map<string, number>();
     graph.edges.forEach((edge) => {
@@ -660,20 +664,24 @@ export function IntegrationGraph({
             const shortened = shortenEdge(source, target, sourceRadius, targetRadius);
             const isHovered = hoveredEdgeId === edge.id;
             const isSelected = selectedEdgeId === edge.id;
+            const isPulseHighlighted = highlightedEdgeIdSet.has(edge.id);
             const isConnectedToActiveNode = activeNodeId
               ? edge.source === activeNodeId || edge.target === activeNodeId
               : false;
-            const isActive = isHovered || isSelected || isConnectedToActiveNode;
+            const isActive = isHovered || isSelected || isPulseHighlighted || isConnectedToActiveNode;
             if (visibilityMode === "priority" && !priorityEdgeIds.has(edge.id) && !isActive) {
               return null;
             }
-            const hasActiveContext = Boolean(activeNodeId || selectedEdgeId || hoveredEdgeId);
+            const hasActiveContext = Boolean(
+              activeNodeId || selectedEdgeId || hoveredEdgeId || highlightedEdgeIdSet.size,
+            );
             const statusKey = edgeStatusKey(edge.risk_qa_status);
             const statusStyle = EDGE_STATUS_STYLES[statusKey];
             const processColor = businessProcessColor(edge.business_processes[0] ?? edge.id);
             const edgeColor = colorMode === "qa" ? statusStyle.stroke : processColor;
             const metricValue = edgeMetricValue(edge, metricMode);
-            const strokeWidth = edgeWidth(metricValue, maxEdgeMetric) * (isHovered || isSelected ? 1.24 : 1);
+            const strokeWidth = edgeWidth(metricValue, maxEdgeMetric)
+              * (isHovered || isSelected || isPulseHighlighted ? 1.24 : 1);
             const opacity = hasActiveContext ? (isActive ? 0.96 : 0.045) : layoutMode === "cluster" ? 0.28 : 0.38;
             const markerEnd = !hasActiveContext || isActive
               ? colorMode === "qa"
@@ -687,6 +695,8 @@ export function IntegrationGraph({
             return (
               <g
                 key={edge.id}
+                data-edge-id={edge.id}
+                data-pulse-highlighted={isPulseHighlighted ? "true" : undefined}
                 role="button"
                 tabIndex={mode === "select" ? 0 : -1}
                 aria-label={`${edge.source} to ${edge.target}, ${metricLabel}, ${edge.risk_qa_status}`}

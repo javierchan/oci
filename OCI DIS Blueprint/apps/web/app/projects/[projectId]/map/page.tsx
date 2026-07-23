@@ -10,10 +10,12 @@ import { GraphDetailPanel } from "@/components/graph-detail-panel";
 import { GraphMobileList } from "@/components/graph-mobile-list";
 import { GraphTriagePanel } from "@/components/graph-triage-panel";
 import { IntegrationGraph } from "@/components/integration-graph";
+import { TopologyPulse } from "@/components/topology-pulse";
 import { api, getErrorMessage } from "@/lib/api";
 import { isProjectNotFoundError, projectRootHref } from "@/lib/project-errors";
 import { advanceRiskReview, degradedSystemCount, qaTotalsForEdges } from "@/lib/topology";
 import type { TopologyLayoutMode, TopologyMetricMode, TopologyVisibilityMode } from "@/lib/topology";
+import { buildTopologyPulseInsights } from "@/lib/topology-insights";
 import type { GraphEdge, GraphNode, GraphParams, GraphResponse } from "@/lib/types";
 
 type MapPageProps = {
@@ -34,6 +36,7 @@ const EMPTY_GRAPH: GraphResponse = {
     brands: [],
     latest_updated_at: null,
     executions_coverage: 0,
+    payload_execution_coverage: 0,
     payload_coverage: 0,
   },
 };
@@ -60,11 +63,20 @@ function normalizeGraphResponse(value: unknown): GraphResponse {
         risk_score: typeof edge.risk_score === "number" ? edge.risk_score : edge.integration_count,
         interaction_mode: edge.interaction_mode ?? "UNSPECIFIED",
         total_executions_per_day: edge.total_executions_per_day ?? 0,
+        total_payload_per_execution_kb: edge.total_payload_per_execution_kb ?? 0,
         total_payload_per_hour_kb: edge.total_payload_per_hour_kb ?? 0,
         executions_coverage: edge.executions_coverage ?? 0,
+        payload_execution_coverage: edge.payload_execution_coverage ?? 0,
         payload_coverage: edge.payload_coverage ?? 0,
         last_updated_at: edge.last_updated_at ?? new Date(0).toISOString(),
-        integrations: Array.isArray(edge.integrations) ? edge.integrations : [],
+        integrations: Array.isArray(edge.integrations)
+          ? edge.integrations.map((integration) => ({
+              ...integration,
+              executions_per_day: integration.executions_per_day ?? null,
+              payload_per_execution_kb: integration.payload_per_execution_kb ?? null,
+              payload_per_hour_kb: integration.payload_per_hour_kb ?? null,
+            }))
+          : [],
       }))
     : EMPTY_GRAPH.edges;
   const meta = candidate.meta;
@@ -88,6 +100,8 @@ function normalizeGraphResponse(value: unknown): GraphResponse {
             brands: Array.isArray(meta.brands) ? meta.brands : [],
             latest_updated_at: typeof meta.latest_updated_at === "string" ? meta.latest_updated_at : null,
             executions_coverage: typeof meta.executions_coverage === "number" ? meta.executions_coverage : 0,
+            payload_execution_coverage:
+              typeof meta.payload_execution_coverage === "number" ? meta.payload_execution_coverage : 0,
             payload_coverage: typeof meta.payload_coverage === "number" ? meta.payload_coverage : 0,
           }
         : {
@@ -120,6 +134,9 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
   const [triageOpen, setTriageOpen] = useState<boolean>(false);
   const [reviewedRiskEdgeIds, setReviewedRiskEdgeIds] = useState<string[]>([]);
   const [reviewSessionProjectId, setReviewSessionProjectId] = useState<string | null>(null);
+  const [pulseExpanded, setPulseExpanded] = useState<boolean>(true);
+  const [pulseHighlightedEdgeIds, setPulseHighlightedEdgeIds] = useState<string[]>([]);
+  const [pulseIntegrationId, setPulseIntegrationId] = useState<string>("");
   const [widePanel, setWidePanel] = useState<boolean>(false);
   const [desktopMap, setDesktopMap] = useState<boolean>(false);
   const missingProjectHref = projectRootHref(projectId);
@@ -138,6 +155,15 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
   );
   const currentRiskSelected = Boolean(selectedEdge && riskEdges.some((edge) => edge.id === selectedEdge.id));
   const activeFilterCount = Object.values(filters).filter(Boolean).length + (selectedSystem ? 1 : 0);
+  const pulseInsights = useMemo(
+    () => buildTopologyPulseInsights(graph, {
+      metricMode,
+      selectedNodeId: selectedPanelNode?.id,
+      selectedEdgeId: selectedEdge?.id,
+      selectedIntegrationId: pulseIntegrationId,
+    }),
+    [graph, metricMode, pulseIntegrationId, selectedEdge?.id, selectedPanelNode?.id],
+  );
 
   useEffect(() => {
     const query = window.matchMedia("(min-width: 1536px)");
@@ -213,6 +239,8 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
           setGraph(normalizeGraphResponse(response));
           setSelectedNode(null);
           setSelectedEdge(null);
+          setPulseIntegrationId("");
+          setPulseHighlightedEdgeIds([]);
         }
       })
       .catch((caughtError: unknown) => {
@@ -244,6 +272,10 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
       if (event.key.toLowerCase() === "h") {
         setMode("pan");
       }
+      if (event.key === "Escape") {
+        setPulseHighlightedEdgeIds([]);
+        setPulseIntegrationId("");
+      }
     }
 
     window.addEventListener("keydown", handleKeyDown);
@@ -270,6 +302,8 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
   function handleSystemChange(value: string): void {
     setSelectedSystem(value);
     setSelectedEdge(null);
+    setPulseIntegrationId("");
+    setPulseHighlightedEdgeIds([]);
     setSelectedNode(value ? graph.nodes.find((node) => node.label === value) ?? null : null);
     setTriageOpen(false);
   }
@@ -278,6 +312,8 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
     setSelectedNode(null);
     setSelectedEdge(null);
     setSelectedSystem("");
+    setPulseIntegrationId("");
+    setPulseHighlightedEdgeIds([]);
     setTriageOpen(false);
     setViewport(homeViewport);
   }
@@ -291,7 +327,16 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
     setSelectedEdge(edge);
     setSelectedNode(null);
     setSelectedSystem("");
+    setPulseIntegrationId("");
+    setPulseHighlightedEdgeIds([]);
     setTriageOpen(false);
+  }
+
+  function pinPulseEdge(edgeId: string): void {
+    const edge = graph.edges.find((candidate) => candidate.id === edgeId);
+    if (edge) {
+      selectEdge(edge);
+    }
   }
 
   function reviewNextRisk(): void {
@@ -354,6 +399,8 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
                 setSelectedNode(null);
                 setSelectedEdge(null);
                 setSelectedSystem("");
+                setPulseIntegrationId("");
+                setPulseHighlightedEdgeIds([]);
                 setTriageOpen(true);
                 setViewport(homeViewport);
               }}
@@ -372,6 +419,21 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
             />
 
             <div className="relative min-h-0 flex-1">
+              {!loading && graph.meta.integration_count > 0 ? (
+                <div className="pointer-events-none absolute left-3 right-3 top-3 z-20">
+                  <TopologyPulse
+                    insights={pulseInsights}
+                    metricMode={metricMode}
+                    expanded={pulseExpanded}
+                    selectedIntegrationId={pulseIntegrationId}
+                    onExpandedChange={setPulseExpanded}
+                    onIntegrationChange={setPulseIntegrationId}
+                    onHighlightEdges={setPulseHighlightedEdgeIds}
+                    onPinEdge={pinPulseEdge}
+                  />
+                </div>
+              ) : null}
+
               {loading ? (
                 <div className="flex h-full items-center justify-center text-sm font-medium text-[var(--color-text-secondary)]">
                 Building live topology...
@@ -381,10 +443,13 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
                   graph={graph}
                   selectedNodeId={selectedPanelNode?.id ?? null}
                   selectedEdgeId={selectedEdge?.id ?? null}
+                  highlightedEdgeIds={pulseHighlightedEdgeIds}
                   onNodeClick={(node) => {
                     setSelectedNode(node);
                     setSelectedEdge(null);
                     setSelectedSystem(node.label);
+                    setPulseIntegrationId("");
+                    setPulseHighlightedEdgeIds([]);
                     setTriageOpen(false);
                   }}
                   onEdgeClick={selectEdge}

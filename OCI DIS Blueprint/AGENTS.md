@@ -770,6 +770,23 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       external-capture tests, full API/frontend gates, generated OpenAPI,
       production Docker migration, and embedded-browser creation/edit validation pass.
 
+### M67 — Contextual Topology Pulse
+- [x] Extend the governed graph contract with summed payload-per-execution evidence
+      and explicit measured-row coverage at graph, path, and integration scope.
+- [x] Derive current-scope topology insights deterministically from the active
+      filters, selected system, dependency path, or individual integration.
+- [x] Add a transparent, progressively disclosed Topology Pulse layer with ranked
+      path load, QA distribution, flow balance, concentration, and linked edge
+      highlighting without obstructing existing map navigation.
+- [x] Keep topology history unavailable and truthfully labeled until immutable
+      graph snapshots exist; never synthesize or imply a historical trend.
+- [x] Provide a compact mobile summary and semantic light/dark presentation with
+      payload evidence coverage visible wherever a payload total is shown.
+- [x] **Exit criteria**: graph API and topology unit tests, generated OpenAPI,
+      TypeScript/ESLint, Node 26 production build, desktop/mobile map E2E, linked
+      chart interaction, responsive light/dark visual inspection, and zero browser
+      console errors pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

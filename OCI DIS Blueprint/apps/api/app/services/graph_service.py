@@ -110,6 +110,7 @@ async def compute_graph(
     contributing_rows = 0
     latest_updated_at = None
     executions_coverage = 0
+    payload_execution_coverage = 0
     payload_coverage = 0
 
     for row in rows:
@@ -123,6 +124,7 @@ async def compute_graph(
         contributing_rows += 1
         latest_updated_at = max(latest_updated_at, row.updated_at) if latest_updated_at else row.updated_at
         executions_coverage += int(row.executions_per_day is not None)
+        payload_execution_coverage += int(row.payload_per_execution_kb is not None)
         payload_coverage += int(row.payload_per_hour_kb is not None)
         if row.brand:
             graph_brands.add(row.brand)
@@ -180,8 +182,10 @@ async def compute_graph(
                 "qa_statuses": defaultdict(int),
                 "interaction_modes": set(),
                 "total_executions_per_day": 0.0,
+                "total_payload_per_execution_kb": 0.0,
                 "total_payload_per_hour_kb": 0.0,
                 "executions_coverage": 0,
+                "payload_execution_coverage": 0,
                 "payload_coverage": 0,
                 "last_updated_at": row.updated_at,
                 "integrations": [],
@@ -209,6 +213,11 @@ async def compute_graph(
         if row.executions_per_day is not None:
             edge["total_executions_per_day"] = float(cast(Any, edge["total_executions_per_day"])) + row.executions_per_day
             edge["executions_coverage"] = int(cast(Any, edge["executions_coverage"])) + 1
+        if row.payload_per_execution_kb is not None:
+            edge["total_payload_per_execution_kb"] = (
+                float(cast(Any, edge["total_payload_per_execution_kb"])) + row.payload_per_execution_kb
+            )
+            edge["payload_execution_coverage"] = int(cast(Any, edge["payload_execution_coverage"])) + 1
         if row.payload_per_hour_kb is not None:
             edge["total_payload_per_hour_kb"] = float(cast(Any, edge["total_payload_per_hour_kb"])) + row.payload_per_hour_kb
             edge["payload_coverage"] = int(cast(Any, edge["payload_coverage"])) + 1
@@ -225,6 +234,7 @@ async def compute_graph(
                 trigger_type=row.trigger_type,
                 interaction_mode=interaction_mode,
                 executions_per_day=row.executions_per_day,
+                payload_per_execution_kb=row.payload_per_execution_kb,
                 payload_per_hour_kb=row.payload_per_hour_kb,
                 updated_at=row.updated_at,
             )
@@ -270,8 +280,10 @@ async def compute_graph(
                 risk_score=(qa_counts.get("PENDING", 0) * 100) + (qa_counts.get("REVISAR", 0) * 10) + len(cast_list(state["integration_ids"])),
                 interaction_mode=_combined_interaction_mode({str(mode) for mode in interaction_modes}),
                 total_executions_per_day=float(cast(Any, state["total_executions_per_day"])),
+                total_payload_per_execution_kb=float(cast(Any, state["total_payload_per_execution_kb"])),
                 total_payload_per_hour_kb=float(cast(Any, state["total_payload_per_hour_kb"])),
                 executions_coverage=int(cast(Any, state["executions_coverage"])),
+                payload_execution_coverage=int(cast(Any, state["payload_execution_coverage"])),
                 payload_coverage=int(cast(Any, state["payload_coverage"])),
                 last_updated_at=cast(Any, state["last_updated_at"]),
                 integrations=cast(list[GraphIntegrationSummary], state["integrations"]),
@@ -290,6 +302,7 @@ async def compute_graph(
             brands=sorted(graph_brands),
             latest_updated_at=latest_updated_at,
             executions_coverage=executions_coverage,
+            payload_execution_coverage=payload_execution_coverage,
             payload_coverage=payload_coverage,
         ),
     )

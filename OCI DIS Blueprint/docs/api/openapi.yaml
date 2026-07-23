@@ -9899,6 +9899,10 @@
             "title": "Payload Coverage",
             "type": "integer"
           },
+          "payload_execution_coverage": {
+            "title": "Payload Execution Coverage",
+            "type": "integer"
+          },
           "qa_statuses": {
             "additionalProperties": {
               "type": "integer"
@@ -9926,6 +9930,10 @@
             "title": "Total Executions Per Day",
             "type": "number"
           },
+          "total_payload_per_execution_kb": {
+            "title": "Total Payload Per Execution Kb",
+            "type": "number"
+          },
           "total_payload_per_hour_kb": {
             "title": "Total Payload Per Hour Kb",
             "type": "number"
@@ -9947,8 +9955,10 @@
           "risk_score",
           "interaction_mode",
           "total_executions_per_day",
+          "total_payload_per_execution_kb",
           "total_payload_per_hour_kb",
           "executions_coverage",
+          "payload_execution_coverage",
           "payload_coverage",
           "last_updated_at",
           "integrations"
@@ -10004,6 +10014,17 @@
             ],
             "title": "Pattern"
           },
+          "payload_per_execution_kb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload Per Execution Kb"
+          },
           "payload_per_hour_kb": {
             "anyOf": [
               {
@@ -10045,6 +10066,7 @@
           "trigger_type",
           "interaction_mode",
           "executions_per_day",
+          "payload_per_execution_kb",
           "payload_per_hour_kb",
           "updated_at"
         ],
@@ -10106,6 +10128,10 @@
           "payload_coverage": {
             "title": "Payload Coverage",
             "type": "integer"
+          },
+          "payload_execution_coverage": {
+            "title": "Payload Execution Coverage",
+            "type": "integer"
           }
         },
         "required": [
@@ -10117,6 +10143,7 @@
           "brands",
           "latest_updated_at",
           "executions_coverage",
+          "payload_execution_coverage",
           "payload_coverage"
         ],
         "title": "GraphMeta",

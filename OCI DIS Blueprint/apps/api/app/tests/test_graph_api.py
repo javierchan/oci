@@ -41,6 +41,7 @@ async def seed_graph_project(test_engine: AsyncEngine) -> str:
                     destination_technology_1="Autonomous Database",
                     destination_owner="Finance Data",
                     executions_per_day=120.0,
+                    payload_per_execution_kb=64.0,
                     payload_per_hour_kb=640.0,
                     selected_pattern="#01",
                     qa_status="OK",
@@ -61,6 +62,7 @@ async def seed_graph_project(test_engine: AsyncEngine) -> str:
                     destination_technology_1="Autonomous Database",
                     destination_owner="Finance Data",
                     executions_per_day=240.0,
+                    payload_per_execution_kb=128.0,
                     payload_per_hour_kb=1280.0,
                     selected_pattern="#02",
                     qa_status="REVISAR",
@@ -87,6 +89,7 @@ async def test_graph_exposes_risk_metrics_modes_and_actionable_integrations(
     assert payload["meta"]["integration_count"] == 2
     assert payload["meta"]["business_process_families"] == ["Order to Cash"]
     assert payload["meta"]["executions_coverage"] == 2
+    assert payload["meta"]["payload_execution_coverage"] == 2
     assert payload["meta"]["payload_coverage"] == 2
     assert payload["meta"]["latest_updated_at"] is not None
 
@@ -96,8 +99,10 @@ async def test_graph_exposes_risk_metrics_modes_and_actionable_integrations(
     assert edge["risk_score"] == 12
     assert edge["interaction_mode"] == "MIXED"
     assert edge["total_executions_per_day"] == 360.0
+    assert edge["total_payload_per_execution_kb"] == 192.0
     assert edge["total_payload_per_hour_kb"] == 1920.0
     assert edge["executions_coverage"] == 2
+    assert edge["payload_execution_coverage"] == 2
     assert edge["payload_coverage"] == 2
     assert edge["patterns"] == ["#01 · Request-Reply", "#02 · Event-Driven"]
     assert [item["name"] for item in edge["integrations"]] == [
@@ -108,6 +113,7 @@ async def test_graph_exposes_risk_metrics_modes_and_actionable_integrations(
         "#01 · Request-Reply",
         "#02 · Event-Driven",
     ]
+    assert [item["payload_per_execution_kb"] for item in edge["integrations"]] == [64.0, 128.0]
 
     source_node = next(node for node in payload["nodes"] if node["id"] == "Retail Core ERP")
     assert source_node["owners"] == ["ERP Operations"]

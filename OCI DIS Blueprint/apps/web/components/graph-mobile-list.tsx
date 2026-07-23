@@ -2,11 +2,13 @@
 
 /* Mobile-first dependency explorer used when the full SVG topology is unavailable. */
 
-import { ArrowRight, Network, Search, ShieldAlert } from "lucide-react";
+import { Activity, ArrowRight, Network, Search, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { edgeRiskLabel, qaTotalsForNode, topologyDomainForNode } from "@/lib/topology";
+import { buildTopologyPulseInsights } from "@/lib/topology-insights";
+import { formatCompactNumber } from "@/lib/format";
 import type { GraphResponse } from "@/lib/types";
 
 type GraphMobileListProps = {
@@ -41,6 +43,15 @@ export function GraphMobileList({ projectId, graph, loading, error }: GraphMobil
   );
   const visibleRisks = normalizedQuery ? risks : risks.slice(0, 20);
   const visibleSystems = normalizedQuery ? systems : systems.slice(0, 30);
+  const pulse = useMemo(
+    () => buildTopologyPulseInsights(graph, { metricMode: "relationships" }),
+    [graph],
+  );
+  const payloadPerExecution = pulse.totalPayloadPerExecutionKb === null
+    ? "—"
+    : pulse.totalPayloadPerExecutionKb >= 1024
+      ? `${formatCompactNumber(pulse.totalPayloadPerExecutionKb / 1024)} MB`
+      : `${formatCompactNumber(pulse.totalPayloadPerExecutionKb)} KB`;
 
   return (
     <section className="sm:hidden">
@@ -51,6 +62,41 @@ export function GraphMobileList({ projectId, graph, loading, error }: GraphMobil
           {graph.meta.node_count} systems · {graph.meta.edge_count} paths · {graph.meta.integration_count} integrations
         </p>
       </header>
+
+      {!loading && !error && graph.meta.integration_count > 0 ? (
+        <section className="border-b border-[var(--color-border)] py-4" aria-label="Topology Pulse insights">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-[var(--color-accent)]" aria-hidden="true" />
+            <h2 className="text-xs font-semibold text-[var(--color-text-primary)]">Topology Pulse</h2>
+            <span className="rounded-sm bg-[var(--color-status-active-bg)] px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[var(--color-status-active-text)]">
+              Current
+            </span>
+          </div>
+          <div className="mt-3 grid grid-cols-3 divide-x divide-[var(--color-border)]">
+            <div className="pr-3">
+              <p className="text-[10px] uppercase text-[var(--color-text-muted)]">Payload / execution</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--color-text-primary)]">{payloadPerExecution}</p>
+              <p className="text-[10px] text-[var(--color-text-muted)]">
+                {pulse.payloadExecutionCoverage}/{pulse.integrationCount} measured
+              </p>
+            </div>
+            <div className="px-3">
+              <p className="text-[10px] uppercase text-[var(--color-text-muted)]">QA OK</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--color-qa-ok-text)]">{pulse.qa.ok}</p>
+              <p className="text-[10px] text-[var(--color-text-muted)]">{pulse.qa.review + pulse.qa.pending} attention</p>
+            </div>
+            <div className="pl-3">
+              <p className="text-[10px] uppercase text-[var(--color-text-muted)]">Top path</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--color-text-primary)]">
+                {Math.round(pulse.concentration.topPathShare * 100)}%
+              </p>
+              <p className="truncate text-[10px] text-[var(--color-text-muted)]">
+                {pulse.concentration.topPathLabel}
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <div className="sticky top-0 z-10 -mx-1 bg-[var(--color-bg)] px-1 py-4">
         <label className="flex min-h-11 items-center gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3">

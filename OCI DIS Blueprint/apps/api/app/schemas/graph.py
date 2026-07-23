@@ -20,6 +20,7 @@ class GraphIntegrationSummary(BaseModel):
     trigger_type: str | None
     interaction_mode: str
     executions_per_day: float | None
+    payload_per_execution_kb: float | None
     payload_per_hour_kb: float | None
     updated_at: datetime
 
@@ -60,8 +61,10 @@ class GraphEdge(BaseModel):
     risk_score: int
     interaction_mode: str
     total_executions_per_day: float
+    total_payload_per_execution_kb: float
     total_payload_per_hour_kb: float
     executions_coverage: int
+    payload_execution_coverage: int
     payload_coverage: int
     last_updated_at: datetime
     integrations: list[GraphIntegrationSummary]
@@ -80,6 +83,7 @@ class GraphMeta(BaseModel):
     brands: list[str]
     latest_updated_at: datetime | None
     executions_coverage: int
+    payload_execution_coverage: int
     payload_coverage: int
 
 
