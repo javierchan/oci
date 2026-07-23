@@ -100,6 +100,71 @@ def test_bom_agent_prioritizes_current_published_bom() -> None:
     assert proposals == []
 
 
+def test_import_correction_workspace_explains_external_capture_review_counts() -> None:
+    workspace, proposals = build_decision_workspace(
+        get_agent_definition("import_quality"),
+        {
+            "state": "external_capture_review",
+            "session_id": "capture-session-1",
+            "source_evidence_id": "sha256:abc123",
+            "summary": {
+                "total": 241,
+                "schema_ready": 196,
+                "missing_required": 45,
+                "pattern_changes": 178,
+                "needs_review": 241,
+            },
+            "top_required_gaps": [
+                {"field": "destination_system", "rows": 26},
+                {"field": "source_system", "rows": 19},
+            ],
+            "recommended_next_action": (
+                "Resolve required-field gaps and review every pattern assessment "
+                "before approving any row."
+            ),
+        },
+        project_id="project-1",
+        integration_id=None,
+    )
+
+    assert workspace.current_state == (
+        "241 of 241 proposal(s) require an explicit decision. "
+        "45 are blocked by missing required evidence; "
+        "196 are schema-complete but still require pattern review."
+    )
+    assert workspace.alternatives[0].status == "blocked"
+    assert workspace.alternatives[0].missing_inputs == [
+        "destination_system: 26 row(s)",
+        "source_system: 19 row(s)",
+    ]
+    assert workspace.outcome_metrics == [
+        {
+            "key": "proposals",
+            "label": "Proposals requiring review",
+            "value": 241,
+        },
+        {
+            "key": "schema_ready",
+            "label": "Schema-complete proposals",
+            "value": 196,
+        },
+        {
+            "key": "missing_required",
+            "label": "Rows blocked by missing evidence",
+            "value": 45,
+        },
+        {
+            "key": "pattern_changes",
+            "label": "Pattern changes to review",
+            "value": 178,
+        },
+    ]
+    assert workspace.alternatives[0].action_href == (
+        "/projects/project-1/capture-review?session=capture-session-1"
+    )
+    assert proposals[0].payload["external_capture_session_id"] == "capture-session-1"
+
+
 def test_architecture_agent_keeps_grounded_plain_language_and_adds_typed_brief() -> None:
     evidence: dict[str, object] = {
         "decision_brief": {

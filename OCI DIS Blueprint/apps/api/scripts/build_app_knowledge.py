@@ -100,6 +100,46 @@ def _deterministic_projection(manifest: dict[str, object]) -> dict[str, object]:
     return projected
 
 
+def _preserve_matching_provider_embeddings(
+    current: dict[str, object],
+    committed: dict[str, object],
+) -> None:
+    """Keep cached OCI vectors only when the retrieval identity and text match."""
+
+    committed_units = committed.get("retrieval_units")
+    current_units = current.get("retrieval_units")
+    if not isinstance(committed_units, list) or not isinstance(current_units, list):
+        return
+
+    cached_by_id = {
+        str(unit.get("id")): unit
+        for unit in committed_units
+        if isinstance(unit, dict)
+        and isinstance(unit.get("id"), str)
+        and isinstance(unit.get("provider_embedding"), list)
+    }
+    preserved = 0
+    for unit in current_units:
+        if not isinstance(unit, dict) or not isinstance(unit.get("id"), str):
+            continue
+        cached = cached_by_id.get(str(unit["id"]))
+        if cached is None or cached.get("text") != unit.get("text"):
+            continue
+        unit["provider_embedding"] = cached["provider_embedding"]
+        preserved += 1
+
+    if not preserved:
+        return
+    committed_spaces = committed.get("embedding_spaces")
+    current_spaces = current.setdefault("embedding_spaces", {})
+    if (
+        isinstance(committed_spaces, dict)
+        and isinstance(current_spaces, dict)
+        and isinstance(committed_spaces.get("provider"), dict)
+    ):
+        current_spaces["provider"] = committed_spaces["provider"]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="Fail when generated facts or curated links drift")
@@ -112,6 +152,10 @@ def main() -> int:
     current = _load_manifest_for_build(provider_embeddings=args.provider_embeddings)
     if args.provider_embeddings:
         asyncio.run(_enrich_with_provider_embeddings(current))
+    elif DERIVED_PATH.is_file():
+        committed = json.loads(DERIVED_PATH.read_text(encoding="utf-8"))
+        if isinstance(committed, dict):
+            _preserve_matching_provider_embeddings(current, committed)
     errors = validate_knowledge_base(_load_curated(CURATED_PATH), current)
     if args.check:
         if not DERIVED_PATH.exists():

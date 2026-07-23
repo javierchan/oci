@@ -735,6 +735,27 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       project and integration review browser validation, and zero browser console
       warnings or errors pass.
 
+### M65 — Governed Structured External Capture Review
+- [x] Add project-scoped external-capture sessions that retain a customer source
+      label and SHA-256 fingerprint without uploading or persisting the local file.
+- [x] Keep immutable source evidence separate from editable canonical proposals,
+      normalization decisions, pattern assessments, QA previews, and required gaps.
+- [x] Revalidate every proposal against the current manual-capture schema and
+      active pattern registry while preserving missing client evidence as a blocker.
+- [x] Require explicit architect rationale and approval before a second explicit
+      promotion action can call the canonical governed manual-capture service.
+- [x] Extend the Import Correction Agent with bounded external-capture evidence
+      and expose a durable Capture Review workspace with search, filters, editing,
+      review, promotion, and catalog drill-through.
+- [x] Demonstrate the workflow with 241 staged customer rows for
+      **ADN - Retail Merchandising**, client **Innovación y Conveniencia, S.A. de C.V.**,
+      forcing proposed `TBQ=Y` while retaining original values and independent
+      line-by-line pattern evidence.
+- [x] **Exit criteria**: migration head `20260722_0051`; focused backend tests,
+      frontend tests/type/lint/build, generated OpenAPI, production Docker health,
+      API reconciliation, embedded-browser visual and functional validation, and
+      zero automatic catalog promotions pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

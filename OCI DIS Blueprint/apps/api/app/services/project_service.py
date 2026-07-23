@@ -20,6 +20,8 @@ from app.models import (
     CatalogIntegration,
     DashboardSnapshot,
     DeploymentScenario,
+    ExternalCaptureDraft,
+    ExternalCaptureSession,
     ImportBatch,
     ImportMappingProfile,
     JustificationRecord,
@@ -78,6 +80,7 @@ async def create_project(body: ProjectCreateRequest, db: AsyncSession) -> Projec
         name=body.name,
         owner_id=body.owner_id,
         description=body.description,
+        project_metadata=body.project_metadata,
         # A project created from the product workspace is immediately editable.
         # Archive is the only terminal project lifecycle state exposed by the UI.
         status=ProjectStatus.ACTIVE,
@@ -238,6 +241,19 @@ async def delete_project(project_id: str, actor_id: str, db: AsyncSession) -> Pr
     await db.execute(delete(AiReviewJob).where(AiReviewJob.project_id == project_id))
     await db.execute(delete(AiReviewBaseline).where(AiReviewBaseline.project_id == project_id))
     await db.execute(delete(ImportMappingProfile).where(ImportMappingProfile.project_id == project_id))
+    external_session_ids = select(ExternalCaptureSession.id).where(
+        ExternalCaptureSession.project_id == project_id
+    )
+    await db.execute(
+        delete(ExternalCaptureDraft).where(
+            ExternalCaptureDraft.session_id.in_(external_session_ids)
+        )
+    )
+    await db.execute(
+        delete(ExternalCaptureSession).where(
+            ExternalCaptureSession.project_id == project_id
+        )
+    )
 
     bom_snapshot_ids = select(BomSnapshot.id).where(BomSnapshot.project_id == project_id)
     await db.execute(delete(BomLineItem).where(BomLineItem.bom_snapshot_id.in_(bom_snapshot_ids)))

@@ -93,10 +93,10 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
     ),
     "import_quality": AgentDefinition(
         type="import_quality",
-        version="3.0.0",
+        version="3.1.0",
         name="Import Correction Agent",
-        description="Guides external workbook mapping, validates import evidence, and prevents unsafe catalog materialization.",
-        location="Import Review",
+        description="Guides workbook mapping and external row correction while preventing unsafe catalog materialization.",
+        location="Import Review and Capture Review",
         tools=(
             "inspect_import_quality",
             "build_decision_workspace",
@@ -107,10 +107,10 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
         mutates_data=False,
         requires_project=True,
         instruction=(
-            f"{COMMON_INSTRUCTION} In at most 160 words, first state whether the workbook is staged for mapping "
-            "review or already governed. For a staged workbook, explain the highest-risk ambiguous field, why it "
-            "could distort catalog, QA, topology, or BOM, and the minimum user decision required. Do not choose a "
-            "mapping, approve a contract, or imply that source rows were repaired; those remain explicit user actions."
+            f"{COMMON_INSTRUCTION} In at most 180 words, first state whether evidence is a staged workbook mapping "
+            "or an external capture review session. Explain the largest required-field gap, material pattern changes, "
+            "and the minimum user decisions needed before promotion. Never invent missing customer values, choose a "
+            "pattern without review, approve a proposal, or imply that a draft entered the canonical catalog."
         ),
     ),
     "integration_design": AgentDefinition(

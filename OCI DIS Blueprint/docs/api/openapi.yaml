@@ -8920,6 +8920,618 @@
         "title": "ExportJobResponse",
         "type": "object"
       },
+      "ExternalCaptureBulkResult": {
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ExternalCaptureSummary"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "updated",
+          "total",
+          "summary"
+        ],
+        "title": "ExternalCaptureBulkResult",
+        "type": "object"
+      },
+      "ExternalCaptureDraftBulkCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "drafts": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalCaptureDraftInput"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Drafts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "drafts"
+        ],
+        "title": "ExternalCaptureDraftBulkCreate",
+        "type": "object"
+      },
+      "ExternalCaptureDraftInput": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "normalized_values": {
+            "additionalProperties": true,
+            "title": "Normalized Values",
+            "type": "object"
+          },
+          "pattern_assessment": {
+            "additionalProperties": true,
+            "title": "Pattern Assessment",
+            "type": "object"
+          },
+          "proposed_payload": {
+            "additionalProperties": true,
+            "title": "Proposed Payload",
+            "type": "object"
+          },
+          "source_record": {
+            "additionalProperties": true,
+            "title": "Source Record",
+            "type": "object"
+          },
+          "source_row_number": {
+            "minimum": 1.0,
+            "title": "Source Row Number",
+            "type": "integer"
+          },
+          "validation_evidence": {
+            "additionalProperties": true,
+            "title": "Validation Evidence",
+            "type": "object"
+          }
+        },
+        "required": [
+          "source_row_number",
+          "source_record",
+          "proposed_payload"
+        ],
+        "title": "ExternalCaptureDraftInput",
+        "type": "object"
+      },
+      "ExternalCaptureDraftPage": {
+        "additionalProperties": false,
+        "properties": {
+          "drafts": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalCaptureDraftResponse"
+            },
+            "title": "Drafts",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "drafts",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "ExternalCaptureDraftPage",
+        "type": "object"
+      },
+      "ExternalCaptureDraftPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "normalized_values": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Values"
+          },
+          "pattern_assessment": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern Assessment"
+          },
+          "proposed_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Payload"
+          }
+        },
+        "title": "ExternalCaptureDraftPatch",
+        "type": "object"
+      },
+      "ExternalCaptureDraftResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "normalized_values": {
+            "additionalProperties": true,
+            "title": "Normalized Values",
+            "type": "object"
+          },
+          "pattern_assessment": {
+            "additionalProperties": true,
+            "title": "Pattern Assessment",
+            "type": "object"
+          },
+          "promoted_integration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted Integration Id"
+          },
+          "proposed_payload": {
+            "additionalProperties": true,
+            "title": "Proposed Payload",
+            "type": "object"
+          },
+          "qa_preview": {
+            "additionalProperties": true,
+            "title": "Qa Preview",
+            "type": "object"
+          },
+          "required_field_gaps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Field Gaps",
+            "type": "array"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "reviewer_rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Rationale"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source_record": {
+            "additionalProperties": true,
+            "title": "Source Record",
+            "type": "object"
+          },
+          "source_row_number": {
+            "title": "Source Row Number",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "needs_review",
+              "approved",
+              "rejected",
+              "promoted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "validation_evidence": {
+            "additionalProperties": true,
+            "title": "Validation Evidence",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "source_row_number",
+          "source_record",
+          "proposed_payload",
+          "normalized_values",
+          "pattern_assessment",
+          "validation_evidence",
+          "required_field_gaps",
+          "qa_preview",
+          "confidence",
+          "status",
+          "reviewer_rationale",
+          "reviewed_by",
+          "reviewed_at",
+          "promoted_integration_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ExternalCaptureDraftResponse",
+        "type": "object"
+      },
+      "ExternalCaptureDraftReview": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "rationale": {
+            "maxLength": 4000,
+            "minLength": 3,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "rationale"
+        ],
+        "title": "ExternalCaptureDraftReview",
+        "type": "object"
+      },
+      "ExternalCapturePromotionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/ExternalCaptureDraftResponse"
+          },
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "draft",
+          "integration_id"
+        ],
+        "title": "ExternalCapturePromotionResponse",
+        "type": "object"
+      },
+      "ExternalCaptureSessionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "client_name": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Client Name",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "normalization_policy": {
+            "additionalProperties": true,
+            "title": "Normalization Policy",
+            "type": "object"
+          },
+          "source_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_label": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Source Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "client_name",
+          "source_label",
+          "source_hash"
+        ],
+        "title": "ExternalCaptureSessionCreate",
+        "type": "object"
+      },
+      "ExternalCaptureSessionDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/ExternalCaptureSessionResponse"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ExternalCaptureSummary"
+          }
+        },
+        "required": [
+          "session",
+          "summary"
+        ],
+        "title": "ExternalCaptureSessionDetail",
+        "type": "object"
+      },
+      "ExternalCaptureSessionList": {
+        "additionalProperties": false,
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalCaptureSessionResponse"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "title": "ExternalCaptureSessionList",
+        "type": "object"
+      },
+      "ExternalCaptureSessionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "client_name": {
+            "title": "Client Name",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "normalization_policy": {
+            "additionalProperties": true,
+            "title": "Normalization Policy",
+            "type": "object"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "source_hash": {
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "source_label": {
+            "title": "Source Label",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "in_review",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "client_name",
+          "source_label",
+          "source_hash",
+          "status",
+          "normalization_policy",
+          "created_by",
+          "reviewed_by",
+          "reviewed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ExternalCaptureSessionResponse",
+        "type": "object"
+      },
+      "ExternalCaptureSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "integer"
+          },
+          "missing_required": {
+            "title": "Missing Required",
+            "type": "integer"
+          },
+          "needs_review": {
+            "title": "Needs Review",
+            "type": "integer"
+          },
+          "pattern_changes": {
+            "title": "Pattern Changes",
+            "type": "integer"
+          },
+          "promoted": {
+            "title": "Promoted",
+            "type": "integer"
+          },
+          "qa_review": {
+            "title": "Qa Review",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "schema_ready": {
+            "title": "Schema Ready",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "schema_ready",
+          "missing_required",
+          "qa_review",
+          "pattern_changes",
+          "needs_review",
+          "approved",
+          "rejected",
+          "promoted"
+        ],
+        "title": "ExternalCaptureSummary",
+        "type": "object"
+      },
       "FunctionsMetrics": {
         "additionalProperties": false,
         "description": "Oracle Functions consolidated metrics.",
@@ -13106,6 +13718,18 @@
           "owner_id": {
             "title": "Owner Id",
             "type": "string"
+          },
+          "project_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Metadata"
           }
         },
         "required": [
@@ -13224,6 +13848,18 @@
               }
             ],
             "title": "Owner Id"
+          },
+          "project_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Metadata"
           }
         },
         "title": "ProjectPatchRequest",
@@ -25862,6 +26498,646 @@
         "summary": "Approve a deployment scenario",
         "tags": [
           "Bill of Materials"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/external-capture/sessions": {
+      "get": {
+        "operationId": "list_sessions_api_v1_projects__project_id__external_capture_sessions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalCaptureSessionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List governed external-capture review sessions",
+        "tags": [
+          "External Capture Review"
+        ]
+      },
+      "post": {
+        "operationId": "create_session_api_v1_projects__project_id__external_capture_sessions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Analyst",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalCaptureSessionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalCaptureSessionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a governed external-capture review session",
+        "tags": [
+          "External Capture Review"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}": {
+      "get": {
+        "operationId": "get_session_api_v1_projects__project_id__external_capture_sessions__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalCaptureSessionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get an external-capture review summary",
+        "tags": [
+          "External Capture Review"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/drafts": {
+      "get": {
+        "operationId": "list_drafts_api_v1_projects__project_id__external_capture_sessions__session_id__drafts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Viewer",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalCaptureDraftPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List reviewable external-capture row proposals",
+        "tags": [
+          "External Capture Review"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/drafts/bulk": {
+      "post": {
+        "operationId": "bulk_stage_drafts_api_v1_projects__project_id__external_capture_sessions__session_id__drafts_bulk_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Analyst",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalCaptureDraftBulkCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalCaptureBulkResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stage or refresh structured external row proposals",
+        "tags": [
+          "External Capture Review"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/drafts/{draft_id}": {
+      "patch": {
+        "operationId": "patch_draft_api_v1_projects__project_id__external_capture_sessions__session_id__drafts__draft_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Analyst",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalCaptureDraftPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalCaptureDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Correct one external-capture proposal before review",
+        "tags": [
+          "External Capture Review"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/drafts/{draft_id}/promote": {
+      "post": {
+        "operationId": "promote_draft_api_v1_projects__project_id__external_capture_sessions__session_id__drafts__draft_id__promote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Architect",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalCapturePromotionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote one approved proposal through governed manual capture",
+        "tags": [
+          "External Capture Review"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/drafts/{draft_id}/review": {
+      "post": {
+        "operationId": "review_draft_api_v1_projects__project_id__external_capture_sessions__session_id__drafts__draft_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Architect",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalCaptureDraftReview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalCaptureDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve or reject one corrected row proposal",
+        "tags": [
+          "External Capture Review"
         ]
       }
     },

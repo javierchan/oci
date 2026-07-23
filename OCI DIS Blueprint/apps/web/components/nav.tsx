@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import {
   BadgeDollarSign,
   Bot,
+  ClipboardCheck,
   ChevronRight,
   Database,
   FolderOpen,
@@ -57,6 +58,7 @@ const PROJECT_ICONS: Record<string, JSX.Element> = {
   Dashboard: <LayoutDashboard className="h-4 w-4" />,
   Import: <Upload className="h-4 w-4" />,
   Capture: <Wand2 className="h-4 w-4" />,
+  "Capture Review": <ClipboardCheck className="h-4 w-4" />,
   Catalog: <List className="h-4 w-4" />,
   Map: <Network className="h-4 w-4" />,
   "BOM & Cost": <BadgeDollarSign className="h-4 w-4" />,
@@ -139,6 +141,9 @@ function contextLabelFromPath(pathname: string): string {
   }
   if (section === "capture" && pathParts[3] === "new") {
     return "Capture New";
+  }
+  if (section === "capture-review") {
+    return "Capture Review";
   }
   if (section === "graph") {
     return "Graph";
@@ -391,6 +396,7 @@ export function Nav(): JSX.Element {
         { href: `/projects/${projectId}`, label: "Dashboard" },
         { href: `/projects/${projectId}/import`, label: "Import" },
         { href: `/projects/${projectId}/capture`, label: "Capture" },
+        { href: `/projects/${projectId}/capture-review`, label: "Capture Review" },
         { href: `/projects/${projectId}/catalog`, label: "Catalog" },
         { href: `/projects/${projectId}/map`, label: "Map" },
         { href: `/projects/${projectId}/bom`, label: "BOM & Cost" },

@@ -39,6 +39,7 @@ from app.routers import (
     ai_reviews_router,
     bom_router,
     pricing_router,
+    external_capture_router,
 )
 from app.schemas.readiness import ObjectStorageReadinessResponse, ReadinessResponse
 from app.services import storage_service
@@ -98,6 +99,7 @@ app.include_router(admin_synthetic_router, prefix=API_PREFIX)
 app.include_router(ai_reviews_router, prefix=API_PREFIX)
 app.include_router(pricing_router, prefix=API_PREFIX)
 app.include_router(bom_router, prefix=API_PREFIX)
+app.include_router(external_capture_router, prefix=API_PREFIX)
 
 
 @app.get("/health", tags=["Health"])

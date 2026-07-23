@@ -445,8 +445,18 @@ def build_tool_executor(
         return payload
 
     async def import_quality(_: dict[str, object]) -> dict[str, object]:
+        from app.services.external_capture_service import build_agent_evidence
         from app.services.import_service import get_import_quality_assistant
 
+        external_capture_session_id = context.get("external_capture_session_id")
+        if (
+            project_id is not None
+            and isinstance(external_capture_session_id, str)
+            and external_capture_session_id
+        ):
+            return await build_agent_evidence(
+                project_id, external_capture_session_id, db
+            )
         batch_id = context.get("batch_id")
         if project_id is None or not isinstance(batch_id, str) or not batch_id:
             raise HTTPException(
@@ -522,7 +532,7 @@ def build_tool_executor(
     if agent_type == "import_quality":
         return (
             "inspect_import_quality",
-            "Inspect import parsing and quality evidence.",
+            "Inspect workbook parsing or governed external-capture correction evidence.",
             EMPTY_PARAMETERS,
             import_quality,
         )

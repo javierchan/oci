@@ -18,6 +18,7 @@ from .bom import router as bom_router
 from .pricing import router as pricing_router
 from .agents import router as agents_router
 from .support import router as support_router
+from .external_capture import router as external_capture_router
 
 __all__ = [
     "projects_router",
@@ -39,4 +40,5 @@ __all__ = [
     "pricing_router",
     "agents_router",
     "support_router",
+    "external_capture_router",
 ]

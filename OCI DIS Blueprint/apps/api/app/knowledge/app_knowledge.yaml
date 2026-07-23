@@ -60,6 +60,30 @@ sections:
     unsupported_claims: [silently repair ambiguous source data, accept workbook formulas, bypass mapping approval]
     keywords: [import, importar, workbook, archivo, template, external file, mapping, lineage, spreadsheet, rows, filas]
 
+  - id: capture-review
+    name: Capture Review
+    purpose: Stage external customer integration evidence as immutable source rows and editable governed proposals so dictionary mappings, required gaps, payload semantics, TBQ scope, and pattern recommendations can be reviewed before catalog promotion.
+    when_to_use: Use Capture Review when customer data does not follow the official template or needs line-by-line normalization without uploading the source workbook into the App.
+    steps:
+      - Open the project Capture Review session and confirm the customer, source hash, row counts, and normalization policy.
+      - Inspect each immutable source row beside its editable proposal, then resolve required evidence gaps and validate the recommended pattern.
+      - Approve schema-ready proposals explicitly and promote only accepted rows through the governed manual-capture path.
+    routes: ["/projects/[projectId]/capture-review"]
+    endpoints:
+      - { method: GET, path: "/api/v1/projects/{project_id}/external-capture/sessions" }
+      - { method: POST, path: "/api/v1/projects/{project_id}/external-capture/sessions" }
+      - { method: GET, path: "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}" }
+      - { method: POST, path: "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/drafts/bulk" }
+      - { method: GET, path: "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/drafts" }
+      - { method: PATCH, path: "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/drafts/{draft_id}" }
+      - { method: POST, path: "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/drafts/{draft_id}/review" }
+      - { method: POST, path: "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/drafts/{draft_id}/promote" }
+    exports: []
+    entities: [ExternalCaptureSession, ExternalCaptureDraft, CatalogIntegration]
+    supported_actions: [inspect immutable customer evidence, edit governed proposal, revalidate proposal, approve proposal, reject proposal, promote approved proposal, run Import Correction Agent]
+    unsupported_claims: [upload the source workbook automatically, invent required evidence, overwrite source values, auto-approve pattern recommendations, promote unapproved proposals]
+    keywords: [capture review, external evidence, customer workbook, normalization, TBQ, payload KB, pattern recommendation, missing evidence, promotion]
+
   - id: catalog
     name: Catalog and QA
     purpose: Maintain the governed integration record, source lineage, architecture fields, QA reasons, volumetry inputs, pattern assignment, and saved design canvas for each integration.
@@ -271,6 +295,7 @@ sections:
 semantic_examples:
   - { id: section-projects, text: "What is the Projects workspace for?", section_id: projects, intent: concept_explanation, mode: knowledge }
   - { id: section-import, text: "What is the Import section for?", section_id: import, intent: concept_explanation, mode: knowledge }
+  - { id: section-capture-review, text: "What is the Capture Review workspace for?", section_id: capture-review, intent: concept_explanation, mode: knowledge }
   - { id: section-catalog, text: "What do Catalog and QA do?", section_id: catalog, intent: concept_explanation, mode: knowledge }
   - { id: section-patterns, text: "What is the Patterns section for?", section_id: patterns, intent: concept_explanation, mode: knowledge }
   - { id: section-library, text: "What is the Library workspace for?", section_id: library, intent: concept_explanation, mode: knowledge }
@@ -281,6 +306,7 @@ semantic_examples:
   - { id: section-agents, text: "What is the Agents workspace for?", section_id: agents, intent: concept_explanation, mode: knowledge }
   - { id: workflow-import, text: "How do I import an integration workbook?", section_id: import, intent: workflow_guidance, mode: knowledge }
   - { id: workflow-import-review-es, text: "¿Cómo importo un archivo y reviso qué filas quedaron fuera?", section_id: import, intent: workflow_guidance, mode: knowledge }
+  - { id: workflow-capture-review-es, text: "¿Cómo reviso y normalizo un archivo externo sin importarlo directamente?", section_id: capture-review, intent: workflow_guidance, mode: knowledge }
   - { id: workflow-create-scenario, text: "How do I create a deployment scenario?", section_id: bom, intent: workflow_guidance, mode: knowledge }
   - { id: workflow-generate-bom, text: "How do I generate a governed BOM?", section_id: bom, intent: workflow_guidance, mode: knowledge }
   - { id: workflow-approve-commercial, text: "How do I approve a commercial catalog release?", section_id: pricing, intent: workflow_guidance, mode: knowledge }

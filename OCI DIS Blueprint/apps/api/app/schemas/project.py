@@ -16,6 +16,7 @@ class ProjectCreateRequest(BaseModel):
     name: str
     owner_id: str
     description: Optional[str] = None
+    project_metadata: Optional[dict[str, object]] = None
 
 
 class ProjectPatchRequest(BaseModel):
@@ -26,6 +27,7 @@ class ProjectPatchRequest(BaseModel):
     name: Optional[str] = None
     owner_id: Optional[str] = None
     description: Optional[str] = None
+    project_metadata: Optional[dict[str, object]] = None
 
 
 class ProjectResponse(BaseModel):

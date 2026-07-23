@@ -401,6 +401,137 @@ def _bom_workspace(
 def _quality_workspace(
     definition: AgentDefinition, evidence: dict[str, object], project_id: str | None
 ) -> tuple[AgentDecisionWorkspace, list[AgentProposal]]:
+    if definition.type == "import_quality" and evidence.get("state") == "external_capture_review":
+        summary = _dict(evidence.get("summary"))
+        total = int(_number(summary.get("total")))
+        schema_ready = int(_number(summary.get("schema_ready")))
+        missing_required = int(_number(summary.get("missing_required")))
+        pattern_changes = int(_number(summary.get("pattern_changes")))
+        needs_review = int(_number(summary.get("needs_review")))
+        required_gaps = _dicts(evidence.get("top_required_gaps"))
+        gap_labels = [
+            f"{_text(item.get('field'), 'required field')}: {int(_number(item.get('rows')))} row(s)"
+            for item in required_gaps[:6]
+        ]
+        recommended_next_action = _text(
+            evidence.get("recommended_next_action"),
+            "Resolve required evidence and review each recommended pattern before approval.",
+        )
+        session_id = _text(evidence.get("session_id"))
+        evidence_ids = [
+            item
+            for item in (session_id, _text(evidence.get("source_evidence_id")))
+            if item
+        ]
+        candidate = AgentDecisionAlternative(
+            id="external-capture-correction-draft",
+            title="Review the governed customer-data proposals",
+            summary=(
+                f"{schema_ready} of {total} row(s) are schema-complete; "
+                f"{missing_required} remain blocked by missing required evidence, and "
+                f"{pattern_changes} pattern recommendation(s) differ from the supplied source."
+            ),
+            status="blocked" if missing_required else "review",
+            recommended=True,
+            changes=[
+                recommended_next_action,
+                "Keep every source row immutable while editing only its governed proposal.",
+            ],
+            implementation_steps=[
+                "Resolve the required evidence gaps without inventing customer values.",
+                "Compare the supplied and recommended pattern for every row.",
+                "Record an explicit architect decision before promoting any proposal.",
+            ],
+            validation_steps=[
+                "Revalidate each edited proposal against the governed dictionaries and active patterns.",
+                "Confirm TBQ remains Y for this exercise and Tamaño KB remains the payload evidence source.",
+                "Promote only explicitly approved proposals, then rerun QA, volumetry, topology, and BOM checks.",
+            ],
+            missing_inputs=gap_labels,
+            impact=_impact(
+                technical=[
+                    "Preserves incomplete source evidence so downstream confidence remains truthful."
+                ],
+                commercial=[
+                    "Keeps all staged rows TBQ=Y without creating BOM demand before catalog promotion."
+                ],
+                governance=[
+                    "The customer workbook remains local; the App stores only row-level evidence and proposals."
+                ],
+                operational=[
+                    "Separates normalization, human review, and canonical catalog promotion."
+                ],
+            ),
+            evidence_ids=evidence_ids,
+            confidence="high",
+            action_type="create_agent_action_draft",
+            action_label="Approve correction plan",
+            action_href=(
+                f"/projects/{project_id}/capture-review?session={session_id}"
+                if project_id and session_id
+                else f"/projects/{project_id}/capture-review"
+                if project_id
+                else None
+            ),
+        )
+        proposal = AgentProposal(
+            action_type="create_agent_action_draft",
+            payload={
+                "alternative_id": candidate.id,
+                "project_id": project_id,
+                "external_capture_session_id": session_id or None,
+                "candidate": candidate.model_dump(mode="json"),
+            },
+        )
+        return (
+            AgentDecisionWorkspace(
+                workspace_type="data_quality",
+                goal=(
+                    "Turn external customer evidence into reviewed, canonical integration "
+                    "records without silently filling missing data."
+                ),
+                current_state=(
+                    f"{needs_review} of {total} proposal(s) require an explicit decision. "
+                    f"{missing_required} are blocked by missing required evidence; "
+                    f"{schema_ready} are schema-complete but still require pattern review."
+                ),
+                recommendation_basis=(
+                    "The plan uses immutable row-level source evidence, governed dictionary "
+                    "normalization, deterministic QA, and line-by-line pattern assessments."
+                ),
+                recommended_alternative_id=candidate.id,
+                alternatives=[candidate],
+                outcome_metrics=[
+                    {
+                        "key": "proposals",
+                        "label": "Proposals requiring review",
+                        "value": needs_review,
+                    },
+                    {
+                        "key": "schema_ready",
+                        "label": "Schema-complete proposals",
+                        "value": schema_ready,
+                    },
+                    {
+                        "key": "missing_required",
+                        "label": "Rows blocked by missing evidence",
+                        "value": missing_required,
+                    },
+                    {
+                        "key": "pattern_changes",
+                        "label": "Pattern changes to review",
+                        "value": pattern_changes,
+                    },
+                ],
+                post_validation=[
+                    "Confirm no source value was invented or overwritten.",
+                    "Confirm no proposal moved to the canonical catalog without explicit approval.",
+                    "Compare promoted counts with the approved row decisions before recalculation.",
+                ],
+            ),
+            [proposal],
+        )
+
     findings = _dicts(evidence.get("findings"))
     alternatives: list[AgentDecisionAlternative] = []
     proposals: list[AgentProposal] = []

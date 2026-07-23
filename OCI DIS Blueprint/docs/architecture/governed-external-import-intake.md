@@ -10,13 +10,19 @@ volumetry, topology, recommendations, or BOM.
 ## Lifecycle
 
 ```text
-upload to object storage
+official workbook upload
+  -> Object Storage artifact
   -> parse immutable source rows
-  -> official template? materialize deterministically
-  -> external workbook? Mapping review
-  -> Import Correction Agent guidance + user decisions
+  -> mapping review when the template contract is external
   -> approve mapping contract
   -> materialize governed catalog rows
+
+structured external evidence
+  -> retain the client file outside the App
+  -> stage source values + proposed canonical values through the API
+  -> Import Correction Agent guidance
+  -> line-by-line architect correction and approval
+  -> explicit promotion through governed manual capture
   -> QA and downstream calculations
 ```
 
@@ -97,6 +103,42 @@ workbook auto-applies it only when the normalized header fingerprint matches exa
 Profiles never become global defaults automatically; promotion requires separate
 governance work and evidence.
 
+## Structured External Capture Review
+
+An analyst may need to demonstrate or migrate a real customer work-in-progress
+catalog without treating its file format as an import contract. The
+`/projects/{project_id}/external-capture` API provides this bounded path:
+
+- `ExternalCaptureSession` stores customer identity, a source label, the SHA-256
+  fingerprint, and the normalization policy. It never stores a local filesystem
+  path or the source file.
+- `ExternalCaptureDraft` stores the immutable source values separately from the
+  editable canonical proposal, normalization evidence, row-level pattern
+  assessment, required-field gaps, and QA preview.
+- Every save revalidates the complete `ManualIntegrationCreate` contract and the
+  active pattern registry. A missing value remains a visible gap.
+- Approval is a human decision with rationale. Promotion is a second explicit
+  action that calls the same governed manual-capture service used by the App.
+- The Import Correction Agent reads aggregate and row-level evidence from this
+  session. It can prioritize decisions, but cannot approve or promote a row.
+
+The associated **Capture Review** workspace is deliberately different from the
+workbook Import page. Import governs files accepted by the App; Capture Review
+governs already-structured evidence supplied through an API or controlled
+analyst workflow.
+
+### Demonstration policy
+
+For the **ADN - Retail Merchandising** customer exercise:
+
+- customer: **Innovación y Conveniencia, S.A. de C.V.**
+- every proposal uses `TBQ=Y`, while the original TBQ value remains source evidence;
+- `Tamaño KB` is proposed as KB per execution and remains reviewable;
+- frequency and complexity use only active dictionary values;
+- every row has an independent pattern recommendation and rationale;
+- no workbook is uploaded to App storage;
+- no row is automatically approved or promoted.
+
 ## Acceptance Criteria
 
 - Current and supported historical official templates still import directly.
@@ -107,6 +149,11 @@ governance work and evidence.
   cannot silently populate governed operational fields.
 - The newest unresolved mapping review resumes after navigation or reload without
   requiring the user to recover a batch from history.
+- Structured evidence sessions survive navigation and expose source values,
+  canonical proposals, required gaps, pattern recommendations, and agent guidance.
+- Local customer files and local paths never enter App storage or API responses.
+- A structured row can enter the catalog only after schema validation, explicit
+  architect approval, and explicit promotion.
 - A reviewer can map a column to a canonical target or evidence-only, save a
   profile, approve, and materialize rows exactly once.
 - All decisions, profile use, and materialization are audit events.

@@ -37,6 +37,93 @@ export interface ProjectDeleteResponse {
   deleted_audit_events: number;
 }
 
+export type ExternalCaptureSessionStatus = "draft" | "in_review" | "completed";
+export type ExternalCaptureDraftStatus =
+  | "needs_review"
+  | "approved"
+  | "rejected"
+  | "promoted";
+
+export interface ExternalCaptureSession {
+  id: string;
+  project_id: string;
+  name: string;
+  client_name: string;
+  source_label: string;
+  source_hash: string;
+  status: ExternalCaptureSessionStatus;
+  normalization_policy: Record<string, unknown>;
+  created_by: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExternalCaptureSummary {
+  total: number;
+  schema_ready: number;
+  missing_required: number;
+  qa_review: number;
+  pattern_changes: number;
+  needs_review: number;
+  approved: number;
+  rejected: number;
+  promoted: number;
+}
+
+export interface ExternalCaptureSessionDetail {
+  session: ExternalCaptureSession;
+  summary: ExternalCaptureSummary;
+}
+
+export interface ExternalCaptureSessionList {
+  sessions: ExternalCaptureSession[];
+}
+
+export interface ExternalCaptureDraft {
+  id: string;
+  session_id: string;
+  source_row_number: number;
+  source_record: Record<string, unknown>;
+  proposed_payload: Record<string, unknown>;
+  normalized_values: Record<string, unknown>;
+  pattern_assessment: Record<string, unknown>;
+  validation_evidence: Record<string, unknown>;
+  required_field_gaps: string[];
+  qa_preview: {
+    status?: string;
+    reasons?: string[];
+  };
+  confidence: number | null;
+  status: ExternalCaptureDraftStatus;
+  reviewer_rationale: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  promoted_integration_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExternalCaptureDraftPage {
+  drafts: ExternalCaptureDraft[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ExternalCaptureDraftPatch {
+  proposed_payload?: Record<string, unknown>;
+  normalized_values?: Record<string, unknown>;
+  pattern_assessment?: Record<string, unknown>;
+  confidence?: number | null;
+}
+
+export interface ExternalCapturePromotionResponse {
+  draft: ExternalCaptureDraft;
+  integration_id: string;
+}
+
 export type AgentType =
   | "architecture_review"
   | "service_verification"

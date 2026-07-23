@@ -60,7 +60,7 @@ def test_specialized_agents_share_explainable_output_and_safety_contracts() -> N
     assert "approve a candidate or exception" in source_governance.instruction
     assert "promote a commercial release" in source_governance.instruction
     assert "mutate a BOM" in source_governance.instruction
-    assert get_agent_definition("import_quality").version == "3.0.0"
+    assert get_agent_definition("import_quality").version == "3.1.0"
     assert get_agent_definition("integration_design").version == "2.0.0"
     assert get_agent_definition("topology_investigation").version == "2.0.0"
     assert get_agent_definition("bom_scenario").version == "2.2.0"

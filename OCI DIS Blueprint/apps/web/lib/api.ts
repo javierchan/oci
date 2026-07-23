@@ -58,6 +58,13 @@ import type {
   DeploymentScenario,
   DeploymentScenarioCreate,
   DeploymentScenarioList,
+  ExternalCaptureDraft,
+  ExternalCaptureDraftPage,
+  ExternalCaptureDraftPatch,
+  ExternalCaptureDraftStatus,
+  ExternalCapturePromotionResponse,
+  ExternalCaptureSessionDetail,
+  ExternalCaptureSessionList,
   GraphParams,
   GraphResponse,
   GovernanceChangeSet,
@@ -690,11 +697,89 @@ export const api = {
   getProject: (projectId: string): Promise<Project> =>
     apiFetch<Project>(`/api/v1/projects/${projectId}`),
 
-  createProject: (body: { name: string; owner_id: string }): Promise<Project> =>
+  createProject: (body: {
+    name: string;
+    owner_id: string;
+    description?: string;
+    project_metadata?: Record<string, unknown>;
+  }): Promise<Project> =>
     apiFetch<Project>("/api/v1/projects/", {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  listExternalCaptureSessions: (projectId: string): Promise<ExternalCaptureSessionList> =>
+    apiFetch<ExternalCaptureSessionList>(
+      `/api/v1/projects/${projectId}/external-capture/sessions`,
+      { headers: adminHeaders() },
+    ),
+
+  getExternalCaptureSession: (
+    projectId: string,
+    sessionId: string,
+  ): Promise<ExternalCaptureSessionDetail> =>
+    apiFetch<ExternalCaptureSessionDetail>(
+      `/api/v1/projects/${projectId}/external-capture/sessions/${sessionId}`,
+      { headers: adminHeaders() },
+    ),
+
+  listExternalCaptureDrafts: (
+    projectId: string,
+    sessionId: string,
+    params: {
+      page?: number;
+      page_size?: number;
+      status?: ExternalCaptureDraftStatus;
+      search?: string;
+    } = {},
+  ): Promise<ExternalCaptureDraftPage> =>
+    apiFetch<ExternalCaptureDraftPage>(
+      `/api/v1/projects/${projectId}/external-capture/sessions/${sessionId}/drafts${withQuery(params)}`,
+      { headers: adminHeaders() },
+    ),
+
+  patchExternalCaptureDraft: (
+    projectId: string,
+    sessionId: string,
+    draftId: string,
+    body: ExternalCaptureDraftPatch,
+  ): Promise<ExternalCaptureDraft> =>
+    apiFetch<ExternalCaptureDraft>(
+      `/api/v1/projects/${projectId}/external-capture/sessions/${sessionId}/drafts/${draftId}`,
+      {
+        method: "PATCH",
+        headers: adminHeaders(),
+        body: JSON.stringify(body),
+      },
+    ),
+
+  reviewExternalCaptureDraft: (
+    projectId: string,
+    sessionId: string,
+    draftId: string,
+    body: { decision: "approve" | "reject"; rationale: string },
+  ): Promise<ExternalCaptureDraft> =>
+    apiFetch<ExternalCaptureDraft>(
+      `/api/v1/projects/${projectId}/external-capture/sessions/${sessionId}/drafts/${draftId}/review`,
+      {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify(body),
+      },
+    ),
+
+  promoteExternalCaptureDraft: (
+    projectId: string,
+    sessionId: string,
+    draftId: string,
+  ): Promise<ExternalCapturePromotionResponse> =>
+    apiFetch<ExternalCapturePromotionResponse>(
+      `/api/v1/projects/${projectId}/external-capture/sessions/${sessionId}/drafts/${draftId}/promote`,
+      {
+        method: "POST",
+        headers: adminHeaders(),
+      },
+    ),
 
   archiveProject: (projectId: string): Promise<ProjectArchiveResponse> =>
     apiFetch<ProjectArchiveResponse>(`/api/v1/projects/${projectId}/archive`, {

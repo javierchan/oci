@@ -1,6 +1,7 @@
 """Model registry used by Alembic and application imports."""
 
 from app.models.base import Base
+from app.models.external_capture import ExternalCaptureDraft, ExternalCaptureSession
 from app.models.ai_review import AiReviewBaseline, AiReviewJob, AiReviewJobStatus
 from app.models.agent import (
     AgentApproval,
@@ -94,6 +95,8 @@ __all__ = [
     "CatalogIntegration",
     "DashboardSnapshot",
     "DictionaryOption",
+    "ExternalCaptureDraft",
+    "ExternalCaptureSession",
     "DeploymentScenario",
     "DeploymentEnvironmentPlan",
     "DeploymentRampPhase",

@@ -21,7 +21,11 @@ from app.services.app_knowledge_service import (
     knowledge_grounding_failure,
 )
 from app.services.genai_client import GenAiEmbeddingResult
-from scripts.build_app_knowledge import _discover_source_repo_root, _load_manifest_for_build
+from scripts.build_app_knowledge import (
+    _discover_source_repo_root,
+    _load_manifest_for_build,
+    _preserve_matching_provider_embeddings,
+)
 
 
 def test_repo_root_discovery_is_safe_in_the_shallow_production_layout(tmp_path) -> None:
@@ -62,6 +66,49 @@ def test_committed_app_knowledge_matches_executable_contracts() -> None:
     source_hash = current["source_hash"]
     assert isinstance(source_hash, str)
     assert source_hash in DERIVED_PATH.read_text(encoding="utf-8")
+
+
+def test_knowledge_build_preserves_only_matching_provider_embeddings() -> None:
+    """Deterministic regeneration must not erase or misapply cached OCI vectors."""
+
+    current = {
+        "embedding_spaces": {"local": {"model": "local"}},
+        "retrieval_units": [
+            {"id": "same", "text": "unchanged"},
+            {"id": "changed", "text": "new evidence"},
+            {"id": "new", "text": "new unit"},
+        ],
+    }
+    committed = {
+        "embedding_spaces": {
+            "local": {"model": "local"},
+            "provider": {"model": "oci-embed", "dimensions": 2},
+        },
+        "retrieval_units": [
+            {
+                "id": "same",
+                "text": "unchanged",
+                "provider_embedding": [0.1, 0.2],
+            },
+            {
+                "id": "changed",
+                "text": "old evidence",
+                "provider_embedding": [0.3, 0.4],
+            },
+        ],
+    }
+
+    _preserve_matching_provider_embeddings(current, committed)
+
+    units = current["retrieval_units"]
+    assert isinstance(units, list)
+    assert units[0]["provider_embedding"] == [0.1, 0.2]
+    assert "provider_embedding" not in units[1]
+    assert "provider_embedding" not in units[2]
+    assert current["embedding_spaces"] == {
+        "local": {"model": "local"},
+        "provider": {"model": "oci-embed", "dimensions": 2},
+    }
 
 
 def test_app_knowledge_check_rejects_uncovered_route_and_stale_export() -> None:
