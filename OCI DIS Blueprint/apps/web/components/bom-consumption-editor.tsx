@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
+import { GovernedSelect, type GovernedSelectOption } from "@/components/governed-select";
 import { api, getErrorMessage } from "@/lib/api";
 import {
   explicitPlanReadiness,
@@ -444,23 +445,51 @@ export function BomConsumptionEditor({
                     1× is the normal deployment. Use a value above 1× only when the approved design adds HA capacity.
                   </span>
                 </label>
-                <label className="text-xs font-semibold text-[var(--color-text-secondary)]">
-                  DR role
-                  <select className={inputClass} value={environment.dr_role} onChange={(event) => patchEnvironment(environmentIndex, { dr_role: event.target.value as DeploymentEnvironmentInput["dr_role"] })}>
-                    <option value="none">None</option>
-                    <option value="primary">Primary</option>
-                    <option value="standby">Standby</option>
-                  </select>
+                <div className="text-xs font-semibold text-[var(--color-text-secondary)]">
+                  <span>DR role</span>
+                  <GovernedSelect
+                    ariaLabel={`${environment.name} DR role`}
+                    className="mt-1.5"
+                    value={environment.dr_role}
+                    options={[
+                      { value: "none", label: "None", description: "No disaster-recovery role is assigned." },
+                      { value: "primary", label: "Primary", description: "Primary environment in an approved DR topology." },
+                      { value: "standby", label: "Standby", description: "Standby environment reserved for disaster recovery." },
+                    ]}
+                    onChange={(value) => patchEnvironment(environmentIndex, { dr_role: value as DeploymentEnvironmentInput["dr_role"] })}
+                  />
                   <span className="mt-1 block text-[11px] font-normal leading-4 text-[var(--color-text-muted)]">
                     Select a DR role only when the customer-approved topology includes disaster recovery.
                   </span>
-                </label>
+                </div>
               </div>
 
               <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-t border-[var(--color-border)] pt-4">
                 <div><p className="app-label">Products</p><p className="mt-1 text-xs text-[var(--color-text-muted)]">Select one product to review, or show the complete environment plan.</p></div>
                 <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-2">
-                  <label className="min-w-64 max-w-md flex-1 text-xs text-[var(--color-text-muted)]"><span className="sr-only">Product to review in {environment.name}</span><select aria-label={`Product to review in ${environment.name}`} className="h-9 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-text-primary)]" value={selectedProduct} onChange={(event) => { const serviceId = event.target.value; setSelectedProducts((current) => ({ ...current, [environmentIndex]: serviceId })); if (serviceId) setExpandedProducts((current) => new Set(current).add(`${environmentIndex}:${serviceId}`)); }} disabled={allGroups.length === 0}><option value="">{allGroups.length === 0 ? "No planned products" : `All products (${allGroups.length})`}</option>{allGroups.map((group) => <option key={group.serviceId} value={group.serviceId}>{group.name} · {group.phases.length} metric{group.phases.length === 1 ? "" : "s"}</option>)}</select></label>
+                  <GovernedSelect
+                    ariaLabel={`Product to review in ${environment.name}`}
+                    className="min-w-64 max-w-md flex-1"
+                    size="compact"
+                    value={selectedProduct}
+                    disabled={allGroups.length === 0}
+                    options={[
+                      {
+                        value: "",
+                        label: allGroups.length === 0 ? "No planned products" : `All products (${allGroups.length})`,
+                        description: allGroups.length === 0 ? undefined : "Show the complete environment plan.",
+                      },
+                      ...allGroups.map((group) => ({
+                        value: group.serviceId,
+                        label: group.name,
+                        description: `${group.phases.length} metric${group.phases.length === 1 ? "" : "s"} planned`,
+                      })),
+                    ]}
+                    onChange={(serviceId) => {
+                      setSelectedProducts((current) => ({ ...current, [environmentIndex]: serviceId }));
+                      if (serviceId) setExpandedProducts((current) => new Set(current).add(`${environmentIndex}:${serviceId}`));
+                    }}
+                  />
                   <button type="button" className="app-button-secondary h-9 gap-2 px-3" aria-expanded={isCatalogOpen} onClick={() => { setCatalogEnvironment(isCatalogOpen ? null : environmentIndex); setCatalogPage(1); setCatalogResult(null); setCatalogError(""); }}><Search className="h-3.5 w-3.5" />Add OCI product</button>
                   <button type="button" className="app-button-secondary h-9 gap-2 px-3" aria-expanded={isAddMetricOpen} disabled={available.length === 0} onClick={() => setAddMetricOpen((current) => { const next = new Set(current); if (next.has(environmentIndex)) next.delete(environmentIndex); else next.add(environmentIndex); return next; })}><Plus className="h-3.5 w-3.5" />Add metric</button>
                 </div>
@@ -488,7 +517,25 @@ export function BomConsumptionEditor({
 
               {isAddMetricOpen ? (
                 <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
-                  <label className="min-w-64 max-w-xl flex-1 text-xs font-semibold text-[var(--color-text-secondary)]">Metric to add<select aria-label={`Product metric to add to ${environment.name}`} className={inputClass} value={metricToAdd[environmentIndex] ?? ""} onChange={(event) => setMetricToAdd((current) => ({ ...current, [environmentIndex]: event.target.value }))}><option value="">Choose a product metric...</option>{[...optionsByService.entries()].map(([serviceId, options]) => { const selectable = options.filter((option) => available.some((candidate) => optionKey(candidate) === optionKey(option))); return selectable.length > 0 ? <optgroup key={serviceId} label={options[0].product_name}>{selectable.map((option) => <option key={optionKey(option)} value={optionKey(option)}>{option.metric_label} · {option.variants[0]?.part_number ?? "No SKU"}</option>)}</optgroup> : null; })}</select></label>
+                  <div className="min-w-64 max-w-xl flex-1 text-xs font-semibold text-[var(--color-text-secondary)]">
+                    <span>Metric to add</span>
+                    <GovernedSelect
+                      ariaLabel={`Product metric to add to ${environment.name}`}
+                      className="mt-1.5"
+                      value={metricToAdd[environmentIndex] ?? ""}
+                      placeholder="Choose a product metric..."
+                      options={[...optionsByService.entries()].flatMap(([, options]) => {
+                        const selectable = options.filter((option) => available.some((candidate) => optionKey(candidate) === optionKey(option)));
+                        return selectable.map((option): GovernedSelectOption => ({
+                          value: optionKey(option),
+                          label: option.metric_label,
+                          description: option.variants[0]?.part_number ?? "No governed SKU",
+                          group: options[0].product_name,
+                        }));
+                      })}
+                      onChange={(value) => setMetricToAdd((current) => ({ ...current, [environmentIndex]: value }))}
+                    />
+                  </div>
                   <button type="button" className="app-button-primary h-10 px-3" disabled={!metricToAdd[environmentIndex]} onClick={() => addMetric(environmentIndex)}>Add selected metric</button>
                   <button type="button" className="app-button-secondary h-10 px-3" onClick={() => setAddMetricOpen((current) => { const next = new Set(current); next.delete(environmentIndex); return next; })}>Cancel</button>
                 </div>
@@ -524,13 +571,54 @@ export function BomConsumptionEditor({
                           const envelopeQuantity = planningEnvelope(sourceQuantity, policy?.planning_envelope_increment);
                           return (
                             <div key={`phase-${environmentIndex}-${phaseIndex}`} className="relative grid gap-3 border-t border-[var(--color-border)] pt-4 first:border-t-0 md:grid-cols-2 xl:grid-cols-4 xl:items-end">
-                              <label className="text-xs text-[var(--color-text-muted)] xl:col-span-2">Billing metric<select aria-label={`${environment.name} ${group.name} billing metric`} className={inputClass} value={phase.metric_key ?? ""} onChange={(event) => replaceMetric(environmentIndex, phaseIndex, serviceOptions.find((option) => option.metric_key === event.target.value))}>{serviceOptions.map((option) => <option key={option.metric_key} value={option.metric_key}>{option.metric_label}</option>)}</select></label>
-                              {selectedOption ? <label className="text-xs text-[var(--color-text-muted)] xl:col-span-2">Commercial variant<select aria-label={`${environment.name} ${selectedOption.product_name} commercial variant`} className={`${inputClass} font-medium`} value={selectedVariant?.sku_mapping_id ?? ""} onChange={(event) => replaceVariant(environmentIndex, phaseIndex, selectedOption, event.target.value)}>{selectedOption.variants.map((variant) => <option key={variant.sku_mapping_id} value={variant.sku_mapping_id}>{variant.label}</option>)}</select></label> : null}
+                              <div className="text-xs text-[var(--color-text-muted)] xl:col-span-2">
+                                <span>Billing metric</span>
+                                <GovernedSelect
+                                  ariaLabel={`${environment.name} ${group.name} billing metric`}
+                                  className="mt-1.5"
+                                  value={phase.metric_key ?? ""}
+                                  options={serviceOptions.map((option) => ({
+                                    value: option.metric_key,
+                                    label: option.metric_label,
+                                    description: option.quantity_unit,
+                                  }))}
+                                  onChange={(value) => replaceMetric(environmentIndex, phaseIndex, serviceOptions.find((option) => option.metric_key === value))}
+                                />
+                              </div>
+                              {selectedOption ? (
+                                <div className="text-xs text-[var(--color-text-muted)] xl:col-span-2">
+                                  <span>Commercial variant</span>
+                                  <GovernedSelect
+                                    ariaLabel={`${environment.name} ${selectedOption.product_name} commercial variant`}
+                                    className="mt-1.5"
+                                    value={selectedVariant?.sku_mapping_id ?? ""}
+                                    options={selectedOption.variants.map((variant) => ({
+                                      value: variant.sku_mapping_id,
+                                      label: variant.label,
+                                      description: `${variant.part_number ?? "No SKU"} · ${variant.quantity_unit}`,
+                                    }))}
+                                    onChange={(value) => replaceVariant(environmentIndex, phaseIndex, selectedOption, value)}
+                                  />
+                                </div>
+                              ) : null}
                               <label className="text-xs text-[var(--color-text-muted)]">Start month<input type="number" min={1} max={contractMonths} disabled={phase.interpolation === "monthly"} className={`${inputClass} disabled:opacity-55`} value={phase.start_month} onChange={(event) => patchPhase(environmentIndex, phaseIndex, { ...phase, start_month: Number(event.target.value) })} /></label>
                               <label className="text-xs text-[var(--color-text-muted)]">End month<input type="number" min={1} max={contractMonths} disabled={phase.interpolation === "monthly"} className={`${inputClass} disabled:opacity-55`} value={phase.end_month} onChange={(event) => patchPhase(environmentIndex, phaseIndex, { ...phase, end_month: Number(event.target.value) })} /></label>
                               <label className="text-xs text-[var(--color-text-muted)]">Initial quantity<input aria-label={`${environment.name} ${selectedOption?.metric_label ?? phase.metric_key} initial quantity`} type="number" min={0} step={policy?.quantity_increment ?? "any"} disabled={phase.interpolation === "monthly"} className={`${inputClass} disabled:opacity-55`} value={phase.start_quantity ?? 0} onChange={(event) => { const value = Number(event.target.value); patchPhase(environmentIndex, phaseIndex, { ...phase, start_quantity: value, end_quantity: phase.interpolation === "step" ? value : phase.end_quantity }); }} /></label>
                               <label className="text-xs text-[var(--color-text-muted)]">Final quantity<input type="number" min={0} step={policy?.quantity_increment ?? "any"} disabled={phase.interpolation !== "linear"} className={`${inputClass} disabled:opacity-55`} value={phase.end_quantity ?? 0} onChange={(event) => patchPhase(environmentIndex, phaseIndex, { ...phase, end_quantity: Number(event.target.value) })} /></label>
-                              <label className="text-xs text-[var(--color-text-muted)] xl:col-span-2">Schedule<select className={inputClass} value={phase.interpolation} onChange={(event) => setSchedule(environmentIndex, phaseIndex, event.target.value as DeploymentRampPhaseInput["interpolation"])}><option value="step">Constant</option><option value="linear">Linear ramp</option><option value="monthly">Monthly steps</option></select></label>
+                              <div className="text-xs text-[var(--color-text-muted)] xl:col-span-2">
+                                <span>Schedule</span>
+                                <GovernedSelect
+                                  ariaLabel={`${environment.name} ${group.name} schedule`}
+                                  className="mt-1.5"
+                                  value={phase.interpolation}
+                                  options={[
+                                    { value: "step", label: "Constant", description: "Keep one quantity across the active period." },
+                                    { value: "linear", label: "Linear ramp", description: "Increase evenly from the initial to final quantity." },
+                                    { value: "monthly", label: "Monthly steps", description: "Enter an exact quantity for each contract month." },
+                                  ]}
+                                  onChange={(value) => setSchedule(environmentIndex, phaseIndex, value as DeploymentRampPhaseInput["interpolation"])}
+                                />
+                              </div>
                               <div className="flex items-center justify-between gap-3 xl:col-span-2"><p className="text-xs leading-5 text-[var(--color-text-muted)]"><span className="font-semibold text-[var(--color-text-secondary)]">{phase.quantity_unit ?? policy?.quantity_unit ?? "Unit"}</span> · {quantityRule(policy)}</p><button type="button" className="app-icon-button shrink-0" title="Remove product metric" onClick={() => removeMetric(environmentIndex, phaseIndex)}><Trash2 className="h-4 w-4" /></button></div>
                               {policy ? <div className="border-l-2 border-[var(--color-accent)] pl-3 text-xs leading-5 text-[var(--color-text-secondary)] md:col-span-2 xl:col-span-4"><div className="flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-1 font-semibold text-[var(--color-text-primary)]">{policy.usage_basis === "provisioned_runtime" ? <Clock3 className="h-3.5 w-3.5" /> : <PackageCheck className="h-3.5 w-3.5" />}{basisLabel(policy.usage_basis)}</span><span>·</span><span>{policy.entry_guidance}</span></div><p className="mt-1 text-[var(--color-text-muted)]">{policyLabel(policy.aggregation_window)} · {policyLabel(policy.proration_policy)}{policy.free_tier_scope !== "none" ? ` · Free tier: ${policyLabel(policy.free_tier_scope)}` : ""}</p>{quotedQuantity !== sourceQuantity ? <p className="mt-1 font-semibold text-[var(--color-text-primary)]">Measured demand {sourceQuantity.toLocaleString()} → billable quantity {quotedQuantity.toLocaleString()} {phase.quantity_unit}</p> : null}{envelopeQuantity !== null && envelopeQuantity !== quotedQuantity ? <p className="mt-1 font-semibold text-[var(--color-text-primary)]">Optional planning reserve: {envelopeQuantity.toLocaleString()} {phase.quantity_unit}. This does not change the Oracle-metered quantity.</p> : null}</div> : null}
                               {presets.length > 0 ? <div className="flex flex-wrap items-center gap-2 md:col-span-2 xl:col-span-4"><span className="text-xs font-semibold text-[var(--color-text-secondary)]">Runtime shortcuts</span>{presets.map((preset) => <button key={preset.label} type="button" title={preset.description} className={`h-8 rounded-md border px-2.5 text-xs font-semibold ${sourceQuantity === preset.quantity ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]" : "border-[var(--color-border)] text-[var(--color-text-secondary)]"}`} onClick={() => applyPreset(environmentIndex, phaseIndex, preset.quantity)}>{preset.label} · {preset.quantity}h</button>)}</div> : null}

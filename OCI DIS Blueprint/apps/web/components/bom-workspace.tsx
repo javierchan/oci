@@ -30,6 +30,7 @@ import { emitToast } from "@/hooks/use-toast";
 import { AppDatePicker } from "@/components/app-date-picker";
 import { BomConsumptionEditor } from "@/components/bom-consumption-editor";
 import { BomRolloutExplorer } from "@/components/bom-rollout-explorer";
+import { GovernedSelect } from "@/components/governed-select";
 import { ActionRecommendationWorkspace } from "@/components/action-recommendation-workspace";
 import { AgentDecisionWorkspace } from "@/components/agent-decision-workspace";
 import { GovernedNarrative } from "@/components/governed-narrative";
@@ -83,6 +84,12 @@ function formatNumber(value: number): string {
     maximumFractionDigits,
     minimumFractionDigits: 0,
   }).format(value);
+}
+
+function displayLabel(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function warningText(value: unknown): string {
@@ -363,9 +370,48 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
             <label className="text-sm font-semibold text-[var(--color-text-primary)] xl:col-span-2">Scenario name<input className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.name} onChange={(event) => patchDraft({ name: event.target.value })} /></label>
             <label className="text-sm font-semibold text-[var(--color-text-primary)]">Region<input className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.region} onChange={(event) => patchDraft({ region: event.target.value })} /></label>
             <label className="text-sm font-semibold text-[var(--color-text-primary)]">Currency<input className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 font-mono" maxLength={3} value={draft.currency} onChange={(event) => patchDraft({ currency: event.target.value.toUpperCase() })} /></label>
-            <label className="text-sm font-semibold text-[var(--color-text-primary)]">Price source<select className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.price_mode} onChange={(event) => patchDraft({ price_mode: event.target.value as DeploymentScenarioCreate["price_mode"] })}><option value="public_list">Public list</option><option value="contract_rate">Contract rate</option><option value="manual_rate_card">Manual rate card</option></select></label>
-            <label className="text-sm font-semibold text-[var(--color-text-primary)]">Commercial model<select className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.commitment_model} onChange={(event) => patchDraft({ commitment_model: event.target.value as DeploymentScenarioCreate["commitment_model"] })}><option value="pay_as_you_go">Pay as you go</option><option value="annual_commitment">Annual commitment</option><option value="annual_flex">Annual Flex</option><option value="monthly_flex">Monthly Flex</option></select></label>
-            <label className="text-sm font-semibold text-[var(--color-text-primary)]">Licensing<select className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.licensing_model} onChange={(event) => patchDraft({ licensing_model: event.target.value as DeploymentScenarioCreate["licensing_model"] })}><option value="license_included">License Included</option><option value="byol">Bring Your Own License (BYOL)</option></select></label>
+            <div className="text-sm font-semibold text-[var(--color-text-primary)]">
+              <span>Price source</span>
+              <GovernedSelect
+                ariaLabel="Scenario price source"
+                className="mt-2"
+                value={draft.price_mode}
+                options={[
+                  { value: "public_list", label: "Public list", description: "Use the approved Oracle public price catalog." },
+                  { value: "contract_rate", label: "Contract rate", description: "Use an authorized customer-specific rate card." },
+                  { value: "manual_rate_card", label: "Manual rate card", description: "Use a governed rate card uploaded for this estimate." },
+                ]}
+                onChange={(value) => patchDraft({ price_mode: value as DeploymentScenarioCreate["price_mode"] })}
+              />
+            </div>
+            <div className="text-sm font-semibold text-[var(--color-text-primary)]">
+              <span>Commercial model</span>
+              <GovernedSelect
+                ariaLabel="Scenario commercial model"
+                className="mt-2"
+                value={draft.commitment_model}
+                options={[
+                  { value: "pay_as_you_go", label: "Pay as you go", description: "Price consumption without an annual commitment." },
+                  { value: "annual_commitment", label: "Annual commitment", description: "Apply approved annual commitment terms." },
+                  { value: "annual_flex", label: "Annual Flex", description: "Use annual flexible consumption terms." },
+                  { value: "monthly_flex", label: "Monthly Flex", description: "Use monthly flexible consumption terms." },
+                ]}
+                onChange={(value) => patchDraft({ commitment_model: value as DeploymentScenarioCreate["commitment_model"] })}
+              />
+            </div>
+            <div className="text-sm font-semibold text-[var(--color-text-primary)]">
+              <span>Licensing</span>
+              <GovernedSelect
+                ariaLabel="Scenario licensing model"
+                className="mt-2"
+                value={draft.licensing_model}
+                options={[
+                  { value: "license_included", label: "License Included", description: "Oracle software licensing is included in the selected SKU." },
+                  { value: "byol", label: "Bring Your Own License (BYOL)", description: "Apply eligible existing Oracle licenses and governed conversion rules." },
+                ]}
+                onChange={(value) => patchDraft({ licensing_model: value as DeploymentScenarioCreate["licensing_model"] })}
+              />
+            </div>
             <label className="text-sm font-semibold text-[var(--color-text-primary)]">Contract months<input type="number" min={1} max={120} className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.contract_months} onChange={(event) => { const contractMonths = Math.min(Math.max(Number(event.target.value), 1), 120); patchDraft({ contract_months: contractMonths, environments: resizeConsumptionPlan(draft.environments, contractMonths) }); }} /></label>
             <AppDatePicker label="Contract start" value={draft.start_date} onChange={(startDate) => patchDraft({ start_date: startDate })} />
             <div className="md:col-span-2 xl:col-span-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
@@ -430,7 +476,24 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
 
       <section className="app-card p-5">
         <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="app-label">Approved Input</p><h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Generate an immutable BOM</h2></div><button className="app-button-primary gap-2" type="button" disabled={!selectedScenario || selectedScenario.status !== "approved" || busyAction !== null || hasActiveJob} onClick={() => void generateBom()}>{busyAction === "generate" || hasActiveJob ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}{hasActiveJob ? "Generation running" : "Generate BOM"}</button></div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"><label className="text-sm font-semibold text-[var(--color-text-primary)]">Deployment scenario<select className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={selectedScenarioId} onChange={(event) => setSelectedScenarioId(event.target.value)}>{scenarios.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.name} · {scenario.status}</option>)}</select></label><button className="app-button-secondary gap-2" type="button" onClick={() => void load(true)}><RefreshCcw className="h-4 w-4" />Refresh</button></div>
+        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+          <div className="text-sm font-semibold text-[var(--color-text-primary)]">
+            <span>Deployment scenario</span>
+            <GovernedSelect
+              ariaLabel="Deployment scenario"
+              className="mt-2"
+              value={selectedScenarioId}
+              placeholder="Choose a deployment scenario"
+              options={scenarios.map((scenario) => ({
+                value: scenario.id,
+                label: scenario.name,
+                description: `${displayLabel(scenario.status)} · ${scenario.region} · ${scenario.currency}`,
+              }))}
+              onChange={setSelectedScenarioId}
+            />
+          </div>
+          <button className="app-button-secondary gap-2" type="button" onClick={() => void load(true)}><RefreshCcw className="h-4 w-4" />Refresh</button>
+        </div>
         {selectedScenario ? <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-7"><div><p className="app-label">Status</p><p className="mt-1 font-semibold text-[var(--color-text-primary)]">{selectedScenario.status}</p></div><div><p className="app-label">Price source</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{selectedScenario.price_mode.replace(/_/g, " ")}</p></div><div><p className="app-label">Commercial model</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{selectedScenario.commitment_model.replace(/_/g, " ")}</p></div><div><p className="app-label">Licensing</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{selectedScenario.licensing_model.replace(/_/g, " ")}</p></div><div><p className="app-label">Region</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{selectedScenario.region}</p></div><div><p className="app-label">Currency</p><p className="mt-1 font-mono text-sm text-[var(--color-text-secondary)]">{selectedScenario.currency}</p></div><div><p className="app-label">Updated</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{formatDate(selectedScenario.updated_at)}</p></div></div> : <p className="mt-4 text-sm text-[var(--color-text-secondary)]">Create and approve a scenario before generating a BOM.</p>}
       </section>
 
@@ -472,36 +535,42 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
             </button>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <label className="text-sm font-semibold text-[var(--color-text-primary)]">
-              Baseline
-              <select
-                className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5"
+            <div className="text-sm font-semibold text-[var(--color-text-primary)]">
+              <span>Baseline</span>
+              <GovernedSelect
+                ariaLabel="Baseline BOM snapshot"
+                className="mt-2"
                 value={baselineSnapshotId}
-                onChange={(event) => {
-                  setBaselineSnapshotId(event.target.value);
+                placeholder="Choose a baseline snapshot"
+                options={snapshots.map((snapshot) => ({
+                  value: snapshot.id,
+                  label: formatDate(snapshot.created_at),
+                  description: `${currency(snapshot.monthly_total, snapshot.currency)} per month · ${displayLabel(snapshot.publication_status)}`,
+                }))}
+                onChange={(value) => {
+                  setBaselineSnapshotId(value);
                   setComparison(null);
                 }}
-              >
-                {snapshots.map((snapshot) => (
-                  <option key={snapshot.id} value={snapshot.id}>{formatDate(snapshot.created_at)} · {currency(snapshot.monthly_total, snapshot.currency)}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm font-semibold text-[var(--color-text-primary)]">
-              Comparison
-              <select
-                className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5"
+              />
+            </div>
+            <div className="text-sm font-semibold text-[var(--color-text-primary)]">
+              <span>Comparison</span>
+              <GovernedSelect
+                ariaLabel="Comparison BOM snapshot"
+                className="mt-2"
                 value={comparisonSnapshotId}
-                onChange={(event) => {
-                  setComparisonSnapshotId(event.target.value);
+                placeholder="Choose a comparison snapshot"
+                options={snapshots.map((snapshot) => ({
+                  value: snapshot.id,
+                  label: formatDate(snapshot.created_at),
+                  description: `${currency(snapshot.monthly_total, snapshot.currency)} per month · ${displayLabel(snapshot.publication_status)}`,
+                }))}
+                onChange={(value) => {
+                  setComparisonSnapshotId(value);
                   setComparison(null);
                 }}
-              >
-                {snapshots.map((snapshot) => (
-                  <option key={snapshot.id} value={snapshot.id}>{formatDate(snapshot.created_at)} · {currency(snapshot.monthly_total, snapshot.currency)}</option>
-                ))}
-              </select>
-            </label>
+              />
+            </div>
           </div>
           {comparison ? (
             <div className="mt-5 border-t border-[var(--color-border)] pt-5">
