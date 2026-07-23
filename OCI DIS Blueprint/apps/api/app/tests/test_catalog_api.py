@@ -145,7 +145,11 @@ async def test_refresh_project_qa_removes_stale_derived_reasons(
 
     project_response = await api_client.post(
         "/api/v1/projects/",
-        json={"name": "QA Refresh Project", "owner_id": "integration-test"},
+        json={
+            "name": "QA Refresh Project",
+            "customer_name": "Catalog Test Customer",
+            "owner_id": "integration-test",
+        },
     )
     assert project_response.status_code == 201
     project_id = project_response.json()["id"]
@@ -197,6 +201,7 @@ async def test_manual_capture_lists_catalog_and_lineage(api_client: AsyncClient)
         "/api/v1/projects/",
         json={
             "name": "Catalog Test Project",
+            "customer_name": "Catalog Test Customer",
             "owner_id": "integration-test",
             "description": "Catalog integration test",
         },
@@ -270,7 +275,12 @@ async def test_patch_tbq_updates_commercial_scope_and_keeps_technical_catalog(
 
     project_response = await api_client.post(
         "/api/v1/projects/",
-        json={"name": "TBQ Patch Project", "owner_id": "integration-test", "description": "TBQ patch"},
+        json={
+            "name": "TBQ Patch Project",
+            "customer_name": "Catalog Test Customer",
+            "owner_id": "integration-test",
+            "description": "TBQ patch",
+        },
     )
     project_id = project_response.json()["id"]
     create_response = await api_client.post(
@@ -327,6 +337,7 @@ async def test_patch_rejects_oracle_backed_canvas_blockers(
         "/api/v1/projects/",
         json={
             "name": "Canvas Blocker Project",
+            "customer_name": "Catalog Test Customer",
             "owner_id": "integration-test",
             "description": "Canvas blocker validation",
         },
@@ -382,6 +393,7 @@ async def test_patch_rejects_disconnected_canvas_route(
         "/api/v1/projects/",
         json={
             "name": "Disconnected Canvas Project",
+            "customer_name": "Catalog Test Customer",
             "owner_id": "integration-test",
             "description": "Canvas route validation",
         },
@@ -434,6 +446,7 @@ async def test_patch_rejects_uncoded_dictionary_tools(
         "/api/v1/projects/",
         json={
             "name": "Uncoded Tool Project",
+            "customer_name": "Catalog Test Customer",
             "owner_id": "integration-test",
             "description": "Canvas taxonomy validation",
         },
@@ -486,6 +499,7 @@ async def test_bulk_patch_does_not_bypass_canvas_validation(
         "/api/v1/projects/",
         json={
             "name": "Bulk Canvas Validation Project",
+            "customer_name": "Catalog Test Customer",
             "owner_id": "integration-test",
             "description": "Bulk patch canvas validation",
         },
@@ -543,6 +557,7 @@ async def test_bulk_patch_rejects_row_specific_raw_source_evidence(
         "/api/v1/projects/",
         json={
             "name": "Raw Evidence Bulk Patch Project",
+            "customer_name": "Catalog Test Customer",
             "owner_id": "integration-test",
             "description": "Raw evidence remains row-specific",
         },

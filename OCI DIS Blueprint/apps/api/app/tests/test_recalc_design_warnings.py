@@ -51,6 +51,7 @@ async def test_recalculation_includes_low_latency_data_integration_warning(
         "/api/v1/projects/",
         json={
             "name": "Recalc Warning Project",
+            "customer_name": "Recalc Test Customer",
             "owner_id": "integration-test",
             "description": "Recalc warning validation",
         },

@@ -36,6 +36,7 @@ describe("contextual support route context", () => {
     const project: Project = {
       id: PROJECT_ID,
       name: "Enterprise Integration",
+      customer_name: "ACME Inc.",
       owner_id: "architect",
       description: null,
       status: "active",

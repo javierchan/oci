@@ -238,6 +238,7 @@ SMOKE_MINIMUM_SUPPORTED_DISTINCT_SYSTEMS = 12
 @dataclass(frozen=True)
 class SyntheticProjectSpec:
     project_name: str = "Synthetic Enterprise Reference Project"
+    customer_name: str = "ACME Inc."
     owner_id: str = "synthetic-admin"
     description: str = (
         "Deterministic enterprise-scale synthetic OCI integration portfolio used "
@@ -1286,6 +1287,7 @@ async def create_synthetic_enterprise_project(
 
     project = Project(
         name=spec.project_name,
+        customer_name=spec.customer_name,
         description=spec.description,
         owner_id=spec.owner_id,
         status=ProjectStatus.ACTIVE,

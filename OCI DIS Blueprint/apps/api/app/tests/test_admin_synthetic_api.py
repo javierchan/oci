@@ -250,6 +250,7 @@ async def test_admin_synthetic_cleanup_archives_and_deletes_project(
         "/api/v1/projects/",
         json={
             "name": "Synthetic Cleanup Project",
+            "customer_name": "Synthetic Test Customer",
             "owner_id": "admin-user",
             "description": "Cleanup target",
         },

@@ -756,6 +756,20 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       API reconciliation, embedded-browser visual and functional validation, and
       zero automatic catalog promotions pass.
 
+### M66 — Governed Project Customer Identity
+- [x] Add a first-class, required `customer_name` to the project contract instead
+      of relying on optional import or capture metadata.
+- [x] Backfill existing projects from governed metadata when available and assign
+      `ACME Inc.` to legacy projects with no recorded customer evidence.
+- [x] Require customer identity during UI and API project creation, expose audited
+      inline editing, and make projects searchable by project or customer.
+- [x] Display the same project-level customer authority across project cards,
+      Dashboard, and Capture Review while retaining source-session customer names
+      as immutable intake evidence.
+- [x] **Exit criteria**: migration head `20260722_0052`; focused project and
+      external-capture tests, full API/frontend gates, generated OpenAPI,
+      production Docker migration, and embedded-browser creation/edit validation pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

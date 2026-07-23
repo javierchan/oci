@@ -3,6 +3,7 @@
 export interface Project {
   id: string;
   name: string;
+  customer_name: string;
   owner_id: string;
   description: string | null;
   status: "active" | "draft" | "archived";

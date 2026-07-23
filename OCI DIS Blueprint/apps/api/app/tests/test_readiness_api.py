@@ -17,7 +17,7 @@ def test_repository_heads_are_independent_of_working_directory(
     """Resolve Alembic revisions from the API root even when CI runs elsewhere."""
 
     monkeypatch.chdir(tmp_path)
-    assert _repository_heads() == {"20260722_0051"}
+    assert _repository_heads() == {"20260722_0052"}
 
 
 @pytest.mark.asyncio

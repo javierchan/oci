@@ -38,6 +38,7 @@ async def _create_project(api_client: AsyncClient) -> str:
         "/api/v1/projects/",
         json={
             "name": "ADN - Retail Merchandising",
+            "customer_name": "Innovación y Conveniencia, S.A. de C.V.",
             "owner_id": "architect-1",
             "description": "Governed customer evidence review.",
             "project_metadata": {

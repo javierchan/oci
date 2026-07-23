@@ -67,7 +67,11 @@ async def test_project_deletion_removes_owned_object_prefixes(
     project = (
         await api_client.post(
             "/api/v1/projects/",
-            json={"name": "Storage cleanup", "owner_id": "architect"},
+            json={
+                "name": "Storage cleanup",
+                "customer_name": "Storage Test Customer",
+                "owner_id": "architect",
+            },
         )
     ).json()
     project_id = project["id"]

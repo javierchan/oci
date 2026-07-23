@@ -57,6 +57,7 @@ def serialize_project(project: Project) -> ProjectResponse:
     return ProjectResponse(
         id=project.id,
         name=project.name,
+        customer_name=project.customer_name,
         owner_id=project.owner_id,
         description=project.description,
         status=project.status.value,
@@ -78,6 +79,7 @@ async def create_project(body: ProjectCreateRequest, db: AsyncSession) -> Projec
 
     project = Project(
         name=body.name,
+        customer_name=body.customer_name,
         owner_id=body.owner_id,
         description=body.description,
         project_metadata=body.project_metadata,

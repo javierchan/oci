@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ProjectCreateRequest(BaseModel):
@@ -13,10 +13,21 @@ class ProjectCreateRequest(BaseModel):
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    name: str
+    name: str = Field(min_length=1, max_length=255)
+    customer_name: str = Field(min_length=1, max_length=500)
     owner_id: str
     description: Optional[str] = None
     project_metadata: Optional[dict[str, object]] = None
+
+    @field_validator("name", "customer_name")
+    @classmethod
+    def normalize_required_names(cls, value: str) -> str:
+        """Reject whitespace-only names and persist a normalized display value."""
+
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("must not be blank")
+        return normalized
 
 
 class ProjectPatchRequest(BaseModel):
@@ -24,10 +35,23 @@ class ProjectPatchRequest(BaseModel):
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    customer_name: Optional[str] = Field(default=None, min_length=1, max_length=500)
     owner_id: Optional[str] = None
     description: Optional[str] = None
     project_metadata: Optional[dict[str, object]] = None
+
+    @field_validator("name", "customer_name")
+    @classmethod
+    def normalize_optional_names(cls, value: Optional[str]) -> str:
+        """A supplied project or customer name may never clear the governed value."""
+
+        if value is None:
+            raise ValueError("must not be null")
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("must not be blank")
+        return normalized
 
 
 class ProjectResponse(BaseModel):
@@ -37,6 +61,7 @@ class ProjectResponse(BaseModel):
 
     id: str
     name: str
+    customer_name: str
     owner_id: str
     description: Optional[str]
     status: str

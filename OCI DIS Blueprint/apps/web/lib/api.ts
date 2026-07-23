@@ -699,12 +699,29 @@ export const api = {
 
   createProject: (body: {
     name: string;
+    customer_name: string;
     owner_id: string;
     description?: string;
     project_metadata?: Record<string, unknown>;
   }): Promise<Project> =>
     apiFetch<Project>("/api/v1/projects/", {
       method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateProject: (
+    projectId: string,
+    body: {
+      name?: string;
+      customer_name?: string;
+      owner_id?: string;
+      description?: string;
+      project_metadata?: Record<string, unknown>;
+    },
+  ): Promise<Project> =>
+    apiFetch<Project>(`/api/v1/projects/${projectId}`, {
+      method: "PATCH",
+      headers: { "X-Actor-Id": "web-user" },
       body: JSON.stringify(body),
     }),
 

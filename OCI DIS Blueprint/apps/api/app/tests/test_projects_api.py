@@ -14,6 +14,7 @@ async def test_project_patch_emits_audit_event(api_client: AsyncClient) -> None:
         "/api/v1/projects/",
         json={
             "name": "Integration Test Project",
+            "customer_name": "Example Customer, Inc.",
             "owner_id": "integration-test",
             "description": "Initial description",
         },
@@ -22,18 +23,21 @@ async def test_project_patch_emits_audit_event(api_client: AsyncClient) -> None:
     created = create_response.json()
     project_id = created["id"]
     assert created["status"] == "active"
+    assert created["customer_name"] == "Example Customer, Inc."
 
     patch_response = await api_client.patch(
         f"/api/v1/projects/{project_id}",
         params={"actor_id": "integration-test"},
         json={
             "name": "Integration Test Project Updated",
+            "customer_name": "Example Customer Holdings, Inc.",
             "description": "Updated description",
         },
     )
     assert patch_response.status_code == 200
     patched = patch_response.json()
     assert patched["name"] == "Integration Test Project Updated"
+    assert patched["customer_name"] == "Example Customer Holdings, Inc."
     assert patched["description"] == "Updated description"
     assert patched["owner_id"] == "integration-test"
     assert patched["project_metadata"] is None
@@ -42,6 +46,7 @@ async def test_project_patch_emits_audit_event(api_client: AsyncClient) -> None:
     assert get_response.status_code == 200
     fetched = get_response.json()
     assert fetched["name"] == "Integration Test Project Updated"
+    assert fetched["customer_name"] == "Example Customer Holdings, Inc."
     assert fetched["project_metadata"] is None
 
     audit_response = await api_client.get(f"/api/v1/audit/{project_id}")
@@ -56,3 +61,26 @@ async def test_project_patch_emits_audit_event(api_client: AsyncClient) -> None:
     assert audit_event["entity_id"] == project_id
     assert audit_event["old_value"]["name"] == "Integration Test Project"
     assert audit_event["new_value"]["name"] == "Integration Test Project Updated"
+    assert audit_event["old_value"]["customer_name"] == "Example Customer, Inc."
+    assert audit_event["new_value"]["customer_name"] == "Example Customer Holdings, Inc."
+
+
+@pytest.mark.asyncio
+async def test_project_creation_requires_customer_name(api_client: AsyncClient) -> None:
+    """New projects must carry an explicit governed customer identity."""
+
+    missing_response = await api_client.post(
+        "/api/v1/projects/",
+        json={"name": "Missing Customer", "owner_id": "integration-test"},
+    )
+    assert missing_response.status_code == 422
+
+    blank_response = await api_client.post(
+        "/api/v1/projects/",
+        json={
+            "name": "Blank Customer",
+            "customer_name": "   ",
+            "owner_id": "integration-test",
+        },
+    )
+    assert blank_response.status_code == 422

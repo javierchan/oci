@@ -13700,6 +13700,12 @@
         "additionalProperties": false,
         "description": "Payload for creating a project.",
         "properties": {
+          "customer_name": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Customer Name",
+            "type": "string"
+          },
           "description": {
             "anyOf": [
               {
@@ -13712,6 +13718,8 @@
             "title": "Description"
           },
           "name": {
+            "maxLength": 255,
+            "minLength": 1,
             "title": "Name",
             "type": "string"
           },
@@ -13734,6 +13742,7 @@
         },
         "required": [
           "name",
+          "customer_name",
           "owner_id"
         ],
         "title": "ProjectCreateRequest",
@@ -13816,6 +13825,19 @@
         "additionalProperties": false,
         "description": "Payload for partially updating project metadata.",
         "properties": {
+          "customer_name": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
           "description": {
             "anyOf": [
               {
@@ -13830,6 +13852,8 @@
           "name": {
             "anyOf": [
               {
+                "maxLength": 255,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -13872,6 +13896,10 @@
           "created_at": {
             "format": "date-time",
             "title": "Created At",
+            "type": "string"
+          },
+          "customer_name": {
+            "title": "Customer Name",
             "type": "string"
           },
           "description": {
@@ -13922,6 +13950,7 @@
         "required": [
           "id",
           "name",
+          "customer_name",
           "owner_id",
           "description",
           "status",

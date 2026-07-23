@@ -48,6 +48,12 @@ class Project(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "projects"
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    customer_name: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+        default="ACME Inc.",
+        server_default="ACME Inc.",
+    )
     description: Mapped[Optional[str]] = mapped_column(String(2000))
     status: Mapped[ProjectStatus] = mapped_column(
         SAEnum(ProjectStatus, native_enum=False, values_callable=_enum_values),

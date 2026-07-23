@@ -32,6 +32,7 @@ from app.models.project import ImportStatus, IntegrationStatus, ProjectStatus, Q
 from app.services import dashboard_service, export_service, justification_service, recalc_service
 
 PROJECT_NAME = "NovaBrand Group — OCI Integration Program FY26"
+PROJECT_CUSTOMER_NAME = "NovaBrand Group"
 PROJECT_DESCRIPTION = (
     "Enterprise integration catalog for NovaBrand Group's OCI migration program. "
     "Covers 6 business domains, 5 brand units, and 77 source systems. Designed to "
@@ -1796,6 +1797,7 @@ def main() -> None:
 
         project = Project(
             name=PROJECT_NAME,
+            customer_name=PROJECT_CUSTOMER_NAME,
             description=PROJECT_DESCRIPTION,
             status=ProjectStatus.ACTIVE,
             owner_id=PROJECT_OWNER_ID,

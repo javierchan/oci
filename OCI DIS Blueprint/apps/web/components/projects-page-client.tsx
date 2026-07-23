@@ -49,6 +49,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
   );
   const [showForm, setShowForm] = useState<boolean>(initialProjects.length === 0);
   const [name, setName] = useState<string>("");
+  const [customerName, setCustomerName] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [activeProjectId, setActiveProjectId] = useState<string>("");
   const [search, setSearch] = useState<string>("");
@@ -56,7 +57,10 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const visibleProjects = projects.filter((row) => {
-    const matchesSearch = row.project.name.toLowerCase().includes(search.trim().toLowerCase());
+    const normalizedSearch = search.trim().toLowerCase();
+    const matchesSearch =
+      row.project.name.toLowerCase().includes(normalizedSearch) ||
+      row.project.customer_name.toLowerCase().includes(normalizedSearch);
     const matchesArchive = showArchived || row.project.status !== "archived";
     return matchesSearch && matchesArchive;
   });
@@ -84,16 +88,26 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
   async function handleCreateProject(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const projectName = name.trim();
+    const normalizedCustomerName = customerName.trim();
     if (!projectName) {
       emitToast("error", "Project name is required.");
+      return;
+    }
+    if (!normalizedCustomerName) {
+      emitToast("error", "Customer name is required.");
       return;
     }
 
     setSubmitting(true);
     try {
-      const project = await api.createProject({ name: projectName, owner_id: "web-user" });
+      const project = await api.createProject({
+        name: projectName,
+        customer_name: normalizedCustomerName,
+        owner_id: "web-user",
+      });
       setProjects((current: ProjectRow[]) => [{ project, rowCount: 0 }, ...current]);
       setName("");
+      setCustomerName("");
       setShowForm(false);
       emitToast("success", `Project "${projectName}" created.`);
       startTransition(() => {
@@ -215,7 +229,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Filter by project name..."
+              placeholder="Filter by project or customer..."
               className="app-input py-2.5"
             />
           </label>
@@ -237,7 +251,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
             onSubmit={(event) => {
               void handleCreateProject(event);
             }}
-            className="flex flex-col gap-4 lg:flex-row lg:items-end"
+            className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end"
           >
             <label className="flex-1">
               <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">
@@ -248,6 +262,18 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Phase 1 parity assessment"
+                className="app-input py-2.5"
+              />
+            </label>
+            <label className="flex-1">
+              <span className="mb-2 block text-xs uppercase tracking-[0.25em] text-[var(--color-text-secondary)]">
+                Customer Name
+              </span>
+              <input
+                name="customer_name"
+                value={customerName}
+                onChange={(event) => setCustomerName(event.target.value)}
+                placeholder="Customer legal or business name"
                 className="app-input py-2.5"
               />
             </label>
@@ -327,16 +353,10 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                         #{row.project.id.slice(-8)}
                       </p>
                     ) : null}
-                    {isSyntheticProject(row.project) ? (
-                      <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
-                        Governed synthetic reference project generated for end-to-end validation.
-                      </p>
-                    ) : (
-                      <p className="mt-3 inline-flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
-                        <User className="h-3.5 w-3.5" />
-                        Workspace owner assigned
-                      </p>
-                    )}
+                    <p className="mt-3 inline-flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+                      <User className="h-3.5 w-3.5" />
+                      {row.project.customer_name}
+                    </p>
                   </div>
                   <span className={`app-status-chip ${projectStatusPresentation(row.project).chipClass}`}>
                     {projectStatusPresentation(row.project).label}
@@ -408,6 +428,10 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                       ? "Governed synthetic reference project generated for end-to-end validation."
                       : "Independent assessment workspace with governed catalog, assumptions, and QA flow."}
                   </p>
+                  <p className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]">
+                    <User className="h-3.5 w-3.5 text-[var(--color-accent)]" />
+                    {row.project.customer_name}
+                  </p>
                 </div>
 
                 <div className="mt-5 grid grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-4">
@@ -475,6 +499,10 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                       </Link>
                       <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
                         Archived workspace retained for source lineage, audit, and read-only review.
+                      </p>
+                      <p className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]">
+                        <User className="h-3.5 w-3.5 text-[var(--color-accent)]" />
+                        {row.project.customer_name}
                       </p>
                     </div>
                     <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border)] pt-4">

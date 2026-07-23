@@ -27,11 +27,6 @@ export default async function CaptureReviewPage({
     api.listExternalCaptureSessions(projectId),
     api.listPatterns(),
   ]);
-  const clientName =
-    typeof project.project_metadata?.client_name === "string"
-      ? project.project_metadata.client_name
-      : null;
-
   return (
     <div className="console-page">
       <section className="console-hero">
@@ -53,14 +48,12 @@ export default async function CaptureReviewPage({
               { label: "Capture Review" },
             ]}
           />
-          {clientName ? (
-            <div className="text-right">
-              <p className="app-label">Customer</p>
-              <p className="mt-1 text-sm font-semibold text-[var(--color-text-primary)]">
-                {clientName}
-              </p>
-            </div>
-          ) : null}
+          <div className="text-right">
+            <p className="app-label">Customer</p>
+            <p className="mt-1 text-sm font-semibold text-[var(--color-text-primary)]">
+              {project.customer_name}
+            </p>
+          </div>
         </div>
       </section>
 

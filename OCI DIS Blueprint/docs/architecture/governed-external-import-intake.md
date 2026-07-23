@@ -109,9 +109,14 @@ An analyst may need to demonstrate or migrate a real customer work-in-progress
 catalog without treating its file format as an import contract. The
 `/projects/{project_id}/external-capture` API provides this bounded path:
 
+- `Project.customer_name` is the governed customer identity for the complete
+  workspace and is required for every new project. It is shown consistently in
+  project, dashboard, and review surfaces and can be changed only through the
+  audited project update contract.
 - `ExternalCaptureSession` stores customer identity, a source label, the SHA-256
-  fingerprint, and the normalization policy. It never stores a local filesystem
-  path or the source file.
+  fingerprint, and the normalization policy for one source submission. Its
+  `client_name` preserves source evidence and does not replace the project-level
+  customer authority. It never stores a local filesystem path or the source file.
 - `ExternalCaptureDraft` stores the immutable source values separately from the
   editable canonical proposal, normalization evidence, row-level pattern
   assessment, required-field gaps, and QA preview.
