@@ -2392,6 +2392,77 @@ export interface CommercialCoverageWorkspace extends CommercialWorkspace {
   coverage_report: CommercialCoverageReport;
 }
 
+export type CommercialReviewEntityType =
+  | "exception"
+  | "mapping_candidate"
+  | "product_coverage";
+export type CommercialReviewPriority = "urgent" | "high" | "normal" | "low";
+export type CommercialReviewWorkflowStatus =
+  | "unassigned"
+  | "assigned"
+  | "in_progress"
+  | "waiting_evidence";
+
+export interface CommercialReviewPrioritySignal {
+  code: string;
+  label: string;
+  points: number;
+}
+
+export interface CommercialReviewWorkItem {
+  entity_type: CommercialReviewEntityType;
+  entity_id: string;
+  title: string;
+  part_number: string | null;
+  category: string | null;
+  source_status: string;
+  severity: string | null;
+  priority_score: number;
+  priority_tier: CommercialReviewPriority;
+  priority_signals: CommercialReviewPrioritySignal[];
+  workflow_status: CommercialReviewWorkflowStatus;
+  assignee: string | null;
+  due_at: string | null;
+  overdue: boolean;
+  note: string | null;
+  bom_impact: boolean;
+  blocker_count: number;
+  recommended_next_action: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommercialReviewWorkQueueSummary {
+  total: number;
+  urgent: number;
+  high: number;
+  normal: number;
+  low: number;
+  unassigned: number;
+  overdue: number;
+  exceptions: number;
+  mapping_candidates: number;
+  product_coverage: number;
+}
+
+export interface CommercialReviewWorkQueue {
+  source_document_id: string | null;
+  source_release_id: string | null;
+  source_release_version: string | null;
+  summary: CommercialReviewWorkQueueSummary;
+  items: CommercialReviewWorkItem[];
+  page: number;
+  page_size: number;
+  total: number;
+}
+
+export interface CommercialReviewAssignmentRequest {
+  assignee: string | null;
+  workflow_status: CommercialReviewWorkflowStatus;
+  due_at: string | null;
+  note: string | null;
+}
+
 export interface OciProductPriceSummary {
   currency: string;
   min_payg_unit_price: number;

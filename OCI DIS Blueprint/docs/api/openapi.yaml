@@ -7163,6 +7163,388 @@
         "title": "CommercialReleaseResponse",
         "type": "object"
       },
+      "CommercialReviewAssignmentRequest": {
+        "additionalProperties": false,
+        "description": "Replace operational ownership without changing commercial disposition.",
+        "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "workflow_status": {
+            "default": "unassigned",
+            "pattern": "^(unassigned|assigned|in_progress|waiting_evidence)$",
+            "title": "Workflow Status",
+            "type": "string"
+          }
+        },
+        "title": "CommercialReviewAssignmentRequest",
+        "type": "object"
+      },
+      "CommercialReviewPrioritySignalResponse": {
+        "additionalProperties": false,
+        "description": "One transparent input to the operational review priority.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "points": {
+            "minimum": 0.0,
+            "title": "Points",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "points"
+        ],
+        "title": "CommercialReviewPrioritySignalResponse",
+        "type": "object"
+      },
+      "CommercialReviewWorkItemResponse": {
+        "additionalProperties": false,
+        "description": "One unresolved commercial item enriched with operational ownership.",
+        "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "blocker_count": {
+            "minimum": 0.0,
+            "title": "Blocker Count",
+            "type": "integer"
+          },
+          "bom_impact": {
+            "title": "Bom Impact",
+            "type": "boolean"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "overdue": {
+            "title": "Overdue",
+            "type": "boolean"
+          },
+          "part_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Number"
+          },
+          "priority_score": {
+            "minimum": 0.0,
+            "title": "Priority Score",
+            "type": "integer"
+          },
+          "priority_signals": {
+            "items": {
+              "$ref": "#/components/schemas/CommercialReviewPrioritySignalResponse"
+            },
+            "title": "Priority Signals",
+            "type": "array"
+          },
+          "priority_tier": {
+            "title": "Priority Tier",
+            "type": "string"
+          },
+          "recommended_next_action": {
+            "title": "Recommended Next Action",
+            "type": "string"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "source_status": {
+            "title": "Source Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workflow_status": {
+            "title": "Workflow Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_type",
+          "entity_id",
+          "title",
+          "part_number",
+          "category",
+          "source_status",
+          "severity",
+          "priority_score",
+          "priority_tier",
+          "workflow_status",
+          "assignee",
+          "due_at",
+          "overdue",
+          "note",
+          "bom_impact",
+          "blocker_count",
+          "recommended_next_action",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CommercialReviewWorkItemResponse",
+        "type": "object"
+      },
+      "CommercialReviewWorkQueueResponse": {
+        "additionalProperties": false,
+        "description": "Paginated operational queue for unresolved commercial governance work.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CommercialReviewWorkItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "source_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Document Id"
+          },
+          "source_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Release Id"
+          },
+          "source_release_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Release Version"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CommercialReviewWorkQueueSummaryResponse"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_document_id",
+          "source_release_id",
+          "source_release_version",
+          "summary",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "CommercialReviewWorkQueueResponse",
+        "type": "object"
+      },
+      "CommercialReviewWorkQueueSummaryResponse": {
+        "additionalProperties": false,
+        "description": "Aggregate operational state for the active commercial work queue.",
+        "properties": {
+          "exceptions": {
+            "minimum": 0.0,
+            "title": "Exceptions",
+            "type": "integer"
+          },
+          "high": {
+            "minimum": 0.0,
+            "title": "High",
+            "type": "integer"
+          },
+          "low": {
+            "minimum": 0.0,
+            "title": "Low",
+            "type": "integer"
+          },
+          "mapping_candidates": {
+            "minimum": 0.0,
+            "title": "Mapping Candidates",
+            "type": "integer"
+          },
+          "normal": {
+            "minimum": 0.0,
+            "title": "Normal",
+            "type": "integer"
+          },
+          "overdue": {
+            "minimum": 0.0,
+            "title": "Overdue",
+            "type": "integer"
+          },
+          "product_coverage": {
+            "minimum": 0.0,
+            "title": "Product Coverage",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "unassigned": {
+            "minimum": 0.0,
+            "title": "Unassigned",
+            "type": "integer"
+          },
+          "urgent": {
+            "minimum": 0.0,
+            "title": "Urgent",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "urgent",
+          "high",
+          "normal",
+          "low",
+          "unassigned",
+          "overdue",
+          "exceptions",
+          "mapping_candidates",
+          "product_coverage"
+        ],
+        "title": "CommercialReviewWorkQueueSummaryResponse",
+        "type": "object"
+      },
       "CommercialTermEvidenceResponse": {
         "additionalProperties": false,
         "description": "Human-readable commercial evidence selected for one SKU candidate.",
@@ -25345,6 +25727,227 @@
           }
         },
         "summary": "Import an authorized contract rate card CSV",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/review-work-queue": {
+      "get": {
+        "operationId": "get_commercial_review_work_queue_api_v1_pricing_review_work_queue_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "pattern": "^(all|exception|mapping_candidate|product_coverage)$",
+              "title": "Entity Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "priority",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "pattern": "^(all|urgent|high|normal|low)$",
+              "title": "Priority",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workflow_status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "pattern": "^(all|unassigned|assigned|in_progress|waiting_evidence)$",
+              "title": "Workflow Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "pattern": "^(all|high|medium|low)$",
+              "title": "Severity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assignee",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assignee"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommercialReviewWorkQueueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Prioritize unresolved commercial-governance review work",
+        "tags": [
+          "Pricing"
+        ]
+      }
+    },
+    "/api/v1/pricing/review-work-queue/{entity_type}/{entity_id}": {
+      "patch": {
+        "operationId": "replace_commercial_review_assignment_api_v1_pricing_review_work_queue__entity_type___entity_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_type",
+            "required": true,
+            "schema": {
+              "title": "Entity Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialReviewAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommercialReviewWorkItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace operational ownership for one commercial review item",
         "tags": [
           "Pricing"
         ]

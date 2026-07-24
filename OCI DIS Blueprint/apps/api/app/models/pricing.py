@@ -351,6 +351,35 @@ class CommercialException(Base, UUIDMixin, TimestampMixin):
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
+class CommercialReviewAssignment(Base, UUIDMixin, TimestampMixin):
+    """Operational ownership for a governed commercial review item."""
+
+    __tablename__ = "commercial_review_assignments"
+    __table_args__ = (
+        UniqueConstraint(
+            "entity_type",
+            "entity_id",
+            name="uq_commercial_review_assignment_entity",
+        ),
+        Index(
+            "ix_commercial_review_assignment_workflow_due",
+            "workflow_status",
+            "due_at",
+        ),
+        Index("ix_commercial_review_assignment_assignee", "assignee"),
+    )
+
+    entity_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    assignee: Mapped[Optional[str]] = mapped_column(String(100))
+    workflow_status: Mapped[str] = mapped_column(
+        String(32), default="unassigned", nullable=False
+    )
+    due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    note: Mapped[Optional[str]] = mapped_column(Text)
+    updated_by: Mapped[Optional[str]] = mapped_column(String(100))
+
+
 class CommercialEvidenceReference(Base, UUIDMixin, TimestampMixin):
     """Fine-grained source pointer supporting a commercial decision."""
 

@@ -256,6 +256,101 @@ class CommercialCoverageWorkspaceResponse(CommercialWorkspaceResponse):
     coverage_report: CommercialCoverageReportResponse
 
 
+class CommercialReviewPrioritySignalResponse(BaseModel):
+    """One transparent input to the operational review priority."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    code: str
+    label: str
+    points: int = Field(ge=0)
+
+
+class CommercialReviewWorkItemResponse(BaseModel):
+    """One unresolved commercial item enriched with operational ownership."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    entity_type: str
+    entity_id: str
+    title: str
+    part_number: Optional[str]
+    category: Optional[str]
+    source_status: str
+    severity: Optional[str]
+    priority_score: int = Field(ge=0)
+    priority_tier: str
+    priority_signals: list[CommercialReviewPrioritySignalResponse] = Field(
+        default_factory=list
+    )
+    workflow_status: str
+    assignee: Optional[str]
+    due_at: Optional[datetime]
+    overdue: bool
+    note: Optional[str]
+    bom_impact: bool
+    blocker_count: int = Field(ge=0)
+    recommended_next_action: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class CommercialReviewWorkQueueSummaryResponse(BaseModel):
+    """Aggregate operational state for the active commercial work queue."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    total: int = Field(ge=0)
+    urgent: int = Field(ge=0)
+    high: int = Field(ge=0)
+    normal: int = Field(ge=0)
+    low: int = Field(ge=0)
+    unassigned: int = Field(ge=0)
+    overdue: int = Field(ge=0)
+    exceptions: int = Field(ge=0)
+    mapping_candidates: int = Field(ge=0)
+    product_coverage: int = Field(ge=0)
+
+
+class CommercialReviewWorkQueueResponse(BaseModel):
+    """Paginated operational queue for unresolved commercial governance work."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    source_document_id: Optional[str]
+    source_release_id: Optional[str]
+    source_release_version: Optional[str]
+    summary: CommercialReviewWorkQueueSummaryResponse
+    items: list[CommercialReviewWorkItemResponse] = Field(default_factory=list)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=200)
+    total: int = Field(ge=0)
+
+
+class CommercialReviewAssignmentRequest(BaseModel):
+    """Replace operational ownership without changing commercial disposition."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    assignee: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    workflow_status: str = Field(
+        default="unassigned",
+        pattern="^(unassigned|assigned|in_progress|waiting_evidence)$",
+    )
+    due_at: Optional[datetime] = Field(default=None, strict=False)
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_operational_state(self) -> "CommercialReviewAssignmentRequest":
+        if self.assignee is not None:
+            self.assignee = self.assignee.strip() or None
+        if self.workflow_status == "unassigned" and self.assignee is not None:
+            raise ValueError("Unassigned work cannot have an assignee")
+        if self.workflow_status != "unassigned" and self.assignee is None:
+            raise ValueError("Assigned work requires an assignee")
+        return self
+
+
 class OciProductPriceSummaryResponse(BaseModel):
     """Bounded PAYG price range from the latest approved USD snapshot."""
 

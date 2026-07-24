@@ -200,6 +200,14 @@ and mapping to a specific environment. Explicit additions preserve SKU, real-uni
 quantity, activation, release, and evidence provenance through the same governed
 BOM path; unapproved products never appear in the selector.
 
+Admin Pricing → Decisions also provides an operational review queue across open
+commercial exceptions, unresolved SKU mappings, and pending product-coverage
+proposals from the active approved global release. Its deterministic priority
+explains severity, BOM impact, dependencies, blockers, readiness, and overdue
+dates. Admins may assign an owner, workflow state, due date, and note, but those
+fields never approve or resolve the underlying commercial artifact. See
+[`docs/architecture/commercial-review-work-queue.md`](./docs/architecture/commercial-review-work-queue.md).
+
 Continuous source governance keeps the currently approved commercial families
 current without self-approving source drift. Celery verifies the Oracle public
 price feed plus Cloud Estimator products, metrics, and presets every day as one
@@ -464,6 +472,13 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M60 | Safe Commercial Coverage Advancement | ✅ Complete | 2026-07-21 |
 | M61 | Governed External Rate Card Coverage | ✅ Complete | 2026-07-21 |
 | M62 | Governed OCI Product Selection in BOM Scenarios | ✅ Complete | 2026-07-21 |
+| M63 | Model-First Contextual App Assistant | ✅ Complete | 2026-07-21 |
+| M64 | Grounded Optional AI Review Explanations | ✅ Complete | 2026-07-21 |
+| M65 | Governed Structured External Capture Review | ✅ Complete | 2026-07-22 |
+| M66 | Governed Project Customer Identity | ✅ Complete | 2026-07-22 |
+| M67 | Contextual Topology Pulse | ✅ Complete | 2026-07-22 |
+| M68 | Deterministic DIS Technical Demand Propagation | ✅ Complete | 2026-07-23 |
+| M71 | Governed Commercial Review Work Queue | 🚧 Validation in progress | — |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot

@@ -14,6 +14,9 @@ from app.schemas.pricing import (
     CommercialCoverageAdvanceRequest,
     CommercialCoverageWorkspaceResponse,
     CommercialExceptionReviewRequest,
+    CommercialReviewAssignmentRequest,
+    CommercialReviewWorkItemResponse,
+    CommercialReviewWorkQueueResponse,
     CommercialWorkspaceResponse,
     GovernanceChangeSetListResponse,
     GovernanceChangeSetResponse,
@@ -36,6 +39,7 @@ from app.schemas.pricing import (
 )
 from app.services import (
     commercial_catalog_service,
+    commercial_review_queue_service,
     pricing_service,
     product_catalog_service,
     product_coverage_service,
@@ -49,6 +53,74 @@ router = APIRouter(prefix="/pricing", tags=["Pricing"])
 
 def _require_pricing_read(role: str | None) -> None:
     require_roles(role, {"Admin", "Architect", "Analyst", "Viewer"}, error_code="PRICING_READ_ROLE_REQUIRED")
+
+
+@router.get(
+    "/review-work-queue",
+    response_model=CommercialReviewWorkQueueResponse,
+    summary="Prioritize unresolved commercial-governance review work",
+)
+async def get_commercial_review_work_queue(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    search: str | None = None,
+    entity_type: str = Query(
+        "all",
+        pattern="^(all|exception|mapping_candidate|product_coverage)$",
+    ),
+    priority: str = Query("all", pattern="^(all|urgent|high|normal|low)$"),
+    workflow_status: str = Query(
+        "all",
+        pattern="^(all|unassigned|assigned|in_progress|waiting_evidence)$",
+    ),
+    severity: str = Query("all", pattern="^(all|high|medium|low)$"),
+    assignee: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialReviewWorkQueueResponse:
+    require_admin(actor_role)
+    return CommercialReviewWorkQueueResponse.model_validate(
+        await commercial_review_queue_service.list_work_queue(
+            db,
+            page=page,
+            page_size=page_size,
+            search=search,
+            entity_type=entity_type,
+            priority=priority,
+            workflow_status=workflow_status,
+            severity=severity,
+            assignee=assignee,
+        )
+    )
+
+
+@router.patch(
+    "/review-work-queue/{entity_type}/{entity_id}",
+    response_model=CommercialReviewWorkItemResponse,
+    summary="Replace operational ownership for one commercial review item",
+)
+async def replace_commercial_review_assignment(
+    entity_type: str,
+    entity_id: str,
+    body: CommercialReviewAssignmentRequest,
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header(..., alias="X-Actor-Role"),
+) -> CommercialReviewWorkItemResponse:
+    require_admin(actor_role)
+    async with db.begin():
+        return CommercialReviewWorkItemResponse.model_validate(
+            await commercial_review_queue_service.replace_assignment(
+                entity_type,
+                entity_id,
+                assignee=body.assignee,
+                workflow_status=body.workflow_status,
+                due_at=body.due_at,
+                note=body.note,
+                actor_id=actor_id,
+                db=db,
+            )
+        )
 
 
 @router.post(

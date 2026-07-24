@@ -967,6 +967,22 @@
         "application/json"
       ],
       "method": "GET",
+      "path": "/api/v1/pricing/review-work-queue",
+      "summary": "Prioritize unresolved commercial-governance review work"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "PATCH",
+      "path": "/api/v1/pricing/review-work-queue/{entity_type}/{entity_id}",
+      "summary": "Replace operational ownership for one commercial review item"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
+      "method": "GET",
       "path": "/api/v1/pricing/sku-mappings",
       "summary": "List governed SKU mappings"
     },
@@ -1663,6 +1679,11 @@
     {
       "kind": "model",
       "name": "CommercialRelease",
+      "source": "apps/api/app/models/pricing.py"
+    },
+    {
+      "kind": "model",
+      "name": "CommercialReviewAssignment",
       "source": "apps/api/app/models/pricing.py"
     },
     {
@@ -2713,6 +2734,31 @@
     {
       "kind": "schema",
       "name": "CommercialReleaseResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialReviewAssignmentRequest",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialReviewPrioritySignalResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialReviewWorkItemResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialReviewWorkQueueResponse",
+      "source": "apps/api/app/schemas/pricing.py"
+    },
+    {
+      "kind": "schema",
+      "name": "CommercialReviewWorkQueueSummaryResponse",
       "source": "apps/api/app/schemas/pricing.py"
     },
     {
@@ -200150,5 +200196,5 @@
     }
   ],
   "schema_version": "2.0.0",
-  "source_hash": "ff0eec8f77efc590c42b3489d76b03a19d4d9ead18b34ad609e52636790db9e9"
+  "source_hash": "c47bb783757d879cb45cb33fa98df0b549062b4caad24931c30a9d2158790f58"
 }

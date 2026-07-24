@@ -22,6 +22,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { emitToast } from "@/hooks/use-toast";
+import { CommercialReviewWorkQueue } from "@/components/commercial-review-work-queue";
 import { OciProductCatalog } from "@/components/oci-product-catalog";
 import { OciCoverageReview } from "@/components/oci-coverage-review";
 import { PricingCertificationOverview } from "@/components/pricing-certification-overview";
@@ -1032,7 +1033,14 @@ export function PricingAdminPanel(): JSX.Element {
       ) : null}
 
       {activeView === "decisions" ? (
-        <div id="pricing-view-decisions" role="tabpanel">
+        <div id="pricing-view-decisions" role="tabpanel" className="min-w-0 space-y-5">
+          <CommercialReviewWorkQueue
+            onOpenAdvancedReview={() => {
+              const advanced = document.getElementById("pricing-advanced-review") as HTMLDetailsElement | null;
+              if (advanced) advanced.open = true;
+              advanced?.scrollIntoView({ behavior: "smooth" });
+            }}
+          />
           <CommercialCatalogWorkspace onOpenSources={() => navigateToView("sources")} onWorkspaceChange={setCommercialContext} />
         </div>
       ) : null}

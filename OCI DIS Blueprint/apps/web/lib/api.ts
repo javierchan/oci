@@ -48,6 +48,12 @@ import type {
   CommercialCoverageAdvanceRequest,
   CommercialCoverageWorkspace,
   CommercialExceptionReviewRequest,
+  CommercialReviewAssignmentRequest,
+  CommercialReviewEntityType,
+  CommercialReviewPriority,
+  CommercialReviewWorkItem,
+  CommercialReviewWorkQueue,
+  CommercialReviewWorkflowStatus,
   CommercialWorkspace,
   DashboardSnapshot,
   DashboardSnapshotList,
@@ -1130,6 +1136,33 @@ export const api = {
     apiFetch<CommercialWorkspace>(`/api/v1/pricing/commercial-catalog${withQuery(params)}`, {
       headers: adminHeaders(),
     }),
+
+  getCommercialReviewWorkQueue: (
+    params: {
+      search?: string;
+      entity_type?: "all" | CommercialReviewEntityType;
+      priority?: "all" | CommercialReviewPriority;
+      workflow_status?: "all" | CommercialReviewWorkflowStatus;
+      severity?: "all" | "high" | "medium" | "low";
+      assignee?: string;
+      page?: number;
+      page_size?: number;
+    } = {},
+  ): Promise<CommercialReviewWorkQueue> =>
+    apiFetch<CommercialReviewWorkQueue>(
+      `/api/v1/pricing/review-work-queue${withQuery(params)}`,
+      { headers: adminHeaders() },
+    ),
+
+  replaceCommercialReviewAssignment: (
+    entityType: CommercialReviewEntityType,
+    entityId: string,
+    body: CommercialReviewAssignmentRequest,
+  ): Promise<CommercialReviewWorkItem> =>
+    apiFetch<CommercialReviewWorkItem>(
+      `/api/v1/pricing/review-work-queue/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`,
+      { method: "PATCH", headers: adminHeaders(), body: JSON.stringify(body) },
+    ),
 
   listOciProducts: (
     params: { search?: string; category?: string; page?: number; page_size?: number } = {},

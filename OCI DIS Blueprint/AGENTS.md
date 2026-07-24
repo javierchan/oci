@@ -806,6 +806,24 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       Docker migration and health; real API reconciliation; embedded-browser
       Canvas light/dark validation; and zero browser console errors pass.
 
+### M71 — Governed Commercial Review Work Queue
+- [x] Project open exceptions, unresolved mapping candidates, and pending product
+      coverage from the active approved global commercial release into one queue.
+- [x] Rank work with deterministic, reader-visible severity, BOM-impact,
+      dependency, blocker, readiness, and overdue signals without treating
+      priority as commercial confidence or approval.
+- [x] Persist Admin-owned assignee, operational state, due date, and note metadata
+      independently from authoritative commercial disposition.
+- [x] Audit every ownership mutation and keep approval, rejection, exception
+      resolution, coverage promotion, and release publication exclusively in their
+      existing governed workflows.
+- [x] Add responsive Admin Pricing search, filters, priority explanation,
+      ownership editing, pagination, and direct navigation to decision controls.
+- [ ] **Exit criteria**: migration head `20260723_0054`, focused and full backend
+      and frontend gates, generated OpenAPI, healthy production Docker stack, live
+      global-catalog reconciliation, responsive light/dark browser validation,
+      persisted assignment audit, and zero browser console errors pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector
