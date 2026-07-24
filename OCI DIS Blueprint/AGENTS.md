@@ -819,7 +819,7 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       existing governed workflows.
 - [x] Add responsive Admin Pricing search, filters, priority explanation,
       ownership editing, pagination, and direct navigation to decision controls.
-- [ ] **Exit criteria**: migration head `20260723_0054`, focused and full backend
+- [x] **Exit criteria**: migration head `20260723_0054`, focused and full backend
       and frontend gates, generated OpenAPI, healthy production Docker stack, live
       global-catalog reconciliation, responsive light/dark browser validation,
       persisted assignment audit, and zero browser console errors pass.
