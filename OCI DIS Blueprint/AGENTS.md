@@ -998,9 +998,17 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       interactions through one product selection model
 - [x] Use commercial product names, restrained environment color, and responsive
       timeline/inspector tabs without introducing a second data source
-- [x] **Exit criteria**: focused frontend tests, TypeScript/ESLint, Node 26 production
-      build, healthy production Docker stack, targeted BOM E2E, and desktop/mobile
-      light/dark browser validation pass
+- [x] Load the current governed deployment scenario as a non-destructive editable
+      revision and expose every environment as a tab with product and metric counts
+- [x] Make Add environment select a predictable standard environment immediately
+      and show its actionable empty state without copying another environment
+- [x] Let the Rollout Explorer follow the plan selection or independently scope
+      chart, products, signals, evidence, and totals to one or all environments
+- [x] Recognize `PRD` as Production and preserve expanded evidence across scope changes
+- [x] **Exit criteria**: 139 frontend tests, TypeScript/ESLint, Node 26 production
+      build, healthy Compose runtime, targeted BOM E2E, Aurora DEV/QA/PRD browser
+      verification, mobile no-overflow validation, light/dark screenshots, and
+      zero browser console warnings/errors pass
 
 ### M47 — Authoritative Object Storage Artifacts
 - [x] Make one S3-compatible service authoritative for import workbooks, exports,

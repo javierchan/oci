@@ -6,6 +6,8 @@ import type {
   BomSnapshot,
   DeploymentEnvironmentInput,
   DeploymentRampPhaseInput,
+  DeploymentScenario,
+  DeploymentScenarioCreate,
   ScenarioMetricOption,
 } from "./types";
 
@@ -21,9 +23,16 @@ export type BomRolloutSignals = {
   timingEffect: number;
 };
 export type BomRampSnapshot = {
-  currency: BomSnapshot["currency"];
+  currency?: BomSnapshot["currency"];
   monthly_series: BomSnapshot["monthly_series"];
   line_items: Array<Pick<BomSnapshot["line_items"][number], "service_id" | "environment" | "contract_amount" | "periods">>;
+};
+export type BomScopeSummary = {
+  contractTotal: number;
+  dayOneFullCapacity: number;
+  monthlyTotal: number;
+  stabilizationPeriod: number | null;
+  timingEffect: number;
 };
 
 const SERVICE_PRODUCT_LABELS: Record<string, string> = {
@@ -45,6 +54,35 @@ export function serviceProductLabel(serviceId: string): string {
       .filter(Boolean)
       .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`)
       .join(" ");
+}
+
+export function nextEnvironmentName(environments: DeploymentEnvironmentInput[]): string {
+  const existing = new Set(environments.map((environment) => environment.name.trim().toUpperCase()));
+  for (const candidate of ["DEV", "QA", "PRD", "DR"]) {
+    if (!existing.has(candidate)) return candidate;
+  }
+  let suffix = environments.length + 1;
+  while (existing.has(`ENVIRONMENT ${suffix}`)) suffix += 1;
+  return `Environment ${suffix}`;
+}
+
+export function deploymentScenarioToDraft(scenario: DeploymentScenario): DeploymentScenarioCreate {
+  return {
+    name: `${scenario.name} · revision`,
+    technical_snapshot_id: scenario.technical_snapshot_id,
+    currency: scenario.currency,
+    region: scenario.region,
+    price_mode: scenario.price_mode as DeploymentScenarioCreate["price_mode"],
+    commitment_model: scenario.commitment_model,
+    licensing_model: scenario.licensing_model,
+    contract_months: scenario.contract_months,
+    start_date: scenario.start_date,
+    proration_policy: "full_month",
+    consumption_model: scenario.consumption_model,
+    environments: scenario.environments,
+    service_config: scenario.service_config as DeploymentScenarioCreate["service_config"],
+    assumptions: scenario.assumptions,
+  };
 }
 
 export function governedRampServiceIds(
@@ -189,10 +227,31 @@ export function explicitPlanReadiness(
 export function buildBomChartData(
   snapshot: BomRampSnapshot,
   mode: BomCompositionMode,
+  environment: string | null = null,
 ): { keys: string[]; rows: Array<Record<string, number | string>> } {
-  const monthlySeries = snapshot.monthly_series.length > 0
-    ? snapshot.monthly_series
-    : rebuildMonthlySeries(snapshot.line_items);
+  const scopedLines = environment
+    ? snapshot.line_items.filter((line) => line.environment === environment)
+    : snapshot.line_items;
+  const hasScopedPeriodEvidence = scopedLines.some((line) => line.periods.length > 0);
+  const monthlySeries = environment
+    ? hasScopedPeriodEvidence
+      ? rebuildMonthlySeries(scopedLines)
+      : snapshot.monthly_series.map((period) => {
+          const total = period.by_environment[environment] ?? 0;
+          return {
+            ...period,
+            total,
+            cumulative_total: 0,
+            by_environment: { [environment]: total },
+            by_service: {},
+          };
+        }).map((period, index, periods) => ({
+          ...period,
+          cumulative_total: periods.slice(0, index + 1).reduce((total, item) => total + item.total, 0),
+        }))
+    : snapshot.monthly_series.length > 0
+      ? snapshot.monthly_series
+      : rebuildMonthlySeries(scopedLines);
   const source = mode === "environment" ? "by_environment" : "by_service";
   const keys = Array.from(
     new Set(monthlySeries.flatMap((period) => Object.keys(period[source]))),
@@ -209,6 +268,58 @@ export function buildBomChartData(
       cumulative: period.cumulative_total,
       ...(mode === "environment" ? period.by_environment : period.by_service),
     })),
+  };
+}
+
+export function summarizeBomScope(
+  snapshot: Pick<
+    BomSnapshot,
+    | "contract_total"
+    | "monthly_total"
+    | "ramp_deferred_amount"
+    | "steady_state_period"
+    | "monthly_series"
+    | "line_items"
+  >,
+  environment: string | null,
+): BomScopeSummary {
+  if (!environment) {
+    return {
+      contractTotal: snapshot.contract_total,
+      dayOneFullCapacity: snapshot.contract_total + snapshot.ramp_deferred_amount,
+      monthlyTotal: snapshot.monthly_total,
+      stabilizationPeriod: snapshot.steady_state_period,
+      timingEffect: snapshot.ramp_deferred_amount,
+    };
+  }
+  const lines = snapshot.line_items.filter((line) => line.environment === environment);
+  const contractMonths = Math.max(
+    snapshot.monthly_series.length,
+    ...lines.flatMap((line) => line.periods.map((period) => period.period_index)),
+    0,
+  );
+  const contractTotal = Math.round(
+    lines.reduce((total, line) => total + line.contract_amount, 0) * 100,
+  ) / 100;
+  const dayOneFullCapacity = Math.round(
+    lines.reduce((total, line) => {
+      const maximum = Math.max(...line.periods.map((period) => period.amount), 0);
+      return total + (maximum * contractMonths);
+    }, 0) * 100,
+  ) / 100;
+  const totals = buildBomChartData(snapshot, "environment", environment).rows.map((row) => (
+    typeof row[environment] === "number" ? row[environment] : 0
+  ));
+  const monthlyTotal = totals.at(-1) ?? 0;
+  const stabilizationPeriod = totals.findIndex((total, index) => (
+    total > 0 && totals.slice(index).every((later) => Math.abs(later - monthlyTotal) < 0.01)
+  ));
+  return {
+    contractTotal,
+    dayOneFullCapacity,
+    monthlyTotal,
+    stabilizationPeriod: stabilizationPeriod >= 0 ? stabilizationPeriod + 1 : null,
+    timingEffect: Math.max(Math.round((dayOneFullCapacity - contractTotal) * 100) / 100, 0),
   };
 }
 
@@ -259,6 +370,7 @@ export function topContractDrivers(snapshot: BomRampSnapshot, limit = 6): Array<
 function looksLikeProduction(environment: string): boolean {
   const normalized = environment.trim().toLowerCase();
   return normalized === "prod"
+    || normalized === "prd"
     || normalized === "production"
     || normalized.startsWith("prod-")
     || normalized.startsWith("prd-");
@@ -282,8 +394,10 @@ export function firstEnvironmentActivation(
 export function buildRolloutSignals(
   snapshot: Pick<BomSnapshot, "monthly_series" | "steady_state_period" | "ramp_deferred_amount">,
   environments: DeploymentEnvironmentInput[] = [],
+  environmentFilter: string | null = null,
 ): BomRolloutSignals {
   const activation = environments
+    .filter((environment) => !environmentFilter || environment.name === environmentFilter)
     .flatMap((environment) => environment.phases.flatMap((phase) => {
       const firstMonthlyPeriod = phase.interpolation === "monthly"
         ? phase.monthly_quantities.find((period) => period.quantity > 0)?.period_index
@@ -297,9 +411,13 @@ export function buildRolloutSignals(
     }))
     .sort((left, right) => left.period - right.period || left.environment.localeCompare(right.environment));
   return {
-    firstEnvironment: activation[0] ?? firstEnvironmentActivation(snapshot),
+    firstEnvironment: activation[0]
+      ?? firstEnvironmentActivation(snapshot, (environment) => !environmentFilter || environment === environmentFilter),
     productionStart: activation.find((item) => looksLikeProduction(item.environment))
-      ?? firstEnvironmentActivation(snapshot, looksLikeProduction),
+      ?? firstEnvironmentActivation(
+        snapshot,
+        (environment) => (!environmentFilter || environment === environmentFilter) && looksLikeProduction(environment),
+      ),
     stabilizationPeriod: snapshot.steady_state_period,
     timingEffect: snapshot.ramp_deferred_amount,
   };

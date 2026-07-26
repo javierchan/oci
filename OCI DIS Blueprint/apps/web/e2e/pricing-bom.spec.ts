@@ -293,7 +293,14 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(page.getByRole("heading", { name: "Demand, commercial variant, price and provenance" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "When capacity starts, what drives cost, and where it lands" })).toBeVisible();
 
-  const productSearch = page.getByPlaceholder("Find product, metric, or SKU...");
+  const environmentTabs = page.getByRole("tablist", { name: "Scenario environments" });
+  await expect(environmentTabs.getByRole("tab", { name: /^Production/ })).toBeVisible();
+  await expect(environmentTabs.getByRole("tab", { name: /^QA/ })).toBeVisible();
+  await environmentTabs.getByRole("tab", { name: /^QA/ }).click();
+  await expect(page.getByRole("tabpanel", { name: "QA consumption plan" })).toBeVisible();
+  await environmentTabs.getByRole("tab", { name: /^Production/ }).click();
+
+  const productSearch = page.getByPlaceholder("Find product, metric, or SKU in Production...");
   await productSearch.fill("B92598");
   const dataIntegrationProduct = page.locator("article").filter({ hasText: "OCI Data Integration" }).first();
   await expect(dataIntegrationProduct).toBeVisible();
@@ -307,7 +314,7 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(dataIntegrationProduct.getByText("Always-on assumption", { exact: false })).toHaveCount(0);
   await productSearch.clear();
 
-  const productionPlan = page.getByRole("region", { name: "Production consumption plan" });
+  const productionPlan = page.getByRole("tabpanel", { name: "Production consumption plan" });
   await productionPlan.getByRole("button", { name: "Add OCI product" }).click();
   await productionPlan.getByPlaceholder("Search product, category, or service ID...").fill(
     manuallySelectableProduct?.product_name ?? "",
@@ -342,7 +349,7 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await newEnvironmentName.fill("");
   await newEnvironmentName.pressSequentially("Disaster Recovery", { delay: 15 });
   await expect(newEnvironmentName).toHaveValue("Disaster Recovery");
-  const disasterRecovery = page.getByRole("region", { name: "Disaster Recovery consumption plan" });
+  const disasterRecovery = page.getByRole("tabpanel", { name: "Disaster Recovery consumption plan" });
   await disasterRecovery.getByRole("button", { name: "Add metric" }).click();
   await disasterRecovery.getByRole("combobox", {
     name: "Product metric to add to Disaster Recovery",
@@ -356,6 +363,16 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(firstMonthlyQuantity).toHaveValue("3");
   await page.getByRole("button", { name: "Standard" }).click();
   await disasterRecovery.getByTitle("Remove environment").click();
+
+  const rolloutEnvironment = page.getByRole("combobox", { name: "Rollout environment scope" });
+  await expect(rolloutEnvironment).toContainText("QA");
+  await rolloutEnvironment.click();
+  await page.getByRole("option", { name: /^All environments/ }).click();
+  await expect(rolloutEnvironment).toContainText("All environments");
+  await rolloutEnvironment.click();
+  await page.getByRole("option", { name: /^Production/ }).click();
+  await expect(rolloutEnvironment).toContainText("Production");
+  await expect(page.getByText(/products · Production$/).first()).toBeVisible();
 
   await expect(page.getByLabel("Monthly cost ramp chart").locator("svg").first()).toBeVisible();
   await expect(page.getByText("Products and activation", { exact: true })).toBeVisible();

@@ -7,18 +7,21 @@ import {
   buildBomChartData,
   buildComparisonPeriodData,
   buildRolloutSignals,
+  deploymentScenarioToDraft,
   explicitPlanReadiness,
   explicitQuantityPhase,
   governedRampServiceIds,
   linePeriodMonthlyQuantities,
+  nextEnvironmentName,
   phaseMonthlyQuantities,
   resizeConsumptionPlan,
   serviceProductLabel,
+  summarizeBomScope,
   topContractDrivers,
   withMonthlyQuantity,
 } from "./bom-ramp";
 import type { BomRampSnapshot } from "./bom-ramp";
-import type { BomSnapshot } from "./types";
+import type { BomSnapshot, DeploymentScenario } from "./types";
 
 const snapshot: BomRampSnapshot = {
   currency: "USD",
@@ -38,6 +41,40 @@ describe("BOM ramp presentation", () => {
     const result = buildBomChartData(snapshot, "environment");
     expect(result.keys).toEqual(["Production", "QA"]);
     expect(result.rows[1]).toMatchObject({ month: "Feb 26", Production: 50, QA: 20, cumulative: 90 });
+  });
+
+  it("filters chart composition and cumulative totals to one environment", () => {
+    const scopedSnapshot: BomRampSnapshot = {
+      currency: "USD",
+      monthly_series: snapshot.monthly_series,
+      line_items: [
+        {
+          service_id: "OIC3",
+          environment: "DEV",
+          contract_amount: 30,
+          periods: [
+            { period_index: 1, period_start: "2026-01-01", amount: 10 },
+            { period_index: 2, period_start: "2026-02-01", amount: 20 },
+          ] as BomSnapshot["line_items"][number]["periods"],
+        },
+        {
+          service_id: "STREAMING",
+          environment: "PRD",
+          contract_amount: 70,
+          periods: [
+            { period_index: 1, period_start: "2026-01-01", amount: 0 },
+            { period_index: 2, period_start: "2026-02-01", amount: 70 },
+          ] as BomSnapshot["line_items"][number]["periods"],
+        },
+      ],
+    };
+    expect(buildBomChartData(scopedSnapshot, "service", "DEV")).toEqual({
+      keys: ["OIC3"],
+      rows: [
+        { month: "Jan 26", cumulative: 10, OIC3: 10 },
+        { month: "Feb 26", cumulative: 30, OIC3: 20 },
+      ],
+    });
   });
 
   it("rebuilds a missing aggregate chart from immutable line periods", () => {
@@ -78,6 +115,63 @@ describe("BOM ramp presentation", () => {
       stabilizationPeriod: 2,
       timingEffect: 35,
     });
+  });
+
+  it("recognizes PRD as production and scopes rollout signals", () => {
+    const environments = [
+      {
+        name: "DEV",
+        active_hours_month: 160,
+        demand_share: 1,
+        ha_multiplier: 1,
+        dr_role: "none" as const,
+        phases: [{
+          service_id: "OIC3",
+          metric_key: "messages",
+          start_month: 1,
+          end_month: 12,
+          start_multiplier: 1,
+          end_multiplier: 1,
+          interpolation: "step" as const,
+          start_quantity: 1,
+          end_quantity: 1,
+          quantity_unit: "packs",
+          monthly_quantities: [],
+          rationale: null,
+        }],
+      },
+      {
+        name: "PRD",
+        active_hours_month: 744,
+        demand_share: 1,
+        ha_multiplier: 1,
+        dr_role: "none" as const,
+        phases: [{
+          service_id: "OIC3",
+          metric_key: "messages",
+          start_month: 13,
+          end_month: 36,
+          start_multiplier: 1,
+          end_multiplier: 1,
+          interpolation: "step" as const,
+          start_quantity: 1,
+          end_quantity: 1,
+          quantity_unit: "packs",
+          monthly_quantities: [],
+          rationale: null,
+        }],
+      },
+    ];
+    expect(buildRolloutSignals({
+      monthly_series: [],
+      steady_state_period: 36,
+      ramp_deferred_amount: 100,
+    }, environments).productionStart).toEqual({ environment: "PRD", period: 13 });
+    expect(buildRolloutSignals({
+      monthly_series: [],
+      steady_state_period: 36,
+      ramp_deferred_amount: 100,
+    }, environments, "DEV").productionStart).toBeNull();
   });
 
   it("uses capacity activation even when an included product has no cost", () => {
@@ -238,5 +332,79 @@ describe("BOM ramp presentation", () => {
       ["STREAMING", "OIC3"],
       [{ phases: [{ service_id: "OIC3" }, { service_id: "QUEUE" }, { service_id: null }] }],
     )).toEqual(["QUEUE", "STREAMING", "OIC3"]);
+  });
+
+  it("selects a predictable environment name and preserves an approved scenario as a revision", () => {
+    const baseEnvironment = {
+      name: "DEV",
+      active_hours_month: 160,
+      demand_share: 1,
+      ha_multiplier: 1,
+      dr_role: "none" as const,
+      phases: [],
+    };
+    expect(nextEnvironmentName([baseEnvironment])).toBe("QA");
+    expect(nextEnvironmentName([
+      baseEnvironment,
+      { ...baseEnvironment, name: "QA" },
+      { ...baseEnvironment, name: "PRD" },
+    ])).toBe("DR");
+
+    const scenario = {
+      id: "scenario-1",
+      project_id: "project-1",
+      name: "Ideal 36M",
+      status: "approved",
+      currency: "USD",
+      region: "mx-queretaro-1",
+      price_mode: "public_list",
+      commitment_model: "annual_flex",
+      licensing_model: "byol",
+      technical_snapshot_id: "snapshot-1",
+      contract_months: 36,
+      start_date: "2027-01-01",
+      proration_policy: "full_month",
+      consumption_model: "explicit_units",
+      environments: [baseEnvironment],
+      service_config: {},
+      assumptions: {},
+      created_by: "seed",
+      approved_by: "architect",
+      approved_at: "2026-07-26T00:00:00Z",
+      created_at: "2026-07-26T00:00:00Z",
+      updated_at: "2026-07-26T00:00:00Z",
+    } satisfies DeploymentScenario;
+    expect(deploymentScenarioToDraft(scenario)).toMatchObject({
+      name: "Ideal 36M · revision",
+      technical_snapshot_id: "snapshot-1",
+      contract_months: 36,
+      environments: [baseEnvironment],
+    });
+  });
+
+  it("summarizes selected-environment contract and timing values", () => {
+    const line = {
+      environment: "DEV",
+      service_id: "OIC3",
+      contract_amount: 30,
+      periods: [
+        { period_index: 1, period_start: "2026-01-01", amount: 10 },
+        { period_index: 2, period_start: "2026-02-01", amount: 20 },
+      ],
+    } as BomSnapshot["line_items"][number];
+    expect(summarizeBomScope({
+      contract_total: 100,
+      monthly_total: 70,
+      ramp_deferred_amount: 40,
+      steady_state_period: 2,
+      monthly_series: snapshot.monthly_series,
+      line_items: [line],
+    }, "DEV")).toEqual({
+      contractTotal: 30,
+      dayOneFullCapacity: 40,
+      monthlyTotal: 20,
+      stabilizationPeriod: 2,
+      timingEffect: 10,
+    });
   });
 });

@@ -21,6 +21,7 @@ import { api, getErrorMessage } from "@/lib/api";
 import {
   explicitPlanReadiness,
   explicitQuantityPhase,
+  nextEnvironmentName,
   phaseMonthlyQuantities,
   withMonthlyQuantity,
 } from "@/lib/bom-ramp";
@@ -39,7 +40,9 @@ type ConsumptionEditorProps = {
   environments: DeploymentEnvironmentInput[];
   metricOptions: ScenarioMetricOption[];
   detectedServiceIds: string[];
+  selectedEnvironmentIndex: number;
   onChange: (_environments: DeploymentEnvironmentInput[]) => void;
+  onSelectedEnvironmentIndexChange: (_index: number) => void;
 };
 
 type IndexedPhase = { phase: DeploymentRampPhaseInput; phaseIndex: number };
@@ -103,7 +106,9 @@ export function BomConsumptionEditor({
   environments,
   metricOptions,
   detectedServiceIds,
+  selectedEnvironmentIndex,
   onChange,
+  onSelectedEnvironmentIndexChange,
 }: ConsumptionEditorProps): JSX.Element {
   const [mode, setMode] = useState<"standard" | "monthly">("standard");
   const [productQuery, setProductQuery] = useState("");
@@ -118,6 +123,7 @@ export function BomConsumptionEditor({
   const [catalogError, setCatalogError] = useState("");
   const [rehydrationError, setRehydrationError] = useState("");
   const [addingServiceId, setAddingServiceId] = useState("");
+  const [environmentNotice, setEnvironmentNotice] = useState("");
   const [supplementalMetricOptions, setSupplementalMetricOptions] = useState<ScenarioMetricOption[]>([]);
   const rehydratingServices = useRef(new Set<string>());
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(
@@ -128,6 +134,11 @@ export function BomConsumptionEditor({
   );
   const readiness = useMemo(() => explicitPlanReadiness(environments), [environments]);
   const detectedServices = useMemo(() => new Set(detectedServiceIds), [detectedServiceIds]);
+  const activeEnvironmentIndex = Math.min(
+    Math.max(selectedEnvironmentIndex, 0),
+    Math.max(environments.length - 1, 0),
+  );
+  const activeEnvironment = environments[activeEnvironmentIndex] ?? null;
   const allMetricOptions = useMemo(() => {
     const unique = new Map<string, ScenarioMetricOption>();
     for (const option of [...metricOptions, ...supplementalMetricOptions]) {
@@ -191,18 +202,28 @@ export function BomConsumptionEditor({
   }
 
   function addEnvironment(): void {
+    const name = nextEnvironmentName(environments);
+    const nextIndex = environments.length;
     onChange([...environments, {
-      name: `Environment ${environments.length + 1}`,
+      name,
       active_hours_month: 744,
       demand_share: 1,
       ha_multiplier: 1,
       dr_role: "none",
       phases: [],
     }]);
+    onSelectedEnvironmentIndexChange(nextIndex);
+    setSelectedProducts((current) => ({ ...current, [nextIndex]: "" }));
+    setEnvironmentNotice(`${name} added and selected. Add at least one product metric before saving.`);
   }
 
   function removeEnvironment(index: number): void {
-    if (environments.length > 1) onChange(environments.filter((_, current) => current !== index));
+    if (environments.length <= 1) return;
+    const removedName = environments[index].name;
+    const nextEnvironments = environments.filter((_, current) => current !== index);
+    onChange(nextEnvironments);
+    onSelectedEnvironmentIndexChange(Math.min(index, nextEnvironments.length - 1));
+    setEnvironmentNotice(`${removedName} removed from this unsaved scenario revision.`);
   }
 
   function availableOptions(environmentIndex: number): ScenarioMetricOption[] {
@@ -403,6 +424,7 @@ export function BomConsumptionEditor({
           <button type="button" className="app-button-secondary gap-2" onClick={addEnvironment}><Plus className="h-4 w-4" />Add environment</button>
         </div>
       </div>
+      <p className="sr-only" aria-live="polite">{environmentNotice}</p>
 
       <div className="mt-4 grid gap-2 border-y border-[var(--color-border)] py-3 text-xs text-[var(--color-text-secondary)] sm:grid-cols-3">
         <p><span className="font-semibold text-[var(--color-text-primary)]">1. Environment</span><br />Define DEV, QA, PROD, or DR and its runtime posture.</p>
@@ -410,15 +432,60 @@ export function BomConsumptionEditor({
         <p><span className="font-semibold text-[var(--color-text-primary)]">3. Activation</span><br />Use a constant, linear, or exact month-by-month schedule.</p>
       </div>
 
+      <div className="mt-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="app-label">Scenario environments</p>
+            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+              Choose one environment to review its products, SKUs, quantities, and activation.
+            </p>
+          </div>
+          <span className="text-xs font-semibold text-[var(--color-text-secondary)]">
+            {environments.length} environment{environments.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Scenario environments">
+          {environments.map((environment, index) => {
+            const productCount = new Set(environment.phases.map((phase) => phase.service_id).filter(Boolean)).size;
+            const selected = index === activeEnvironmentIndex;
+            return (
+              <button
+                key={`environment-tab-${index}`}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls={`environment-panel-${index}`}
+                className={`min-w-40 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                  selected
+                    ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
+                    : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-2)]"
+                }`}
+                onClick={() => {
+                  onSelectedEnvironmentIndexChange(index);
+                  setEnvironmentNotice(`${environment.name} selected.`);
+                }}
+              >
+                <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">
+                  {environment.name || `Environment ${index + 1}`}
+                </span>
+                <span className="mt-1 block whitespace-nowrap text-xs">
+                  {productCount} product{productCount === 1 ? "" : "s"} · {environment.phases.length} metric{environment.phases.length === 1 ? "" : "s"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <label className="relative mt-4 block max-w-lg">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
-        <span className="sr-only">Find product, metric, or SKU</span>
-        <input value={productQuery} onChange={(event) => setProductQuery(event.target.value)} placeholder="Find product, metric, or SKU..." className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] pl-9 pr-3 text-sm text-[var(--color-text-primary)]" />
+        <span className="sr-only">Find product, metric, or SKU in {activeEnvironment?.name ?? "selected environment"}</span>
+        <input value={productQuery} onChange={(event) => setProductQuery(event.target.value)} placeholder={`Find product, metric, or SKU in ${activeEnvironment?.name ?? "environment"}...`} className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] pl-9 pr-3 text-sm text-[var(--color-text-primary)]" />
       </label>
       {rehydrationError ? <p role="alert" className="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-300">{rehydrationError}</p> : null}
 
       <div className="mt-2 divide-y divide-[var(--color-border)]">
-        {environments.map((environment, environmentIndex) => {
+        {(activeEnvironment ? [{ environment: activeEnvironment, environmentIndex: activeEnvironmentIndex }] : []).map(({ environment, environmentIndex }) => {
           const available = availableOptions(environmentIndex);
           const allGroups = phaseGroups(environment, "", "");
           const selectedProduct = selectedProducts[environmentIndex] ?? "";
@@ -427,7 +494,7 @@ export function BomConsumptionEditor({
           const isCatalogOpen = catalogEnvironment === environmentIndex;
           const plannedServiceIds = new Set(environment.phases.map((phase) => phase.service_id));
           return (
-            <section key={`environment-${environmentIndex}`} className="py-5" aria-label={`${environment.name || `Environment ${environmentIndex + 1}`} consumption plan`}>
+            <section id={`environment-panel-${environmentIndex}`} key={`environment-${environmentIndex}`} role="tabpanel" className="py-5" aria-label={`${environment.name || `Environment ${environmentIndex + 1}`} consumption plan`}>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <label className="block max-w-xl text-xs font-semibold text-[var(--color-text-secondary)]">Environment<input aria-label={`Environment ${environmentIndex + 1} name`} className={inputClass} value={environment.name} onChange={(event) => patchEnvironment(environmentIndex, { name: event.target.value })} /></label>

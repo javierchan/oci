@@ -254,13 +254,20 @@ Rollout Explorer. Four executive signals identify the first active environment,
 Production start, stabilization month, and rollout timing effect. The stacked
 monthly cost and cumulative commitment chart coordinates with a commercial-name
 driver ranking, progressive product/environment timeline, and contextual
-inspector. Constant, linear, exact-monthly, packaged, and included quantities
-retain distinct visual forms without changing governed calculations. Selecting a
-driver or product highlights the same product throughout the chart, timeline, and
-commercial evidence. XLSX exports add `Monthly Schedule` and `Line Periods`; JSON moves to schema
+inspector. The editor opens the current governed scenario as a new, non-destructive
+revision and exposes every environment as a selectable tab with product and metric
+counts. The Rollout Explorer follows that selection by default, but can independently
+scope the chart, cumulative series, signals, product list, driver ranking, inspector,
+and summary totals to one environment or `All environments`. A newly added
+environment becomes selected immediately and remains visibly empty until governed
+product metrics are assigned; it never inherits data from another environment.
+Constant, linear, exact-monthly, packaged, and included quantities retain distinct
+visual forms without changing governed calculations. Selecting a driver or product
+highlights the same product throughout the chart, timeline, and commercial evidence.
+XLSX exports add `Monthly Schedule` and `Line Periods`; JSON moves to schema
 `oci-dis-bom-2.0`; PDF includes the key ramp KPIs. The BOM Scenario Agent and the
-contextual assistant receive the same governed series but cannot change any
-quantity, price, phase, or total.
+contextual assistant receive the same governed series but cannot change any quantity,
+price, phase, or total.
 
 The editor uses three explicit levels:
 

@@ -29,7 +29,9 @@ import {
   linePeriodMonthlyQuantities,
   phaseMonthlyQuantities,
   serviceProductLabel,
+  summarizeBomScope,
 } from "@/lib/bom-ramp";
+import { GovernedSelect } from "@/components/governed-select";
 import type {
   BomLineItem,
   BomSnapshot,
@@ -87,17 +89,24 @@ function lineActiveRange(line: BomLineItem): { first: number; last: number } | n
   };
 }
 
-function buildProducts(snapshot: BomSnapshot, scenario: DeploymentScenario | null): RolloutProduct[] {
-  const serviceIds = new Set(snapshot.line_items.map((line) => line.service_id));
-  for (const environment of scenario?.environments ?? []) {
+function buildProducts(
+  snapshot: BomSnapshot,
+  scenario: DeploymentScenario | null,
+  environmentFilter: string | null,
+): RolloutProduct[] {
+  const scopedLines = snapshot.line_items.filter((line) => !environmentFilter || line.environment === environmentFilter);
+  const scopedEnvironments = (scenario?.environments ?? []).filter((environment) => !environmentFilter || environment.name === environmentFilter);
+  const scopedContractTotal = scopedLines.reduce((total, line) => total + line.contract_amount, 0);
+  const serviceIds = new Set(scopedLines.map((line) => line.service_id));
+  for (const environment of scopedEnvironments) {
     for (const phase of environment.phases) {
       if (phase.service_id) serviceIds.add(phase.service_id);
     }
   }
 
   return [...serviceIds].map((serviceId) => {
-    const lines = snapshot.line_items.filter((line) => line.service_id === serviceId);
-    const phases = (scenario?.environments ?? []).flatMap((environment) => environment.phases
+    const lines = scopedLines.filter((line) => line.service_id === serviceId);
+    const phases = scopedEnvironments.flatMap((environment) => environment.phases
       .filter((phase) => phase.service_id === serviceId)
       .map((phase) => ({ environment: environment.name, phase })));
     const ranges = [
@@ -112,7 +121,7 @@ function buildProducts(snapshot: BomSnapshot, scenario: DeploymentScenario | nul
       serviceId,
       label: serviceProductLabel(serviceId),
       contractAmount,
-      sharePct: snapshot.contract_total > 0 ? (contractAmount / snapshot.contract_total) * 100 : 0,
+      sharePct: scopedContractTotal > 0 ? (contractAmount / scopedContractTotal) * 100 : 0,
       firstPeriod: ranges.length > 0 ? Math.min(...ranges.map((range) => range.first)) : null,
       lastPeriod: ranges.length > 0 ? Math.max(...ranges.map((range) => range.last)) : null,
       environments: [...new Set([
@@ -454,30 +463,74 @@ export function BomRolloutExplorer({
   snapshot,
   scenario,
   metricOptions,
+  preferredEnvironment,
   onEditScenario,
 }: {
   snapshot: BomSnapshot;
   scenario: DeploymentScenario | null;
   metricOptions: ScenarioMetricOption[];
+  preferredEnvironment: string | null;
   onEditScenario: () => void;
 }): JSX.Element {
   const [compositionMode, setCompositionMode] = useState<"environment" | "service">("environment");
+  const [environmentScope, setEnvironmentScope] = useState<string>("follow");
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
   const [openEnvironment, setOpenEnvironment] = useState<string | null>(null);
   const [mobilePanel, setMobilePanel] = useState<"timeline" | "inspector">("timeline");
-  const chart = useMemo(() => buildBomChartData(snapshot, compositionMode), [compositionMode, snapshot]);
-  const products = useMemo(() => buildProducts(snapshot, scenario), [scenario, snapshot]);
-  const signals = useMemo(() => buildRolloutSignals(snapshot, scenario?.environments), [scenario?.environments, snapshot]);
+  const environmentNames = useMemo(() => [...new Set([
+    ...(scenario?.environments ?? []).map((environment) => environment.name),
+    ...snapshot.line_items.map((line) => line.environment),
+    ...(preferredEnvironment ? [preferredEnvironment] : []),
+  ])], [preferredEnvironment, scenario?.environments, snapshot.line_items]);
+  const effectiveEnvironment = environmentScope === "follow"
+    ? (preferredEnvironment && environmentNames.includes(preferredEnvironment) ? preferredEnvironment : null)
+    : environmentScope === "all"
+      ? null
+      : environmentScope.startsWith("environment:")
+        ? environmentScope.slice("environment:".length)
+        : null;
+  const chart = useMemo(
+    () => buildBomChartData(snapshot, compositionMode, effectiveEnvironment),
+    [compositionMode, effectiveEnvironment, snapshot],
+  );
+  const products = useMemo(
+    () => buildProducts(snapshot, scenario, effectiveEnvironment),
+    [effectiveEnvironment, scenario, snapshot],
+  );
+  const scopeSummary = useMemo(
+    () => summarizeBomScope(snapshot, effectiveEnvironment),
+    [effectiveEnvironment, snapshot],
+  );
+  const signals = useMemo(() => {
+    const scopedSignals = buildRolloutSignals(snapshot, scenario?.environments, effectiveEnvironment);
+    return {
+      ...scopedSignals,
+      stabilizationPeriod: scopeSummary.stabilizationPeriod,
+      timingEffect: scopeSummary.timingEffect,
+    };
+  }, [effectiveEnvironment, scenario?.environments, scopeSummary, snapshot]);
   const selectedProduct = products.find((product) => product.serviceId === selectedServiceId) ?? products[0] ?? null;
 
   useEffect(() => {
-    if (!products.some((product) => product.serviceId === selectedServiceId)) {
+    if (
+      environmentScope.startsWith("environment:")
+      && !environmentNames.includes(environmentScope.slice("environment:".length))
+    ) {
+      setEnvironmentScope("all");
+    }
+  }, [environmentNames, environmentScope]);
+
+  useEffect(() => {
+    const currentProduct = products.find((product) => product.serviceId === selectedServiceId);
+    if (!currentProduct) {
       setSelectedServiceId(products[0]?.serviceId ?? null);
       setExpandedServiceId(products[0]?.serviceId ?? null);
       setOpenEnvironment(products[0]?.environments[0] ?? null);
+    } else if (!currentProduct.environments.includes(openEnvironment ?? "")) {
+      setOpenEnvironment(currentProduct.environments[0] ?? null);
     }
-  }, [products, selectedServiceId]);
+  }, [openEnvironment, products, selectedServiceId]);
 
   function selectProduct(product: RolloutProduct): void {
     setSelectedServiceId(product.serviceId);
@@ -504,9 +557,34 @@ export function BomRolloutExplorer({
             <h2 id="rollout-explorer-title" className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">When capacity starts, what drives cost, and where it lands</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">Read the contract from activation to steady state. Select a product in the ranking, chart, or timeline to inspect its exact environments, quantities, SKU, and price evidence.</p>
           </div>
-          <div className="inline-flex rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-1" role="group" aria-label="Group monthly consumption">
-            <button type="button" className={`rounded-md px-3 py-2 text-sm font-semibold ${compositionMode === "environment" ? "bg-[var(--color-accent)] text-white" : "text-[var(--color-text-secondary)]"}`} aria-pressed={compositionMode === "environment"} onClick={() => setCompositionMode("environment")}>Environment</button>
-            <button type="button" className={`rounded-md px-3 py-2 text-sm font-semibold ${compositionMode === "service" ? "bg-[var(--color-accent)] text-white" : "text-[var(--color-text-secondary)]"}`} aria-pressed={compositionMode === "service"} onClick={() => setCompositionMode("service")}>Product</button>
+          <div className="flex min-w-[16rem] flex-col gap-2 sm:items-end">
+            <GovernedSelect
+              ariaLabel="Rollout environment scope"
+              className="w-full min-w-[16rem]"
+              value={environmentScope}
+              options={[
+                {
+                  value: "follow",
+                  label: preferredEnvironment ? `Follow plan selection (${preferredEnvironment})` : "Follow plan selection (all)",
+                  description: "Keep the explorer synchronized with the environment selected in the plan editor.",
+                },
+                {
+                  value: "all",
+                  label: "All environments",
+                  description: "Combine every environment in the current immutable BOM snapshot.",
+                },
+                ...environmentNames.map((environment) => ({
+                  value: `environment:${environment}`,
+                  label: environment,
+                  description: `Show only products, activation, and cost assigned to ${environment}.`,
+                })),
+              ]}
+              onChange={setEnvironmentScope}
+            />
+            <div className="inline-flex rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-1" role="group" aria-label="Group monthly consumption">
+              <button type="button" className={`rounded-md px-3 py-2 text-sm font-semibold ${compositionMode === "environment" ? "bg-[var(--color-accent)] text-white" : "text-[var(--color-text-secondary)]"}`} aria-pressed={compositionMode === "environment"} onClick={() => setCompositionMode("environment")}>Environment</button>
+              <button type="button" className={`rounded-md px-3 py-2 text-sm font-semibold ${compositionMode === "service" ? "bg-[var(--color-accent)] text-white" : "text-[var(--color-text-secondary)]"}`} aria-pressed={compositionMode === "service"} onClick={() => setCompositionMode("service")}>Product</button>
+            </div>
           </div>
         </div>
 
@@ -514,7 +592,7 @@ export function BomRolloutExplorer({
           {signalRows.map((signal) => <div key={signal.label} className="flex min-h-24 gap-3 border-b border-[var(--color-border)] px-3 py-4 last:border-b-0 sm:[&:nth-child(odd)]:border-r sm:[&:nth-child(n+3)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0"><signal.icon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-accent)]" /><div><p className="app-label">{signal.label}</p><p className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">{signal.value}</p></div></div>)}
         </div>
 
-        <div className="mt-5 h-[320px] w-full" aria-label="Monthly cost ramp chart">
+        <div className="mt-5 h-[320px] w-full" aria-label={`Monthly cost ramp chart · ${effectiveEnvironment ?? "All environments"}`}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chart.rows} margin={{ top: 8, right: 12, bottom: 8, left: 4 }}>
               <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
@@ -540,9 +618,14 @@ export function BomRolloutExplorer({
           <div className={`${mobilePanel === "timeline" ? "block" : "hidden"} min-w-0 border-[var(--color-border)] lg:block lg:border-r`}>
             <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4">
               <div><p className="app-label">Products and activation</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">Expand a product, then an environment, to inspect its governed consumption shape.</p></div>
-              <span className="text-xs text-[var(--color-text-muted)]">{products.length} products</span>
+              <span className="text-xs text-[var(--color-text-muted)]">{products.length} products · {effectiveEnvironment ?? "all environments"}</span>
             </div>
             <div className="divide-y divide-[var(--color-border)]">
+              {products.length === 0 ? (
+                <div className="px-5 py-8 text-sm leading-6 text-[var(--color-text-secondary)]">
+                  No priced products exist for {effectiveEnvironment ?? "this scope"} in the current immutable BOM. Add consumption to the scenario, save and approve it, then generate a new BOM snapshot.
+                </div>
+              ) : null}
               {products.map((product) => {
                 const expanded = expandedServiceId === product.serviceId;
                 const selected = selectedProduct?.serviceId === product.serviceId;
@@ -591,10 +674,10 @@ export function BomRolloutExplorer({
       </div>
 
       <div className="grid gap-4 border-t border-[var(--color-border)] px-5 py-4 sm:grid-cols-3">
-        <div><p className="app-label">Day-one full capacity</p><p className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">{currency(snapshot.contract_total + snapshot.ramp_deferred_amount, snapshot.currency)}</p></div>
-        <div><p className="app-label">Phased activation effect</p><p className="mt-1 text-lg font-semibold text-[var(--color-accent)]">-{currency(snapshot.ramp_deferred_amount, snapshot.currency)}</p></div>
-        <div><p className="app-label">Planned contract</p><p className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">{currency(snapshot.contract_total, snapshot.currency)}</p></div>
-        <p className="text-xs leading-5 text-[var(--color-text-muted)] sm:col-span-3">Timing effect compares this rollout with full capacity active from month one. It is not a negotiated discount or guaranteed saving.</p>
+        <div><p className="app-label">Day-one full capacity</p><p className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">{currency(scopeSummary.dayOneFullCapacity, snapshot.currency)}</p></div>
+        <div><p className="app-label">Phased activation effect</p><p className="mt-1 text-lg font-semibold text-[var(--color-accent)]">-{currency(scopeSummary.timingEffect, snapshot.currency)}</p></div>
+        <div><p className="app-label">Planned contract</p><p className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">{currency(scopeSummary.contractTotal, snapshot.currency)}</p></div>
+        <p className="text-xs leading-5 text-[var(--color-text-muted)] sm:col-span-3">Scope: {effectiveEnvironment ?? "all environments"}. Timing effect compares this rollout with full capacity active from month one. It is not a negotiated discount or guaranteed saving.</p>
       </div>
     </section>
   );

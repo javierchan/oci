@@ -38,6 +38,7 @@ import { api, apiDownloadBlob, getErrorMessage } from "@/lib/api";
 import {
   activeComparisonCategories,
   buildComparisonPeriodData,
+  deploymentScenarioToDraft,
   explicitPlanReadiness,
   resizeConsumptionPlan,
 } from "@/lib/bom-ramp";
@@ -124,6 +125,8 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
   const [draft, setDraft] = useState<DeploymentScenarioCreate | null>(null);
   const [scenarios, setScenarios] = useState<DeploymentScenario[]>([]);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>("");
+  const [editorScenarioId, setEditorScenarioId] = useState<string>("");
+  const [selectedEnvironmentIndex, setSelectedEnvironmentIndex] = useState<number>(0);
   const [jobs, setJobs] = useState<BomJob[]>([]);
   const [snapshots, setSnapshots] = useState<BomSnapshot[]>([]);
   const [selectedSnapshot, setSelectedSnapshot] = useState<BomSnapshot | null>(null);
@@ -147,14 +150,24 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
         api.listBomJobs(projectId, 12),
         api.listBomSnapshots(projectId, 12),
       ]);
+      const defaultScenarioId = (
+        assistantResult?.current_bom?.scenario_id
+        && scenarioResult.scenarios.some((scenario) => scenario.id === assistantResult.current_bom?.scenario_id)
+      )
+        ? assistantResult.current_bom.scenario_id
+        : scenarioResult.scenarios.find((scenario) => scenario.status === "approved")?.id
+          ?? scenarioResult.scenarios[0]?.id
+          ?? "";
+      const defaultScenario = scenarioResult.scenarios.find((scenario) => scenario.id === defaultScenarioId) ?? null;
       setAssistant(assistantResult);
-      setDraft((current) => current ?? assistantResult?.draft ?? null);
+      setDraft((current) => current ?? (defaultScenario ? deploymentScenarioToDraft(defaultScenario) : assistantResult?.draft ?? null));
       setScenarios(scenarioResult.scenarios);
+      setEditorScenarioId((current) => current || defaultScenario?.id || "");
       setJobs(jobResult.jobs);
       setSnapshots(snapshotResult.snapshots);
       setComparisonSnapshotId((current) => current || snapshotResult.snapshots[0]?.id || "");
       setBaselineSnapshotId((current) => current || snapshotResult.snapshots[1]?.id || "");
-      setSelectedScenarioId((current) => current || scenarioResult.scenarios.find((row) => row.status === "approved")?.id || scenarioResult.scenarios[0]?.id || "");
+      setSelectedScenarioId((current) => current || defaultScenarioId);
       const latest = snapshotResult.snapshots[0] ?? null;
       if (latest) {
         const fullSnapshot = latest.line_items.length > 0 ? latest : await api.getBomSnapshot(projectId, latest.id);
@@ -182,7 +195,11 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
   }, [hasActiveJob, load]);
 
   const selectedScenario = scenarios.find((scenario) => scenario.id === selectedScenarioId) ?? null;
+  const editorScenario = scenarios.find((scenario) => scenario.id === editorScenarioId) ?? null;
   const snapshotScenario = selectedSnapshot ? scenarios.find((scenario) => scenario.id === selectedSnapshot.scenario_id) ?? null : null;
+  const selectedEditorEnvironment = draft?.environments[
+    Math.min(selectedEnvironmentIndex, Math.max((draft?.environments.length ?? 1) - 1, 0))
+  ]?.name ?? null;
   const planReadiness = useMemo(
     () => explicitPlanReadiness(draft?.environments ?? []),
     [draft?.environments],
@@ -219,6 +236,8 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
         };
         setAssistant(result);
         setDraft(result.draft);
+        setEditorScenarioId("");
+        setSelectedEnvironmentIndex(0);
         setAgentRun(terminal);
         emitToast("success", "Governed BOM scenario agent completed.");
         return;
@@ -226,6 +245,8 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
       const result = await api.getDeploymentScenarioAssistant(projectId, false);
       setAssistant(result);
       setDraft(result.draft);
+      setEditorScenarioId("");
+      setSelectedEnvironmentIndex(0);
       emitToast("success", "Scenario evidence refreshed.");
     } catch (caughtError) {
       emitToast("error", getErrorMessage(caughtError, "Unable to refresh scenario evidence."));
@@ -242,6 +263,7 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
     try {
       const created = await api.createDeploymentScenario(projectId, draft);
       setSelectedScenarioId(created.id);
+      setEditorScenarioId(created.id);
       emitToast("success", "Deployment scenario created as a governed draft.");
       await load(true);
     } catch (caughtError) {
@@ -249,6 +271,14 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
     } finally {
       setBusyAction(null);
     }
+  }
+
+  function loadScenarioIntoEditor(scenario: DeploymentScenario): void {
+    setDraft(deploymentScenarioToDraft(scenario));
+    setEditorScenarioId(scenario.id);
+    setSelectedEnvironmentIndex(0);
+    emitToast("success", `${scenario.name} loaded as an editable revision.`);
+    document.getElementById("deployment-scenario-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function approveScenario(): Promise<void> {
@@ -366,6 +396,25 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
             <button className="app-button-secondary gap-2" type="button" disabled={busyAction !== null} onClick={() => void refreshAssistant(true)}>{busyAction === "assistant" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}{busyAction === "assistant" ? "Comparing scenarios" : "Compare deployment alternatives"}</button>
           </div>
 
+          {draft ? (
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-400/40 bg-sky-500/5 p-4">
+              <div>
+                <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                  {editorScenario ? `Editing a revision of ${editorScenario.name}` : "Editing the governed assistant baseline"}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">
+                  {draft.environments.length} {draft.environments.length === 1 ? "environment" : "environments"} loaded
+                  {editorScenario ? ` · source status: ${displayLabel(editorScenario.status)}` : ""}. Saving always creates a new scenario; it never overwrites the source.
+                </p>
+              </div>
+              {editorScenario ? (
+                <button type="button" className="app-button-secondary" onClick={() => loadScenarioIntoEditor(editorScenario)}>
+                  Reset from source
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
           {draft ? <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <label className="text-sm font-semibold text-[var(--color-text-primary)] xl:col-span-2">Scenario name<input className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.name} onChange={(event) => patchDraft({ name: event.target.value })} /></label>
             <label className="text-sm font-semibold text-[var(--color-text-primary)]">Region<input className="mt-2 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5" value={draft.region} onChange={(event) => patchDraft({ region: event.target.value })} /></label>
@@ -441,6 +490,8 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
                 environments={draft.environments}
                 metricOptions={assistant?.metric_options ?? []}
                 detectedServiceIds={assistant?.detected_services ?? []}
+                selectedEnvironmentIndex={selectedEnvironmentIndex}
+                onSelectedEnvironmentIndexChange={setSelectedEnvironmentIndex}
                 onChange={(environments) => patchDraft({ environments, consumption_model: "explicit_units" })}
               />
             </div>
@@ -476,7 +527,7 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
 
       <section className="app-card p-5">
         <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="app-label">Approved Input</p><h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Generate an immutable BOM</h2></div><button className="app-button-primary gap-2" type="button" disabled={!selectedScenario || selectedScenario.status !== "approved" || busyAction !== null || hasActiveJob} onClick={() => void generateBom()}>{busyAction === "generate" || hasActiveJob ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}{hasActiveJob ? "Generation running" : "Generate BOM"}</button></div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
           <div className="text-sm font-semibold text-[var(--color-text-primary)]">
             <span>Deployment scenario</span>
             <GovernedSelect
@@ -492,6 +543,16 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
               onChange={setSelectedScenarioId}
             />
           </div>
+          <button
+            className="app-button-secondary gap-2"
+            type="button"
+            disabled={!selectedScenario}
+            onClick={() => {
+              if (selectedScenario) loadScenarioIntoEditor(selectedScenario);
+            }}
+          >
+            Load into editor
+          </button>
           <button className="app-button-secondary gap-2" type="button" onClick={() => void load(true)}><RefreshCcw className="h-4 w-4" />Refresh</button>
         </div>
         {selectedScenario ? <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-7"><div><p className="app-label">Status</p><p className="mt-1 font-semibold text-[var(--color-text-primary)]">{selectedScenario.status}</p></div><div><p className="app-label">Price source</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{selectedScenario.price_mode.replace(/_/g, " ")}</p></div><div><p className="app-label">Commercial model</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{selectedScenario.commitment_model.replace(/_/g, " ")}</p></div><div><p className="app-label">Licensing</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{selectedScenario.licensing_model.replace(/_/g, " ")}</p></div><div><p className="app-label">Region</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{selectedScenario.region}</p></div><div><p className="app-label">Currency</p><p className="mt-1 font-mono text-sm text-[var(--color-text-secondary)]">{selectedScenario.currency}</p></div><div><p className="app-label">Updated</p><p className="mt-1 text-sm text-[var(--color-text-secondary)]">{formatDate(selectedScenario.updated_at)}</p></div></div> : <p className="mt-4 text-sm text-[var(--color-text-secondary)]">Create and approve a scenario before generating a BOM.</p>}
@@ -503,6 +564,7 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
           snapshot={selectedSnapshot}
           scenario={snapshotScenario}
           metricOptions={assistant?.metric_options ?? []}
+          preferredEnvironment={selectedEditorEnvironment}
           onEditScenario={() => document.getElementById("deployment-scenario-editor")?.scrollIntoView({ behavior: "smooth", block: "start" })}
         />
 
