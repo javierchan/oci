@@ -25,6 +25,11 @@ may also cache OCI Cohere Embed v4 vectors in the same artifact; the build
 script never sends a support question or customer evidence when generating
 that cache.
 
+The current production artifact contains `227/227` OCI provider vectors in one
+`Cohere Embed v4.0` 512-dimension space. The local 384-dimension vectors remain
+packaged strictly for deterministic provider-unavailable fallback and are never
+mixed with OCI vectors in one similarity search.
+
 ## Runtime flow
 
 1. `build_support_evidence` resolves the current route, explicit contexts, and
@@ -105,3 +110,11 @@ capabilities, governed export media types, source attribution, and
 placeholder-free App routes through a mocked provider execution. Embedding
 tests supply provider vectors and a mocked embedding transport, and evidence
 tests seed BOM lines and Architecture Review results. No test calls OCI.
+
+The July 25, 2026 live release validation authenticated the tenancy through the
+workspace's external-Chrome security-token flow, confirmed the configured model
+as active on demand in `us-chicago-1`, regenerated all provider vectors, passed
+the deterministic manifest check and focused API suite, and completed a
+synthetic Import question through the public support API. Its retained AgentRun
+evidence reported `app_knowledge.embedding_space = provider`, five semantic
+matches, and the committed source hash; no customer evidence was transmitted.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "OCI DIS Blueprint OCI Operator"
+  short_description: "Operate and validate OCI for OCI DIS Blueprint"
+  default_prompt: "Use $oci-dis-blueprint-oci-operator to inspect OCI readiness and validate this App safely."

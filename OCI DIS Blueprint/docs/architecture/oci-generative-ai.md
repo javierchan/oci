@@ -4,6 +4,7 @@
 **Region:** `us-chicago-1`
 **Model:** `OpenAI gpt-oss-20b`
 **Transport:** OCI OpenAI-compatible Responses-first API with governed Chat fallback
+**Embedding model:** `cohere.embed-v4.0`, native `EmbedText`, 512 dimensions
 
 ## Purpose
 
@@ -26,6 +27,20 @@ for findings, service limits, quantities, prices, totals, patches, and audit.
 - Container secret path: `/tmp/oci-dis-home/.oci-genai/api_key`
 - Local Project name: `OCI_DIS_Architect` in `javierchan.co`, `us-chicago-1`
 - Local API key resource: `OCI_DIS_Architect_API`; one-year primary secret
+
+Semantic retrieval uses OCI's native
+`/20231130/actions/embedText` endpoint independently from response synthesis.
+Committed App-knowledge vectors use `SEARCH_DOCUMENT`; each runtime question
+uses `SEARCH_QUERY`. The production knowledge artifact contains one 512-dimension
+provider vector for every retrieval unit and retains the deterministic local
+semantic space only as an explicit availability fallback.
+
+`openai.text-embedding-3-large` is available on demand in the tenancy, but it is
+not a drop-in replacement for this contract: OCI returns 3072-dimension vectors
+for that model and rejects the App's 512-dimension output request. A future model
+change therefore requires a complete vector-space migration plus retrieval
+quality benchmarks; model availability or higher dimensionality alone is not an
+upgrade decision.
 
 The secret is bind-mounted read-only, copied by the production entrypoint with
 mode `0400`, and read only by the backend. It must never be committed, placed in
@@ -106,6 +121,12 @@ GenAI summarizes findings but cannot decide source freshness or overwrite normal
   Guardrails blocking/redaction, exact operational counters, response parsing,
   and token metadata.
 - A sanitized smoke script calls the real model and emits no secret data.
+- A sanitized native embedding smoke must verify both `SEARCH_DOCUMENT` and
+  `SEARCH_QUERY`, the expected vector dimension, and the configured on-demand
+  model in `us-chicago-1`.
+- App Assistant release evidence must persist `app_knowledge.embedding_space =
+  provider`; a successful answer with `local` retrieval does not satisfy OCI
+  embedding readiness.
 - Full API, calc-engine, pricing-engine, frontend, OpenAPI, Docker, and browser
   quality gates protect the integration from regression.
 

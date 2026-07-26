@@ -481,6 +481,7 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M71 | Governed Commercial Review Work Queue | ✅ Complete | 2026-07-23 |
 | M72 | Reasoning-led Import Correction Review | ✅ Complete | 2026-07-24 |
 | M73 | Human-authorized Import Correction Execution | 🟡 In QA | — |
+| M74 | OCI-native App Assistant Semantic Retrieval | ✅ Complete | 2026-07-25 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -503,6 +504,12 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   workbook download, terminal job state, BOM, topology, and cleanup validation
 - Dependency audit: `0` vulnerabilities
 - Web and API stack: all eight production services running and healthy in Docker Compose
+- M74 OCI semantic retrieval: authenticated tenancy and CLI token boundary,
+  active on-demand Cohere/OpenAI embedding inventory in `us-chicago-1`, governed
+  Cohere Embed v4 selection at 512 dimensions, `227/227` committed provider
+  vectors, and a completed synthetic App Assistant Import run whose persisted
+  evidence reports five matches in `embedding_space=provider` with no customer
+  data transmitted.
 - Pattern certification browser contract: `21/21` certified cards, `9/9` governed overlays, desktop light/dark and `390 px` mobile views, zero horizontal overflow, and zero console errors
 - Integration Canvas disclosure contract: source, destination, and DIS nodes share
   one `260 × 116` collapsed geometry; each DIS node exposes one explicit technical

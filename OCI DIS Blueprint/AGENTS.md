@@ -890,6 +890,29 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       human action; Fix all remains unexecuted for reviewer choice; formulas
       persisted remain zero; catalog, approvals, rejections, and promotions remain zero.
 
+### M74 — OCI-native App Assistant Semantic Retrieval
+- [x] Authenticate the intended OCI tenancy through external Chrome and validate
+      an independent OCI CLI security-token profile before relying on control-plane discovery.
+- [x] Confirm `cohere.embed-v4.0`, `openai.text-embedding-3-small`, and
+      `openai.text-embedding-3-large` as active on-demand embedding models in
+      `us-chicago-1` without creating a dedicated endpoint.
+- [x] Retain Cohere Embed v4 at 512 dimensions as the governed retrieval contract;
+      treat OpenAI 3072-dimension embeddings as a benchmark candidate requiring a
+      complete vector-space migration rather than a configuration-only switch.
+- [x] Regenerate the committed App knowledge artifact with one OCI
+      `SEARCH_DOCUMENT` vector for every eligible retrieval unit while preserving
+      the deterministic local fallback as a separate vector space.
+- [x] Validate a synthetic `SEARCH_QUERY` through the public App Assistant flow
+      and persist auditable `embedding_space = provider` evidence with no customer
+      content in the live embedding smoke.
+- [x] Add a repository-local OCI operator skill that preserves workspace
+      isolation, the external-Chrome authentication boundary, secret handling,
+      model discovery, embedding readiness checks, and reconciliation rules.
+- [x] **Exit criteria**: `227/227` provider vectors at 512 dimensions, manifest
+      consistency, focused API regressions, healthy eight-service Compose runtime,
+      one completed support AgentRun with five provider-space matches, and no
+      silent local fallback pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector
