@@ -955,6 +955,40 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       provider-space assistant cases, healthy Compose services, and a reproducible
       validation run.
 
+### M77 — OCI OKE Horizontal Scale Readiness
+- [ ] Deploy all primary application, data, and observability resources in
+      Mexico Central (Queretaro), `mx-queretaro-1`, spreading supported
+      workloads across its three Fault Domains without claiming multi-AD HA.
+- [ ] Replace caller-controlled actor headers with OCI IAM Identity Domains
+      OIDC/JWT authentication and server-derived roles.
+- [ ] Publish App knowledge and OCI embeddings as one immutable shared Object
+      Storage artifact with a PostgreSQL active-version pointer and per-pod hash
+      readiness.
+- [ ] Establish a bounded global PostgreSQL connection budget, run one Uvicorn
+      process per API pod, and validate multi-replica database behavior.
+- [ ] Harden Celery delivery, idempotency, orphan reconciliation, graceful
+      termination, and queue-based worker scaling.
+- [ ] Move scheduled and startup mutations behind Kubernetes CronJobs or one
+      explicitly leased leader.
+- [ ] Add read-only liveness/readiness/startup probes, structured telemetry,
+      OpenTelemetry propagation, OCI Logging/Monitoring/APM/Log Analytics,
+      synthetic checks, dashboards, tested alarms, archive/cost controls,
+      PodDisruptionBudgets, resource limits, topology spread, and network policy.
+- [ ] Treat OCI Generative AI in `us-chicago-1` as an explicit remote dependency
+      from Querétaro with restricted TLS egress, cross-region data approval,
+      latency/provider telemetry, and terminal no-fallback behavior.
+- [ ] Add Terraform/Resource Manager infrastructure, Helm application packaging,
+      OCIR digest publication/signing, migration Jobs, environment promotion,
+      and rollback.
+- [ ] Authenticate and discover OCI only after explicit user authorization, using
+      the identity and credentials owned by this workspace.
+- [ ] **Exit criteria**: the Aurora 350-integration reference project passes
+      multi-replica load, pod-loss, queue recovery, database/Redis failover,
+      shared-embedding-hash, no-fallback assistant, rolling deployment, alarm,
+      end-to-end trace, redaction/cardinality, seven-day telemetry cost baseline,
+      backup, and rollback tests in an authorized non-production OCI environment
+      in `mx-queretaro-1`.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

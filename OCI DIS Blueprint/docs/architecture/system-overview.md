@@ -25,6 +25,26 @@
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
+## OCI Deployment Target
+
+The current runtime is a production-mode Docker Compose topology for local
+validation. It is not yet an executable OKE deployment contract. The planned OCI
+target retains the same web, API, deterministic worker, agent worker,
+PostgreSQL, Redis, and Object Storage boundaries while adding horizontal
+replicas, managed OCI data services, secure identity, shared App knowledge,
+autoscaling, observability, and infrastructure as code.
+
+All primary application, data, and observability resources are planned for
+Mexico Central (Queretaro), `mx-queretaro-1`. Its single Availability Domain
+requires explicit spread across three Fault Domains. OCI Generative AI remains
+in `us-chicago-1` as a governed remote dependency with terminal no-fallback
+behavior.
+
+Implementation requirements, authorization gates, failure tests, and the target
+topology are defined in
+[`oci-oke-horizontal-scale-deployment-plan.md`](./oci-oke-horizontal-scale-deployment-plan.md).
+No OCI resource should be created from the system overview alone.
+
 ## Data Flow — Import
 
 ```

@@ -32,6 +32,24 @@ Replaces `Catalogo_Integracion.xlsx` with a governed platform enabling architect
 All services run in **production mode** on Docker Desktop — no host Python or
 Node.js dependencies and no source-code bind mounts.
 
+## OCI Deployment Status
+
+OCI deployment is planned but not yet authorized or production-ready. The
+container separation is compatible with horizontal scale, but M77 must first
+close identity, shared embedding publication, PostgreSQL connection budgeting,
+Celery recovery, singleton scheduling, readiness, observability, and
+infrastructure-as-code gaps.
+
+The primary deployment region is fixed as Mexico Central (Queretaro),
+`mx-queretaro-1`. OCI Generative AI remains an explicitly monitored remote
+dependency in `us-chicago-1`; it has no answer or embedding fallback.
+
+The governed implementation and authorization sequence is documented in
+[`docs/architecture/oci-oke-horizontal-scale-deployment-plan.md`](./docs/architecture/oci-oke-horizontal-scale-deployment-plan.md).
+The plan creates no OCI resources and grants no authority for OCI inspection or
+mutation. Authentication, credentials, tenancy state, permissions, and resource
+selection remain isolated to this workspace even when tools are shared.
+
 ---
 
 ## Quick Start
