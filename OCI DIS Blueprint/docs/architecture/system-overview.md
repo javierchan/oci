@@ -1,5 +1,11 @@
 # System Architecture Overview
 
+For the audited current-state boundaries, trust model, data authority, scale
+constraints, and validated Mermaid views, start with
+[`current-state-architecture.md`](./current-state-architecture.md). The
+documentation index and status vocabulary are maintained in
+[`README.md`](./README.md).
+
 ## High-Level Architecture
 
 ```

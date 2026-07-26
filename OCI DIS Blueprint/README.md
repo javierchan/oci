@@ -15,6 +15,7 @@ Replaces `Catalogo_Integracion.xlsx` with a governed platform enabling architect
 
 **Source of truth for behavior:** `Catalogo_Integracion.xlsx` → tab `TLP - PRD`
 **Agent instructions (Codex):** [`AGENTS.md`](./AGENTS.md)
+**Architecture portal:** [`docs/architecture/README.md`](./docs/architecture/README.md)
 
 ---
 
@@ -527,6 +528,7 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M74 | OCI-native App Assistant Semantic Retrieval | ✅ Complete | 2026-07-25 |
 | M75 | Fail-closed Persistent-context Assistant + Automatic Knowledge Governance | ✅ Complete | 2026-07-25 |
 | M76 | Ideal Enterprise Reference Project | ✅ Complete | 2026-07-25 |
+| M77 | OCI OKE Horizontal Scale + Observability Readiness | ⏳ Planned | — |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -613,9 +615,10 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   errors.
 
 `AGENTS.md`, this README, the root workflow, and the current architecture
-documents define the active operational contract. Dated audit reports,
-implementation prompts, and rendered diagrams are intentionally excluded from
-Git and belong in local or external artifact storage.
+documents define the active operational contract. Dated audit reports preserve
+the evidence and limitations of a particular review; they do not override the
+evergreen architecture contract. Implementation prompts and rendered diagram
+artifacts remain outside Git.
 
 ---
 

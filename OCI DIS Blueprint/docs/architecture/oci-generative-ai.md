@@ -32,8 +32,10 @@ Semantic retrieval uses OCI's native
 `/20231130/actions/embedText` endpoint independently from response synthesis.
 Committed App-knowledge vectors use `SEARCH_DOCUMENT`; each runtime question
 uses `SEARCH_QUERY`. The production knowledge artifact contains one 512-dimension
-provider vector for every retrieval unit and retains the deterministic local
-semantic space only as an explicit availability fallback.
+provider vector for every retrieval unit. The deterministic local semantic
+space remains in the artifact for build-time validation and deliberately
+unconfigured test environments. A configured production App Assistant never
+switches to it as an availability fallback.
 
 `openai.text-embedding-3-large` is available on demand in the tenancy, but it is
 not a drop-in replacement for this contract: OCI returns 3072-dimension vectors
@@ -82,8 +84,11 @@ retention policy without copying another resource's identity or creation tags.
    cannot mutate catalog or pricing data.
 6. The application records only normalized status, model, summary, OCI request ID,
    and token counts in diagnostics; deterministic evidence remains available.
-7. Missing credentials, blocked content, or provider failure falls back to an
-   honest deterministic or refusal state.
+7. Missing credentials, blocked content, provider failure, unavailable query
+   embeddings, or failed grounding terminate App Assistant delivery with no
+   substitute answer or citations. Specialized agents may preserve their
+   deterministic evidence brief, but it is not labeled as successful provider
+   synthesis.
 
 ## Operational Telemetry
 
