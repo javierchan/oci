@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db
 from app.schemas.external_capture import (
     ExternalCaptureBulkResult,
+    ExternalCaptureCorrectionApplyRequest,
+    ExternalCaptureCorrectionBulkResult,
     ExternalCaptureDraftBulkCreate,
     ExternalCaptureDraftPage,
     ExternalCaptureDraftPatch,
@@ -152,6 +154,30 @@ async def list_drafts(
         status=status_filter,
         search=search,
     )
+
+
+@router.post(
+    "/sessions/{session_id}/corrections/apply",
+    response_model=ExternalCaptureCorrectionBulkResult,
+    summary="Apply current agent correction drafts after explicit human authorization",
+)
+async def apply_corrections(
+    project_id: str,
+    session_id: str,
+    body: ExternalCaptureCorrectionApplyRequest,
+    actor_id: str = Header("api-user", alias="X-Actor-Id"),
+    actor_role: str = Header("Analyst", alias="X-Actor-Role"),
+    db: AsyncSession = Depends(get_db),
+) -> ExternalCaptureCorrectionBulkResult:
+    _require_reviewer(actor_role)
+    async with db.begin():
+        return await external_capture_service.apply_agent_corrections(
+            project_id=project_id,
+            session_id=session_id,
+            body=body,
+            actor_id=actor_id,
+            db=db,
+        )
 
 
 @router.patch(

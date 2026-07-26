@@ -1,8 +1,43 @@
 """Presentation and grounding contracts shared by every governed agent."""
 
+import json
+
 from app.agents.registry import get_agent_definition
 from app.services.agent_decision_service import build_decision_workspace
 from app.services.agent_output_service import govern_agent_output, normalize_agent_summary
+from app.services.external_capture_review_service import (
+    parse_agent_correction,
+    partition_source_record,
+)
+
+
+def test_external_capture_partitions_only_aliases_with_current_app_targets() -> None:
+    supported, excluded = partition_source_record(
+        {
+            "Interfaz": "Synthetic interface",
+            "Tecnología de Destino #1": "Synthetic technology",
+            "Tipo Trigger OIC": "Synthetic trigger",
+            "Response Size (KB)": 8,
+            "Tecnología de Destino #2": "Synthetic secondary technology",
+            "Comentarios": "Synthetic note",
+            "Identificada en:": "Synthetic workshop",
+            "Slide": 3,
+        }
+    )
+
+    assert supported == {
+        "Interfaz": "Synthetic interface",
+        "Tecnología de Destino #1": "Synthetic technology",
+    }
+    assert {item["source_header"] for item in excluded} == {
+        "Tipo Trigger OIC",
+        "Response Size (KB)",
+        "Tecnología de Destino #2",
+        "Comentarios",
+        "Identificada en:",
+        "Slide",
+    }
+    assert {item["classification"] for item in excluded} == {"unsupported"}
 
 
 def test_service_verification_rejects_meta_reasoning_and_unverified_freshness() -> None:
@@ -162,7 +197,252 @@ def test_import_correction_workspace_explains_external_capture_review_counts() -
     assert workspace.alternatives[0].action_href == (
         "/projects/project-1/capture-review?session=capture-session-1"
     )
-    assert proposals[0].payload["external_capture_session_id"] == "capture-session-1"
+    assert proposals == []
+
+
+def test_import_correction_workspace_focuses_one_row_without_proposing_approval() -> None:
+    workspace, proposals = build_decision_workspace(
+        get_agent_definition("import_quality"),
+        {
+            "state": "external_capture_review",
+            "review_scope": "single_row",
+            "session_id": "capture-session-1",
+            "source_evidence_id": "sha256:abc123",
+            "focused_row": {
+                "draft_id": "draft-25",
+                "source_row_number": 25,
+                "interface_name": "Nueva Integración para formato CSV",
+                "review_summary": (
+                    "Approval is blocked: Destination system is missing. "
+                    "2 additional review decision(s) remain."
+                ),
+                "review_triggers": [
+                    {
+                        "code": "REQUIRED_FIELD:destination_system",
+                        "kind": "required_gap",
+                        "title": "Destination system is missing",
+                        "evidence": (
+                            "The proposed App record has no supported value for "
+                            "Destination system."
+                        ),
+                        "required_decision": (
+                            "Provide verified destination system evidence or reject "
+                            "this proposal."
+                        ),
+                        "blocks_approval": True,
+                    },
+                    {
+                        "code": "NORMALIZATION_UNRESOLVED:frequency",
+                        "kind": "normalization_gap",
+                        "title": "Frequency could not be normalized",
+                        "evidence": (
+                            "The source value 'TBD' has no governed normalized value."
+                        ),
+                        "required_decision": (
+                            "Confirm the intended frequency using the active App dictionary."
+                        ),
+                        "blocks_approval": False,
+                    },
+                ],
+            },
+        },
+        project_id="project-1",
+        integration_id=None,
+    )
+
+    assert workspace.goal == (
+        "Explain why this integration line needs review and identify the minimum "
+        "human decision."
+    )
+    assert workspace.alternatives[0].status == "blocked"
+    assert workspace.alternatives[0].missing_inputs == [
+        "Provide verified destination system evidence or reject this proposal."
+    ]
+    assert workspace.alternatives[0].action_href == (
+        "/projects/project-1/capture-review"
+        "?session=capture-session-1&draft=draft-25"
+    )
+    assert proposals == []
+
+
+def test_import_correction_agent_maps_only_grounded_supported_values() -> None:
+    evidence: dict[str, object] = {
+        "focused_row": {
+            "supported_source_evidence": {
+                "Sistema de destino": "DemandTec",
+                "Patrón": "Patrón 2 - Asíncrono / Event-Driven",
+            },
+            "data_received": {
+                "proposed_app_record": {
+                    "destination_system": "",
+                    "selected_pattern": "#02",
+                }
+            },
+            "data_required": {
+                "governed_patterns": [
+                    {
+                        "pattern_id": "#02",
+                        "name": "Event-Driven / Pub-Sub",
+                    }
+                ]
+            },
+            "ignored_source_fields": [
+                {
+                    "source_header": "Costo Total $ USD Diario",
+                    "classification": "commercial_formula",
+                }
+            ],
+        }
+    }
+    analysis = parse_agent_correction(
+        json.dumps(
+            {
+                "explanation": (
+                    "Destination is present in supported evidence and can be mapped; "
+                    "the workbook formula is not an App input."
+                ),
+                "deviations": [
+                    {
+                        "source_field": "Sistema de destino",
+                        "target_field": "destination_system",
+                        "issue": "The supported destination was not mapped.",
+                        "evidence": "Sistema de destino = DemandTec.",
+                        "proposed_action": "Map DemandTec to destination_system.",
+                        "confidence": "high",
+                    },
+                    {
+                        "source_field": "Costo Total $ USD Diario",
+                        "target_field": None,
+                        "issue": "Formula has no supported operational target.",
+                        "evidence": "The source field was classified as commercial_formula.",
+                        "proposed_action": "Keep it excluded.",
+                        "confidence": "high",
+                    },
+                ],
+                "proposed_patch": {
+                    "destination_system": "DemandTec",
+                    "selected_pattern": "#02",
+                    "description": "=Table357[[#This Row],[Costo]]*1",
+                    "unsupported_cost": 42,
+                },
+                "excluded_fields": ["Costo Total $ USD Diario"],
+                "required_decisions": [
+                    "Confirm the pattern using the observed transport evidence."
+                ],
+            }
+        ),
+        evidence,
+    )
+
+    assert analysis is not None
+    assert analysis["proposed_patch"] == {
+        "destination_system": "DemandTec",
+    }
+    assert analysis["no_op_patch_fields"] == ["selected_pattern"]
+    assert analysis["excluded_fields"] == ["Costo Total $ USD Diario"]
+    assert analysis["rejected_patch_fields"] == [
+        "description",
+        "unsupported_cost",
+    ]
+    required_decisions = analysis["required_decisions"]
+    assert isinstance(required_decisions, list)
+    assert any(
+        "contained a formula" in decision
+        for decision in required_decisions
+    )
+    assert any(
+        "no supported App target" in decision
+        for decision in required_decisions
+    )
+
+
+def test_import_correction_agent_accepts_json_wrapped_in_provider_prose() -> None:
+    evidence: dict[str, object] = {
+        "focused_row": {
+            "supported_source_evidence": {"Target system": "Synthetic Target"},
+            "data_received": {
+                "proposed_app_record": {"destination_system": ""}
+            },
+            "ignored_source_fields": [],
+        }
+    }
+    analysis = parse_agent_correction(
+        (
+            "Governed result follows.\n"
+            "```json\n"
+            + json.dumps(
+                {
+                    "explanation": "The supported target can be mapped.",
+                    "deviations": [],
+                    "proposed_patch": {
+                        "destination_system": "Synthetic Target"
+                    },
+                    "excluded_fields": [],
+                    "required_decisions": [],
+                }
+            )
+            + "\n```\nNo operational action was executed."
+        ),
+        evidence,
+    )
+
+    assert analysis is not None
+    assert analysis["proposed_patch"] == {
+        "destination_system": "Synthetic Target"
+    }
+
+
+def test_import_correction_workspace_proposes_correction_not_row_approval() -> None:
+    workspace, proposals = build_decision_workspace(
+        get_agent_definition("import_quality"),
+        {
+            "state": "external_capture_review",
+            "review_scope": "single_row",
+            "session_id": "capture-session-1",
+            "source_evidence_id": "sha256:abc123",
+            "focused_row": {
+                "draft_id": "draft-25",
+                "source_row_number": 25,
+                "interface_name": "Nueva Integración para formato CSV",
+                "analysis_evidence_hash": "evidence-hash-25",
+                "review_summary": "Approval is blocked: Destination system is missing.",
+                "review_triggers": [
+                    {
+                        "code": "REQUIRED_FIELD:destination_system",
+                        "kind": "required_gap",
+                        "title": "Destination system is missing",
+                        "evidence": "The App proposal has no destination.",
+                        "required_decision": "Confirm the observed destination.",
+                        "blocks_approval": True,
+                    }
+                ],
+            },
+            "agent_row_analysis": {
+                "deviations": [
+                    {
+                        "issue": "Destination was not mapped.",
+                        "proposed_action": "Map DemandTec.",
+                    }
+                ],
+                "proposed_patch": {"destination_system": "DemandTec"},
+                "excluded_fields": ["Costo Total $ USD Diario"],
+                "required_decisions": ["Confirm DemandTec before execution."],
+            },
+        },
+        project_id="project-1",
+        integration_id=None,
+    )
+
+    assert workspace.alternatives[0].action_type == (
+        "apply_external_capture_correction_draft"
+    )
+    assert workspace.alternatives[0].action_label == "Authorize correction draft"
+    assert len(proposals) == 1
+    assert proposals[0].action_type == "apply_external_capture_correction_draft"
+    assert proposals[0].payload["proposed_patch"] == {
+        "destination_system": "DemandTec"
+    }
+    assert proposals[0].payload["analysis_evidence_hash"] == "evidence-hash-25"
 
 
 def test_architecture_agent_keeps_grounded_plain_language_and_adds_typed_brief() -> None:

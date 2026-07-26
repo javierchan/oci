@@ -1224,6 +1224,14 @@
       "media_types": [
         "application/json"
       ],
+      "method": "POST",
+      "path": "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/corrections/apply",
+      "summary": "Apply current agent correction drafts after explicit human authorization"
+    },
+    {
+      "media_types": [
+        "application/json"
+      ],
       "method": "GET",
       "path": "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/drafts",
       "summary": "List reviewable external-capture row proposals"
@@ -2393,7 +2401,27 @@
     },
     {
       "kind": "schema",
+      "name": "ExternalCaptureAgentAnalysis",
+      "source": "apps/api/app/schemas/external_capture.py"
+    },
+    {
+      "kind": "schema",
       "name": "ExternalCaptureBulkResult",
+      "source": "apps/api/app/schemas/external_capture.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ExternalCaptureCorrectionApplyRequest",
+      "source": "apps/api/app/schemas/external_capture.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ExternalCaptureCorrectionBulkResult",
+      "source": "apps/api/app/schemas/external_capture.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ExternalCaptureCorrectionResultItem",
       "source": "apps/api/app/schemas/external_capture.py"
     },
     {
@@ -2428,7 +2456,17 @@
     },
     {
       "kind": "schema",
+      "name": "ExternalCaptureIgnoredSourceField",
+      "source": "apps/api/app/schemas/external_capture.py"
+    },
+    {
+      "kind": "schema",
       "name": "ExternalCapturePromotionResponse",
+      "source": "apps/api/app/schemas/external_capture.py"
+    },
+    {
+      "kind": "schema",
+      "name": "ExternalCaptureReviewTrigger",
       "source": "apps/api/app/schemas/external_capture.py"
     },
     {
@@ -200196,5 +200234,5 @@
     }
   ],
   "schema_version": "2.0.0",
-  "source_hash": "c47bb783757d879cb45cb33fa98df0b549062b4caad24931c30a9d2158790f58"
+  "source_hash": "5a82575a0b704f87b15919cd361dca48cd29cb1d0908741eb05f5615efd3a0e3"
 }

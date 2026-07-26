@@ -380,6 +380,44 @@ def _verification_brief(definition: AgentDefinition, evidence: dict[str, object]
 
 
 def _import_brief(evidence: dict[str, object]) -> AgentOutputBrief:
+    focused_row = _dict(evidence.get("focused_row"))
+    if focused_row:
+        triggers = _dicts(focused_row.get("review_triggers"))
+        blockers = [
+            item for item in triggers if item.get("blocks_approval") is True
+        ]
+        interface_name = _text(focused_row.get("interface_name")) or "Unnamed integration"
+        next_actions = _object_strings(
+            focused_row.get("review_triggers"), "required_decision", limit=4
+        )
+        return AgentOutputBrief(
+            headline=(
+                f"Resolve the approval blocker for {interface_name}"
+                if blockers
+                else f"Review the architecture evidence for {interface_name}"
+            ),
+            finding=_text(focused_row.get("review_summary")),
+            why=(
+                _text(triggers[0].get("evidence"))
+                if triggers
+                else "External source interpretation requires an explicit architect decision."
+            ),
+            next_actions=next_actions
+            or ["Confirm the source interpretation and selected governed pattern."],
+            validation=[
+                "Save and revalidate the proposal, then confirm that the reported review trigger is resolved.",
+                "Approve only after the agent explanation matches the governed row evidence.",
+            ],
+            evidence_ids=[
+                item
+                for item in (
+                    _text(focused_row.get("draft_id")),
+                    _text(evidence.get("source_evidence_id")),
+                )
+                if item
+            ],
+            confidence="high" if triggers else "medium",
+        )
     findings = _dicts(evidence.get("findings"))
     priority = next(
         (item for item in findings if _text(item.get("severity")).casefold() in {"critical", "high"}),

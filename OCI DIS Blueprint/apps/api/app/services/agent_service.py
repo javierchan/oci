@@ -24,6 +24,7 @@ from app.models import (
     AiReviewJobStatus,
     AuditEvent,
     CatalogIntegration,
+    ExternalCaptureDraft,
     Project,
     SupportMessage,
 )
@@ -77,7 +78,14 @@ async def prune_agent_run_history(
         (
             await db.scalars(
                 select(AgentRun.id)
-                .where(AgentRun.status.in_(TERMINAL_STATUSES))
+                .where(
+                    AgentRun.status.in_(TERMINAL_STATUSES),
+                    AgentRun.id.not_in(
+                        select(ExternalCaptureDraft.agent_analysis_run_id).where(
+                            ExternalCaptureDraft.agent_analysis_run_id.is_not(None)
+                        )
+                    ),
+                )
                 .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
                 .offset(retention_limit)
             )
@@ -723,6 +731,74 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         if result and result.summary
         else _deterministic_summary(definition, evidence)
     )
+    correction_contract_valid: bool | None = None
+    if (
+        definition.type == "import_quality"
+        and isinstance(evidence.get("focused_row"), dict)
+    ):
+        from app.services.external_capture_review_service import (
+            parse_agent_correction,
+        )
+
+        parsed_correction = (
+            parse_agent_correction(summary, evidence)
+            if result is not None and result.status == "completed" and result.summary
+            else None
+        )
+        if (
+            parsed_correction is None
+            and result is not None
+            and result.status == "completed"
+            and include_provider
+        ):
+            repair = await synthesize_governed_summary(
+                settings=get_genai_settings_for_use_case(definition.type),
+                system_instruction=(
+                    f"{definition.instruction} The prior response did not match the "
+                    "required correction JSON contract. Re-evaluate the same single-row "
+                    "evidence and return only the exact JSON object, without Markdown, "
+                    "preface, suffix, or private reasoning."
+                ),
+                evidence=evidence,
+                safety_subject=run.requested_by,
+            )
+            if repair.status == "completed" and repair.summary:
+                repaired_correction = parse_agent_correction(
+                    repair.summary,
+                    evidence,
+                )
+                if repaired_correction is not None:
+                    parsed_correction = repaired_correction
+                    result = replace(
+                        result,
+                        summary=repair.summary,
+                        opc_request_id=repair.opc_request_id,
+                        input_tokens=(
+                            (result.input_tokens or 0)
+                            + (repair.input_tokens or 0)
+                        ),
+                        output_tokens=(
+                            (result.output_tokens or 0)
+                            + (repair.output_tokens or 0)
+                        ),
+                        retry_count=result.retry_count + repair.retry_count + 1,
+                        guardrails_status=repair.guardrails_status,
+                    )
+                    provider_step.output_payload = {
+                        **(provider_step.output_payload or {}),
+                        "retry_count": result.retry_count,
+                        "contract_repair": "completed",
+                    }
+                    provider_step.opc_request_id = repair.opc_request_id
+        correction_contract_valid = parsed_correction is not None
+        if parsed_correction is not None:
+            evidence["agent_row_analysis"] = parsed_correction
+            summary = str(parsed_correction["explanation"])
+        else:
+            evidence["agent_row_analysis_error"] = (
+                "provider_output_did_not_match_correction_contract"
+            )
+            summary = _deterministic_summary(definition, evidence)
     grounding_fallback = False
     governed_output = govern_agent_output(definition, summary, evidence)
     if grounding_fallback and not governed_output.quality.fallback_used:
@@ -830,7 +906,40 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         "tool": tool_name,
         "evidence": sanitize_for_json(evidence),
         "authority": "governed_deterministic_evidence",
+        "correction_contract_valid": correction_contract_valid,
     }
+    if definition.type == "import_quality":
+        focused_row = evidence.get("focused_row")
+        context_draft_id = context.get("external_capture_draft_id")
+        context_session_id = context.get("external_capture_session_id")
+        if (
+            isinstance(focused_row, dict)
+            and isinstance(context_draft_id, str)
+            and isinstance(context_session_id, str)
+            and run.project_id is not None
+        ):
+            from app.services.external_capture_service import record_agent_analysis
+
+            analysis_hash = focused_row.get("analysis_evidence_hash")
+            if isinstance(analysis_hash, str):
+                await record_agent_analysis(
+                    project_id=run.project_id,
+                    session_id=context_session_id,
+                    draft_id=context_draft_id,
+                    run_id=run.id,
+                    analyzed_evidence_hash=analysis_hash,
+                    analysis_payload={
+                        "summary": summary,
+                        "provider_status": provider_status,
+                        "output_quality": governed_output.quality.model_dump(
+                            mode="json"
+                        ),
+                        "correction_contract_valid": correction_contract_valid,
+                        "agent_row_analysis": evidence.get("agent_row_analysis"),
+                    },
+                    actor_id=run.requested_by,
+                    db=db,
+                )
     run.model_name = result.model if result else None
     run.provider_response_id = result.response_id if result else None
     run.opc_request_id = result.opc_request_id if result else None

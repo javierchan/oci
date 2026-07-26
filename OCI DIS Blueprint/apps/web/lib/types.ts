@@ -71,6 +71,9 @@ export interface ExternalCaptureSummary {
   approved: number;
   rejected: number;
   promoted: number;
+  analyses_current: number;
+  corrections_available: number;
+  human_decision_rows: number;
 }
 
 export interface ExternalCaptureSessionDetail {
@@ -87,6 +90,17 @@ export interface ExternalCaptureDraft {
   session_id: string;
   source_row_number: number;
   source_record: Record<string, unknown>;
+  ignored_source_fields: {
+    source_header: string;
+    classification:
+      | "commercial_formula"
+      | "formula"
+      | "commercial_value"
+      | "derived_demand"
+      | "unsupported";
+    reason: string;
+    value_kind: "formula" | "value";
+  }[];
   proposed_payload: Record<string, unknown>;
   normalized_values: Record<string, unknown>;
   pattern_assessment: Record<string, unknown>;
@@ -95,6 +109,34 @@ export interface ExternalCaptureDraft {
   qa_preview: {
     status?: string;
     reasons?: string[];
+  };
+  review_triggers: {
+    code: string;
+    kind:
+      | "required_gap"
+      | "normalization_gap"
+      | "pattern_review"
+      | "qa_control"
+      | "governance";
+    title: string;
+    evidence: string;
+    required_decision: string;
+    blocks_approval: boolean;
+  }[];
+  review_summary: string;
+  approval_blocked: boolean;
+  agent_analysis: {
+    status: "required" | "current" | "stale" | "degraded";
+    run_id: string | null;
+    summary: string | null;
+    provider_status: string | null;
+    grounded: boolean;
+    fallback_used: boolean;
+    correction_available: boolean;
+    correction_fields: string[];
+    required_decisions: string[];
+    no_op_fields: string[];
+    analyzed_at: string | null;
   };
   confidence: number | null;
   status: ExternalCaptureDraftStatus;
@@ -123,6 +165,23 @@ export interface ExternalCaptureDraftPatch {
 export interface ExternalCapturePromotionResponse {
   draft: ExternalCaptureDraft;
   integration_id: string;
+}
+
+export interface ExternalCaptureCorrectionBulkResult {
+  requested: number;
+  eligible: number;
+  applied: number;
+  skipped: number;
+  failed: number;
+  human_decision_rows: number;
+  results: {
+    draft_id: string;
+    source_row_number: number;
+    status: "applied" | "skipped" | "failed";
+    correction_fields: string[];
+    reason_code: string;
+  }[];
+  summary: ExternalCaptureSummary;
 }
 
 export type AgentType =

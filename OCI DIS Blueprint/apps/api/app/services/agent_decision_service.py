@@ -402,6 +402,155 @@ def _quality_workspace(
     definition: AgentDefinition, evidence: dict[str, object], project_id: str | None
 ) -> tuple[AgentDecisionWorkspace, list[AgentProposal]]:
     if definition.type == "import_quality" and evidence.get("state") == "external_capture_review":
+        focused_row = _dict(evidence.get("focused_row"))
+        if focused_row:
+            triggers = _dicts(focused_row.get("review_triggers"))
+            agent_analysis = _dict(evidence.get("agent_row_analysis"))
+            deviations = _dicts(agent_analysis.get("deviations"))
+            proposed_patch = _dict(agent_analysis.get("proposed_patch"))
+            required_decisions = _strings(
+                agent_analysis.get("required_decisions"), limit=20
+            )
+            blocking = [
+                item for item in triggers if item.get("blocks_approval") is True
+            ]
+            row_number = int(_number(focused_row.get("source_row_number")))
+            interface_name = _text(
+                focused_row.get("interface_name"), "Unnamed integration"
+            )
+            draft_id = _text(focused_row.get("draft_id"))
+            session_id = _text(evidence.get("session_id"))
+            evidence_ids = [
+                item
+                for item in (
+                    draft_id,
+                    session_id,
+                    _text(evidence.get("source_evidence_id")),
+                )
+                if item
+            ]
+            alternative = AgentDecisionAlternative(
+                id=f"external-capture-row-{draft_id or row_number}",
+                title=f"Resolve review for row {row_number}: {interface_name}",
+                summary=_text(
+                    focused_row.get("review_summary"),
+                    "This external proposal requires an explicit architect decision.",
+                ),
+                status="blocked" if blocking else "review",
+                recommended=True,
+                changes=(
+                    [
+                        f"{_text(item.get('issue'), 'Deviation')}: "
+                        f"{_text(item.get('proposed_action'), 'review')}"
+                        for item in deviations
+                    ]
+                    if deviations
+                    else [
+                        _text(item.get("evidence"))
+                        for item in triggers
+                        if _text(item.get("evidence"))
+                    ]
+                ),
+                implementation_steps=(
+                    required_decisions
+                    if required_decisions
+                    else [
+                        _text(item.get("required_decision"))
+                        for item in triggers
+                        if _text(item.get("required_decision"))
+                    ]
+                ),
+                validation_steps=[
+                    "Save and revalidate the edited proposal against the current App contract.",
+                    "Confirm that the agent explanation remains grounded in the visible row evidence.",
+                    "Use the explicit architect rationale and approval controls only after blockers are resolved.",
+                ],
+                missing_inputs=[
+                    _text(item.get("required_decision"))
+                    for item in blocking
+                    if _text(item.get("required_decision"))
+                ],
+                impact=_impact(
+                    technical=[
+                        "Keeps architecture readiness distinct from schema completeness."
+                    ],
+                    governance=[
+                        "The agent explains evidence but cannot approve or promote this row."
+                    ],
+                    operational=[
+                        "Focuses the reviewer on the smallest decision that can resolve this line."
+                    ],
+                ),
+                evidence_ids=evidence_ids,
+                confidence="high" if triggers else "medium",
+                action_type=(
+                    "apply_external_capture_correction_draft"
+                    if proposed_patch
+                    else None
+                ),
+                action_label=(
+                    "Authorize correction draft" if proposed_patch else None
+                ),
+                action_href=(
+                    f"/projects/{project_id}/capture-review?session={session_id}&draft={draft_id}"
+                    if project_id and session_id and draft_id
+                    else None
+                ),
+            )
+            correction_proposals = (
+                [
+                    AgentProposal(
+                        action_type="apply_external_capture_correction_draft",
+                        payload={
+                            "alternative_id": alternative.id,
+                            "project_id": project_id,
+                            "external_capture_session_id": session_id,
+                            "external_capture_draft_id": draft_id,
+                            "analysis_evidence_hash": focused_row.get(
+                                "analysis_evidence_hash"
+                            ),
+                            "proposed_patch": proposed_patch,
+                            "excluded_fields": agent_analysis.get(
+                                "excluded_fields", []
+                            ),
+                            "required_decisions": required_decisions,
+                        },
+                    )
+                ]
+                if proposed_patch and project_id and session_id and draft_id
+                else []
+            )
+            return (
+                AgentDecisionWorkspace(
+                    workspace_type="data_quality",
+                    goal="Explain why this integration line needs review and identify the minimum human decision.",
+                    current_state=alternative.summary,
+                    recommendation_basis=(
+                        "OCI Generative AI reasons only from the row-level source evidence, "
+                        "proposed record, pattern assessment, and deterministic validation facts."
+                    ),
+                    recommended_alternative_id=alternative.id,
+                    alternatives=[alternative],
+                    outcome_metrics=[
+                        {
+                            "key": "blocking_gaps",
+                            "label": "Approval blockers",
+                            "value": len(blocking),
+                        },
+                        {
+                            "key": "review_decisions",
+                            "label": "Review decisions",
+                            "value": len(triggers),
+                        },
+                    ],
+                    post_validation=[
+                        "No source value may be invented.",
+                        "The agent explanation is advisory and cannot change row status.",
+                        "Approval and promotion remain separate explicit human actions.",
+                    ],
+                ),
+                correction_proposals,
+            )
         summary = _dict(evidence.get("summary"))
         total = int(_number(summary.get("total")))
         schema_ready = int(_number(summary.get("schema_ready")))
@@ -464,8 +613,6 @@ def _quality_workspace(
             ),
             evidence_ids=evidence_ids,
             confidence="high",
-            action_type="create_agent_action_draft",
-            action_label="Approve correction plan",
             action_href=(
                 f"/projects/{project_id}/capture-review?session={session_id}"
                 if project_id and session_id
@@ -473,15 +620,6 @@ def _quality_workspace(
                 if project_id
                 else None
             ),
-        )
-        proposal = AgentProposal(
-            action_type="create_agent_action_draft",
-            payload={
-                "alternative_id": candidate.id,
-                "project_id": project_id,
-                "external_capture_session_id": session_id or None,
-                "candidate": candidate.model_dump(mode="json"),
-            },
         )
         return (
             AgentDecisionWorkspace(
@@ -529,7 +667,7 @@ def _quality_workspace(
                     "Compare promoted counts with the approved row decisions before recalculation.",
                 ],
             ),
-            [proposal],
+            [],
         )
 
     findings = _dicts(evidence.get("findings"))
@@ -706,6 +844,37 @@ async def execute_approved_proposal(
                 "commercial_impact": simulation.commercial_impact.model_dump(mode="json"),
                 "validation": "completed",
                 "action_href": f"/projects/{project_id}/catalog/{integration_id}",
+            }
+        elif approval.action_type == "apply_external_capture_correction_draft":
+            from app.services.external_capture_service import apply_agent_correction
+
+            project_id = _text(payload.get("project_id"))
+            session_id = _text(payload.get("external_capture_session_id"))
+            draft_id = _text(payload.get("external_capture_draft_id"))
+            analyzed_hash = _text(payload.get("analysis_evidence_hash"))
+            proposed_patch = _dict(payload.get("proposed_patch"))
+            if not all((project_id, session_id, draft_id, analyzed_hash)):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Correction proposal is missing its governed row context",
+                )
+            corrected = await apply_agent_correction(
+                project_id=project_id,
+                session_id=session_id,
+                draft_id=draft_id,
+                analyzed_evidence_hash=analyzed_hash,
+                proposed_patch=proposed_patch,
+                actor_id=actor_id,
+                db=db,
+            )
+            result = {
+                "outcome": "external_capture_correction_applied",
+                "draft_id": draft_id,
+                "source_row_number": corrected.source_row_number,
+                "review_summary": corrected.review_summary,
+                "analysis_status": corrected.agent_analysis.status,
+                "validation": "proposal_revalidated_agent_analysis_now_stale",
+                "action_href": f"/projects/{project_id}/capture-review",
             }
         elif approval.action_type == "create_deployment_scenario_draft":
             from app.services.bom_service import create_scenario

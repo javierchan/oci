@@ -7,10 +7,12 @@ import {
 
 export const CANVAS_HEIGHT = 760;
 export const ROUTE_NODE_GAP = 44;
-export const TOOL_NODE_WIDTH = 260;
-export const TOOL_NODE_HEIGHT = 316;
-export const SYSTEM_NODE_WIDTH = 208;
-export const SYSTEM_NODE_HEIGHT = 108;
+export const CANVAS_NODE_WIDTH = 260;
+export const CANVAS_NODE_HEIGHT = 116;
+export const TOOL_NODE_WIDTH = CANVAS_NODE_WIDTH;
+export const TOOL_NODE_HEIGHT = CANVAS_NODE_HEIGHT;
+export const SYSTEM_NODE_WIDTH = CANVAS_NODE_WIDTH;
+export const SYSTEM_NODE_HEIGHT = CANVAS_NODE_HEIGHT;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));

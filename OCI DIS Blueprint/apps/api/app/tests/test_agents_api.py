@@ -18,6 +18,8 @@ from app.models import (
     AgentRunStatus,
     AgentStep,
     AuditEvent,
+    ExternalCaptureDraft,
+    ExternalCaptureSession,
     Project,
     SupportConversation,
     SupportMessage,
@@ -412,6 +414,96 @@ async def test_agent_value_metrics_report_observed_quality_and_human_follow_up(
         headers={"X-Actor-Role": "Viewer"},
     )
     assert viewer_response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_agent_history_preserves_runs_linked_to_current_capture_analysis(
+    test_engine: AsyncEngine,
+) -> None:
+    """Retention cannot invalidate a still-current row-level correction analysis."""
+
+    project_id = await _seed_project(test_engine)
+    session_factory = async_sessionmaker(
+        test_engine,
+        expire_on_commit=False,
+        class_=AsyncSession,
+    )
+    base_time = datetime(2026, 1, 1, tzinfo=UTC)
+    linked_run_id = "agent-capture-linked"
+    expired_run_id = "agent-capture-expired"
+    retained_run_id = "agent-capture-retained"
+
+    async with session_factory() as session:
+        for index, run_id in enumerate(
+            [linked_run_id, expired_run_id, retained_run_id]
+        ):
+            session.add(
+                AgentRun(
+                    id=run_id,
+                    agent_type="import_quality",
+                    definition_version="3.2.0",
+                    project_id=project_id,
+                    requested_by="architect-user",
+                    status=AgentRunStatus.COMPLETED,
+                    context_payload={},
+                    result_payload={"provider_status": "completed"},
+                    step_count=4,
+                    max_steps=4,
+                    created_at=base_time + timedelta(minutes=index),
+                    updated_at=base_time + timedelta(minutes=index),
+                    finished_at=base_time + timedelta(minutes=index),
+                )
+            )
+        capture_session = ExternalCaptureSession(
+            id="capture-retention-session",
+            project_id=project_id,
+            name="Synthetic capture retention",
+            client_name="Synthetic Customer",
+            source_label="Synthetic source",
+            source_hash="a" * 64,
+            status="in_review",
+            normalization_policy={},
+            created_by="architect-user",
+        )
+        session.add(capture_session)
+        await session.flush()
+        session.add(
+            ExternalCaptureDraft(
+                id="capture-retention-draft",
+                session_id=capture_session.id,
+                source_row_number=6,
+                source_record={"Interfaz": "Synthetic interface"},
+                proposed_payload={"interface_name": "Synthetic interface"},
+                normalized_values={},
+                pattern_assessment={},
+                validation_evidence={},
+                required_field_gaps=[],
+                qa_preview={},
+                status="needs_review",
+                agent_analysis_run_id=linked_run_id,
+                agent_analysis_evidence_hash="b" * 64,
+                agent_analysis_payload={
+                    "provider_status": "completed",
+                    "correction_contract_valid": True,
+                },
+                agent_analyzed_at=base_time,
+            )
+        )
+        await session.commit()
+
+        async with session.begin():
+            deleted = await agent_service.prune_agent_run_history(
+                session,
+                retention_limit=1,
+            )
+
+        assert deleted == 1
+        assert await session.get(AgentRun, linked_run_id) is not None
+        assert await session.get(AgentRun, expired_run_id) is None
+        assert await session.get(AgentRun, retained_run_id) is not None
+        draft = await session.get(ExternalCaptureDraft, "capture-retention-draft")
+        assert draft is not None
+        assert draft.agent_analysis_run_id == linked_run_id
 
 
 @pytest.mark.asyncio

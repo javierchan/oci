@@ -8,6 +8,8 @@ import type { ReactNode } from "react";
 import {
   ArrowLeftRight,
   Building2,
+  ChevronDown,
+  ChevronUp,
   Code2,
   Database,
   Maximize2,
@@ -79,6 +81,7 @@ const HANDLE_RADIUS = 5;
 const EDGE_HIT_STROKE = 14;
 const EDGE_STROKE = 3;
 const EDGE_SELECTED_STROKE = 3.8;
+const NODE_DETAILS_HEIGHT = 244;
 
 type FixedNodeMeta = {
   subtitle: string | null;
@@ -982,6 +985,7 @@ export function IntegrationCanvas({
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editingPayloadId, setEditingPayloadId] = useState<string | null>(null);
   const [editingEdgeId, setEditingEdgeId] = useState<string | null>(null);
+  const [expandedMetricNodeId, setExpandedMetricNodeId] = useState<string | null>(null);
   const [oicEstimate, setOicEstimate] = useState<OICEstimateResponse>(EMPTY_ESTIMATE);
   const [draftValue, setDraftValue] = useState<string>("");
   const [draggingNode, setDraggingNode] = useState<{ id: string; dx: number; dy: number } | null>(null);
@@ -1205,7 +1209,19 @@ export function IntegrationCanvas({
     if (editingEdgeId && !validEdgeIds.has(editingEdgeId)) {
       setEditingEdgeId(null);
     }
-  }, [connecting, editingEdgeId, editingNodeId, editingPayloadId, edges, nodes, selectedElement]);
+    if (expandedMetricNodeId && !validNodeIds.has(expandedMetricNodeId)) {
+      setExpandedMetricNodeId(null);
+    }
+  }, [
+    connecting,
+    editingEdgeId,
+    editingNodeId,
+    editingPayloadId,
+    edges,
+    expandedMetricNodeId,
+    nodes,
+    selectedElement,
+  ]);
 
   useEffect(() => {
     setNodes((current) =>
@@ -1522,6 +1538,9 @@ export function IntegrationCanvas({
     setEditingNodeId(kind === "node" ? id : null);
     setEditingPayloadId(kind === "payload" ? id : null);
     setEditingEdgeId(kind === "edge" ? id : null);
+    if (kind === "payload") {
+      setExpandedMetricNodeId(null);
+    }
   }
 
   function stopTextEdit(): void {
@@ -2082,6 +2101,7 @@ export function IntegrationCanvas({
                   const isOverlayNode = !node.fixed && overlayToolSet.has(node.toolKey);
                   const hovered = hoveredNodeId === node.instanceId;
                   const selected = isNodeSelected(selectedElement, node.instanceId);
+                  const detailsExpanded = expandedMetricNodeId === node.instanceId;
                   const width = nodeWidth(node);
                   const height = nodeHeight(node);
                   const subtitleText = node.fixed
@@ -2112,6 +2132,8 @@ export function IntegrationCanvas({
                       transform={`translate(${node.x}, ${node.y})`}
                       role="button"
                       tabIndex={0}
+                      data-testid="canvas-flow-node"
+                      data-node-kind={node.fixed ? "system" : "dis"}
                       aria-label={`${node.label}, ${subtitleText}`}
                       onMouseEnter={() => setHoveredNodeId(node.instanceId)}
                       onMouseLeave={() => setHoveredNodeId((current) => (current === node.instanceId ? null : current))}
@@ -2252,9 +2274,42 @@ export function IntegrationCanvas({
                         {subtitleText}
                       </text>
 
+                      {!node.fixed && metrics ? (
+                        <foreignObject x={14} y={78} width={width - 28} height={28}>
+                          <button
+                            type="button"
+                            data-testid="canvas-node-details-toggle"
+                            aria-expanded={detailsExpanded}
+                            aria-controls={`canvas-node-details-${node.instanceId}`}
+                            aria-label={`${detailsExpanded ? "Hide" : "Show"} technical details for ${node.label}`}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              stopTextEdit();
+                              setSelectedElement({ kind: "node", id: node.instanceId });
+                              setExpandedMetricNodeId((current) =>
+                                current === node.instanceId ? null : node.instanceId,
+                              );
+                            }}
+                            className="flex h-7 w-full items-center justify-between rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]/85 px-2.5 text-[10px] font-semibold uppercase tracking-[0.11em] text-[var(--color-text-secondary)] shadow-sm transition hover:border-[var(--color-accent)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+                          >
+                            <span>{detailsExpanded ? "Hide details" : "View DIS details"}</span>
+                            {detailsExpanded ? (
+                              <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+                            ) : (
+                              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                            )}
+                          </button>
+                        </foreignObject>
+                      ) : null}
+
                       {!node.fixed && editingPayloadId === node.instanceId ? (
-                        <foreignObject x={12} y={76} width={width - 24} height={height - 88}>
-                          <div className="h-full rounded-lg border border-[var(--color-accent)] bg-[var(--color-surface)] p-2 shadow-sm">
+                        <foreignObject x={0} y={height + 12} width={width} height={96}>
+                          <div
+                            className="h-full rounded-lg border border-[var(--color-accent)] bg-[var(--color-surface)] p-2 shadow-lg"
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                          >
                             <label className="block text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
                               Implementation note
                             </label>
@@ -2296,11 +2351,22 @@ export function IntegrationCanvas({
                             </p>
                           </div>
                         </foreignObject>
-                      ) : !node.fixed && metrics ? (
-                        <foreignObject x={12} y={76} width={width - 24} height={height - 88}>
+                      ) : !node.fixed && metrics && detailsExpanded ? (
+                        <foreignObject
+                          id={`canvas-node-details-${node.instanceId}`}
+                          x={0}
+                          y={height + 12}
+                          width={width}
+                          height={NODE_DETAILS_HEIGHT}
+                        >
                           <div
                             data-testid="canvas-node-metrics"
-                            className="grid h-full grid-cols-2 grid-rows-[42px_42px_48px_42px_1fr] gap-1.5"
+                            data-node-details="expanded"
+                            role="region"
+                            aria-label={`Technical details for ${node.label}`}
+                            className="grid h-full grid-cols-2 grid-rows-[42px_42px_48px_42px_1fr] gap-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-xl"
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
                             onDoubleClick={(event) => {
                               event.stopPropagation();
                               beginTextEdit("payload", node.instanceId, node.payloadNote);
@@ -2391,7 +2457,10 @@ export function IntegrationCanvas({
                         </foreignObject>
                       ) : null}
 
-                      {!node.fixed && (hovered || selected) ? (
+                      {!node.fixed &&
+                      !detailsExpanded &&
+                      editingPayloadId !== node.instanceId &&
+                      (hovered || selected) ? (
                         <foreignObject x={14} y={height + 8} width={width - 28} height={32}>
                           <div className="flex items-center gap-2">
                             <button

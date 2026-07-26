@@ -117,32 +117,66 @@ catalog without treating its file format as an import contract. The
   fingerprint, and the normalization policy for one source submission. Its
   `client_name` preserves source evidence and does not replace the project-level
   customer authority. It never stores a local filesystem path or the source file.
-- `ExternalCaptureDraft` stores the immutable source values separately from the
-  editable canonical proposal, normalization evidence, row-level pattern
-  assessment, required-field gaps, and QA preview.
+- `ExternalCaptureDraft` stores immutable **supported** source inputs separately
+  from the editable canonical proposal, normalization evidence, row-level pattern
+  assessment, required-field gaps, and QA preview. Formulas and fields without a
+  governed App target are removed before persistence; only their header,
+  classification, and exclusion reason remain as value-free audit metadata.
 - Every save revalidates the complete `ManualIntegrationCreate` contract and the
   active pattern registry. A missing value remains a visible gap.
-- Approval is a human decision with rationale. Promotion is a second explicit
-  action that calls the same governed manual-capture service used by the App.
+- The row-level Import Correction Agent compares received evidence against the
+  current App schema, active dictionaries, governed patterns, selected-pattern
+  certification, and deterministic QA facts. It may detect interpretation
+  deviations beyond known QA codes, but every executable correction is constrained
+  to an existing typed App field, grounded evidence, and formula-free values.
+- Every analysis is persisted with a fingerprint of the evidence it evaluated.
+  Editing a row makes that analysis stale. A current grounded analysis is required
+  before approval.
+- Applying the correction draft, approving or rejecting the row, and promoting an
+  approved record are separate human actions. Promotion calls the same governed
+  manual-capture service used by the App.
+- A reviewer may apply one current correction draft, an explicit selected set, or
+  every currently eligible draft. Bulk execution is only orchestration over the
+  same per-row evidence-hash and typed-patch boundary; it does not start inference,
+  widen evidence, invent values, or change approval and promotion state.
+- Bulk results report applied, skipped, and failed items independently. A skipped
+  row remains visible with a bounded reason such as missing, stale, degraded, or
+  human-decision-required analysis; one row cannot make another row eligible.
+- Every applied correction invalidates its prior evidence fingerprint and returns
+  the row to analysis-required state. The reviewer must run a new grounded analysis
+  before any separate approval action becomes available.
 - The Import Correction Agent reads aggregate and row-level evidence from this
-  session. It can prioritize decisions, but cannot approve or promote a row.
+  session. It explains why a line needs review and can propose a clean mapping,
+  but cannot authorize its own correction, approve, reject, or promote a row.
 
 The associated **Capture Review** workspace is deliberately different from the
 workbook Import page. Import governs files accepted by the App; Capture Review
 governs already-structured evidence supplied through an API or controlled
 analyst workflow.
 
-### Demonstration policy
+### Customer-held evidence policy
 
-For the **ADN - Retail Merchandising** customer exercise:
-
-- customer: **Innovación y Conveniencia, S.A. de C.V.**
-- every proposal uses `TBQ=Y`, while the original TBQ value remains source evidence;
-- `Tamaño KB` is proposed as KB per execution and remains reviewable;
-- frequency and complexity use only active dictionary values;
-- every row has an independent pattern recommendation and rationale;
-- no workbook is uploaded to App storage;
-- no row is automatically approved or promoted.
+- Customer identity comes only from the governed `Project.customer_name`; a source
+  label or capture session cannot replace it.
+- The customer workbook stays outside App storage. Local parsing may stage supported
+  structured evidence through External Capture, but it must never persist a local
+  path or silently upload the file to Object Storage.
+- A session may override TBQ only when its recorded normalization policy explicitly
+  requires that transformation. Otherwise the received supported value is preserved,
+  and a missing or unsupported value remains a human decision.
+- Payload, frequency, complexity, tools, and pattern evidence map only when the
+  current typed App contract and governed dictionaries support the interpretation.
+- A source pattern is not a recommendation. When no grounded recommendation exists,
+  the UI and agent contract must state that the recommendation is pending rather
+  than manufacturing a source-to-proposal change.
+- Every row has an independent explanation and decision boundary. No workbook row is
+  automatically corrected, approved, rejected, or promoted.
+- A focused row analysis is a strict single-row privacy boundary. Session sample
+  rows must be empty, and model proposals that merely repeat the current App record
+  are retained only as no-op diagnostics rather than executable correction drafts.
+- Before OCI Generative AI receives customer-derived evidence, the operator must
+  obtain explicit consent that names the configured destination, region, model, and
+  the exact sanitized evidence fields.
 
 ## Acceptance Criteria
 
@@ -150,15 +184,17 @@ For the **ADN - Retail Merchandising** customer exercise:
 - External files persist source rows but create no catalog rows before approval.
 - Ambiguous payload, aggregate-volume, fan-out, and dictionary values generate
   explicit questions.
-- External formulas are visible in the same Import review, are never executed, and
-  cannot silently populate governed operational fields.
+- External formulas are represented only by value-free exclusion metadata, are
+  never persisted as operational row data, never executed, and cannot populate a
+  governed field or agent correction draft.
 - The newest unresolved mapping review resumes after navigation or reload without
   requiring the user to recover a batch from history.
-- Structured evidence sessions survive navigation and expose source values,
-  canonical proposals, required gaps, pattern recommendations, and agent guidance.
+- Structured evidence sessions survive navigation and expose supported source
+  values, value-free exclusions, canonical proposals, required gaps, pattern
+  recommendations, and persisted row-level agent guidance.
 - Local customer files and local paths never enter App storage or API responses.
-- A structured row can enter the catalog only after schema validation, explicit
-  architect approval, and explicit promotion.
+- A structured row can enter the catalog only after schema validation, a current
+  grounded row analysis, explicit architect approval, and explicit promotion.
 - A reviewer can map a column to a canonical target or evidence-only, save a
   profile, approve, and materialize rows exactly once.
 - All decisions, profile use, and materialization are audit events.

@@ -479,6 +479,8 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M67 | Contextual Topology Pulse | ✅ Complete | 2026-07-22 |
 | M68 | Deterministic DIS Technical Demand Propagation | ✅ Complete | 2026-07-23 |
 | M71 | Governed Commercial Review Work Queue | ✅ Complete | 2026-07-23 |
+| M72 | Reasoning-led Import Correction Review | ✅ Complete | 2026-07-24 |
+| M73 | Human-authorized Import Correction Execution | 🟡 In QA | — |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -491,7 +493,7 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
 - Reference seed data: `21` certified patterns, `9` architectural overlays, `27` governed canvas combinations, client-only assumption sets, governed dictionaries, and `20` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
 - Backend + calc-engine + pricing-engine: `213 passed` (`139` API, `50` calc-engine, `24` pricing-engine)
-- Frontend: `70 passed`, strict TypeScript, ESLint, and production build green
+- Frontend: `132 passed`, strict TypeScript, ESLint, and production build green
 - Pricing/BOM E2E: real 4-source Oracle verification, scheduled no-change verification,
   and post-verification BOM jobs reach terminal `completed` states
 - Continuous commercial governance: `4/4` official sources preserved in Object
@@ -502,6 +504,40 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
 - Dependency audit: `0` vulnerabilities
 - Web and API stack: all eight production services running and healthy in Docker Compose
 - Pattern certification browser contract: `21/21` certified cards, `9/9` governed overlays, desktop light/dark and `390 px` mobile views, zero horizontal overflow, and zero console errors
+- Integration Canvas disclosure contract: source, destination, and DIS nodes share
+  one `260 × 116` collapsed geometry; each DIS node exposes one explicit technical
+  detail control; switching or closing the detail panel leaves node and edge
+  geometry unchanged. Production browser validation covered desktop dark and
+  `390 px` mobile with zero page overflow and zero console errors.
+- M72 deterministic customer-held workbook QA: `241` received lines, `240` staged
+  external-capture candidates, `1` formula/footer-only exclusion, `352` received
+  formula cells, `0` persisted formula values, `240/240` provider-free row analyses,
+  `100%` explanation and decision coverage, `0` executable corrections, and `0`
+  approvals or promotions. Consecutive final reruns produced the same normalized
+  outcome fingerprint and retained every current analysis.
+- M72 external-provider validation: explicit consent recorded; OCI Generative AI
+  Responses in `us-chicago-1` completed with Guardrails, one focused row, zero
+  session samples, grounded output, no fallback, and zero executed actions. A
+  discovered cross-row sampling defect and a no-op correction draft were removed
+  behind deterministic regressions.
+- M72 final gates: API `313 passed`, focused agent/import `38 passed`, web
+  `127 passed`, Ruff, mypy, TypeScript, ESLint, production build, OpenAPI, migration
+  head `20260724_0055`, responsive browser checks, healthy Docker runtime, and
+  `npm audit` with `0` vulnerabilities.
+- M73 correction execution QA: one explicit endpoint now applies all eligible
+  current grounded patches or a selected row set; the same per-row execution
+  boundary rejects stale, degraded, unsupported, ungrounded, formula-bearing,
+  invalid, and no-op values. Capture Review exposes bulk, per-integration, and
+  manual choices without combining correction with approval or promotion. Agent
+  briefs render as structured review summaries, issue/evidence/action cards,
+  exclusions, and human decisions, and the latest completed session brief is
+  restored after reload without another inference.
+- M73 current customer-held run: `241` lines classified, `240` staged, `1`
+  formula/footer-only exclusion, `352` formula cells received, `0` formula values
+  persisted, `11` current provider analyses, `1` degraded analysis, `228` analyses
+  still required, `0` executable corrections, `0` approvals, and `0` promotions.
+  Bulk provider egress remains intentionally blocked until consent explicitly
+  covers all remaining single-row OCI requests.
 
 `AGENTS.md`, this README, the root workflow, and the current architecture
 documents define the active operational contract. Dated audit reports,

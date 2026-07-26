@@ -9304,6 +9304,115 @@
         "title": "ExportJobResponse",
         "type": "object"
       },
+      "ExternalCaptureAgentAnalysis": {
+        "additionalProperties": false,
+        "description": "Latest persisted row-level agent explanation and freshness state.",
+        "properties": {
+          "analyzed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analyzed At"
+          },
+          "correction_available": {
+            "title": "Correction Available",
+            "type": "boolean"
+          },
+          "correction_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Correction Fields",
+            "type": "array"
+          },
+          "fallback_used": {
+            "title": "Fallback Used",
+            "type": "boolean"
+          },
+          "grounded": {
+            "title": "Grounded",
+            "type": "boolean"
+          },
+          "no_op_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "No Op Fields",
+            "type": "array"
+          },
+          "provider_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Status"
+          },
+          "required_decisions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Decisions",
+            "type": "array"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "status": {
+            "enum": [
+              "required",
+              "current",
+              "stale",
+              "degraded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "status",
+          "run_id",
+          "summary",
+          "provider_status",
+          "grounded",
+          "fallback_used",
+          "correction_available",
+          "correction_fields",
+          "required_decisions",
+          "no_op_fields",
+          "analyzed_at"
+        ],
+        "title": "ExternalCaptureAgentAnalysis",
+        "type": "object"
+      },
       "ExternalCaptureBulkResult": {
         "additionalProperties": false,
         "properties": {
@@ -9330,6 +9439,134 @@
           "summary"
         ],
         "title": "ExternalCaptureBulkResult",
+        "type": "object"
+      },
+      "ExternalCaptureCorrectionApplyRequest": {
+        "additionalProperties": false,
+        "description": "Explicit human authorization for one or many current correction drafts.",
+        "properties": {
+          "confirm": {
+            "const": true,
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "draft_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Draft Ids",
+            "type": "array"
+          },
+          "scope": {
+            "enum": [
+              "all_eligible",
+              "selected"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "confirm"
+        ],
+        "title": "ExternalCaptureCorrectionApplyRequest",
+        "type": "object"
+      },
+      "ExternalCaptureCorrectionBulkResult": {
+        "additionalProperties": false,
+        "description": "Aggregate outcome for an explicitly authorized correction operation.",
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "integer"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "human_decision_rows": {
+            "title": "Human Decision Rows",
+            "type": "integer"
+          },
+          "requested": {
+            "title": "Requested",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalCaptureCorrectionResultItem"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ExternalCaptureSummary"
+          }
+        },
+        "required": [
+          "requested",
+          "eligible",
+          "applied",
+          "skipped",
+          "failed",
+          "human_decision_rows",
+          "results",
+          "summary"
+        ],
+        "title": "ExternalCaptureCorrectionBulkResult",
+        "type": "object"
+      },
+      "ExternalCaptureCorrectionResultItem": {
+        "additionalProperties": false,
+        "description": "Value-free outcome for one considered correction draft.",
+        "properties": {
+          "correction_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Correction Fields",
+            "type": "array"
+          },
+          "draft_id": {
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "source_row_number": {
+            "title": "Source Row Number",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "applied",
+              "skipped",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "draft_id",
+          "source_row_number",
+          "status",
+          "correction_fields",
+          "reason_code"
+        ],
+        "title": "ExternalCaptureCorrectionResultItem",
         "type": "object"
       },
       "ExternalCaptureDraftBulkCreate": {
@@ -9497,6 +9734,13 @@
       "ExternalCaptureDraftResponse": {
         "additionalProperties": false,
         "properties": {
+          "agent_analysis": {
+            "$ref": "#/components/schemas/ExternalCaptureAgentAnalysis"
+          },
+          "approval_blocked": {
+            "title": "Approval Blocked",
+            "type": "boolean"
+          },
           "confidence": {
             "anyOf": [
               {
@@ -9516,6 +9760,13 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "ignored_source_fields": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalCaptureIgnoredSourceField"
+            },
+            "title": "Ignored Source Fields",
+            "type": "array"
           },
           "normalized_values": {
             "additionalProperties": true,
@@ -9553,6 +9804,17 @@
               "type": "string"
             },
             "title": "Required Field Gaps",
+            "type": "array"
+          },
+          "review_summary": {
+            "title": "Review Summary",
+            "type": "string"
+          },
+          "review_triggers": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalCaptureReviewTrigger"
+            },
+            "title": "Review Triggers",
             "type": "array"
           },
           "reviewed_at": {
@@ -9628,12 +9890,17 @@
           "session_id",
           "source_row_number",
           "source_record",
+          "ignored_source_fields",
           "proposed_payload",
           "normalized_values",
           "pattern_assessment",
           "validation_evidence",
           "required_field_gaps",
           "qa_preview",
+          "review_triggers",
+          "review_summary",
+          "approval_blocked",
+          "agent_analysis",
           "confidence",
           "status",
           "reviewer_rationale",
@@ -9671,6 +9938,47 @@
         "title": "ExternalCaptureDraftReview",
         "type": "object"
       },
+      "ExternalCaptureIgnoredSourceField": {
+        "additionalProperties": false,
+        "description": "Source-only field withheld from the supported App record.",
+        "properties": {
+          "classification": {
+            "enum": [
+              "commercial_formula",
+              "formula",
+              "commercial_value",
+              "derived_demand",
+              "unsupported"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_header": {
+            "title": "Source Header",
+            "type": "string"
+          },
+          "value_kind": {
+            "enum": [
+              "formula",
+              "value"
+            ],
+            "title": "Value Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_header",
+          "classification",
+          "reason",
+          "value_kind"
+        ],
+        "title": "ExternalCaptureIgnoredSourceField",
+        "type": "object"
+      },
       "ExternalCapturePromotionResponse": {
         "additionalProperties": false,
         "properties": {
@@ -9687,6 +9995,53 @@
           "integration_id"
         ],
         "title": "ExternalCapturePromotionResponse",
+        "type": "object"
+      },
+      "ExternalCaptureReviewTrigger": {
+        "additionalProperties": false,
+        "description": "One deterministic fact boundary supplied to the reasoning agent.",
+        "properties": {
+          "blocks_approval": {
+            "title": "Blocks Approval",
+            "type": "boolean"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "required_gap",
+              "normalization_gap",
+              "pattern_review",
+              "qa_control",
+              "governance"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "required_decision": {
+            "title": "Required Decision",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "kind",
+          "title",
+          "evidence",
+          "required_decision",
+          "blocks_approval"
+        ],
+        "title": "ExternalCaptureReviewTrigger",
         "type": "object"
       },
       "ExternalCaptureSessionCreate": {
@@ -9865,8 +10220,20 @@
       "ExternalCaptureSummary": {
         "additionalProperties": false,
         "properties": {
+          "analyses_current": {
+            "title": "Analyses Current",
+            "type": "integer"
+          },
           "approved": {
             "title": "Approved",
+            "type": "integer"
+          },
+          "corrections_available": {
+            "title": "Corrections Available",
+            "type": "integer"
+          },
+          "human_decision_rows": {
+            "title": "Human Decision Rows",
             "type": "integer"
           },
           "missing_required": {
@@ -9911,7 +10278,10 @@
           "needs_review",
           "approved",
           "rejected",
-          "promoted"
+          "promoted",
+          "analyses_current",
+          "corrections_available",
+          "human_decision_rows"
         ],
         "title": "ExternalCaptureSummary",
         "type": "object"
@@ -27675,6 +28045,87 @@
           }
         },
         "summary": "Get an external-capture review summary",
+        "tags": [
+          "External Capture Review"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/corrections/apply": {
+      "post": {
+        "operationId": "apply_corrections_api_v1_projects__project_id__external_capture_sessions__session_id__corrections_apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "default": "api-user",
+              "title": "X-Actor-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Role",
+            "required": false,
+            "schema": {
+              "default": "Analyst",
+              "title": "X-Actor-Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalCaptureCorrectionApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalCaptureCorrectionBulkResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply current agent correction drafts after explicit human authorization",
         "tags": [
           "External Capture Review"
         ]

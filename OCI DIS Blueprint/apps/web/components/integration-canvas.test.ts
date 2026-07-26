@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { arrangeCanvasNodes } from "../lib/canvas-layout";
+import {
+  CANVAS_HEIGHT,
+  SYSTEM_NODE_HEIGHT,
+  SYSTEM_NODE_WIDTH,
+  TOOL_NODE_HEIGHT,
+  TOOL_NODE_WIDTH,
+  arrangeCanvasNodes,
+} from "../lib/canvas-layout";
 import {
   DESTINATION_NODE_ID,
   SOURCE_NODE_ID,
@@ -24,6 +31,11 @@ function edge(edgeId: string, sourceInstanceId: string, targetInstanceId: string
 }
 
 describe("integration canvas layout", () => {
+  it("uses one collapsed geometry for systems and DIS components", () => {
+    expect(SYSTEM_NODE_WIDTH).toBe(TOOL_NODE_WIDTH);
+    expect(SYSTEM_NODE_HEIGHT).toBe(TOOL_NODE_HEIGHT);
+  });
+
   it("keeps contextual overlays clear of the source-system column", () => {
     const arranged = arrangeCanvasNodes(
       [
@@ -44,9 +56,12 @@ describe("integration canvas layout", () => {
     const gateway = arranged.find((item) => item.instanceId === "gateway");
     const stream = arranged.find((item) => item.instanceId === "stream");
 
-    expect(catalog).toMatchObject({ x: 292, y: 28 });
-    expect(gateway).toMatchObject({ x: 596, y: 28 });
-    expect(stream).toMatchObject({ x: 292, y: 222 });
-    expect(catalog?.x).toBeGreaterThanOrEqual(40 + 208 + 40);
+    expect(catalog).toMatchObject({ x: 344, y: 28 });
+    expect(gateway).toMatchObject({ x: 648, y: 28 });
+    expect(stream).toMatchObject({
+      x: 344,
+      y: CANVAS_HEIGHT / 2 - TOOL_NODE_HEIGHT / 2,
+    });
+    expect(catalog?.x).toBeGreaterThanOrEqual(40 + SYSTEM_NODE_WIDTH + 40);
   });
 });

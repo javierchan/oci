@@ -449,13 +449,22 @@ def build_tool_executor(
         from app.services.import_service import get_import_quality_assistant
 
         external_capture_session_id = context.get("external_capture_session_id")
+        external_capture_draft_id = context.get("external_capture_draft_id")
         if (
             project_id is not None
             and isinstance(external_capture_session_id, str)
             and external_capture_session_id
         ):
             return await build_agent_evidence(
-                project_id, external_capture_session_id, db
+                project_id,
+                external_capture_session_id,
+                (
+                    external_capture_draft_id
+                    if isinstance(external_capture_draft_id, str)
+                    and external_capture_draft_id
+                    else None
+                ),
+                db,
             )
         batch_id = context.get("batch_id")
         if project_id is None or not isinstance(batch_id, str) or not batch_id:

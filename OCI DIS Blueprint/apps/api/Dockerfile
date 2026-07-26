@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir /tmp/runtime-wheels/* && rm -rf /tmp/runtime-whee
 FROM runtime-deps AS production-base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app:/calc-engine/src:/pricing-engine/src \
     ENVIRONMENT=production \
     HOME=/tmp/oci-dis-home
 RUN addgroup -S -g 10001 app \
@@ -36,7 +37,7 @@ COPY --chown=app:app apps/api/alembic.ini ./alembic.ini
 COPY --chown=app:app packages/calc-engine/src/__init__.py /calc-engine/src/__init__.py
 COPY --chown=app:app packages/calc-engine/src/engine /calc-engine/src/engine
 COPY --chown=app:app packages/pricing-engine/src/pricing_engine /pricing-engine/src/pricing_engine
-COPY --chown=app:app docs/api/openapi.yaml /docs/api/openapi.yaml
+COPY --chown=app:app docs/api/openapi.yaml ./docs/api/openapi.yaml
 COPY apps/api/production-entrypoint.sh /usr/local/bin/oci-dis-entrypoint
 RUN rm -rf /app/app/tests \
     && chmod 0755 /usr/local/bin/oci-dis-entrypoint
@@ -65,6 +66,8 @@ RUN pip install --no-cache-dir /tmp/quality-wheels/* && rm -rf /tmp/quality-whee
 COPY --chown=app:app apps/api/app/tests ./app/tests
 COPY --chown=app:app packages/calc-engine/src/tests /calc-engine/src/tests
 COPY --chown=app:app packages/pricing-engine/tests /pricing-engine/tests
+COPY --chown=app:app apps/api/app /app/apps/api/app
+COPY --chown=app:app apps/web/app /app/apps/web/app
 COPY --chown=app:app docker-compose.yml package.json /contracts/
 COPY --chown=app:app apps/api/Dockerfile apps/api/production-entrypoint.sh /contracts/apps/api/
 USER app

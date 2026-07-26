@@ -824,6 +824,72 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       global-catalog reconciliation, responsive light/dark browser validation,
       persisted assignment audit, and zero browser console errors pass.
 
+### M72 — Reasoning-led Import Correction Review
+- [x] Separate supported source evidence from formulas, derived demand, commercial
+      outputs, and source columns that have no governed App target.
+- [x] Remove formulas before operational persistence and cleanse historical
+      external-capture formulas while retaining value-free exclusion metadata for audit.
+- [x] Give the Import Correction Agent the complete row evidence, current App
+      schema, active dictionaries, governed patterns, QA facts, and selected-pattern
+      certification so it can reason about arbitrary interpretation deviations.
+- [x] Require one concise row-level explanation, detected deviations, grounded
+      typed correction draft, excluded fields, and unresolved human decisions.
+- [x] Reject formulas, unsupported targets, invalid types, ungrounded values, and
+      stale correction proposals at the execution boundary.
+- [x] Persist the analysis and its evidence fingerprint; require a current grounded
+      analysis before row approval, and keep correction execution, approval, rejection,
+      and catalog promotion as separate human-authorized actions.
+- [x] Redesign Capture Review to explain why every line needs review, disclose
+      excluded headers without their values, run or restore row-level reasoning,
+      authorize a proposed correction, and visibly distinguish schema completeness
+      from architecture readiness.
+- [x] Validate the real customer-held workbook locally without uploading it:
+      241 received lines, 240 staged candidates, one formula/footer exclusion,
+      352 formula cells received, zero formula values persisted, 100% deterministic
+      explanation/decision coverage, zero executable corrections, and zero promotions.
+- [x] Preserve all 240 current row analyses across the bounded AgentRun retention
+      policy and reproduce the same normalized outcome fingerprint on consecutive
+      provider-free reruns.
+- [x] Obtain explicit customer-evidence transfer consent before the required real
+      OCI Generative AI row analysis, constrain focused inference to one row with
+      zero session samples, suppress no-op correction drafts, and complete the
+      explicitly authorized npm-registry dependency audit with zero vulnerabilities.
+- [x] **Exit criteria**: migration head `20260724_0055`, focused and full backend
+      and frontend gates, generated OpenAPI, healthy production Docker stack, real
+      ADN row analysis with OCI Generative AI, responsive light/dark browser validation,
+      formula absence in persisted capture evidence, and zero browser console errors pass.
+
+### M73 — Human-authorized Import Correction Execution
+- [x] Add one audited bulk endpoint that applies all eligible current correction
+      drafts or an explicit selected set without analyzing, approving, rejecting,
+      or promoting any row.
+- [x] Reuse the existing evidence-hash, typing, grounding, formula, and supported-target
+      checks for every bulk item; skip stale, degraded, empty, or ineligible analyses
+      with a bounded reason code.
+- [x] Expose `Fix all eligible`, per-integration correction, and manual editing as
+      three distinct human choices in Capture Review, with destructive-scope
+      confirmation and truthful applied/skipped/failed counts.
+- [x] Normalize session and row briefs into scan-friendly review summaries,
+      issue/evidence/action cards, confidence labels, exclusions, and numbered
+      human decisions; never render the provider JSON contract as raw prose.
+- [x] Restore the latest completed session-level Import Correction Agent run after
+      reload without starting a new inference or replacing a newer in-memory run.
+- [x] Mark every corrected row stale and require a new grounded analysis before
+      approval so an agent never authorizes its own mutation.
+- [x] Tolerate provider prose around the required JSON and perform one bounded,
+      safety-governed repair attempt when a completed provider response violates
+      the correction contract.
+- [x] Validate focused backend behavior, frontend unit/type/lint/build gates,
+      migration/OpenAPI consistency, responsive light/dark layout, zero horizontal
+      overflow, and zero browser console errors.
+- [ ] Complete explicitly authorized provider analysis for every remaining staged
+      customer row, rerun degraded rows serially, and demonstrate stable current
+      analysis/correction counts across multiple final reruns.
+- [ ] **Exit criteria**: one clean review project remains; every staged line has
+      either a current grounded analysis or a visible provider failure requiring
+      human action; Fix all remains unexecuted for reviewer choice; formulas
+      persisted remain zero; catalog, approvals, rejections, and promotions remain zero.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

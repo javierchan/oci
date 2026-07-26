@@ -17,10 +17,16 @@ import {
   Save,
   Search,
   ShieldCheck,
+  Sparkles,
   XCircle,
 } from "lucide-react";
 
 import { AgentDecisionWorkspace } from "@/components/agent-decision-workspace";
+import {
+  ImportCorrectionBrief,
+  selectLatestImportCorrectionSessionRun,
+} from "@/components/import-correction-brief";
+import { ConfirmModal } from "@/components/modal";
 import { emitToast } from "@/hooks/use-toast";
 import { api, getErrorMessage } from "@/lib/api";
 import type {
@@ -158,7 +164,12 @@ export function ExternalCaptureReview({
   const [isLoading, setIsLoading] = useState(Boolean(selectedSessionId));
   const [actionId, setActionId] = useState<string | null>(null);
   const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
-  const [isRunningAgent, setIsRunningAgent] = useState(false);
+  const [focusedAgentRuns, setFocusedAgentRuns] = useState<Record<string, AgentRun>>(
+    {},
+  );
+  const [agentActionId, setAgentActionId] = useState<string | null>(null);
+  const [correctionActionId, setCorrectionActionId] = useState<string | null>(null);
+  const [confirmFixAll, setConfirmFixAll] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const selectedSession = useMemo(
@@ -176,7 +187,7 @@ export function ExternalCaptureReview({
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const [nextDetail, nextDrafts] = await Promise.all([
+      const [nextDetail, nextDrafts, recentAgentRuns] = await Promise.all([
         api.getExternalCaptureSession(project.id, selectedSessionId),
         api.listExternalCaptureDrafts(project.id, selectedSessionId, {
           page,
@@ -184,10 +195,19 @@ export function ExternalCaptureReview({
           status: statusFilter || undefined,
           search: committedSearch || undefined,
         }),
+        api.listAgentRuns({ project_id: project.id, limit: 50 }),
       ]);
       setDetail(nextDetail);
       setDrafts(nextDrafts.drafts);
       setTotal(nextDrafts.total);
+      setAgentRun(
+        (current) =>
+          current ??
+          selectLatestImportCorrectionSessionRun(
+            recentAgentRuns.runs,
+            selectedSessionId,
+          ),
+      );
     } catch (error) {
       setErrorMessage(getErrorMessage(error, "Unable to load the capture review."));
     } finally {
@@ -210,6 +230,21 @@ export function ExternalCaptureReview({
     setExpandedDraftId(draft.id);
     setDraftForm(formFromDraft(draft));
     setReviewRationale(draft.reviewer_rationale ?? "");
+    if (
+      draft.agent_analysis.run_id &&
+      !focusedAgentRuns[draft.id]
+    ) {
+      void api
+        .getAgentRun(draft.agent_analysis.run_id)
+        .then((run) =>
+          setFocusedAgentRuns((current) => ({ ...current, [draft.id]: run })),
+        )
+        .catch((error: unknown) =>
+          setErrorMessage(
+            getErrorMessage(error, "Unable to restore the latest row analysis."),
+          ),
+        );
+    }
   }
 
   function replaceDraft(updated: ExternalCaptureDraft): void {
@@ -312,29 +347,81 @@ export function ExternalCaptureReview({
     }
   }
 
-  async function runCorrectionAgent(): Promise<void> {
+  async function runCorrectionAgent(
+    draft?: ExternalCaptureDraft,
+  ): Promise<void> {
     if (!selectedSessionId) return;
-    setIsRunningAgent(true);
+    const scopeId = draft?.id ?? "session";
+    setAgentActionId(scopeId);
     setErrorMessage(null);
     try {
       const terminal = await waitForAgent(
         await api.runAgent({
           agent_type: "import_quality",
           project_id: project.id,
-          context: { external_capture_session_id: selectedSessionId },
+          context: {
+            external_capture_session_id: selectedSessionId,
+            ...(draft ? { external_capture_draft_id: draft.id } : {}),
+          },
           message:
-            "Inspect the external capture session, explain the mapping quality and prioritize the user decisions required before canonical promotion.",
+            draft
+              ? `Explain why source row ${draft.source_row_number} needs review. Use only its governed evidence and identify the minimum human decision required.`
+              : "Inspect the external capture session, explain the repeated quality gaps, and prioritize the user decisions required before canonical promotion.",
           include_provider: true,
         }),
       );
-      setAgentRun(terminal);
       if (terminal.status !== "completed") {
         throw new Error("Import Correction Agent did not complete successfully.");
+      }
+      if (draft) {
+        setFocusedAgentRuns((current) => ({
+          ...current,
+          [draft.id]: terminal,
+        }));
+        await loadWorkspace();
+      } else {
+        setAgentRun(terminal);
       }
     } catch (error) {
       setErrorMessage(getErrorMessage(error, "Unable to run Import Correction Agent."));
     } finally {
-      setIsRunningAgent(false);
+      setAgentActionId(null);
+    }
+  }
+
+  async function applyCorrections(draft?: ExternalCaptureDraft): Promise<void> {
+    if (!selectedSessionId) return;
+    const scopeId = draft?.id ?? "all";
+    setCorrectionActionId(scopeId);
+    setErrorMessage(null);
+    try {
+      const result = await api.applyExternalCaptureCorrections(
+        project.id,
+        selectedSessionId,
+        draft
+          ? { scope: "selected", draft_ids: [draft.id], confirm: true }
+          : { scope: "all_eligible", draft_ids: [], confirm: true },
+      );
+      setFocusedAgentRuns({});
+      await loadWorkspace();
+      if (result.applied > 0) {
+        emitToast(
+          "success",
+          `${result.applied} correction${result.applied === 1 ? "" : "s"} applied. Every changed row now requires re-analysis; no row was approved or promoted.`,
+        );
+      } else {
+        emitToast(
+          "info",
+          "No executable correction was applied. Rows without grounded evidence remain human decisions.",
+        );
+      }
+    } catch (error) {
+      setErrorMessage(
+        getErrorMessage(error, "Unable to apply the authorized correction scope."),
+      );
+    } finally {
+      setCorrectionActionId(null);
+      setConfirmFixAll(false);
     }
   }
 
@@ -367,7 +454,7 @@ export function ExternalCaptureReview({
           <Metric label="Source rows" value={detail?.summary.total ?? 0} detail="Preserved as client evidence" />
           <Metric label="Schema ready" value={detail?.summary.schema_ready ?? 0} detail="Eligible for human approval" tone="positive" />
           <Metric label="Missing evidence" value={detail?.summary.missing_required ?? 0} detail="Blocked without invention" tone="warning" />
-          <Metric label="Pattern changes" value={detail?.summary.pattern_changes ?? 0} detail="Line-by-line recommendation" tone="warning" />
+          <Metric label="Pattern changes" value={detail?.summary.pattern_changes ?? 0} detail="Explicit source-to-proposal differences" tone="warning" />
           <Metric label="Promoted" value={detail?.summary.promoted ?? 0} detail="Canonical catalog records" />
         </div>
       </section>
@@ -380,26 +467,48 @@ export function ExternalCaptureReview({
               Customer source and App proposal stay separate
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-              The source record remains immutable evidence. The proposed App record is
-              editable, revalidated on every save, and cannot reach the catalog until an
-              architect approves and promotes it.
+              Supported source inputs remain immutable evidence. Excluded headers are
+              retained without their values. The proposed App record is editable,
+              revalidated on every save, and cannot reach the catalog until an architect
+              approves and promotes it.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void runCorrectionAgent()}
-            disabled={isRunningAgent}
-            className="app-button-primary"
-          >
-            {isRunningAgent ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-            {isRunningAgent ? "Analyzing evidence..." : "Run Import Correction Agent"}
-          </button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => void runCorrectionAgent()}
+              disabled={agentActionId !== null || correctionActionId !== null}
+              className="app-button-secondary"
+            >
+              {agentActionId === "session" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+              {agentActionId === "session" ? "Analyzing evidence..." : "Analyze review backlog"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmFixAll(true)}
+              disabled={
+                correctionActionId !== null ||
+                agentActionId !== null ||
+                (detail?.summary.corrections_available ?? 0) === 0
+              }
+              className="app-button-primary"
+            >
+              {correctionActionId === "all" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              {correctionActionId === "all"
+                ? "Applying grounded fixes..."
+                : `Fix all eligible (${detail?.summary.corrections_available ?? 0})`}
+            </button>
+          </div>
         </div>
         <div className="grid gap-0 md:grid-cols-3">
           <div className="border-b border-[var(--color-border)] p-5 md:border-b-0 md:border-r">
             <p className="app-label">1 · Preserve</p>
             <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
-              Keep the original value, row number, source label, and file hash.
+              Keep each supported value, row number, source label, and evidence hash.
             </p>
           </div>
           <div className="border-b border-[var(--color-border)] p-5 md:border-b-0 md:border-r">
@@ -415,6 +524,14 @@ export function ExternalCaptureReview({
             </p>
           </div>
         </div>
+        <div className="border-t border-[var(--color-border)] bg-[var(--color-surface-2)] px-5 py-4 text-sm text-[var(--color-text-secondary)]">
+          <span className="font-semibold text-[var(--color-text-primary)]">
+            {detail?.summary.corrections_available ?? 0} executable agent fixes
+          </span>
+          {" · "}
+          {detail?.summary.human_decision_rows ?? 0} rows still need human evidence or
+          judgment. Fixing never approves, rejects, or promotes integrations.
+        </div>
       </section>
 
       {agentRun ? (
@@ -423,15 +540,17 @@ export function ExternalCaptureReview({
           <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">
             Evidence-backed review brief
           </h2>
+          <ImportCorrectionBrief
+            summary={agentRun.result?.summary}
+            brief={agentRun.result?.brief}
+            quality={agentRun.result?.output_quality}
+            providerStatus={agentRun.result?.provider_status}
+          />
           {agentRun.result?.decision_workspace ? (
-            <div className="mt-4">
+            <div className="mt-5">
               <AgentDecisionWorkspace run={agentRun} onRunChange={setAgentRun} />
             </div>
-          ) : (
-            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--color-text-secondary)]">
-              {agentRun.result?.summary ?? "The agent completed without a narrative summary."}
-            </p>
-          )}
+          ) : null}
         </section>
       ) : null}
 
@@ -513,6 +632,8 @@ export function ExternalCaptureReview({
               );
               const sourceSystem = stringValue(draft.proposed_payload, "source_system") || "Source missing";
               const destinationSystem = stringValue(draft.proposed_payload, "destination_system") || "Destination missing";
+              const primaryTrigger = draft.review_triggers[0];
+              const focusedAgentRun = focusedAgentRuns[draft.id] ?? null;
               return (
                 <article key={draft.id} className="bg-[var(--color-surface)]">
                   <button
@@ -530,6 +651,9 @@ export function ExternalCaptureReview({
                       <span className="mt-1 block truncate text-xs text-[var(--color-text-muted)]">
                         {sourceSystem} → {destinationSystem}
                       </span>
+                      <span className="mt-1.5 block truncate text-xs font-medium text-amber-700 dark:text-amber-300">
+                        {primaryTrigger?.title ?? "Explicit architect review required"}
+                      </span>
                     </span>
                     <span className="min-w-0 text-xs text-[var(--color-text-secondary)]">
                       <span className="block truncate">
@@ -537,17 +661,19 @@ export function ExternalCaptureReview({
                           ? `${pattern.pattern_id} · ${pattern.name}`
                           : proposedPattern || "Pattern evidence missing"}
                       </span>
-                      {sourcePattern && sourcePattern !== proposedPattern ? (
+                      {sourcePattern ? (
                         <span className="mt-1 block truncate text-amber-700 dark:text-amber-300">
-                          Source {sourcePattern} → recommended {proposedPattern}
+                          {proposedPattern
+                            ? `Source ${sourcePattern} → recommended ${proposedPattern}`
+                            : `Source ${sourcePattern} · recommendation pending`}
                         </span>
                       ) : null}
                     </span>
                     <span className="flex items-center justify-between gap-3 md:justify-end">
-                      {draft.required_field_gaps.length ? (
+                      {draft.approval_blocked ? (
                         <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
                           <AlertTriangle className="h-3.5 w-3.5" />
-                          {draft.required_field_gaps.length} gap{draft.required_field_gaps.length === 1 ? "" : "s"}
+                          approval blocked
                         </span>
                       ) : null}
                       <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusTone(draft.status)}`}>
@@ -559,16 +685,176 @@ export function ExternalCaptureReview({
 
                   {expanded && draftForm ? (
                     <div className="border-t border-[var(--color-border)] bg-[var(--color-surface-2)] p-5">
+                      <section className="mb-5 rounded-xl border border-amber-300/80 bg-amber-50/70 p-4 dark:border-amber-800 dark:bg-amber-950/25">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="max-w-4xl">
+                            <p className="app-label">Why this line needs review</p>
+                            <h3 className="mt-2 text-base font-semibold text-[var(--color-text-primary)]">
+                              {draft.review_summary}
+                            </h3>
+                            <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">
+                              Validation supplies the facts below. The Import Correction
+                              Agent reasons from those facts; it cannot approve, reject, or
+                              promote the integration.
+                            </p>
+                            <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+                              Agent analysis: {draft.agent_analysis.status}
+                            </p>
+                            <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">
+                              Runs OCI Generative AI with supported row evidence and the
+                              governed App contract. Formula values and unsupported source
+                              values are excluded before inference.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void runCorrectionAgent(draft)}
+                              disabled={
+                                agentActionId !== null || correctionActionId !== null
+                              }
+                              className="app-button-secondary"
+                            >
+                              {agentActionId === draft.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Bot className="h-4 w-4" />
+                              )}
+                              {agentActionId === draft.id
+                                ? "Reasoning from evidence..."
+                                : draft.agent_analysis.status === "required"
+                                  ? "Analyze and propose correction"
+                                  : "Re-analyze current evidence"}
+                            </button>
+                            {draft.agent_analysis.correction_available ? (
+                              <button
+                                type="button"
+                                onClick={() => void applyCorrections(draft)}
+                                disabled={
+                                  correctionActionId !== null ||
+                                  agentActionId !== null
+                                }
+                                className="app-button-primary"
+                              >
+                                {correctionActionId === draft.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Sparkles className="h-4 w-4" />
+                                )}
+                                Fix this integration
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                        {draft.agent_analysis.correction_available ? (
+                          <p className="mt-3 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                            Grounded fix ready:{" "}
+                            {draft.agent_analysis.correction_fields
+                              .map((field) => field.replaceAll("_", " "))
+                              .join(", ")}
+                          </p>
+                        ) : draft.agent_analysis.required_decisions.length > 0 ? (
+                          <p className="mt-3 text-xs font-medium text-amber-700 dark:text-amber-300">
+                            {draft.agent_analysis.required_decisions.length} human
+                            decision
+                            {draft.agent_analysis.required_decisions.length === 1
+                              ? ""
+                              : "s"}{" "}
+                            remain; the agent will not invent missing evidence.
+                          </p>
+                        ) : null}
+                        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                          {draft.review_triggers.map((trigger) => (
+                            <article
+                              key={trigger.code}
+                              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                                  {trigger.title}
+                                </p>
+                                {trigger.blocks_approval ? (
+                                  <span className="rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
+                                    Blocks approval
+                                  </span>
+                                ) : (
+                                  <span className="app-theme-chip">Review decision</span>
+                                )}
+                              </div>
+                              <p className="mt-1.5 text-xs leading-5 text-[var(--color-text-secondary)]">
+                                {trigger.evidence}
+                              </p>
+                              <p className="mt-2 text-xs font-medium leading-5 text-[var(--color-text-primary)]">
+                                Decision: {trigger.required_decision}
+                              </p>
+                            </article>
+                          ))}
+                        </div>
+                        {focusedAgentRun || draft.agent_analysis.summary ? (
+                          <div className="mt-4 rounded-lg border border-[var(--color-accent)]/35 bg-[var(--color-surface)] p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                                Import Correction Agent explanation
+                              </p>
+                              <span className="app-theme-chip">
+                                {(focusedAgentRun?.result?.output_quality
+                                  ?.fallback_used ??
+                                draft.agent_analysis.fallback_used)
+                                  ? "Deterministic fallback"
+                                  : draft.agent_analysis.status === "current"
+                                    ? "Grounded OCI explanation"
+                                    : `Analysis ${draft.agent_analysis.status}`}
+                              </span>
+                            </div>
+                            <ImportCorrectionBrief
+                              compact
+                              summary={
+                                focusedAgentRun?.result?.summary ??
+                                draft.agent_analysis.summary ??
+                                undefined
+                              }
+                              brief={focusedAgentRun?.result?.brief}
+                              quality={focusedAgentRun?.result?.output_quality}
+                              providerStatus={
+                                focusedAgentRun?.result?.provider_status ??
+                                draft.agent_analysis.provider_status ??
+                                undefined
+                              }
+                            />
+                            {focusedAgentRun?.result?.decision_workspace ? (
+                              <AgentDecisionWorkspace
+                                run={focusedAgentRun}
+                                compact
+                                onRunChange={(updatedRun) => {
+                                  setFocusedAgentRuns((current) => ({
+                                    ...current,
+                                    [draft.id]: updatedRun,
+                                  }));
+                                  if (
+                                    updatedRun.approvals.some(
+                                      (approval) =>
+                                        approval.execution_status === "completed",
+                                    )
+                                  ) {
+                                    void loadWorkspace();
+                                  }
+                                }}
+                              />
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </section>
+
                       <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
                         <section className="min-w-0">
-                          <p className="app-label">Source evidence · read only</p>
+                          <p className="app-label">Supported source evidence · read only</p>
                           <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
-                            Original values remain unchanged for audit and interpretation review.
+                            Only source fields with a governed App meaning are shown here.
+                            Original supported values remain unchanged.
                           </p>
                           <dl className="mt-4 grid gap-x-4 gap-y-3 sm:grid-cols-2">
                             {Object.entries(draft.source_record)
                               .filter(([, value]) => value !== null && value !== "")
-                              .slice(0, 14)
                               .map(([key, value]) => (
                                 <div key={key} className="min-w-0 border-b border-[var(--color-border)] pb-2">
                                   <dt className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--color-text-muted)]">
@@ -580,6 +866,29 @@ export function ExternalCaptureReview({
                                 </div>
                               ))}
                           </dl>
+                          {draft.ignored_source_fields.length ? (
+                            <div className="mt-4 rounded-lg border border-sky-300 bg-sky-50 p-3 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-100">
+                              <p className="font-semibold">
+                                {draft.ignored_source_fields.length} source-only field
+                                {draft.ignored_source_fields.length === 1 ? "" : "s"} excluded
+                              </p>
+                              <p className="mt-1 text-xs leading-5">
+                                These values are not evaluated, mapped, or promoted into the
+                                App record. Immutable audit evidence remains isolated from the
+                                operational contract.
+                              </p>
+                              <ul className="mt-2 space-y-1 text-xs">
+                                {draft.ignored_source_fields.map((field) => (
+                                  <li key={field.source_header}>
+                                    <span className="font-semibold">
+                                      {field.source_header}
+                                    </span>{" "}
+                                    · {field.reason}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
                         </section>
 
                         <section className="min-w-0 border-t border-[var(--color-border)] pt-5 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0">
@@ -595,7 +904,7 @@ export function ExternalCaptureReview({
                             </span>
                           </div>
 
-                          {draft.required_field_gaps.length ? (
+                          {draft.approval_blocked ? (
                             <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-100">
                               <p className="font-semibold">Evidence required before approval</p>
                               <p className="mt-1">
@@ -605,8 +914,8 @@ export function ExternalCaptureReview({
                               </p>
                             </div>
                           ) : (
-                            <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                              <CheckCircle2 className="h-4 w-4" /> Schema-ready for architect review
+                            <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-sky-700 dark:text-sky-300">
+                              <CheckCircle2 className="h-4 w-4" /> Required fields complete · architecture review still required
                             </div>
                           )}
 
@@ -670,7 +979,7 @@ export function ExternalCaptureReview({
                               />
                             </label>
                             <label className="sm:col-span-2">
-                              <span className="text-xs font-semibold text-[var(--color-text-secondary)]">Pattern rationale</span>
+                              <span className="text-xs font-semibold text-[var(--color-text-secondary)]">Current proposed pattern rationale</span>
                               <textarea
                                 value={draftForm.pattern_rationale}
                                 onChange={(event) =>
@@ -709,13 +1018,19 @@ export function ExternalCaptureReview({
                             >
                               <XCircle className="h-4 w-4" /> Reject
                             </button>
+                            {draft.agent_analysis.status !== "current" ? (
+                              <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                                Approval requires a grounded, current agent analysis.
+                              </span>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => void reviewDraft(draft, "approve")}
                               disabled={
                                 actionId === draft.id ||
                                 draft.status === "promoted" ||
-                                draft.required_field_gaps.length > 0
+                                draft.approval_blocked ||
+                                draft.agent_analysis.status !== "current"
                               }
                               className="app-button-primary"
                             >
@@ -788,11 +1103,21 @@ export function ExternalCaptureReview({
           <ShieldCheck className="h-5 w-5 text-[var(--color-accent)]" />
           <p className="app-label mt-4">Economic scope</p>
           <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
-            Every proposal is normalized to TBQ=Y for this exercise. Technical-only
-            evidence remains supported by the canonical capture contract for other projects.
+            {selectedSession?.normalization_policy.force_tbq_y === true
+              ? "This session explicitly normalizes proposals to TBQ=Y while preserving the received source value as evidence."
+              : "TBQ is preserved from supported source evidence. Missing or unsupported values require an explicit human decision; this review does not change commercial scope automatically."}
           </p>
         </div>
       </section>
+      <ConfirmModal
+        open={confirmFixAll}
+        title="Apply all eligible agent fixes?"
+        description={`This applies ${detail?.summary.corrections_available ?? 0} current, grounded correction drafts. ${detail?.summary.human_decision_rows ?? 0} rows will remain for human review. Every changed row becomes stale and must be re-analyzed. Nothing will be approved, rejected, or promoted.`}
+        confirmLabel="Fix all eligible"
+        cancelLabel="Review individually"
+        onConfirm={() => void applyCorrections()}
+        onCancel={() => setConfirmFixAll(false)}
+      />
     </div>
   );
 }

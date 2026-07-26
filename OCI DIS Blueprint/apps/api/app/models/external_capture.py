@@ -62,6 +62,15 @@ class ExternalCaptureDraft(Base, UUIDMixin, TimestampMixin):
     reviewer_rationale: Mapped[Optional[str]] = mapped_column(Text)
     reviewed_by: Mapped[Optional[str]] = mapped_column(String(36))
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    agent_analysis_run_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="SET NULL"),
+        index=True,
+    )
+    agent_analysis_evidence_hash: Mapped[Optional[str]] = mapped_column(String(64))
+    agent_analysis_payload: Mapped[Optional[dict]] = mapped_column(JSON)
+    agent_analyzed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True)
+    )
     promoted_integration_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("catalog_integrations.id", ondelete="SET NULL"),
         index=True,

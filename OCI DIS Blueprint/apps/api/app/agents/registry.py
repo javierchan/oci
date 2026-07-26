@@ -93,7 +93,7 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
     ),
     "import_quality": AgentDefinition(
         type="import_quality",
-        version="3.1.0",
+        version="3.2.0",
         name="Import Correction Agent",
         description="Guides workbook mapping and external row correction while preventing unsafe catalog materialization.",
         location="Import Review and Capture Review",
@@ -107,10 +107,19 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
         mutates_data=False,
         requires_project=True,
         instruction=(
-            f"{COMMON_INSTRUCTION} In at most 180 words, first state whether evidence is a staged workbook mapping "
-            "or an external capture review session. Explain the largest required-field gap, material pattern changes, "
-            "and the minimum user decisions needed before promotion. Never invent missing customer values, choose a "
-            "pattern without review, approve a proposal, or imply that a draft entered the canonical catalog."
+            f"{COMMON_INSTRUCTION} First state whether the evidence is a staged workbook mapping, a complete external "
+            "capture session, or one focused external-capture row. For a focused row, compare data_received with "
+            "data_required and detect every material semantic, structural, normalization, pattern, QA, or unsupported-field "
+            "deviation visible in that evidence; do not limit the analysis to review_triggers. Return only one JSON object "
+            "with this exact shape: {\"explanation\":\"at most 120 words covering why review, evidence, and decision needed\","
+            "\"deviations\":[{\"source_field\":\"optional\",\"target_field\":\"optional existing App field\",\"issue\":\"concise\","
+            "\"evidence\":\"observed fact\",\"proposed_action\":\"map|clean|exclude|request evidence|keep\",\"confidence\":"
+            "\"high|medium|low\"}],\"proposed_patch\":{\"existing_app_field\":\"grounded formula-free value\"},"
+            "\"excluded_fields\":[\"source header\"],\"required_decisions\":[\"human decision\"]}. Proposed patches may use "
+            "only accepted_app_fields and values grounded in the supplied row evidence. Exclude formulas and derived "
+            "commercial outputs without quoting or reconstructing them. Leave a field absent when evidence is insufficient. "
+            "For a session, use at most 180 words and prioritize the largest repeated gaps. Never invent missing customer "
+            "values, choose a pattern without human review, approve a proposal, or imply that a draft entered the catalog."
         ),
     ),
     "integration_design": AgentDefinition(

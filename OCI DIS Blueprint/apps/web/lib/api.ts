@@ -68,6 +68,7 @@ import type {
   ExternalCaptureDraft,
   ExternalCaptureDraftPage,
   ExternalCaptureDraftPatch,
+  ExternalCaptureCorrectionBulkResult,
   ExternalCaptureDraftStatus,
   ExternalCapturePromotionResponse,
   ExternalCaptureSessionDetail,
@@ -772,6 +773,22 @@ export const api = {
       `/api/v1/projects/${projectId}/external-capture/sessions/${sessionId}/drafts/${draftId}`,
       {
         method: "PATCH",
+        headers: adminHeaders(),
+        body: JSON.stringify(body),
+      },
+    ),
+
+  applyExternalCaptureCorrections: (
+    projectId: string,
+    sessionId: string,
+    body:
+      | { scope: "all_eligible"; draft_ids: []; confirm: true }
+      | { scope: "selected"; draft_ids: string[]; confirm: true },
+  ): Promise<ExternalCaptureCorrectionBulkResult> =>
+    apiFetch<ExternalCaptureCorrectionBulkResult>(
+      `/api/v1/projects/${projectId}/external-capture/sessions/${sessionId}/corrections/apply`,
+      {
+        method: "POST",
         headers: adminHeaders(),
         body: JSON.stringify(body),
       },
