@@ -15,6 +15,14 @@ Treat repository evidence and live OCI observations as separate authorities.
 Never import operational state, credentials, resource identifiers, or assumptions
 from another workspace.
 
+Tool availability never implies shared authorization. Common browser, CLI, SDK,
+MCP, or connector capabilities may be reused only as executors; their authenticated
+sessions, profiles, cached tenancy state, credentials, permissions, and prior
+resource selections are workspace-bound and must never cross this boundary.
+Authenticate and prove identity independently for this workspace. If a tool cannot
+demonstrate which workspace-specific identity and tenancy it is using, treat that
+authentication state as untrusted and do not operate on OCI.
+
 ## Hydrate repository truth
 
 Before acting, read in this order:
@@ -108,7 +116,9 @@ Establish all of the following before calling embeddings enabled:
 - runtime questions use `SEARCH_QUERY`;
 - a synthetic, non-customer smoke query returns a vector of the expected dimension;
 - runtime retrieval reports the provider embedding space, not silent local fallback;
-- deterministic fallback still works when OCI is unavailable.
+- configured production retrieval fails closed when OCI embeddings are
+  unavailable, incomplete, or inconsistent; local vectors are permitted only
+  for build validation and explicitly unconfigured test environments.
 
 Use only synthetic text for live smoke tests unless the user explicitly authorizes
 external transmission of the exact customer evidence and scope. Do not send prompts,
