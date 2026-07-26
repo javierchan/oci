@@ -375,6 +375,27 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(page.getByText(/products · Production$/).first()).toBeVisible();
 
   await expect(page.getByLabel("Monthly cost ramp chart").locator("svg").first()).toBeVisible();
+  const timelineNavigator = page.getByRole("region", { name: "Rollout timeline navigator" });
+  const visibleRange = timelineNavigator.locator("[data-rollout-visible-range]");
+  await expect(timelineNavigator).toBeVisible();
+  await expect(visibleRange).toContainText("12 months");
+  await timelineNavigator.scrollIntoViewIfNeeded();
+  const rangeTravellers = timelineNavigator.locator(".recharts-brush-traveller");
+  await expect(rangeTravellers).toHaveCount(2);
+  const endTraveller = await rangeTravellers.nth(1).boundingBox();
+  expect(endTraveller).not.toBeNull();
+  if (endTraveller) {
+    await page.mouse.move(endTraveller.x + endTraveller.width / 2, endTraveller.y + endTraveller.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(endTraveller.x - 120, endTraveller.y + endTraveller.height / 2, { steps: 8 });
+    await page.mouse.up();
+  }
+  await expect(visibleRange).not.toContainText("12 months");
+  const resetTimeline = timelineNavigator.getByRole("button", { name: "Reset full range" });
+  await expect(resetTimeline).toBeEnabled();
+  await resetTimeline.click();
+  await expect(visibleRange).toContainText("12 months");
+  await expect(resetTimeline).toBeDisabled();
   await expect(page.getByText("Products and activation", { exact: true })).toBeVisible();
   await expect(page.getByText("Top contract drivers", { exact: true })).toBeVisible();
   await expect(page.locator("[data-rollout-monthly-evidence]").first()).toBeVisible();
@@ -398,6 +419,7 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await page.reload();
   await expect(page.getByRole("heading", { name: "BOM & Cost" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Monthly matrix" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Rollout timeline navigator" })).toBeVisible();
   await page.getByRole("tab", { name: "Inspector" }).click();
   await expect(page.getByText("Selected Product", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);

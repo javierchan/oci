@@ -871,6 +871,25 @@ html.dark {
   .toast-exit {
     animation: toast-out 150ms ease forwards;
   }
+
+  .rollout-range-navigator .recharts-brush-slide {
+    fill: var(--color-accent);
+    fill-opacity: 0.16;
+    stroke: var(--color-accent);
+    stroke-width: 1;
+  }
+
+  .rollout-range-navigator .recharts-brush-traveller rect {
+    fill: var(--color-surface);
+    stroke: var(--color-accent);
+    stroke-width: 1.5;
+    rx: 4px;
+  }
+
+  .rollout-range-navigator .recharts-brush-texts text {
+    fill: var(--color-text-secondary);
+    font-size: 11px;
+  }
 }
 
 @keyframes shimmer {

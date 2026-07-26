@@ -1004,6 +1004,9 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       and show its actionable empty state without copying another environment
 - [x] Let the Rollout Explorer follow the plan selection or independently scope
       chart, products, signals, evidence, and totals to one or all environments
+- [x] Add an accessible two-handle contract timeline navigator below the chart with
+      visible-range feedback, movable selection, and an explicit full-range reset
+      without changing the governed monthly series
 - [x] Recognize `PRD` as Production and preserve expanded evidence across scope changes
 - [x] **Exit criteria**: 139 frontend tests, TypeScript/ESLint, Node 26 production
       build, healthy Compose runtime, targeted BOM E2E, Aurora DEV/QA/PRD browser

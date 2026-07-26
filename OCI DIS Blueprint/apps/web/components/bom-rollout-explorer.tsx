@@ -9,10 +9,12 @@ import {
   Clock3,
   Layers3,
   Pencil,
+  RotateCcw,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Area,
+  Brush,
   CartesianGrid,
   ComposedChart,
   Legend,
@@ -494,6 +496,25 @@ export function BomRolloutExplorer({
     () => buildBomChartData(snapshot, compositionMode, effectiveEnvironment),
     [compositionMode, effectiveEnvironment, snapshot],
   );
+  const chartRowCount = chart.rows.length;
+  const [visibleRange, setVisibleRange] = useState(() => ({
+    startIndex: 0,
+    endIndex: Math.max(chartRowCount - 1, 0),
+  }));
+  const chartLastIndex = Math.max(chartRowCount - 1, 0);
+  const visibleStartIndex = Math.min(Math.max(visibleRange.startIndex, 0), chartLastIndex);
+  const visibleEndIndex = Math.min(
+    Math.max(visibleRange.endIndex, visibleStartIndex),
+    chartLastIndex,
+  );
+  const visibleChartRows = useMemo(
+    () => chart.rows.slice(visibleStartIndex, visibleEndIndex + 1),
+    [chart.rows, visibleEndIndex, visibleStartIndex],
+  );
+  const showingFullRange = visibleStartIndex === 0 && visibleEndIndex === chartLastIndex;
+  const visibleStartMonth = String(chart.rows[visibleStartIndex]?.month ?? "—");
+  const visibleEndMonth = String(chart.rows[visibleEndIndex]?.month ?? "—");
+  const visibleMonthCount = chartRowCount > 0 ? visibleEndIndex - visibleStartIndex + 1 : 0;
   const products = useMemo(
     () => buildProducts(snapshot, scenario, effectiveEnvironment),
     [effectiveEnvironment, scenario, snapshot],
@@ -531,6 +552,13 @@ export function BomRolloutExplorer({
       setOpenEnvironment(currentProduct.environments[0] ?? null);
     }
   }, [openEnvironment, products, selectedServiceId]);
+
+  useEffect(() => {
+    setVisibleRange({
+      startIndex: 0,
+      endIndex: Math.max(chartRowCount - 1, 0),
+    });
+  }, [chartRowCount, snapshot.id]);
 
   function selectProduct(product: RolloutProduct): void {
     setSelectedServiceId(product.serviceId);
@@ -594,7 +622,7 @@ export function BomRolloutExplorer({
 
         <div className="mt-5 h-[320px] w-full" aria-label={`Monthly cost ramp chart · ${effectiveEnvironment ?? "All environments"}`}>
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chart.rows} margin={{ top: 8, right: 12, bottom: 8, left: 4 }}>
+            <ComposedChart data={visibleChartRows} margin={{ top: 8, right: 12, bottom: 8, left: 4 }}>
               <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="month" tick={{ fill: "var(--color-text-muted)", fontSize: 11 }} interval="preserveStartEnd" />
               <YAxis yAxisId="monthly" tick={{ fill: "var(--color-text-muted)", fontSize: 11 }} tickFormatter={(value) => new Intl.NumberFormat("en-US", { notation: "compact" }).format(Number(value))} />
@@ -611,6 +639,62 @@ export function BomRolloutExplorer({
             </ComposedChart>
           </ResponsiveContainer>
         </div>
+        {chartRowCount > 1 ? (
+          <div
+            className="rollout-range-navigator mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2.5"
+            role="region"
+            aria-label="Rollout timeline navigator"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold text-[var(--color-text-primary)]">Visible timeline</p>
+                <p
+                  className="mt-0.5 text-xs text-[var(--color-text-secondary)]"
+                  role="status"
+                  aria-live="polite"
+                  data-rollout-visible-range
+                >
+                  {visibleStartMonth}–{visibleEndMonth} · {visibleMonthCount} {visibleMonthCount === 1 ? "month" : "months"}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="app-button-secondary h-9 gap-2 px-3 text-xs"
+                disabled={showingFullRange}
+                onClick={() => setVisibleRange({ startIndex: 0, endIndex: chartLastIndex })}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset full range
+              </button>
+            </div>
+            <div className="mt-2 h-12 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chart.rows} margin={{ top: 0, right: 8, bottom: 0, left: 8 }}>
+                  <Brush
+                    dataKey="month"
+                    height={30}
+                    startIndex={visibleStartIndex}
+                    endIndex={visibleEndIndex}
+                    travellerWidth={14}
+                    stroke="var(--color-accent)"
+                    fill="var(--color-surface)"
+                    tickFormatter={(value) => String(value)}
+                    onChange={(range) => {
+                      if (range.startIndex === undefined || range.endIndex === undefined) return;
+                      setVisibleRange({
+                        startIndex: range.startIndex,
+                        endIndex: range.endIndex,
+                      });
+                    }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="mt-1 text-[11px] leading-4 text-[var(--color-text-muted)]">
+              Drag either handle to focus a period, or drag the selected window to move through the contract.
+            </p>
+          </div>
+        ) : null}
       </div>
 
       <div className="border-t border-[var(--color-border)]">

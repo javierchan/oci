@@ -258,7 +258,12 @@ inspector. The editor opens the current governed scenario as a new, non-destruct
 revision and exposes every environment as a selectable tab with product and metric
 counts. The Rollout Explorer follows that selection by default, but can independently
 scope the chart, cumulative series, signals, product list, driver ranking, inspector,
-and summary totals to one environment or `All environments`. A newly added
+and summary totals to one environment or `All environments`. A visible two-handle
+timeline navigator below the chart lets users focus a contract interval or move the
+selected window without relying on direct chart dragging; it reports the exact
+visible month range and provides an explicit reset to the full contract. This
+interaction filters only the presentation window and never mutates the governed
+monthly series, quantities, or prices. A newly added
 environment becomes selected immediately and remains visibly empty until governed
 product metrics are assigned; it never inherits data from another environment.
 Constant, linear, exact-monthly, packaged, and included quantities retain distinct
