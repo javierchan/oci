@@ -2127,6 +2127,38 @@ def _resolve_manual_scenario_demand(
     )
 
 
+def _resolve_explicit_scenario_demand(
+    demand: ServiceDemandResult,
+    quantity: Decimal,
+) -> ServiceDemandResult:
+    """Resolve a metric whose governed adapter requires an architect quantity."""
+
+    return replace(
+        demand,
+        quantity=quantity,
+        status=DemandStatus.RESOLVED,
+        adapter="governed_scenario_quantity",
+        rule=(
+            "The governed metric requires an explicit architecture quantity; "
+            "the approved deployment scenario supplies that quantity."
+        ),
+        warnings=(
+            *tuple(
+                warning
+                for warning in demand.warnings
+                if "explicit" not in warning.casefold()
+            ),
+            "This metric uses the explicit quantity approved in the deployment scenario.",
+        ),
+        blockers=(),
+        details={
+            **dict(demand.details),
+            "quantity_source": "governed_scenario_quantity",
+            "explicit_input_resolved": True,
+        },
+    )
+
+
 def _demand_for_metric(
     metric_key: str,
     environment: dict[str, object],
@@ -3109,11 +3141,13 @@ async def calculate_bom(
                 and mapping.requires_explicit_quantity
                 and explicit_quantities is not None
             ):
-                quantity = float(max(explicit_quantities, default=Decimal("0")))
-                warnings = [
-                    *warnings,
-                    "This metric intrinsically requires a governed explicit architecture quantity.",
-                ]
+                governed_quantity = max(explicit_quantities, default=Decimal("0"))
+                demand = _resolve_explicit_scenario_demand(
+                    demand,
+                    governed_quantity,
+                )
+                quantity = float(governed_quantity)
+                warnings = [*demand.warnings]
             elif (
                 manually_selected
                 and explicit_quantities is not None

@@ -42,6 +42,7 @@ from app.models import (
 from app.models.project import ProjectStatus
 from app.services import bom_service, pricing_service
 from app.schemas.pricing import BomReviewRequest, DeploymentEnvironmentInput
+from engine.service_demand import DemandStatus, ServiceDemandResult
 
 
 def test_deployment_environment_defaults_to_standard_capacity_without_dr() -> None:
@@ -49,6 +50,37 @@ def test_deployment_environment_defaults_to_standard_capacity_without_dr() -> No
 
     assert environment.ha_multiplier == 1.0
     assert environment.dr_role == "none"
+
+
+def test_explicit_scenario_quantity_resolves_required_technical_demand() -> None:
+    demand = ServiceDemandResult(
+        metric_key="data_integration_execution_hours",
+        service_id="DATA_INTEGRATION",
+        quantity=None,
+        unit="execution-hours",
+        status=DemandStatus.EXPLICIT_INPUT_REQUIRED,
+        adapter="explicit_input",
+        input_payload_kb=Decimal("0"),
+        output_payload_kb=Decimal("0"),
+        messages_per_month=Decimal("0"),
+        operations_per_month={},
+        billing_units_per_month=Decimal("0"),
+        rule="Supply an explicit execution-hour quantity.",
+        warnings=("Explicit architecture sizing is required.",),
+        blockers=("Execution hours are not derivable from payload evidence.",),
+        details={"required_input": "execution_hours"},
+    )
+
+    resolved = bom_service._resolve_explicit_scenario_demand(
+        demand,
+        Decimal("240"),
+    )
+
+    assert resolved.status is DemandStatus.RESOLVED
+    assert resolved.quantity == Decimal("240")
+    assert resolved.blockers == ()
+    assert resolved.details["explicit_input_resolved"] is True
+    assert resolved.details["quantity_source"] == "governed_scenario_quantity"
 
 
 async def _seed_approved_commercial_release(

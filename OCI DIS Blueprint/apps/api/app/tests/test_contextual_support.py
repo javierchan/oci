@@ -274,6 +274,58 @@ async def test_support_resolves_single_active_project_for_global_cost_question(
 
 
 @pytest.mark.asyncio
+async def test_support_routes_integration_attention_question_to_catalog_qa(
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(
+        test_engine,
+        expire_on_commit=False,
+        class_=AsyncSession,
+    )
+    async with session_factory() as session:
+        async with session.begin():
+            project = Project(
+                name="QA Evidence Grain Project",
+                status="active",
+                owner_id="support-owner",
+            )
+            session.add(project)
+            await session.flush()
+            evidence = await support_service.build_support_evidence(
+                project.id,
+                None,
+                {
+                    "question": (
+                        "¿Cuántas integraciones tiene este proyecto y cuáles "
+                        "requieren atención?"
+                    ),
+                    "route": f"/projects/{project.id}",
+                    "page_title": "Project Dashboard",
+                    "attachments": [],
+                    "transcript": [],
+                },
+                session,
+            )
+
+    response_contract = cast(dict[str, object], evidence["response_contract"])
+    answer_requirements = cast(
+        dict[str, object],
+        evidence["answer_requirements"],
+    )
+    actions = cast(list[dict[str, str]], evidence["next_actions"])
+    assert evidence["question_intent"] == "evidence_interpretation"
+    assert evidence["evidence_interpretation"] == "catalog_qa"
+    assert "commercial_coverage counts BOM" in str(
+        response_contract["evidence_grain"]
+    )
+    assert actions[0]["href"] == f"/projects/{project.id}/catalog"
+    assert answer_requirements["total_integrations"] == 0
+    assert answer_requirements["attention_count"] == 0
+    facts = cast(list[dict[str, object]], evidence["verified_facts"])
+    assert any(item["id"] == "project.qa_attention_count" for item in facts)
+
+
+@pytest.mark.asyncio
 async def test_project_bom_context_does_not_override_absent_capability_decision(
     test_engine: AsyncEngine,
 ) -> None:

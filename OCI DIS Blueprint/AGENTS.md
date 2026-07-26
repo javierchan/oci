@@ -932,6 +932,29 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       knowledge-maintenance run, healthy eight-service Compose runtime, and zero
       browser console errors pass.
 
+### M76 — Ideal Enterprise Reference Project
+- [x] Add a resumable API-only builder for one retained fictional reference project
+      with exactly 350 governed integrations, mixed import/manual lineage, excluded
+      source evidence, and deterministic enterprise topology.
+- [x] Normalize generated designs only through governed catalog mutations and
+      require every final integration to reach `QA = OK` without hiding warnings,
+      inventing unsupported evidence, or writing directly to the database.
+- [x] Model a 36-month contract with DEV, QA, and PRD activating in months 1, 7,
+      and 13, respectively, and require monotonically non-decreasing governed
+      real-unit consumption through every published BOM.
+- [x] Cover every approved billable SKU mapping and part number across the four
+      mutually exclusive License Included/BYOL and Standard/Enterprise scenario
+      variants; keep approved non-billable mappings explicitly outside that claim.
+- [x] Run Architecture Review, BOM Scenario, OCI provider embeddings, contextual
+      App Assistant grounding, and production UI checks against the retained
+      project, with no assistant fallback and no browser console warnings/errors.
+- [x] **Exit criteria**: one fictional project contains `350/350` QA-ready
+      integrations, `72` systems, four approved scenarios, four published BOMs at
+      `100%` coverage, all `31` approved billable mappings and part numbers, a
+      valid 36-month staggered ramp, completed specialized agents, `4/4` grounded
+      provider-space assistant cases, healthy Compose services, and a reproducible
+      validation run.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

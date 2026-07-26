@@ -198,6 +198,24 @@ def _verified_facts(evidence: dict[str, object]) -> list[dict[str, object]]:
         add("project.name", "Project", project.get("name"), source="project")
         add("project.status", "Project status", project.get("status"), source="project")
         add("project.integration_count", "Governed integrations", project.get("integration_count"), source="project")
+        qa_distribution = project.get("qa_distribution")
+        if isinstance(qa_distribution, dict):
+            qa_attention_count = 0
+            for qa_status, count in qa_distribution.items():
+                add(
+                    f"project.qa_distribution.{qa_status}",
+                    f"Integrations with QA status {qa_status}",
+                    count,
+                    source="project.qa_distribution",
+                )
+                if str(qa_status).upper() != "OK" and isinstance(count, int):
+                    qa_attention_count += count
+            add(
+                "project.qa_attention_count",
+                "Integrations requiring QA attention",
+                qa_attention_count,
+                source="project.qa_distribution",
+            )
         latest_bom = project.get("latest_bom")
         if isinstance(latest_bom, dict):
             currency = str(latest_bom.get("currency") or "USD")
@@ -283,7 +301,13 @@ def _support_next_actions(evidence: dict[str, object]) -> list[dict[str, str]]:
         }]
     if project_id:
         evidence_kind = str(evidence.get("evidence_interpretation") or "")
-        suffix = "/bom" if evidence_kind.startswith("bom") or evidence_kind == "quote_readiness" else ""
+        suffix = (
+            "/bom"
+            if evidence_kind.startswith("bom") or evidence_kind == "quote_readiness"
+            else "/catalog"
+            if evidence_kind == "catalog_qa"
+            else ""
+        )
         labels = {
             "/bom": ("Abrir BOM & Cost", "Open BOM & Cost"),
             "/catalog": ("Abrir catálogo", "Open Catalog"),
@@ -1053,7 +1077,16 @@ async def build_support_evidence(
     if (resolved_project_id or integration_id) and explicit_intent_cue(
         question
     ) != "capability_inquiry":
-        if re.search(r"\b(why|por qu[eé]).{0,30}\bsku\b|\bsku\b.{0,30}\b(selected|seleccionad)", question, re.IGNORECASE):
+        if (
+            re.search(r"\bintegraciones?\b", question, re.IGNORECASE)
+            and re.search(
+                r"\b(qa|atenci[oó]n|revisi[oó]n|revisar|estado|status|ok)\b",
+                question,
+                re.IGNORECASE,
+            )
+        ):
+            evidence_interpretation = "catalog_qa"
+        elif re.search(r"\b(why|por qu[eé]).{0,30}\bsku\b|\bsku\b.{0,30}\b(selected|seleccionad)", question, re.IGNORECASE):
             evidence_interpretation = "bom_sku"
         elif re.search(r"\b(bom|bill of materials|contract total|total del contrato|cost of this project|costo de este proyecto|precio total de este proyecto)\b", question, re.IGNORECASE):
             evidence_interpretation = "bom_summary"
@@ -1127,12 +1160,21 @@ async def build_support_evidence(
             "requires_governed_commercial_evidence": is_commercial_question,
             "model_authorship": "primary",
             "delivery_policy": "fail_closed_without_visible_fallback",
+            "evidence_grain": (
+                "project.qa_distribution counts catalog integrations; "
+                "project.commercial_coverage counts BOM product/environment/metric "
+                "lines and is not an integration count"
+                if evidence_interpretation == "catalog_qa"
+                else None
+            ),
             "rule": (
                 "Answer naturally from governed evidence; the App owns the single executable next action. "
                 "Semantic App knowledge determines intent; project evidence takes precedence for evidence interpretation. "
+                "Respect the declared evidence grain and never relabel BOM lines as integrations. "
                 "For capability_inquiry, capability_assessment is authoritative and absence requires explicit abstention."
             ),
         },
+        "answer_requirements": {},
         "app_redirect": (
             {
                 "required": True,
@@ -1747,6 +1789,7 @@ async def build_support_evidence(
                     else None
                 ),
                 "commercial_coverage": {
+                    "grain": "bom_product_environment_metric_lines",
                     "ready": sum(
                         int(count)
                         for status, count in coverage_rows
@@ -1775,6 +1818,28 @@ async def build_support_evidence(
                     else None
                 ),
             }
+            if evidence_interpretation == "catalog_qa":
+                qa_distribution = cast(
+                    dict[str, int],
+                    cast(dict[str, object], evidence["project"])[
+                        "qa_distribution"
+                    ],
+                )
+                evidence["answer_requirements"] = {
+                    "answer_directly": True,
+                    "total_integrations": integration_count,
+                    "qa_distribution": qa_distribution,
+                    "attention_count": sum(
+                        count
+                        for status, count in qa_distribution.items()
+                        if status.upper() != "OK"
+                    ),
+                    "rule": (
+                        "State the total and QA attention count before any guidance. "
+                        "If attention_count is zero, say that no integration requires "
+                        "QA attention; do not invent a blocked filter or remediation."
+                    ),
+                }
             citations.append({"label": project.name, "href": f"/projects/{project.id}"})
             if evidence_interpretation.startswith("bom"):
                 citations.append({"label": "BOM & Cost", "href": f"/projects/{project.id}/bom"})

@@ -137,6 +137,27 @@ Users can clear their current browser-session transcript from the assistant head
 the App removes messages and attached contexts while retaining sanitized AgentRun
 audit evidence.
 
+## Ideal Enterprise Reference Project
+
+The repository includes an API-only builder for a retained fictional reference
+project that exercises import, manual capture, QA, topology, recalculation,
+three-environment rollout, verified SKU coverage, BOM publication, specialized
+agents, embeddings, and the contextual assistant as one workflow:
+
+```bash
+docker compose exec -T api \
+  python scripts/create_ideal_demo_project.py
+```
+
+The default project has exactly 350 integrations, 72 systems, a 36-month
+contract, and DEV/QA/PRD activation in months 1/7/13. Four governed scenario
+variants cover every approved billable SKU mapping without combining mutually
+exclusive OIC licensing or edition predicates. The command fails closed unless
+all rows are QA-ready, all 36 months form a valid increasing ramp, every BOM is
+publishable at 100% coverage, and the specialized agent runs terminate
+successfully. See
+[`docs/architecture/ideal-enterprise-reference-project.md`](./docs/architecture/ideal-enterprise-reference-project.md).
+
 ## Offline Capture Workbook
 
 The Import workflow downloads the en-US official template `v3.1.0` as
@@ -487,6 +508,7 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M73 | Human-authorized Import Correction Execution | ✅ Complete | 2026-07-25 |
 | M74 | OCI-native App Assistant Semantic Retrieval | ✅ Complete | 2026-07-25 |
 | M75 | Fail-closed Persistent-context Assistant + Automatic Knowledge Governance | ✅ Complete | 2026-07-25 |
+| M76 | Ideal Enterprise Reference Project | ✅ Complete | 2026-07-25 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -498,7 +520,7 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   remains immutable rejected-source evidence
 - Reference seed data: `21` certified patterns, `9` architectural overlays, `27` governed canvas combinations, client-only assumption sets, governed dictionaries, and `20` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine + pricing-engine: `459 passed` (`325` API, `99` calc-engine, `35` pricing-engine)
+- Backend + calc-engine + pricing-engine: `462 passed` (`328` API, `99` calc-engine, `35` pricing-engine)
 - Frontend: `135 passed`, strict TypeScript, ESLint, and production build green
 - Pricing/BOM E2E: real 4-source Oracle verification, scheduled no-change verification,
   and post-verification BOM jobs reach terminal `completed` states
@@ -561,6 +583,16 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   cases and `4/4` Iconn project-dossier cases with provider-space retrieval,
   grounded delivery, and `fallback_used=false`; the active knowledge artifact
   passed hash/model/dimension/coverage validation at `282/282` vectors.
+- M76 ideal reference project: retained fictional project
+  `6635ea67-c05d-44d3-aacf-19c5dd5d2bee` has `350/350` integrations at `QA = OK`,
+  72 systems, 300 imported plus 50 manually captured rows, 12 excluded source
+  rows, four approved 36-month scenarios, four published BOMs at `100%`
+  coverage, and all 31 approved billable mappings/part numbers represented.
+  DEV, QA, and PRD activate in months 1, 7, and 13 with monotonic real-unit
+  growth. Architecture Review and BOM Scenario completed, and the final
+  contextual assistant matrix passed `4/4` with provider-space embeddings,
+  grounded answers, `fallback_used=false`, and zero browser console warnings or
+  errors.
 
 `AGENTS.md`, this README, the root workflow, and the current architecture
 documents define the active operational contract. Dated audit reports,

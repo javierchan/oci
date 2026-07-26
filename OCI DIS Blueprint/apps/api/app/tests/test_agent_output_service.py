@@ -563,6 +563,22 @@ def test_support_assistant_compares_numeric_values_not_number_formatting() -> No
     )
     assert spanish_grouping.quality.grounded is True
 
+    spanish_currency = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "El total gobernado es USD 86.609,30.",
+        {
+            "project": {
+                "latest_bom": {
+                    "currency": "USD",
+                    "contract_total": 86609.30,
+                }
+            },
+            "fallback_answer": "Open the governed BOM.",
+        },
+        allow_fallback=False,
+    )
+    assert spanish_currency.quality.grounded is True
+
     invented = govern_agent_output(
         get_agent_definition("support_assistant"),
         "OCI Functions is priced at USD 99.",
@@ -580,6 +596,47 @@ def test_support_assistant_compares_numeric_values_not_number_formatting() -> No
     )
     assert invented_duration.quality.grounded is False
     assert invented_duration.quality.fallback_reason == "unsupported_numeric_claim"
+
+
+def test_support_assistant_preserves_catalog_qa_evidence_grain() -> None:
+    evidence: dict[str, object] = {
+        "evidence_interpretation": "catalog_qa",
+        "project": {
+            "integration_count": 350,
+            "qa_distribution": {"OK": 350},
+            "commercial_coverage": {
+                "grain": "bom_product_environment_metric_lines",
+                "ready": 12,
+                "blocked": 432,
+            },
+        },
+        "fallback_answer": "Review the catalog.",
+    }
+    correct = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "El proyecto tiene 350 integraciones; las 350 están en QA OK y 0 requieren atención.",
+        evidence,
+        allow_fallback=False,
+    )
+    assert correct.quality.grounded is True
+
+    wrong_grain = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "Hay 432 integraciones bloqueadas por cobertura comercial y 12 ready.",
+        evidence,
+        allow_fallback=False,
+    )
+    assert wrong_grain.quality.grounded is False
+    assert wrong_grain.quality.fallback_reason == "evidence_grain_mismatch"
+
+    generic_workflow = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "Abra el catálogo y filtre Estado QA = Bloqueado para conocer el total.",
+        evidence,
+        allow_fallback=False,
+    )
+    assert generic_workflow.quality.grounded is False
+    assert generic_workflow.quality.fallback_reason == "evidence_grain_mismatch"
 
 
 def test_support_assistant_rejects_claims_the_model_says_are_outside_evidence() -> None:

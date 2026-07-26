@@ -294,14 +294,18 @@ def _evidence_text(evidence: dict[str, object]) -> str:
 
 
 EVIDENCE_NUMBER_PATTERN = re.compile(
-    r"(?<![\w.-])(\d{1,3}(?:[,\u00a0\u202f ]\d{3})+(?:\.\d+)?|"
+    r"(?<![\w.-])(\d{1,3}(?:\.\d{3})+,\d+|"
+    r"\d{1,3}(?:[,\u00a0\u202f ]\d{3})+(?:\.\d+)?|"
     r"[1-9]\d{0,2}(?:\.\d{3})+|"
+    r"\d+,\d{1,2}|"
     r"\d+(?:\.\d+)?)\s*([km])?(?![\w.-])",
     re.IGNORECASE,
 )
 SUMMARY_NUMBER_PATTERN = re.compile(
-    r"(?<![\w.-])((?:USD\s*)?\$?\s*)(\d{1,3}(?:[,\u00a0\u202f ]\d{3})+(?:\.\d+)?|"
+    r"(?<![\w.-])((?:USD\s*)?\$?\s*)(\d{1,3}(?:\.\d{3})+,\d+|"
+    r"\d{1,3}(?:[,\u00a0\u202f ]\d{3})+(?:\.\d+)?|"
     r"[1-9]\d{0,2}(?:\.\d{3})+|"
+    r"\d+,\d{1,2}|"
     r"\d+(?:\.\d+)?)\s*([km])?\s*(%?)(?![\w-])",
     re.IGNORECASE,
 )
@@ -313,8 +317,18 @@ SENSITIVE_NUMBER_UNIT_PATTERN = re.compile(
 
 def _scaled_number(raw: str, suffix: str = "") -> float | None:
     try:
-        compact = re.sub(r"[,\s\u00a0\u202f]", "", raw)
-        if re.fullmatch(r"[1-9]\d{0,2}(?:\.\d{3})+", compact):
+        compact = re.sub(r"[\s\u00a0\u202f]", "", raw)
+        if "." in compact and "," in compact:
+            if compact.rfind(",") > compact.rfind("."):
+                compact = compact.replace(".", "").replace(",", ".")
+            else:
+                compact = compact.replace(",", "")
+        elif "," in compact:
+            if re.fullmatch(r"\d+,\d{1,2}", compact):
+                compact = compact.replace(",", ".")
+            else:
+                compact = compact.replace(",", "")
+        elif re.fullmatch(r"[1-9]\d{0,2}(?:\.\d{3})+", compact):
             compact = compact.replace(".", "")
         value = float(compact)
     except ValueError:
@@ -379,6 +393,89 @@ def _part_numbers_are_grounded(summary: str, evidence: dict[str, object]) -> boo
     return all(part_number.casefold() in serialized for part_number in PART_NUMBER_PATTERN.findall(summary))
 
 
+def _support_evidence_grain_failure(
+    summary: str,
+    evidence: dict[str, object],
+) -> str | None:
+    """Reject answers that relabel BOM line coverage as catalog integration QA."""
+
+    if evidence.get("evidence_interpretation") != "catalog_qa":
+        return None
+    project = _dict(evidence.get("project"))
+    qa_distribution = _dict(project.get("qa_distribution"))
+    commercial_coverage = _dict(project.get("commercial_coverage"))
+    if re.search(
+        r"\b(commercial|comercial|pricing|precio|ready|release|liberaci[oó]n)\b",
+        summary,
+        re.IGNORECASE,
+    ):
+        return "evidence_grain_mismatch"
+    allowed_counts = {
+        _number(project.get("integration_count")),
+        *(_number(value) for value in qa_distribution.values()),
+        float(
+            sum(
+                int(value)
+                for status, value in qa_distribution.items()
+                if str(status).upper() != "OK" and isinstance(value, int)
+            )
+        ),
+    }
+    commercial_counts = {
+        _number(value)
+        for key, value in commercial_coverage.items()
+        if key != "grain" and isinstance(value, (int, float))
+    }
+    requirements = _dict(evidence.get("answer_requirements"))
+    total_integrations = _number(
+        requirements.get("total_integrations")
+        or project.get("integration_count")
+    )
+    attention_count = _number(requirements.get("attention_count"))
+    summary_numbers = {
+        candidate
+        for match in SUMMARY_NUMBER_PATTERN.finditer(summary)
+        if (
+            candidate := _scaled_number(
+                match.group(2),
+                match.group(3) or "",
+            )
+        )
+        is not None
+    }
+    if total_integrations not in summary_numbers:
+        return "evidence_grain_mismatch"
+    if attention_count == 0:
+        has_zero_attention = (
+            0.0 in summary_numbers
+            or bool(
+                re.search(
+                    r"\b(ningun[ao]?|ninguna|ninguno|no hay).{0,45}"
+                    r"(atenci[oó]n|revisi[oó]n|revisar|qa)\b",
+                    summary,
+                    re.IGNORECASE,
+                )
+            )
+        )
+        if not has_zero_attention or re.search(
+            r"\b(qa\s+rojo|estado\s+qa\s*=\s*bloqueado)\b",
+            summary,
+            re.IGNORECASE,
+        ):
+            return "evidence_grain_mismatch"
+    elif attention_count not in summary_numbers:
+        return "evidence_grain_mismatch"
+    for match in SUMMARY_NUMBER_PATTERN.finditer(summary):
+        candidate = _scaled_number(match.group(2), match.group(3) or "")
+        if (
+            candidate is not None
+            and candidate in commercial_counts
+            and candidate not in allowed_counts
+        ):
+            return "evidence_grain_mismatch"
+    return None
+
+
 def _grounding_failure(
     definition: AgentDefinition,
     raw_summary: str,
@@ -408,6 +505,13 @@ def _grounding_failure(
         return "self_disclaimed_unsupported_claim"
     if len(normalized_summary.split()) > _word_limit(definition):
         return "word_limit_exceeded"
+    if definition.type == "support_assistant":
+        grain_failure = _support_evidence_grain_failure(
+            normalized_summary,
+            evidence,
+        )
+        if grain_failure is not None:
+            return grain_failure
     if not _numbers_are_grounded(normalized_summary, evidence):
         return "unsupported_numeric_claim"
     if not _part_numbers_are_grounded(normalized_summary, evidence):
