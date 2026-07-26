@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import json
+from pathlib import Path
 from typing import Literal, cast
 
 from fastapi import HTTPException
@@ -11,10 +12,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.knowledge.builder import (
+    load_knowledge_base,
     load_curated_knowledge,
     load_derived_manifest,
+    load_packaged_derived_manifest,
+    provider_embedding_errors,
     validate_knowledge_base,
 )
+from app.core.config import get_genai_settings_for_use_case, get_settings
 from app.models import KnowledgeMaintenanceFinding, KnowledgeMaintenanceJob
 from app.schemas.agent import (
     KnowledgeMaintenanceFindingResponse,
@@ -22,6 +27,7 @@ from app.schemas.agent import (
     KnowledgeMaintenanceReviewRequest,
 )
 from app.services import audit_service
+from app.services.genai_client import generate_embeddings
 from app.services.serializers import sanitize_for_json
 
 
@@ -152,7 +158,10 @@ def build_semantic_review_context(
             "allowed_finding_types": sorted(SEMANTIC_FINDING_TYPES),
             "allowed_severities": sorted(SEMANTIC_SEVERITIES),
             "max_candidates": MAX_SEMANTIC_CANDIDATES,
-            "write_policy": "human_review_only_no_yaml_mutation",
+            "write_policy": (
+                "derived contracts and embeddings publish automatically; "
+                "unsupported semantic claims are rejected"
+            ),
         },
         "curated_sections": _sections(curated),
         "derived_contracts": {
@@ -351,8 +360,97 @@ async def create_job(actor_id: str, db: AsyncSession) -> KnowledgeMaintenanceJob
     return job
 
 
-async def execute_job(job_id: str, db: AsyncSession) -> dict[str, object]:
-    """Detect drift and persist candidates; never edit the curated YAML."""
+async def synchronize_provider_embeddings(*, force: bool = False) -> dict[str, object]:
+    """Regenerate and atomically activate the complete OCI retrieval space."""
+
+    settings = get_genai_settings_for_use_case("support_assistant")
+    runtime_value = get_settings().APP_KNOWLEDGE_RUNTIME_PATH.strip()
+    if not runtime_value:
+        raise RuntimeError("APP_KNOWLEDGE_RUNTIME_PATH is required for automated embedding ownership")
+    packaged = load_packaged_derived_manifest()
+    current = load_derived_manifest()
+    current_errors = provider_embedding_errors(
+        current,
+        expected_model=settings.OCI_GENAI_EMBEDDING_MODEL_NAME,
+    )
+    if (
+        not force
+        and current.get("source_hash") == packaged.get("source_hash")
+        and not current_errors
+    ):
+        units = current.get("retrieval_units")
+        current_spaces = cast(dict[str, object], current["embedding_spaces"])
+        current_provider = cast(dict[str, object], current_spaces["provider"])
+        return {
+            "status": "current",
+            "source_hash": current.get("source_hash"),
+            "model": current_provider["model"],
+            "dimensions": current_provider["dimensions"],
+            "unit_count": len(units) if isinstance(units, list) else 0,
+            "validation_errors": [],
+        }
+
+    units = packaged.get("retrieval_units")
+    if not isinstance(units, list) or not units:
+        raise RuntimeError("Generated knowledge manifest has no retrieval units")
+    texts = [
+        str(unit.get("text") or "")
+        for unit in units
+        if isinstance(unit, dict)
+    ]
+    result = await generate_embeddings(
+        texts,
+        settings,
+        input_type="SEARCH_DOCUMENT",
+    )
+    if result.status != "completed" or len(result.embeddings) != len(texts):
+        raise RuntimeError(
+            f"OCI knowledge embedding generation failed: {result.status}"
+        )
+    for unit, vector in zip(units, result.embeddings, strict=True):
+        if isinstance(unit, dict):
+            unit["provider_embedding"] = vector
+    spaces = packaged.setdefault("embedding_spaces", {})
+    if not isinstance(spaces, dict):
+        raise RuntimeError("Generated knowledge manifest has invalid embedding spaces")
+    spaces["provider"] = {
+        "model": result.model,
+        "dimensions": len(result.embeddings[0]) if result.embeddings else 0,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "owner": "app_knowledge_governance_agent",
+    }
+    errors = provider_embedding_errors(
+        packaged,
+        expected_model=settings.OCI_GENAI_EMBEDDING_MODEL_NAME,
+    )
+    if errors:
+        raise RuntimeError("; ".join(errors))
+    runtime_path = Path(runtime_value)
+    runtime_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = runtime_path.with_suffix(f"{runtime_path.suffix}.tmp")
+    temporary_path.write_text(
+        json.dumps(packaged, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary_path.replace(runtime_path)
+    load_knowledge_base.cache_clear()
+    return {
+        "status": "regenerated",
+        "source_hash": packaged.get("source_hash"),
+        "model": result.model,
+        "dimensions": len(result.embeddings[0]) if result.embeddings else 0,
+        "unit_count": len(texts),
+        "validation_errors": [],
+    }
+
+
+async def execute_job(
+    job_id: str,
+    db: AsyncSession,
+    *,
+    refresh_embeddings: bool = False,
+) -> dict[str, object]:
+    """Synchronize derived knowledge automatically and report unresolved drift."""
 
     job = await db.get(KnowledgeMaintenanceJob, job_id)
     if job is None:
@@ -361,6 +459,19 @@ async def execute_job(job_id: str, db: AsyncSession) -> dict[str, object]:
         return cast(dict[str, object], (await serialize_job(job, db)).model_dump(mode="json"))
     job.status = "running"
     job.started_at = datetime.now(UTC)
+    embedding_maintenance: dict[str, object] = {"status": "not_requested"}
+    if refresh_embeddings:
+        try:
+            embedding_maintenance = await synchronize_provider_embeddings()
+        except Exception as exc:
+            job.status = "failed"
+            job.completed_at = datetime.now(UTC)
+            job.error_details = {
+                "detail": str(exc)[:500],
+                "stage": "provider_embedding_sync",
+            }
+            await db.flush()
+            raise
     manifest = load_derived_manifest()
     curated = load_curated_knowledge()
     proposals = build_maintenance_candidates(curated, manifest)
@@ -376,7 +487,12 @@ async def execute_job(job_id: str, db: AsyncSession) -> dict[str, object]:
         entity_id=job.id,
         actor_id=job.requested_by,
         old_value={"status": "pending"},
-        new_value={"status": "completed", "finding_count": len(proposals), "source_hash": job.source_hash},
+        new_value={
+            "status": "completed",
+            "finding_count": len(proposals),
+            "source_hash": job.source_hash,
+            "embedding_maintenance": embedding_maintenance,
+        },
         project_id=None,
         correlation_id=job.id,
         db=db,
@@ -384,7 +500,8 @@ async def execute_job(job_id: str, db: AsyncSession) -> dict[str, object]:
     await db.flush()
     payload = (await serialize_job(job, db)).model_dump(mode="json")
     payload["authority"] = "derived_repository_contracts"
-    payload["write_policy"] = "human_review_only_no_yaml_mutation"
+    payload["write_policy"] = "automatic_derived_contract_and_embedding_publication"
+    payload["embedding_maintenance"] = embedding_maintenance
     payload["semantic_review_context"] = build_semantic_review_context(curated, manifest)
     return cast(dict[str, object], sanitize_for_json(payload))
 

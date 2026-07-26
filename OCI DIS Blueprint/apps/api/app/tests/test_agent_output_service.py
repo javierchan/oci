@@ -505,6 +505,162 @@ def test_support_assistant_fallback_is_the_answer_without_generic_wrapper() -> N
     assert "Next action:" not in output.summary
 
 
+def test_support_assistant_can_reject_output_without_creating_visible_fallback() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "The user asks about a pattern. We need to provide an answer.",
+        {
+            "fallback_answer": "Request and Reply waits for the target service response.",
+            "recommended_next_action": "Open the Pattern Library.",
+        },
+        allow_fallback=False,
+    )
+
+    assert output.quality.grounded is False
+    assert output.quality.fallback_used is False
+    assert output.quality.fallback_reason == "empty_provider_summary"
+    assert output.summary == ""
+
+
+def test_support_assistant_compares_numeric_values_not_number_formatting() -> None:
+    evidence: dict[str, object] = {
+        "commercial_service_context": {
+            "service_name": "OCI Functions",
+            "pricing_model": "First 400K GB-memory-seconds/month free.",
+            "sku_options": [
+                {
+                    "part_number": "B90617",
+                    "quantity_unit": "10K GB-s",
+                    "price": {
+                        "metric_name": "10,000 GB Memory-Seconds",
+                        "currency": "USD",
+                        "value": 0.1417,
+                    },
+                }
+            ],
+        },
+        "fallback_answer": "Open the governed Service Product.",
+    }
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        (
+            "OCI Functions is priced at USD 0.1417 per 10 000 GB memory-seconds; "
+            "the governed policy records 400 K free GB-memory-seconds."
+        ),
+        evidence,
+        allow_fallback=False,
+    )
+    assert output.quality.grounded is True
+
+    spanish_grouping = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        (
+            "OCI Functions cuesta USD 0.1417 por 10.000 GB-seconds; "
+            "incluye 400.000 GB-memory-seconds."
+        ),
+        evidence,
+        allow_fallback=False,
+    )
+    assert spanish_grouping.quality.grounded is True
+
+    invented = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "OCI Functions is priced at USD 99.",
+        evidence,
+        allow_fallback=False,
+    )
+    assert invented.quality.grounded is False
+    assert invented.quality.fallback_reason == "unsupported_numeric_claim"
+
+    invented_duration = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        "Request and Reply should complete within 30 seconds.",
+        {"fallback_answer": "Use the governed pattern guidance."},
+        allow_fallback=False,
+    )
+    assert invented_duration.quality.grounded is False
+    assert invented_duration.quality.fallback_reason == "unsupported_numeric_claim"
+
+
+def test_support_assistant_rejects_claims_the_model_says_are_outside_evidence() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        (
+            "El precio gobernado es USD 0.1417 por 10,000 GB-s. "
+            "Free Tier no está en la evidencia, pero incluye 2M de invocaciones."
+        ),
+        {
+            "commercial_service_context": {
+                "service_name": "OCI Functions",
+                "price": {"currency": "USD", "value": 0.1417},
+                "quantity_unit": "10,000 GB-s",
+                "reference_numbers": [2_000_000],
+            },
+            "fallback_answer": "Open the governed Service Product.",
+        },
+        allow_fallback=False,
+    )
+
+    assert output.quality.grounded is False
+    assert output.quality.fallback_reason == "self_disclaimed_unsupported_claim"
+
+
+def test_support_assistant_replaces_spanish_model_next_action_synonyms() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        (
+            "Los agentes analizan evidencia gobernada.\n\n"
+            "Próximo paso: [Abrir la vista de Agents](/admin/agents)"
+        ),
+        {
+            "response_language": "es",
+            "app_knowledge": {
+                "documented": True,
+                "allowed_routes": ["/admin/agents"],
+                "allowed_export_media_types": [],
+                "entries": [],
+            },
+            "next_actions": [
+                {"label": "Continuar en esta vista", "href": "/admin/agents"}
+            ],
+        },
+        allow_fallback=False,
+    )
+    assert output.quality.grounded is True
+    assert output.summary.count("paso:") == 1
+    assert "Próximo paso" not in output.summary
+
+
+def test_support_assistant_removes_external_workaround_for_absent_capability() -> None:
+    output = govern_agent_output(
+        get_agent_definition("support_assistant"),
+        (
+            "OCI DIS Architect does not document cost threshold email alerts.\n\n"
+            "Export the BOM, then set up your own monitoring outside the tool.\n\n"
+            "[/projects]"
+        ),
+        {
+            "response_language": "en",
+            "app_knowledge": {
+                "documented": True,
+                "capability_assessment": {"status": "not_documented"},
+                "allowed_routes": ["/projects"],
+                "allowed_export_media_types": [],
+                "entries": [],
+            },
+            "next_actions": [
+                {"label": "Open BOM & Cost", "href": "/projects"}
+            ],
+        },
+        allow_fallback=False,
+    )
+    assert output.quality.grounded is True
+    assert "own monitoring" not in output.summary
+    assert "outside the tool" not in output.summary
+    assert "[/projects]" not in output.summary
+    assert "does not document" in output.summary
+
+
 def test_support_assistant_removes_redacted_sentence_and_keeps_grounded_answer() -> None:
     output = govern_agent_output(
         get_agent_definition("support_assistant"),

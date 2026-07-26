@@ -4,17 +4,42 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, Bot, Check, Loader2, MessageCircle, Paperclip, Search, Send, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Bot, Check, Loader2, MessageCircle, Paperclip, Search, Send, Trash2, TriangleAlert, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { api, getErrorMessage } from "@/lib/api";
 import { GovernedNarrative } from "@/components/governed-narrative";
 import { buildSupportContextCatalog, deriveSupportRouteContext, sameSupportAttachment } from "@/lib/support-context";
-import type { Project, SupportAttachmentInput, SupportContextKey, SupportConversation } from "@/lib/types";
+import type { Project, SupportAttachmentInput, SupportConversation } from "@/lib/types";
 
 const SESSION_KEY = "oci-dis-support-session-id";
 const OPEN_KEY = "oci-dis-support-open";
+const ATTACHMENTS_KEY = "oci-dis-support-explicit-context";
+
+function storedAttachments(): SupportAttachmentInput[] {
+  try {
+    const value = window.localStorage.getItem(ATTACHMENTS_KEY);
+    if (!value) return [];
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is SupportAttachmentInput => (
+        typeof item === "object"
+        && item !== null
+        && typeof (item as SupportAttachmentInput).attachment_type === "string"
+        && typeof (item as SupportAttachmentInput).label === "string"
+        && typeof (item as SupportAttachmentInput).href === "string"
+        && typeof (item as SupportAttachmentInput).context === "object"
+        && (item as SupportAttachmentInput).context !== null
+        && !Array.isArray((item as SupportAttachmentInput).context)
+      ))
+      .slice(-8);
+  } catch {
+    window.localStorage.removeItem(ATTACHMENTS_KEY);
+    return [];
+  }
+}
 
 function sessionId(): string {
   const existing = window.localStorage.getItem(SESSION_KEY);
@@ -32,6 +57,7 @@ export function ContextualSupportAssistant(): JSX.Element {
   const [conversation, setConversation] = useState<SupportConversation | null>(null);
   const [supportSessionId, setSupportSessionId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<SupportAttachmentInput[]>([]);
+  const [attachmentsHydrated, setAttachmentsHydrated] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -40,7 +66,6 @@ export function ContextualSupportAssistant(): JSX.Element {
   const [contextPickerOpen, setContextPickerOpen] = useState(false);
   const [contextQuery, setContextQuery] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
-  const [contextBusy, setContextBusy] = useState<SupportContextKey | null>(null);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -51,6 +76,8 @@ export function ContextualSupportAssistant(): JSX.Element {
     const id = sessionId();
     setSupportSessionId(id);
     setOpen(window.localStorage.getItem(OPEN_KEY) === "true");
+    setAttachments(storedAttachments());
+    setAttachmentsHydrated(true);
     void api
       .getOrCreateSupportConversation(id)
       .then(setConversation)
@@ -59,22 +86,19 @@ export function ContextualSupportAssistant(): JSX.Element {
     void api.listProjects().then((result) => setProjects(result.projects)).catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    if (!attachmentsHydrated) return;
+    if (attachments.length) {
+      window.localStorage.setItem(ATTACHMENTS_KEY, JSON.stringify(attachments));
+    } else {
+      window.localStorage.removeItem(ATTACHMENTS_KEY);
+    }
+  }, [attachments, attachmentsHydrated]);
+
   const pending = conversation?.messages.some((message) => message.status === "pending") ?? false;
   const latestMessage = conversation?.messages.at(-1);
-  const contextLedger = useMemo(() => {
-    const state = conversation?.context_state ?? {};
-    const items: Array<{ key: SupportContextKey; label: string }> = [];
-    const service = state.active_service as { name?: unknown } | undefined;
-    const pattern = state.active_pattern as { name?: unknown } | undefined;
-    if (typeof service?.name === "string") items.push({ key: "active_service", label: service.name });
-    if (typeof pattern?.name === "string") items.push({ key: "active_pattern", label: pattern.name });
-    if (typeof state.active_project_id === "string") {
-      const project = projects.find((item) => item.id === state.active_project_id);
-      items.push({ key: "active_project_id", label: project?.name ?? `Project ${state.active_project_id.slice(0, 8)}` });
-    }
-    if (typeof state.topic === "string") items.push({ key: "topic", label: state.topic.replaceAll("_", " ") });
-    return items;
-  }, [conversation?.context_state, projects]);
+  const latestAssistantFailed =
+    latestMessage?.role === "assistant" && latestMessage.status === "failed";
   const contextOptions = useMemo(
     () => buildSupportContextCatalog(projects, routeContext.attachment),
     [projects, routeContext.attachment],
@@ -139,19 +163,6 @@ export function ContextualSupportAssistant(): JSX.Element {
     );
   }
 
-  async function removeActiveContext(contextKey: SupportContextKey): Promise<void> {
-    if (!conversation || !supportSessionId || pending || contextBusy) return;
-    setContextBusy(contextKey);
-    setError(null);
-    try {
-      setConversation(await api.removeSupportConversationContext(conversation.id, supportSessionId, contextKey));
-    } catch (caught) {
-      setError(getErrorMessage(caught, "Unable to remove this conversation context."));
-    } finally {
-      setContextBusy(null);
-    }
-  }
-
   async function submit(event?: FormEvent): Promise<void> {
     event?.preventDefault();
     const content = input.trim();
@@ -169,7 +180,6 @@ export function ContextualSupportAssistant(): JSX.Element {
         attachments,
       });
       setConversation(next);
-      setAttachments([]);
     } catch (caught) {
       setInput(content);
       setSending(false);
@@ -213,8 +223,8 @@ export function ContextualSupportAssistant(): JSX.Element {
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-sm font-semibold text-[var(--color-text-primary)]">OCI DIS App Assistant</h2>
               <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-trend-up)]" />
-                <span className="truncate">General App help · context: {routeContext.pageTitle}</span>
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${latestAssistantFailed ? "bg-[var(--color-trend-down)]" : "bg-[var(--color-text-muted)]"}`} />
+                <span className="truncate">{latestAssistantFailed ? "Last response failed · no fallback used" : `OCI-grounded · context: ${routeContext.pageTitle}`}</span>
               </p>
             </div>
             <button
@@ -231,13 +241,6 @@ export function ContextualSupportAssistant(): JSX.Element {
               <X className="h-[18px] w-[18px]" />
             </button>
           </header>
-
-          {contextLedger.length ? (
-            <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Conversation memory</span>
-              {contextLedger.map((item) => <button key={item.key} type="button" onClick={() => void removeActiveContext(item.key)} disabled={pending || contextBusy !== null} className="inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-text-secondary)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-text-primary)] disabled:opacity-50" title={`Remove ${item.label} from conversation memory`}><span className="truncate capitalize">{item.label}</span>{contextBusy === item.key ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}</button>)}
-            </div>
-          ) : null}
 
           {clearConfirmOpen ? (
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
@@ -290,6 +293,14 @@ export function ContextualSupportAssistant(): JSX.Element {
                   <div className={message.role === "user" ? "rounded-2xl rounded-br-md bg-[var(--color-accent)] px-3.5 py-3 text-sm leading-6 text-white" : "text-sm leading-6 text-[var(--color-text-primary)]"}>
                     {message.status === "pending" ? (
                       <span className="inline-flex items-center gap-2 text-[var(--color-text-secondary)]"><Loader2 className="h-4 w-4 animate-spin" />Looking through the governed context</span>
+                    ) : message.role === "assistant" && message.status === "failed" ? (
+                      <div className="flex gap-2 rounded-xl border border-[var(--color-toast-error-text)]/30 bg-[var(--color-toast-error-bg)] p-3 text-[var(--color-toast-error-text)]" role="alert">
+                        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                        <div>
+                          <p className="font-semibold">Assistant response failed</p>
+                          <p className="mt-1">{message.content}</p>
+                        </div>
+                      </div>
                     ) : message.role === "assistant" ? (
                       <GovernedNarrative content={message.content} compact />
                     ) : (

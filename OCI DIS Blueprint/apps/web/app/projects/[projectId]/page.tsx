@@ -7,12 +7,15 @@ import { Boxes, Download, ExternalLink, List, Network } from "lucide-react";
 import { AiReviewButton } from "@/components/ai-review-button";
 import { Breadcrumb } from "@/components/breadcrumb";
 import { ProjectCustomerEditor } from "@/components/project-customer-editor";
+import { ProjectWorkflowGuide } from "@/components/project-workflow-guide";
+import { QaWorkQueue } from "@/components/qa-work-queue";
 import { RecalculateButton } from "@/components/recalculate-button";
 import { VolumetryCard } from "@/components/volumetry-card";
 import { api, apiDownloadUrl } from "@/lib/api";
 import { displayQaStatus, formatCompactNumber, formatDate, formatNumber } from "@/lib/format";
 import { parityBenchmark } from "@/lib/parity";
 import { isProjectNotFoundError } from "@/lib/project-errors";
+import { deriveProjectWorkflowGuide } from "@/lib/project-workflow";
 import type { DashboardCoverageMetric, DashboardProductUsage, DashboardSnapshot } from "@/lib/types";
 
 type ProjectDashboardPageProps = {
@@ -140,6 +143,12 @@ export default async function ProjectDashboardPage({
   const productFootprint = latestDashboard?.charts.product_footprint;
   const coreProducts = productFootprint?.products.filter((product) => product.role === "core") ?? [];
   const overlayProducts = productFootprint?.products.filter((product) => product.role === "overlay") ?? [];
+  const workflowGuide = deriveProjectWorkflowGuide({
+    projectId,
+    catalogCount: catalogPage.total,
+    latestSnapshotId: latestSnapshot?.snapshot_id ?? null,
+    dashboard: latestDashboard,
+  });
 
   function pct(value: number): string {
     return qaTotal > 0 ? `${Math.round((value / qaTotal) * 100)}% of total` : "—";
@@ -298,6 +307,14 @@ export default async function ProjectDashboardPage({
           tooltip="Patterns with one or more catalog integrations in the latest dashboard snapshot."
         />
       </section>
+
+      <ProjectWorkflowGuide guide={workflowGuide} />
+      <QaWorkQueue
+        projectId={projectId}
+        reviewCount={qaBreakdown.REVISAR ?? 0}
+        pendingCount={qaBreakdown.PENDING ?? 0}
+        risks={workflowGuide.qaRisks}
+      />
 
       <section className="space-y-5" aria-labelledby="product-footprint-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">

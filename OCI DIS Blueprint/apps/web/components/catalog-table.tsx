@@ -4,7 +4,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Pencil, SearchX, X } from "lucide-react";
+import { Bookmark, BookmarkPlus, ChevronRight, Pencil, SearchX, Trash2, X } from "lucide-react";
 
 import { ComplexityBadge } from "@/components/complexity-badge";
 import { PatternBadge } from "@/components/pattern-badge";
@@ -17,6 +17,31 @@ import type { CatalogPage, Integration, PatternDefinition } from "@/lib/types";
 type PreviewTab = "Overview" | "Canvas" | "Volumetry" | "QA" | "History";
 
 const PREVIEW_TABS: PreviewTab[] = ["Overview", "Canvas", "Volumetry", "QA", "History"];
+const SAVED_VIEW_STORAGE_PREFIX = "oci-dis-catalog-views-v1:";
+
+type SavedCatalogView = {
+  id: string;
+  label: string;
+  search: string;
+  qaStatus: string;
+  pattern: string;
+  brand: string;
+};
+
+function readSavedViews(projectId: string): SavedCatalogView[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(`${SAVED_VIEW_STORAGE_PREFIX}${projectId}`) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is SavedCatalogView => {
+      if (!value || typeof value !== "object") return false;
+      const candidate = value as Record<string, unknown>;
+      return ["id", "label", "search", "qaStatus", "pattern", "brand"].every((key) => typeof candidate[key] === "string");
+    }).slice(0, 8);
+  } catch {
+    return [];
+  }
+}
 
 type CatalogTableProps = {
   projectId: string;
@@ -92,6 +117,7 @@ export function CatalogTable({
   const [activePreviewTab, setActivePreviewTab] = useState<PreviewTab>("Overview");
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
+  const [savedViews, setSavedViews] = useState<SavedCatalogView[]>(() => readSavedViews(projectId));
   const skippedInitialLoad = useRef<boolean>(false);
   const skippedInitialUrlSync = useRef<boolean>(false);
   const deferredSearch = useDeferredValue(search);
@@ -241,6 +267,42 @@ export function CatalogTable({
     resetPageAndSet(setBrand, "");
   }
 
+  function applySavedView(view: SavedCatalogView): void {
+    setSearch(view.search);
+    setQaStatus(view.qaStatus);
+    setPattern(view.pattern);
+    setBrand(view.brand);
+    setPage(1);
+  }
+
+  function saveCurrentView(): void {
+    const view: SavedCatalogView = {
+      id: `${Date.now()}`,
+      label: `View ${savedViews.length + 1}`,
+      search,
+      qaStatus,
+      pattern,
+      brand,
+    };
+    const next = [...savedViews, view].slice(-8);
+    setSavedViews(next);
+    try {
+      window.localStorage.setItem(`${SAVED_VIEW_STORAGE_PREFIX}${projectId}`, JSON.stringify(next));
+    } catch {
+      // The current view still works when browser storage is unavailable.
+    }
+  }
+
+  function removeSavedView(viewId: string): void {
+    const next = savedViews.filter((view) => view.id !== viewId);
+    setSavedViews(next);
+    try {
+      window.localStorage.setItem(`${SAVED_VIEW_STORAGE_PREFIX}${projectId}`, JSON.stringify(next));
+    } catch {
+      // The in-memory list remains accurate for this session.
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="console-toolbar">
@@ -360,6 +422,47 @@ export function CatalogTable({
             ) : null}
           </div>
         ) : null}
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--color-border)] pt-4">
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-secondary)]">
+            <Bookmark className="h-3.5 w-3.5" />
+            Working views
+          </span>
+          <button
+            type="button"
+            onClick={() => applySavedView({ id: "review", label: "QA review", search: "", qaStatus: "REVISAR", pattern: "", brand: "" })}
+            className="app-button-secondary px-3 py-1.5 text-xs"
+          >
+            QA review
+          </button>
+          <button
+            type="button"
+            onClick={() => applySavedView({ id: "pending", label: "Needs data", search: "", qaStatus: "PENDING", pattern: "", brand: "" })}
+            className="app-button-secondary px-3 py-1.5 text-xs"
+          >
+            Needs data
+          </button>
+          <button
+            type="button"
+            onClick={saveCurrentView}
+            className="app-button-secondary gap-1.5 px-3 py-1.5 text-xs"
+            title="Save the current search and filters in this browser"
+          >
+            <BookmarkPlus className="h-3.5 w-3.5" />
+            Save current
+          </button>
+          {savedViews.map((view) => (
+            <span key={view.id} className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] text-xs">
+              <button type="button" onClick={() => applySavedView(view)} className="px-2.5 py-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]">
+                {view.label}
+              </button>
+              <button type="button" onClick={() => removeSavedView(view.id)} className="border-l border-[var(--color-border)] px-1.5 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]" aria-label={`Remove ${view.label}`}>
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          <p className="ml-auto text-xs text-[var(--color-text-muted)]">The URL updates with each filter so a view can be shared.</p>
+        </div>
 
         {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
       </section>

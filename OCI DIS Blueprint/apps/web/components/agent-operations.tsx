@@ -57,7 +57,6 @@ export function AgentOperations({
   const [selectedRun, setSelectedRun] = useState<AgentRun | null>(null);
   const [knowledgeJobs, setKnowledgeJobs] = useState<KnowledgeMaintenanceJob[]>([]);
   const [knowledgeBusy, setKnowledgeBusy] = useState(false);
-  const [knowledgeRationales, setKnowledgeRationales] = useState<Record<string, string>>({});
 
   async function refreshKnowledgeJobs(silent = false): Promise<void> {
     if (!silent) setKnowledgeBusy(true);
@@ -105,35 +104,9 @@ export function AgentOperations({
     try {
       const run = await api.runAgent({ agent_type: "knowledge_maintenance", include_provider: true });
       setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 50));
-      emitToast("success", "App knowledge review queued. Its candidates will remain review-only.");
+      emitToast("success", "App knowledge synchronization queued. Valid contracts and embeddings publish automatically.");
     } catch (error) {
       emitToast("error", error instanceof Error ? error.message : "Unable to queue App knowledge review.");
-    } finally {
-      setKnowledgeBusy(false);
-    }
-  }
-
-  async function reviewKnowledgeFinding(findingId: string, decision: "accept" | "reject"): Promise<void> {
-    const rationale = knowledgeRationales[findingId]?.trim() ?? "";
-    if (rationale.length < 3) {
-      emitToast("error", "Add a short review rationale before recording this decision.");
-      return;
-    }
-    setKnowledgeBusy(true);
-    try {
-      const updated = await api.reviewKnowledgeMaintenanceFinding(findingId, decision, rationale);
-      setKnowledgeJobs((current) => current.map((job) => ({
-        ...job,
-        findings: job.findings.map((finding) => finding.id === updated.id ? updated : finding),
-      })));
-      setKnowledgeRationales((current) => {
-        const next = { ...current };
-        delete next[findingId];
-        return next;
-      });
-      emitToast("success", decision === "accept" ? "Candidate accepted for documentation review." : "Candidate rejected.");
-    } catch (error) {
-      emitToast("error", error instanceof Error ? error.message : "Unable to review the knowledge candidate.");
     } finally {
       setKnowledgeBusy(false);
     }
@@ -212,6 +185,22 @@ export function AgentOperations({
             </article>
           ))}
         </div>
+        {valueMetrics.assistant_runs > 0 ? (
+          <div
+            className={`mt-4 rounded-lg border p-4 text-sm ${
+              valueMetrics.assistant_failed_closed_runs > 0
+                ? "border-[var(--color-toast-error-text)]/30 bg-[var(--color-toast-error-bg)] text-[var(--color-toast-error-text)]"
+                : "border-[var(--color-qa-ok-text)]/25 bg-[var(--color-qa-ok-bg)] text-[var(--color-qa-ok-text)]"
+            }`}
+            role={valueMetrics.assistant_failed_closed_runs > 0 ? "alert" : "status"}
+          >
+            <span className="font-semibold">App Assistant delivery: {valueMetrics.assistant_delivery_rate_pct.toFixed(1)}%</span>
+            <span className="ml-2">
+              {valueMetrics.assistant_delivered_runs} delivered · {valueMetrics.assistant_failed_closed_runs} failed closed
+              across {valueMetrics.assistant_runs} retained run(s). Failed grounding is never replaced with fallback content.
+            </span>
+          </div>
+        ) : null}
       </section>
       <section aria-label="Agent outcome quality" className="app-table-shell p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -277,7 +266,7 @@ export function AgentOperations({
               <p className="app-label">App knowledge governance</p>
               <h2 className="mt-1 text-xl font-semibold text-[var(--color-text-primary)]">Keep user guidance aligned with executable contracts</h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
-                Compares Next routes, OpenAPI endpoints, response media types, models, and schemas with the curated App guide. Findings are review records only; accepting one never edits documentation automatically.
+                Owns automatic contract synchronization and OCI embedding regeneration. A complete artifact publishes only after hash, model, dimension, coverage, and drift validation pass; otherwise the last valid artifact remains active.
               </p>
             </div>
           </div>
@@ -287,7 +276,7 @@ export function AgentOperations({
         </div>
         {knowledgeJobs.length === 0 ? (
           <div className="px-5 py-8 text-sm text-[var(--color-text-secondary)]">
-            No maintenance review has completed yet. Run one after route, API, model, schema, or export changes.
+            No synchronization has completed yet. The scheduled owner also runs after route, API, model, schema, or export changes.
           </div>
         ) : (
           <div className="divide-y divide-[var(--color-border)]">
@@ -297,7 +286,7 @@ export function AgentOperations({
                   <div>
                     <p className="font-semibold text-[var(--color-text-primary)]">Repository contract {job.source_hash.slice(0, 12)}</p>
                     <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-                      {job.finding_count === 0 ? "No drift detected." : `${job.finding_count} review candidate(s) detected.`} {formatDate(job.created_at)}
+                      {job.finding_count === 0 ? "Knowledge and embeddings validated." : `${job.finding_count} unresolved drift finding(s).`} {formatDate(job.created_at)}
                     </p>
                   </div>
                   <span className="app-theme-chip capitalize">{job.status}</span>
@@ -311,26 +300,9 @@ export function AgentOperations({
                             <p className="font-semibold text-[var(--color-text-primary)]">{finding.title}</p>
                             <p className="mt-1 text-sm leading-6 text-[var(--color-text-secondary)]">{finding.summary}</p>
                           </div>
-                          <span className="app-theme-chip capitalize">{finding.review_status}</span>
+                          <span className="app-theme-chip capitalize">{finding.review_status === "pending" ? "unresolved" : finding.review_status}</span>
                         </div>
-                        {finding.review_status === "pending" ? (
-                          <div className="mt-4 space-y-3">
-                            <label className="block text-xs font-semibold text-[var(--color-text-secondary)]" htmlFor={`knowledge-rationale-${finding.id}`}>
-                              Review rationale
-                            </label>
-                            <textarea
-                              id={`knowledge-rationale-${finding.id}`}
-                              className="min-h-20 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-primary)]"
-                              value={knowledgeRationales[finding.id] ?? ""}
-                              placeholder="Explain why this candidate should inform, or should not inform, the next human-authored App guide update."
-                              onChange={(event) => setKnowledgeRationales((current) => ({ ...current, [finding.id]: event.target.value }))}
-                            />
-                            <div className="flex flex-wrap gap-2">
-                              <button type="button" className="app-button-secondary" disabled={knowledgeBusy || (knowledgeRationales[finding.id]?.trim().length ?? 0) < 3} onClick={() => void reviewKnowledgeFinding(finding.id, "reject")}>Reject</button>
-                              <button type="button" className="app-button-primary" disabled={knowledgeBusy || (knowledgeRationales[finding.id]?.trim().length ?? 0) < 3} onClick={() => void reviewKnowledgeFinding(finding.id, "accept")}>Accept candidate</button>
-                            </div>
-                          </div>
-                        ) : null}
+                        {finding.review_status === "pending" ? <p className="mt-3 text-xs leading-5 text-[var(--color-qa-revisar-text)]">Automatic publication is blocked until executable evidence resolves this contradiction. No routine approval is requested.</p> : null}
                       </div>
                     ))}
                   </div>

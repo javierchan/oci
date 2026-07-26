@@ -863,6 +863,22 @@
             "title": "Approved Decisions",
             "type": "integer"
           },
+          "assistant_delivered_runs": {
+            "title": "Assistant Delivered Runs",
+            "type": "integer"
+          },
+          "assistant_delivery_rate_pct": {
+            "title": "Assistant Delivery Rate Pct",
+            "type": "number"
+          },
+          "assistant_failed_closed_runs": {
+            "title": "Assistant Failed Closed Runs",
+            "type": "integer"
+          },
+          "assistant_runs": {
+            "title": "Assistant Runs",
+            "type": "integer"
+          },
           "completed_runs": {
             "title": "Completed Runs",
             "type": "integer"
@@ -953,6 +969,9 @@
         "required": [
           "retained_runs",
           "completed_runs",
+          "assistant_runs",
+          "assistant_delivered_runs",
+          "assistant_failed_closed_runs",
           "quality_evaluated_runs",
           "grounded_output_runs",
           "grounding_fallback_runs",
@@ -967,6 +986,7 @@
           "post_validations_completed",
           "follow_up_runs_after_approval",
           "provider_synthesis_rate_pct",
+          "assistant_delivery_rate_pct",
           "grounded_output_rate_pct",
           "high_evidence_completeness_rate_pct",
           "acceptance_rate_pct",

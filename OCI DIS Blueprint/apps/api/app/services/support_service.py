@@ -90,6 +90,11 @@ COMMERCIAL_VALUE_PATTERN = re.compile(
     r"\b(price|pricing|cost|costs|priced|bill(?:ed|ing)?|charge(?:d)?|precio|costo|cuesta|cobra|factura)\b",
     re.IGNORECASE,
 )
+SERVICE_REFERENCE_PATTERN = re.compile(
+    r"\b(?:that|this|the|ese|este|el)\s+(?:service|servicio)\b|"
+    r"\b(?:its|their|sus)\s+(?:metrics?|m[eé]tricas?|price|precio|cost|costo)\b",
+    re.IGNORECASE,
+)
 
 def validate_support_session_id(value: str) -> str:
     """Require a canonical UUID so callers cannot probe another session namespace."""
@@ -465,9 +470,18 @@ def _evidence_fallback(evidence: dict[str, object]) -> str:
         rows: list[str] = []
         for option in options[:8]:
             price = option.get("price")
-            price_text = "price evidence unavailable"
+            price_text = (
+                "evidencia de precio no disponible"
+                if spanish
+                else "price evidence unavailable"
+            )
             if isinstance(price, dict) and price.get("value") is not None:
-                period = str(price.get("price_type") or "unit").casefold()
+                period = str(
+                    price.get("metric_name")
+                    or option.get("billing_metric_key")
+                    or price.get("price_type")
+                    or "unit"
+                ).casefold()
                 if spanish:
                     period = {"hour": "hora", "month": "mes", "unit": "unidad"}.get(period, period)
                 connector = "por" if spanish else "per"
@@ -1036,7 +1050,9 @@ async def build_support_evidence(
         str(top_match.get("section_id") or "") if isinstance(top_match, dict) else ""
     )
     evidence_interpretation = ""
-    if (resolved_project_id or integration_id) and explicit_intent_cue(question) is None:
+    if (resolved_project_id or integration_id) and explicit_intent_cue(
+        question
+    ) != "capability_inquiry":
         if re.search(r"\b(why|por qu[eé]).{0,30}\bsku\b|\bsku\b.{0,30}\b(selected|seleccionad)", question, re.IGNORECASE):
             evidence_interpretation = "bom_sku"
         elif re.search(r"\b(bom|bill of materials|contract total|total del contrato|cost of this project|costo de este proyecto|precio total de este proyecto)\b", question, re.IGNORECASE):
@@ -1079,9 +1095,16 @@ async def build_support_evidence(
         or _reference_appears_in_dialogue(item.service_id, dialogue_text)
         or item.service_id in named_mapping_service_ids
     ]
-    is_commercial_question = bool(matched_named_services) and (
+    active_service = conversation_state.get("active_service")
+    has_service_reference = (
+        isinstance(active_service, dict)
+        and bool(active_service.get("id"))
+        and bool(SERVICE_REFERENCE_PATTERN.search(question))
+    )
+    is_commercial_question = (bool(matched_named_services) or has_service_reference) and (
         knowledge_section in {"pricing", "bom"}
         or bool(COMMERCIAL_VALUE_PATTERN.search(question))
+        or has_service_reference
     )
     evidence: dict[str, object] = {
         "in_scope": True,
@@ -1103,9 +1126,9 @@ async def build_support_evidence(
             "intent": question_intent,
             "requires_governed_commercial_evidence": is_commercial_question,
             "model_authorship": "primary",
-            "deterministic_fallback": "provider_failure_or_grounding_failure_only",
+            "delivery_policy": "fail_closed_without_visible_fallback",
             "rule": (
-                "Start with the bottom line, explain briefly, and end with exactly one executable next action. "
+                "Answer naturally from governed evidence; the App owns the single executable next action. "
                 "Semantic App knowledge determines intent; project evidence takes precedence for evidence interpretation. "
                 "For capability_inquiry, capability_assessment is authoritative and absence requires explicit abstention."
             ),
@@ -1131,6 +1154,17 @@ async def build_support_evidence(
             if isinstance(item, dict) and item.get("role") == "user"
         ],
         "conversation_state": conversation_state,
+        "resolved_dialogue_references": (
+            {
+                "service": {
+                    "id": active_service.get("id"),
+                    "name": active_service.get("name"),
+                    "resolution": "The current question's service reference resolves to this governed Service Product.",
+                }
+            }
+            if has_service_reference and isinstance(active_service, dict)
+            else {}
+        ),
         "scope_rules": {
             "conversation": "Previous questions provide dialogue continuity but are not architecture evidence.",
             "integration": "Do not apply project-level risks to an integration unless its row evidence identifies the same issue.",
@@ -1197,7 +1231,6 @@ async def build_support_evidence(
                 )
             )
         ]
-        active_service = conversation_state.get("active_service")
         if not matched_mappings and isinstance(active_service, dict) and active_service.get("id"):
             matched_mappings = [
                 item for item in mappings if item.service_id == str(active_service["id"])
@@ -1270,6 +1303,17 @@ async def build_support_evidence(
                     for item in matched_mappings[:8]
                 ],
             }
+            if has_service_reference and isinstance(active_service, dict):
+                evidence["resolved_dialogue_references"] = {
+                    "service": {
+                        "id": active_service.get("id"),
+                        "name": active_service.get("name"),
+                        "resolution": (
+                            "Resolved from conversation state and confirmed by governed "
+                            "commercial_service_context; do not ask the user to identify it again."
+                        ),
+                    }
+                }
             citations.append({"label": "Service Products", "href": "/admin/services"})
     if wants_patterns:
         patterns = list(

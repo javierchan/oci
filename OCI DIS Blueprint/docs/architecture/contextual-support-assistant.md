@@ -55,8 +55,9 @@ conversation contract to its authenticated subject.
 - A small persisted context ledger retains only resolved, App-owned references:
   active Service Product, pattern, project, language, and the latest topic. It
   deliberately does not retain a provider answer, inferred price, or arbitrary
-  user profile. The assistant shows the resolved ledger in the conversation UI
-  so a user can see which governed context is active.
+  user profile. This inferred ledger is an internal resolution aid and is not
+  rendered as user-managed memory. Only context explicitly selected through
+  `Add context` is visible and removable by the user.
 - A typed routing policy classifies the **current** turn before evidence is
   loaded. Capability inquiry, unsupported/out-of-scope, portfolio, project-cost,
   commercial, workflow, project-context, and general App-help contracts are
@@ -71,8 +72,8 @@ conversation contract to its authenticated subject.
   workflow. A capability request with no verifiable action asks one precise
   clarification question instead of selecting a domain template.
 - Routine workflow questions use the same model-first path as project and commercial
-  questions. The application-owned explanations remain in the evidence as a provider-
-  failure fallback; they do not bypass inference during normal operation.
+  questions. Application-owned explanations constrain and ground inference; they
+  are not returned as a user-visible substitute when OCI or grounding fails.
 - Every evidence package contains `next_actions` selected from executable internal
   routes. The model must end with one exact clickable action appropriate to the current
   route and resolved project or integration.
@@ -85,12 +86,13 @@ conversation contract to its authenticated subject.
 A deterministic preflight classifies intent and loads evidence before OCI inference.
 Clearly external topics receive a brief, friendly redirect to App capabilities rather
 than an unsafe-topic refusal. Safety refusals are reserved for OCI Guardrails findings.
-Provider failure returns an honest deterministic fallback. A single centralized
-output-grounding gate rejects unsupported sensitive claims, invented governed values,
-unknown SKU or price claims, internal generation notes, and claims that an approval or
-deployment occurred. Rich Markdown is allowed when safe: compact tables, headings,
-lists, emphasis, and internal App links. Rejected synthesis is replaced by a concise
-App-owned answer built from the same evidence, while the AgentRun records the fallback.
+Provider or grounding failure is fail-closed: the assistant persists a failed response
+with its failure stage, exposes no citations, and never presents a deterministic answer
+as if OCI synthesis succeeded. A single centralized output-grounding gate rejects
+unsupported sensitive claims, invented governed values, unknown SKU or price claims,
+internal generation notes, self-disclaimed unsupported claims, and claims that an
+approval or deployment occurred. Rich Markdown is allowed when safe: compact tables,
+headings, lists, emphasis, and internal App links.
 
 ## Persistence
 
@@ -100,9 +102,9 @@ App-owned answer built from the same evidence, while the AgentRun records the fa
 - `agent_runs`, `agent_steps`, and `agent_artifacts`: auditable model/tool execution.
 
 The `context_state` JSON field on `support_conversations` is schema-governed by
-the service rather than client-editable. It is a compact reference ledger, not
-a second source of project, price, or technical facts; each new turn retrieves
-those facts again from the authoritative App tables.
+the service rather than client-editable or user-visible. It is a compact
+reference ledger, not a second source of project, price, or technical facts;
+each new turn retrieves those facts again from the authoritative App tables.
 
 ## Clear History
 
@@ -126,15 +128,18 @@ single composer, explicit `Add context` action, and icon-only send command. It u
 existing theme tokens and remains responsive on mobile and desktop without covering
 its own controls. A separate icon command opens the accessible Clear history
 confirmation and is disabled when history is empty or a response is running.
+Explicitly selected contexts remain pinned after a response, across App Router
+navigation, panel closing, and browser reload. They are removed only through their
+visible remove control or by clearing
+the conversation; inferred conversation state is never presented beside them.
 
 Provider synthesis starts with a direct answer in the user's language, then explains
 why it matters and how to proceed. It may use compact Markdown tables, bold emphasis,
 or lists when they improve comprehension, and it cannot introduce unsupported
 regulations, products, SKUs, prices, limits, or risks.
 Internal redaction markers and unresolved route placeholders fail the output-
-grounding gate and are replaced with the App-owned governed answer.
-The fallback uses the same project dossier, so a provider degradation still
-returns useful governed portfolio or BOM facts instead of generic navigation copy.
+grounding gate. A rejected or unavailable response is shown as failed, with no
+green availability signal, generated brief, or citations.
 
 ## Response quality and evaluation
 
@@ -142,18 +147,16 @@ Every assistant run preserves the selected response contract and evidence in its
 auditable `AgentRun`. The provider adapter extracts only final assistant-message
 blocks and never merges Responses reasoning items into presentation text. The
 shared output gate fails closed on drafting instructions or model meta-reasoning
-and rejects unsupported sensitive claims; the App-owned deterministic answer is
-returned when a precise route, pattern, product, commercial mapping, project
-portfolio, or workflow explanation is already available. Agent Operations shows
-grounding/fallback state and evidence completeness for retained executions.
+and rejects unsupported sensitive claims. Agent Operations shows provider delivery,
+grounding state, and evidence completeness for retained executions.
 The conversation serializer also suppresses legacy persisted messages that match
 the internal-reasoning signature without deleting their governed audit record.
 User-visible synthesis is normalized into semantic paragraphs, lists, and bounded
 tables before persistence. The shared renderer supports bold emphasis and only
 clickable same-origin App routes; external Markdown links degrade to text. The worker
-always attempts OCI inference for a benign question. It uses the application-owned
-answer only when OCI or output grounding fails, and records that fallback beside the
-same evidence artifact and citations.
+always attempts OCI inference for a benign question. OCI or output-grounding failure
+records a failed delivery beside the same evidence artifact and returns no synthetic
+answer or citations.
 
 `apps/api/app/tests/fixtures/support_assistant_capability_cases.json` is the
 deterministic CI matrix for capability routing. It runs through the complete

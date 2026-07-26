@@ -18,6 +18,7 @@ from app.knowledge.builder import (  # noqa: E402
     DERIVED_PATH,
     _load_curated,
     build_derived_manifest,
+    provider_embedding_errors,
     validate_knowledge_base,
 )
 from app.core.config import get_genai_settings_for_use_case  # noqa: E402
@@ -140,6 +141,17 @@ def _preserve_matching_provider_embeddings(
         current_spaces["provider"] = committed_spaces["provider"]
 
 
+def _provider_embedding_errors(manifest: dict[str, object]) -> list[str]:
+    """Require one complete, versioned OCI vector space for every KB unit."""
+
+    return provider_embedding_errors(
+        manifest,
+        expected_model=get_genai_settings_for_use_case(
+            "support_assistant"
+        ).OCI_GENAI_EMBEDDING_MODEL_NAME,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="Fail when generated facts or curated links drift")
@@ -164,6 +176,7 @@ def main() -> int:
             committed = json.loads(DERIVED_PATH.read_text(encoding="utf-8"))
             if _deterministic_projection(committed) != _deterministic_projection(current):
                 errors.append("derived_app_knowledge.json is stale; regenerate it")
+            errors.extend(_provider_embedding_errors(committed))
     else:
         DERIVED_PATH.write_text(
             json.dumps(current, indent=2, sort_keys=True) + "\n",

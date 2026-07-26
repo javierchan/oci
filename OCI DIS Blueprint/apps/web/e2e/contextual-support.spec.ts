@@ -42,8 +42,9 @@ test("keeps contextual support available and bounded across App navigation", asy
   const assistant = page.getByRole("dialog", { name: "OCI DIS App Assistant", exact: true });
   await expect(assistant).toBeVisible();
   await expect(
-    assistant.getByText("General App help · context: Project Dashboard", { exact: true }),
+    assistant.getByText("OCI-grounded · context: Project Dashboard", { exact: true }),
   ).toBeVisible();
+  await expect(assistant.getByText("Conversation memory", { exact: false })).toHaveCount(0);
   await assistant.getByRole("button", { name: "Add context", exact: true }).click();
   const currentContextGroup = assistant.getByText("Current view", { exact: true }).locator("..");
   await currentContextGroup.getByRole("button").click();
@@ -59,20 +60,28 @@ test("keeps contextual support available and bounded across App navigation", asy
   ).toBeVisible({ timeout: 30_000 });
   await expect(assistant.getByText("BOM & Cost", { exact: false })).toBeVisible();
   await expect(assistant.getByText("What is the weather today?", { exact: true })).toBeVisible();
+  await expect(assistant.getByRole("button", { name: "Add context (1)", exact: true })).toBeVisible();
+  await expect(assistant.getByTitle("Remove Project Dashboard context")).toBeVisible();
 
   await page.getByRole("link", { name: "BOM & Cost", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/bom$`));
   await expect(assistant).toBeVisible();
   await expect(assistant.getByText("What is the weather today?", { exact: true })).toBeVisible();
   await expect(
-    assistant.getByText("General App help · context: BOM & Cost", { exact: true }),
+    assistant.getByText("OCI-grounded · context: BOM & Cost", { exact: true }),
   ).toBeVisible();
 
-  const addContextBox = await assistant.getByRole("button", { name: "Add context", exact: true }).boundingBox();
+  const addContextBox = await assistant.getByRole("button", { name: "Add context (1)", exact: true }).boundingBox();
   const sendBox = await assistant.getByRole("button", { name: "Send message", exact: true }).boundingBox();
   expect(addContextBox).not.toBeNull();
   expect(sendBox).not.toBeNull();
   expect((addContextBox?.x ?? 0) + (addContextBox?.width ?? 0)).toBeLessThanOrEqual(sendBox?.x ?? 0);
+
+  await page.reload();
+  await expect(assistant).toBeVisible();
+  await expect(assistant.getByText("What is the weather today?", { exact: true })).toBeVisible();
+  await expect(assistant.getByRole("button", { name: "Add context (1)", exact: true })).toBeVisible();
+  await expect(assistant.getByTitle("Remove Project Dashboard context")).toBeVisible();
 
   await assistant.getByRole("button", { name: "Clear assistant history", exact: true }).click();
   const clearDialog = page.getByRole("alertdialog", { name: "Clear assistant history?", exact: true });
@@ -85,6 +94,8 @@ test("keeps contextual support available and bounded across App navigation", asy
   await expect(clearDialog).toBeHidden();
   await expect(assistant.getByText("Hi. What are you working through?", { exact: true })).toBeVisible();
   await expect(assistant.getByText("What is the weather today?", { exact: true })).toHaveCount(0);
+  await expect(assistant.getByRole("button", { name: "Add context", exact: true })).toBeVisible();
+  await expect(assistant.getByTitle("Remove Project Dashboard context")).toHaveCount(0);
   await expect(assistant.getByRole("button", { name: "Clear assistant history", exact: true })).toBeDisabled();
 
   await page.reload();

@@ -26,7 +26,8 @@ the sole deterministic authorities.
 | Integration Design Optimizer | Integration Canvas | Compare deterministic candidates and simulate an approved draft before explicit save |
 | Topology Resilience | Map | Analyze blast radius and prepare auditable mitigation drafts |
 | BOM Scenario Optimizer | BOM & Cost | Compare baseline, phased, and availability alternatives and create an approved scenario draft |
-| OCI DIS Decision Assistant | Global floating assistant | Answer from App evidence and route material decisions to the specialized workspace |
+| OCI DIS App Assistant | Global floating assistant | Answer from App evidence; fail closed when OCI embeddings, synthesis, or grounding fail |
+| App Knowledge Governance | Agent Operations | Automatically synchronize executable App contracts and regenerate the complete OCI embedding space |
 
 Canvas and topology are specialized architecture scopes, not duplicate engines.
 The Service Verification tool may retrieve only registered Oracle-controlled
@@ -47,8 +48,8 @@ authoritative evidence tables:
 
 - `brief`: headline, finding, why it matters, next actions, validation, evidence
   identifiers, and confidence.
-- `output_quality`: normalization state, grounding decision, deterministic fallback
-  reason, and evidence-completeness percentage.
+- `output_quality`: normalization state, grounding and delivery decisions, failure
+  stage when applicable, and evidence-completeness percentage.
 - `decision_workspace`: up to three typed alternatives with changes, impact,
   missing inputs, implementation steps, validation, confidence, and completion contract.
 
@@ -122,6 +123,14 @@ executes a change. The separate execution command calls only an allowlisted,
 typed application action and records a post-validation result. Existing domain
 approval and explicit Canvas save behavior remain authoritative.
 
+The read-only App Assistant is stricter than proposal-producing specialized
+agents: it permits neither a provider-summary fallback nor a local-vector
+fallback in a configured runtime. Query embedding, synthesis, Guardrails, or
+grounding failure persists a terminal failed response with no generated answer
+or citations. The App Knowledge Governance Agent publishes complete validated
+contract and embedding artifacts automatically; routine human approval is not
+part of that mechanical synchronization.
+
 ## Execution
 
 1. A contextual product action creates its specialized compatibility job when needed.
@@ -132,10 +141,10 @@ approval and explicit Canvas save behavior remain authoritative.
 5. OCI Responses is attempted first for grounded synthesis; an endpoint-level
    compatibility failure uses Chat Completions without changing the evidence contract.
 6. The worker prepares approval-gated proposal artifacts for executable alternatives.
-7. OCI Guardrails evaluates input and output; provider or safety failure falls back
-   to an honest deterministic summary or explicit refusal.
-8. The shared output gate grounds and structures the result or replaces it with a
-   deterministic explainable brief.
+7. OCI Guardrails evaluates input and output. Specialized decision agents may
+   retain their governed deterministic brief; the App Assistant fails closed.
+8. The shared output gate grounds and structures the result. An App Assistant
+   grounding rejection is terminal and never replaced with visible fallback prose.
 9. The worker persists evidence, alternatives, proposals, output quality,
    diagnostics, terminal state, and audit.
 10. A human approves or rejects a proposal. A second explicit command executes an

@@ -10,8 +10,11 @@ export function CaptureStepIdentity({
 }: CaptureStepProps): JSX.Element {
   return (
     <div className="grid gap-4 md:grid-cols-2">
+      <p className="md:col-span-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-sm leading-6 text-[var(--color-text-secondary)]">
+        Start with the business identity. Brand, business process, and interface name are required because they make duplicate checks, QA, and project reporting meaningful. Formal IDs and scope notes can be added later.
+      </p>
       <label className="block">
-        <span className="app-label mb-2 block">Brand</span>
+        <span className="app-label mb-2 block">Brand <span className="text-[var(--color-qa-revisar-text)]">required</span></span>
         <input
           value={form.brand}
           onChange={(event) => updateField("brand", event.target.value)}
@@ -20,7 +23,7 @@ export function CaptureStepIdentity({
         />
       </label>
       <label className="block">
-        <span className="app-label mb-2 block">Business Process</span>
+        <span className="app-label mb-2 block">Business Process <span className="text-[var(--color-qa-revisar-text)]">required</span></span>
         <input
           value={form.business_process}
           onChange={(event) => updateField("business_process", event.target.value)}
@@ -29,7 +32,7 @@ export function CaptureStepIdentity({
         />
       </label>
       <label className="block md:col-span-2">
-        <span className="app-label mb-2 block">Interface Name</span>
+        <span className="app-label mb-2 block">Interface Name <span className="text-[var(--color-qa-revisar-text)]">required</span></span>
         <input
           value={form.interface_name}
           onChange={(event) => updateField("interface_name", event.target.value)}

@@ -278,6 +278,9 @@ export interface AgentProviderMetrics {
 export interface AgentValueMetrics {
   retained_runs: number;
   completed_runs: number;
+  assistant_runs: number;
+  assistant_delivered_runs: number;
+  assistant_failed_closed_runs: number;
   quality_evaluated_runs: number;
   grounded_output_runs: number;
   grounding_fallback_runs: number;
@@ -292,6 +295,7 @@ export interface AgentValueMetrics {
   post_validations_completed: number;
   follow_up_runs_after_approval: number;
   provider_synthesis_rate_pct: number;
+  assistant_delivery_rate_pct: number;
   grounded_output_rate_pct: number;
   high_evidence_completeness_rate_pct: number;
   acceptance_rate_pct: number | null;

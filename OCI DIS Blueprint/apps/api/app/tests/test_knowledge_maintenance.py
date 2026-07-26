@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -10,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from app.knowledge.builder import CURATED_PATH
 from app.models import AuditEvent, KnowledgeMaintenanceFinding
 from app.services import knowledge_maintenance_service
+from app.services.genai_client import GenAiEmbeddingResult
 
 
 HEADERS = {"X-Actor-Id": "knowledge-admin", "X-Actor-Role": "Admin"}
@@ -31,12 +35,84 @@ async def test_knowledge_job_is_deterministic_and_never_writes_curated_yaml(
 
     assert payload["status"] == "completed"
     assert payload["finding_count"] == 0
-    assert payload["write_policy"] == "human_review_only_no_yaml_mutation"
+    assert payload["write_policy"] == "automatic_derived_contract_and_embedding_publication"
     assert CURATED_PATH.read_bytes() == before
 
     response = await api_client.get("/api/v1/agents/knowledge-maintenance/jobs", headers=HEADERS)
     assert response.status_code == 200
     assert response.json()[0]["source_hash"] == payload["source_hash"]
+
+
+@pytest.mark.asyncio
+async def test_knowledge_agent_atomically_regenerates_complete_provider_space(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    runtime_path = tmp_path / "runtime" / "knowledge.json"
+    packaged = {
+        "source_hash": "source-v2",
+        "embedding_spaces": {"local": {"model": "local", "dimensions": 2}},
+        "retrieval_units": [
+            {"id": "one", "text": "Projects", "local_embedding": [0.1, 0.2]},
+            {"id": "two", "text": "Catalog", "local_embedding": [0.2, 0.3]},
+        ],
+    }
+    monkeypatch.setattr(
+        knowledge_maintenance_service,
+        "get_settings",
+        lambda: SimpleNamespace(APP_KNOWLEDGE_RUNTIME_PATH=str(runtime_path)),
+    )
+    monkeypatch.setattr(
+        knowledge_maintenance_service,
+        "get_genai_settings_for_use_case",
+        lambda _: SimpleNamespace(OCI_GENAI_EMBEDDING_MODEL_NAME="Cohere Embed v4.0"),
+    )
+    monkeypatch.setattr(
+        knowledge_maintenance_service,
+        "load_packaged_derived_manifest",
+        lambda: json.loads(json.dumps(packaged)),
+    )
+    monkeypatch.setattr(
+        knowledge_maintenance_service,
+        "load_derived_manifest",
+        lambda: json.loads(json.dumps(packaged)),
+    )
+
+    async def fake_embeddings(
+        texts: list[str],
+        _settings: object,
+        *,
+        input_type: str,
+    ) -> GenAiEmbeddingResult:
+        assert texts == ["Projects", "Catalog"]
+        assert input_type == "SEARCH_DOCUMENT"
+        return GenAiEmbeddingResult(
+            status="completed",
+            model="Cohere Embed v4.0",
+            embeddings=[[0.5, 0.6], [0.7, 0.8]],
+        )
+
+    monkeypatch.setattr(
+        knowledge_maintenance_service,
+        "generate_embeddings",
+        fake_embeddings,
+    )
+
+    result = await knowledge_maintenance_service.synchronize_provider_embeddings(
+        force=True
+    )
+
+    assert result["status"] == "regenerated"
+    assert result["unit_count"] == 2
+    activated = json.loads(runtime_path.read_text(encoding="utf-8"))
+    assert activated["embedding_spaces"]["provider"]["owner"] == (
+        "app_knowledge_governance_agent"
+    )
+    assert all(
+        len(unit["provider_embedding"]) == 2
+        for unit in activated["retrieval_units"]
+    )
+    assert not runtime_path.with_suffix(".json.tmp").exists()
 
 
 @pytest.mark.asyncio

@@ -219,6 +219,9 @@ class AgentValueMetricsResponse(BaseModel):
 
     retained_runs: int
     completed_runs: int
+    assistant_runs: int
+    assistant_delivered_runs: int
+    assistant_failed_closed_runs: int
     quality_evaluated_runs: int
     grounded_output_runs: int
     grounding_fallback_runs: int
@@ -233,6 +236,7 @@ class AgentValueMetricsResponse(BaseModel):
     post_validations_completed: int
     follow_up_runs_after_approval: int
     provider_synthesis_rate_pct: float
+    assistant_delivery_rate_pct: float
     grounded_output_rate_pct: float
     high_evidence_completeness_rate_pct: float
     acceptance_rate_pct: Optional[float]

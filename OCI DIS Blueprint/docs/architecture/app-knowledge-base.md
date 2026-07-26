@@ -14,7 +14,7 @@ exist.
 | API operations | `docs/api/openapi.yaml` | Derived from generated OpenAPI |
 | Export media types | Router response declarations plus OpenAPI | Derived by source inspection |
 | Persisted entities | SQLAlchemy models and API schemas | Derived by Python AST inspection |
-| User purpose and workflow | `app/knowledge/app_knowledge.yaml` | Human-authored and reviewed |
+| User purpose and workflow | `app/knowledge/app_knowledge.yaml` | Versioned App contract; validated by the Knowledge Governance Agent and CI |
 | Products, SKUs, patterns, dictionaries, projects, and BOM facts | Active database records | Queried for each support request |
 
 The derived manifest is deterministic and committed as
@@ -25,19 +25,21 @@ may also cache OCI Cohere Embed v4 vectors in the same artifact; the build
 script never sends a support question or customer evidence when generating
 that cache.
 
-The current production artifact contains `227/227` OCI provider vectors in one
+The current production artifact contains `282/282` OCI provider vectors in one
 `Cohere Embed v4.0` 512-dimension space. The local 384-dimension vectors remain
-packaged strictly for deterministic provider-unavailable fallback and are never
-mixed with OCI vectors in one similarity search.
+packaged for build-time validation and unconfigured test environments; they are
+never mixed with OCI vectors in one similarity search and are not a production
+runtime fallback.
 
 ## Runtime flow
 
 1. `build_support_evidence` resolves the current route, explicit contexts, and
    relevant live database evidence.
 2. The knowledge retriever embeds the question once and ranks small curated
-retrieval units by cosine similarity. It uses cached OCI vectors when they
-exist and a deterministic feature-hash semantic vector otherwise. Route
-affinity is only a bounded tie-breaker.
+retrieval units by cosine similarity. A configured production runtime requires
+the complete cached OCI vector space and one successful OCI query embedding;
+either failure terminates the assistant run instead of silently switching
+vector spaces. Route affinity is only a bounded tie-breaker.
    Cached vectors use OCI's native `EmbedText` inference API with
    `SEARCH_DOCUMENT`; runtime questions use `SEARCH_QUERY`. Embedding transport
    is intentionally separate from the OpenAI-compatible Chat and Responses
@@ -56,10 +58,9 @@ affinity is only a bounded tie-breaker.
    evidence only when the question actually asks for pricing, billing, or BOM.
 7. The output gate rejects unsupported feature, workflow, route, export, SKU,
    price, or mutation claims.
-8. When the provider is unavailable or its answer fails grounding, the App
-   returns a deterministic answer from the same knowledge entry. Unknown
-   capabilities are stated as not documented and point to the closest executable
-   workflow. User-visible citations identify those sections as `Based on` links.
+8. When provider synthesis, query embedding, or output grounding fails, the App
+   fails the response closed. It returns no deterministic substitute and no
+   citations. The retained AgentRun records the failing stage for operations.
 
 Support and Knowledge Maintenance use the settings-driven
 `openai.gpt-oss-120b` override. Specialized architecture agents continue to use
@@ -68,14 +69,14 @@ copy and never mutates the cached global settings object.
 
 ## Maintenance and review
 
-The Knowledge Maintenance Agent runs on the existing governed agent worker. It
-compares the immutable derived manifest packaged in the production image with
-the curated guide and persists a job plus review candidates through two
+The App Knowledge Governance Agent runs automatically on the existing governed
+agent worker and owns derived-contract synchronization plus OCI embedding
+generation. It compares the active manifest with the curated guide through two
 separate lanes:
 
 1. Deterministic validation reports dead references, stale media types, missing
    fields, and unowned Next.js routes. CI treats these as build failures.
-2. Model-assisted semantic review compares the human explanation with a bounded
+2. Model-assisted semantic review compares the App explanation with a bounded
    inventory of executable routes, endpoint summaries, entities, and exports.
    The model must return structured drafts with exact derived evidence
    references. The API rejects malformed drafts, unknown sections, unsupported
@@ -83,14 +84,12 @@ separate lanes:
 
 The image never needs the monorepo source tree: CI rebuilds the manifest from
 executable source and rejects deterministic drift before the image is
-published. An administrator must explicitly accept or reject every persisted
-candidate with a rationale.
-
-Acceptance records disposition and audit evidence only. Neither the agent nor
-the review endpoint edits the YAML file. A human applies the approved
-documentation change, regenerates the manifest, and validates it in CI. An OCI
-provider failure or invalid JSON response cannot suppress deterministic checks
-or create a candidate.
+published. At runtime, the scheduled agent regenerates a complete provider
+vector space in a temporary artifact and publishes it atomically only after
+source hash, model, dimensions, coverage, and drift validation pass. No routine
+human approval is requested. If validation fails, the last complete artifact
+remains active and the unresolved contradiction is reported as an operational
+finding; a model response alone can never override executable evidence.
 
 ```bash
 cd apps/api
@@ -113,8 +112,8 @@ tests seed BOM lines and Architecture Review results. No test calls OCI.
 
 The July 25, 2026 live release validation authenticated the tenancy through the
 workspace's external-Chrome security-token flow, confirmed the configured model
-as active on demand in `us-chicago-1`, regenerated all provider vectors, passed
-the deterministic manifest check and focused API suite, and completed a
-synthetic Import question through the public support API. Its retained AgentRun
-evidence reported `app_knowledge.embedding_space = provider`, five semantic
-matches, and the committed source hash; no customer evidence was transmitted.
+as active on demand in `us-chicago-1`, regenerated all `282` provider vectors,
+passed the deterministic manifest check and focused API suite, and completed
+the public support evaluation. Retained AgentRun evidence reports
+`app_knowledge.embedding_space = provider`, five semantic matches, and the
+committed source hash.

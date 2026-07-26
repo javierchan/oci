@@ -498,7 +498,11 @@ def build_tool_executor(
             job = await create_job(actor_id, db)
             job_id = job.id
             context["knowledge_job_id"] = job_id
-        return await execute_job(job_id, db)
+        return await execute_job(
+            job_id,
+            db,
+            refresh_embeddings=bool(context.get("refresh_embeddings", True)),
+        )
 
     if agent_type == "architecture_review":
         return (
@@ -555,7 +559,7 @@ def build_tool_executor(
     if agent_type == "knowledge_maintenance":
         return (
             "inspect_app_knowledge_drift",
-            "Compare executable App contracts with curated user guidance and persist reviewable candidates.",
+            "Synchronize App knowledge embeddings, compare executable contracts, and fail closed on unresolved drift.",
             EMPTY_PARAMETERS,
             knowledge_maintenance,
         )

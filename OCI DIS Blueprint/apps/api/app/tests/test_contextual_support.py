@@ -747,7 +747,7 @@ async def test_support_builds_model_grounding_without_stale_topic_leakage(
     contract = cast(dict[str, object], evidence["response_contract"])
     assert evidence["question_intent"] == "workflow_guidance"
     assert contract["model_authorship"] == "primary"
-    assert contract["deterministic_fallback"] == "provider_failure_or_grounding_failure_only"
+    assert contract["delivery_policy"] == "fail_closed_without_visible_fallback"
     assert "direct_answer" not in evidence
     assert "**Import**" in str(evidence["fallback_answer"])
     assert "OCI Functions" not in str(evidence["fallback_answer"])
@@ -784,6 +784,28 @@ async def test_support_uses_only_a_resolved_service_for_a_narrow_commercial_foll
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as session:
         async with session.begin():
+            session.add_all(
+                [
+                    ServiceCapabilityProfile(
+                        service_id="FUNCTIONS",
+                        name="OCI Functions",
+                        category="COMPUTE",
+                        pricing_model="Invocation and GB-seconds",
+                        is_active=True,
+                    ),
+                    ServiceProductSkuMapping(
+                        service_id="FUNCTIONS",
+                        tool_key="OCI Functions",
+                        part_number="B95485",
+                        billing_metric_key="function_gb_seconds",
+                        formula_key="functions_consumption",
+                        quantity_unit="GB-seconds",
+                        predicates={},
+                        status="approved",
+                    ),
+                ]
+            )
+            await session.flush()
             evidence = await support_service.build_support_evidence(
                 None,
                 None,
@@ -799,7 +821,17 @@ async def test_support_uses_only_a_resolved_service_for_a_narrow_commercial_foll
                 session,
             )
 
-    assert evidence["question_intent"] == "concept_explanation"
+    assert evidence["question_intent"] == "evidence_interpretation"
+    assert evidence["evidence_interpretation"] == "commercial_sku"
+    context = cast(dict[str, object], evidence["commercial_service_context"])
+    assert context["service_id"] == "FUNCTIONS"
+    assert cast(list[dict[str, object]], context["sku_options"])[0][
+        "billing_metric_key"
+    ] == "function_gb_seconds"
+    references = cast(dict[str, object], evidence["resolved_dialogue_references"])
+    service_reference = cast(dict[str, object], references["service"])
+    assert service_reference["id"] == "FUNCTIONS"
+    assert "do not ask" in str(service_reference["resolution"])
 
 
 @pytest.mark.asyncio
@@ -880,7 +912,8 @@ async def test_support_conversation_is_isolated_and_external_topic_is_redirected
     )
     final_message = refreshed.json()["messages"][-1]
     assert final_message["status"] == "completed"
-    assert "[Open Projects](/projects)" in final_message["content"]
+    assert final_message["content"].count("**Next action:**") == 1
+    assert "](/projects)" in final_message["content"]
 
     isolated_clear = await api_client.delete(
         f"/api/v1/support/conversations/{conversation_id}/messages", headers=HEADERS_B
@@ -1080,7 +1113,7 @@ async def test_support_uses_provider_as_primary_author_for_a_resolved_workflow_a
 
 
 @pytest.mark.asyncio
-async def test_support_uses_deterministic_fallback_only_when_provider_fails(
+async def test_support_fails_closed_without_visible_fallback_when_provider_fails(
     api_client: AsyncClient,
     test_engine: AsyncEngine,
     monkeypatch: pytest.MonkeyPatch,
@@ -1125,13 +1158,19 @@ async def test_support_uses_deterministic_fallback_only_when_provider_fails(
             completed = await agent_service.run_agent(assistant["agent_run_id"], session)
 
     assert completed.result is not None
+    assert completed.status == "failed"
     assert completed.result["provider_status"] == "failed"
+    assert completed.result["delivery_status"] == "failed_closed"
+    assert completed.result["failure_stage"] == "provider"
+    assert completed.result["grounding_fallback"] is False
     refreshed = await api_client.get(
         f"/api/v1/support/conversations/{conversation_id}", headers=HEADERS_A
     )
-    content = refreshed.json()["messages"][-1]["content"]
-    assert "**Import**" in content
-    assert "[Open Import](/projects)" in content
+    message = refreshed.json()["messages"][-1]
+    assert message["status"] == "failed"
+    assert "could not deliver a validated answer" in message["content"]
+    assert "**Import**" not in message["content"]
+    assert message["citations"] == []
 
 
 @pytest.mark.asyncio

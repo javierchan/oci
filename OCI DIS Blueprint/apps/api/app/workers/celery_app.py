@@ -16,6 +16,7 @@ celery_app.conf.broker_connection_retry_on_startup = True
 celery_app.conf.imports = (
     "app.workers.agent_worker",
     "app.workers.import_worker",
+    "app.workers.knowledge_worker",
     "app.workers.pricing_worker",
     "app.workers.recalc_worker",
     "app.workers.service_verification_worker",
@@ -23,6 +24,9 @@ celery_app.conf.imports = (
 )
 celery_app.conf.task_routes = {
     "app.workers.agent_worker.execute_agent_run_task": {"queue": "agents"},
+    "app.workers.knowledge_worker.execute_scheduled_knowledge_maintenance_task": {
+        "queue": "agents"
+    },
 }
 
 beat_schedule: dict[str, dict[str, object]] = {}
@@ -36,12 +40,18 @@ if settings.OCI_GOVERNANCE_SCHEDULE_ENABLED:
         "task": "app.workers.pricing_worker.execute_scheduled_oci_governance_task",
         "schedule": settings.OCI_GOVERNANCE_SCHEDULE_SECONDS,
     }
+if settings.APP_KNOWLEDGE_AUTOMATION_ENABLED:
+    beat_schedule["app-knowledge-governance"] = {
+        "task": "app.workers.knowledge_worker.execute_scheduled_knowledge_maintenance_task",
+        "schedule": settings.APP_KNOWLEDGE_SCHEDULE_SECONDS,
+    }
 if beat_schedule:
     celery_app.conf.beat_schedule = beat_schedule
 
 # Import worker modules after the Celery app is created so task decorators register
 # against this application in both API-side dispatch and worker-side startup flows.
 from app.workers import import_worker as _import_worker  # noqa: E402,F401
+from app.workers import knowledge_worker as _knowledge_worker  # noqa: E402,F401
 from app.workers import agent_worker as _agent_worker  # noqa: E402,F401
 from app.workers import pricing_worker as _pricing_worker  # noqa: E402,F401
 from app.workers import recalc_worker as _recalc_worker  # noqa: E402,F401

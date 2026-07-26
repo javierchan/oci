@@ -103,12 +103,13 @@ the endpoint truthfully reports process-local fallback metrics.
 Every agent answer also passes one repository-owned outcome contract. The API
 rejects provider meta-reasoning, unsupported material numbers, unknown SKU or price
 claims, claims that a proposal was applied, and source-verification claims without
-retrieved evidence. The contextual assistant can render bounded Markdown tables,
-lists, emphasis, and same-origin App links. Rejected synthesis is replaced by a deterministic brief that
-always separates the finding, why it matters, next actions, validation, evidence,
-and confidence. Agent Operations reports provider health and observed outcome
-quality separately; value signals come only from retained executions and human
-decisions, never estimated time savings.
+retrieved evidence. The contextual assistant can render bounded tables,
+lists, emphasis, and same-origin App links. Specialized decision agents retain
+their structured deterministic brief when appropriate; the App Assistant fails
+closed on query-embedding, provider, Guardrails, or grounding failure and returns
+no substitute answer or citations. Agent Operations reports provider health and
+observed outcome quality separately; value signals come only from retained
+executions and human decisions, never estimated time savings.
 
 Specialized agents run four governed stages: load evidence, compare valid
 alternatives, synthesize the decision, and prepare approval-gated proposals.
@@ -123,11 +124,14 @@ current integration and its ordered business process as well as project,
 governance, import, BOM, and topology evidence, accepts explicitly added App
 contexts, and redirects unrelated questions toward useful App capabilities. OCI
 Generative AI authors normal responses from a labeled `verified_facts` contract and
-executable `next_actions`; deterministic answers are reserved for provider or grounding
-failure. Model history is not evidence, and an output-grounding gate replaces unsupported synthesis with a concise governed brief. See
+executable `next_actions`. Inferred conversation state remains internal, while
+contexts explicitly selected through `Add context` remain visible after a response
+and across navigation until the user removes them or clears history. Model history
+is not evidence, and an output-grounding gate fails unsupported synthesis closed
+instead of presenting fallback prose. See
 [`docs/architecture/contextual-support-assistant.md`](./docs/architecture/contextual-support-assistant.md).
-The executable product boundary, CI drift gate, deterministic fallback, and
-human-reviewed Knowledge Maintenance Agent are documented in
+The executable product boundary, CI drift gate, production provider-vector
+requirement, and automatically owned App Knowledge Governance Agent are documented in
 [`docs/architecture/app-knowledge-base.md`](./docs/architecture/app-knowledge-base.md).
 Users can clear their current browser-session transcript from the assistant header;
 the App removes messages and attached contexts while retaining sanitized AgentRun
@@ -480,8 +484,9 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M68 | Deterministic DIS Technical Demand Propagation | ✅ Complete | 2026-07-23 |
 | M71 | Governed Commercial Review Work Queue | ✅ Complete | 2026-07-23 |
 | M72 | Reasoning-led Import Correction Review | ✅ Complete | 2026-07-24 |
-| M73 | Human-authorized Import Correction Execution | 🟡 In QA | — |
+| M73 | Human-authorized Import Correction Execution | ✅ Complete | 2026-07-25 |
 | M74 | OCI-native App Assistant Semantic Retrieval | ✅ Complete | 2026-07-25 |
+| M75 | Fail-closed Persistent-context Assistant + Automatic Knowledge Governance | ✅ Complete | 2026-07-25 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -493,8 +498,8 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   remains immutable rejected-source evidence
 - Reference seed data: `21` certified patterns, `9` architectural overlays, `27` governed canvas combinations, client-only assumption sets, governed dictionaries, and `20` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine + pricing-engine: `213 passed` (`139` API, `50` calc-engine, `24` pricing-engine)
-- Frontend: `132 passed`, strict TypeScript, ESLint, and production build green
+- Backend + calc-engine + pricing-engine: `459 passed` (`325` API, `99` calc-engine, `35` pricing-engine)
+- Frontend: `135 passed`, strict TypeScript, ESLint, and production build green
 - Pricing/BOM E2E: real 4-source Oracle verification, scheduled no-change verification,
   and post-verification BOM jobs reach terminal `completed` states
 - Continuous commercial governance: `4/4` official sources preserved in Object
@@ -506,10 +511,9 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
 - Web and API stack: all eight production services running and healthy in Docker Compose
 - M74 OCI semantic retrieval: authenticated tenancy and CLI token boundary,
   active on-demand Cohere/OpenAI embedding inventory in `us-chicago-1`, governed
-  Cohere Embed v4 selection at 512 dimensions, `227/227` committed provider
-  vectors, and a completed synthetic App Assistant Import run whose persisted
-  evidence reports five matches in `embedding_space=provider` with no customer
-  data transmitted.
+  Cohere Embed v4 selection at 512 dimensions, `282/282` committed provider
+  vectors, and completed App Assistant runs whose persisted evidence reports
+  five matches in `embedding_space=provider`.
 - Pattern certification browser contract: `21/21` certified cards, `9/9` governed overlays, desktop light/dark and `390 px` mobile views, zero horizontal overflow, and zero console errors
 - Integration Canvas disclosure contract: source, destination, and DIS nodes share
   one `260 × 116` collapsed geometry; each DIS node exposes one explicit technical
@@ -539,12 +543,24 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   briefs render as structured review summaries, issue/evidence/action cards,
   exclusions, and human decisions, and the latest completed session brief is
   restored after reload without another inference.
-- M73 current customer-held run: `241` lines classified, `240` staged, `1`
-  formula/footer-only exclusion, `352` formula cells received, `0` formula values
-  persisted, `11` current provider analyses, `1` degraded analysis, `228` analyses
-  still required, `0` executable corrections, `0` approvals, and `0` promotions.
-  Bulk provider egress remains intentionally blocked until consent explicitly
-  covers all remaining single-row OCI requests.
+- M73 final customer-held run: `241` lines classified, `240` staged, `1`
+  formula/footer-only exclusion, `352` formula cells received, and `0` formula
+  values or Excel error markers persisted. All `240/240` row analyses are current
+  and grounded, every row has a concise summary and explicit human decision,
+  `28` supported correction drafts remain unapplied for reviewer choice, and
+  fallback, correction execution, approvals, rejections, catalog promotion, and
+  operator failures remain `0`. The final resumable rerun attempted `0` AgentRuns
+  and reproduced the same `240 current / 0 degraded / 0 required / 0 stale` state.
+- M75 App Assistant and knowledge governance: inferred conversation state is
+  internal, explicit context remains selected after responses, navigation, closing,
+  and reload,
+  configured query-embedding/provider/grounding failures are terminal with no
+  visible fallback or citations, and the App Knowledge Governance Agent owns
+  scheduled atomic regeneration of the complete OCI vector artifact without
+  routine human approval. The final real-provider matrix passed `27/27` global
+  cases and `4/4` Iconn project-dossier cases with provider-space retrieval,
+  grounded delivery, and `fallback_used=false`; the active knowledge artifact
+  passed hash/model/dimension/coverage validation at `282/282` vectors.
 
 `AGENTS.md`, this README, the root workflow, and the current architecture
 documents define the active operational contract. Dated audit reports,

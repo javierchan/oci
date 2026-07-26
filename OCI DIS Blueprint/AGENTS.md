@@ -882,10 +882,10 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 - [x] Validate focused backend behavior, frontend unit/type/lint/build gates,
       migration/OpenAPI consistency, responsive light/dark layout, zero horizontal
       overflow, and zero browser console errors.
-- [ ] Complete explicitly authorized provider analysis for every remaining staged
+- [x] Complete explicitly authorized provider analysis for every remaining staged
       customer row, rerun degraded rows serially, and demonstrate stable current
       analysis/correction counts across multiple final reruns.
-- [ ] **Exit criteria**: one clean review project remains; every staged line has
+- [x] **Exit criteria**: one clean review project remains; every staged line has
       either a current grounded analysis or a visible provider failure requiring
       human action; Fix all remains unexecuted for reviewer choice; formulas
       persisted remain zero; catalog, approvals, rejections, and promotions remain zero.
@@ -901,17 +901,36 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       complete vector-space migration rather than a configuration-only switch.
 - [x] Regenerate the committed App knowledge artifact with one OCI
       `SEARCH_DOCUMENT` vector for every eligible retrieval unit while preserving
-      the deterministic local fallback as a separate vector space.
+      local vectors only for build validation and unconfigured test environments.
 - [x] Validate a synthetic `SEARCH_QUERY` through the public App Assistant flow
       and persist auditable `embedding_space = provider` evidence with no customer
       content in the live embedding smoke.
 - [x] Add a repository-local OCI operator skill that preserves workspace
       isolation, the external-Chrome authentication boundary, secret handling,
       model discovery, embedding readiness checks, and reconciliation rules.
-- [x] **Exit criteria**: `227/227` provider vectors at 512 dimensions, manifest
+- [x] **Exit criteria**: `282/282` provider vectors at 512 dimensions, manifest
       consistency, focused API regressions, healthy eight-service Compose runtime,
       one completed support AgentRun with five provider-space matches, and no
       silent local fallback pass.
+
+### M75 — Fail-closed Persistent-context Assistant + Automatic Knowledge Governance
+- [x] Keep the service, project, pattern, and topic ledger internal to reference
+      resolution; remove inferred `Conversation memory` controls from the user UI.
+- [x] Preserve every explicitly selected `Add context` item after a response,
+      across App Router navigation, panel closing, and reload until the user
+      removes it or clears history.
+- [x] Fail configured production runs closed when OCI query embeddings, synthesis,
+      Guardrails, or output grounding fail; never return substitute prose or citations.
+- [x] Make the App Knowledge Governance Agent own scheduled contract synchronization
+      and complete OCI embedding regeneration, with atomic publication and retention
+      of the last valid artifact when validation fails.
+- [x] Validate natural response quality with the complete real-provider assistant
+      matrix, retain provider-space evidence for every completed answer, and expose
+      terminal delivery failures truthfully in the assistant and Agent Operations.
+- [x] **Exit criteria**: complete provider embeddings, assistant evaluation, focused
+      and full backend/frontend gates, persistent-context browser flow, automatic
+      knowledge-maintenance run, healthy eight-service Compose runtime, and zero
+      browser console errors pass.
 
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated

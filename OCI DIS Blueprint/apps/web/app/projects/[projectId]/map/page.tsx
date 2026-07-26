@@ -4,6 +4,7 @@
 
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { RefreshCw } from "lucide-react";
 
 import { GraphControls } from "@/components/graph-controls";
 import { GraphDetailPanel } from "@/components/graph-detail-panel";
@@ -474,9 +475,18 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
               ) : null}
 
               {error ? (
-                <p className="absolute bottom-5 left-5 max-w-xl rounded-lg border border-rose-200 bg-rose-50/95 px-4 py-3 text-sm font-semibold text-rose-800 shadow-sm dark:border-rose-900 dark:bg-rose-950/80 dark:text-rose-100">
-                {error}
-                </p>
+                <div className="absolute bottom-5 left-5 max-w-xl rounded-lg border border-rose-200 bg-rose-50/95 px-4 py-3 text-sm text-rose-800 shadow-sm dark:border-rose-900 dark:bg-rose-950/80 dark:text-rose-100" role="alert">
+                  <p className="font-semibold">Topology is unavailable right now</p>
+                  <p className="mt-1 leading-5">{error}</p>
+                  <button
+                    type="button"
+                    onClick={() => setFilters((current) => ({ ...current }))}
+                    className="mt-3 inline-flex items-center gap-2 rounded-md border border-current/30 bg-[var(--color-surface)]/80 px-3 py-1.5 text-xs font-semibold transition hover:bg-[var(--color-surface)]"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Retry topology
+                  </button>
+                </div>
               ) : null}
             </div>
           </div>

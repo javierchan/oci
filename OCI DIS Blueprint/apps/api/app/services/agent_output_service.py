@@ -60,13 +60,22 @@ SUPPORT_INTERNAL_NARRATION_PATTERN = re.compile(
     r"our task is|system instructions?|private reasoning)\b",
     re.IGNORECASE,
 )
+SUPPORT_EXTERNAL_WORKAROUND_PATTERN = re.compile(
+    r"\b(?:outside\s+(?:the\s+)?(?:app|tool)|external\s+(?:monitoring|automation|alerts?)|"
+    r"(?:your|their)\s+own\s+(?:monitoring|tools?|automation|alerts?))\b",
+    re.IGNORECASE,
+)
+SUPPORT_ROUTE_ARTIFACT_PATTERN = re.compile(
+    r"(?im)^\s*\[?/(?:projects|admin)(?:/[^\]\s]*)?\]?\s*$"
+)
+SUPPORT_NEXT_ACTION_LINE_PATTERN = re.compile(
+    r"(?im)^\s*(?:[-*]\s*)?\*{0,2}(?:next\s+(?:action|step)|"
+    r"siguiente\s+(?:paso|acci[oó]n)|pr[oó]xim[oa]\s+(?:paso|acci[oó]n)"
+    r"(?:\s+recomendad[oa])?)\s*:\*{0,2}.*$"
+)
 APPLIED_ACTION_PATTERN = re.compile(
     r"\b(?:i|we|the agent|the app)\s+(?:have\s+)?(?:applied|changed|updated|deployed|"
     r"approved|published|saved|deleted|created)\b",
-    re.IGNORECASE,
-)
-HIGH_RISK_NUMBER_PATTERN = re.compile(
-    r"(?<![\w.-])(?:USD\s*)?\$?\d[\d,]*(?:\.\d+)?%?(?![\w.-])",
     re.IGNORECASE,
 )
 PART_NUMBER_PATTERN = re.compile(r"\bB\d{5,}\b", re.IGNORECASE)
@@ -77,6 +86,16 @@ POSITIVE_VERIFICATION_PATTERN = re.compile(
 )
 COMMERCIAL_CLAIM_PATTERN = re.compile(
     r"(?:\$|\bUSD\b|\bprice\b|\bdiscount\b|\bcontract total\b|\bmonthly total\b)",
+    re.IGNORECASE,
+)
+UNSUPPORTED_EVIDENCE_DISCLAIMER_PATTERN = re.compile(
+    r"\b(?:"
+    r"(?:this|that|it|the\s+(?:value|fact|claim|information))\s+is\s+not\s+(?:in|part\s+of)\s+(?:the\s+)?evidence|"
+    r"not\s+(?:shown|available|documented|included|present)\s+in\s+(?:the\s+)?evidence|"
+    r"no\s+est[aá]\s+en\s+la\s+evidencia|"
+    r"no\s+est[aá]\s+(?:mostrad[oa]|disponible|documentad[oa]|incluid[oa]|presente)\s+en\s+la\s+evidencia|"
+    r"fuera\s+de\s+la\s+evidencia"
+    r")\b",
     re.IGNORECASE,
 )
 
@@ -113,6 +132,25 @@ def _dict(value: object) -> dict[str, object]:
 
 def _dicts(value: object) -> list[dict[str, object]]:
     return [cast(dict[str, object], item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _canonical_support_next_action(value: str, evidence: dict[str, object]) -> str:
+    """Let the model author the answer while the App owns one executable handoff."""
+
+    if not isinstance(evidence.get("app_knowledge"), dict):
+        return value
+    actions = _dicts(evidence.get("next_actions"))
+    if not actions:
+        return value
+    label = _text(actions[0].get("label"))
+    href = _text(actions[0].get("href"))
+    if not label or not href.startswith("/"):
+        return value
+    without_provider_action = SUPPORT_NEXT_ACTION_LINE_PATTERN.sub("", value)
+    without_provider_action = re.sub(r"\n{3,}", "\n\n", without_provider_action).strip()
+    prefix = "Siguiente paso" if evidence.get("response_language") == "es" else "Next action"
+    action = f"**{prefix}:** [{label}]({href})"
+    return f"{without_provider_action}\n\n{action}" if without_provider_action else action
 
 
 def _strings(value: object, *, limit: int = 5) -> list[str]:
@@ -205,6 +243,12 @@ def _remove_support_meta_reasoning(value: str) -> str:
         heading = FINAL_ANSWER_HEADING_PATTERN.search(value)
         if heading is not None:
             value = value[heading.start() :]
+    value = re.sub(
+        r"(?im)^\s*(?:\*{0,2})?(?:respuesta|answer)(?:\*{0,2})?\s*\n+",
+        "",
+        value,
+        count=1,
+    )
     sentences = re.split(r"(?<=[.!?])(?:\s+|\n+)", value.strip())
     visible = []
     for sentence in sentences:
@@ -225,18 +269,107 @@ def _remove_support_internal_placeholder_sentences(value: str) -> str:
     ).strip()
 
 
+def _remove_ungrounded_external_workarounds(
+    value: str,
+    evidence: dict[str, object],
+) -> str:
+    """Keep an absent-capability answer inside the governed App boundary."""
+
+    knowledge = _dict(evidence.get("app_knowledge"))
+    assessment = _dict(knowledge.get("capability_assessment"))
+    if assessment.get("status") != "not_documented":
+        return value
+    sentences = re.split(r"(?<=[.!?])(?:\s+|\n+)", value.strip())
+    retained = [
+        sentence.strip()
+        for sentence in sentences
+        if sentence.strip()
+        and not SUPPORT_EXTERNAL_WORKAROUND_PATTERN.search(sentence)
+    ]
+    return "\n\n".join(retained).strip()
+
+
 def _evidence_text(evidence: dict[str, object]) -> str:
     return str(sanitize_for_json(evidence)).casefold().replace(",", "")
 
 
+EVIDENCE_NUMBER_PATTERN = re.compile(
+    r"(?<![\w.-])(\d{1,3}(?:[,\u00a0\u202f ]\d{3})+(?:\.\d+)?|"
+    r"[1-9]\d{0,2}(?:\.\d{3})+|"
+    r"\d+(?:\.\d+)?)\s*([km])?(?![\w.-])",
+    re.IGNORECASE,
+)
+SUMMARY_NUMBER_PATTERN = re.compile(
+    r"(?<![\w.-])((?:USD\s*)?\$?\s*)(\d{1,3}(?:[,\u00a0\u202f ]\d{3})+(?:\.\d+)?|"
+    r"[1-9]\d{0,2}(?:\.\d{3})+|"
+    r"\d+(?:\.\d+)?)\s*([km])?\s*(%?)(?![\w-])",
+    re.IGNORECASE,
+)
+SENSITIVE_NUMBER_UNIT_PATTERN = re.compile(
+    r"^\s*(?:seconds?|minutes?|hours?|days?|segundos?|minutos?|horas?|d[ií]as?)\b",
+    re.IGNORECASE,
+)
+
+
+def _scaled_number(raw: str, suffix: str = "") -> float | None:
+    try:
+        compact = re.sub(r"[,\s\u00a0\u202f]", "", raw)
+        if re.fullmatch(r"[1-9]\d{0,2}(?:\.\d{3})+", compact):
+            compact = compact.replace(".", "")
+        value = float(compact)
+    except ValueError:
+        return None
+    scale = {"k": 1_000.0, "m": 1_000_000.0}.get(suffix.casefold(), 1.0)
+    return value * scale
+
+
+def _evidence_numbers(value: object) -> list[float]:
+    """Collect numeric evidence while treating K/M formatting as equivalent."""
+
+    if isinstance(value, bool) or value is None:
+        return []
+    if isinstance(value, (int, float)):
+        return [float(value)]
+    if isinstance(value, dict):
+        return [
+            number
+            for item in value.values()
+            for number in _evidence_numbers(item)
+        ]
+    if isinstance(value, list):
+        return [number for item in value for number in _evidence_numbers(item)]
+    if not isinstance(value, str):
+        return []
+    numbers: list[float] = []
+    for match in EVIDENCE_NUMBER_PATTERN.finditer(value):
+        parsed = _scaled_number(match.group(1), match.group(2) or "")
+        if parsed is not None:
+            numbers.append(parsed)
+    return numbers
+
+
 def _numbers_are_grounded(summary: str, evidence: dict[str, object]) -> bool:
-    serialized = _evidence_text(evidence)
-    for match in HIGH_RISK_NUMBER_PATTERN.findall(summary):
-        normalized = match.casefold().replace("usd", "").replace("$", "").replace(",", "").strip()
-        digits = re.sub(r"[^0-9]", "", normalized)
-        if not ("$" in match or "%" in match or "usd" in match.casefold() or len(digits) >= 3):
+    evidence_numbers = _evidence_numbers(sanitize_for_json(evidence))
+    for match in SUMMARY_NUMBER_PATTERN.finditer(summary):
+        prefix, raw, suffix, percent = match.groups()
+        digits = re.sub(r"[^0-9]", "", raw)
+        high_risk = bool(
+            "$" in prefix
+            or "usd" in prefix.casefold()
+            or percent
+            or suffix
+            or len(digits) >= 3
+            or SENSITIVE_NUMBER_UNIT_PATTERN.search(summary[match.end() : match.end() + 24])
+        )
+        if not high_risk:
             continue
-        if normalized.rstrip("%") not in serialized and normalized not in serialized:
+        candidate = _scaled_number(raw, suffix or "")
+        if candidate is None:
+            return False
+        if not any(
+            abs(candidate - expected) <= max(1e-9, abs(expected) * 1e-9)
+            for expected in evidence_numbers
+        ):
             return False
     return True
 
@@ -255,6 +388,11 @@ def _grounding_failure(
     if not normalized_summary:
         return "empty_provider_summary"
     if (
+        definition.type == "support_assistant"
+        and not SUPPORT_NEXT_ACTION_LINE_PATTERN.sub("", normalized_summary).strip()
+    ):
+        return "answer_content_missing"
+    if (
         definition.type != "support_assistant"
         and MARKDOWN_TABLE_PATTERN.search(raw_summary)
         and TABLE_DIVIDER_PATTERN.search(raw_summary)
@@ -266,6 +404,8 @@ def _grounding_failure(
         return "internal_placeholder"
     if APPLIED_ACTION_PATTERN.search(normalized_summary):
         return "unverified_mutation_claim"
+    if UNSUPPORTED_EVIDENCE_DISCLAIMER_PATTERN.search(normalized_summary):
+        return "self_disclaimed_unsupported_claim"
     if len(normalized_summary.split()) > _word_limit(definition):
         return "word_limit_exceeded"
     if not _numbers_are_grounded(normalized_summary, evidence):
@@ -539,8 +679,14 @@ def govern_agent_output(
     definition: AgentDefinition,
     candidate_summary: str | None,
     evidence: dict[str, object],
+    *,
+    allow_fallback: bool = True,
 ) -> GovernedAgentOutput:
-    """Return a presentation-safe summary and deterministic structured brief."""
+    """Return a presentation-safe summary and deterministic structured brief.
+
+    ``allow_fallback=False`` is used by the App Assistant so a provider or
+    grounding failure cannot masquerade as a successful conversational answer.
+    """
 
     raw_summary = candidate_summary or ""
     support_draft_instructions = bool(
@@ -550,6 +696,9 @@ def govern_agent_output(
     if definition.type == "support_assistant":
         raw_summary = _remove_support_meta_reasoning(raw_summary)
         raw_summary = _remove_support_internal_placeholder_sentences(raw_summary)
+        raw_summary = _remove_ungrounded_external_workarounds(raw_summary, evidence)
+        raw_summary = SUPPORT_ROUTE_ARTIFACT_PATTERN.sub("", raw_summary)
+        raw_summary = _canonical_support_next_action(raw_summary, evidence)
     normalized_summary = normalize_agent_summary(
         raw_summary,
         preserve_markdown=definition.type == "support_assistant",
@@ -560,11 +709,17 @@ def govern_agent_output(
         else _grounding_failure(definition, raw_summary, normalized_summary, evidence)
     )
     brief = build_agent_brief(definition, evidence)
-    fallback_used = failure is not None
-    summary = _fallback_summary(definition, brief) if fallback_used else normalized_summary
+    fallback_used = failure is not None and allow_fallback
+    summary = (
+        _fallback_summary(definition, brief)
+        if fallback_used
+        else normalized_summary
+        if failure is None
+        else ""
+    )
     quality = AgentOutputQuality(
         normalized=bool(raw_summary and normalized_summary != raw_summary.strip()),
-        grounded=not fallback_used,
+        grounded=failure is None,
         fallback_used=fallback_used,
         fallback_reason=failure,
         evidence_completeness_pct=_evidence_completeness(brief, evidence),

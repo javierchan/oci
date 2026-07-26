@@ -10,6 +10,7 @@ import ast
 import hashlib
 import json
 import math
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -46,6 +47,36 @@ DERIVED_PATH = KNOWLEDGE_DIR / "derived_app_knowledge.json"
 ROUTE_PARAMETER_PATTERN = re.compile(r"\[[^/]+\]|\{[^/]+\}")
 LOCAL_EMBEDDING_MODEL = "local-semantic-hash-v1"
 LOCAL_EMBEDDING_DIMENSIONS = 384
+RETRIEVAL_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "app",
+    "de",
+    "del",
+    "el",
+    "en",
+    "es",
+    "esta",
+    "este",
+    "for",
+    "in",
+    "is",
+    "la",
+    "las",
+    "los",
+    "of",
+    "para",
+    "por",
+    "que",
+    "the",
+    "to",
+    "un",
+    "una",
+    "what",
+    "which",
+    "y",
+}
 
 
 class KnowledgeValidationError(ValueError):
@@ -252,6 +283,57 @@ def cosine_similarity(left: list[float], right: list[float]) -> float:
     return sum(a * b for a, b in zip(left, right)) / (left_norm * right_norm)
 
 
+def _retrieval_tokens(value: object) -> set[str]:
+    """Return meaningful bilingual lexical anchors for hybrid retrieval."""
+
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", _normalized_embedding_text(value))
+        if len(token) > 1 and token not in RETRIEVAL_STOPWORDS
+    }
+
+
+def _lexical_retrieval_score(
+    question: str,
+    unit: dict[str, object],
+    section: dict[str, object] | None,
+) -> float:
+    """Add bounded lexical evidence without replacing semantic similarity."""
+
+    query_text = _normalized_embedding_text(question)
+    query_tokens = _retrieval_tokens(question)
+    if not query_tokens:
+        return 0.0
+    unit_tokens = _retrieval_tokens(
+        " ".join(
+            str(value)
+            for value in (
+                unit.get("text"),
+                unit.get("answer"),
+                unit.get("section_id"),
+            )
+            if value
+        )
+    )
+    section_terms: list[str] = []
+    if section is not None:
+        section_terms = [
+            str(section.get("id") or ""),
+            str(section.get("name") or ""),
+            *[str(item) for item in _as_list(section.get("keywords"))],
+        ]
+    phrase_hits = 0
+    section_tokens: set[str] = set()
+    for raw_term in section_terms:
+        normalized_term = _normalized_embedding_text(raw_term).strip()
+        section_tokens.update(_retrieval_tokens(normalized_term))
+        if normalized_term and normalized_term in query_text:
+            phrase_hits += 1
+    overlap = query_tokens & (unit_tokens | section_tokens)
+    overlap_score = 0.08 * (len(overlap) / max(len(query_tokens), 1))
+    return min(phrase_hits * 0.12, 0.24) + overlap_score
+
+
 def _retrieval_units(curated: dict[str, object]) -> list[dict[str, object]]:
     units: list[dict[str, object]] = []
     for raw_section in _as_list(curated.get("sections")):
@@ -262,6 +344,8 @@ def _retrieval_units(curated: dict[str, object]) -> list[dict[str, object]]:
         for kind, intent, value in (
             ("section_purpose", "concept_explanation", raw_section.get("purpose")),
             ("when_to_use", "concept_explanation", raw_section.get("when_to_use")),
+            ("section_purpose_es", "concept_explanation", raw_section.get("purpose_es")),
+            ("when_to_use_es", "concept_explanation", raw_section.get("when_to_use_es")),
         ):
             if value:
                 units.append(
@@ -283,6 +367,17 @@ def _retrieval_units(curated: dict[str, object]) -> list[dict[str, object]]:
                     "intent": "workflow_guidance",
                     "mode": "knowledge",
                     "text": f"How to use {section_name}. Step {index}: {step}",
+                }
+            )
+        for index, step in enumerate(_as_list(raw_section.get("steps_es")), start=1):
+            units.append(
+                {
+                    "id": f"{section_id}:step_es:{index}",
+                    "section_id": section_id,
+                    "kind": "step_es",
+                    "intent": "workflow_guidance",
+                    "mode": "knowledge",
+                    "text": f"Cómo usar {section_name}. Paso {index}: {step}",
                 }
             )
         for index, action in enumerate(_as_list(raw_section.get("supported_actions")), start=1):
@@ -381,12 +476,82 @@ def load_curated_knowledge(curated_path: Path = CURATED_PATH) -> dict[str, objec
 
 
 def load_derived_manifest(derived_path: Path = DERIVED_PATH) -> dict[str, object]:
-    """Load the immutable code-derived contract packaged with the application."""
+    """Load a validated runtime vector artifact or the packaged contract."""
 
-    document = json.loads(derived_path.read_text(encoding="utf-8"))
+    selected_path = derived_path
+    runtime_value = os.getenv("APP_KNOWLEDGE_RUNTIME_PATH", "").strip()
+    if derived_path == DERIVED_PATH and runtime_value:
+        runtime_path = Path(runtime_value)
+        if runtime_path.is_file():
+            packaged = json.loads(DERIVED_PATH.read_text(encoding="utf-8"))
+            runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+            if (
+                isinstance(packaged, dict)
+                and isinstance(runtime, dict)
+                and runtime.get("source_hash") == packaged.get("source_hash")
+            ):
+                selected_path = runtime_path
+    document = json.loads(selected_path.read_text(encoding="utf-8"))
     if not isinstance(document, dict):
         raise KnowledgeValidationError("derived_app_knowledge.json must contain an object")
     return document
+
+
+def load_packaged_derived_manifest() -> dict[str, object]:
+    """Load the image/repository artifact without a runtime-cache override."""
+
+    document = json.loads(DERIVED_PATH.read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        raise KnowledgeValidationError("derived_app_knowledge.json must contain an object")
+    return document
+
+
+def provider_embedding_errors(
+    manifest: dict[str, object],
+    *,
+    expected_model: str,
+) -> list[str]:
+    """Validate that every retrieval unit belongs to one complete OCI space."""
+
+    spaces = manifest.get("embedding_spaces")
+    provider = spaces.get("provider") if isinstance(spaces, dict) else None
+    if not isinstance(provider, dict):
+        return ["App knowledge has no committed provider embedding space"]
+    dimensions = provider.get("dimensions")
+    if not isinstance(dimensions, int) or dimensions < 1:
+        return ["Provider embedding dimensions are missing or invalid"]
+    errors: list[str] = []
+    if provider.get("model") != expected_model:
+        errors.append(
+            "Provider embedding model drift: "
+            f"expected {expected_model}, found {provider.get('model') or '<missing>'}"
+        )
+    units = manifest.get("retrieval_units")
+    if not isinstance(units, list) or not units:
+        return [*errors, "Generated knowledge manifest has no retrieval units"]
+    missing: list[str] = []
+    invalid: list[str] = []
+    for unit in units:
+        if not isinstance(unit, dict):
+            invalid.append("<invalid-unit>")
+            continue
+        unit_id = str(unit.get("id") or "<missing-id>")
+        vector = unit.get("provider_embedding")
+        if not isinstance(vector, list):
+            missing.append(unit_id)
+        elif len(vector) != dimensions:
+            invalid.append(unit_id)
+    if missing:
+        errors.append(
+            f"{len(missing)} knowledge unit(s) lack provider embeddings: "
+            + ", ".join(missing[:8])
+        )
+    if invalid:
+        errors.append(
+            f"{len(invalid)} knowledge unit(s) have invalid provider dimensions: "
+            + ", ".join(invalid[:8])
+        )
+    return errors
 
 
 def _normalized_route(route: str) -> str:
@@ -495,9 +660,10 @@ def retrieve_semantic_knowledge(
     *,
     query_embedding: list[float] | None = None,
     embedding_space: str = "local",
+    intent_hint: str | None = None,
     limit: int = 3,
 ) -> dict[str, object]:
-    """Retrieve KB units by cosine similarity, with route as a bounded tie-break."""
+    """Retrieve KB units with semantic similarity plus bounded governed anchors."""
 
     knowledge = load_knowledge_base()
     derived = knowledge["derived"]
@@ -520,7 +686,10 @@ def retrieve_semantic_knowledge(
         score = cosine_similarity(query_vector, vector)
         section = sections.get(str(unit.get("section_id") or ""))
         if section and any(_route_matches(current_route, str(route)) for route in _as_list(section.get("routes"))):
-            score += 0.002
+            score += 0.03
+        if intent_hint and str(unit.get("intent") or "") == intent_hint:
+            score += 0.10
+        score += _lexical_retrieval_score(question, unit, section)
         scored.append((score, str(unit.get("id") or ""), unit))
     scored.sort(key=lambda item: (-item[0], item[1]))
     matches = [dict(unit, similarity=round(score, 6)) for score, _, unit in scored[:limit]]

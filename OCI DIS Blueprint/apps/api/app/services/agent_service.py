@@ -292,6 +292,20 @@ async def get_agent_value_metrics(db: AsyncSession) -> AgentValueMetricsResponse
         else []
     )
     completed = [run for run in runs if run.status == AgentRunStatus.COMPLETED]
+    assistant_runs = [run for run in runs if run.agent_type == "support_assistant"]
+    assistant_delivered_runs = [
+        run
+        for run in assistant_runs
+        if isinstance(run.result_payload, dict)
+        and run.result_payload.get("delivery_status") == "delivered"
+        and run.status == AgentRunStatus.COMPLETED
+    ]
+    assistant_failed_closed_runs = [
+        run
+        for run in assistant_runs
+        if isinstance(run.result_payload, dict)
+        and run.result_payload.get("delivery_status") == "failed_closed"
+    ]
     quality_payloads: list[dict[str, object]] = []
     recommendation_runs = 0
     provider_synthesis_runs = 0
@@ -348,6 +362,9 @@ async def get_agent_value_metrics(db: AsyncSession) -> AgentValueMetricsResponse
     return AgentValueMetricsResponse(
         retained_runs=len(runs),
         completed_runs=len(completed),
+        assistant_runs=len(assistant_runs),
+        assistant_delivered_runs=len(assistant_delivered_runs),
+        assistant_failed_closed_runs=len(assistant_failed_closed_runs),
         quality_evaluated_runs=len(quality_payloads),
         grounded_output_runs=grounded_output_runs,
         grounding_fallback_runs=grounding_fallback_runs,
@@ -366,6 +383,9 @@ async def get_agent_value_metrics(db: AsyncSession) -> AgentValueMetricsResponse
         ),
         follow_up_runs_after_approval=follow_up_runs,
         provider_synthesis_rate_pct=_rate(provider_synthesis_runs, len(completed)),
+        assistant_delivery_rate_pct=_rate(
+            len(assistant_delivered_runs), len(assistant_runs)
+        ),
         grounded_output_rate_pct=_rate(grounded_output_runs, len(quality_payloads)),
         high_evidence_completeness_rate_pct=_rate(high_evidence_runs, len(quality_payloads)),
         acceptance_rate_pct=_rate(len(approved), len(approvals)) if approvals else None,
@@ -799,14 +819,90 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
                 "provider_output_did_not_match_correction_contract"
             )
             summary = _deterministic_summary(definition, evidence)
-    grounding_fallback = False
-    governed_output = govern_agent_output(definition, summary, evidence)
-    if grounding_fallback and not governed_output.quality.fallback_used:
-        governed_output.quality.fallback_used = True
-        governed_output.quality.grounded = False
-        governed_output.quality.fallback_reason = "support_grounding_gate"
+    governed_output = govern_agent_output(
+        definition,
+        summary,
+        evidence,
+        allow_fallback=definition.type != "support_assistant",
+    )
+    if (
+        definition.type == "support_assistant"
+        and include_provider
+        and result is not None
+        and result.status == "completed"
+        and not governed_output.quality.grounded
+    ):
+        first_failure = governed_output.quality.fallback_reason or "grounding_rejected"
+        repair = await synthesize_governed_summary(
+            settings=get_genai_settings_for_use_case(definition.type),
+            system_instruction=(
+                f"{definition.instruction} The prior draft failed the App grounding validator "
+                f"with reason '{first_failure}'. Rewrite the complete user-facing answer from "
+                "the same evidence. Use only numeric values, product facts, formats, routes, and "
+                "capabilities present in the evidence. Do not include raw API paths unless the "
+                "question explicitly asks for API details. Omit every claim that you would describe "
+                "as unavailable, undocumented, external to, or absent from the evidence. Do not "
+                "return only a navigation action."
+            ),
+            evidence=evidence,
+            safety_subject=run.requested_by,
+        )
+        if repair.status == "completed" and repair.summary:
+            repaired_output = govern_agent_output(
+                definition,
+                repair.summary,
+                evidence,
+                allow_fallback=False,
+            )
+            result = replace(
+                result,
+                summary=repair.summary,
+                opc_request_id=repair.opc_request_id,
+                input_tokens=(result.input_tokens or 0) + (repair.input_tokens or 0),
+                output_tokens=(result.output_tokens or 0) + (repair.output_tokens or 0),
+                retry_count=result.retry_count + repair.retry_count + 1,
+                guardrails_status=repair.guardrails_status,
+            )
+            provider_step.output_payload = {
+                **(provider_step.output_payload or {}),
+                "grounding_repair": (
+                    "completed"
+                    if repaired_output.quality.grounded
+                    else "rejected"
+                ),
+                "initial_grounding_failure": first_failure,
+            }
+            governed_output = repaired_output
     summary = governed_output.summary
     grounding_fallback = governed_output.quality.fallback_used
+    support_provider_failed = (
+        definition.type == "support_assistant"
+        and not safety_refused
+        and (
+            result is None
+            or result.status != "completed"
+            or not bool(result.summary)
+        )
+    )
+    support_grounding_failed = (
+        definition.type == "support_assistant"
+        and not safety_refused
+        and not governed_output.quality.grounded
+    )
+    support_failed_closed = support_provider_failed or support_grounding_failed
+    support_failure_stage = (
+        "provider"
+        if support_provider_failed
+        else "grounding"
+        if support_grounding_failed
+        else None
+    )
+    if support_failed_closed:
+        summary = (
+            "El asistente no pudo entregar una respuesta validada. La ejecución quedó registrada como fallida; inténtalo de nuevo."
+            if evidence.get("response_language") == "es"
+            else "The assistant could not deliver a validated answer. The execution was recorded as failed; please retry."
+        )
     decision_workspace, proposal_specs = build_decision_workspace(
         definition,
         evidence,
@@ -846,7 +942,15 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         fallback_used=grounding_fallback,
     )
     provider_step.output_payload["grounding_fallback"] = grounding_fallback
+    provider_step.output_payload["delivery_status"] = (
+        "failed_closed" if support_failed_closed else "delivered"
+    )
+    provider_step.output_payload["failure_stage"] = support_failure_stage
     provider_step.output_payload["output_quality"] = governed_output.quality.model_dump(mode="json")
+    if support_failed_closed:
+        provider_step.status = (
+            "failed" if support_provider_failed else "grounding_rejected"
+        )
     provider_status = result.status if result else "skipped"
     if definition.type == "support_assistant":
         message_id = context.get("support_assistant_message_id")
@@ -861,13 +965,22 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
             else []
         )
         if isinstance(message_id, str):
-            await support_service.complete_support_message(
-                message_id,
-                content=summary,
-                status="refused" if evidence.get("in_scope") is False or safety_refused else "completed",
-                citations=citations,
-                db=db,
-            )
+            if support_failed_closed:
+                await support_service.complete_support_message(
+                    message_id,
+                    content=summary,
+                    status="failed",
+                    citations=[],
+                    db=db,
+                )
+            else:
+                await support_service.complete_support_message(
+                    message_id,
+                    content=summary,
+                    status="refused" if evidence.get("in_scope") is False or safety_refused else "completed",
+                    citations=citations,
+                    db=db,
+                )
         conversation_id = context.get("conversation_id")
         if isinstance(conversation_id, str):
             await support_service.update_conversation_state(conversation_id, evidence, db)
@@ -892,6 +1005,12 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
                 correlation_id=legacy_job.id,
                 db=db,
             )
+    app_knowledge = evidence.get("app_knowledge")
+    retrieval_embedding_space = (
+        app_knowledge.get("embedding_space")
+        if isinstance(app_knowledge, dict)
+        else None
+    )
     run.result_payload = {
         "summary": summary,
         "provider_status": provider_status,
@@ -900,6 +1019,9 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
         "provider_retry_count": result.retry_count if result else 0,
         "guardrails_status": result.guardrails_status if result else "skipped",
         "grounding_fallback": grounding_fallback,
+        "delivery_status": "failed_closed" if support_failed_closed else "delivered",
+        "failure_stage": support_failure_stage,
+        "retrieval_embedding_space": retrieval_embedding_space,
         "brief": governed_output.brief.model_dump(mode="json"),
         "decision_workspace": decision_workspace.model_dump(mode="json"),
         "output_quality": governed_output.quality.model_dump(mode="json"),
@@ -946,7 +1068,23 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
     run.input_tokens = result.input_tokens if result else None
     run.output_tokens = result.output_tokens if result else None
     run.step_count = 4
-    run.status = AgentRunStatus.CANCELLED if run.cancel_requested else AgentRunStatus.COMPLETED
+    run.status = (
+        AgentRunStatus.CANCELLED
+        if run.cancel_requested
+        else AgentRunStatus.FAILED
+        if support_failed_closed
+        else AgentRunStatus.COMPLETED
+    )
+    if support_failed_closed:
+        run.error_details = {
+            "detail": "The App Assistant failed closed and did not deliver fallback content.",
+            "error_code": (
+                "SUPPORT_ASSISTANT_PROVIDER_FAILED"
+                if support_provider_failed
+                else "SUPPORT_ASSISTANT_GROUNDING_FAILED"
+            ),
+            "stage": support_failure_stage,
+        }
     run.finished_at = datetime.now(UTC)
     await db.flush()
     await db.refresh(run)
@@ -984,8 +1122,8 @@ def _deterministic_summary(definition: AgentDefinition, evidence: dict[str, obje
         return str(evidence.get("fallback_answer") or "Governed App context is ready for review.")
     if definition.type == "knowledge_maintenance":
         return (
-            "App knowledge review completed with "
-            f"{evidence.get('finding_count', 0)} deterministic candidate(s); semantic drafts require explicit human review."
+            "Automatic App knowledge synchronization completed with "
+            f"{evidence.get('finding_count', 0)} unresolved contract finding(s)."
         )
     brief = evidence.get("decision_brief")
     if isinstance(brief, dict) and isinstance(brief.get("headline"), str):

@@ -17,7 +17,7 @@ API_ROOT = Path(__file__).resolve().parents[1]
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
-from app.services import storage_service
+from app.services import storage_service  # noqa: E402
 
 
 def _response_json(response: httpx.Response) -> dict[str, Any]:

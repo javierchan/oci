@@ -37,6 +37,10 @@ type NavLink = {
   label: string;
 };
 
+type ProjectNavLink = NavLink & {
+  group: "Build inventory" | "Assess architecture" | "Decide";
+};
+
 type ProjectContextState = {
   label: string;
   status: "idle" | "loading" | "ready" | "missing";
@@ -46,7 +50,7 @@ type NavPanelProps = {
   pathname: string;
   baseLinks: NavLink[];
   adminLinks: NavLink[];
-  projectLinks: NavLink[];
+  projectLinks: ProjectNavLink[];
   projectContext: ProjectContextState;
   hasProjectContext: boolean;
   sectionTitle: string;
@@ -250,20 +254,31 @@ function NavPanel({
               {formatProjectLabel(projectContext.label)}
             </p>
           </div>
-          <nav className="space-y-1">
-            {projectLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={onNavigate}
-                className={linkClasses(pathname === link.href)}
-              >
-                <span className="inline-flex items-center gap-2">
-                  {PROJECT_ICONS[link.label] ?? null}
-                  {link.label}
-                </span>
-              </Link>
-            ))}
+          <nav className="space-y-4" aria-label="Project workflow navigation">
+            {(["Build inventory", "Assess architecture", "Decide"] as const).map((group) => {
+              const links = projectLinks.filter((link) => link.group === group);
+              if (links.length === 0) return null;
+              return (
+                <div key={group}>
+                  <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">{group}</p>
+                  <div className="space-y-1">
+                    {links.map((link) => (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        onClick={onNavigate}
+                        className={linkClasses(pathname === link.href)}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          {PROJECT_ICONS[link.label] ?? null}
+                          {link.label}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </nav>
         </NavSection>
       ) : null}
@@ -391,15 +406,15 @@ export function Nav(): JSX.Element {
     { href: "/admin/pricing", label: "Pricing" },
     { href: "/admin/agents", label: "Agents" },
   ];
-  const projectLinks: NavLink[] = projectId && hasProjectContext
+  const projectLinks: ProjectNavLink[] = projectId && hasProjectContext
     ? [
-        { href: `/projects/${projectId}`, label: "Dashboard" },
-        { href: `/projects/${projectId}/import`, label: "Import" },
-        { href: `/projects/${projectId}/capture`, label: "Capture" },
-        { href: `/projects/${projectId}/capture-review`, label: "Capture Review" },
-        { href: `/projects/${projectId}/catalog`, label: "Catalog" },
-        { href: `/projects/${projectId}/map`, label: "Map" },
-        { href: `/projects/${projectId}/bom`, label: "BOM & Cost" },
+        { href: `/projects/${projectId}/import`, label: "Import", group: "Build inventory" },
+        { href: `/projects/${projectId}/capture`, label: "Capture", group: "Build inventory" },
+        { href: `/projects/${projectId}/capture-review`, label: "Capture Review", group: "Build inventory" },
+        { href: `/projects/${projectId}`, label: "Dashboard", group: "Assess architecture" },
+        { href: `/projects/${projectId}/catalog`, label: "Catalog", group: "Assess architecture" },
+        { href: `/projects/${projectId}/map`, label: "Map", group: "Assess architecture" },
+        { href: `/projects/${projectId}/bom`, label: "BOM & Cost", group: "Decide" },
       ]
     : [];
 

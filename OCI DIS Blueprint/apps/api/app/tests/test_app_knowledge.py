@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -25,6 +27,7 @@ from scripts.build_app_knowledge import (
     _discover_source_repo_root,
     _load_manifest_for_build,
     _preserve_matching_provider_embeddings,
+    _provider_embedding_errors,
 )
 
 
@@ -111,6 +114,38 @@ def test_knowledge_build_preserves_only_matching_provider_embeddings() -> None:
     }
 
 
+def test_provider_embedding_gate_requires_complete_matching_vector_space() -> None:
+    settings = get_genai_settings_for_use_case("support_assistant")
+    complete: dict[str, object] = {
+        "embedding_spaces": {
+            "provider": {
+                "model": settings.OCI_GENAI_EMBEDDING_MODEL_NAME,
+                "dimensions": 2,
+            }
+        },
+        "retrieval_units": [
+            {"id": "one", "provider_embedding": [0.1, 0.2]},
+            {"id": "two", "provider_embedding": [0.3, 0.4]},
+        ],
+    }
+    assert _provider_embedding_errors(complete) == []
+
+    incomplete = deepcopy(complete)
+    incomplete_units = cast(list[dict[str, object]], incomplete["retrieval_units"])
+    incomplete_units[1].pop("provider_embedding")
+    errors = _provider_embedding_errors(incomplete)
+    assert any("lack provider embeddings" in error for error in errors)
+
+    drifted = deepcopy(complete)
+    embedding_spaces = cast(
+        dict[str, dict[str, object]],
+        drifted["embedding_spaces"],
+    )
+    embedding_spaces["provider"]["model"] = "stale-model"
+    errors = _provider_embedding_errors(drifted)
+    assert any("Provider embedding model drift" in error for error in errors)
+
+
 def test_app_knowledge_check_rejects_uncovered_route_and_stale_export() -> None:
     """A new route or inaccurate export claim must fail loudly in CI."""
 
@@ -155,6 +190,45 @@ async def test_unknown_capability_returns_not_documented_and_rejects_invented_ro
         "The App can deploy it from [Launch](/admin/mars-deployments).",
         {"app_knowledge": evidence},
     ) == "unsupported_app_route"
+
+
+@pytest.mark.asyncio
+async def test_functional_questions_do_not_expose_raw_api_contracts_to_the_model() -> None:
+    functional = await build_app_knowledge_evidence(
+        "¿Cómo importo un archivo y reviso sus columnas?",
+        "/projects",
+        language="es",
+        project_id=None,
+        integration_id=None,
+    )
+    functional_entries = cast(list[object], functional["entries"])
+    functional_matches = cast(list[object], functional["matches"])
+    functional_top_match = cast(dict[str, object], functional["top_match"])
+    assert all(
+        "endpoints" not in entry
+        for entry in functional_entries
+        if isinstance(entry, dict)
+    )
+    assert all(
+        "provider_embedding" not in match and "local_embedding" not in match
+        for match in functional_matches
+        if isinstance(match, dict)
+    )
+    assert "provider_embedding" not in functional_top_match
+    assert "local_embedding" not in functional_top_match
+
+    technical = await build_app_knowledge_evidence(
+        "¿Qué endpoint REST uso para importar un archivo?",
+        "/projects",
+        language="es",
+        project_id=None,
+        integration_id=None,
+    )
+    technical_entries = cast(list[object], technical["entries"])
+    assert any(
+        isinstance(entry, dict) and entry.get("endpoints")
+        for entry in technical_entries
+    )
 
 
 @pytest.mark.asyncio
@@ -211,6 +285,42 @@ async def test_undocumented_cost_alert_uses_bom_as_the_closest_governed_workflow
     assert isinstance(closest, dict)
     assert closest["name"] == "BOM & Cost"
     assert "BOM & Cost" in str(evidence["fallback_answer"])
+    wrapped: dict[str, object] = {"app_knowledge": evidence}
+    assert knowledge_grounding_failure(
+        "This feature is absent from the documented App capabilities.\n\n"
+        "**Next action:** [Open BOM & Cost](/projects)",
+        wrapped,
+    ) is None
+    assert knowledge_grounding_failure(
+        "**Yes.** The App supports cost threshold alerts.\n\n"
+        "**Next action:** [Open BOM & Cost](/projects)",
+        wrapped,
+    ) == "unsupported_app_capability"
+
+
+@pytest.mark.asyncio
+async def test_spanish_capture_and_agent_questions_keep_their_natural_intent() -> None:
+    capture = await build_app_knowledge_evidence(
+        "¿Cuándo debo usar Capture en vez de Import?",
+        "/projects",
+        language="es",
+        project_id=None,
+        integration_id=None,
+    )
+    assert capture["intent"] == "workflow_guidance"
+    assert isinstance(capture["top_match"], dict)
+    assert capture["top_match"]["section_id"] == "capture"
+
+    agents = await build_app_knowledge_evidence(
+        "¿Qué hacen los agentes de OCI DIS y qué no pueden cambiar?",
+        "/admin/agents",
+        language="es",
+        project_id=None,
+        integration_id=None,
+    )
+    assert agents["intent"] == "concept_explanation"
+    assert isinstance(agents["top_match"], dict)
+    assert agents["top_match"]["section_id"] == "agents"
 
 
 @pytest.mark.asyncio
@@ -294,6 +404,50 @@ async def test_semantic_retrieval_embeds_once_and_never_needs_provider_network(
     assert evidence["embedding_space"] == "provider"
     assert evidence["intent"] == "workflow_guidance"
     assert evidence["mode"] == "knowledge"
+
+
+@pytest.mark.asyncio
+async def test_semantic_retrieval_fails_closed_when_configured_provider_embedding_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = deepcopy(knowledge_builder.load_derived_manifest())
+    retrieval_units = cast(list[object], manifest["retrieval_units"])
+    assert any(
+        isinstance(unit, dict) and isinstance(unit.get("provider_embedding"), list)
+        for unit in retrieval_units
+    )
+
+    async def failed_embeddings(
+        texts: list[str],
+        _settings: object,
+        *,
+        input_type: str,
+    ) -> GenAiEmbeddingResult:
+        assert texts == ["How do I import a workbook?"]
+        assert input_type == "SEARCH_QUERY"
+        return GenAiEmbeddingResult(
+            status="failed",
+            model="mock-provider-embedding",
+            embeddings=[],
+            error="embedding_transport_unavailable",
+        )
+
+    monkeypatch.setattr(app_knowledge_service, "load_derived_manifest", lambda: manifest)
+    monkeypatch.setattr(
+        app_knowledge_service,
+        "get_genai_settings_for_use_case",
+        lambda _: SimpleNamespace(OCI_GENAI_PROJECT_ID="configured-project"),
+    )
+    monkeypatch.setattr(app_knowledge_service, "generate_embeddings", failed_embeddings)
+
+    with pytest.raises(RuntimeError, match="provider_query_embedding_failed"):
+        await build_app_knowledge_evidence(
+            "How do I import a workbook?",
+            "/projects/project-1/import",
+            language="en",
+            project_id="project-1",
+            integration_id=None,
+        )
 
 
 def test_genai_model_overrides_are_isolated_by_use_case(monkeypatch) -> None:
