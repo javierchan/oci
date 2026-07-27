@@ -407,7 +407,7 @@ export function BomConsumptionEditor({
   }
 
   return (
-    <div className="mt-5 border-t border-[var(--color-border)] pt-5">
+    <div className="mt-5 min-w-0 border-t border-[var(--color-border)] pt-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="app-label">Environment Consumption</p>
@@ -533,10 +533,10 @@ export function BomConsumptionEditor({
 
               <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-t border-[var(--color-border)] pt-4">
                 <div><p className="app-label">Products</p><p className="mt-1 text-xs text-[var(--color-text-muted)]">Select one product to review, or show the complete environment plan.</p></div>
-                <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-2">
+                <div className="flex min-w-0 flex-1 basis-full flex-wrap gap-2 sm:basis-auto sm:justify-end">
                   <GovernedSelect
                     ariaLabel={`Product to review in ${environment.name}`}
-                    className="min-w-64 max-w-md flex-1"
+                    className="min-w-0 basis-full sm:min-w-64 sm:max-w-md sm:flex-1"
                     size="compact"
                     value={selectedProduct}
                     disabled={allGroups.length === 0}

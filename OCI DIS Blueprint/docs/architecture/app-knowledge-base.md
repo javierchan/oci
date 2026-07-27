@@ -103,6 +103,18 @@ route, missing endpoint, stale entity, or export media type that differs from
 the executable router. Tests also inject a fake route and fake CSV export to
 prove the negative gate. Provider tests use mocked transport and do not call
 OCI.
+
+Browser CI keeps provider-free and provider-enabled contracts explicit. The
+baseline container environment has no OCI key mount or Project OCID, so its
+assistant E2E must observe a persisted `failed` response with no citations for
+an in-scope question; it may never accept substitute content. The real-provider
+browser case runs only when both governed OCI settings are present and then
+requires an actual grounded answer and executable App links. Off-topic
+redirection is validated by its terminal delivery state, App-bounded content,
+and executable governed action rather than by matching one fixed sentence.
+Playwright retains traces, screenshots, and its HTML report on failure, and
+GitHub publishes those files as a short-lived diagnostic artifact.
+
 The support capability matrix additionally asserts the `openai.gpt-oss-120b`
 use-case override, the five-intent contract, documented versus absent
 capabilities, governed export media types, source attribution, and

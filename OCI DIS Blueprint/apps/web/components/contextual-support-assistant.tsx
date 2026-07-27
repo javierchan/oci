@@ -289,7 +289,12 @@ export function ContextualSupportAssistant(): JSX.Element {
               <div className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]"><Loader2 className="h-4 w-4 animate-spin" />Getting your workspace ready</div>
             ) : conversation?.messages.length ? (
               conversation.messages.map((message) => (
-                <article key={message.id} className={message.role === "user" ? "ml-10" : "mr-3"}>
+                <article
+                  key={message.id}
+                  className={message.role === "user" ? "ml-10" : "mr-3"}
+                  data-support-message-role={message.role}
+                  data-support-message-status={message.status}
+                >
                   <div className={message.role === "user" ? "rounded-2xl rounded-br-md bg-[var(--color-accent)] px-3.5 py-3 text-sm leading-6 text-white" : "text-sm leading-6 text-[var(--color-text-primary)]"}>
                     {message.status === "pending" ? (
                       <span className="inline-flex items-center gap-2 text-[var(--color-text-secondary)]"><Loader2 className="h-4 w-4 animate-spin" />Looking through the governed context</span>

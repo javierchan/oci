@@ -389,8 +389,8 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
     <div className="space-y-5">
       {error ? <div role="alert" className="rounded-lg border border-rose-400/45 bg-[var(--color-surface-2)] p-4 text-sm text-rose-700 dark:text-rose-300">{error}</div> : null}
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
-        <div id="deployment-scenario-editor" className="app-card scroll-mt-6 p-5">
+      <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
+        <div id="deployment-scenario-editor" className="app-card min-w-0 scroll-mt-6 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div><p className="app-label">Deployment Scenario</p><h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Convert logical demand into deployable capacity</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">Commercial estimates for {projectName} are isolated from the technical Dashboard and require an approved physical deployment scenario.</p></div>
             <button className="app-button-secondary gap-2" type="button" disabled={busyAction !== null} onClick={() => void refreshAssistant(true)}>{busyAction === "assistant" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}{busyAction === "assistant" ? "Comparing scenarios" : "Compare deployment alternatives"}</button>
@@ -483,7 +483,7 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
                 ))}
               </div>
             </div>
-            <div className="md:col-span-2 xl:col-span-4">
+            <div className="min-w-0 md:col-span-2 xl:col-span-4">
               <BomConsumptionEditor
                 projectId={projectId}
                 contractMonths={draft.contract_months}
@@ -500,7 +500,7 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
           <div className="mt-5 flex flex-wrap gap-2"><button className="app-button-primary gap-2" type="button" disabled={!draft || busyAction !== null || !planReadiness.ready} onClick={() => void createScenario()}>{busyAction === "create-scenario" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Save new scenario</button><button className="app-button-secondary gap-2" type="button" disabled={!selectedScenario || selectedScenario.status === "approved" || busyAction !== null} onClick={() => void approveScenario()}>{busyAction === "approve-scenario" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}Approve selected</button></div>
         </div>
 
-        <aside className="app-card p-5">
+        <aside className="app-card min-w-0 p-5">
           <div className="flex items-start justify-between gap-3"><div><p className="app-label">BOM Decision Assistant</p><h2 className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">What this scenario means</h2></div><span className="rounded-full border border-[var(--color-border)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">{assistant?.confidence ?? "unavailable"} confidence</span></div>
           {assistant?.current_bom ? <div className={`mt-4 rounded-lg border p-4 ${assistant.current_bom.ready_for_use ? "border-emerald-400/45 bg-emerald-500/5" : "border-amber-400/45 bg-amber-500/5"}`}>
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="app-label">Current governed BOM</p><h3 className="mt-1 font-semibold text-[var(--color-text-primary)]">{assistant.current_bom.scenario_name}</h3></div><span className="rounded-full border border-current/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]">{assistant.current_bom.ready_for_use ? "Published and current" : "Review required"}</span></div>

@@ -9,11 +9,17 @@ export default defineConfig({
   expect: {
     timeout: 15_000,
   },
-  reporter: [["list"]],
+  reporter: [
+    ["list"],
+    ["html", {
+      outputFolder: process.env.PLAYWRIGHT_REPORT_DIR ?? "playwright-report",
+      open: "never",
+    }],
+  ],
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
     channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL,
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "off",
   },

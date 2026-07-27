@@ -11,6 +11,11 @@ type ProjectList = {
   }>;
 };
 
+type ProviderStatus = {
+  api_key_configured: boolean;
+  project_configured: boolean;
+};
+
 const apiBase = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8000";
 
 function selectPersistentProject(projects: ProjectList["projects"]) {
@@ -26,6 +31,11 @@ function selectPersistentProject(projects: ProjectList["projects"]) {
 }
 
 test("keeps contextual support available and bounded across App navigation", async ({ page, request }) => {
+  const providerResponse = await request.get(`${apiBase}/api/v1/agents/provider-status`);
+  expect(providerResponse.ok()).toBe(true);
+  const providerStatus = (await providerResponse.json()) as ProviderStatus;
+  const providerConfigured = providerStatus.api_key_configured && providerStatus.project_configured;
+
   const projectsResponse = await request.get(`${apiBase}/api/v1/projects/`);
   expect(projectsResponse.ok()).toBe(true);
   const projects = (await projectsResponse.json()) as ProjectList;
@@ -55,10 +65,21 @@ test("keeps contextual support available and bounded across App navigation", asy
   const input = assistant.getByRole("textbox", { name: "Ask OCI DIS App Assistant", exact: true });
   await input.fill("What is the weather today?");
   await assistant.getByRole("button", { name: "Send message", exact: true }).click();
-  await expect(
-    assistant.getByText("That request is outside OCI DIS Architect's scope", { exact: false }),
-  ).toBeVisible({ timeout: 30_000 });
-  await expect(assistant.getByText("BOM & Cost", { exact: false })).toBeVisible();
+  if (providerConfigured) {
+    const redirectedMessage = assistant.locator(
+      '[data-support-message-role="assistant"][data-support-message-status="completed"]',
+    );
+    await expect(redirectedMessage).toBeVisible({ timeout: 30_000 });
+    await expect(redirectedMessage).toContainText(/OCI DIS|integration|architecture|pricing|BOM/i);
+    expect(await redirectedMessage.getByRole("link").count()).toBeGreaterThan(0);
+  } else {
+    const failedMessage = assistant.locator(
+      '[data-support-message-role="assistant"][data-support-message-status="failed"]',
+    );
+    await expect(failedMessage).toBeVisible({ timeout: 30_000 });
+    await expect(failedMessage.getByRole("alert")).toContainText("Assistant response failed");
+    await expect(failedMessage.locator("a")).toHaveCount(0);
+  }
   await expect(assistant.getByText("What is the weather today?", { exact: true })).toBeVisible();
   await expect(assistant.getByRole("button", { name: "Add context (1)", exact: true })).toBeVisible();
   await expect(assistant.getByTitle("Remove Project Dashboard context")).toBeVisible();
@@ -68,7 +89,12 @@ test("keeps contextual support available and bounded across App navigation", asy
   await expect(assistant).toBeVisible();
   await expect(assistant.getByText("What is the weather today?", { exact: true })).toBeVisible();
   await expect(
-    assistant.getByText("OCI-grounded · context: BOM & Cost", { exact: true }),
+    assistant.getByText(
+      providerConfigured
+        ? "OCI-grounded · context: BOM & Cost"
+        : "Last response failed · no fallback used",
+      { exact: true },
+    ),
   ).toBeVisible();
 
   const addContextBox = await assistant.getByRole("button", { name: "Add context (1)", exact: true }).boundingBox();
@@ -112,7 +138,43 @@ test("keeps contextual support available and bounded across App navigation", asy
   await expect(assistant.getByRole("textbox", { name: "Ask OCI DIS App Assistant", exact: true })).toBeVisible();
 });
 
+test("answers a global project inventory question with real OCI synthesis", async ({ page, request }) => {
+  const providerResponse = await request.get(`${apiBase}/api/v1/agents/provider-status`);
+  expect(providerResponse.ok()).toBe(true);
+  const providerStatus = (await providerResponse.json()) as ProviderStatus;
+  test.skip(
+    !providerStatus.api_key_configured || !providerStatus.project_configured,
+    "A real OCI provider response requires the governed key mount and Project OCID.",
+  );
+
+  const projectsResponse = await request.get(`${apiBase}/api/v1/projects/`);
+  expect(projectsResponse.ok()).toBe(true);
+  const projects = (await projectsResponse.json()) as ProjectList;
+  const activeProjects = projects.projects.filter((candidate) => candidate.status === "active");
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/admin/agents");
+  await page.getByRole("button", { name: "Open OCI DIS App Assistant", exact: true }).click();
+
+  const assistant = page.getByRole("dialog", { name: "OCI DIS App Assistant", exact: true });
+  const input = assistant.getByRole("textbox", { name: "Ask OCI DIS App Assistant", exact: true });
+  const send = assistant.getByRole("button", { name: "Send message", exact: true });
+
+  await input.fill("¿Cuántos proyectos tenemos en la App?");
+  await send.click();
+  await expect(assistant.getByRole("link", { name: "Projects", exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(assistant).toContainText(String(activeProjects.length));
+});
+
 test("resolves an unambiguous project dossier from a global App route", async ({ page, request }) => {
+  const providerResponse = await request.get(`${apiBase}/api/v1/agents/provider-status`);
+  expect(providerResponse.ok()).toBe(true);
+  const providerStatus = (await providerResponse.json()) as ProviderStatus;
+  test.skip(
+    !providerStatus.api_key_configured || !providerStatus.project_configured,
+    "A real OCI provider response requires the governed key mount and Project OCID.",
+  );
+
   const projectsResponse = await request.get(`${apiBase}/api/v1/projects/`);
   expect(projectsResponse.ok()).toBe(true);
   const projects = (await projectsResponse.json()) as ProjectList;
@@ -127,15 +189,44 @@ test("resolves an unambiguous project dossier from a global App route", async ({
   const assistant = page.getByRole("dialog", { name: "OCI DIS App Assistant", exact: true });
   const input = assistant.getByRole("textbox", { name: "Ask OCI DIS App Assistant", exact: true });
   const send = assistant.getByRole("button", { name: "Send message", exact: true });
-
-  await input.fill("¿Cuántos proyectos tenemos en la App?");
-  await send.click();
-  await expect(assistant.getByRole("link", { name: "Projects", exact: true })).toBeVisible({ timeout: 60_000 });
-
   await input.fill("¿Cuál es el precio total de este proyecto?");
   await send.click();
   await expect(assistant.getByRole("link", { name: "BOM & Cost", exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(assistant.getByRole("link", { name: project.name, exact: true })).toBeVisible();
   await expect(assistant).toContainText(/USD|no tiene un BOM calculado/);
   await expect(assistant).not.toContainText("Open the relevant workspace or add its context");
+});
+
+test("fails closed for an in-scope question when OCI is not configured", async ({ page, request }) => {
+  const providerResponse = await request.get(`${apiBase}/api/v1/agents/provider-status`);
+  expect(providerResponse.ok()).toBe(true);
+  const providerStatus = (await providerResponse.json()) as ProviderStatus;
+  test.skip(
+    providerStatus.api_key_configured && providerStatus.project_configured,
+    "This contract applies only to the provider-free baseline CI environment.",
+  );
+
+  const projectsResponse = await request.get(`${apiBase}/api/v1/projects/`);
+  expect(projectsResponse.ok()).toBe(true);
+  const projects = (await projectsResponse.json()) as ProjectList;
+  const project = selectPersistentProject(projects.projects);
+  expect(project).toBeDefined();
+  if (!project) throw new Error("E2E requires one persistent active project");
+
+  await page.goto(`/projects/${project.id}`);
+  await page.getByRole("button", { name: "Open OCI DIS App Assistant", exact: true }).click();
+  const assistant = page.getByRole("dialog", { name: "OCI DIS App Assistant", exact: true });
+  const input = assistant.getByRole("textbox", { name: "Ask OCI DIS App Assistant", exact: true });
+  await input.fill("How should I review this project?");
+  await assistant.getByRole("button", { name: "Send message", exact: true }).click();
+
+  const failedMessage = assistant.locator(
+    '[data-support-message-role="assistant"][data-support-message-status="failed"]',
+  );
+  await expect(failedMessage).toBeVisible({ timeout: 60_000 });
+  await expect(failedMessage.getByRole("alert")).toContainText("Assistant response failed");
+  await expect(
+    assistant.getByText("Last response failed · no fallback used", { exact: true }),
+  ).toBeVisible();
+  await expect(failedMessage.locator("a")).toHaveCount(0);
 });

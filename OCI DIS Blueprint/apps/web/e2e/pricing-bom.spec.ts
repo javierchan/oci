@@ -1,6 +1,6 @@
 /* Browser E2E for terminal OCI price synchronization and governed BOM generation. */
 
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 type PriceSourceList = { sources: Array<{ id: string; source_type: string }> };
 type PriceJob = { id: string; status: string; snapshot_id: string | null; item_count: number };
@@ -49,10 +49,42 @@ type SyntheticJob = {
   status: string;
   project_id: string | null;
 };
+type HorizontalOverflowEvidence = {
+  clientWidth: number;
+  scrollWidth: number;
+  offenders: Array<{
+    tag: string;
+    className: string;
+    left: number;
+    right: number;
+    width: number;
+  }>;
+};
 
 const apiBase = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8000";
 const adminHeaders = { "X-Actor-Id": "pricing-e2e-admin", "X-Actor-Role": "Admin" };
 const architectHeaders = { "X-Actor-Id": "pricing-e2e-architect", "X-Actor-Role": "Architect" };
+
+async function horizontalOverflowEvidence(page: Page): Promise<HorizontalOverflowEvidence> {
+  return page.evaluate(() => {
+    const clientWidth = document.documentElement.clientWidth;
+    const scrollWidth = document.documentElement.scrollWidth;
+    const offenders = scrollWidth <= clientWidth + 1 ? [] : Array.from(document.querySelectorAll("body *"))
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          tag: element.tagName.toLowerCase(),
+          className: typeof element.className === "string" ? element.className.slice(0, 160) : "",
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width),
+        };
+      })
+      .filter((element) => element.left < -1 || element.right > clientWidth + 1)
+      .slice(0, 12);
+    return { clientWidth, scrollWidth, offenders };
+  });
+}
 
 async function readPriceJob(request: APIRequestContext, jobId: string): Promise<PriceJob> {
   const response = await request.get(`${apiBase}/api/v1/pricing/sync-jobs/${jobId}`, {
@@ -422,6 +454,14 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(page.getByRole("region", { name: "Rollout timeline navigator" })).toBeVisible();
   await page.getByRole("tab", { name: "Inspector" }).click();
   await expect(page.getByText("Selected Product", { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+  const overflowEvidence = await horizontalOverflowEvidence(page);
+  expect(
+    overflowEvidence,
+    `BOM mobile layout overflowed: ${JSON.stringify(overflowEvidence, null, 2)}`,
+  ).toEqual({
+    clientWidth: 390,
+    scrollWidth: 390,
+    offenders: [],
+  });
   expect(browserErrors).toEqual([]);
 });
