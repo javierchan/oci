@@ -51,6 +51,7 @@ from app.models import (
     DeploymentEnvironmentPlan,
     DeploymentRampPhase,
     DeploymentRampPeriodQuantity,
+    GovernanceChangeSet,
     PriceCatalogSnapshot,
     PriceItem,
     PriceSource,
@@ -100,12 +101,14 @@ from app.services.technical_demand_service import (
 
 BOM_ENGINE_VERSION = "pricing-engine-4.1.0"
 
+
 @dataclass(frozen=True)
 class BomCalculation:
     """Complete deterministic BOM calculation before optional persistence."""
 
     price_snapshot: PriceCatalogSnapshot
     commercial_release: CommercialRelease
+    pricing_verification_change_set: GovernanceChangeSet
     line_payloads: list[dict[str, object]]
     period_payloads: list[list[dict[str, object]]]
     coverage_pct: float
@@ -2920,7 +2923,7 @@ async def calculate_bom(
                 db=db,
             )
         )
-        await pricing_governance_service.ensure_public_snapshot_is_current(price_snapshot, db)
+        public_price_snapshot = price_snapshot
     else:
         allowed_source_types = {
             "contract_rate": {"manual_rate_card", "contract_rate"},
@@ -2949,6 +2952,13 @@ async def calculate_bom(
             currency=scenario.currency,
             db=db,
         )
+        selected_public_price_snapshot = await db.get(
+            PriceCatalogSnapshot,
+            commercial_release.price_catalog_snapshot_id,
+        )
+        if selected_public_price_snapshot is None:
+            raise ValueError("Approved CommercialRelease price catalog not found")
+        public_price_snapshot = selected_public_price_snapshot
 
     integrations = await _project_integrations(project_id, db)
     mappings = await _active_mappings(db)
@@ -3014,6 +3024,16 @@ async def calculate_bom(
     _validate_release_mapping_scope(commercial_release, selected_mappings)
 
     part_numbers = {mapping.part_number for mapping in selected_mappings if mapping.part_number}
+    release_scope = set(
+        _as_string_list(commercial_release.release_metadata.get("part_numbers"))
+    )
+    pricing_verification_change_set = (
+        await pricing_governance_service.ensure_public_snapshot_is_current(
+            public_price_snapshot,
+            db,
+            required_part_numbers={str(item) for item in part_numbers} or release_scope,
+        )
+    )
     commercial_contracts = await _governed_sku_contracts(
         release=commercial_release,
         part_numbers={str(part_number) for part_number in part_numbers},
@@ -3192,6 +3212,29 @@ async def calculate_bom(
             line_payloads.append(line)
             period_payloads.append(periods)
 
+    verification_provenance = {
+        "pricing_verification_change_set_id": pricing_verification_change_set.id,
+        "pricing_verification_price_snapshot_id": (
+            pricing_verification_change_set.price_snapshot_id
+        ),
+        "pricing_verification_scope": (
+            "pinned_snapshot"
+            if pricing_verification_change_set.price_snapshot_id
+            == commercial_release.price_catalog_snapshot_id
+            else "unchanged_release_skus"
+        ),
+    }
+    for line, periods in zip(line_payloads, period_payloads):
+        line["provenance"] = {
+            **_as_dict(line.get("provenance")),
+            **verification_provenance,
+        }
+        for period in periods:
+            period["provenance"] = {
+                **_as_dict(period.get("provenance")),
+                **verification_provenance,
+            }
+
     unresolved = [
         line
         for line in line_payloads
@@ -3267,6 +3310,7 @@ async def calculate_bom(
     return BomCalculation(
         price_snapshot=price_snapshot,
         commercial_release=commercial_release,
+        pricing_verification_change_set=pricing_verification_change_set,
         line_payloads=line_payloads,
         period_payloads=period_payloads,
         coverage_pct=coverage_pct,
@@ -3362,6 +3406,18 @@ async def run_bom_job(job_id: str, db: AsyncSession) -> BomJob:
                 "mapping_set_hash": calculation.commercial_release.mapping_set_hash,
                 "rule_family_set_hash": calculation.commercial_release.rule_family_set_hash,
                 "evidence_hash": calculation.commercial_release.evidence_hash,
+                "pricing_verification_change_set_id": (
+                    calculation.pricing_verification_change_set.id
+                ),
+                "pricing_verification_price_snapshot_id": (
+                    calculation.pricing_verification_change_set.price_snapshot_id
+                ),
+                "pricing_verification_scope": (
+                    "pinned_snapshot"
+                    if calculation.pricing_verification_change_set.price_snapshot_id
+                    == calculation.commercial_release.price_catalog_snapshot_id
+                    else "unchanged_release_skus"
+                ),
             },
             "by_service_monthly": {
                 key: round(value, 2) for key, value in sorted(calculation.by_service.items())

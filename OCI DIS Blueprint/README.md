@@ -318,7 +318,12 @@ atomic source set; raw evidence is hash-addressed in Object Storage, every one o
 the 20 governed commercial families runs deterministic quotation fixtures, and
 changed evidence requires explicit Admin approval. New public-list BOMs are
 blocked when the latest verified evidence is older than 72 hours or a regression
-fails. A separate Service Verification Agent checks the dynamic set of allowlisted
+fails. An immutable `CommercialRelease` may continue using its pinned price snapshot
+after a newer approved catalog only when every SKU selected by the scenario has the
+same complete normalized tier signature in both snapshots. Missing or changed scoped
+pricing fails closed and requires a matching release; unrelated OCI catalog drift is
+recorded through the newer verification change set without changing the quoted rates.
+A separate Service Verification Agent checks the dynamic set of allowlisted
 Oracle product documents and may propose value or unit updates, but deterministic
 rule semantics and explicit Admin acceptance remain authoritative. See
 [`docs/architecture/oci-continuous-source-governance.md`](./docs/architecture/oci-continuous-source-governance.md).

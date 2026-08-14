@@ -347,6 +347,15 @@ the referenced and latest snapshots have the same assumption-set version,
 consolidated demand, and row results. Request metadata and regenerated IDs do not
 create a false stale state; any semantic demand change does.
 
+Commercial freshness is evaluated against the exact SKU scope selected for the BOM.
+An immutable `CommercialRelease` keeps its pinned rate snapshot and may use a newer
+approved source verification only when both snapshots contain every selected part
+number and their complete normalized price-tier signatures are equal. The BOM records
+the pinned release snapshot, the current verification change set and snapshot, and
+whether verification came from the pinned snapshot or from unchanged scoped SKUs.
+Any missing SKU, value, currency, model, metric, price type, or tier difference fails
+closed and requires an approved `CommercialRelease` matching the new catalog.
+
 The editor exposes these policies through a product/metric/SKU search, one collapsed
 row per product, progressively disclosed metric editors, and a product-grouped monthly
 matrix. Product color identifies selection and grouping only; semantic status colors

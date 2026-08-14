@@ -393,8 +393,42 @@ async def persist_change_set(
     return change_set
 
 
-async def ensure_public_snapshot_is_current(snapshot: PriceCatalogSnapshot, db: AsyncSession) -> None:
-    """Block new public-list quotes when official verification evidence is stale or absent."""
+def _change_set_verified_at(change_set: GovernanceChangeSet) -> datetime:
+    verified_at = change_set.promoted_at or change_set.approved_at or change_set.created_at
+    return verified_at if verified_at.tzinfo is not None else verified_at.replace(tzinfo=UTC)
+
+
+async def _price_signatures_for_scope(
+    snapshot_id: str,
+    required_part_numbers: set[str],
+    db: AsyncSession,
+) -> tuple[set[str], set[tuple[object, ...]]]:
+    rows = list(
+        (
+            await db.scalars(
+                select(PriceItem).where(
+                    PriceItem.snapshot_id == snapshot_id,
+                    PriceItem.part_number.in_(required_part_numbers),
+                )
+            )
+        ).all()
+    )
+    return {row.part_number for row in rows}, {_price_signature(row) for row in rows}
+
+
+async def ensure_public_snapshot_is_current(
+    snapshot: PriceCatalogSnapshot,
+    db: AsyncSession,
+    *,
+    required_part_numbers: set[str] | None = None,
+) -> GovernanceChangeSet:
+    """Return current OCI evidence or block a quote whose required SKU rates changed.
+
+    An immutable commercial release may remain usable after a newer public catalog is
+    approved only when every SKU in the release scope has an identical normalized price
+    signature in that newer catalog. This keeps unrelated OCI catalog drift from
+    invalidating a scoped DIS quote without ever accepting a changed or missing rate.
+    """
 
     settings = get_settings()
     change_set = await db.scalar(
@@ -408,10 +442,54 @@ async def ensure_public_snapshot_is_current(snapshot: PriceCatalogSnapshot, db: 
     )
     if change_set is None:
         raise ValueError("Approved public price catalog has no verified OCI source change set; run verification first")
-    verified_at = change_set.promoted_at or change_set.approved_at or change_set.created_at
-    if verified_at.tzinfo is None:
-        verified_at = verified_at.replace(tzinfo=UTC)
-    if verified_at < _now() - timedelta(hours=settings.OCI_GOVERNANCE_MAX_SOURCE_AGE_HOURS):
+    cutoff = _now() - timedelta(hours=settings.OCI_GOVERNANCE_MAX_SOURCE_AGE_HOURS)
+    if _change_set_verified_at(change_set) >= cutoff:
+        return change_set
+    if not required_part_numbers:
         raise ValueError(
             "Official OCI pricing evidence is stale; complete source verification before generating a new BOM"
         )
+
+    latest_change_set = await db.scalar(
+        select(GovernanceChangeSet)
+        .where(
+            GovernanceChangeSet.price_source_id == snapshot.source_id,
+            GovernanceChangeSet.currency == snapshot.currency,
+            GovernanceChangeSet.validation_status == "passed",
+            GovernanceChangeSet.approval_status.in_(("approved", "not_required")),
+            GovernanceChangeSet.status.in_(("promoted", "no_change")),
+        )
+        .order_by(
+            GovernanceChangeSet.promoted_at.desc(),
+            GovernanceChangeSet.approved_at.desc(),
+            GovernanceChangeSet.created_at.desc(),
+        )
+    )
+    if (
+        latest_change_set is None
+        or latest_change_set.id == change_set.id
+        or _change_set_verified_at(latest_change_set) < cutoff
+    ):
+        raise ValueError(
+            "Official OCI pricing evidence is stale; complete source verification before generating a new BOM"
+        )
+
+    original_parts, original_signatures = await _price_signatures_for_scope(
+        snapshot.id,
+        required_part_numbers,
+        db,
+    )
+    current_parts, current_signatures = await _price_signatures_for_scope(
+        latest_change_set.price_snapshot_id,
+        required_part_numbers,
+        db,
+    )
+    if (
+        original_parts != required_part_numbers
+        or current_parts != required_part_numbers
+        or original_signatures != current_signatures
+    ):
+        raise ValueError(
+            "Official OCI pricing evidence is stale because a required SKU price changed or is missing; promote a matching CommercialRelease before generating a new BOM"
+        )
+    return latest_change_set

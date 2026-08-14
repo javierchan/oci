@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from app.models import (
     GovernanceChangeSet,
     PriceCatalogSnapshot,
+    PriceItem,
     PriceSource,
     PriceSyncJob,
     ServiceCapabilityProfile,
@@ -254,3 +255,151 @@ async def test_public_snapshot_freshness_is_enforced(
         )
         with pytest.raises(ValueError, match="stale"):
             await pricing_governance_service.ensure_public_snapshot_is_current(snapshot, db)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("current_value", "is_current"),
+    [(2.0, True), (3.0, False), (None, False)],
+)
+async def test_stale_release_uses_newer_verification_only_for_identical_required_skus(
+    test_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+    current_value: float | None,
+    is_current: bool,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as db:
+        async with db.begin():
+            source = PriceSource(
+                name="Oracle public prices",
+                source_type="public_list",
+                base_url="https://apexapps.oracle.com/prices",
+                currency="USD",
+                status="active",
+                created_by="test",
+            )
+            db.add(source)
+            await db.flush()
+            old_job = PriceSyncJob(
+                source_id=source.id,
+                requested_by="test",
+                currency="USD",
+                status="completed",
+            )
+            current_job = PriceSyncJob(
+                source_id=source.id,
+                requested_by="test",
+                currency="USD",
+                status="completed",
+            )
+            db.add_all([old_job, current_job])
+            await db.flush()
+            old_snapshot = PriceCatalogSnapshot(
+                source_id=source.id,
+                sync_job_id=old_job.id,
+                currency="USD",
+                retrieved_at=datetime.now(UTC) - timedelta(hours=100),
+                content_hash="old",
+                item_count=1,
+                approval_status="superseded",
+                snapshot_metadata={},
+            )
+            current_snapshot = PriceCatalogSnapshot(
+                source_id=source.id,
+                sync_job_id=current_job.id,
+                currency="USD",
+                retrieved_at=datetime.now(UTC),
+                content_hash="current",
+                item_count=1,
+                approval_status="approved",
+                snapshot_metadata={},
+            )
+            db.add_all([old_snapshot, current_snapshot])
+            await db.flush()
+            old_change_set = GovernanceChangeSet(
+                sync_job_id=old_job.id,
+                price_source_id=source.id,
+                price_snapshot_id=old_snapshot.id,
+                trigger_type="scheduled",
+                currency="USD",
+                status="promoted",
+                drift_classification="baseline",
+                materiality_score=0,
+                source_manifest={},
+                drift_summary={},
+                impact_summary={},
+                validation_status="passed",
+                regression_summary={"families": 1, "passed": 1, "failed": 0},
+                approval_status="approved",
+                promoted_at=datetime.now(UTC) - timedelta(hours=100),
+            )
+            current_change_set = GovernanceChangeSet(
+                sync_job_id=current_job.id,
+                price_source_id=source.id,
+                price_snapshot_id=current_snapshot.id,
+                previous_change_set_id=old_change_set.id,
+                trigger_type="scheduled",
+                currency="USD",
+                status="promoted",
+                drift_classification="commercial",
+                materiality_score=0.01,
+                source_manifest={},
+                drift_summary={"price_signature_changes": 1},
+                impact_summary={"affected_skus": ["B2"]},
+                validation_status="passed",
+                regression_summary={"families": 1, "passed": 1, "failed": 0},
+                approval_status="approved",
+                approved_at=datetime.now(UTC),
+                promoted_at=datetime.now(UTC),
+            )
+            records = [
+                old_change_set,
+                current_change_set,
+                PriceItem(
+                    snapshot_id=old_snapshot.id,
+                    part_number="B1",
+                    display_name="Required SKU",
+                    metric_name="Unit per month",
+                    service_category="Integration",
+                    price_type="MONTH",
+                    currency="USD",
+                    model="PAY_AS_YOU_GO",
+                    value=2.0,
+                ),
+            ]
+            if current_value is not None:
+                records.append(
+                    PriceItem(
+                        snapshot_id=current_snapshot.id,
+                        part_number="B1",
+                        display_name="Required SKU",
+                        metric_name="Unit per month",
+                        service_category="Integration",
+                        price_type="MONTH",
+                        currency="USD",
+                        model="PAY_AS_YOU_GO",
+                        value=current_value,
+                    )
+                )
+            db.add_all(records)
+
+        monkeypatch.setattr(
+            pricing_governance_service,
+            "get_settings",
+            lambda: type("Settings", (), {"OCI_GOVERNANCE_MAX_SOURCE_AGE_HOURS": 72})(),
+        )
+        if is_current:
+            verified = await pricing_governance_service.ensure_public_snapshot_is_current(
+                old_snapshot,
+                db,
+                required_part_numbers={"B1"},
+            )
+            assert verified.id == current_change_set.id
+        else:
+            with pytest.raises(ValueError, match="required SKU price changed"):
+                await pricing_governance_service.ensure_public_snapshot_is_current(
+                    old_snapshot,
+                    db,
+                    required_part_numbers={"B1"},
+                )
