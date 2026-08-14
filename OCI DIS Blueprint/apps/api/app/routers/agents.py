@@ -127,7 +127,12 @@ async def create_agent_run(
     actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> AgentRunResponse:
     if body.project_id and not principal.bypass_project_membership:
-        await auth_service.require_project_access(principal, body.project_id, db)
+        await auth_service.require_project_roles(
+            principal,
+            body.project_id,
+            {"Owner", "Contributor"},
+            db,
+        )
     async with db.begin():
         run = await agent_service.create_agent_run(body, actor_id, actor_role, db)
     try:

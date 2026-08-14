@@ -367,7 +367,7 @@ async def test_semantic_retrieval_embeds_once_and_never_needs_provider_network(
 
     monkeypatch.setattr(app_knowledge_service, "load_derived_manifest", lambda: manifest)
     monkeypatch.setattr(knowledge_builder, "load_derived_manifest", lambda: manifest)
-    knowledge_builder.load_knowledge_base.cache_clear()
+    knowledge_builder.clear_knowledge_base_cache()
     calls: list[list[str]] = []
 
     async def fake_generate_embeddings(
@@ -398,12 +398,32 @@ async def test_semantic_retrieval_embeds_once_and_never_needs_provider_network(
             integration_id=None,
         )
     finally:
-        knowledge_builder.load_knowledge_base.cache_clear()
+        knowledge_builder.clear_knowledge_base_cache()
 
     assert calls == [["How do I import a customer workbook?"]]
     assert evidence["embedding_space"] == "provider"
     assert evidence["intent"] == "workflow_guidance"
     assert evidence["mode"] == "knowledge"
+
+
+def test_shared_runtime_knowledge_refreshes_when_object_version_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import storage_service
+
+    object_key = "governance/app-knowledge/active/derived_app_knowledge.json"
+    monkeypatch.setenv("APP_KNOWLEDGE_RUNTIME_OBJECT_KEY", object_key)
+    first = deepcopy(knowledge_builder.load_packaged_derived_manifest())
+    first["runtime_revision"] = "one"
+    storage_service.put_json(object_key, first)
+    knowledge_builder.clear_knowledge_base_cache()
+    assert knowledge_builder.load_knowledge_base()["derived"]["runtime_revision"] == "one"
+
+    second = deepcopy(first)
+    second["runtime_revision"] = "two"
+    storage_service.put_json(object_key, second)
+    assert knowledge_builder.load_knowledge_base()["derived"]["runtime_revision"] == "two"
+    knowledge_builder.clear_knowledge_base_cache()
 
 
 @pytest.mark.asyncio

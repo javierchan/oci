@@ -18,10 +18,13 @@ owns asynchronous coordination and bounded operational counters, and an
 S3-compatible service owns durable artifacts.
 
 The current eight-service Docker Compose stack is a valid production-mode local
-runtime. It is not yet a horizontally scalable OCI production platform. The
-container boundaries are reusable for OKE, but OCI IAM integration, shared App Knowledge,
-safe probes, queue recovery, singleton scheduling, database connection budgets,
-and OCI-native observability remain M77 prerequisites.
+runtime. M79 closes deployment-neutral application invariants for multiple users
+and future replicas: centralized authorization, stale-write protection, one API
+process per container, configurable connection pools, hardened task delivery,
+leased scheduling, shared App Knowledge, read-only readiness, and trace
+correlation. It is not an OCI production platform: OCI IAM, OKE/IaC,
+managed-service sizing, telemetry export, alarms, and authorized failure/rollback
+evidence remain M77 work.
 
 ## 2. System context
 
@@ -53,7 +56,7 @@ execution occurred.
 flowchart TB
     Browser["Browser"]
     Web["Next.js 15 web<br/>Node.js 26"]
-    API["FastAPI API<br/>Uvicorn, 4 workers"]
+    API["FastAPI API<br/>Uvicorn, 1 process/container"]
     Worker["Celery deterministic worker<br/>concurrency 2"]
     Agent["Celery agent worker<br/>agents queue, concurrency 2"]
     Beat["Celery Beat<br/>scheduled governance"]
@@ -87,8 +90,8 @@ flowchart TB
 | `web` | App Router UI, API projections, route context | None |
 | `api` | Typed HTTP contract, authorization checks, service orchestration | None by design |
 | `worker` | Import, recalculation, pricing, export, verification, synthetic jobs | None by design |
-| `agent-worker` | Governed agent and knowledge tasks on the isolated `agents` queue | None by design; current knowledge publication is an exception |
-| `beat` | Periodic service verification, commercial governance, and App Knowledge maintenance | Local schedule file; unsuitable for multiple replicas |
+| `agent-worker` | Governed agent and knowledge tasks on the isolated `agents` queue | None; validated knowledge publishes through the shared object boundary |
+| `beat` | Periodic task dispatch; consumers acquire bounded Redis leases before scheduled execution | Local schedule file only; exactly one dispatcher is configured locally |
 | `db` | Transactional and audit authority | PostgreSQL volume |
 | `redis` | Celery broker/backend and fixed-cardinality GenAI telemetry | Redis volume |
 | `minio` | Local durable object artifacts | MinIO volume |
@@ -324,24 +327,24 @@ Other current trust controls include:
 
 ## 10. Current scale characteristics
 
-The API uses four Uvicorn worker processes. Each process currently configures a
-PostgreSQL pool of 10 connections plus 20 overflow connections. This can reach
-120 possible API connections per container before Celery workers and additional
-replicas are counted. A global database connection budget and managed-database
-limit must therefore precede horizontal scaling.
+The API uses one Uvicorn process per container. Each process defaults to a
+PostgreSQL pool of 10 connections plus 20 overflow connections with explicit
+pool timeout and recycle settings. Replica count and pool values must still be
+sized against the selected managed-database connection limit before deployment;
+the repository does not invent that OCI capacity.
 
-Celery uses JSON-only messages and separate deterministic and agent consumers,
-but explicit late acknowledgement, worker-loss rejection, visibility timeout,
-and prefetch policies are not configured. Celery Beat uses a local schedule and
-must remain singleton. API startup also performs agent-history pruning, which
-would run once per starting API replica. These are recoverability and singleton
-ownership gaps, not failures of the current single-stack runtime.
+Celery uses JSON-only messages, separate deterministic and agent consumers, late
+acknowledgement, worker-loss rejection, bounded Redis visibility/result
+retention, and prefetch 1. Scheduled knowledge, service verification, commercial
+governance, and history retention use token-owned Redis leases. API startup is
+mutation-free. Broker failover, worker termination, lease expiry, and orphan
+reconciliation still require M77 testing against the selected managed runtime.
 
-The readiness endpoint verifies migration state and calls
-`storage_service.ensure_bucket()`. That call may create a missing bucket, so the
-probe is not read-only. It also does not yet verify Redis or the active shared
-knowledge hash. This must be corrected before Kubernetes uses it to make traffic
-or restart decisions.
+The readiness endpoint is read-only. It verifies migration state, bucket access,
+Redis connectivity, the active App Knowledge source hash and object version, the
+configured provider embedding model, and complete vector coverage. Any failed
+dependency returns 503 with a bounded recovery hint. `/health` remains the
+process-only liveness contract.
 
 ## 11. Observed implementation evidence
 
@@ -351,13 +354,13 @@ or restart decisions.
 | Migration state | Current and head at `20260814_0057` |
 | Authentication | Local login, forged-header rejection, cross-user `404`, and scoped read-only token lifecycle pass |
 | Browser authentication QA | Login, Account, project visibility, token create/revoke, and zero console warnings/errors pass |
-| API tests | 341 passed |
+| API tests | 363 passed |
 | Calculation engine | 99 passed |
 | Pricing engine | 35 passed |
 | Frontend tests | 142 passed across 24 files |
-| Static checks | Ruff, mypy, TypeScript, and ESLint passed |
+| Static checks | Ruff, scoped mypy, TypeScript, and ESLint passed |
 | Production build | Next.js production build passed |
-| App Knowledge | Deterministic drift check passed; source hash prefix `f0459e5b68fe`; 307/307 OCI provider vectors at 512 dimensions |
+| App Knowledge | Deterministic/provider drift check passed; source hash prefix `6127cedd94cb`; complete OCI provider vectors at 512 dimensions |
 
 Focused non-destructive browser authentication QA was rerun against the retained
 data stack. Destructive canonical browser cleanup flows still require an isolated
@@ -369,13 +372,12 @@ The following are explicitly **not implemented production claims**:
 
 1. OCI IAM as an additional verified identity provider and token-derived group mapping.
 2. OKE manifests, Helm releases, Terraform modules, or OCI provisioned runtime.
-3. Shared atomic App Knowledge publication across replicas.
-4. Read-only comprehensive Kubernetes readiness.
-5. Globally budgeted PostgreSQL connections.
-6. Celery delivery semantics validated under worker termination.
-7. Lease-owned scheduled work and maintenance.
-8. OCI-native logs, metrics, traces, dashboards, alarms, and synthetic monitors.
-9. A decided cross-region disaster-recovery topology.
+3. Transactional App Knowledge release history and active-version pointer.
+4. Kubernetes wiring and failure evidence for the implemented read-only probes.
+5. A global PostgreSQL connection budget based on an actually selected OCI database.
+6. Celery/Redis delivery semantics validated under pod, broker, and network failure.
+7. OCI-native telemetry export, dashboards, alarms, synthetic monitors, and cost controls.
+8. A decided cross-region disaster-recovery topology.
 
 The governed plan for these gaps is
 [OCI OKE Horizontal-Scale Deployment Plan](./oci-oke-horizontal-scale-deployment-plan.md).

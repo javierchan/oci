@@ -287,7 +287,11 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
     }
     setBusyAction("approve-scenario");
     try {
-      await api.approveDeploymentScenario(projectId, selectedScenario.id);
+      await api.approveDeploymentScenario(
+        projectId,
+        selectedScenario.id,
+        selectedScenario.updated_at,
+      );
       emitToast("success", "Deployment scenario approved for pricing.");
       await load(true);
     } catch (caughtError) {

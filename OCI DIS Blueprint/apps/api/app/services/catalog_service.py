@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import fields
+from datetime import datetime
 from typing import Any, Optional, cast
 
 from fastapi import HTTPException
@@ -36,6 +37,7 @@ from app.schemas.catalog import (
     CatalogFacetsResponse,
     CatalogIntegrationDeleteResponse,
     CatalogIntegrationDetail,
+    CatalogIntegrationFieldsPatch,
     CatalogIntegrationPatch,
     CatalogIntegrationResponse,
     CatalogListResponse,
@@ -44,7 +46,7 @@ from app.schemas.catalog import (
     OICEstimateRequest,
     OICEstimateResponse,
 )
-from app.services import audit_service, import_service, recalc_service, service_rule_service
+from app.services import audit_service, concurrency, import_service, recalc_service, service_rule_service
 from app.services.canvas_interoperability import (
     CanvasDesignValidationError,
     is_canvas_json_state,
@@ -316,8 +318,14 @@ def _apply_manual_source_row_updates(row: CatalogIntegration, raw_data: dict[str
     _recompute_qa(row)
 
 
-async def _load_catalog_row(project_id: str, integration_id: str, db: AsyncSession) -> CatalogIntegration:
-    row = await db.scalar(
+async def _load_catalog_row(
+    project_id: str,
+    integration_id: str,
+    db: AsyncSession,
+    *,
+    for_update: bool = False,
+) -> CatalogIntegration:
+    query = (
         select(CatalogIntegration)
         .options(selectinload(CatalogIntegration.source_row).selectinload(SourceIntegrationRow.import_batch))
         .where(
@@ -325,6 +333,9 @@ async def _load_catalog_row(project_id: str, integration_id: str, db: AsyncSessi
             CatalogIntegration.id == integration_id,
         )
     )
+    if for_update:
+        query = query.with_for_update()
+    row = await db.scalar(query)
     if row is None:
         raise HTTPException(
             status_code=404,
@@ -915,8 +926,15 @@ async def update_integration(
 ) -> CatalogIntegrationResponse:
     """Apply an architect-owned patch, emit audit, and recalc when needed."""
 
-    row = await _load_catalog_row(project_id, integration_id, db)
+    row = await _load_catalog_row(project_id, integration_id, db, for_update=True)
+    concurrency.assert_current_version(
+        current_updated_at=row.updated_at,
+        expected_updated_at=patch.expected_updated_at,
+        entity_type="catalog integration",
+        entity_id=row.id,
+    )
     patch_data = patch.model_dump(exclude_none=True)
+    patch_data.pop("expected_updated_at")
     raw_column_values = patch_data.pop(RAW_COLUMN_PATCH_FIELD, None)
     invalid_fields = set(patch_data) - PATCHABLE_FIELDS
     if invalid_fields:
@@ -1042,7 +1060,8 @@ async def update_integration(
 async def bulk_patch(
     project_id: str,
     integration_ids: list[str],
-    patch: CatalogIntegrationPatch,
+    patch: CatalogIntegrationFieldsPatch,
+    expected_updated_at_by_id: dict[str, datetime],
     actor_id: str,
     db: AsyncSession,
 ) -> BulkPatchResult:
@@ -1051,6 +1070,16 @@ async def bulk_patch(
     updated = 0
     errors: list[str] = []
     patch_data = patch.model_dump(exclude_none=True)
+    missing_versions = sorted(set(integration_ids) - set(expected_updated_at_by_id))
+    if missing_versions:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "detail": "Every integration in a bulk patch requires its loaded updated_at value.",
+                "error_code": "EXPECTED_VERSIONS_REQUIRED",
+                "integration_ids": missing_versions,
+            },
+        )
     if RAW_COLUMN_PATCH_FIELD in patch_data:
         raise HTTPException(
             status_code=400,
@@ -1077,7 +1106,13 @@ async def bulk_patch(
     recalc_required = False
     for integration_id in integration_ids:
         try:
-            row = await _load_catalog_row(project_id, integration_id, db)
+            row = await _load_catalog_row(project_id, integration_id, db, for_update=True)
+            concurrency.assert_current_version(
+                current_updated_at=row.updated_at,
+                expected_updated_at=expected_updated_at_by_id[integration_id],
+                entity_type="catalog integration",
+                entity_id=row.id,
+            )
             row_patch_data = dict(patch_data)
             if "core_tools" in row_patch_data or "additional_tools_overlays" in row_patch_data:
                 if (

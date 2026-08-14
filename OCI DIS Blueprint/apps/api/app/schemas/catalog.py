@@ -7,9 +7,11 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import ApiTimestamp
 
-class CatalogIntegrationPatch(BaseModel):
-    """Allowed architect-owned fields for row updates."""
+
+class CatalogIntegrationFieldsPatch(BaseModel):
+    """Allowed architect-owned values shared by single and bulk updates."""
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
@@ -26,6 +28,12 @@ class CatalogIntegrationPatch(BaseModel):
     additional_tools_overlays: Optional[str] = None
     tbq: Optional[Literal["Y", "N"]] = None
     raw_column_values: Optional[dict[str, Any]] = None
+
+
+class CatalogIntegrationPatch(CatalogIntegrationFieldsPatch):
+    """Single-row patch with the version loaded by the writer."""
+
+    expected_updated_at: ApiTimestamp
 
 
 class ManualIntegrationCreate(BaseModel):
@@ -262,7 +270,8 @@ class BulkPatchRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     integration_ids: list[str]
-    patch: CatalogIntegrationPatch
+    patch: CatalogIntegrationFieldsPatch
+    expected_updated_at_by_id: dict[str, ApiTimestamp]
     actor_id: str = "api-user"
 
 

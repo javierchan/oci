@@ -414,8 +414,9 @@ class SyntheticIntegrationSpec:
             owner=self.owner,
         )
 
-    def to_follow_up_patch(self) -> CatalogIntegrationPatch:
+    def to_follow_up_patch(self, expected_updated_at: datetime) -> CatalogIntegrationPatch:
         return CatalogIntegrationPatch(
+            expected_updated_at=expected_updated_at,
             comments=self.comments,
             retry_policy=self.retry_policy,
             additional_tools_overlays=self.canvas_state,
@@ -1204,6 +1205,7 @@ async def _apply_import_follow_up_patches(
         if spec is None:
             continue
         patch = CatalogIntegrationPatch(
+            expected_updated_at=row.updated_at,
             comments=f"{spec.comments} Reviewed by synthetic architect patch.",
             retry_policy=spec.retry_policy,
             additional_tools_overlays=spec.canvas_state,
@@ -1227,7 +1229,7 @@ async def _create_manual_rows(
         await catalog_service.update_integration(
             project_id=project_id,
             integration_id=response.id,
-            patch=spec.to_follow_up_patch(),
+            patch=spec.to_follow_up_patch(response.updated_at),
             actor_id=SYNTHETIC_ACTOR_ID,
             db=db,
         )

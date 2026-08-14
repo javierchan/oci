@@ -230,6 +230,7 @@ export interface ExternalCaptureDraftPage {
 }
 
 export interface ExternalCaptureDraftPatch {
+  expected_updated_at: string;
   proposed_payload?: Record<string, unknown>;
   normalized_values?: Record<string, unknown>;
   pattern_assessment?: Record<string, unknown>;
@@ -1191,6 +1192,7 @@ export interface ImportMappingContract {
 }
 
 export interface ImportMappingReviewRequest {
+  expected_updated_at: string;
   fields: Array<{
     source_header: string;
     target_field: string;
@@ -1416,6 +1418,7 @@ export interface IntegrationTechnicalDemand {
 }
 
 export interface IntegrationPatch {
+  expected_updated_at: string;
   selected_pattern?: string;
   pattern_rationale?: string;
   comments?: string;

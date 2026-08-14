@@ -31,14 +31,21 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://dis:dis@localhost:5432/oci_dis"
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
+    DATABASE_POOL_TIMEOUT_SECONDS: int = 30
+    DATABASE_POOL_RECYCLE_SECONDS: int = 1800
 
     # Redis / Celery
     REDIS_URL: str = "redis://localhost:6379/0"
+    CELERY_VISIBILITY_TIMEOUT_SECONDS: int = 3600
+    CELERY_RESULT_EXPIRES_SECONDS: int = 86400
+    CELERY_WORKER_PREFETCH_MULTIPLIER: int = 1
+    AGENT_HISTORY_PRUNE_SCHEDULE_SECONDS: int = 86400
+    SCHEDULED_TASK_LOCK_TTL_SECONDS: int = 21600
 
     # S3-compatible artifact storage (MinIO locally, OCI Object Storage when deployed)
     STORAGE_BUCKET: str = "oci-dis-files"
     STORAGE_ENDPOINT: str = "http://localhost:9000"
-    STORAGE_REGION: str = "us-ashburn-1"
+    STORAGE_REGION: str = "mx-queretaro-1"
     STORAGE_ACCESS_KEY: str = "minio"
     STORAGE_SECRET_KEY: str = "minio123"
     STORAGE_ADDRESSING_STYLE: Literal["path", "virtual"] = "path"
@@ -80,6 +87,7 @@ class Settings(BaseSettings):
     APP_KNOWLEDGE_AUTOMATION_ENABLED: bool = True
     APP_KNOWLEDGE_SCHEDULE_SECONDS: int = 86400
     APP_KNOWLEDGE_RUNTIME_PATH: str = ""
+    APP_KNOWLEDGE_RUNTIME_OBJECT_KEY: str = ""
     AI_REVIEW_DAILY_JOB_LIMIT: int = 100
     AI_REVIEW_LLM_DAILY_JOB_LIMIT: int = 25
 

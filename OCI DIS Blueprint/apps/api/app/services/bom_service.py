@@ -87,7 +87,7 @@ from app.schemas.pricing import (
     QuantityPresetResponse,
 )
 from app.schemas.ai_review import AiReviewActionCandidate, AiReviewActionWorkspace
-from app.services import audit_service, pricing_governance_service
+from app.services import audit_service, concurrency, pricing_governance_service
 from app.services.technical_demand_service import (
     build_flow_evidence as _flow_evidence,
     integration_tools_with_overrides as _integration_tools_with_overrides,
@@ -1935,6 +1935,7 @@ async def approve_scenario(
     project_id: str,
     scenario_id: str,
     actor_id: str,
+    expected_updated_at: datetime,
     db: AsyncSession,
 ) -> DeploymentScenarioResponse:
     """Approve a deployment scenario for deterministic pricing."""
@@ -1943,10 +1944,18 @@ async def approve_scenario(
         select(DeploymentScenario).where(
             DeploymentScenario.id == scenario_id,
             DeploymentScenario.project_id == project_id,
-        )
+        ).with_for_update()
     )
     if scenario is None:
         raise HTTPException(status_code=404, detail={"detail": "Deployment scenario not found", "error_code": "DEPLOYMENT_SCENARIO_NOT_FOUND"})
+    concurrency.assert_current_version(
+        entity_type="deployment_scenario",
+        entity_id=scenario.id,
+        current_updated_at=scenario.updated_at,
+        expected_updated_at=expected_updated_at,
+    )
+    if scenario.status == "approved":
+        return await serialize_scenario(scenario, db)
     old_status = scenario.status
     scenario.status = "approved"
     scenario.approved_by = actor_id

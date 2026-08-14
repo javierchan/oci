@@ -242,6 +242,7 @@ export default async function ProjectDashboardPage({
             <ProjectCustomerEditor
               projectId={projectId}
               customerName={project.customer_name}
+              updatedAt={project.updated_at}
             />
             {isSyntheticProject(project) ? (
               <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">

@@ -112,6 +112,7 @@ async def test_external_import_cannot_materialize_until_mapping_approval(test_en
             project.id,
             batch.id,
             ImportMappingReviewUpdateRequest(
+                expected_updated_at=batch.updated_at,
                 fields=[ImportMappingFieldDecision(source_header="Interfaz", target_field="interface_name")],
                 answers={},
             ),
@@ -125,6 +126,7 @@ async def test_external_import_cannot_materialize_until_mapping_approval(test_en
             project.id,
             batch.id,
             ImportMappingReviewApproveRequest(
+                expected_updated_at=draft.updated_at,
                 fields=[
                     ImportMappingFieldDecision(source_header="Interfaz", target_field="interface_name"),
                     ImportMappingFieldDecision(source_header="Sistema de Origen", target_field="source_system"),

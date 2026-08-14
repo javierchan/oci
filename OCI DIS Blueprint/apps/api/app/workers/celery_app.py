@@ -13,10 +13,19 @@ celery_app.conf.task_serializer = "json"
 celery_app.conf.accept_content = ["json"]
 celery_app.conf.result_serializer = "json"
 celery_app.conf.broker_connection_retry_on_startup = True
+celery_app.conf.task_acks_late = True
+celery_app.conf.task_reject_on_worker_lost = True
+celery_app.conf.task_track_started = True
+celery_app.conf.worker_prefetch_multiplier = settings.CELERY_WORKER_PREFETCH_MULTIPLIER
+celery_app.conf.result_expires = settings.CELERY_RESULT_EXPIRES_SECONDS
+celery_app.conf.broker_transport_options = {
+    "visibility_timeout": settings.CELERY_VISIBILITY_TIMEOUT_SECONDS,
+}
 celery_app.conf.imports = (
     "app.workers.agent_worker",
     "app.workers.import_worker",
     "app.workers.knowledge_worker",
+    "app.workers.maintenance_worker",
     "app.workers.pricing_worker",
     "app.workers.recalc_worker",
     "app.workers.service_verification_worker",
@@ -45,6 +54,10 @@ if settings.APP_KNOWLEDGE_AUTOMATION_ENABLED:
         "task": "app.workers.knowledge_worker.execute_scheduled_knowledge_maintenance_task",
         "schedule": settings.APP_KNOWLEDGE_SCHEDULE_SECONDS,
     }
+beat_schedule["agent-history-retention"] = {
+    "task": "app.workers.maintenance_worker.prune_agent_history_task",
+    "schedule": settings.AGENT_HISTORY_PRUNE_SCHEDULE_SECONDS,
+}
 if beat_schedule:
     celery_app.conf.beat_schedule = beat_schedule
 
@@ -52,6 +65,7 @@ if beat_schedule:
 # against this application in both API-side dispatch and worker-side startup flows.
 from app.workers import import_worker as _import_worker  # noqa: E402,F401
 from app.workers import knowledge_worker as _knowledge_worker  # noqa: E402,F401
+from app.workers import maintenance_worker as _maintenance_worker  # noqa: E402,F401
 from app.workers import agent_worker as _agent_worker  # noqa: E402,F401
 from app.workers import pricing_worker as _pricing_worker  # noqa: E402,F401
 from app.workers import recalc_worker as _recalc_worker  # noqa: E402,F401

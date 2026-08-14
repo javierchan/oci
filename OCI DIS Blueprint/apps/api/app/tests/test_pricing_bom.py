@@ -1186,6 +1186,58 @@ async def test_scenario_rejects_unbalanced_environment_shares(
 
 
 @pytest.mark.asyncio
+async def test_scenario_approval_rejects_a_stale_reviewed_version(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        project = Project(name="Scenario concurrency", status=ProjectStatus.ACTIVE, owner_id="owner")
+        session.add(project)
+        await session.flush()
+        snapshot = VolumetrySnapshot(
+            project_id=project.id,
+            assumption_set_version="1.0.0",
+            triggered_by="test",
+            row_results={},
+            consolidated={},
+            snapshot_metadata={},
+        )
+        session.add(snapshot)
+        await session.commit()
+
+    headers = {"X-Actor-Role": "Architect", "X-Actor-Id": "architect"}
+    created_response = await api_client.post(
+        f"/api/v1/projects/{project.id}/deployment-scenarios",
+        headers=headers,
+        json={
+            "name": "Reviewed scenario",
+            "technical_snapshot_id": snapshot.id,
+            "consumption_model": "legacy_share",
+            "environments": [{"name": "Production", "demand_share": 1.0}],
+        },
+    )
+    assert created_response.status_code == 200, created_response.text
+    created = created_response.json()
+
+    approved_response = await api_client.post(
+        f"/api/v1/projects/{project.id}/deployment-scenarios/{created['id']}/approve",
+        headers=headers,
+        json={"expected_updated_at": created["updated_at"]},
+    )
+    assert approved_response.status_code == 200, approved_response.text
+    assert approved_response.json()["status"] == "approved"
+
+    stale_response = await api_client.post(
+        f"/api/v1/projects/{project.id}/deployment-scenarios/{created['id']}/approve",
+        headers=headers,
+        json={"expected_updated_at": created["updated_at"]},
+    )
+    assert stale_response.status_code == 409
+    assert stale_response.json()["detail"]["error_code"] == "STALE_WRITE_CONFLICT"
+
+
+@pytest.mark.asyncio
 async def test_selectable_product_catalog_is_governed_paginated_and_scenario_aware(
     api_client: AsyncClient,
     test_engine: AsyncEngine,

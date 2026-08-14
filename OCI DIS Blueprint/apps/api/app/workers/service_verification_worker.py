@@ -8,8 +8,10 @@ from app.schemas.service_products import ServiceVerificationRunRequest
 from app.services import service_product_service
 from app.workers.async_runner import run_async
 from app.workers.celery_app import celery_app
+from app.workers.scheduled_lease import scheduled_task_lease
 
 SCHEDULED_ACTOR_ID = "service-verification-scheduler"
+SCHEDULE_LOCK_KEY = "oci-dis:maintenance:service-verification:lock"
 
 
 @celery_app.task(name="app.workers.service_verification_worker.execute_service_verification_job_task")
@@ -63,4 +65,11 @@ def execute_stale_service_verification_task() -> dict[str, object]:
                 "completed_at": completed.completed_at.isoformat() if completed.completed_at else None,
             }
 
-    return run_async(_run())
+    with scheduled_task_lease(
+        settings.REDIS_URL,
+        SCHEDULE_LOCK_KEY,
+        settings.SCHEDULED_TASK_LOCK_TTL_SECONDS,
+    ) as acquired:
+        if not acquired:
+            return {"status": "skipped", "reason": "service_verification_already_running"}
+        return run_async(_run())

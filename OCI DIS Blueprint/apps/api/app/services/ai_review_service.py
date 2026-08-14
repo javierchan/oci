@@ -2691,7 +2691,9 @@ async def apply_ai_review_finding_patch(
     integration = await catalog_service.update_integration(
         job.project_id,
         row.id,
-        CatalogIntegrationPatch.model_validate(refreshed_patch.patch),
+        CatalogIntegrationPatch.model_validate(
+            {**refreshed_patch.patch, "expected_updated_at": row.updated_at}
+        ),
         actor_id or AI_REVIEW_ACTOR_FALLBACK,
         db,
     )

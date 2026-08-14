@@ -18,10 +18,6 @@ if [ "$(id -u)" -eq 0 ]; then
         chmod 0400 "$runtime_genai_dir/api_key"
     fi
 
-    if [ "${1:-}" = "uvicorn" ]; then
-        su-exec app python -m scripts.prune_agent_history
-    fi
-
     exec su-exec app "$@"
 fi
 

@@ -185,6 +185,7 @@ async def authenticate_local(
                 AuthIdentity.provider == LOCAL_PROVIDER,
                 AuthIdentity.subject == subject,
             )
+            .with_for_update()
         )
     ).one_or_none()
     now = utcnow()
@@ -503,15 +504,27 @@ async def has_project_access(
     project_id: str,
     db: AsyncSession,
 ) -> bool:
+    return await get_project_membership_role(principal, project_id, db) is not None
+
+
+async def get_project_membership_role(
+    principal: AuthPrincipal,
+    project_id: str,
+    db: AsyncSession,
+) -> str | None:
+    """Return the live project role allowed by the current credential boundary."""
+
     if principal.allowed_project_ids is not None and project_id not in principal.allowed_project_ids:
-        return False
-    membership = await db.scalar(
-        select(ProjectMembership.id).where(
-            ProjectMembership.user_id == principal.user_id,
-            ProjectMembership.project_id == project_id,
-        )
+        return None
+    return cast(
+        str | None,
+        await db.scalar(
+            select(ProjectMembership.project_role).where(
+                ProjectMembership.user_id == principal.user_id,
+                ProjectMembership.project_id == project_id,
+            )
+        ),
     )
-    return membership is not None
 
 
 async def require_project_access(
@@ -524,6 +537,32 @@ async def require_project_access(
             status_code=404,
             detail={"detail": "Project not found", "error_code": "PROJECT_NOT_FOUND"},
         )
+
+
+async def require_project_roles(
+    principal: AuthPrincipal,
+    project_id: str,
+    allowed_roles: set[str] | frozenset[str],
+    db: AsyncSession,
+) -> str:
+    """Require both live project access and one permitted membership role."""
+
+    project_role = await get_project_membership_role(principal, project_id, db)
+    if project_role is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"detail": "Project not found", "error_code": "PROJECT_NOT_FOUND"},
+        )
+    if project_role not in allowed_roles:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "detail": "The project membership does not grant this action.",
+                "error_code": "PROJECT_ROLE_REQUIRED",
+                "allowed_project_roles": sorted(allowed_roles),
+            },
+        )
+    return project_role
 
 
 async def upsert_local_user(

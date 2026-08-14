@@ -48,7 +48,7 @@ from app.schemas.imports import (
     SourceRowListResponse,
     SourceRowResponse,
 )
-from app.services import audit_service, import_mapping_service, recalc_service, storage_service
+from app.services import audit_service, concurrency, import_mapping_service, recalc_service, storage_service
 from app.services.capture_template_service import (
     CAPTURE_SHEET_NAME,
     COLUMNS as TEMPLATE_COLUMNS,
@@ -1094,7 +1094,7 @@ async def _load_mapping_review_batch(
         select(ImportBatch).where(
             ImportBatch.project_id == project_id,
             ImportBatch.id == batch_id,
-        )
+        ).with_for_update()
     )
     if batch is None:
         raise HTTPException(
@@ -1122,6 +1122,12 @@ async def update_import_mapping_review(
     """Save a draft mapping decision without releasing source rows downstream."""
 
     batch = await _load_mapping_review_batch(project_id, batch_id, db)
+    concurrency.assert_current_version(
+        current_updated_at=batch.updated_at,
+        expected_updated_at=request.expected_updated_at,
+        entity_type="import mapping review",
+        entity_id=batch.id,
+    )
     if batch.status != ImportStatus.MAPPING_REVIEW:
         raise HTTPException(
             status_code=409,
@@ -1165,6 +1171,12 @@ async def approve_import_mapping_review(
     """Approve a complete external mapping contract and queue safe materialization."""
 
     batch = await _load_mapping_review_batch(project_id, batch_id, db)
+    concurrency.assert_current_version(
+        current_updated_at=batch.updated_at,
+        expected_updated_at=request.expected_updated_at,
+        entity_type="import mapping review",
+        entity_id=batch.id,
+    )
     if batch.status != ImportStatus.MAPPING_REVIEW:
         raise HTTPException(
             status_code=409,

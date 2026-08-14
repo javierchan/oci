@@ -297,17 +297,28 @@ async def test_patch_tbq_updates_commercial_scope_and_keeps_technical_catalog(
             "tbq": "Y",
         },
     )
-    integration_id = create_response.json()["id"]
+    created_integration = create_response.json()
+    integration_id = created_integration["id"]
 
     patch_response = await api_client.patch(
         f"/api/v1/catalog/{project_id}/{integration_id}",
         params={"actor_id": "integration-test"},
-        json={"tbq": "N"},
+        json={"tbq": "N", "expected_updated_at": created_integration["updated_at"]},
     )
 
     assert patch_response.status_code == 200, patch_response.text
     assert patch_response.json()["tbq"] == "N"
     assert patch_response.json()["commercially_eligible"] is False
+    stale_response = await api_client.patch(
+        f"/api/v1/catalog/{project_id}/{integration_id}",
+        params={"actor_id": "integration-test"},
+        json={
+            "tbq": "Y",
+            "expected_updated_at": created_integration["updated_at"],
+        },
+    )
+    assert stale_response.status_code == 409
+    assert stale_response.json()["detail"]["error_code"] == "STALE_WRITE_CONFLICT"
     catalog_response = await api_client.get(f"/api/v1/catalog/{project_id}")
     assert catalog_response.json()["total"] == 1
 
@@ -317,7 +328,10 @@ async def test_patch_tbq_updates_commercial_scope_and_keeps_technical_catalog(
     source_patch_response = await api_client.patch(
         f"/api/v1/catalog/{project_id}/{integration_id}",
         params={"actor_id": "integration-test"},
-        json={"raw_column_values": raw_values},
+        json={
+            "raw_column_values": raw_values,
+            "expected_updated_at": patch_response.json()["updated_at"],
+        },
     )
     assert source_patch_response.status_code == 200
     assert source_patch_response.json()["tbq"] == "Y"
@@ -362,12 +376,14 @@ async def test_patch_rejects_oracle_backed_canvas_blockers(
         },
     )
     assert create_integration_response.status_code == 201
-    integration_id = create_integration_response.json()["id"]
+    created_integration = create_integration_response.json()
+    integration_id = created_integration["id"]
 
     patch_response = await api_client.patch(
         f"/api/v1/catalog/{project_id}/{integration_id}",
         params={"actor_id": "integration-test"},
         json={
+            "expected_updated_at": created_integration["updated_at"],
             "core_tools": "OIC Gen3",
             "additional_tools_overlays": build_linear_canvas("OIC Gen3"),
         },
@@ -417,12 +433,14 @@ async def test_patch_rejects_disconnected_canvas_route(
         },
     )
     assert create_integration_response.status_code == 201
-    integration_id = create_integration_response.json()["id"]
+    created_integration = create_integration_response.json()
+    integration_id = created_integration["id"]
 
     patch_response = await api_client.patch(
         f"/api/v1/catalog/{project_id}/{integration_id}",
         params={"actor_id": "integration-test"},
         json={
+            "expected_updated_at": created_integration["updated_at"],
             "core_tools": "OIC Gen3",
             "additional_tools_overlays": build_disconnected_canvas("OIC Gen3"),
         },
@@ -470,12 +488,14 @@ async def test_patch_rejects_uncoded_dictionary_tools(
         },
     )
     assert create_integration_response.status_code == 201
-    integration_id = create_integration_response.json()["id"]
+    created_integration = create_integration_response.json()
+    integration_id = created_integration["id"]
 
     patch_response = await api_client.patch(
         f"/api/v1/catalog/{project_id}/{integration_id}",
         params={"actor_id": "integration-test"},
         json={
+            "expected_updated_at": created_integration["updated_at"],
             "core_tools": "Oracle ORDS",
             "additional_tools_overlays": build_linear_canvas("Oracle ORDS"),
         },
@@ -507,6 +527,7 @@ async def test_bulk_patch_does_not_bypass_canvas_validation(
     project_id = create_project_response.json()["id"]
 
     integration_ids: list[str] = []
+    expected_updated_at_by_id: dict[str, str] = {}
     for sequence in range(2):
         create_integration_response = await api_client.post(
             f"/api/v1/catalog/{project_id}",
@@ -526,12 +547,15 @@ async def test_bulk_patch_does_not_bypass_canvas_validation(
             },
         )
         assert create_integration_response.status_code == 201
-        integration_ids.append(create_integration_response.json()["id"])
+        created_integration = create_integration_response.json()
+        integration_ids.append(created_integration["id"])
+        expected_updated_at_by_id[created_integration["id"]] = created_integration["updated_at"]
 
     bulk_response = await api_client.post(
         f"/api/v1/catalog/{project_id}/bulk-patch",
         json={
             "integration_ids": integration_ids,
+            "expected_updated_at_by_id": expected_updated_at_by_id,
             "actor_id": "integration-test",
             "patch": {
                 "core_tools": "OIC Gen3",
@@ -568,6 +592,7 @@ async def test_bulk_patch_rejects_row_specific_raw_source_evidence(
         f"/api/v1/catalog/{project_id}/bulk-patch",
         json={
             "integration_ids": [],
+            "expected_updated_at_by_id": {},
             "actor_id": "integration-test",
             "patch": {"raw_column_values": {"TBQ": "N"}},
         },

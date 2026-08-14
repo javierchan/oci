@@ -30,7 +30,7 @@ from app.schemas.user_management import (
     UserProjectMembershipInput,
     UserProjectMembershipResponse,
 )
-from app.services import audit_service, auth_service
+from app.services import audit_service, auth_service, concurrency
 from app.services.authz import normalize_role
 
 
@@ -38,8 +38,16 @@ def _conflict(detail: str, error_code: str) -> HTTPException:
     return HTTPException(status_code=409, detail={"detail": detail, "error_code": error_code})
 
 
-async def _load_user(user_id: str, db: AsyncSession) -> AppUser:
-    user = await db.get(AppUser, user_id)
+async def _load_user(
+    user_id: str,
+    db: AsyncSession,
+    *,
+    for_update: bool = False,
+) -> AppUser:
+    query = select(AppUser).where(AppUser.id == user_id)
+    if for_update:
+        query = query.with_for_update()
+    user = await db.scalar(query)
     if user is None:
         raise HTTPException(
             status_code=404,
@@ -263,9 +271,15 @@ async def update_user(
     actor_id: str,
     db: AsyncSession,
 ) -> ManagedUserResponse:
-    user = await _load_user(user_id, db)
+    user = await _load_user(user_id, db, for_update=True)
+    concurrency.assert_current_version(
+        current_updated_at=user.updated_at,
+        expected_updated_at=body.expected_updated_at,
+        entity_type="App user",
+        entity_id=user.id,
+    )
     identity = await _local_identity(user.id, db)
-    fields = body.model_fields_set
+    fields = body.model_fields_set - {"expected_updated_at"}
     next_role = body.role if "role" in fields and body.role is not None else user.role
     next_active = body.is_active if "is_active" in fields and body.is_active is not None else user.is_active
     await _ensure_admin_continuity(
@@ -326,6 +340,7 @@ async def update_user(
             .where(ApiToken.user_id == user.id, ApiToken.revoked_at.is_(None))
             .values(revoked_at=now)
         )
+    user.updated_at = datetime.now(UTC)
     await db.flush()
     new_value: dict[str, object] = {
         "username": identity.subject if identity else None,
@@ -354,7 +369,13 @@ async def replace_user_memberships(
     actor_id: str,
     db: AsyncSession,
 ) -> ManagedUserResponse:
-    user = await _load_user(user_id, db)
+    user = await _load_user(user_id, db, for_update=True)
+    concurrency.assert_current_version(
+        current_updated_at=user.updated_at,
+        expected_updated_at=body.expected_updated_at,
+        entity_type="App user",
+        entity_id=user.id,
+    )
     previous_count = int(
         await db.scalar(
             select(func.count()).select_from(ProjectMembership).where(
@@ -364,6 +385,8 @@ async def replace_user_memberships(
         or 0
     )
     await _replace_memberships(user, body.memberships, actor_id, db)
+    user.updated_at = datetime.now(UTC)
+    await db.flush()
     current = await get_user(user.id, db)
     await audit_service.emit(
         event_type="project_memberships_replaced",

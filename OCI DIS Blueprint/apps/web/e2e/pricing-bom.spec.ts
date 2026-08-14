@@ -5,7 +5,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 type PriceSourceList = { sources: Array<{ id: string; source_type: string }> };
 type PriceJob = { id: string; status: string; snapshot_id: string | null; item_count: number };
 type PriceSnapshot = { id: string; approval_status: string };
-type Scenario = { id: string; name: string; status: string };
+type Scenario = { id: string; name: string; status: string; updated_at: string };
 type MetricOption = {
   service_id: string;
   metric_key: string;
@@ -284,7 +284,7 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   const scenario = (await scenarioResponse.json()) as Scenario;
   const approveResponse = await request.post(
     `${apiBase}/api/v1/projects/${projectId}/deployment-scenarios/${scenario.id}/approve`,
-    { headers: sessionHeaders },
+    { headers: sessionHeaders, data: { expected_updated_at: scenario.updated_at } },
   );
   expect(approveResponse.ok()).toBe(true);
   expect(((await approveResponse.json()) as Scenario).status).toBe("approved");

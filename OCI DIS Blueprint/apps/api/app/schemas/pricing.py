@@ -8,6 +8,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.ai_review import AiReviewActionWorkspace
+from app.schemas.common import ApiTimestamp
 
 
 class PriceSourceResponse(BaseModel):
@@ -924,6 +925,14 @@ class DeploymentScenarioCreateRequest(BaseModel):
                     if current.start_month <= previous.end_month:
                         raise ValueError("Ramp phases for the same service cannot overlap")
         return self
+
+
+class DeploymentScenarioApproveRequest(BaseModel):
+    """Approve only the deployment scenario version reviewed by the architect."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    expected_updated_at: ApiTimestamp
 
 
 class DeploymentScenarioResponse(BaseModel):

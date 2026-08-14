@@ -7,6 +7,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.common import ApiTimestamp
+
 
 class ProjectCreateRequest(BaseModel):
     """Payload for creating a project."""
@@ -38,6 +40,7 @@ class ProjectPatchRequest(BaseModel):
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
+    expected_updated_at: ApiTimestamp
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     customer_name: Optional[str] = Field(default=None, min_length=1, max_length=500)
     owner_id: Optional[str] = None

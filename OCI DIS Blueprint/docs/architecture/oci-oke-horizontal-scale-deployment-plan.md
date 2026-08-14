@@ -47,15 +47,15 @@ No OCI resource creation, update, or deletion is authorized by this plan.
 | Area | Current state | Deployment disposition |
 |------|---------------|------------------------|
 | Next.js web | Standalone production image, non-root runtime, no server-local application state | Compatible with multiple replicas |
-| FastAPI | Request state externalized, but four Uvicorn processes per container | Requires one process per pod and a bounded connection budget |
+| FastAPI | Request state externalized; one Uvicorn process per container with configurable pool bounds | App-side complete; OCI database limit and replica budget remain deployment decisions |
 | PostgreSQL | Authoritative relational state and assistant conversations are persisted | Move to managed private PostgreSQL with HA |
-| Redis/Celery | Shared broker, result backend, leases, and GenAI counters | Move to managed TLS Redis and harden task recovery |
+| Redis/Celery | Shared broker/result backend, late ACK, worker-loss rejection, bounded visibility/results, prefetch 1, leases, and GenAI counters | Move to managed TLS Redis and validate pod/broker failure recovery |
 | Object artifacts | One S3-compatible service owns imports, exports, rate cards, and reports | Point the adapter at OCI Object Storage; never deploy MinIO |
-| App knowledge | Packaged vectors plus a runtime file under `/tmp` | Blocking: publish one shared immutable active artifact |
-| Schedules | Celery Beat writes its schedule under `/tmp` | Run exactly one scheduler or replace schedules with CronJobs |
+| App knowledge | Packaged complete vectors plus a shared S3-compatible active object, ETag refresh, and hash/version readiness | Add immutable release history and a transactional active-version pointer before production promotion |
+| Schedules | One Beat dispatcher; scheduled consumers are Redis-lease owned | Package one dispatcher/CronJob topology and validate lease expiry under pod loss |
 | Identity | Local Argon2id accounts, opaque DB sessions, memberships, and read-only API tokens; caller identity headers are overwritten | Add OCI IAM Identity Domains as another verified provider before enterprise production |
-| Health | Liveness and partial readiness endpoints exist | Make readiness read-only and add Redis/knowledge checks |
-| Observability | OCI provider counters exist; general metrics, traces, and alarms do not | Blocking for production operations |
+| Health | Process liveness plus read-only migration, Object Storage, Redis, and complete App Knowledge readiness | Wire startup/readiness probes and validate managed dependency failures in OKE |
+| Observability | Sanitized request JSON, request ID, W3C trace propagation, and OCI provider counters; no exporter/backend exists | Add OpenTelemetry export, OCI dashboards, alarms, synthetics, retention, and cost controls |
 | Delivery | Images are built and scanned | Add OCIR publication, signing, IaC, Helm, promotion, and rollback |
 | Kubernetes artifacts | None | Blocking: no OKE deployment is currently reproducible |
 

@@ -42,11 +42,19 @@ async def test_attention_task_requires_evidence_before_resolution(api_client: As
     )
     assert created.status_code == 201, created.text
     task = created.json()
-    missing_evidence = await api_client.patch(f"/api/v1/projects/{project_id}/attention-tasks/{task['id']}", headers=HEADERS, json={"status": "resolved"})
+    missing_evidence = await api_client.patch(
+        f"/api/v1/projects/{project_id}/attention-tasks/{task['id']}",
+        headers=HEADERS,
+        json={"status": "resolved", "expected_updated_at": task["updated_at"]},
+    )
     assert missing_evidence.status_code == 422
     resolved = await api_client.patch(
         f"/api/v1/projects/{project_id}/attention-tasks/{task['id']}", headers=HEADERS,
-        json={"status": "resolved", "evidence": {"summary": "QA evidence reviewed in catalog"}},
+        json={
+            "status": "resolved",
+            "evidence": {"summary": "QA evidence reviewed in catalog"},
+            "expected_updated_at": task["updated_at"],
+        },
     )
     assert resolved.status_code == 200
     assert resolved.json()["status"] == "resolved"

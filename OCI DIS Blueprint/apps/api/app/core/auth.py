@@ -11,7 +11,7 @@ from app.core.config import get_settings
 from app.core.api_token_scopes import LEGACY_API_READ_SCOPE, required_scope_for_path
 from app.core.db import get_db
 from app.models import AgentRun, AiReviewJob
-from app.services import auth_service
+from app.services import auth_service, authz
 from app.services.auth_service import AuthPrincipal
 
 
@@ -100,13 +100,24 @@ async def authorize_project_request(
     principal: Annotated[AuthPrincipal, Depends(authenticate_request)],
     db: Annotated[AsyncSession, Depends(get_db, use_cache=False)],
 ) -> AuthPrincipal:
-    """Enforce explicit membership for path- and query-scoped project routes."""
+    """Enforce live project membership and the fail-closed mutation policy."""
 
     candidate = request.path_params.get("project_id") or request.query_params.get("project_id")
+    project_role: str | None = None
     if candidate:
-        await auth_service.require_project_access(principal, str(candidate), db)
-        await db.rollback()
-        return principal
+        if principal.bypass_project_membership:
+            project_role = "Owner"
+        else:
+            project_role = await auth_service.get_project_membership_role(
+                principal,
+                str(candidate),
+                db,
+            )
+            if project_role is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail={"detail": "Project not found", "error_code": "PROJECT_NOT_FOUND"},
+                )
 
     run_id = request.path_params.get("run_id")
     if run_id and request.url.path.startswith("/api/v1/agents/runs/"):
@@ -117,7 +128,19 @@ async def authorize_project_request(
                 detail={"detail": "Agent run not found", "error_code": "AGENT_RUN_NOT_FOUND"},
             )
         if run.project_id:
-            await auth_service.require_project_access(principal, run.project_id, db)
+            if principal.bypass_project_membership:
+                project_role = "Owner"
+            else:
+                project_role = await auth_service.get_project_membership_role(
+                    principal,
+                    run.project_id,
+                    db,
+                )
+                if project_role is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={"detail": "Agent run not found", "error_code": "AGENT_RUN_NOT_FOUND"},
+                    )
         elif run.requested_by != principal.user_id and principal.role != "Admin":
             raise HTTPException(
                 status_code=404,
@@ -132,7 +155,27 @@ async def authorize_project_request(
                 status_code=404,
                 detail={"detail": "AI review not found", "error_code": "AI_REVIEW_NOT_FOUND"},
             )
-        await auth_service.require_project_access(principal, job.project_id, db)
+        if principal.bypass_project_membership:
+            project_role = "Owner"
+        else:
+            project_role = await auth_service.get_project_membership_role(
+                principal,
+                job.project_id,
+                db,
+            )
+            if project_role is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail={"detail": "AI review not found", "error_code": "AI_REVIEW_NOT_FOUND"},
+                )
+
+    authz.authorize_mutation(
+        method=request.method,
+        path=request.url.path,
+        actor_role=principal.role,
+        project_role=project_role,
+    )
+    request.state.project_role = project_role
     await db.rollback()
     return principal
 

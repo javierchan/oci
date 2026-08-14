@@ -7,6 +7,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import ApiTimestamp
+
 
 ExternalCaptureStatus = Literal["draft", "in_review", "completed"]
 ExternalDraftStatus = Literal["needs_review", "approved", "rejected", "promoted"]
@@ -57,6 +59,7 @@ class ExternalCaptureDraftBulkCreate(BaseModel):
 class ExternalCaptureDraftPatch(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
+    expected_updated_at: ApiTimestamp
     proposed_payload: Optional[dict[str, Any]] = None
     normalized_values: Optional[dict[str, Any]] = None
     pattern_assessment: Optional[dict[str, Any]] = None
@@ -66,6 +69,7 @@ class ExternalCaptureDraftPatch(BaseModel):
 class ExternalCaptureDraftReview(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
+    expected_updated_at: ApiTimestamp
     decision: Literal["approve", "reject"]
     rationale: str = Field(min_length=3, max_length=4000)
 

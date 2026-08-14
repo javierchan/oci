@@ -7,9 +7,11 @@ from app.schemas.agent import AgentCreateRequest
 from app.services import agent_service
 from app.workers.async_runner import run_async
 from app.workers.celery_app import celery_app
+from app.workers.scheduled_lease import scheduled_task_lease
 
 
 SCHEDULED_ACTOR_ID = "app-knowledge-governance-agent"
+SCHEDULE_LOCK_KEY = "oci-dis:maintenance:app-knowledge:lock"
 
 
 @celery_app.task(
@@ -17,6 +19,10 @@ SCHEDULED_ACTOR_ID = "app-knowledge-governance-agent"
 )
 def execute_scheduled_knowledge_maintenance_task() -> dict[str, object]:
     """Run the governed agent; publish only a complete validated vector space."""
+
+    from app.core.config import get_settings
+
+    settings = get_settings()
 
     async def _run() -> dict[str, object]:
         async with AsyncSessionLocal() as db:
@@ -48,4 +54,11 @@ def execute_scheduled_knowledge_maintenance_task() -> dict[str, object]:
                 "agent_type": completed.agent_type,
             }
 
-    return run_async(_run())
+    with scheduled_task_lease(
+        settings.REDIS_URL,
+        SCHEDULE_LOCK_KEY,
+        settings.SCHEDULED_TASK_LOCK_TTL_SECONDS,
+    ) as acquired:
+        if not acquired:
+            return {"status": "skipped", "reason": "knowledge_maintenance_already_running"}
+        return run_async(_run())

@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.knowledge.builder import (
-    load_knowledge_base,
+    clear_knowledge_base_cache,
     load_curated_knowledge,
     load_derived_manifest,
     load_packaged_derived_manifest,
@@ -364,9 +364,16 @@ async def synchronize_provider_embeddings(*, force: bool = False) -> dict[str, o
     """Regenerate and atomically activate the complete OCI retrieval space."""
 
     settings = get_genai_settings_for_use_case("support_assistant")
-    runtime_value = get_settings().APP_KNOWLEDGE_RUNTIME_PATH.strip()
-    if not runtime_value:
-        raise RuntimeError("APP_KNOWLEDGE_RUNTIME_PATH is required for automated embedding ownership")
+    runtime_settings = get_settings()
+    runtime_value = runtime_settings.APP_KNOWLEDGE_RUNTIME_PATH.strip()
+    runtime_object_key = str(
+        getattr(runtime_settings, "APP_KNOWLEDGE_RUNTIME_OBJECT_KEY", "")
+    ).strip()
+    if not runtime_value and not runtime_object_key:
+        raise RuntimeError(
+            "APP_KNOWLEDGE_RUNTIME_OBJECT_KEY or APP_KNOWLEDGE_RUNTIME_PATH is required "
+            "for automated embedding ownership"
+        )
     packaged = load_packaged_derived_manifest()
     current = load_derived_manifest()
     current_errors = provider_embedding_errors(
@@ -425,15 +432,20 @@ async def synchronize_provider_embeddings(*, force: bool = False) -> dict[str, o
     )
     if errors:
         raise RuntimeError("; ".join(errors))
-    runtime_path = Path(runtime_value)
-    runtime_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = runtime_path.with_suffix(f"{runtime_path.suffix}.tmp")
-    temporary_path.write_text(
-        json.dumps(packaged, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    temporary_path.replace(runtime_path)
-    load_knowledge_base.cache_clear()
+    if runtime_object_key:
+        from app.services import storage_service
+
+        storage_service.put_json(runtime_object_key, packaged)
+    else:
+        runtime_path = Path(runtime_value)
+        runtime_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = runtime_path.with_suffix(f"{runtime_path.suffix}.tmp")
+        temporary_path.write_text(
+            json.dumps(packaged, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temporary_path.replace(runtime_path)
+    clear_knowledge_base_cache()
     return {
         "status": "regenerated",
         "source_hash": packaged.get("source_hash"),

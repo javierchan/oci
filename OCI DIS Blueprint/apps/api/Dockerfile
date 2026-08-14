@@ -44,7 +44,9 @@ RUN rm -rf /app/app/tests \
 USER app
 EXPOSE 8000
 ENTRYPOINT ["oci-dis-entrypoint"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# One process per container keeps connection budgets and termination semantics
+# predictable; OCI/OKE capacity is added by scaling pods horizontally.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
 
 # The deployed image installs no packages at runtime. Remove the package installer
 # and its metadata so build tooling cannot become part of the production surface.

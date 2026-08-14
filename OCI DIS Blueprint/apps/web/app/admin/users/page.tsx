@@ -158,6 +158,7 @@ export default function UserManagementPage(): JSX.Element {
       } else {
         if (!selectedUser) throw new Error("Select a user first.");
         saved = await api.updateManagedUser(selectedUser.id, {
+          expected_updated_at: selectedUser.updated_at,
           username: form.username,
           email: form.email,
           display_name: form.displayName,
@@ -165,7 +166,11 @@ export default function UserManagementPage(): JSX.Element {
           is_active: form.isActive,
           ...(form.password ? { reset_password: form.password } : {}),
         });
-        saved = await api.replaceManagedUserMemberships(saved.id, memberships);
+        saved = await api.replaceManagedUserMemberships(
+          saved.id,
+          saved.updated_at,
+          memberships,
+        );
       }
       setCreating(false);
       setSelectedId(saved.id);

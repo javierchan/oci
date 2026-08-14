@@ -7,6 +7,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import ApiTimestamp
+
 
 class NormalizationEventResponse(BaseModel):
     """Serialized normalization event."""
@@ -147,6 +149,7 @@ class ImportMappingReviewUpdateRequest(BaseModel):
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
+    expected_updated_at: ApiTimestamp
     fields: list[ImportMappingFieldDecision]
     answers: dict[str, str] = Field(default_factory=dict)
 

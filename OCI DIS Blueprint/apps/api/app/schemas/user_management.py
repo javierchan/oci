@@ -7,6 +7,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.common import ApiTimestamp
+
 
 AppRole = Literal["Admin", "Architect", "Analyst", "Viewer"]
 ProjectRole = Literal["Owner", "Contributor", "Viewer"]
@@ -69,6 +71,7 @@ class ManagedUserCreateRequest(BaseModel):
 class ManagedUserPatchRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
+    expected_updated_at: ApiTimestamp
     username: Optional[str] = Field(default=None, min_length=1, max_length=255)
     email: Optional[str] = Field(default=None, min_length=3, max_length=320)
     display_name: Optional[str] = Field(default=None, min_length=1, max_length=255)
@@ -105,6 +108,7 @@ class ManagedUserPatchRequest(BaseModel):
 class UserMembershipReplaceRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
+    expected_updated_at: ApiTimestamp
     memberships: list[UserProjectMembershipInput] = Field(default_factory=list, max_length=100)
 
 

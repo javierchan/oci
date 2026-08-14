@@ -480,6 +480,24 @@ def load_derived_manifest(derived_path: Path = DERIVED_PATH) -> dict[str, object
 
     selected_path = derived_path
     runtime_value = os.getenv("APP_KNOWLEDGE_RUNTIME_PATH", "").strip()
+    runtime_object_key = os.getenv("APP_KNOWLEDGE_RUNTIME_OBJECT_KEY", "").strip()
+    if derived_path == DERIVED_PATH and runtime_object_key:
+        from app.services import storage_service
+
+        reference = storage_service.object_reference(runtime_object_key)
+        if storage_service.object_version(reference) is not None:
+            packaged = json.loads(DERIVED_PATH.read_text(encoding="utf-8"))
+            runtime = storage_service.read_json(reference)
+            if (
+                isinstance(packaged, dict)
+                and runtime.get("source_hash") == packaged.get("source_hash")
+            ):
+                document = runtime
+                if not isinstance(document, dict):
+                    raise KnowledgeValidationError(
+                        "derived_app_knowledge.json must contain an object"
+                    )
+                return document
     if derived_path == DERIVED_PATH and runtime_value:
         runtime_path = Path(runtime_value)
         if runtime_path.is_file():
@@ -639,8 +657,8 @@ def write_derived_manifest(repo_root: Path = REPO_ROOT, output_path: Path = DERI
     return manifest
 
 
-@lru_cache(maxsize=1)
-def load_knowledge_base() -> dict[str, object]:
+@lru_cache(maxsize=4)
+def _load_knowledge_base_versioned(runtime_version: str) -> dict[str, object]:
     curated = _load_curated()
     derived = load_derived_manifest()
     errors = validate_knowledge_base(curated, derived)
@@ -649,9 +667,35 @@ def load_knowledge_base() -> dict[str, object]:
     return {
         "schema_version": str(curated.get("version") or "1.0.0"),
         "source_hash": str(derived.get("source_hash") or ""),
+        "runtime_version": runtime_version,
         "sections": curated["sections"],
         "derived": derived,
     }
+
+
+def load_knowledge_base() -> dict[str, object]:
+    """Load one validated knowledge version shared by every application replica."""
+
+    runtime_object_key = os.getenv("APP_KNOWLEDGE_RUNTIME_OBJECT_KEY", "").strip()
+    if runtime_object_key:
+        from app.services import storage_service
+
+        reference = storage_service.object_reference(runtime_object_key)
+        version = storage_service.object_version(reference)
+        cache_key = f"object:{version}" if version else "packaged:no-runtime-object"
+    else:
+        runtime_path = os.getenv("APP_KNOWLEDGE_RUNTIME_PATH", "").strip()
+        if runtime_path and Path(runtime_path).is_file():
+            cache_key = f"path:{Path(runtime_path).stat().st_mtime_ns}"
+        else:
+            cache_key = f"packaged:{DERIVED_PATH.stat().st_mtime_ns}"
+    return _load_knowledge_base_versioned(cache_key)
+
+
+def clear_knowledge_base_cache() -> None:
+    """Discard all process-local knowledge versions after activation or in tests."""
+
+    _load_knowledge_base_versioned.cache_clear()
 
 
 def retrieve_semantic_knowledge(

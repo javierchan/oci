@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+import hashlib
 from pathlib import Path
 from typing import Any, cast
 
@@ -12,6 +13,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from .. import main as main_module
 from ..core.db import get_db
 from ..core.auth import authorize_project_request
 from ..main import app
@@ -59,11 +61,16 @@ def isolated_object_storage(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]
             if reference.split("/", 3)[-1].startswith(normalized)
         )
 
+    def object_version(reference: str) -> str | None:
+        contents = objects.get(reference)
+        return hashlib.sha256(contents).hexdigest() if contents is not None else None
+
     monkeypatch.setattr(storage_service, "put_bytes", put_bytes)
     monkeypatch.setattr(storage_service, "read_bytes", read_bytes)
     monkeypatch.setattr(storage_service, "delete", delete)
     monkeypatch.setattr(storage_service, "exists", exists)
     monkeypatch.setattr(storage_service, "list_keys", list_keys)
+    monkeypatch.setattr(storage_service, "object_version", object_version)
     monkeypatch.setattr(
         storage_service,
         "delete_prefix",
@@ -75,6 +82,16 @@ def isolated_object_storage(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]
         ),
     )
     monkeypatch.setattr(storage_service, "ensure_bucket", lambda: None)
+    monkeypatch.setattr(storage_service, "check_bucket_access", lambda: None)
+
+    class ReadyRedis:
+        async def ping(self) -> bool:
+            return True
+
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr(main_module, "create_readiness_redis_client", lambda: ReadyRedis())
     return objects
 
 

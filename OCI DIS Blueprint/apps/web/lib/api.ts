@@ -303,7 +303,16 @@ function parseApiError(status: number, path: string, body: string): ParsedApiErr
 
   try {
     const parsed = JSON.parse(body) as ApiErrorPayload;
-    const errorCode = typeof parsed.error_code === "string" ? parsed.error_code : undefined;
+    const nestedErrorCode =
+      parsed.detail && typeof parsed.detail === "object" && !Array.isArray(parsed.detail)
+        ? parsed.detail.error_code
+        : undefined;
+    const errorCode =
+      typeof parsed.error_code === "string"
+        ? parsed.error_code
+        : typeof nestedErrorCode === "string"
+          ? nestedErrorCode
+          : undefined;
     if (typeof parsed.detail === "string") {
       return {
         message: parsed.detail,
@@ -574,6 +583,7 @@ export const api = {
     }),
 
   updateManagedUser: (userId: string, body: {
+    expected_updated_at: string;
     username?: string;
     email?: string;
     display_name?: string;
@@ -588,11 +598,12 @@ export const api = {
 
   replaceManagedUserMemberships: (
     userId: string,
+    expectedUpdatedAt: string,
     memberships: Array<{ project_id: string; project_role: "Contributor" | "Viewer" }>,
   ): Promise<ManagedUser> =>
     apiFetch<ManagedUser>(`/api/v1/admin/users/${encodeURIComponent(userId)}/memberships`, {
       method: "PUT",
-      body: JSON.stringify({ memberships }),
+      body: JSON.stringify({ memberships, expected_updated_at: expectedUpdatedAt }),
     }),
 
   listAgents: (): Promise<AgentDefinition[]> =>
@@ -827,6 +838,7 @@ export const api = {
       owner_id?: string;
       description?: string;
       project_metadata?: Record<string, unknown>;
+      expected_updated_at: string;
     },
   ): Promise<Project> =>
     apiFetch<Project>(`/api/v1/projects/${projectId}`, {
@@ -860,6 +872,7 @@ export const api = {
     apiFetch<ProjectAttentionTask>(`/api/v1/projects/${projectId}/attention-tasks`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) }),
 
   updateProjectAttentionTask: (projectId: string, taskId: string, body: {
+    expected_updated_at: string;
     assignee?: string | null; due_date?: string | null; status?: ProjectAttentionTaskStatus;
     note?: string | null; evidence?: Record<string, unknown> | null;
   }): Promise<ProjectAttentionTask> =>
@@ -930,7 +943,7 @@ export const api = {
     projectId: string,
     sessionId: string,
     draftId: string,
-    body: { decision: "approve" | "reject"; rationale: string },
+    body: { decision: "approve" | "reject"; rationale: string; expected_updated_at: string },
   ): Promise<ExternalCaptureDraft> =>
     apiFetch<ExternalCaptureDraft>(
       `/api/v1/projects/${projectId}/external-capture/sessions/${sessionId}/drafts/${draftId}/review`,
@@ -1551,10 +1564,18 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  approveDeploymentScenario: (projectId: string, scenarioId: string): Promise<DeploymentScenario> =>
+  approveDeploymentScenario: (
+    projectId: string,
+    scenarioId: string,
+    expectedUpdatedAt: string,
+  ): Promise<DeploymentScenario> =>
     apiFetch<DeploymentScenario>(
       `/api/v1/projects/${projectId}/deployment-scenarios/${encodeURIComponent(scenarioId)}/approve`,
-      { method: "POST", headers: adminHeaders() },
+      {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ expected_updated_at: expectedUpdatedAt }),
+      },
     ),
 
   createBomJob: (projectId: string, scenarioId: string): Promise<BomJob> =>

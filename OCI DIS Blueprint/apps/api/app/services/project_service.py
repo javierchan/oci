@@ -43,8 +43,7 @@ from app.schemas.project import (
     ProjectPatchRequest,
     ProjectResponse,
 )
-from app.services import storage_service
-from app.services import audit_service
+from app.services import audit_service, concurrency, storage_service
 
 
 def _not_found() -> HTTPException:
@@ -144,8 +143,17 @@ async def update_project(
 ) -> ProjectResponse:
     """Partially update project metadata and emit an audit event when values change."""
 
-    project = await get_project(project_id, db)
+    project = await db.scalar(select(Project).where(Project.id == project_id).with_for_update())
+    if project is None:
+        raise _not_found()
+    concurrency.assert_current_version(
+        current_updated_at=project.updated_at,
+        expected_updated_at=body.expected_updated_at,
+        entity_type="project",
+        entity_id=project.id,
+    )
     patch_data = body.model_dump(exclude_unset=True)
+    patch_data.pop("expected_updated_at")
     response_before = serialize_project(project)
 
     changed = False

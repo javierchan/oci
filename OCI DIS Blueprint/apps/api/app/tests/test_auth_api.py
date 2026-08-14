@@ -23,6 +23,7 @@ async def _provision_user(
     email: str,
     password: str,
     grant_existing_projects: bool = False,
+    role: str = "Admin",
 ) -> str:
     session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as db:
@@ -31,12 +32,32 @@ async def _provision_user(
                 username=username,
                 email=email,
                 display_name=username.title(),
-                role="Admin",
+                role=role,
                 password=password,
                 grant_existing_projects=grant_existing_projects,
                 db=db,
             )
         return user.id
+
+
+async def _grant_project_role(
+    engine: AsyncEngine,
+    *,
+    user_id: str,
+    project_id: str,
+    project_role: str,
+) -> None:
+    session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as db:
+        async with db.begin():
+            db.add(
+                ProjectMembership(
+                    project_id=project_id,
+                    user_id=user_id,
+                    project_role=project_role,
+                    granted_by=user_id,
+                )
+            )
 
 
 async def test_local_session_ignores_spoofed_actor_and_owns_new_project(
@@ -131,6 +152,108 @@ async def test_project_membership_returns_404_across_users(
     assert listing.json()["projects"] == []
     hidden_response = await auth_api_client.get(f"/api/v1/projects/{hidden_id}")
     assert hidden_response.status_code == 404
+
+
+async def test_viewer_and_project_viewer_cannot_mutate_authorized_project(
+    auth_api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as db:
+        async with db.begin():
+            project = Project(
+                name="Read-only Project",
+                customer_name="Protected Customer",
+                owner_id="owner-id",
+                status=ProjectStatus.ACTIVE,
+            )
+            db.add(project)
+            await db.flush()
+            project_id = project.id
+
+    viewer_id = await _provision_user(
+        test_engine,
+        username="read-only-user",
+        email="read-only@example.com",
+        password="a read only user password",
+        role="Viewer",
+    )
+    await _grant_project_role(
+        test_engine,
+        user_id=viewer_id,
+        project_id=project_id,
+        project_role="Viewer",
+    )
+    login = await auth_api_client.post(
+        "/api/v1/auth/login",
+        json={"username": "read-only-user", "password": "a read only user password"},
+    )
+    assert login.status_code == 200
+    assert (await auth_api_client.get(f"/api/v1/projects/{project_id}")).status_code == 200
+
+    update = await auth_api_client.patch(
+        f"/api/v1/projects/{project_id}",
+        headers={"Origin": "http://localhost:3000"},
+        json={"description": "Forbidden change"},
+    )
+    assert update.status_code == 403
+    assert update.json()["detail"]["error_code"] == "PROJECT_OWNER_REQUIRED"
+
+    capture = await auth_api_client.post(
+        f"/api/v1/catalog/{project_id}",
+        headers={"Origin": "http://localhost:3000"},
+        json={},
+    )
+    assert capture.status_code == 403
+    assert capture.json()["detail"]["error_code"] == "ACTION_ROLE_REQUIRED"
+
+
+async def test_architect_with_viewer_membership_is_still_read_only(
+    auth_api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as db:
+        async with db.begin():
+            project = Project(
+                name="Viewer Membership Project",
+                customer_name="Protected Customer",
+                owner_id="owner-id",
+                status=ProjectStatus.ACTIVE,
+            )
+            db.add(project)
+            await db.flush()
+            project_id = project.id
+
+    architect_id = await _provision_user(
+        test_engine,
+        username="restricted-architect",
+        email="restricted-architect@example.com",
+        password="a restricted architect password",
+        role="Architect",
+    )
+    await _grant_project_role(
+        test_engine,
+        user_id=architect_id,
+        project_id=project_id,
+        project_role="Viewer",
+    )
+    login = await auth_api_client.post(
+        "/api/v1/auth/login",
+        json={
+            "username": "restricted-architect",
+            "password": "a restricted architect password",
+        },
+    )
+    assert login.status_code == 200
+
+    update = await auth_api_client.patch(
+        f"/api/v1/catalog/{project_id}/missing-integration",
+        headers={"Origin": "http://localhost:3000"},
+        json={"comments": "This must be rejected before resource lookup"},
+    )
+    assert update.status_code == 403
+    assert update.json()["detail"]["error_code"] == "PROJECT_ROLE_REQUIRED"
 
 
 async def test_failed_login_lockout_is_committed(

@@ -10,11 +10,13 @@ import { api } from "@/lib/api";
 type ProjectCustomerEditorProps = {
   projectId: string;
   customerName: string;
+  updatedAt: string;
 };
 
 export function ProjectCustomerEditor({
   projectId,
   customerName,
+  updatedAt,
 }: ProjectCustomerEditorProps): JSX.Element {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -34,7 +36,10 @@ export function ProjectCustomerEditor({
 
     setSaving(true);
     try {
-      await api.updateProject(projectId, { customer_name: normalized });
+      await api.updateProject(projectId, {
+        customer_name: normalized,
+        expected_updated_at: updatedAt,
+      });
       emitToast("success", "Customer name updated.");
       setEditing(false);
       router.refresh();

@@ -16,6 +16,7 @@ from app.schemas.pricing import (
     BomSnapshotListResponse,
     BomSnapshotResponse,
     DeploymentScenarioCreateRequest,
+    DeploymentScenarioApproveRequest,
     DeploymentScenarioListResponse,
     DeploymentScenarioResponse,
     ScenarioAssistantResponse,
@@ -161,13 +162,20 @@ async def create_deployment_scenario(
 async def approve_deployment_scenario(
     project_id: str,
     scenario_id: str,
+    body: DeploymentScenarioApproveRequest,
     db: AsyncSession = Depends(get_db),
     actor_id: str = Header("api-user", alias="X-Actor-Id"),
     actor_role: str = Header(..., alias="X-Actor-Role"),
 ) -> DeploymentScenarioResponse:
     _require_bom_approve(actor_role)
     async with db.begin():
-        return await bom_service.approve_scenario(project_id, scenario_id, actor_id, db)
+        return await bom_service.approve_scenario(
+            project_id,
+            scenario_id,
+            actor_id,
+            body.expected_updated_at,
+            db,
+        )
 
 
 @router.post(

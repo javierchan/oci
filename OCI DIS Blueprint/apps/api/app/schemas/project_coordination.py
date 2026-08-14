@@ -7,6 +7,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.common import ApiTimestamp
+
 
 class ProjectSavedViewCreate(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
@@ -65,6 +67,7 @@ class ProjectAttentionTaskCreate(BaseModel):
 class ProjectAttentionTaskPatch(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
+    expected_updated_at: ApiTimestamp
     assignee: Optional[str] = Field(default=None, max_length=255)
     due_date: Optional[date] = None
     status: Optional[AttentionTaskStatus] = None

@@ -13,20 +13,20 @@
 | Concern | Current, implemented state | Target state | Gap / exit evidence |
 | --- | --- | --- | --- |
 | Runtime | Eight production-mode Docker Compose services on one Docker host | OKE Deployments and governed Jobs | Helm/Terraform render, rollout, rollback, and smoke evidence |
-| Web and API scale | Stateless by intent; API has four local Uvicorn workers | At least two replicas with HPA and disruption budgets | Replica-loss and rolling-deploy tests |
+| Web and API scale | Stateless by design; one Uvicorn process per API container and configurable database pool bounds | At least two replicas with HPA and disruption budgets | Authorized replica-loss, connection-budget, and rolling-deploy tests |
 | Identity | Local Argon2id credentials, opaque DB sessions, App users, Admin User Management, project memberships, granular read-only API tokens, and idempotent first-Admin bootstrap | Add OCI IAM OIDC/JWT as another identity provider for the same App users and execute bootstrap as one release Job | Local bootstrap, cross-user isolation, forged-header, user-management, and token-scope tests pass; OCI issuer/subject linking and Job packaging remain |
 | Database | PostgreSQL 16 container; per-process pool 10 + 20 overflow | Managed PostgreSQL and an explicit global connection budget | Load test stays below configured connection ceiling |
 | Broker/cache | Redis 7 container | OCI Cache with TLS and recovery policy | Broker interruption and reconnect tests |
 | Artifacts | MinIO through S3-compatible adapter | OCI Object Storage with workload identity | Versioning, retention, access, and failure tests |
-| App Knowledge | Committed provider vectors; scheduled publication to local `/tmp` | Immutable Object Storage artifact plus transactional active hash | Replica convergence and stale/hash-mismatch tests |
+| App Knowledge | Complete packaged provider vectors plus scheduled shared S3-compatible active object, ETag refresh, and per-replica hash/version readiness | Immutable release objects plus transactional active-version history | Current shared refresh/hash tests pass; atomic release promotion and authorized replica convergence remain |
 | Import and correction | Reasoning-led agent proposals, deterministic formula/schema controls, human promotion | Same domain contract on OKE | Parallel import, retry, idempotency, and audit tests |
-| Deterministic jobs | Dedicated Celery worker | Horizontally scaled worker with explicit delivery semantics | Worker-kill, retry, duplicate-delivery tests |
+| Deterministic jobs | Dedicated Celery worker with late ACK, worker-loss rejection, visibility timeout, result expiry, and prefetch 1 | Horizontally scaled worker on managed Redis | Authorized worker-kill, Redis failover, retry, and duplicate-delivery tests |
 | Agent jobs | Isolated `agents` queue | Scaled agent worker with bounded concurrency and OCI quota controls | Provider throttle and worker-loss tests |
-| Scheduling | One Celery Beat container with local schedule | Lease-owned CronJobs or one elected scheduler | Duplicate scheduler cannot execute the same logical run |
-| Maintenance | API entrypoint prunes agent history | Dedicated idempotent scheduled maintenance | Concurrent-start test produces one safe result |
-| Readiness | Migration and object storage check; may create bucket | Read-only database, Redis, Object Storage, and active-knowledge checks | Probe cannot mutate; each failed dependency returns not-ready |
+| Scheduling | One Celery Beat dispatcher; every scheduled maintenance/governance consumer is Redis-lease owned | Kubernetes CronJobs or one elected scheduler using the same lease invariant | Local ownership tests pass; pod-loss/TTL behavior remains an authorized environment test |
+| Maintenance | History pruning is a dedicated leased Celery task | Governed scheduled maintenance with retention alarms | Local lease test passes; operational alarm evidence remains M77 |
+| Readiness | Read-only migration, Object Storage access, Redis, complete provider-vector knowledge hash, and active object-version checks | Same probes wired to Kubernetes startup/readiness plus managed dependency policy | Local success/failure tests pass; Kubernetes probe behavior remains M77 |
 | Inference | OCI GenAI in Chicago, Guardrails, provider metrics, no assistant answer fallback | Same dependency with network policy, alarms, quota, and SLOs | Cross-region latency/failure and no-fallback evidence |
-| Observability | Container logs and fixed-cardinality GenAI counters | OCI Logging, Monitoring, APM, OpenTelemetry, alarms, synthetics, budgets | Trace correlation, dashboards, alarm tests, retention validation |
+| Observability | Sanitized JSON HTTP events, request IDs, W3C trace propagation, and fixed-cardinality GenAI counters | OpenTelemetry export to OCI Logging, Monitoring, APM/Log Analytics, alarms, synthetics, and budgets | Local correlation tests pass; exporter/backend/dashboards/alarms remain M77 |
 | Secrets | Read-only local secret file copied mode `0400` | OCI Vault and workload identity | Rotation without image rebuild or log exposure |
 | Release | Canonical CI validates code and images | OCIR promotion, signed artifacts, Helm/Terraform, controlled rollout | Provenance, scan, deploy, smoke, and rollback record |
 | Availability | Single host | Three Fault Domains in Queretaro | Fault-Domain spread and pod/node disruption tests |

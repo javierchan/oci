@@ -40,6 +40,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    command: redis-server --appendonly yes --appendfsync everysec
     ports:
       - "6379:6379"
     volumes:
@@ -65,11 +66,15 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://dis:dis@db:5432/oci_dis
       REDIS_URL: redis://redis:6379/0
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
+      DATABASE_POOL_TIMEOUT_SECONDS: ${DATABASE_POOL_TIMEOUT_SECONDS:-30}
+      DATABASE_POOL_RECYCLE_SECONDS: ${DATABASE_POOL_RECYCLE_SECONDS:-1800}
       ENVIRONMENT: production
       CORS_ALLOWED_ORIGINS: '["http://localhost:3000"]'
       STORAGE_BUCKET: ${STORAGE_BUCKET:-oci-dis-files}
       STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
-      STORAGE_REGION: ${STORAGE_REGION:-us-ashburn-1}
+      STORAGE_REGION: ${STORAGE_REGION:-mx-queretaro-1}
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minio}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minio123}
       STORAGE_ADDRESSING_STYLE: ${STORAGE_ADDRESSING_STYLE:-path}
@@ -96,7 +101,7 @@ services:
       OCI_GENAI_GUARDRAILS_FAILURE_MODE: ${OCI_GENAI_GUARDRAILS_FAILURE_MODE:-closed}
       OCI_GENAI_API_KEY_FILE: /tmp/oci-dis-home/.oci-genai/api_key
       APP_KNOWLEDGE_AUTOMATION_ENABLED: ${APP_KNOWLEDGE_AUTOMATION_ENABLED:-true}
-      APP_KNOWLEDGE_RUNTIME_PATH: ${APP_KNOWLEDGE_RUNTIME_PATH:-/tmp/oci-dis-app-knowledge/derived_app_knowledge.json}
+      APP_KNOWLEDGE_RUNTIME_OBJECT_KEY: ${APP_KNOWLEDGE_RUNTIME_OBJECT_KEY:-governance/app-knowledge/active/derived_app_knowledge.json}
     ports:
       - "8000:8000"
     volumes:
@@ -112,10 +117,11 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/readiness"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   # ─────────────────────────────────────────
   # Celery worker (import + recalculation jobs)
@@ -129,10 +135,14 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://dis:dis@db:5432/oci_dis
       REDIS_URL: redis://redis:6379/0
+      CELERY_VISIBILITY_TIMEOUT_SECONDS: ${CELERY_VISIBILITY_TIMEOUT_SECONDS:-3600}
+      CELERY_RESULT_EXPIRES_SECONDS: ${CELERY_RESULT_EXPIRES_SECONDS:-86400}
+      CELERY_WORKER_PREFETCH_MULTIPLIER: ${CELERY_WORKER_PREFETCH_MULTIPLIER:-1}
+      SCHEDULED_TASK_LOCK_TTL_SECONDS: ${SCHEDULED_TASK_LOCK_TTL_SECONDS:-21600}
       ENVIRONMENT: production
       STORAGE_BUCKET: ${STORAGE_BUCKET:-oci-dis-files}
       STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
-      STORAGE_REGION: ${STORAGE_REGION:-us-ashburn-1}
+      STORAGE_REGION: ${STORAGE_REGION:-mx-queretaro-1}
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minio}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minio123}
       STORAGE_ADDRESSING_STYLE: ${STORAGE_ADDRESSING_STYLE:-path}
@@ -180,7 +190,17 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://dis:dis@db:5432/oci_dis
       REDIS_URL: redis://redis:6379/0
+      CELERY_VISIBILITY_TIMEOUT_SECONDS: ${CELERY_VISIBILITY_TIMEOUT_SECONDS:-3600}
+      CELERY_RESULT_EXPIRES_SECONDS: ${CELERY_RESULT_EXPIRES_SECONDS:-86400}
+      CELERY_WORKER_PREFETCH_MULTIPLIER: ${CELERY_WORKER_PREFETCH_MULTIPLIER:-1}
+      SCHEDULED_TASK_LOCK_TTL_SECONDS: ${SCHEDULED_TASK_LOCK_TTL_SECONDS:-21600}
       ENVIRONMENT: production
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-oci-dis-files}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
+      STORAGE_REGION: ${STORAGE_REGION:-mx-queretaro-1}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minio}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minio123}
+      STORAGE_ADDRESSING_STYLE: ${STORAGE_ADDRESSING_STYLE:-path}
       OCI_GENAI_REGION: ${OCI_GENAI_REGION:-us-chicago-1}
       OCI_GENAI_BASE_URL: ${OCI_GENAI_BASE_URL:-https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1}
       OCI_GENAI_MODEL_ID: ${OCI_GENAI_MODEL_ID:-openai.gpt-oss-20b}
@@ -204,7 +224,7 @@ services:
       OCI_GENAI_GUARDRAILS_FAILURE_MODE: ${OCI_GENAI_GUARDRAILS_FAILURE_MODE:-closed}
       OCI_GENAI_API_KEY_FILE: /tmp/oci-dis-home/.oci-genai/api_key
       APP_KNOWLEDGE_AUTOMATION_ENABLED: ${APP_KNOWLEDGE_AUTOMATION_ENABLED:-true}
-      APP_KNOWLEDGE_RUNTIME_PATH: ${APP_KNOWLEDGE_RUNTIME_PATH:-/tmp/oci-dis-app-knowledge/derived_app_knowledge.json}
+      APP_KNOWLEDGE_RUNTIME_OBJECT_KEY: ${APP_KNOWLEDGE_RUNTIME_OBJECT_KEY:-governance/app-knowledge/active/derived_app_knowledge.json}
     volumes:
       - type: bind
         source: ${OCI_GENAI_API_KEY_FILE_HOST:-${HOME}/.oci-genai/api_key}
@@ -227,6 +247,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://dis:dis@db:5432/oci_dis
       REDIS_URL: redis://redis:6379/0
+      AGENT_HISTORY_PRUNE_SCHEDULE_SECONDS: ${AGENT_HISTORY_PRUNE_SCHEDULE_SECONDS:-86400}
+      SCHEDULED_TASK_LOCK_TTL_SECONDS: ${SCHEDULED_TASK_LOCK_TTL_SECONDS:-21600}
       ENVIRONMENT: production
       SERVICE_VERIFICATION_SCHEDULE_ENABLED: ${SERVICE_VERIFICATION_SCHEDULE_ENABLED:-true}
       SERVICE_VERIFICATION_SCHEDULE_SECONDS: ${SERVICE_VERIFICATION_SCHEDULE_SECONDS:-86400}

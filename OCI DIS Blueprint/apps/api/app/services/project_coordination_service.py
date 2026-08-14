@@ -19,7 +19,7 @@ from app.schemas.project_coordination import (
     ProjectSavedViewList,
     ProjectSavedViewResponse,
 )
-from app.services import audit_service
+from app.services import audit_service, concurrency
 
 
 async def _project(project_id: str, db: AsyncSession) -> Project:
@@ -95,11 +95,22 @@ async def create_task(project_id: str, body: ProjectAttentionTaskCreate, actor_i
 
 
 async def patch_task(project_id: str, task_id: str, body: ProjectAttentionTaskPatch, actor_id: str, db: AsyncSession) -> ProjectAttentionTaskResponse:
-    task = await db.get(ProjectAttentionTask, task_id)
+    task = await db.scalar(
+        select(ProjectAttentionTask)
+        .where(ProjectAttentionTask.id == task_id)
+        .with_for_update()
+    )
     if task is None or task.project_id != project_id:
         raise HTTPException(status_code=404, detail={"detail": "Attention task not found", "error_code": "PROJECT_ATTENTION_TASK_NOT_FOUND"})
+    concurrency.assert_current_version(
+        current_updated_at=task.updated_at,
+        expected_updated_at=body.expected_updated_at,
+        entity_type="project attention task",
+        entity_id=task.id,
+    )
     old_value = _task(task).model_dump(mode="json")
     changes = body.model_dump(exclude_unset=True)
+    changes.pop("expected_updated_at")
     if changes.get("status") == "resolved" and not (changes.get("evidence") or task.evidence):
         raise HTTPException(status_code=422, detail={"detail": "Resolution requires a concise evidence record", "error_code": "PROJECT_ATTENTION_EVIDENCE_REQUIRED"})
     for field, value in changes.items():

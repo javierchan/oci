@@ -353,7 +353,11 @@ async def test_external_capture_requires_review_before_promotion(
             f"/drafts/{incomplete['id']}/review"
         ),
         headers=ARCHITECT_HEADERS,
-        json={"decision": "approve", "rationale": "Approve as supplied."},
+        json={
+            "decision": "approve",
+            "rationale": "Approve as supplied.",
+            "expected_updated_at": incomplete["updated_at"],
+        },
     )
     assert blocked_review.status_code == 409
     assert (
@@ -383,6 +387,7 @@ async def test_external_capture_requires_review_before_promotion(
         json={
             "decision": "approve",
             "rationale": "Pattern and source evidence reviewed line by line.",
+            "expected_updated_at": complete["updated_at"],
         },
     )
     assert analysis_required.status_code == 409
@@ -435,6 +440,13 @@ async def test_external_capture_requires_review_before_promotion(
                 db=session,
             )
 
+    refreshed_drafts = await api_client.get(
+        f"/api/v1/projects/{project_id}/external-capture/sessions/{session_id}/drafts",
+        headers=ARCHITECT_HEADERS,
+    )
+    current_complete = next(
+        draft for draft in refreshed_drafts.json()["drafts"] if draft["id"] == complete["id"]
+    )
     review_response = await api_client.post(
         (
             f"/api/v1/projects/{project_id}/external-capture/sessions/{session_id}"
@@ -444,6 +456,7 @@ async def test_external_capture_requires_review_before_promotion(
         json={
             "decision": "approve",
             "rationale": "Pattern and source evidence reviewed line by line.",
+            "expected_updated_at": current_complete["updated_at"],
         },
     )
     assert review_response.status_code == 200

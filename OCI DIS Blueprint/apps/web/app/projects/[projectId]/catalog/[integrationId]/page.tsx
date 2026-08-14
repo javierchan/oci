@@ -595,6 +595,7 @@ export default async function IntegrationDetailPage({
               <RawColumnValuesTable
                 projectId={projectId}
                 integrationId={integrationId}
+                updatedAt={integration.updated_at}
                 initialValues={lineage.raw_data}
                 columnNames={lineage.column_names}
               />

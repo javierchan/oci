@@ -59,6 +59,7 @@ export function ProjectAttentionCenter({ projectId, items }: { projectId: string
     if (status === "resolved" && !evidenceText) return;
     try {
       const updated = await api.updateProjectAttentionTask(projectId, task.id, {
+        expected_updated_at: task.updated_at,
         status,
         evidence: evidenceText ? { summary: evidenceText } : undefined,
       });

@@ -1018,6 +1018,33 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       idempotency, scoped token read/write denial, and browser account-menu/user-
       management/token lifecycle pass.
 
+### M79 — Deployment-neutral Multi-user Consistency + Scale Preparation
+- [x] Enforce one centralized, deny-by-default mutation policy for every protected
+      unsafe OpenAPI operation, intersecting App role, live project membership,
+      project role, token restrictions, and resolved entity context.
+- [x] Add row-lock-backed optimistic concurrency to shared project, catalog,
+      import review, external capture, user/membership, attention-task, and BOM
+      approval mutations, returning typed `409 STALE_WRITE_CONFLICT` responses.
+- [x] Make API containers one-process scale units with configurable bounded
+      PostgreSQL pools; harden Celery acknowledgment, visibility, prefetch,
+      worker-loss, result-retention, and scheduled-task lease semantics.
+- [x] Move App Knowledge runtime publication from pod-local files to the shared
+      S3-compatible object boundary, refresh per process by object version, and
+      expose complete provider-vector hash/version evidence in read-only readiness.
+- [x] Verify PostgreSQL migration state, Object Storage access, Redis, and App
+      Knowledge without creating infrastructure; move history pruning out of API
+      startup into a leased scheduled task.
+- [x] Emit sanitized structured request telemetry with request IDs and W3C
+      `traceparent` propagation while leaving exporter/backend selection to M77.
+- [x] Preserve provider-neutral identities so future OCI IAM is an additional
+      verified login method only; do not authenticate to OCI, create resources,
+      activate IAM, or deploy OKE as part of this milestone.
+- [x] **Exit criteria**: centralized mutation-policy coverage, negative role and
+      cross-project matrices, stale-write conflicts, scheduler lease ownership,
+      read-only readiness failure modes, shared-knowledge refresh, backend and
+      engine suites, frontend TypeScript/ESLint/tests/build, OpenAPI/App Knowledge
+      drift checks, and production Compose health all pass locally.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

@@ -219,6 +219,7 @@ async def bulk_patch(
             project_id=project_id,
             integration_ids=body.integration_ids,
             patch=body.patch,
+            expected_updated_at_by_id=body.expected_updated_at_by_id,
             actor_id=body.actor_id,
             db=db,
         )

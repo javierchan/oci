@@ -73,7 +73,11 @@ async def test_admin_creates_edits_and_reassigns_local_user(
     renamed = await auth_api_client.patch(
         f"/api/v1/admin/users/{user_id}",
         headers={"Origin": "http://localhost:3000"},
-        json={"username": "javierchan", "role": "Architect"},
+        json={
+            "expected_updated_at": created.json()["updated_at"],
+            "username": "javierchan",
+            "role": "Architect",
+        },
     )
     assert renamed.status_code == 200, renamed.text
     assert renamed.json()["username"] == "javierchan"
@@ -102,10 +106,14 @@ async def test_admin_cannot_deactivate_own_active_account(
     test_engine: AsyncEngine,
 ) -> None:
     admin_id = await _admin_login(auth_api_client, test_engine)
+    current = await auth_api_client.get(f"/api/v1/admin/users/{admin_id}")
     response = await auth_api_client.patch(
         f"/api/v1/admin/users/{admin_id}",
         headers={"Origin": "http://localhost:3000"},
-        json={"is_active": False},
+        json={
+            "expected_updated_at": current.json()["updated_at"],
+            "is_active": False,
+        },
     )
     assert response.status_code == 409
     assert response.json()["detail"]["error_code"] == "SELF_ADMIN_LOCKOUT"

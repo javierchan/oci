@@ -35,11 +35,19 @@ Node.js dependencies and no source-code bind mounts.
 
 ## OCI Deployment Status
 
-OCI deployment is planned but not yet authorized or production-ready. The
-container separation is compatible with horizontal scale, but M77 must first
-close identity, shared embedding publication, PostgreSQL connection budgeting,
-Celery recovery, singleton scheduling, readiness, observability, and
-infrastructure-as-code gaps.
+OCI deployment is planned but not authorized. M79 closes the deployment-neutral
+application work: centralized App/project authorization, optimistic concurrency,
+one API process per container, bounded database pools, hardened Celery delivery,
+leased scheduled tasks, shared App Knowledge publication, read-only dependency
+readiness, and low-cardinality request/trace correlation. These controls are
+validated locally and do not imply that OCI IAM, OKE, Vault, managed data
+services, or an OCI observability backend exist.
+
+M77 remains the separate OCI execution milestone. It requires explicit user
+authorization before tenancy discovery or mutation and still owns OCI IAM OIDC,
+Terraform/Helm, OCIR promotion, managed-service sizing, network policy,
+OpenTelemetry export, OCI dashboards/alarms, and failure/rollback evidence in an
+authorized non-production tenancy.
 
 The primary deployment region is fixed as Mexico Central (Queretaro),
 `mx-queretaro-1`. OCI Generative AI remains an explicitly monitored remote
@@ -582,6 +590,7 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M76 | Ideal Enterprise Reference Project | ✅ Complete | 2026-07-25 |
 | M77 | OCI OKE Horizontal Scale + Observability Readiness | ⏳ Planned | — |
 | M78 | Provider-neutral Local Authentication + External API Tokens | ✅ Complete | 2026-08-14 |
+| M79 | Deployment-neutral Multi-user Consistency + Scale Preparation | ✅ Complete | 2026-08-14 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot

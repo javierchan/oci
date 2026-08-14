@@ -39,7 +39,7 @@ from app.schemas.external_capture import (
     ExternalCaptureSessionResponse,
     ExternalCaptureSummary,
 )
-from app.services import audit_service, catalog_service
+from app.services import audit_service, catalog_service, concurrency
 from app.services.external_capture_review_service import (
     build_required_data_contract,
     build_review_triggers,
@@ -245,14 +245,17 @@ async def _get_draft(
     session_id: str,
     draft_id: str,
     db: AsyncSession,
+    *,
+    for_update: bool = False,
 ) -> tuple[ExternalCaptureSession, ExternalCaptureDraft]:
     session = await _get_session(project_id, session_id, db)
-    row = await db.scalar(
-        select(ExternalCaptureDraft).where(
+    query = select(ExternalCaptureDraft).where(
             ExternalCaptureDraft.id == draft_id,
             ExternalCaptureDraft.session_id == session.id,
         )
-    )
+    if for_update:
+        query = query.with_for_update()
+    row = await db.scalar(query)
     if row is None:
         raise _not_found("External capture draft")
     return session, row
@@ -647,11 +650,18 @@ async def patch_draft(
     actor_id: str,
     db: AsyncSession,
 ) -> ExternalCaptureDraftResponse:
-    session, row = await _get_draft(project_id, session_id, draft_id, db)
+    session, row = await _get_draft(project_id, session_id, draft_id, db, for_update=True)
+    concurrency.assert_current_version(
+        current_updated_at=row.updated_at,
+        expected_updated_at=body.expected_updated_at,
+        entity_type="external capture draft",
+        entity_id=row.id,
+    )
     if row.status == "promoted":
         raise HTTPException(status_code=409, detail="Promoted drafts are immutable")
     old_value = _serialize_draft(row).model_dump(mode="json")
     patch = body.model_dump(exclude_unset=True)
+    patch.pop("expected_updated_at")
     if "proposed_payload" in patch:
         canonical, gaps, qa_preview, validation = await _validate_payload(
             session, cast(dict[str, Any], patch["proposed_payload"]), db
@@ -695,7 +705,13 @@ async def review_draft(
     actor_id: str,
     db: AsyncSession,
 ) -> ExternalCaptureDraftResponse:
-    session, row = await _get_draft(project_id, session_id, draft_id, db)
+    session, row = await _get_draft(project_id, session_id, draft_id, db, for_update=True)
+    concurrency.assert_current_version(
+        current_updated_at=row.updated_at,
+        expected_updated_at=body.expected_updated_at,
+        entity_type="external capture draft",
+        entity_id=row.id,
+    )
     if row.status == "promoted":
         raise HTTPException(status_code=409, detail="Promoted drafts are immutable")
     if body.decision == "approve" and not bool(
@@ -849,7 +865,10 @@ async def apply_agent_correction(
         project_id,
         session_id,
         draft_id,
-        ExternalCaptureDraftPatch(proposed_payload=merged_payload),
+        ExternalCaptureDraftPatch(
+            expected_updated_at=row.updated_at,
+            proposed_payload=merged_payload,
+        ),
         actor_id,
         db,
     )

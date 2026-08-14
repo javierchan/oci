@@ -279,7 +279,7 @@ export function ExternalCaptureReview({
         project.id,
         selectedSessionId,
         draft.id,
-        { proposed_payload: payload },
+        { proposed_payload: payload, expected_updated_at: draft.updated_at },
       );
       replaceDraft(updated);
       await loadWorkspace();
@@ -310,7 +310,7 @@ export function ExternalCaptureReview({
         project.id,
         selectedSessionId,
         draft.id,
-        { decision, rationale },
+        { decision, rationale, expected_updated_at: draft.updated_at },
       );
       replaceDraft(updated);
       await loadWorkspace();

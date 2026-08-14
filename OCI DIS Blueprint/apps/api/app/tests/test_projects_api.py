@@ -29,6 +29,7 @@ async def test_project_patch_emits_audit_event(api_client: AsyncClient) -> None:
         f"/api/v1/projects/{project_id}",
         params={"actor_id": "integration-test"},
         json={
+            "expected_updated_at": created["updated_at"],
             "name": "Integration Test Project Updated",
             "customer_name": "Example Customer Holdings, Inc.",
             "description": "Updated description",
@@ -42,11 +43,22 @@ async def test_project_patch_emits_audit_event(api_client: AsyncClient) -> None:
     assert patched["owner_id"] == "integration-test"
     assert patched["project_metadata"] is None
 
+    stale_response = await api_client.patch(
+        f"/api/v1/projects/{project_id}",
+        json={
+            "expected_updated_at": created["updated_at"],
+            "description": "This stale overwrite must not persist",
+        },
+    )
+    assert stale_response.status_code == 409
+    assert stale_response.json()["detail"]["error_code"] == "STALE_WRITE_CONFLICT"
+
     get_response = await api_client.get(f"/api/v1/projects/{project_id}")
     assert get_response.status_code == 200
     fetched = get_response.json()
     assert fetched["name"] == "Integration Test Project Updated"
     assert fetched["customer_name"] == "Example Customer Holdings, Inc."
+    assert fetched["description"] == "Updated description"
     assert fetched["project_metadata"] is None
 
     audit_response = await api_client.get(f"/api/v1/audit/{project_id}")

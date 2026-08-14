@@ -4130,6 +4130,70 @@
         "title": "ApiTokenScopeResponse",
         "type": "object"
       },
+      "AppKnowledgeReadinessResponse": {
+        "additionalProperties": false,
+        "description": "Active knowledge identity and complete provider-vector readiness.",
+        "properties": {
+          "embedding_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "recovery_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Hint"
+          },
+          "runtime_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Version"
+          },
+          "source_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hash"
+          },
+          "vector_count": {
+            "default": 0,
+            "title": "Vector Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ready"
+        ],
+        "title": "AppKnowledgeReadinessResponse",
+        "type": "object"
+      },
       "ApproveJustificationRequest": {
         "additionalProperties": false,
         "description": "Approval request payload.",
@@ -5366,6 +5430,14 @@
             "title": "Actor Id",
             "type": "string"
           },
+          "expected_updated_at_by_id": {
+            "additionalProperties": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "title": "Expected Updated At By Id",
+            "type": "object"
+          },
           "integration_ids": {
             "items": {
               "type": "string"
@@ -5374,12 +5446,13 @@
             "type": "array"
           },
           "patch": {
-            "$ref": "#/components/schemas/CatalogIntegrationPatch"
+            "$ref": "#/components/schemas/CatalogIntegrationFieldsPatch"
           }
         },
         "required": [
           "integration_ids",
-          "patch"
+          "patch",
+          "expected_updated_at_by_id"
         ],
         "title": "BulkPatchRequest",
         "type": "object"
@@ -5745,9 +5818,9 @@
         "title": "CatalogIntegrationDetail",
         "type": "object"
       },
-      "CatalogIntegrationPatch": {
+      "CatalogIntegrationFieldsPatch": {
         "additionalProperties": false,
-        "description": "Allowed architect-owned fields for row updates.",
+        "description": "Allowed architect-owned values shared by single and bulk updates.",
         "properties": {
           "additional_tools_overlays": {
             "anyOf": [
@@ -5898,6 +5971,170 @@
             "title": "Tbq"
           }
         },
+        "title": "CatalogIntegrationFieldsPatch",
+        "type": "object"
+      },
+      "CatalogIntegrationPatch": {
+        "additionalProperties": false,
+        "description": "Single-row patch with the version loaded by the writer.",
+        "properties": {
+          "additional_tools_overlays": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additional Tools Overlays"
+          },
+          "business_criticality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Criticality"
+          },
+          "comments": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comments"
+          },
+          "core_tools": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Core Tools"
+          },
+          "data_security_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Security Classification"
+          },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
+          "idempotency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency"
+          },
+          "pattern_rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern Rationale"
+          },
+          "raw_column_values": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Column Values"
+          },
+          "retention_processing_window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Processing Window"
+          },
+          "retry_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Policy"
+          },
+          "selected_pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Pattern"
+          },
+          "target_latency_sla": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Latency Sla"
+          },
+          "tbq": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Y",
+                  "N"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tbq"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "CatalogIntegrationPatch",
         "type": "object"
       },
@@ -9098,6 +9335,22 @@
         "title": "DeploymentRampPhaseInput",
         "type": "object"
       },
+      "DeploymentScenarioApproveRequest": {
+        "additionalProperties": false,
+        "description": "Approve only the deployment scenario version reviewed by the architect.",
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "DeploymentScenarioApproveRequest",
+        "type": "object"
+      },
       "DeploymentScenarioCreateRequest": {
         "additionalProperties": false,
         "description": "Create a governed deployment scenario from a technical snapshot.",
@@ -10128,6 +10381,11 @@
             ],
             "title": "Confidence"
           },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "normalized_values": {
             "anyOf": [
               {
@@ -10165,6 +10423,9 @@
             "title": "Proposed Payload"
           }
         },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "ExternalCaptureDraftPatch",
         "type": "object"
       },
@@ -10361,6 +10622,11 @@
             "title": "Decision",
             "type": "string"
           },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "rationale": {
             "maxLength": 4000,
             "minLength": 3,
@@ -10369,6 +10635,7 @@
           }
         },
         "required": [
+          "expected_updated_at",
           "decision",
           "rationale"
         ],
@@ -11815,6 +12082,11 @@
             "title": "Answers",
             "type": "object"
           },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "fields": {
             "items": {
               "$ref": "#/components/schemas/ImportMappingFieldDecision"
@@ -11841,6 +12113,7 @@
           }
         },
         "required": [
+          "expected_updated_at",
           "fields"
         ],
         "title": "ImportMappingReviewApproveRequest",
@@ -11857,6 +12130,11 @@
             "title": "Answers",
             "type": "object"
           },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "fields": {
             "items": {
               "$ref": "#/components/schemas/ImportMappingFieldDecision"
@@ -11866,6 +12144,7 @@
           }
         },
         "required": [
+          "expected_updated_at",
           "fields"
         ],
         "title": "ImportMappingReviewUpdateRequest",
@@ -12658,6 +12937,11 @@
             ],
             "title": "Email"
           },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "is_active": {
             "anyOf": [
               {
@@ -12713,6 +12997,9 @@
             "title": "Username"
           }
         },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "ManagedUserPatchRequest",
         "type": "object"
       },
@@ -15390,6 +15677,11 @@
             ],
             "title": "Evidence"
           },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "note": {
             "anyOf": [
               {
@@ -15419,6 +15711,9 @@
             "title": "Status"
           }
         },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "ProjectAttentionTaskPatch",
         "type": "object"
       },
@@ -15714,6 +16009,11 @@
             ],
             "title": "Description"
           },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "name": {
             "anyOf": [
               {
@@ -15751,6 +16051,9 @@
             "title": "Project Metadata"
           }
         },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "ProjectPatchRequest",
         "type": "object"
       },
@@ -16218,11 +16521,17 @@
         "additionalProperties": false,
         "description": "API readiness contract for operators and frontend diagnostics.",
         "properties": {
+          "app_knowledge": {
+            "$ref": "#/components/schemas/AppKnowledgeReadinessResponse"
+          },
           "database_migrations": {
             "$ref": "#/components/schemas/MigrationReadinessResponse"
           },
           "object_storage": {
             "$ref": "#/components/schemas/ObjectStorageReadinessResponse"
+          },
+          "redis": {
+            "$ref": "#/components/schemas/RedisReadinessResponse"
           },
           "status": {
             "title": "Status",
@@ -16237,7 +16546,9 @@
           "status",
           "version",
           "database_migrations",
-          "object_storage"
+          "object_storage",
+          "redis",
+          "app_knowledge"
         ],
         "title": "ReadinessResponse",
         "type": "object"
@@ -16300,6 +16611,32 @@
           "status"
         ],
         "title": "RecalculationJobStatusResponse",
+        "type": "object"
+      },
+      "RedisReadinessResponse": {
+        "additionalProperties": false,
+        "description": "Connectivity state for shared sessions, queues, locks, and counters.",
+        "properties": {
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "recovery_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Hint"
+          }
+        },
+        "required": [
+          "ready"
+        ],
+        "title": "RedisReadinessResponse",
         "type": "object"
       },
       "ResetJustificationRequest": {
@@ -19898,6 +20235,11 @@
       "UserMembershipReplaceRequest": {
         "additionalProperties": false,
         "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "memberships": {
             "items": {
               "$ref": "#/components/schemas/UserProjectMembershipInput"
@@ -19907,6 +20249,9 @@
             "type": "array"
           }
         },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "UserMembershipReplaceRequest",
         "type": "object"
       },
@@ -29777,6 +30122,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeploymentScenarioApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {

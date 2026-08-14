@@ -121,6 +121,7 @@ export function IntegrationDesignCanvasPanel({
   combinations,
 }: IntegrationDesignCanvasPanelProps): JSX.Element | null {
   const router = useRouter();
+  const [expectedUpdatedAt, setExpectedUpdatedAt] = useState(integration.updated_at);
   const patternMap = useMemo(
     () =>
       new Map<string, PatternDefinition>(
@@ -266,10 +267,12 @@ export function IntegrationDesignCanvasPanel({
     setError("");
 
     try {
-      await api.patchIntegration(projectId, integration.id, {
+      const updated = await api.patchIntegration(projectId, integration.id, {
+        expected_updated_at: expectedUpdatedAt,
         additional_tools_overlays: canvasState,
         core_tools: toolKeys,
       });
+      setExpectedUpdatedAt(updated.updated_at);
       setSavedTechnicalDemandSignature(currentTechnicalDemandSignature);
       await refreshTechnicalDemand();
       setStatusMessage("Canvas saved.");

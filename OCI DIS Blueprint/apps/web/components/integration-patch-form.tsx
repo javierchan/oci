@@ -96,6 +96,7 @@ export function IntegrationPatchForm({
     setSaving(true);
 
     const payload: IntegrationPatch = {
+      expected_updated_at: currentIntegration.updated_at,
       selected_pattern: selectedPattern || undefined,
       pattern_rationale: patternRationale || undefined,
       comments: comments || undefined,

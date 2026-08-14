@@ -62,6 +62,12 @@ def ensure_bucket() -> None:
     client.create_bucket(Bucket=settings.STORAGE_BUCKET)
 
 
+def check_bucket_access() -> None:
+    """Verify the configured bucket without creating or mutating any storage state."""
+
+    _client().head_bucket(Bucket=get_settings().STORAGE_BUCKET)
+
+
 def object_reference(key: str) -> str:
     """Build the canonical persisted reference for one object key."""
 
@@ -224,6 +230,27 @@ def exists(reference: str) -> bool:
             "NotFound",
         }:
             return False
+        raise
+
+
+def object_version(reference: str) -> str | None:
+    """Return a stable object ETag for cross-replica cache invalidation."""
+
+    if not reference.startswith(_S3_SCHEME):
+        path = Path(reference)
+        return str(path.stat().st_mtime_ns) if path.is_file() else None
+    bucket, key = _parse_reference(reference)
+    try:
+        response = _client().head_object(Bucket=bucket, Key=key)
+        return str(response.get("ETag") or "").strip('"') or None
+    except ClientError as exc:
+        status = int(exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0))
+        if status == 404 or str(exc.response.get("Error", {}).get("Code", "")) in {
+            "404",
+            "NoSuchKey",
+            "NotFound",
+        }:
+            return None
         raise
 
 

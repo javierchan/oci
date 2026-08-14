@@ -28,6 +28,28 @@ class ObjectStorageReadinessResponse(BaseModel):
     recovery_hint: str | None = None
 
 
+class RedisReadinessResponse(BaseModel):
+    """Connectivity state for shared sessions, queues, locks, and counters."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    ready: bool
+    recovery_hint: str | None = None
+
+
+class AppKnowledgeReadinessResponse(BaseModel):
+    """Active knowledge identity and complete provider-vector readiness."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    ready: bool
+    source_hash: str | None = None
+    runtime_version: str | None = None
+    embedding_model: str | None = None
+    vector_count: int = 0
+    recovery_hint: str | None = None
+
+
 class ReadinessResponse(BaseModel):
     """API readiness contract for operators and frontend diagnostics."""
 
@@ -37,3 +59,5 @@ class ReadinessResponse(BaseModel):
     version: str
     database_migrations: MigrationReadinessResponse
     object_storage: ObjectStorageReadinessResponse
+    redis: RedisReadinessResponse
+    app_knowledge: AppKnowledgeReadinessResponse

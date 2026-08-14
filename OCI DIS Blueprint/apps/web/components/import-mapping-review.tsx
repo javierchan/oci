@@ -96,6 +96,7 @@ export function ImportMappingReview({ batch, projectId, onBatchChange }: ImportM
   );
   const unansweredCount = questions.filter((question) => question.required && !answers[question.id]).length;
   const payload = () => ({
+    expected_updated_at: batch.updated_at,
     fields: fields.map((field) => ({
       source_header: field.source_header,
       target_field: targets[field.source_header] ?? EVIDENCE_ONLY,

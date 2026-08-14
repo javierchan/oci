@@ -34,16 +34,15 @@ from scripts import prune_agent_history
 HEADERS = {"X-Actor-Id": "architect-user", "X-Actor-Role": "Admin"}
 
 
-def test_production_api_prunes_agent_history_before_uvicorn_start() -> None:
-    """Keep the import-safe module invocation in the production entrypoint contract."""
+def test_production_api_does_not_run_maintenance_during_startup() -> None:
+    """API replicas must start independently of singleton maintenance work."""
 
     repo_root = Path("/contracts")
     if not repo_root.is_dir():
         repo_root = Path(__file__).resolve().parents[4]
     entrypoint = (repo_root / "apps/api/production-entrypoint.sh").read_text(encoding="utf-8")
 
-    assert 'if [ "${1:-}" = "uvicorn" ]' in entrypoint
-    assert "su-exec app python -m scripts.prune_agent_history" in entrypoint
+    assert "scripts.prune_agent_history" not in entrypoint
 
 
 @pytest.mark.asyncio

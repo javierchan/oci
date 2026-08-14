@@ -13,6 +13,7 @@ import { TruncatedCell } from "@/components/truncated-cell";
 type RawColumnValuesTableProps = {
   projectId: string;
   integrationId: string;
+  updatedAt: string;
   initialValues: Record<string, unknown>;
   columnNames: Record<string, string>;
 };
@@ -79,11 +80,13 @@ function isUnnamedColumn(label: string): boolean {
 export function RawColumnValuesTable({
   projectId,
   integrationId,
+  updatedAt,
   initialValues,
   columnNames,
 }: RawColumnValuesTableProps): JSX.Element {
   const router = useRouter();
   const [values, setValues] = useState<Record<string, unknown>>(initialValues);
+  const [expectedUpdatedAt, setExpectedUpdatedAt] = useState(updatedAt);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draftValue, setDraftValue] = useState<string>("");
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -122,9 +125,11 @@ export function RawColumnValuesTable({
     setSavingKey(fieldKey);
     setError("");
     try {
-      await api.patchIntegration(projectId, integrationId, {
+      const updated = await api.patchIntegration(projectId, integrationId, {
+        expected_updated_at: expectedUpdatedAt,
         raw_column_values: nextValues,
       });
+      setExpectedUpdatedAt(updated.updated_at);
       setValues(nextValues);
       setEditingKey(null);
       setDraftValue("");
