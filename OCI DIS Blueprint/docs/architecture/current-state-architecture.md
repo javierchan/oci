@@ -344,7 +344,9 @@ The readiness endpoint is read-only. It verifies migration state, bucket access,
 Redis connectivity, the active App Knowledge source hash and object version, the
 configured provider embedding model, and complete vector coverage. Any failed
 dependency returns 503 with a bounded recovery hint. `/health` remains the
-process-only liveness contract.
+process-only liveness contract and is the Docker Compose container healthcheck,
+because CI starts the process before its separate Alembic migration step. Future
+traffic routing must use `/readiness` only after that migration step succeeds.
 
 ## 11. Observed implementation evidence
 
