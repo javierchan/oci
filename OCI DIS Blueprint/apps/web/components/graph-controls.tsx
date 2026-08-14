@@ -239,7 +239,7 @@ export function GraphControls({
               <List className="h-4 w-4" />
             </Link>
           </ControlTooltip>
-          <GraphExportButton projectId={projectId} svgRef={svgRef} />
+          <GraphExportButton projectId={projectId} svgRef={svgRef} disabled={loading} />
         </div>
       </div>
 
