@@ -62,8 +62,9 @@ type HorizontalOverflowEvidence = {
 };
 
 const apiBase = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8000";
-const adminHeaders = { "X-Actor-Id": "pricing-e2e-admin", "X-Actor-Role": "Admin" };
-const architectHeaders = { "X-Actor-Id": "pricing-e2e-architect", "X-Actor-Role": "Architect" };
+const sessionHeaders = {
+  Origin: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
+};
 
 async function horizontalOverflowEvidence(page: Page): Promise<HorizontalOverflowEvidence> {
   return page.evaluate(() => {
@@ -88,7 +89,7 @@ async function horizontalOverflowEvidence(page: Page): Promise<HorizontalOverflo
 
 async function readPriceJob(request: APIRequestContext, jobId: string): Promise<PriceJob> {
   const response = await request.get(`${apiBase}/api/v1/pricing/sync-jobs/${jobId}`, {
-    headers: adminHeaders,
+    headers: sessionHeaders,
   });
   expect(response.ok()).toBe(true);
   return (await response.json()) as PriceJob;
@@ -96,7 +97,7 @@ async function readPriceJob(request: APIRequestContext, jobId: string): Promise<
 
 async function readBomJob(request: APIRequestContext, projectId: string, jobId: string): Promise<BomJob> {
   const response = await request.get(`${apiBase}/api/v1/projects/${projectId}/bom-jobs/${jobId}`, {
-    headers: architectHeaders,
+    headers: sessionHeaders,
   });
   expect(response.ok()).toBe(true);
   return (await response.json()) as BomJob;
@@ -104,7 +105,7 @@ async function readBomJob(request: APIRequestContext, projectId: string, jobId: 
 
 async function readSyntheticJob(request: APIRequestContext, jobId: string): Promise<SyntheticJob> {
   const response = await request.get(`${apiBase}/api/v1/admin/synthetic/jobs/${jobId}`, {
-    headers: adminHeaders,
+    headers: sessionHeaders,
   });
   expect(response.ok()).toBe(true);
   return (await response.json()) as SyntheticJob;
@@ -126,7 +127,7 @@ test.afterEach(async ({ request }) => {
   const terminal = await readSyntheticJob(request, jobId);
   if (terminal.status !== "cleaned_up") {
     const cleanup = await request.post(`${apiBase}/api/v1/admin/synthetic/jobs/${jobId}/cleanup`, {
-      headers: adminHeaders,
+      headers: sessionHeaders,
     });
     expect(cleanup.ok()).toBe(true);
     expect(((await cleanup.json()) as SyntheticJob).status).toBe("cleaned_up");
@@ -140,14 +141,14 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
     if (message.type() === "error") browserErrors.push(message.text());
   });
   page.on("pageerror", (error) => browserErrors.push(error.message));
-  const sourcesResponse = await request.get(`${apiBase}/api/v1/pricing/sources`, { headers: adminHeaders });
+  const sourcesResponse = await request.get(`${apiBase}/api/v1/pricing/sources`, { headers: sessionHeaders });
   expect(sourcesResponse.ok()).toBe(true);
   const sources = (await sourcesResponse.json()) as PriceSourceList;
   const publicSource = sources.sources.find((source) => source.source_type === "public_list");
   expect(publicSource).toBeDefined();
 
   const syncResponse = await request.post(`${apiBase}/api/v1/pricing/sync-jobs`, {
-    headers: adminHeaders,
+    headers: sessionHeaders,
     data: { source_id: publicSource?.id, currency: "USD" },
   });
   expect(syncResponse.status()).toBe(202);
@@ -164,7 +165,7 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   const snapshotId = completedSync.snapshot_id as string;
   const approveCatalogResponse = await request.post(
     `${apiBase}/api/v1/pricing/catalog-snapshots/${snapshotId}/approve`,
-    { headers: adminHeaders },
+    { headers: sessionHeaders },
   );
   expect(approveCatalogResponse.ok(), await approveCatalogResponse.text()).toBe(true);
   expect(((await approveCatalogResponse.json()) as PriceSnapshot).approval_status).toBe("approved");
@@ -181,7 +182,7 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   await expect(page.getByText(`${completedSync.item_count} items`, { exact: true }).first()).toBeVisible();
 
   const syntheticResponse = await request.post(`${apiBase}/api/v1/admin/synthetic/jobs`, {
-    headers: adminHeaders,
+    headers: sessionHeaders,
     data: {
       preset_code: "retained-smoke",
       project_name: `Pricing BOM E2E ${Date.now()}`,
@@ -202,7 +203,7 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   const projectId = completedSynthetic.project_id as string;
   const assistantResponse = await request.get(
     `${apiBase}/api/v1/projects/${projectId}/deployment-scenarios/assistant?include_llm=false`,
-    { headers: architectHeaders },
+    { headers: sessionHeaders },
   );
   expect(assistantResponse.ok()).toBe(true);
   const assistant = (await assistantResponse.json()) as ScenarioAssistant;
@@ -218,7 +219,7 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   expect(dataIntegrationWorkspace?.baseline_quantity).toBe(0);
   const selectableResponse = await request.get(
     `${apiBase}/api/v1/projects/${projectId}/selectable-products?page=1&page_size=100`,
-    { headers: architectHeaders },
+    { headers: sessionHeaders },
   );
   expect(selectableResponse.ok(), await selectableResponse.text()).toBe(true);
   const selectable = (await selectableResponse.json()) as SelectableProductPage;
@@ -228,7 +229,7 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   expect(manuallySelectableProduct, "fixture should expose an approved product outside integration detection").toBeDefined();
   const selectableMetricsResponse = await request.get(
     `${apiBase}/api/v1/projects/${projectId}/selectable-products/${encodeURIComponent(manuallySelectableProduct?.service_id ?? "")}/metric-options`,
-    { headers: architectHeaders },
+    { headers: sessionHeaders },
   );
   expect(selectableMetricsResponse.ok(), await selectableMetricsResponse.text()).toBe(true);
   expect(((await selectableMetricsResponse.json()) as MetricOption[]).length).toBeGreaterThan(0);
@@ -251,7 +252,7 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   const scenarioResponse = await request.post(
     `${apiBase}/api/v1/projects/${projectId}/deployment-scenarios`,
     {
-      headers: architectHeaders,
+      headers: sessionHeaders,
       data: {
         ...assistant.draft,
         name: "Playwright phased rollout",
@@ -283,13 +284,13 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
   const scenario = (await scenarioResponse.json()) as Scenario;
   const approveResponse = await request.post(
     `${apiBase}/api/v1/projects/${projectId}/deployment-scenarios/${scenario.id}/approve`,
-    { headers: architectHeaders },
+    { headers: sessionHeaders },
   );
   expect(approveResponse.ok()).toBe(true);
   expect(((await approveResponse.json()) as Scenario).status).toBe("approved");
 
   const bomResponse = await request.post(`${apiBase}/api/v1/projects/${projectId}/bom-jobs`, {
-    headers: architectHeaders,
+    headers: sessionHeaders,
     data: { scenario_id: scenario.id },
   });
   expect(bomResponse.status()).toBe(202);
@@ -305,7 +306,7 @@ test("reaches terminal pricing and BOM jobs and renders the governed estimate", 
 
   const snapshotResponse = await request.get(
     `${apiBase}/api/v1/projects/${projectId}/bom-snapshots/${completedBom.bom_snapshot_id}`,
-    { headers: architectHeaders },
+    { headers: sessionHeaders },
   );
   expect(snapshotResponse.ok()).toBe(true);
   const snapshot = (await snapshotResponse.json()) as BomSnapshot;

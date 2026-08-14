@@ -13,14 +13,13 @@ type CreatedSyntheticJob = {
 };
 
 const apiBase = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8000";
-const adminHeaders = {
-  "X-Actor-Id": "playwright-e2e",
-  "X-Actor-Role": "admin",
+const sessionHeaders = {
+  Origin: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
 };
 
 async function readJob(request: APIRequestContext, jobId: string): Promise<CreatedSyntheticJob> {
   const response = await request.get(`${apiBase}/api/v1/admin/synthetic/jobs/${jobId}`, {
-    headers: adminHeaders,
+    headers: sessionHeaders,
   });
   expect(response.ok()).toBe(true);
   return (await response.json()) as CreatedSyntheticJob;
@@ -97,7 +96,7 @@ test.describe("Admin synthetic smoke", () => {
   test("validates critical project surfaces from a retained terminal job", async ({ page, request }) => {
     test.setTimeout(180_000);
     const createResponse = await request.post(`${apiBase}/api/v1/admin/synthetic/jobs`, {
-      headers: adminHeaders,
+      headers: sessionHeaders,
       data: { preset_code: "retained-smoke" },
     });
     expect(createResponse.status()).toBe(202);
@@ -155,7 +154,7 @@ test.describe("Admin synthetic smoke", () => {
       if (current.status === "completed") {
         const cleanup = await request.post(
           `${apiBase}/api/v1/admin/synthetic/jobs/${created.id}/cleanup`,
-          { headers: adminHeaders },
+          { headers: sessionHeaders },
         );
         expect(cleanup.ok()).toBe(true);
         expect(((await cleanup.json()) as CreatedSyntheticJob).status).toBe("cleaned_up");

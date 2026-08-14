@@ -100,7 +100,10 @@ test("resolves captured architecture components and standardizes Dashboard actio
 
   const governedProduct = footprint.products.find((product) => product.service_id !== null);
   expect(governedProduct).toBeDefined();
-  await page.getByRole("link", { name: "Open evidence", exact: true }).first().click();
+  const governedProductCard = page.locator("article").filter({
+    has: page.getByRole("heading", { name: governedProduct?.tool_key, exact: true }),
+  });
+  await governedProductCard.getByRole("link", { name: "Open evidence", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/services/${governedProduct?.service_id}$`));
 });
 

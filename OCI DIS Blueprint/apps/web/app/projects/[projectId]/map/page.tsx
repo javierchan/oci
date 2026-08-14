@@ -257,7 +257,7 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
           const shouldInitialize = initialPathFocusProjectRef.current !== projectId;
           if (shouldInitialize || requestedPath) {
             initialPathFocusProjectRef.current = projectId;
-            setSelectedEdge(requestedPath ?? rankedRiskEdges[0] ?? null);
+            setSelectedEdge(requestedPath);
             setPulseHighlightedEdgeIds(rankedRiskEdges.map((edge) => edge.id));
           } else {
             setSelectedEdge(null);
