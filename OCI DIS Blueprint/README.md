@@ -593,7 +593,7 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   remains immutable rejected-source evidence
 - Reference seed data: `21` certified patterns, `9` architectural overlays, `27` governed canvas combinations, client-only assumption sets, governed dictionaries, and `20` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine + pricing-engine: `474 passed` (`340` API, `99` calc-engine, `35` pricing-engine)
+- Backend + calc-engine + pricing-engine: `475 passed` (`341` API, `99` calc-engine, `35` pricing-engine)
 - Frontend: `142 passed` across `24` files, strict TypeScript, ESLint, and production build green
 - Pricing/BOM E2E: real 4-source Oracle verification, scheduled no-change verification,
   and post-verification BOM jobs reach terminal `completed` states
@@ -670,7 +670,7 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   Argon2id local credentials, opaque hashed sessions, project membership
   isolation, editable usernames, Admin User Management, granular read-only API
   tokens, the top-right account menu, and the idempotent first-Admin bootstrap
-  passed `340` API and `142` frontend tests. Browser QA covered login, Account,
+  passed `341` API and `142` frontend tests. Browser QA covered login, Account,
   project visibility, token create/revoke, and User Management with zero console
   warnings/errors. OCI IAM remains an additional future identity provider.
 

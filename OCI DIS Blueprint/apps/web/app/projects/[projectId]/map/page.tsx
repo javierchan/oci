@@ -118,6 +118,7 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
   const { projectId } = use(params);
   const router = useRouter();
   const svgRef = useRef<SVGSVGElement>(null);
+  const graphRequestEpochRef = useRef(0);
   const [graph, setGraph] = useState<GraphResponse>(EMPTY_GRAPH);
   const [filters, setFilters] = useState<GraphParams>({});
   const [loading, setLoading] = useState<boolean>(true);
@@ -235,13 +236,14 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
 
   useEffect(() => {
     let cancelled = false;
+    const requestEpoch = ++graphRequestEpochRef.current;
     setLoading(true);
     setError("");
 
     void api
       .getGraph(projectId, filters)
       .then((response) => {
-        if (!cancelled) {
+        if (!cancelled && requestEpoch === graphRequestEpochRef.current) {
           const normalized = normalizeGraphResponse(response);
           setGraph(normalized);
           setSelectedNode(null);
@@ -266,7 +268,7 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
         }
       })
       .catch((caughtError: unknown) => {
-        if (!cancelled) {
+        if (!cancelled && requestEpoch === graphRequestEpochRef.current) {
           if (isProjectNotFoundError(caughtError)) {
             router.replace(missingProjectHref);
             return;
@@ -276,7 +278,7 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
         }
       })
       .finally(() => {
-        if (!cancelled) {
+        if (!cancelled && requestEpoch === graphRequestEpochRef.current) {
           setLoading(false);
         }
       });
@@ -335,6 +337,7 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
   }
 
   function handleSystemChange(value: string): void {
+    graphRequestEpochRef.current += 1;
     setSelectedSystem(value);
     setSelectedEdge(null);
     setPulseIntegrationId("");
@@ -344,6 +347,7 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
   }
 
   function clearSelection(): void {
+    graphRequestEpochRef.current += 1;
     setSelectedNode(null);
     setSelectedEdge(null);
     setSelectedSystem("");
@@ -359,6 +363,7 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
   }
 
   function selectEdge(edge: GraphEdge): void {
+    graphRequestEpochRef.current += 1;
     setSelectedEdge(edge);
     setSelectedNode(null);
     setSelectedSystem("");

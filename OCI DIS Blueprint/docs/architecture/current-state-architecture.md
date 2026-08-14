@@ -351,7 +351,7 @@ or restart decisions.
 | Migration state | Current and head at `20260814_0057` |
 | Authentication | Local login, forged-header rejection, cross-user `404`, and scoped read-only token lifecycle pass |
 | Browser authentication QA | Login, Account, project visibility, token create/revoke, and zero console warnings/errors pass |
-| API tests | 340 passed |
+| API tests | 341 passed |
 | Calculation engine | 99 passed |
 | Pricing engine | 35 passed |
 | Frontend tests | 142 passed across 24 files |

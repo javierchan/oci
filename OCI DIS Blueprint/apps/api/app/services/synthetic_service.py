@@ -22,7 +22,14 @@ from openpyxl import Workbook
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import CatalogIntegration, PatternDefinition, Project, SyntheticGenerationJob
+from app.models import (
+    AppUser,
+    CatalogIntegration,
+    PatternDefinition,
+    Project,
+    ProjectMembership,
+    SyntheticGenerationJob,
+)
 from app.models.project import ProjectStatus
 from app.core.calc_engine import composition_issues
 from app.schemas.catalog import CatalogIntegrationPatch, ManualIntegrationCreate
@@ -1309,6 +1316,7 @@ async def create_synthetic_enterprise_project(
     )
     db.add(project)
     await db.flush()
+    await _grant_synthetic_project_owner(project, db)
     await audit_service.emit(
         event_type="synthetic_project_created",
         entity_type="project",
@@ -1830,10 +1838,28 @@ def _payload_int(payload: dict[str, object], key: str) -> int:
     raise TypeError(f"Expected numeric synthetic payload value for {key}.")
 
 
-def _spec_from_payload(payload: dict[str, object]) -> SyntheticProjectSpec:
+async def _grant_synthetic_project_owner(project: Project, db: AsyncSession) -> None:
+    """Grant the requesting App user access without breaking legacy CLI seeds."""
+
+    owner = await db.get(AppUser, project.owner_id)
+    if owner is None:
+        return
+    db.add(
+        ProjectMembership(
+            project_id=project.id,
+            user_id=owner.id,
+            project_role="Owner",
+            granted_by=owner.id,
+        )
+    )
+    await db.flush()
+
+
+def _spec_from_payload(payload: dict[str, object], *, owner_id: str) -> SyntheticProjectSpec:
     template = _preset_spec(str(payload["preset_code"]))
     return replace(
         template,
+        owner_id=owner_id,
         project_name=str(payload["project_name"]),
         seed=_payload_int(payload, "seed_value"),
         import_included_count=_payload_int(payload, "import_target"),
@@ -2020,7 +2046,10 @@ async def run_synthetic_generation_job(
 
     job = await _load_job(job_id, db)
     normalized_payload = cast(dict[str, object], job.normalized_payload)
-    result = await create_synthetic_enterprise_project(db, _spec_from_payload(normalized_payload))
+    result = await create_synthetic_enterprise_project(
+        db,
+        _spec_from_payload(normalized_payload, owner_id=job.requested_by),
+    )
     old_value: dict[str, object] = {"status": job.status.value}
     artifact_manifest = cast(
         dict[str, object],

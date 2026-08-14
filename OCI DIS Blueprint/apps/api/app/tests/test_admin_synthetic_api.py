@@ -6,12 +6,22 @@ from types import SimpleNamespace
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.models import AgentRun, SupportConversation, SupportMessage, SyntheticGenerationJob
+from app.models import (
+    AgentRun,
+    AppUser,
+    ProjectMembership,
+    SupportConversation,
+    SupportMessage,
+    SyntheticGenerationJob,
+)
 from app.models.project import Project, ProjectStatus
 from app.routers import admin_synthetic
+from app.schemas.synthetic import SyntheticGenerationJobCreateRequest
+from app.services import synthetic_service
 
 
 def _admin_headers() -> dict[str, str]:
@@ -35,6 +45,51 @@ def _missing_table_operational_error() -> OperationalError:
         {},
         Exception("no such table: synthetic_generation_jobs"),
     )
+
+
+@pytest.mark.asyncio
+async def test_synthetic_job_project_is_owned_by_its_requesting_user(
+    test_engine: AsyncEngine,
+) -> None:
+    """Keep background-generated projects reachable through membership isolation."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        user = AppUser(
+            id="requesting-admin",
+            email="requesting-admin@example.invalid",
+            display_name="Requesting Admin",
+            role="Admin",
+            is_active=True,
+        )
+        session.add(user)
+        await session.flush()
+        payload = synthetic_service._normalized_request_payload(
+            SyntheticGenerationJobCreateRequest(preset_code="retained-smoke")
+        )
+        spec = synthetic_service._spec_from_payload(payload, owner_id=user.id)
+        assert spec.owner_id == user.id
+
+        project = Project(
+            name=spec.project_name,
+            customer_name=spec.customer_name,
+            owner_id=spec.owner_id,
+            status=ProjectStatus.ACTIVE,
+        )
+        session.add(project)
+        await session.flush()
+        await synthetic_service._grant_synthetic_project_owner(project, session)
+        await session.commit()
+
+        membership = await session.scalar(
+            select(ProjectMembership).where(
+                ProjectMembership.project_id == project.id,
+                ProjectMembership.user_id == user.id,
+            )
+        )
+        assert membership is not None
+        assert membership.project_role == "Owner"
+        assert membership.granted_by == user.id
 
 
 @pytest.mark.asyncio
