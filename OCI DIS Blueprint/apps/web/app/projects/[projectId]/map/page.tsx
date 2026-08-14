@@ -475,19 +475,20 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
               degradedSystemCount={degradedSystems}
               riskPathCount={riskEdges.length}
               svgRef={svgRef}
+              viewActions={(
+                <div className="flex shrink-0 items-center gap-2" aria-label="Map view actions">
+                  <button type="button" onClick={() => void saveMapView()} className="app-button-secondary gap-1.5 px-3 py-1.5 text-xs" title="Save the current topology focus as a shared, audited project view">
+                    {viewSaved ? <Check className="h-3.5 w-3.5" /> : <BookmarkPlus className="h-3.5 w-3.5" />}
+                    {viewSaved ? "Saved" : "Save view"}
+                  </button>
+                  <button type="button" onClick={() => void shareMapView()} className="app-button-secondary gap-1.5 px-3 py-1.5 text-xs" title="Copy a URL with the current topology focus and filters">
+                    {shareCopied ? <Check className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
+                    {shareCopied ? "Copied" : "Share view"}
+                  </button>
+                </div>
+              )}
               compact={widePanel && Boolean(selectedPanelNode || selectedEdge || triageOpen)}
             />
-
-            <div className="absolute right-3 top-[5.75rem] z-30 flex gap-2">
-              <button type="button" onClick={() => void saveMapView()} className="app-button-secondary gap-1.5 px-3 py-1.5 text-xs" title="Save the current topology focus as a shared, audited project view">
-                {viewSaved ? <Check className="h-3.5 w-3.5" /> : <BookmarkPlus className="h-3.5 w-3.5" />}
-                {viewSaved ? "Saved" : "Save view"}
-              </button>
-              <button type="button" onClick={() => void shareMapView()} className="app-button-secondary gap-1.5 px-3 py-1.5 text-xs" title="Copy a URL with the current topology focus and filters">
-                {shareCopied ? <Check className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
-                {shareCopied ? "Copied" : "Share view"}
-              </button>
-            </div>
 
             <div className="relative min-h-0 flex-1">
               {!loading && graph.meta.integration_count > 0 ? (

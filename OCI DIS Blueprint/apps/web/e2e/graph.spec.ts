@@ -79,6 +79,19 @@ test("investigates, re-weights, exports, and navigates the desktop topology", as
   await expect(processFilter).toBeVisible();
   await expect(page.getByLabel("Filter by brand")).toBeVisible();
 
+  const viewActionsBox = await page.getByLabel("Map view actions").boundingBox();
+  const processFilterBox = await processFilter.boundingBox();
+  const displayControlsBox = await page.getByLabel("Map display controls").boundingBox();
+  expect(viewActionsBox).not.toBeNull();
+  expect(processFilterBox).not.toBeNull();
+  expect(displayControlsBox).not.toBeNull();
+  expect((viewActionsBox?.y ?? 0) + (viewActionsBox?.height ?? 0)).toBeLessThanOrEqual(
+    processFilterBox?.y ?? 0,
+  );
+  expect((processFilterBox?.y ?? 0) + (processFilterBox?.height ?? 0)).toBeLessThanOrEqual(
+    displayControlsBox?.y ?? 0,
+  );
+
   if (graph.meta.business_process_families.length > 0) {
     const processFamily = graph.meta.business_process_families[0];
     const processResponse = page.waitForResponse((response) =>

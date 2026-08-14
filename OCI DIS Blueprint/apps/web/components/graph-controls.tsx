@@ -16,7 +16,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import type { ReactElement, RefObject } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
 
 import { GraphExportButton } from "@/components/graph-export-button";
 import { TopologyCombobox } from "@/components/topology-combobox";
@@ -66,6 +66,7 @@ type GraphControlsProps = {
   degradedSystemCount: number;
   riskPathCount: number;
   svgRef: RefObject<SVGSVGElement>;
+  viewActions?: ReactNode;
   compact?: boolean;
 };
 
@@ -161,6 +162,7 @@ export function GraphControls({
   degradedSystemCount,
   riskPathCount,
   svgRef,
+  viewActions,
   compact = false,
 }: GraphControlsProps): JSX.Element {
   const qaFilter = filters.qa_status ?? "";
@@ -240,6 +242,7 @@ export function GraphControls({
             </Link>
           </ControlTooltip>
           <GraphExportButton projectId={projectId} svgRef={svgRef} disabled={loading} />
+          {viewActions}
         </div>
       </div>
 
