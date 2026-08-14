@@ -96,6 +96,7 @@ export function ContextualSupportAssistant(): JSX.Element {
   }, [attachments, attachmentsHydrated]);
 
   const pending = conversation?.messages.some((message) => message.status === "pending") ?? false;
+  const composerUnavailable = loading || !conversation || !supportSessionId;
   const latestMessage = conversation?.messages.at(-1);
   const latestAssistantFailed =
     latestMessage?.role === "assistant" && latestMessage.status === "failed";
@@ -362,15 +363,15 @@ export function ContextualSupportAssistant(): JSX.Element {
               </div>
             ) : null}
             {error ? <p className="mb-2 text-xs text-[var(--color-toast-error-text)]">{error}</p> : null}
-            <form onSubmit={(event) => void submit(event)}>
+            <form onSubmit={(event) => void submit(event)} aria-busy={composerUnavailable || sending || pending}>
               <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2 shadow-sm transition focus-within:border-[var(--color-accent)]">
-                <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(); } }} className="max-h-32 min-h-14 w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-6 text-[var(--color-text-primary)] outline-none" placeholder="Ask anything about OCI DIS Architect" maxLength={2000} disabled={sending || pending} aria-label="Ask OCI DIS App Assistant" />
+                <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(); } }} className="max-h-32 min-h-14 w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-6 text-[var(--color-text-primary)] outline-none disabled:cursor-not-allowed disabled:opacity-60" placeholder={composerUnavailable ? "Getting your workspace ready" : "Ask anything about OCI DIS Architect"} maxLength={2000} disabled={composerUnavailable || sending || pending} aria-label="Ask OCI DIS App Assistant" />
                 <div className="mt-1 flex min-h-9 items-center justify-between gap-2">
-                  <button type="button" className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-[var(--color-text-secondary)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)]" onClick={() => setContextPickerOpen((current) => !current)} aria-expanded={contextPickerOpen}>
+                  <button type="button" className="inline-flex h-8 min-w-0 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-[var(--color-text-secondary)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-40" onClick={() => setContextPickerOpen((current) => !current)} aria-expanded={contextPickerOpen} disabled={composerUnavailable}>
                     <Paperclip className="h-3.5 w-3.5 shrink-0" />
                     <span className="truncate">Add context{attachments.length ? ` (${attachments.length})` : ""}</span>
                   </button>
-                  <button type="submit" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--color-accent)] text-white transition hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-40" disabled={!input.trim() || sending || pending} aria-label="Send message" title="Send">
+                  <button type="submit" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--color-accent)] text-white transition hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-40" disabled={composerUnavailable || !input.trim() || sending || pending} aria-label="Send message" title="Send">
                     {sending || pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   </button>
                 </div>
